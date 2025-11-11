@@ -1,43 +1,48 @@
-import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { selectAvailableTrips } from '@/store/selectors';
+import React, { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useAppSelector } from '@/store/hooks';
+import { selectTrips } from '@/store/selectors';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
 
-export default function HomeScreen() {
+type FilterType = 'all' | 'car' | 'moto' | 'tricycle';
+
+export default function SearchScreen() {
   const router = useRouter();
-  const dispatch = useAppDispatch();
-  const trips = useAppSelector(selectAvailableTrips);
+  const trips = useAppSelector(selectTrips);
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
+  const [filter, setFilter] = useState<FilterType>('all');
+  const [showFilters, setShowFilters] = useState(false);
 
-  const popularLocations = ['Gombe', 'Lemba', 'Kintambo', 'Ngaliema', 'Bandalungwa', 'Kalamu'];
+  const filteredTrips = trips.filter(trip => {
+    const matchesFilter = filter === 'all' || trip.vehicleType === filter;
+    const matchesDeparture = !departure || trip.departure.name.toLowerCase().includes(departure.toLowerCase());
+    const matchesArrival = !arrival || trip.arrival.name.toLowerCase().includes(arrival.toLowerCase());
+    return matchesFilter && matchesDeparture && matchesArrival;
+  });
 
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.greeting}>Bonjour 👋</Text>
-            <Text style={styles.headerTitle}>Trouvez votre trajet</Text>
-          </View>
-          <TouchableOpacity style={styles.notificationButton}>
-            <Ionicons name="notifications" size={24} color={Colors.white} />
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
+          <Text style={styles.headerTitle}>Rechercher un trajet</Text>
         </View>
 
-        {/* Recherche rapide */}
-        <View style={styles.searchCard}>
+        {/* Barre de recherche */}
+        <View style={styles.searchBox}>
           <View style={styles.searchRow}>
-            <Ionicons name="location" size={20} color={Colors.success} />
+            <Ionicons name="location" size={18} color={Colors.success} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Point de départ"
+              placeholder="Départ"
               placeholderTextColor={Colors.gray[500]}
               value={departure}
               onChangeText={setDeparture}
@@ -45,78 +50,90 @@ export default function HomeScreen() {
           </View>
           <View style={styles.searchDivider} />
           <View style={styles.searchRow}>
-            <Ionicons name="navigate" size={20} color={Colors.primary} />
+            <Ionicons name="navigate" size={18} color={Colors.primary} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Destination"
+              placeholder="Arrivée"
               placeholderTextColor={Colors.gray[500]}
               value={arrival}
               onChangeText={setArrival}
             />
           </View>
-          <TouchableOpacity 
-            style={styles.searchButton}
-            onPress={() => router.push('/search')}
-          >
-            <Text style={styles.searchButtonText}>Rechercher</Text>
-          </TouchableOpacity>
         </View>
+
+        {/* Filtres */}
+        <TouchableOpacity
+          style={styles.filterButton}
+          onPress={() => setShowFilters(!showFilters)}
+        >
+          <View style={styles.filterButtonLeft}>
+            <Ionicons name="filter" size={20} color={Colors.primary} />
+            <Text style={styles.filterText}>Filtres</Text>
+            {filter !== 'all' && <View style={styles.filterDot} />}
+          </View>
+          <Ionicons
+            name={showFilters ? 'chevron-up' : 'chevron-down'}
+            size={20}
+            color={Colors.gray[600]}
+          />
+        </TouchableOpacity>
+
+        {showFilters && (
+          <Animated.View entering={FadeInDown} style={styles.filtersContainer}>
+            <TouchableOpacity
+              style={[styles.filterTag, filter === 'all' && styles.filterTagActive]}
+              onPress={() => setFilter('all')}
+            >
+              <Text style={[styles.filterTagText, filter === 'all' && styles.filterTagTextActive]}>
+                Tous
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterTag, filter === 'car' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
+              onPress={() => setFilter('car')}
+            >
+              <Text style={[styles.filterTagText, filter === 'car' && styles.filterTagTextActive]}>
+                🚗 Voiture
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterTag, filter === 'moto' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
+              onPress={() => setFilter('moto')}
+            >
+              <Text style={[styles.filterTagText, filter === 'moto' && styles.filterTagTextActive]}>
+                🏍️ Moto
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterTag, filter === 'tricycle' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
+              onPress={() => setFilter('tricycle')}
+            >
+              <Text style={[styles.filterTagText, filter === 'tricycle' && styles.filterTagTextActive]}>
+                🛺 Keke
+              </Text>
+            </TouchableOpacity>
+          </Animated.View>
+        )}
       </View>
 
+      {/* Résultats */}
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Lieux populaires */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Lieux populaires</Text>
-          <View style={styles.popularLocations}>
-            {popularLocations.map((location, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.locationTag}
-              >
-                <Text style={styles.locationTagText}>{location}</Text>
-              </TouchableOpacity>
-            ))}
+        <Text style={styles.resultsCount}>
+          {filteredTrips.length} trajet{filteredTrips.length > 1 ? 's' : ''} trouvé{filteredTrips.length > 1 ? 's' : ''}
+        </Text>
+
+        {filteredTrips.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIcon}>
+              <Ionicons name="search-outline" size={48} color={Colors.gray[500]} />
+            </View>
+            <Text style={styles.emptyTitle}>Aucun trajet trouvé</Text>
+            <Text style={styles.emptyText}>
+              Essayez de modifier vos critères de recherche
+            </Text>
           </View>
-        </View>
-
-        {/* Actions rapides */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Actions rapides</Text>
-          <View style={styles.quickActions}>
-            <TouchableOpacity
-              style={[styles.quickActionCard, { marginRight: Spacing.md }]}
-              onPress={() => router.push('/publish')}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: Colors.primary }]}>
-                <Ionicons name="add-circle" size={24} color={Colors.white} />
-              </View>
-              <Text style={styles.quickActionTitle}>Publier un trajet</Text>
-              <Text style={styles.quickActionSubtitle}>En 3 clics</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.quickActionCard, styles.quickActionCardBlue]}
-              onPress={() => router.push('/search')}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: Colors.info }]}>
-                <Ionicons name="search" size={24} color={Colors.white} />
-              </View>
-              <Text style={styles.quickActionTitle}>Chercher un trajet</Text>
-              <Text style={styles.quickActionSubtitle}>Trouvez votre route</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Trajets disponibles */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Trajets disponibles</Text>
-            <TouchableOpacity onPress={() => router.push('/search')}>
-              <Text style={styles.seeAllText}>Voir tout</Text>
-            </TouchableOpacity>
-          </View>
-
-          {trips.slice(0, 3).map((trip, index) => (
+        ) : (
+          filteredTrips.map((trip, index) => (
             <Animated.View
               key={trip.id}
               entering={FadeInDown.delay(index * 100)}
@@ -165,13 +182,16 @@ export default function HomeScreen() {
                     {trip.availableSeats} places disponibles
                   </Text>
                 </View>
-                <TouchableOpacity style={styles.reserveButton}>
-                  <Text style={styles.reserveButtonText}>Réserver</Text>
+                <TouchableOpacity
+                  style={styles.detailsButton}
+                  onPress={() => router.push(`/trip/${trip.id}`)}
+                >
+                  <Text style={styles.detailsButtonText}>Voir détails</Text>
                 </TouchableOpacity>
               </View>
             </Animated.View>
-          ))}
-        </View>
+          ))
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -183,43 +203,31 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
   },
   header: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.white,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.lg,
-    paddingBottom: Spacing.xl,
-    borderBottomLeftRadius: BorderRadius.xxl,
-    borderBottomRightRadius: BorderRadius.xxl,
+    paddingBottom: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[200],
   },
   headerTop: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.lg,
   },
-  greeting: {
-    color: Colors.white,
-    opacity: 0.8,
-    fontSize: FontSizes.sm,
-    marginBottom: Spacing.xs,
+  backButton: {
+    marginRight: Spacing.lg,
   },
   headerTitle: {
-    color: Colors.white,
-    fontSize: FontSizes.xxl,
+    fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
   },
-  notificationButton: {
-    width: 48,
-    height: 48,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchCard: {
-    backgroundColor: Colors.white,
+  searchBox: {
+    backgroundColor: Colors.gray[50],
     borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    ...CommonStyles.shadowLg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
   },
   searchRow: {
     flexDirection: 'row',
@@ -227,11 +235,11 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
     paddingBottom: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[100],
+    borderBottomColor: Colors.gray[200],
   },
   searchDivider: {
     height: 1,
-    backgroundColor: Colors.gray[100],
+    backgroundColor: Colors.gray[200],
     marginBottom: Spacing.md,
   },
   searchInput: {
@@ -240,101 +248,92 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
     color: Colors.gray[800],
   },
-  searchButton: {
-    backgroundColor: Colors.primary,
-    marginTop: Spacing.lg,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
+  filterButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.sm,
   },
-  searchButtonText: {
-    color: Colors.white,
+  filterButtonLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  filterText: {
+    color: Colors.gray[700],
+    fontWeight: FontWeights.medium,
+    marginLeft: Spacing.sm,
     fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
+  },
+  filterDot: {
+    backgroundColor: Colors.primary,
+    width: 8,
+    height: 8,
+    borderRadius: BorderRadius.full,
+    marginLeft: Spacing.xs,
+  },
+  filtersContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingTop: Spacing.md,
+  },
+  filterTag: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    marginBottom: Spacing.sm,
+    backgroundColor: Colors.gray[200],
+  },
+  filterTagActive: {
+    backgroundColor: Colors.primary,
+  },
+  filterTagText: {
+    color: Colors.gray[700],
+    fontSize: FontSizes.sm,
+  },
+  filterTagTextActive: {
+    color: Colors.white,
+    fontWeight: FontWeights.semibold,
   },
   scrollView: {
     flex: 1,
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xl,
+    paddingTop: Spacing.lg,
   },
-  section: {
-    marginBottom: Spacing.xl,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  sectionTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    marginBottom: Spacing.md,
-  },
-  seeAllText: {
-    color: Colors.primary,
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-  },
-  popularLocations: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  locationTag: {
-    backgroundColor: Colors.white,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.full,
-    marginRight: Spacing.sm,
-    marginBottom: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-  },
-  locationTagText: {
-    color: Colors.gray[700],
+  resultsCount: {
     fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginBottom: Spacing.lg,
   },
-  quickActions: {
-    flexDirection: 'row',
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.xxl * 2,
   },
-  quickActionCard: {
-    flex: 1,
-    backgroundColor: 'rgba(255, 107, 53, 0.1)',
-    padding: Spacing.lg,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 107, 53, 0.2)',
-  },
-  quickActionCardBlue: {
-    backgroundColor: 'rgba(52, 152, 219, 0.1)',
-    borderColor: 'rgba(52, 152, 219, 0.2)',
-  },
-  quickActionIcon: {
-    width: 48,
-    height: 48,
+  emptyIcon: {
+    width: 96,
+    height: 96,
+    backgroundColor: Colors.gray[200],
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.lg,
   },
-  quickActionTitle: {
+  emptyTitle: {
+    fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
     color: Colors.gray[800],
-    fontSize: FontSizes.base,
-    marginBottom: Spacing.xs,
+    marginBottom: Spacing.sm,
   },
-  quickActionSubtitle: {
-    fontSize: FontSizes.xs,
+  emptyText: {
     color: Colors.gray[600],
-    marginTop: Spacing.xs,
+    textAlign: 'center',
+    fontSize: FontSizes.base,
   },
   tripCard: {
     backgroundColor: Colors.white,
     borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.lg,
     ...CommonStyles.shadowSm,
   },
   tripHeader: {
@@ -430,13 +429,13 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
     marginLeft: Spacing.xs,
   },
-  reserveButton: {
+  detailsButton: {
     backgroundColor: Colors.primary,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.md,
   },
-  reserveButtonText: {
+  detailsButtonText: {
     color: Colors.white,
     fontWeight: FontWeights.semibold,
     fontSize: FontSizes.sm,
