@@ -1,15 +1,20 @@
-import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { BorderRadius, Colors, FontSizes, FontWeights, Spacing, CommonStyles } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAppDispatch } from '@/store/hooks';
+import { setUser } from '@/store/slices/authSlice';
 
+type AuthMode = 'login' | 'signup';
 type AuthStep = 'phone' | 'sms' | 'kyc' | 'profile';
 
 export default function AuthScreen() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
+  const [mode, setMode] = useState<AuthMode>('login');
   const [step, setStep] = useState<AuthStep>('phone');
   const [phone, setPhone] = useState('');
   const [smsCode, setSmsCode] = useState(['', '', '', '', '', '']);
@@ -19,15 +24,15 @@ export default function AuthScreen() {
   const [role, setRole] = useState<'driver' | 'passenger' | 'both'>('passenger');
 
   const progress = {
-    phone: 25,
-    sms: 50,
+    phone: mode === 'login' ? 50 : 25,
+    sms: mode === 'login' ? 100 : 50,
     kyc: 75,
     profile: 100,
   }[step];
 
   const motivationalMessage = {
     phone: '',
-    sms: '🎉 Super! Continuez comme ça!',
+    sms: mode === 'login' ? '🎉 Connexion réussie!' : '🎉 Super! Continuez comme ça!',
     kyc: '⚡ Presque fini!',
     profile: '🎊 Dernière étape!',
   }[step];
@@ -43,7 +48,24 @@ export default function AuthScreen() {
   const handleSmsSubmit = () => {
     const code = smsCode.join('');
     if (code.length === 6) {
-      setStep('kyc');
+      if (mode === 'login') {
+        // Simuler la connexion réussie
+        dispatch(setUser({
+          id: '1',
+          phone,
+          name: 'Utilisateur',
+          email: '',
+          role: 'passenger',
+          rating: 0,
+          avatar: null,
+          totalTrips: 0,
+          verified: false,
+          createdAt: new Date(),
+        }));
+        router.replace('/(tabs)');
+      } else {
+        setStep('kyc');
+      }
     } else {
       Alert.alert('Erreur', 'Veuillez entrer le code complet');
     }
@@ -62,15 +84,62 @@ export default function AuthScreen() {
   };
 
   const handleProfileSubmit = () => {
+    // Simuler l'inscription réussie
+    dispatch(setUser({
+      id: '1',
+      phone,
+      name: fullName,
+      email: email || '',
+      role,
+      rating: 0,
+      avatar: null,
+      totalTrips: 0,
+      verified: false,
+      createdAt: new Date(),
+    }));
     router.replace('/(tabs)');
+  };
+
+  const resetForm = () => {
+    setStep('phone');
+    setPhone('');
+    setSmsCode(['', '', '', '', '', '']);
+    setFullName('');
+    setEmail('');
+    setIdNumber('');
+    setRole('passenger');
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header avec progression */}
+      {/* Header avec toggle et progression */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <Text style={styles.headerTitle}>Inscription</Text>
+          {/* Toggle Connexion/Inscription */}
+          <View style={styles.toggleContainer}>
+            <TouchableOpacity
+              style={[styles.toggleButton, mode === 'login' && styles.toggleButtonActive]}
+              onPress={() => {
+                setMode('login');
+                resetForm();
+              }}
+            >
+              <Text style={[styles.toggleText, mode === 'login' && styles.toggleTextActive]}>
+                Connexion
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toggleButton, mode === 'signup' && styles.toggleButtonActive]}
+              onPress={() => {
+                setMode('signup');
+                resetForm();
+              }}
+            >
+              <Text style={[styles.toggleText, mode === 'signup' && styles.toggleTextActive]}>
+                Inscription
+              </Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.progressText}>{progress}%</Text>
         </View>
         <View style={styles.progressBar}>
@@ -91,8 +160,14 @@ export default function AuthScreen() {
               <View style={styles.iconCircle}>
                 <Ionicons name="call" size={48} color={Colors.primary} />
               </View>
-              <Text style={styles.stepTitle}>Bienvenue sur ZWANGA</Text>
-              <Text style={styles.stepSubtitle}>Entrez votre numéro de téléphone pour commencer</Text>
+              <Text style={styles.stepTitle}>
+                {mode === 'login' ? 'Bon retour sur ZWANGA' : 'Bienvenue sur ZWANGA'}
+              </Text>
+              <Text style={styles.stepSubtitle}>
+                {mode === 'login' 
+                  ? 'Entrez votre numéro de téléphone pour vous connecter'
+                  : 'Entrez votre numéro de téléphone pour commencer'}
+              </Text>
             </View>
 
             <View style={styles.inputGroup}>
@@ -152,7 +227,9 @@ export default function AuthScreen() {
               onPress={handleSmsSubmit}
               disabled={smsCode.join('').length !== 6}
             >
-              <Text style={styles.buttonText}>Vérifier</Text>
+              <Text style={styles.buttonText}>
+                {mode === 'login' ? 'Se connecter' : 'Vérifier'}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.linkButton}>
@@ -161,8 +238,8 @@ export default function AuthScreen() {
           </Animated.View>
         )}
 
-        {/* Étape 3: KYC */}
-        {step === 'kyc' && (
+        {/* Étape 3: KYC (uniquement pour l'inscription) */}
+        {step === 'kyc' && mode === 'signup' && (
           <Animated.View entering={FadeInDown} exiting={FadeOutUp} style={styles.stepContainer}>
             <View style={styles.iconContainer}>
               <View style={[styles.iconCircle, styles.iconCircleBlue]}>
@@ -212,8 +289,8 @@ export default function AuthScreen() {
           </Animated.View>
         )}
 
-        {/* Étape 4: Configuration du profil */}
-        {step === 'profile' && (
+        {/* Étape 4: Configuration du profil (uniquement pour l'inscription) */}
+        {step === 'profile' && mode === 'signup' && (
           <Animated.View entering={FadeInDown} exiting={FadeOutUp} style={styles.stepContainer}>
             <View style={styles.iconContainer}>
               <View style={[styles.iconCircle, styles.iconCircleGreen]}>
@@ -295,12 +372,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.md,
   },
-  headerTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[700],
+  toggleContainer: {
+    flexDirection: 'row',
+    backgroundColor: Colors.gray[100],
+    borderRadius: BorderRadius.md,
+    padding: Spacing.xs,
+    gap: Spacing.xs,
+  },
+  toggleButton: {
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.sm,
+  },
+  toggleButtonActive: {
+    backgroundColor: Colors.white,
+    ...CommonStyles.shadowSm,
+  },
+  toggleText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[600],
+  },
+  toggleTextActive: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
   },
   progressText: {
     fontSize: FontSizes.lg,

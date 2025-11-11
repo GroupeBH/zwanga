@@ -9,9 +9,12 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 import { Colors, Spacing, BorderRadius, FontSizes, FontWeights } from '@/constants/styles';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAppSelector } from '@/store/hooks';
 
 export default function SplashScreen() {
   const router = useRouter();
+  const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
   const scale = useSharedValue(0);
   const opacity = useSharedValue(0);
 
@@ -23,13 +26,35 @@ export default function SplashScreen() {
     );
     opacity.value = withTiming(1, { duration: 500 });
 
-    // Navigation après 3 secondes
-    const timer = setTimeout(() => {
-      router.replace('/auth');
-    }, 3000);
+    // Vérifier le premier lancement et l'authentification
+    const checkFirstLaunch = async () => {
+      try {
+        const hasSeenOnboarding = await AsyncStorage.getItem('hasSeenOnboarding');
+        
+        // Attendre un peu pour l'animation
+        setTimeout(async () => {
+          if (!hasSeenOnboarding) {
+            // Premier lancement : afficher l'onboarding
+            router.replace('/onboarding');
+          } else if (isAuthenticated) {
+            // Utilisateur déjà connecté : aller directement à l'app
+            router.replace('/(tabs)');
+          } else {
+            // Utilisateur non connecté : aller à l'authentification
+            router.replace('/auth');
+          }
+        }, 2000);
+      } catch (error) {
+        console.error('Error checking first launch:', error);
+        // En cas d'erreur, rediriger vers l'authentification
+        setTimeout(() => {
+          router.replace('/auth');
+        }, 2000);
+      }
+    };
 
-    return () => clearTimeout(timer);
-  }, []);
+    checkFirstLaunch();
+  }, [isAuthenticated]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
