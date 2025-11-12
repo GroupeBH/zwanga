@@ -22,6 +22,10 @@ export const Colors = {
   dangerLight: '#FCA5A5',
   dangerDark: '#DC2626',
   
+  warning: '#F7B801',
+  warningLight: '#FFD93D',
+  warningDark: '#E6A600',
+  
   gray: {
     50: '#F8F9FA',
     100: '#F1F3F5',

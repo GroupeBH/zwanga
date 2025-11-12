@@ -7,12 +7,14 @@ import { useAppDispatch } from '@/store/hooks';
 import { addTrip } from '@/store/slices/tripsSlice';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Colors, Spacing, BorderRadius, FontSizes, FontWeights } from '@/constants/styles';
+import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 
 type PublishStep = 'route' | 'details' | 'confirm';
 
 export default function PublishScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
+  const { checkIdentity } = useIdentityCheck();
   const [step, setStep] = useState<PublishStep>('route');
 
   // Données du formulaire
@@ -28,6 +30,10 @@ export default function PublishScreen() {
     if (step === 'route') {
       if (!departure || !arrival) {
         Alert.alert('Erreur', 'Veuillez remplir les champs obligatoires');
+        return;
+      }
+      // Vérifier l'identité avant de continuer
+      if (!checkIdentity('publish')) {
         return;
       }
       setStep('details');

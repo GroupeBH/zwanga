@@ -39,8 +39,8 @@ export const authApi = baseApi.injectEndpoints({
     // Inscription d'un nouvel utilisateur
     register: builder.mutation<AuthResponse, {
       phone: string;
-      firstName: string;
-      lastName: string;
+      name: string;
+      email?: string;
       role: 'driver' | 'passenger' | 'both';
     }>({
       query: (userData) => ({

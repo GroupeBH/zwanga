@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Provider } from 'react-redux';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { store } from '@/store';
-import { loadState } from '@/store/persistence';
-import { setUser, setToken } from '@/store/slices/authSlice';
+import { initializeAuth } from '@/store/slices/authSlice';
+import { Colors } from '@/constants/styles';
 
 interface ReduxProviderProps {
   children: React.ReactNode;
@@ -13,18 +13,13 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Charger l'état persisté au démarrage
+    // Initialiser l'authentification depuis SecureStore au démarrage
     const initializeStore = async () => {
       try {
-        const persistedState = await loadState();
-        
-        if (persistedState?.auth?.user && persistedState?.auth?.token) {
-          // Restaurer l'utilisateur et le token
-          store.dispatch(setUser(persistedState.auth.user));
-          store.dispatch(setToken(persistedState.auth.token));
-        }
+        // Initialiser l'auth (charge les tokens depuis SecureStore)
+        await store.dispatch(initializeAuth());
       } catch (error) {
-        console.error('Erreur lors du chargement du state persisté:', error);
+        console.error('Erreur lors de l\'initialisation du store:', error);
       } finally {
         setIsLoading(false);
       }
@@ -36,12 +31,21 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
   if (isLoading) {
     // Écran de chargement pendant la restauration du state
     return (
-      <View className="flex-1 items-center justify-center bg-primary">
-        <ActivityIndicator size="large" color="white" />
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={Colors.white} />
       </View>
     );
   }
 
   return <Provider store={store}>{children}</Provider>;
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+  },
+});
 

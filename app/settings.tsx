@@ -1,13 +1,22 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Switch, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Switch, StyleSheet, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
+import { useAppSelector, useAppDispatch } from '@/store/hooks';
+import { selectUser } from '@/store/selectors';
+import { updateUser } from '@/store/slices/authSlice';
+import { IdentityVerification } from '@/components/IdentityVerification';
+import { useProfilePhoto } from '@/hooks/useProfilePhoto';
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const user = useAppSelector(selectUser);
+  const dispatch = useAppDispatch();
+  const [showIdentityModal, setShowIdentityModal] = useState(false);
+  const { changeProfilePhoto } = useProfilePhoto();
   const [notifications, setNotifications] = useState({
     tripUpdates: true,
     messages: true,
@@ -26,8 +35,26 @@ export default function SettingsScreen() {
     autoAccept: false,
   });
 
+  const handleIdentityComplete = (data: { idCardImage: string; faceImage: string }) => {
+    // Mettre à jour l'utilisateur avec identityVerified = true
+    if (user) {
+      dispatch(updateUser({ identityVerified: true }));
+    }
+    setShowIdentityModal(false);
+  };
+
   const accountItems = [
-    { icon: 'person-outline', label: 'Modifier le profil', route: '/edit-profile' },
+    { 
+      icon: 'person-outline', 
+      label: 'Modifier le profil', 
+      route: '/edit-profile',
+    },
+    { 
+      icon: 'image-outline', 
+      label: 'Changer la photo de profil', 
+      route: null,
+      onPress: changeProfilePhoto,
+    },
     { icon: 'lock-closed-outline', label: 'Sécurité', route: '/security' },
     { icon: 'card-outline', label: 'Abonnement', route: '/subscription' },
   ];
@@ -45,8 +72,40 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Compte */}
+        {/* Vérification d'identité */}
         <Animated.View entering={FadeInDown.delay(0)} style={styles.section}>
+          <Text style={styles.sectionLabel}>VÉRIFICATION</Text>
+          <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => setShowIdentityModal(true)}
+            >
+              <View style={[styles.menuIcon, user?.identityVerified ? styles.menuIconSuccess : styles.menuIconWarning]}>
+                <Ionicons 
+                  name={user?.identityVerified ? 'checkmark-circle' : 'alert-circle'} 
+                  size={20} 
+                  color={user?.identityVerified ? Colors.success : Colors.warning} 
+                />
+              </View>
+              <View style={styles.menuTextContainer}>
+                <Text style={styles.menuText}>
+                  {user?.identityVerified ? 'Identité vérifiée' : 'Vérifier mon identité'}
+                </Text>
+                <Text style={styles.menuSubtext}>
+                  {user?.identityVerified 
+                    ? 'Votre identité a été vérifiée' 
+                    : 'Requis pour publier et réserver des trajets'}
+                </Text>
+              </View>
+              {!user?.identityVerified && (
+                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+              )}
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+
+        {/* Compte */}
+        <Animated.View entering={FadeInDown.delay(100)} style={styles.section}>
           <Text style={styles.sectionLabel}>COMPTE</Text>
           <View style={styles.card}>
             {accountItems.map((item, index) => (
@@ -56,13 +115,15 @@ export default function SettingsScreen() {
                   styles.menuItem,
                   index !== accountItems.length - 1 && styles.menuItemBorder,
                 ]}
-                onPress={() => router.push(item.route as any)}
+                onPress={item.onPress || (() => item.route && router.push(item.route as any))}
               >
                 <View style={styles.menuIcon}>
                   <Ionicons name={item.icon as any} size={20} color={Colors.gray[600]} />
                 </View>
                 <Text style={styles.menuText}>{item.label}</Text>
-                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                {item.route && (
+                  <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                )}
               </TouchableOpacity>
             ))}
           </View>
@@ -227,6 +288,29 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </Animated.View>
       </ScrollView>
+
+      {/* Modal de vérification d'identité */}
+      <Modal
+        visible={showIdentityModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowIdentityModal(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowIdentityModal(false)}>
+              <Ionicons name="close" size={24} color={Colors.gray[800]} />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Vérification d'identité</Text>
+            <View style={{ width: 24 }} />
+          </View>
+          <IdentityVerification
+            onComplete={handleIdentityComplete}
+            onSkip={() => setShowIdentityModal(false)}
+            canSkip={true}
+          />
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -302,6 +386,38 @@ const styles = StyleSheet.create({
   },
   menuIconYellow: {
     backgroundColor: 'rgba(247, 184, 1, 0.1)',
+  },
+  menuIconSuccess: {
+    backgroundColor: 'rgba(46, 204, 113, 0.1)',
+  },
+  menuIconWarning: {
+    backgroundColor: 'rgba(247, 184, 1, 0.1)',
+  },
+  menuTextContainer: {
+    flex: 1,
+  },
+  menuSubtext: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginTop: Spacing.xs,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: Colors.white,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[200],
+  },
+  modalTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
   },
   menuIconOrange: {
     backgroundColor: 'rgba(255, 107, 53, 0.1)',
