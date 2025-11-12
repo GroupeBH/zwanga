@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -8,11 +8,13 @@ import { selectUser } from '@/store/selectors';
 import { logout } from '@/store/slices/authSlice';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
+import { useProfilePhoto } from '@/hooks/useProfilePhoto';
 
 export default function ProfileScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const user = useAppSelector(selectUser);
+  const { changeProfilePhoto, isUploading } = useProfilePhoto();
 
   // Données simulées
   const stats = {
@@ -58,16 +60,36 @@ export default function ProfileScreen() {
 
           {/* Infos utilisateur */}
           <View style={styles.userInfo}>
-            <View style={styles.avatarContainer}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarEmoji}>👤</Text>
-              </View>
-              <View style={styles.verifiedBadge}>
-                <Ionicons name="checkmark" size={16} color={Colors.white} />
-              </View>
-            </View>
-            <Text style={styles.userName}>Jean Mukendi</Text>
-            <Text style={styles.userPhone}>+243 812 345 678</Text>
+            <TouchableOpacity 
+              style={styles.avatarContainer}
+              onPress={changeProfilePhoto}
+              disabled={isUploading}
+              activeOpacity={0.8}
+            >
+              {user?.avatar ? (
+                <Image source={{ uri: user.avatar }} style={styles.avatarImage} />
+              ) : (
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarEmoji}>👤</Text>
+                </View>
+              )}
+              {isUploading ? (
+                <View style={styles.uploadingOverlay}>
+                  <ActivityIndicator size="small" color={Colors.white} />
+                </View>
+              ) : (
+                <View style={styles.editBadge}>
+                  <Ionicons name="camera" size={14} color={Colors.white} />
+                </View>
+              )}
+              {user?.verified && (
+                <View style={styles.verifiedBadge}>
+                  <Ionicons name="checkmark" size={16} color={Colors.white} />
+                </View>
+              )}
+            </TouchableOpacity>
+            <Text style={styles.userName}>{user?.name || 'Utilisateur'}</Text>
+            <Text style={styles.userPhone}>{user?.phone || ''}</Text>
 
             {/* Rating */}
             <View style={styles.ratingBadge}>
@@ -212,12 +234,43 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  avatarImage: {
+    width: 96,
+    height: 96,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[200],
+  },
   avatarEmoji: {
     fontSize: 48,
   },
-  verifiedBadge: {
+  editBadge: {
     position: 'absolute',
     bottom: 0,
+    right: 0,
+    width: 32,
+    height: 32,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.full,
+    borderWidth: 3,
+    borderColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...CommonStyles.shadowSm,
+  },
+  uploadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  verifiedBadge: {
+    position: 'absolute',
+    top: 0,
     right: 0,
     width: 28,
     height: 28,

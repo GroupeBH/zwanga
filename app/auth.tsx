@@ -1,15 +1,17 @@
-import { BorderRadius, Colors, FontSizes, FontWeights, Spacing, CommonStyles } from '@/constants/styles';
+import { IdentityVerification } from '@/components/IdentityVerification';
+import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useLoginMutation, useRegisterMutation } from '@/store/api/zwangaApi';
+import { useAppDispatch } from '@/store/hooks';
+import { setTokens, setUser } from '@/store/slices/authSlice';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAppDispatch } from '@/store/hooks';
-import { setUser } from '@/store/slices/authSlice';
 
 type AuthMode = 'login' | 'signup';
-type AuthStep = 'phone' | 'sms' | 'kyc' | 'profile';
+type AuthStep = 'phone' | 'sms' | 'kyc' | 'identity' | 'profile';
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -19,14 +21,22 @@ export default function AuthScreen() {
   const [phone, setPhone] = useState('');
   const [smsCode, setSmsCode] = useState(['', '', '', '', '', '']);
   const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
-  const [idNumber, setIdNumber] = useState('');
+  // const [idNumber, setIdNumber] = useState('');
   const [role, setRole] = useState<'driver' | 'passenger' | 'both'>('passenger');
+  const [identityVerified, setIdentityVerified] = useState(false);
+  
+  // Hooks RTK Query pour login et register
+  const [login, { isLoading: isLoggingIn }] = useLoginMutation();
+  const [register, { isLoading: isRegistering }] = useRegisterMutation();
 
   const progress = {
-    phone: mode === 'login' ? 50 : 25,
-    sms: mode === 'login' ? 100 : 50,
-    kyc: 75,
+    phone: mode === 'login' ? 50 : 20,
+    sms: mode === 'login' ? 100 : 40,
+    kyc: 60,
+    identity: 80,
     profile: 100,
   }[step];
 
@@ -34,6 +44,7 @@ export default function AuthScreen() {
     phone: '',
     sms: mode === 'login' ? '🎉 Connexion réussie!' : '🎉 Super! Continuez comme ça!',
     kyc: '⚡ Presque fini!',
+    identity: '🔒 Sécurisez votre compte!',
     profile: '🎊 Dernière étape!',
   }[step];
 
@@ -45,24 +56,31 @@ export default function AuthScreen() {
     }
   };
 
-  const handleSmsSubmit = () => {
+  const handleSmsSubmit = async () => {
     const code = smsCode.join('');
     if (code.length === 6) {
       if (mode === 'login') {
-        // Simuler la connexion réussie
-        dispatch(setUser({
-          id: '1',
-          phone,
-          name: 'Utilisateur',
-          email: '',
-          role: 'passenger',
-          rating: 0,
-          avatar: null,
-          totalTrips: 0,
-          verified: false,
-          createdAt: new Date(),
-        }));
-        router.replace('/(tabs)');
+        try {
+          // Appel API de connexion
+          // Note: Dans un vrai cas, vous devriez envoyer le code SMS au backend
+          // Ici, on simule avec le numéro de téléphone
+          const result = await login({ 
+            phone, 
+            password: code // Dans un vrai cas, ce serait le mot de passe
+          }).unwrap();
+          
+          // Les tokens sont automatiquement stockés dans SecureStore via onQueryStarted
+          // Mettre à jour le state Redux avec les tokens et l'utilisateur
+          dispatch(setTokens({
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken,
+          }));
+          dispatch(setUser(result.user));
+          
+          router.replace('/(tabs)');
+        } catch (error: any) {
+          Alert.alert('Erreur', error?.data?.message || 'Erreur lors de la connexion');
+        }
       } else {
         setStep('kyc');
       }
@@ -76,28 +94,54 @@ export default function AuthScreen() {
   };
 
   const handleKYCSubmit = () => {
-    if (fullName && idNumber) {
-      setStep('profile');
+    if (firstName && lastName) {
+      setStep('identity');
     } else {
       Alert.alert('Erreur', 'Veuillez remplir tous les champs');
     }
   };
 
-  const handleProfileSubmit = () => {
-    // Simuler l'inscription réussie
-    dispatch(setUser({
-      id: '1',
-      phone,
-      name: fullName,
-      email: email || '',
-      role,
-      rating: 0,
-      avatar: null,
-      totalTrips: 0,
-      verified: false,
-      createdAt: new Date(),
-    }));
+  const handleIdentityComplete = (data: { idCardImage: string; faceImage: string }) => {
+    // Ici, vous devriez envoyer les images au backend pour vérification
+    // Pour l'instant, on simule juste la vérification
+    setIdentityVerified(true);
+    setStep('profile');
+  };
+
+  const handleSkipIdentity = () => {
+    setIdentityVerified(false);
+    setStep('profile');
+  };
+
+  const handleProfileSubmit = async () => {
     router.replace('/(tabs)');
+    // try {
+    //   // Appel API d'inscription
+    //   const result = await register({
+    //     phone,
+    //     firstName,
+    //     lastName,
+    //     role,
+    //   }).unwrap();
+      
+    //   // Mettre à jour l'utilisateur avec le statut de vérification d'identité
+    //   const userWithIdentity = {
+    //     ...result.user,
+    //     identityVerified,
+    //   };
+      
+    //   // Les tokens sont automatiquement stockés dans SecureStore via onQueryStarted
+    //   // Mettre à jour le state Redux avec les tokens et l'utilisateur
+    //   dispatch(setTokens({
+    //     accessToken: result.accessToken,
+    //     refreshToken: result.refreshToken,
+    //   }));
+    //   dispatch(setUser(userWithIdentity));
+      
+    //   router.replace('/(tabs)');
+    // } catch (error: any) {
+    //   Alert.alert('Erreur', error?.data?.message || 'Erreur lors de l\'inscription');
+    // }
   };
 
   const resetForm = () => {
@@ -105,8 +149,10 @@ export default function AuthScreen() {
     setPhone('');
     setSmsCode(['', '', '', '', '', '']);
     setFullName('');
+    setFirstName('');
+    setLastName('');
     setEmail('');
-    setIdNumber('');
+    // setIdNumber('');
     setRole('passenger');
   };
 
@@ -252,17 +298,28 @@ export default function AuthScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Nom complet</Text>
+              <Text style={styles.label}>Votre prénom</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Jean Mukendi"
+                placeholder="Jean"
                 placeholderTextColor={Colors.gray[500]}
-                value={fullName}
-                onChangeText={setFullName}
+                value={firstName}
+                onChangeText={setFirstName}
               />
             </View>
 
-            <View style={[styles.inputGroup, { marginBottom: Spacing.xl }]}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Nom de famille</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Mukendi"
+                placeholderTextColor={Colors.gray[500]}
+                value={lastName}
+                onChangeText={setLastName}
+              />
+            </View>
+
+            {/* <View style={[styles.inputGroup, { marginBottom: Spacing.xl }]}>
               <Text style={styles.label}>Numéro de carte d'identité</Text>
               <TextInput
                 style={styles.input}
@@ -271,7 +328,7 @@ export default function AuthScreen() {
                 value={idNumber}
                 onChangeText={setIdNumber}
               />
-            </View>
+            </View> */}
 
             <TouchableOpacity
               style={[styles.button, styles.buttonPrimary]}
@@ -289,7 +346,18 @@ export default function AuthScreen() {
           </Animated.View>
         )}
 
-        {/* Étape 4: Configuration du profil (uniquement pour l'inscription) */}
+        {/* Étape 4: Vérification d'identité (uniquement pour l'inscription) */}
+        {step === 'identity' && mode === 'signup' && (
+          <Animated.View entering={FadeInDown} exiting={FadeOutUp} style={styles.stepContainer}>
+            <IdentityVerification
+              onComplete={handleIdentityComplete}
+              onSkip={handleSkipIdentity}
+              canSkip={true}
+            />
+          </Animated.View>
+        )}
+
+        {/* Étape 5: Configuration du profil (uniquement pour l'inscription) */}
         {step === 'profile' && mode === 'signup' && (
           <Animated.View entering={FadeInDown} exiting={FadeOutUp} style={styles.stepContainer}>
             <View style={styles.iconContainer}>

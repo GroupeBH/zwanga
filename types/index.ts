@@ -13,6 +13,7 @@ export interface User {
   rating: number;
   totalTrips: number;
   verified: boolean;
+  identityVerified: boolean; // Vérification d'identité (carte + visage)
   vehicle?: Vehicle;
   createdAt: Date;
 }

@@ -8,11 +8,13 @@ import { selectTripById } from '@/store/selectors';
 import { updateTrip } from '@/store/slices/tripsSlice';
 import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
+import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 
 export default function TripDetailsScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const dispatch = useAppDispatch();
+  const { checkIdentity } = useIdentityCheck();
   const trip = useAppSelector(state => selectTripById(id as string)(state));
   const [expanded, setExpanded] = useState(false);
   
@@ -288,7 +290,12 @@ export default function TripDetailsScreen() {
           <View style={styles.actionsContainer}>
             <TouchableOpacity
               style={styles.actionButton}
-              onPress={() => Alert.alert('Réservation', 'Fonctionnalité en développement')}
+              onPress={() => {
+                // Vérifier l'identité avant de réserver
+                if (checkIdentity('book')) {
+                  Alert.alert('Réservation', 'Fonctionnalité en développement');
+                }
+              }}
             >
               <Text style={styles.actionButtonText}>Réserver ce trajet</Text>
             </TouchableOpacity>
