@@ -9,6 +9,7 @@ import { updateTrip } from '@/store/slices/tripsSlice';
 import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import { formatTime } from '@/utils/dateHelpers';
 
 export default function TripDetailsScreen() {
   const router = useRouter();
@@ -89,7 +90,11 @@ export default function TripDetailsScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        contentContainerStyle={styles.scrollViewContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Carte interactive */}
         <TouchableOpacity
           style={styles.mapContainer}
@@ -173,7 +178,7 @@ export default function TripDetailsScreen() {
                   <View style={[styles.progressFill, { width: `${progress}%` }]} />
                 </View>
                 <Text style={styles.etaText}>
-                  Arrivée estimée: {trip.arrivalTime.getHours()}:{trip.arrivalTime.getMinutes().toString().padStart(2, '0')}
+                  Arrivée estimée: {formatTime(trip.arrivalTime)}
                 </Text>
               </>
             )}
@@ -196,7 +201,7 @@ export default function TripDetailsScreen() {
                 <Text style={styles.routeName}>{trip.departure.name}</Text>
                 <Text style={styles.routeAddress}>{trip.departure.address}</Text>
                 <Text style={styles.routeTime}>
-                  Départ: {trip.departureTime.getHours()}:{trip.departureTime.getMinutes().toString().padStart(2, '0')}
+                  Départ: {formatTime(trip.departureTime)}
                 </Text>
               </View>
             </View>
@@ -211,7 +216,7 @@ export default function TripDetailsScreen() {
                 <Text style={styles.routeName}>{trip.arrival.name}</Text>
                 <Text style={styles.routeAddress}>{trip.arrival.address}</Text>
                 <Text style={styles.routeTime}>
-                  Arrivée: {trip.arrivalTime.getHours()}:{trip.arrivalTime.getMinutes().toString().padStart(2, '0')}
+                  Arrivée: {formatTime(trip.arrivalTime)}
                 </Text>
               </View>
             </View>
@@ -357,6 +362,10 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
+    paddingBottom: Spacing.xxl,
   },
   mapContainer: {
     position: 'relative',

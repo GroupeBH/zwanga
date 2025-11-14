@@ -1,6 +1,7 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectAvailableTrips } from '@/store/selectors';
+import { formatTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
@@ -63,7 +64,11 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        contentContainerStyle={styles.scrollViewContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Lieux populaires */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Lieux populaires</Text>
@@ -145,7 +150,7 @@ export default function HomeScreen() {
                   <Ionicons name="location" size={16} color={Colors.success} />
                   <Text style={styles.routeText}>{trip.departure.name}</Text>
                   <Text style={styles.routeTime}>
-                    {trip.departureTime.getHours()}:{trip.departureTime.getMinutes().toString().padStart(2, '0')}
+                    {formatTime(trip.departureTime)}
                   </Text>
                 </View>
 
@@ -153,7 +158,7 @@ export default function HomeScreen() {
                   <Ionicons name="navigate" size={16} color={Colors.primary} />
                   <Text style={styles.routeText}>{trip.arrival.name}</Text>
                   <Text style={styles.routeTime}>
-                    {trip.arrivalTime.getHours()}:{trip.arrivalTime.getMinutes().toString().padStart(2, '0')}
+                    {formatTime(trip.arrivalTime)}
                   </Text>
                 </View>
               </View>
@@ -255,8 +260,12 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.xl,
+    paddingBottom: Spacing.xxl,
   },
   section: {
     marginBottom: Spacing.xl,

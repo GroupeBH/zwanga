@@ -39,9 +39,13 @@ export const authApi = baseApi.injectEndpoints({
     // Inscription d'un nouvel utilisateur
     register: builder.mutation<AuthResponse, {
       phone: string;
-      name: string;
-      email?: string;
+      lastName: string;
+      firstName: string;
+      // email?: string;
       role: 'driver' | 'passenger' | 'both';
+      profilePicture?: any; // Base64 ou URI de l'image
+      cniImage?: any; // Image de la carte d'identité scannée
+      selfieImage?: any; // Image du selfie pour vérification
     }>({
       query: (userData) => ({
         url: '/auth/register',
@@ -77,6 +81,24 @@ export const authApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['User'],
     }),
+
+    // Rafraîchir l'access token avec le refresh token
+    refreshToken: builder.mutation<{ accessToken: string; refreshToken: string }, { refreshToken: string }>({
+      query: (data) => ({
+        url: '/auth/refresh',
+        method: 'POST',
+        body: data,
+      }),
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          // Stocker les nouveaux tokens dans SecureStore
+          await storeTokens(data.accessToken, data.refreshToken);
+        } catch (error) {
+          console.error('Erreur lors du stockage des tokens après refresh:', error);
+        }
+      },
+    }),
   }),
 });
 
@@ -85,6 +107,7 @@ export const {
   useRegisterMutation,
   useVerifyPhoneMutation,
   useVerifyKYCMutation,
+  useRefreshTokenMutation,
 } = authApi;
 
 

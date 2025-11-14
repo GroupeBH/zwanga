@@ -3,10 +3,12 @@ import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } f
 import { useLoginMutation, useRegisterMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch } from '@/store/hooks';
 import { setTokens, setUser } from '@/store/slices/authSlice';
+import { prepareImagesForAPI } from '@/utils/imageHelpers';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -27,6 +29,11 @@ export default function AuthScreen() {
   // const [idNumber, setIdNumber] = useState('');
   const [role, setRole] = useState<'driver' | 'passenger' | 'both'>('passenger');
   const [identityVerified, setIdentityVerified] = useState(false);
+  
+  // États pour les images
+  const [profilePicture, setProfilePicture] = useState<string | null>(null);
+  const [cniImage, setCniImage] = useState<string | null>(null);
+  const [selfieImage, setSelfieImage] = useState<string | null>(null);
   
   // Hooks RTK Query pour login et register
   const [login, { isLoading: isLoggingIn }] = useLoginMutation();
@@ -102,8 +109,9 @@ export default function AuthScreen() {
   };
 
   const handleIdentityComplete = (data: { idCardImage: string; faceImage: string }) => {
-    // Ici, vous devriez envoyer les images au backend pour vérification
-    // Pour l'instant, on simule juste la vérification
+    // Stocker les images de la CNI et du selfie
+    setCniImage(data.idCardImage);
+    setSelfieImage(data.faceImage);
     setIdentityVerified(true);
     setStep('profile');
   };
@@ -113,35 +121,105 @@ export default function AuthScreen() {
     setStep('profile');
   };
 
+  const handleSelectProfilePicture = async () => {
+    try {
+      // Demander les permissions
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission requise', 'L\'accès à la galerie est nécessaire');
+        return;
+      }
+
+      // Afficher le sélecteur d'image
+      Alert.alert(
+        'Photo de profil',
+        'Choisissez une source',
+        [
+          {
+            text: 'Caméra',
+            onPress: async () => {
+              const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
+              if (cameraStatus !== 'granted') {
+                Alert.alert('Permission requise', 'L\'accès à la caméra est nécessaire');
+                return;
+              }
+
+              const result = await ImagePicker.launchCameraAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.8,
+              });
+
+              if (!result.canceled && result.assets[0]) {
+                setProfilePicture(result.assets[0].uri);
+              }
+            },
+          },
+          {
+            text: 'Galerie',
+            onPress: async () => {
+              const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.8,
+              });
+
+              if (!result.canceled && result.assets[0]) {
+                setProfilePicture(result.assets[0].uri);
+              }
+            },
+          },
+          { text: 'Annuler', style: 'cancel' },
+        ]
+      );
+    } catch (error) {
+      console.error('Erreur lors de la sélection de l\'image:', error);
+      Alert.alert('Erreur', 'Impossible de sélectionner l\'image');
+    }
+  };
+
   const handleProfileSubmit = async () => {
-    router.replace('/(tabs)');
-    // try {
-    //   // Appel API d'inscription
-    //   const result = await register({
-    //     phone,
-    //     firstName,
-    //     lastName,
-    //     role,
-    //   }).unwrap();
+    try {
+      // Préparer les images pour l'envoi (conversion en base64)
+      let imagesData = {};
+      if (profilePicture || cniImage || selfieImage) {
+        imagesData = await prepareImagesForAPI({
+          profilePicture: profilePicture || undefined,
+          cniImage: cniImage || undefined,
+          selfieImage: selfieImage || undefined,
+        });
+      }
       
-    //   // Mettre à jour l'utilisateur avec le statut de vérification d'identité
-    //   const userWithIdentity = {
-    //     ...result.user,
-    //     identityVerified,
-    //   };
+      // Appel API d'inscription avec les images
+      const result = await register({
+        phone,
+        firstName,
+        lastName,
+        // email: email || undefined,
+        role,
+        ...imagesData,
+      }).unwrap();
       
-    //   // Les tokens sont automatiquement stockés dans SecureStore via onQueryStarted
-    //   // Mettre à jour le state Redux avec les tokens et l'utilisateur
-    //   dispatch(setTokens({
-    //     accessToken: result.accessToken,
-    //     refreshToken: result.refreshToken,
-    //   }));
-    //   dispatch(setUser(userWithIdentity));
+      // Mettre à jour l'utilisateur avec le statut de vérification d'identité
+      const userWithIdentity = {
+        ...result.user,
+        identityVerified,
+      };
       
-    //   router.replace('/(tabs)');
-    // } catch (error: any) {
-    //   Alert.alert('Erreur', error?.data?.message || 'Erreur lors de l\'inscription');
-    // }
+      // Les tokens sont automatiquement stockés dans SecureStore via onQueryStarted
+      // Mettre à jour le state Redux avec les tokens et l'utilisateur
+      dispatch(setTokens({
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+      }));
+      dispatch(setUser(userWithIdentity));
+      
+      router.replace('/(tabs)');
+    } catch (error: any) {
+      Alert.alert('Erreur', error?.data?.message || 'Erreur lors de l\'inscription');
+    }
   };
 
   const resetForm = () => {
@@ -198,7 +276,11 @@ export default function AuthScreen() {
         )}
       </View>
 
-      <ScrollView style={styles.scrollView}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollViewContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Étape 1: Numéro de téléphone */}
         {step === 'phone' && (
           <Animated.View entering={FadeInDown} exiting={FadeOutUp} style={styles.stepContainer}>
@@ -337,12 +419,12 @@ export default function AuthScreen() {
               <Text style={styles.buttonText}>Continuer</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
+            {/* <TouchableOpacity
               style={[styles.button, styles.buttonSecondary]}
               onPress={handleSkipKYC}
             >
               <Text style={styles.buttonSecondaryText}>Passer cette étape</Text>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </Animated.View>
         )}
 
@@ -367,6 +449,29 @@ export default function AuthScreen() {
               <Text style={styles.stepTitle}>Configuration du profil</Text>
               <Text style={styles.stepSubtitle}>
                 Dites-nous comment vous utiliserez ZWANGA
+              </Text>
+            </View>
+
+            {/* Section Photo de profil */}
+            <View style={styles.profilePictureContainer}>
+              <Text style={styles.label}>Photo de profil (optionnel)</Text>
+              <TouchableOpacity
+                style={styles.profilePictureButton}
+                onPress={handleSelectProfilePicture}
+              >
+                {profilePicture ? (
+                  <Image source={{ uri: profilePicture }} style={styles.profilePictureImage} />
+                ) : (
+                  <View style={styles.profilePicturePlaceholder}>
+                    <Ionicons name="camera" size={32} color={Colors.gray[400]} />
+                  </View>
+                )}
+                <View style={styles.profilePictureEditBadge}>
+                  <Ionicons name="camera" size={16} color={Colors.white} />
+                </View>
+              </TouchableOpacity>
+              <Text style={styles.profilePictureHint}>
+                Ajoutez une photo pour que les autres utilisateurs vous reconnaissent
               </Text>
             </View>
 
@@ -401,7 +506,7 @@ export default function AuthScreen() {
 
               <TouchableOpacity
                 style={[styles.roleCard, role === 'both' && styles.roleCardActive, { marginBottom: Spacing.xl }]}
-                onPress={() => setRole('both')}
+                onPress={() => setRole('driver')}
               >
                 <View style={[styles.roleIcon, role === 'both' && styles.roleIconActive]}>
                   <Ionicons name="swap-horizontal" size={24} color={role === 'both' ? Colors.white : Colors.gray[600]} />
@@ -491,6 +596,10 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
     paddingHorizontal: Spacing.xl,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
+    paddingBottom: Spacing.xxl,
   },
   stepContainer: {
     marginTop: Spacing.xxl,
@@ -642,5 +751,50 @@ const styles = StyleSheet.create({
   roleSubtitle: {
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
+  },
+  profilePictureContainer: {
+    alignItems: 'center',
+    marginBottom: Spacing.xl,
+  },
+  profilePictureButton: {
+    position: 'relative',
+    marginBottom: Spacing.md,
+  },
+  profilePicturePlaceholder: {
+    width: 120,
+    height: 120,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[200],
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: Colors.gray[300],
+    borderStyle: 'dashed',
+  },
+  profilePictureImage: {
+    width: 120,
+    height: 120,
+    borderRadius: BorderRadius.full,
+    borderWidth: 3,
+    borderColor: Colors.primary,
+  },
+  profilePictureEditBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: Colors.white,
+  },
+  profilePictureHint: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    textAlign: 'center',
+    paddingHorizontal: Spacing.xl,
   },
 });

@@ -1,9 +1,10 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { setupListeners } from '@reduxjs/toolkit/query';
-import authReducer from './slices/authSlice';
-import tripsReducer from './slices/tripsSlice';
-import messagesReducer from './slices/messagesSlice';
 import { zwangaApi } from './api/zwangaApi';
+import authReducer from './slices/authSlice';
+import messagesReducer from './slices/messagesSlice';
+import tripsReducer from './slices/tripsSlice';
+import { setStoreAccessor } from './storeAccessor';
 
 export const store = configureStore({
   reducer: {
@@ -24,6 +25,9 @@ export const store = configureStore({
       },
     }).concat(zwangaApi.middleware),
 });
+
+// Initialize store accessor to avoid circular dependencies
+setStoreAccessor(store.dispatch, store.getState);
 
 // Enable refetchOnFocus/refetchOnReconnect behaviors
 setupListeners(store.dispatch);

@@ -3,11 +3,14 @@ import type { RootState } from '../index';
 
 // === AUTH SELECTORS ===
 export const selectAuth = (state: RootState) => state.auth;
-export const selectUser = (state: RootState) => state.auth.user;
-export const selectIsAuthenticated = (state: RootState) => state.auth.isAuthenticated;
-export const selectAuthToken = (state: RootState) => state.auth.token;
-export const selectAuthLoading = (state: RootState) => state.auth.isLoading;
-export const selectAuthError = (state: RootState) => state.auth.error;
+export const selectUser = (state: RootState) => state.auth?.user ?? null;
+export const selectIsAuthenticated = (state: RootState) => state.auth?.isAuthenticated ?? false;
+export const selectAuthToken = (state: RootState) => state.auth?.accessToken ?? null;
+export const selectAuthLoading = (state: RootState) => state.auth?.isLoading ?? false;
+export const selectIsLoading = (state: RootState) => state.auth?.isLoading ?? false; // Alias
+export const selectAuthError = (state: RootState) => state.auth?.error ?? null;
+export const selectAccessToken = (state: RootState) => state.auth?.accessToken ?? null;
+export const selectRefreshToken = (state: RootState) => state.auth?.refreshToken ?? null;
 
 // === TRIPS SELECTORS ===
 export const selectTrips = (state: RootState) => state.trips.items;
