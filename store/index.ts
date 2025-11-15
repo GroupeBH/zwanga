@@ -3,6 +3,7 @@ import { setupListeners } from '@reduxjs/toolkit/query';
 import { zwangaApi } from './api/zwangaApi';
 import authReducer from './slices/authSlice';
 import messagesReducer from './slices/messagesSlice';
+import locationReducer from './slices/locationSlice';
 import tripsReducer from './slices/tripsSlice';
 import { setStoreAccessor } from './storeAccessor';
 
@@ -11,6 +12,7 @@ export const store = configureStore({
     auth: authReducer,
     trips: tripsReducer,
     messages: messagesReducer,
+    location: locationReducer,
     [zwangaApi.reducerPath]: zwangaApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
@@ -26,6 +28,7 @@ export const store = configureStore({
           'payload.createdAt',
           'meta.baseQueryMeta.request',
           'meta.baseQueryMeta.response',
+          'meta.arg.originalArgs',
         ],
         // Ignore these paths in the state
         ignoredPaths: ['trips.items', 'messages.conversations'],

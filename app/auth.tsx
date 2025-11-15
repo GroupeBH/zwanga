@@ -140,7 +140,7 @@ export default function AuthScreen() {
           // Ici, on simule avec le numéro de téléphone
           const result = await login({ 
             phone, 
-            password: code // Dans un vrai cas, ce serait le mot de passe
+            // password: code // Dans un vrai cas, ce serait le mot de passe
           }).unwrap();
           
           // Les tokens sont automatiquement stockés dans SecureStore via onQueryStarted
@@ -527,10 +527,6 @@ export default function AuthScreen() {
         {step === 'profile' && mode === 'signup' && (
           <Animated.View entering={FadeInDown} exiting={FadeOutUp} style={styles.stepContainer}>
             <View style={styles.iconContainer}>
-              <View style={[styles.iconCircle, styles.iconCircleGreen]}>
-                <Ionicons name="person" size={48} color={Colors.success} />
-              </View>
-              <Text style={styles.stepTitle}>Configuration du profil</Text>
               <Text style={styles.stepSubtitle}>
                 Dites-nous comment vous utiliserez ZWANGA
               </Text>

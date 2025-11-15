@@ -12,12 +12,108 @@ export const selectAuthError = (state: RootState) => state.auth?.error ?? null;
 export const selectAccessToken = (state: RootState) => state.auth?.accessToken ?? null;
 export const selectRefreshToken = (state: RootState) => state.auth?.refreshToken ?? null;
 
+// === LOCATION SELECTORS ===
+export const selectLocationState = (state: RootState) => state.location;
+export const selectPermissionStatus = (state: RootState) => state.location.permissionStatus;
+export const selectUserTrackedLocation = (state: RootState) => state.location.lastKnownLocation;
+export const selectUserCoordinates = (state: RootState) => state.location.lastKnownLocation?.coords ?? null;
+export const selectLocationRadius = (state: RootState) => state.location.radiusKm;
+export const selectVehicleFilter = (state: RootState) => state.location.vehicleFilter;
+export const selectTripSearchQuery = (state: RootState) => state.location.searchQuery;
+export const selectSavedLocations = (state: RootState) => state.location.savedLocations;
+
 // === TRIPS SELECTORS ===
 export const selectTrips = (state: RootState) => state.trips.items;
 export const selectSelectedTrip = (state: RootState) => state.trips.selectedTrip;
 export const selectTripsLoading = (state: RootState) => state.trips.isLoading;
 export const selectTripsError = (state: RootState) => state.trips.error;
 export const selectTripFilters = (state: RootState) => state.trips.filters;
+
+const toRadians = (value: number) => (value * Math.PI) / 180;
+const earthRadiusKm = 6371;
+
+const distanceBetween = (
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number },
+) => {
+  const dLat = toRadians(b.latitude - a.latitude);
+  const dLon = toRadians(b.longitude - a.longitude);
+  const lat1 = toRadians(a.latitude);
+  const lat2 = toRadians(b.latitude);
+
+  const haversine =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
+
+  const c = 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+  return earthRadiusKm * c;
+};
+
+export const selectTripsMatchingMapFilters = createSelector(
+  [selectTrips, selectUserCoordinates, selectLocationRadius, selectVehicleFilter, selectTripSearchQuery],
+  (trips, coords, radiusKm, vehicleFilter, searchQuery) => {
+    const hasCoordinateQuery = Boolean(searchQuery && searchQuery.includes(','));
+    let parsedCoordinate: { latitude: number; longitude: number } | null = null;
+
+    if (hasCoordinateQuery) {
+      const [searchLat, searchLng] = (searchQuery ?? '')
+        .split(',')
+        .map((value) => parseFloat(value.trim()));
+      if (!Number.isNaN(searchLat) && !Number.isNaN(searchLng)) {
+        parsedCoordinate = { latitude: searchLat, longitude: searchLng };
+      }
+    }
+
+    return trips.filter((trip) => {
+      if (vehicleFilter !== 'all' && trip.vehicleType !== vehicleFilter) {
+        return false;
+      }
+
+      if (searchQuery && !hasCoordinateQuery) {
+        const normalized = searchQuery.toLowerCase();
+        const matchesQuery =
+          trip.departure.name.toLowerCase().includes(normalized) ||
+          trip.arrival.name.toLowerCase().includes(normalized);
+        if (!matchesQuery) {
+          return false;
+        }
+      }
+
+      const referenceCoords = parsedCoordinate ?? coords;
+      if (referenceCoords && trip.departure?.lat && trip.departure?.lng) {
+        const dist = distanceBetween(
+          { latitude: trip.departure.lat, longitude: trip.departure.lng },
+          referenceCoords,
+        );
+        if (dist > radiusKm) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  },
+);
+    //       trip.departure.name.toLowerCase().includes(normalized) ||
+    //       trip.arrival.name.toLowerCase().includes(normalized);
+    //     if (!matchesQuery) {
+    //       return false;
+    //     }
+    //   }
+
+    //   if (coords && trip.departure?.lat && trip.departure?.lng) {
+    //     const dist = distanceBetween(
+    //       { latitude: trip.departure.lat, longitude: trip.departure.lng },
+    //       coords,
+    //     );
+    //     if (dist > radiusKm) {
+    //       return false;
+    //     }
+    //   }
+
+    //   return true;
+    // }),
+// );
 
 // Trips filtrés selon les filtres actifs
 export const selectFilteredTrips = createSelector(

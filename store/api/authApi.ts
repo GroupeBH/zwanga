@@ -18,7 +18,7 @@ export interface AuthResponse {
 export const authApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     // Connexion avec téléphone et mot de passe
-    login: builder.mutation<AuthResponse, { phone: string; password: string }>({
+    login: builder.mutation<AuthResponse, { phone: string }>({
       query: (credentials) => ({
         url: '/auth/login',
         method: 'POST',

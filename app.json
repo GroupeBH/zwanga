@@ -42,8 +42,7 @@
           }
         }
       ],
-      "expo-secure-store",
-      "@notifee/react-native",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,
