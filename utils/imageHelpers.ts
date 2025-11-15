@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 /**
  * Convertit une image locale en base64
@@ -7,8 +7,14 @@ import * as FileSystem from 'expo-file-system';
  */
 export async function convertImageToBase64(imageUri: string): Promise<string> {
   try {
+    // Check if FileSystem is available
+    if (!FileSystem || !FileSystem.readAsStringAsync) {
+      throw new Error('FileSystem module is not available');
+    }
+    
+    // Use string literal for encoding to avoid enum issues
     const base64 = await FileSystem.readAsStringAsync(imageUri, {
-      encoding: FileSystem.EncodingType.Base64,
+      encoding: FileSystem.EncodingType?.Base64 || ('base64' as any),
     });
     return base64;
   } catch (error) {

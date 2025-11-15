@@ -3,12 +3,26 @@ import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } f
 import { useLoginMutation, useRegisterMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch } from '@/store/hooks';
 import { setTokens, setUser } from '@/store/slices/authSlice';
-import { prepareImagesForAPI } from '@/utils/imageHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+type NotifeeModule = typeof import('@notifee/react-native');
+type NotifeeDefault = NotifeeModule['default'];
+type AndroidImportanceEnum = NotifeeModule['AndroidImportance'];
+
+let notifeeInstance: NotifeeDefault | null = null;
+let androidImportanceEnum: AndroidImportanceEnum | undefined;
+
+try {
+  const notifeeModule = require('@notifee/react-native') as NotifeeModule;
+  notifeeInstance = notifeeModule.default ?? (notifeeModule as unknown as NotifeeDefault);
+  androidImportanceEnum = notifeeModule.AndroidImportance;
+} catch (error) {
+  console.warn('[Notifee] Module not available. Notifications disabled in this environment.');
+}
+
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -34,6 +48,11 @@ export default function AuthScreen() {
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
   const [cniImage, setCniImage] = useState<string | null>(null);
   const [selfieImage, setSelfieImage] = useState<string | null>(null);
+  const [errorModal, setErrorModal] = useState({
+    visible: false,
+    title: '',
+    message: '',
+  });
   
   // Hooks RTK Query pour login et register
   const [login, { isLoading: isLoggingIn }] = useLoginMutation();
@@ -55,11 +74,59 @@ export default function AuthScreen() {
     profile: '🎊 Dernière étape!',
   }[step];
 
+  const showErrorModal = (message: string, title = 'Quelque chose s\'est mal passé') => {
+    setErrorModal({
+      visible: true,
+      title,
+      message,
+    });
+  };
+
+  const hideErrorModal = () => {
+    setErrorModal((prev) => ({ ...prev, visible: false }));
+  };
+
+  const triggerSignupSuccessNotification = async (userName?: string) => {
+    if (!notifeeInstance) {
+      return;
+    }
+
+    try {
+      await notifeeInstance.requestPermission();
+      let channelId: string | undefined;
+
+      if (Platform.OS === 'android' && androidImportanceEnum) {
+        channelId = await notifeeInstance.createChannel({
+          id: 'zwanga-signup',
+          name: 'Confirmations Zwanga',
+          importance: androidImportanceEnum.HIGH,
+          vibration: true,
+        });
+      }
+
+      await notifeeInstance.displayNotification({
+        title: '🎉 Inscription réussie',
+        body: `${userName ? `${userName}, ` : ''}bienvenue sur Zwanga !`,
+        android: channelId
+          ? {
+              channelId,
+              pressAction: { id: 'default' },
+            }
+          : undefined,
+        ios: {
+          sound: 'default',
+        },
+      });
+    } catch (notificationError) {
+      console.warn('Notification inscription Notifee', notificationError);
+    }
+  };
+
   const handlePhoneSubmit = () => {
     if (phone.length >= 10) {
       setStep('sms');
     } else {
-      Alert.alert('Erreur', 'Veuillez entrer un numéro valide');
+      showErrorModal('Veuillez entrer un numéro valide');
     }
   };
 
@@ -86,13 +153,13 @@ export default function AuthScreen() {
           
           router.replace('/(tabs)');
         } catch (error: any) {
-          Alert.alert('Erreur', error?.data?.message || 'Erreur lors de la connexion');
+          showErrorModal(error?.data?.message || 'Erreur lors de la connexion');
         }
       } else {
         setStep('kyc');
       }
     } else {
-      Alert.alert('Erreur', 'Veuillez entrer le code complet');
+      showErrorModal('Veuillez entrer le code complet');
     }
   };
 
@@ -104,7 +171,7 @@ export default function AuthScreen() {
     if (firstName && lastName) {
       setStep('identity');
     } else {
-      Alert.alert('Erreur', 'Veuillez remplir tous les champs');
+      showErrorModal('Veuillez remplir tous les champs');
     }
   };
 
@@ -126,7 +193,7 @@ export default function AuthScreen() {
       // Demander les permissions
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission requise', 'L\'accès à la galerie est nécessaire');
+        showErrorModal('L\'accès à la galerie est nécessaire pour sélectionner une photo.', 'Permission requise');
         return;
       }
 
@@ -140,12 +207,12 @@ export default function AuthScreen() {
             onPress: async () => {
               const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
               if (cameraStatus !== 'granted') {
-                Alert.alert('Permission requise', 'L\'accès à la caméra est nécessaire');
+                showErrorModal('L\'accès à la caméra est nécessaire pour prendre une photo.', 'Permission requise');
                 return;
               }
 
               const result = await ImagePicker.launchCameraAsync({
-                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                mediaTypes: 'images',
                 allowsEditing: true,
                 aspect: [1, 1],
                 quality: 0.8,
@@ -160,7 +227,7 @@ export default function AuthScreen() {
             text: 'Galerie',
             onPress: async () => {
               const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                mediaTypes: 'images',
                 allowsEditing: true,
                 aspect: [1, 1],
                 quality: 0.8,
@@ -176,31 +243,45 @@ export default function AuthScreen() {
       );
     } catch (error) {
       console.error('Erreur lors de la sélection de l\'image:', error);
-      Alert.alert('Erreur', 'Impossible de sélectionner l\'image');
+      showErrorModal('Impossible de sélectionner l\'image. Veuillez réessayer.');
     }
+  };
+
+  const appendImageToFormData = (
+    formData: FormData,
+    field: 'profilePicture' | 'cniImage' | 'selfieImage',
+    uri: string | null,
+  ) => {
+    if (!uri) return;
+
+    const fileName = `${field}-${Date.now()}.jpg`;
+    formData.append(field, {
+      uri,
+      name: fileName,
+      type: 'image/jpeg',
+    } as any);
   };
 
   const handleProfileSubmit = async () => {
     try {
-      // Préparer les images pour l'envoi (conversion en base64)
-      let imagesData = {};
-      if (profilePicture || cniImage || selfieImage) {
-        imagesData = await prepareImagesForAPI({
-          profilePicture: profilePicture || undefined,
-          cniImage: cniImage || undefined,
-          selfieImage: selfieImage || undefined,
-        });
+      const formData = new FormData();
+
+      formData.append('phone', phone);
+      formData.append('firstName', firstName);
+      formData.append('lastName', lastName);
+      formData.append('role', role);
+      formData.append('isDriver', JSON.stringify(role === 'driver' || role === 'both'));
+
+      if (email) {
+        formData.append('email', email.trim());
       }
+
+      appendImageToFormData(formData, 'profilePicture', profilePicture);
+      appendImageToFormData(formData, 'cniImage', cniImage);
+      appendImageToFormData(formData, 'selfieImage', selfieImage);
       
       // Appel API d'inscription avec les images
-      const result = await register({
-        phone,
-        firstName,
-        lastName,
-        // email: email || undefined,
-        role,
-        ...imagesData,
-      }).unwrap();
+      const result = await register(formData).unwrap();
       
       // Mettre à jour l'utilisateur avec le statut de vérification d'identité
       const userWithIdentity = {
@@ -215,10 +296,12 @@ export default function AuthScreen() {
         refreshToken: result.refreshToken,
       }));
       dispatch(setUser(userWithIdentity));
+
+      await triggerSignupSuccessNotification(result.user?.name || firstName || lastName || phone);
       
       router.replace('/(tabs)');
     } catch (error: any) {
-      Alert.alert('Erreur', error?.data?.message || 'Erreur lors de l\'inscription');
+      showErrorModal(error?.data?.message || 'Erreur lors de l\'inscription', 'Impossible de finaliser l\'inscription');
     }
   };
 
@@ -235,6 +318,7 @@ export default function AuthScreen() {
   };
 
   return (
+    <>
     <SafeAreaView style={styles.container}>
       {/* Header avec toggle et progression */}
       <View style={styles.header}>
@@ -528,6 +612,29 @@ export default function AuthScreen() {
         )}
       </ScrollView>
     </SafeAreaView>
+
+    <Modal
+      visible={errorModal.visible}
+      transparent
+      animationType="fade"
+      onRequestClose={hideErrorModal}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalIconCircle}>
+            <Ionicons name="alert-circle" size={36} color={Colors.white} />
+          </View>
+          <Text style={styles.modalTitle}>
+            {errorModal.title || 'Une erreur est survenue'}
+          </Text>
+          <Text style={styles.modalMessage}>{errorModal.message}</Text>
+          <TouchableOpacity style={styles.modalButton} onPress={hideErrorModal}>
+            <Text style={styles.modalButtonText}>Compris</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -796,5 +903,53 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
     textAlign: 'center',
     paddingHorizontal: Spacing.xl,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    gap: Spacing.lg,
+    ...(CommonStyles.shadowLg || CommonStyles.shadowSm),
+  },
+  modalIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.danger,
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: FontSizes.base,
+    color: Colors.gray[600],
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  modalButton: {
+    marginTop: Spacing.md,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
   },
 });

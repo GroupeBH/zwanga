@@ -37,20 +37,11 @@ export const authApi = baseApi.injectEndpoints({
     }),
 
     // Inscription d'un nouvel utilisateur
-    register: builder.mutation<AuthResponse, {
-      phone: string;
-      lastName: string;
-      firstName: string;
-      // email?: string;
-      role: 'driver' | 'passenger' | 'both';
-      profilePicture?: any; // Base64 ou URI de l'image
-      cniImage?: any; // Image de la carte d'identité scannée
-      selfieImage?: any; // Image du selfie pour vérification
-    }>({
-      query: (userData) => ({
+    register: builder.mutation<AuthResponse, FormData>({
+      query: (formData) => ({
         url: '/auth/register',
         method: 'POST',
-        body: userData,
+        body: formData,
       }),
       async onQueryStarted(arg, { dispatch, queryFulfilled }) {
         try {

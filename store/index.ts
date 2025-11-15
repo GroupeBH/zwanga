@@ -19,7 +19,14 @@ export const store = configureStore({
         // Ignore these action types
         ignoredActions: ['trips/addTrip', 'trips/updateTrip'],
         // Ignore these field paths in all actions
-        ignoredActionPaths: ['payload.departureTime', 'payload.arrivalTime', 'payload.timestamp', 'payload.createdAt'],
+        ignoredActionPaths: [
+          'payload.departureTime', 
+          'payload.arrivalTime', 
+          'payload.timestamp', 
+          'payload.createdAt',
+          'meta.baseQueryMeta.request',
+          'meta.baseQueryMeta.response',
+        ],
         // Ignore these paths in the state
         ignoredPaths: ['trips.items', 'messages.conversations'],
       },
