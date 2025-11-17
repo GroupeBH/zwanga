@@ -7,7 +7,19 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 type NotifeeModule = typeof import('@notifee/react-native');
 type NotifeeDefault = NotifeeModule['default'];
 type AndroidImportanceEnum = NotifeeModule['AndroidImportance'];
@@ -28,6 +40,44 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 type AuthMode = 'login' | 'signup';
 type AuthStep = 'phone' | 'sms' | 'kyc' | 'identity' | 'profile';
+type VehicleType = 'sedan' | 'suv' | 'van' | 'moto';
+
+const LOGIN_STEPS: AuthStep[] = ['phone', 'sms'];
+const SIGNUP_STEPS: AuthStep[] = ['phone', 'sms', 'kyc', 'identity', 'profile'];
+
+type VehicleOption = {
+  id: VehicleType;
+  label: string;
+  description: string;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+};
+
+const vehicleOptions: VehicleOption[] = [
+  {
+    id: 'sedan',
+    label: 'Berline',
+    description: 'Confort 1-4 passagers',
+    icon: 'car',
+  },
+  {
+    id: 'suv',
+    label: 'SUV / 4x4',
+    description: 'Idéal pour les routes difficiles',
+    icon: 'car-outline',
+  },
+  {
+    id: 'van',
+    label: 'Van / Mini-bus',
+    description: 'Jusqu\'à 8 passagers',
+    icon: 'bus',
+  },
+  {
+    id: 'moto',
+    label: 'Moto / Scooter',
+    description: 'Pour les trajets urbains rapides',
+    icon: 'bicycle',
+  },
+];
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -42,6 +92,22 @@ export default function AuthScreen() {
   const [email, setEmail] = useState('');
   // const [idNumber, setIdNumber] = useState('');
   const [role, setRole] = useState<'driver' | 'passenger' | 'both'>('passenger');
+  const [vehicleType, setVehicleType] = useState<VehicleType | null>(null);
+  const [vehicleBrand, setVehicleBrand] = useState('');
+  const [vehicleModel, setVehicleModel] = useState('');
+  const [vehicleColor, setVehicleColor] = useState('');
+  const [vehiclePlate, setVehiclePlate] = useState('');
+  const [vehicleModalVisible, setVehicleModalVisible] = useState(false);
+  const stepSequence = mode === 'login' ? LOGIN_STEPS : SIGNUP_STEPS;
+  const currentStepIndex = stepSequence.indexOf(step);
+  const canGoBack = currentStepIndex > 0;
+
+  const handlePreviousStep = () => {
+    if (currentStepIndex > 0) {
+      setStep(stepSequence[currentStepIndex - 1]);
+    }
+  };
+
   const [identityVerified, setIdentityVerified] = useState(false);
   
   // États pour les images
@@ -264,6 +330,25 @@ export default function AuthScreen() {
 
   const handleProfileSubmit = async () => {
     try {
+      const requiresVehicleSelection = role === 'driver' || role === 'both';
+
+      if (requiresVehicleSelection) {
+        if (!vehicleType) {
+          showErrorModal('Veuillez sélectionner un type de véhicule pour continuer.', 'Information manquante');
+          return;
+        }
+
+        if (
+          !vehicleBrand.trim() ||
+          !vehicleModel.trim() ||
+          !vehicleColor.trim() ||
+          !vehiclePlate.trim()
+        ) {
+          showErrorModal('Merci de compléter toutes les informations du véhicule.', 'Information manquante');
+          return;
+        }
+      }
+
       const formData = new FormData();
 
       formData.append('phone', phone);
@@ -272,6 +357,13 @@ export default function AuthScreen() {
       formData.append('role', role);
       formData.append('isDriver', JSON.stringify(role === 'driver' || role === 'both'));
 
+      if (requiresVehicleSelection) {
+        formData.append('vehicle[brand]', vehicleBrand.trim());
+        formData.append('vehicle[model]', vehicleModel.trim());
+        formData.append('vehicle[color]', vehicleColor.trim());
+        formData.append('vehicle[licensePlate]', vehiclePlate.trim());
+      }
+
       if (email) {
         formData.append('email', email.trim());
       }
@@ -279,6 +371,8 @@ export default function AuthScreen() {
       appendImageToFormData(formData, 'profilePicture', profilePicture);
       appendImageToFormData(formData, 'cniImage', cniImage);
       appendImageToFormData(formData, 'selfieImage', selfieImage);
+
+      console.log('formData vehicle', formData?.get('vehicle'));
       
       // Appel API d'inscription avec les images
       const result = await register(formData).unwrap();
@@ -315,6 +409,12 @@ export default function AuthScreen() {
     setEmail('');
     // setIdNumber('');
     setRole('passenger');
+    setVehicleType(null);
+    setVehicleBrand('');
+    setVehicleModel('');
+    setVehicleColor('');
+    setVehiclePlate('');
+    setVehicleModalVisible(false);
   };
 
   return (
@@ -357,6 +457,12 @@ export default function AuthScreen() {
         </View>
         {motivationalMessage && (
           <Text style={styles.motivationalText}>{motivationalMessage}</Text>
+        )}
+        {canGoBack && (
+          <TouchableOpacity style={styles.previousStepButton} onPress={handlePreviousStep}>
+            <Ionicons name="arrow-back" size={18} color={Colors.primary} />
+            <Text style={styles.previousStepText}>Étape précédente</Text>
+          </TouchableOpacity>
         )}
       </View>
 
@@ -560,7 +666,15 @@ export default function AuthScreen() {
               
               <TouchableOpacity
                 style={[styles.roleCard, role === 'passenger' && styles.roleCardActive]}
-                onPress={() => setRole('passenger')}
+                onPress={() => {
+                  setRole('passenger');
+                  setVehicleType(null);
+                  setVehicleBrand('');
+                  setVehicleModel('');
+                  setVehicleColor('');
+                  setVehiclePlate('');
+                  setVehicleModalVisible(false);
+                }}
               >
                 <View style={[styles.roleIcon, role === 'passenger' && styles.roleIconActive]}>
                   <Ionicons name="person" size={24} color={role === 'passenger' ? Colors.white : Colors.gray[600]} />
@@ -584,9 +698,9 @@ export default function AuthScreen() {
                 </View>
               </TouchableOpacity>
 
-              <TouchableOpacity
+              {/* <TouchableOpacity
                 style={[styles.roleCard, role === 'both' && styles.roleCardActive, { marginBottom: Spacing.xl }]}
-                onPress={() => setRole('driver')}
+                onPress={() => setRole('both')}
               >
                 <View style={[styles.roleIcon, role === 'both' && styles.roleIconActive]}>
                   <Ionicons name="swap-horizontal" size={24} color={role === 'both' ? Colors.white : Colors.gray[600]} />
@@ -595,19 +709,157 @@ export default function AuthScreen() {
                   <Text style={styles.roleTitle}>Les deux</Text>
                   <Text style={styles.roleSubtitle}>Je propose et je cherche des trajets</Text>
                 </View>
-              </TouchableOpacity>
+              </TouchableOpacity> */}
             </View>
 
+            {(role === 'driver' || role === 'both') && (
+              <>
+                <View style={styles.vehicleSection}>
+                  <Text style={styles.label}>Choisissez votre véhicule</Text>
+                  <View style={styles.vehicleOptions}>
+                    {vehicleOptions.map((option) => {
+                      const isActive = vehicleType === option.id;
+                      return (
+                        <TouchableOpacity
+                          key={option.id}
+                          style={[styles.vehicleCard, isActive && styles.vehicleCardActive]}
+                          onPress={() => setVehicleType(option.id)}
+                        >
+                          <View style={[styles.vehicleCardIcon, isActive && styles.vehicleCardIconActive]}>
+                            <Ionicons
+                              name={option.icon}
+                              size={20}
+                              color={isActive ? Colors.white : Colors.gray[600]}
+                            />
+                          </View>
+                          <View style={styles.vehicleCardContent}>
+                            <Text style={[styles.vehicleCardTitle, isActive && styles.vehicleCardTitleActive]}>
+                              {option.label}
+                            </Text>
+                            <Text style={[styles.vehicleCardSubtitle, isActive && styles.vehicleCardSubtitleActive]}>
+                              {option.description}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.vehicleDetailsTrigger}
+                  onPress={() => setVehicleModalVisible(true)}
+                  activeOpacity={0.9}
+                >
+                  <View style={styles.vehicleDetailsTriggerIcon}>
+                    <Ionicons name="construct" size={20} color={Colors.primary} />
+                  </View>
+                  <View style={styles.vehicleDetailsTriggerContent}>
+                    <Text style={styles.vehicleDetailsTriggerTitle}>Informations du véhicule</Text>
+                    <Text style={styles.vehicleDetailsTriggerSubtitle}>
+                      {vehicleBrand && vehicleModel && vehicleColor && vehiclePlate
+                        ? `${vehicleBrand} ${vehicleModel} • ${vehicleColor} • ${vehiclePlate}`
+                        : 'Ajoutez la marque, le modèle, la couleur et la plaque'}
+                    </Text>
+                  </View>
+                  <Ionicons name="create-outline" size={20} color={Colors.gray[500]} />
+                </TouchableOpacity>
+              </>
+            )}
+
             <TouchableOpacity
-              style={[styles.button, styles.buttonPrimary]}
+              style={[styles.button, styles.buttonPrimary, isRegistering && styles.buttonLoading]}
               onPress={handleProfileSubmit}
+              disabled={isRegistering}
             >
-              <Text style={styles.buttonText}>Terminer</Text>
+              {isRegistering ? (
+                <ActivityIndicator color={Colors.white} />
+              ) : (
+                <Text style={styles.buttonText}>Terminer</Text>
+              )}
             </TouchableOpacity>
           </Animated.View>
         )}
       </ScrollView>
     </SafeAreaView>
+
+    <Modal
+      visible={vehicleModalVisible}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setVehicleModalVisible(false)}
+    >
+      <View style={styles.vehicleModalOverlay}>
+        <View style={styles.vehicleModalCard}>
+          <ScrollView
+            contentContainerStyle={styles.vehicleModalContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.vehicleModalTitle}>Informations du véhicule</Text>
+            <Text style={styles.vehicleModalSubtitle}>
+              Indiquez les détails de votre véhicule afin d'inspirer confiance aux passagers.
+            </Text>
+            <View style={styles.vehicleDetailsForm}>
+              <View style={styles.vehicleInputGroup}>
+                <Text style={styles.vehicleInputLabel}>Marque</Text>
+                <TextInput
+                  style={styles.vehicleInput}
+                  placeholder="Ex : Toyota"
+                  placeholderTextColor={Colors.gray[400]}
+                  value={vehicleBrand}
+                  onChangeText={setVehicleBrand}
+                />
+              </View>
+              <View style={styles.vehicleInputGroup}>
+                <Text style={styles.vehicleInputLabel}>Modèle</Text>
+                <TextInput
+                  style={styles.vehicleInput}
+                  placeholder="Ex : Corolla 2018"
+                  placeholderTextColor={Colors.gray[400]}
+                  value={vehicleModel}
+                  onChangeText={setVehicleModel}
+                />
+              </View>
+              <View style={styles.vehicleInputGroup}>
+                <Text style={styles.vehicleInputLabel}>Couleur</Text>
+                <TextInput
+                  style={styles.vehicleInput}
+                  placeholder="Ex : Noir"
+                  placeholderTextColor={Colors.gray[400]}
+                  value={vehicleColor}
+                  onChangeText={setVehicleColor}
+                />
+              </View>
+              <View style={styles.vehicleInputGroup}>
+                <Text style={styles.vehicleInputLabel}>Plaque d'immatriculation</Text>
+                <TextInput
+                  style={styles.vehicleInput}
+                  placeholder="Ex : XYZ 1234"
+                  placeholderTextColor={Colors.gray[400]}
+                  autoCapitalize="characters"
+                  value={vehiclePlate}
+                  onChangeText={(text) => setVehiclePlate(text.toUpperCase())}
+                />
+              </View>
+            </View>
+            <View style={styles.vehicleModalActions}>
+              <TouchableOpacity
+                style={[styles.vehicleModalButton, styles.vehicleModalButtonSecondary]}
+                onPress={() => setVehicleModalVisible(false)}
+              >
+                <Text style={styles.vehicleModalButtonSecondaryText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.vehicleModalButton, styles.vehicleModalButtonPrimary]}
+                onPress={() => setVehicleModalVisible(false)}
+              >
+                <Text style={styles.vehicleModalButtonPrimaryText}>Enregistrer</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
 
     <Modal
       visible={errorModal.visible}
@@ -696,6 +948,19 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
     textAlign: 'center',
   },
+  previousStepButton: {
+    marginTop: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  previousStepText: {
+    marginLeft: Spacing.xs,
+    color: Colors.primary,
+    fontWeight: FontWeights.medium,
+  },
   scrollView: {
     flex: 1,
     paddingHorizontal: Spacing.xl,
@@ -776,6 +1041,9 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     backgroundColor: Colors.gray[300],
   },
+  buttonLoading: {
+    opacity: 0.7,
+  },
   buttonText: {
     color: Colors.white,
     fontSize: FontSizes.lg,
@@ -854,6 +1122,161 @@ const styles = StyleSheet.create({
   roleSubtitle: {
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
+  },
+  vehicleSection: {
+    marginBottom: Spacing.xl,
+  },
+  vehicleOptions: {},
+  vehicleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
+    marginBottom: Spacing.sm,
+  },
+  vehicleCardActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '0D',
+  },
+  vehicleCardIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  vehicleCardIconActive: {
+    backgroundColor: Colors.primary,
+  },
+  vehicleCardContent: {
+    flex: 1,
+  },
+  vehicleCardTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+  },
+  vehicleCardTitleActive: {
+    color: Colors.primary,
+  },
+  vehicleCardSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginTop: 2,
+  },
+  vehicleCardSubtitleActive: {
+    color: Colors.gray[700],
+  },
+  vehicleDetailsTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    backgroundColor: Colors.white,
+    ...CommonStyles.shadowSm,
+  },
+  vehicleDetailsTriggerIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  vehicleDetailsTriggerContent: {
+    flex: 1,
+  },
+  vehicleDetailsTriggerTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+  },
+  vehicleDetailsTriggerSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginTop: 2,
+  },
+  vehicleDetailsForm: {
+    gap: Spacing.md,
+    marginTop: Spacing.sm,
+  },
+  vehicleInputGroup: {},
+  vehicleInputLabel: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[600],
+    marginBottom: Spacing.xs,
+  },
+  vehicleInput: {
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    fontSize: FontSizes.base,
+    color: Colors.gray[800],
+    backgroundColor: Colors.white,
+  },
+  vehicleModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  vehicleModalCard: {
+    width: '100%',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    maxHeight: '85%',
+  },
+  vehicleModalContent: {
+    paddingBottom: Spacing.md,
+  },
+  vehicleModalTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+  },
+  vehicleModalSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.lg,
+  },
+  vehicleModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: Spacing.xl,
+    gap: Spacing.md,
+  },
+  vehicleModalButton: {
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+  },
+  vehicleModalButtonSecondary: {
+    backgroundColor: Colors.gray[100],
+  },
+  vehicleModalButtonPrimary: {
+    backgroundColor: Colors.primary,
+  },
+  vehicleModalButtonSecondaryText: {
+    color: Colors.gray[700],
+    fontWeight: FontWeights.medium,
+  },
+  vehicleModalButtonPrimaryText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
   },
   profilePictureContainer: {
     alignItems: 'center',

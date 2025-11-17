@@ -131,17 +131,12 @@ export default function HomeScreen() {
             {popularLocations.map((location) => (
               <TouchableOpacity
                 key={location.id}
-                style={styles.locationCard}
+                style={styles.locationChip}
                 onPress={() => handleLocationPress(location)}
+                activeOpacity={0.85}
               >
-                <View style={styles.locationIcon}>
-                  <Ionicons name="location" size={18} color={Colors.primary} />
-                </View>
-                <View style={styles.locationInfo}>
-                  <Text style={styles.locationName}>{location.label}</Text>
-                  <Text style={styles.locationAddress}>{location.address}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
+                <Ionicons name="location" size={16} color={Colors.primary} />
+                <Text style={styles.locationChipText}>{location.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -426,7 +421,28 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.semibold,
   },
   popularLocations: {
-    gap: Spacing.sm,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: Spacing.md,
+  },
+  locationChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    marginRight: Spacing.sm,
+    marginBottom: Spacing.sm,
+    ...CommonStyles.shadowSm,
+  },
+  locationChipText: {
+    marginLeft: Spacing.xs,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[800],
+    fontWeight: FontWeights.semibold,
   },
   locationCard: {
     flexDirection: 'row',
