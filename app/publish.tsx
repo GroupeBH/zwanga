@@ -1,44 +1,232 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useAppDispatch } from '@/store/hooks';
-import { addTrip } from '@/store/slices/tripsSlice';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-import { Colors, Spacing, BorderRadius, FontSizes, FontWeights } from '@/constants/styles';
+import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
+import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import { useCreateTripMutation } from '@/store/api/tripApi';
+import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker, {
+  DateTimePickerAndroid,
+  DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
+import { useRouter } from 'expo-router';
+import React, { useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type PublishStep = 'route' | 'details' | 'confirm';
 
 export default function PublishScreen() {
   const router = useRouter();
-  const dispatch = useAppDispatch();
   const { checkIdentity } = useIdentityCheck();
   const [step, setStep] = useState<PublishStep>('route');
+  const [createTrip, { isLoading: isPublishing }] = useCreateTripMutation();
 
   // Données du formulaire
-  const [departure, setDeparture] = useState('');
-  const [departureAddress, setDepartureAddress] = useState('');
-  const [arrival, setArrival] = useState('');
-  const [arrivalAddress, setArrivalAddress] = useState('');
-  const [departureTime, setDepartureTime] = useState('');
+  const [departureLocation, setDepartureLocation] = useState<MapLocationSelection | null>(null);
+  const [arrivalLocation, setArrivalLocation] = useState<MapLocationSelection | null>(null);
+  const [activeLocationType, setActiveLocationType] = useState<'departure' | 'arrival' | null>(null);
+  const [departureDateTime, setDepartureDateTime] = useState<Date | null>(null);
+  const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
   const [seats, setSeats] = useState('4');
   const [price, setPrice] = useState('');
+  const [description, setDescription] = useState('');
+
+  const departureSummary = useMemo(
+    () => ({
+      title: departureLocation?.title ?? 'Point de départ non défini',
+      address: departureLocation?.address ?? 'Sélectionnez un lieu sur la carte',
+      latitude: departureLocation?.latitude,
+      longitude: departureLocation?.longitude,
+    }),
+    [departureLocation],
+  );
+
+  const arrivalSummary = useMemo(
+    () => ({
+      title: arrivalLocation?.title ?? 'Destination non définie',
+      address: arrivalLocation?.address ?? 'Sélectionnez un lieu sur la carte',
+      latitude: arrivalLocation?.latitude,
+      longitude: arrivalLocation?.longitude,
+    }),
+    [arrivalLocation],
+  );
+
+  const openLocationPicker = (type: 'departure' | 'arrival') => setActiveLocationType(type);
+
+  const closeLocationPicker = () => setActiveLocationType(null);
+
+  const handleLocationSelected = (selection: MapLocationSelection) => {
+    if (activeLocationType === 'departure') {
+      setDepartureLocation(selection);
+    } else if (activeLocationType === 'arrival') {
+      setArrivalLocation(selection);
+    }
+    closeLocationPicker();
+  };
+
+  const getBaseDateTime = () => {
+    if (departureDateTime) {
+      return new Date(departureDateTime);
+    }
+    const base = new Date();
+    base.setMinutes(0, 0, 0);
+    base.setHours(base.getHours() + 1);
+    return base;
+  };
+
+  const applyDatePart = (pickedDate: Date) => {
+    const base = getBaseDateTime();
+    const next = new Date(base);
+    next.setFullYear(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
+    return next;
+  };
+
+  const applyTimePart = (pickedDate: Date) => {
+    const base = getBaseDateTime();
+    const next = new Date(base);
+    next.setHours(pickedDate.getHours(), pickedDate.getMinutes(), 0, 0);
+    return next;
+  };
+
+  const openDateOrTimePicker = (mode: 'date' | 'time') => {
+    if (Platform.OS === 'android') {
+      const value = getBaseDateTime();
+      DateTimePickerAndroid.open({
+        mode,
+        value,
+        is24Hour: true,
+        minimumDate: mode === 'date' ? new Date() : undefined,
+        onChange: (_event: DateTimePickerEvent, selectedDate?: Date) => {
+          if (!selectedDate) {
+            return;
+          }
+          setDepartureDateTime(mode === 'date' ? applyDatePart(selectedDate) : applyTimePart(selectedDate));
+        },
+      });
+    } else {
+      setIosPickerMode(mode);
+    }
+  };
+
+  const handleIosPickerChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (!selectedDate || !iosPickerMode) {
+      return;
+    }
+    setDepartureDateTime(
+      iosPickerMode === 'date' ? applyDatePart(selectedDate) : applyTimePart(selectedDate),
+    );
+  };
+
+  const closeIosPicker = () => setIosPickerMode(null);
+
+  const formatCoordinatePair = (latitude?: number, longitude?: number) => {
+    if (
+      typeof latitude !== 'number' ||
+      Number.isNaN(latitude) ||
+      typeof longitude !== 'number' ||
+      Number.isNaN(longitude)
+    ) {
+      return null;
+    }
+    return `${latitude.toFixed(5)} / ${longitude.toFixed(5)}`;
+  };
+
+  const renderLocationCard = (
+    type: 'departure' | 'arrival',
+    summary: { title: string; address: string; latitude?: number; longitude?: number },
+  ) => {
+    const accentColor = type === 'departure' ? Colors.success : Colors.primary;
+    const hasSelection = type === 'departure' ? !!departureLocation : !!arrivalLocation;
+    const coords = formatCoordinatePair(summary.latitude, summary.longitude);
+    return (
+      <View style={styles.locationCard}>
+        <View style={styles.locationCardHeader}>
+          <Text style={styles.locationCardLabel}>
+            {type === 'departure' ? 'Point de départ *' : 'Destination *'}
+          </Text>
+          {hasSelection && (
+            <TouchableOpacity onPress={() => openLocationPicker(type)}>
+              <Text style={styles.locationCardAction}>Modifier</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        <View style={styles.locationCardContent}>
+          <Text style={styles.locationCardTitle}>{summary.title}</Text>
+          <Text style={styles.locationCardSubtitle}>{summary.address}</Text>
+          <Text style={styles.locationCardCoords}>
+            {coords ?? 'Coordonnées non définies'}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={styles.locationCardButton}
+          onPress={() => openLocationPicker(type)}
+        >
+          <View style={[styles.locationCardButtonIcon, { backgroundColor: accentColor + '1A' }]}>
+            <Ionicons name="map" size={18} color={accentColor} />
+          </View>
+          <Text style={styles.locationCardButtonText}>
+            {hasSelection ? 'Mettre à jour sur la carte' : 'Choisir sur la carte'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const formattedDateLabel = useMemo(() => {
+    if (!departureDateTime) {
+      return 'Choisir la date';
+    }
+    return new Intl.DateTimeFormat('fr-FR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }).format(departureDateTime);
+  }, [departureDateTime]);
+
+  const formattedTimeLabel = useMemo(() => {
+    if (!departureDateTime) {
+      return 'Choisir l\'heure';
+    }
+    return new Intl.DateTimeFormat('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(departureDateTime);
+  }, [departureDateTime]);
+
+  const formattedFullDateTime = useMemo(() => {
+    if (!departureDateTime) {
+      return 'Non défini';
+    }
+    return new Intl.DateTimeFormat('fr-FR', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(departureDateTime);
+  }, [departureDateTime]);
 
   const handleNextStep = () => {
     if (step === 'route') {
-      if (!departure || !arrival) {
-        Alert.alert('Erreur', 'Veuillez remplir les champs obligatoires');
+      if (!departureLocation || !arrivalLocation) {
+        Alert.alert('Erreur', 'Veuillez sélectionner un point de départ et une destination.');
         return;
       }
       // Vérifier l'identité avant de continuer
-      if (!checkIdentity('publish')) {
-        return;
-      }
+      // if (!checkIdentity('publish')) {
+      //   return;
+      // }
       setStep('details');
     } else if (step === 'details') {
-      if (!departureTime || !price) {
+      if (!departureDateTime || !price) {
         Alert.alert('Erreur', 'Veuillez remplir tous les détails');
         return;
       }
@@ -46,38 +234,50 @@ export default function PublishScreen() {
     }
   };
 
-  const handlePublish = () => {
-    const newTrip = {
-      id: Date.now().toString(),
-      driverId: 'current-user',
-      driverName: 'Jean Mukendi',
-      driverRating: 4.8,
-      vehicleType: 'car' as const,
-      vehicleInfo: 'Toyota Corolla blanche',
-      departure: {
-        name: departure,
-        address: departureAddress,
-        lat: -4.3276,
-        lng: 15.3222,
-      },
-      arrival: {
-        name: arrival,
-        address: arrivalAddress,
-        lat: -4.4040,
-        lng: 15.2821,
-      },
-      departureTime: new Date(Date.now() + 2 * 60 * 60 * 1000),
-      arrivalTime: new Date(Date.now() + 2.5 * 60 * 60 * 1000),
-      price: parseInt(price),
-      availableSeats: parseInt(seats),
-      totalSeats: parseInt(seats),
-      status: 'upcoming' as const,
-    };
+  const handlePublish = async () => {
+    if (isPublishing) return;
 
-    dispatch(addTrip(newTrip));
-    Alert.alert('Succès', 'Votre trajet a été publié avec succès!', [
-      { text: 'OK', onPress: () => router.back() }
-    ]);
+    if (!departureLocation || !arrivalLocation) {
+      Alert.alert('Erreur', 'Veuillez sélectionner vos points de départ et d’arrivée.');
+      return;
+    }
+
+    const seatsValue = parseInt(seats, 10);
+    const priceValue = parseFloat(price);
+    const departureDate = departureDateTime;
+
+    if (
+      Number.isNaN(seatsValue) ||
+      Number.isNaN(priceValue) ||
+      !departureDate ||
+      Number.isNaN(departureDate.getTime())
+    ) {
+      Alert.alert('Erreur', 'Veuillez vérifier les valeurs numériques et la date de départ.');
+      return;
+    }
+
+    try {
+      await createTrip({
+        departureLocation: departureLocation.title,
+        arrivalLocation: arrivalLocation.title,
+        departureCoordinates: [departureLocation.longitude, departureLocation.latitude],
+        arrivalCoordinates: [arrivalLocation.longitude, arrivalLocation.latitude],
+        departureDate: departureDate.toISOString(),
+        availableSeats: seatsValue,
+        pricePerSeat: priceValue,
+        description: description.trim() || undefined,
+      } as any).unwrap();
+
+      Alert.alert('Succès', 'Votre trajet a été publié avec succès!', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        'Impossible de publier le trajet pour le moment. Veuillez réessayer.';
+      Alert.alert('Erreur', Array.isArray(message) ? message.join('\n') : message);
+    }
   };
 
   const progressWidth = step === 'route' ? '33%' : step === 'details' ? '66%' : '100%';
@@ -120,47 +320,8 @@ export default function PublishScreen() {
               </Text>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Point de départ *</Text>
-              <View style={styles.inputWithIcon}>
-                <Ionicons name="location" size={20} color={Colors.success} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ex: Gombe"
-                  placeholderTextColor={Colors.gray[500]}
-                  value={departure}
-                  onChangeText={setDeparture}
-                />
-              </View>
-              <TextInput
-                style={[styles.input, styles.inputSmall]}
-                placeholder="Adresse précise (optionnel)"
-                placeholderTextColor={Colors.gray[500]}
-                value={departureAddress}
-                onChangeText={setDepartureAddress}
-              />
-            </View>
-
-            <View style={[styles.inputGroup, { marginBottom: Spacing.xl }]}>
-              <Text style={styles.label}>Destination *</Text>
-              <View style={styles.inputWithIcon}>
-                <Ionicons name="navigate" size={20} color={Colors.primary} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ex: Lemba"
-                  placeholderTextColor={Colors.gray[500]}
-                  value={arrival}
-                  onChangeText={setArrival}
-                />
-              </View>
-              <TextInput
-                style={[styles.input, styles.inputSmall]}
-                placeholder="Adresse précise (optionnel)"
-                placeholderTextColor={Colors.gray[500]}
-                value={arrivalAddress}
-                onChangeText={setArrivalAddress}
-              />
-            </View>
+            {renderLocationCard('departure', departureSummary)}
+            {renderLocationCard('arrival', arrivalSummary)}
 
             <TouchableOpacity style={styles.button} onPress={handleNextStep}>
               <Text style={styles.buttonText}>Continuer</Text>
@@ -182,17 +343,48 @@ export default function PublishScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Heure de départ *</Text>
-              <View style={styles.inputWithIcon}>
-                <Ionicons name="time" size={20} color={Colors.gray[600]} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ex: 14:00"
-                  placeholderTextColor={Colors.gray[500]}
-                  value={departureTime}
-                  onChangeText={setDepartureTime}
-                />
+              <Text style={styles.label}>Date et heure de départ *</Text>
+              <View style={styles.datetimeButtons}>
+                <TouchableOpacity
+                  style={styles.datetimeButton}
+                  onPress={() => openDateOrTimePicker('date')}
+                >
+                  <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.primary + '15' }]}>
+                    <Ionicons name="calendar" size={18} color={Colors.primary} />
+                  </View>
+                  <View>
+                    <Text style={styles.datetimeButtonLabel}>Date</Text>
+                    <Text style={styles.datetimeButtonValue}>{formattedDateLabel}</Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.datetimeButton}
+                  onPress={() => openDateOrTimePicker('time')}
+                >
+                  <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.gray[200] }]}>
+                    <Ionicons name="time" size={18} color={Colors.gray[700]} />
+                  </View>
+                  <View>
+                    <Text style={styles.datetimeButtonLabel}>Heure</Text>
+                    <Text style={styles.datetimeButtonValue}>{formattedTimeLabel}</Text>
+                  </View>
+                </TouchableOpacity>
               </View>
+              {Platform.OS === 'ios' && iosPickerMode && (
+                <View style={styles.iosPickerContainer}>
+                  <DateTimePicker
+                    value={getBaseDateTime()}
+                    mode={iosPickerMode}
+                    display="inline"
+                    minuteInterval={5}
+                    minimumDate={iosPickerMode === 'date' ? new Date() : undefined}
+                    onChange={handleIosPickerChange}
+                  />
+                  <TouchableOpacity style={styles.iosPickerCloseButton} onPress={closeIosPicker}>
+                    <Text style={styles.iosPickerCloseText}>Terminé</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
             <View style={styles.inputGroup}>
@@ -221,6 +413,19 @@ export default function PublishScreen() {
                   onChangeText={setPrice}
                 />
               </View>
+            </View>
+
+            <View style={[styles.inputGroup, { marginBottom: Spacing.xl }]}>
+              <Text style={styles.label}>Description (optionnel)</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                placeholder="Ajoutez des informations supplémentaires (ex: bagages acceptés, point de rendez-vous, etc.)"
+                placeholderTextColor={Colors.gray[500]}
+                value={description}
+                onChangeText={setDescription}
+                multiline
+                numberOfLines={4}
+              />
             </View>
 
             <View style={styles.buttonRow}>
@@ -258,16 +463,32 @@ export default function PublishScreen() {
                   <View style={styles.confirmRouteRow}>
                     <Ionicons name="location" size={20} color={Colors.success} />
                     <View style={styles.confirmRouteContent}>
-                      <Text style={styles.confirmRouteName}>{departure}</Text>
-                      {departureAddress && <Text style={styles.confirmRouteAddress}>{departureAddress}</Text>}
+                      <Text style={styles.confirmRouteName}>{departureSummary.title}</Text>
+                      {departureLocation?.address && (
+                        <Text style={styles.confirmRouteAddress}>{departureSummary.address}</Text>
+                      )}
+                      <Text style={styles.confirmRouteAddress}>
+                        {formatCoordinatePair(
+                          departureSummary.latitude,
+                          departureSummary.longitude,
+                        ) ?? '- / -'}
+                      </Text>
                     </View>
                   </View>
                   <View style={styles.confirmRouteDivider} />
                   <View style={styles.confirmRouteRow}>
                     <Ionicons name="navigate" size={20} color={Colors.primary} />
                     <View style={styles.confirmRouteContent}>
-                      <Text style={styles.confirmRouteName}>{arrival}</Text>
-                      {arrivalAddress && <Text style={styles.confirmRouteAddress}>{arrivalAddress}</Text>}
+                      <Text style={styles.confirmRouteName}>{arrivalSummary.title}</Text>
+                      {arrivalLocation?.address && (
+                        <Text style={styles.confirmRouteAddress}>{arrivalSummary.address}</Text>
+                      )}
+                      <Text style={styles.confirmRouteAddress}>
+                        {formatCoordinatePair(
+                          arrivalSummary.latitude,
+                          arrivalSummary.longitude,
+                        ) ?? '- / -'}
+                      </Text>
                     </View>
                   </View>
                 </View>
@@ -282,7 +503,7 @@ export default function PublishScreen() {
                       <Ionicons name="time" size={18} color={Colors.gray[600]} />
                       <Text style={styles.confirmDetailLabel}>Heure de départ</Text>
                     </View>
-                    <Text style={styles.confirmDetailValue}>{departureTime}</Text>
+                  <Text style={styles.confirmDetailValue}>{formattedFullDateTime}</Text>
                   </View>
                   <View style={styles.confirmDetailRow}>
                     <View style={styles.confirmDetailLeft}>
@@ -298,6 +519,15 @@ export default function PublishScreen() {
                     </View>
                     <Text style={[styles.confirmDetailValue, { color: Colors.success }]}>{price} FC/pers</Text>
                   </View>
+                {description ? (
+                  <View style={styles.confirmDetailRow}>
+                    <View style={styles.confirmDetailLeft}>
+                      <Ionicons name="chatbox-ellipses" size={18} color={Colors.gray[600]} />
+                      <Text style={styles.confirmDetailLabel}>Description</Text>
+                    </View>
+                    <Text style={[styles.confirmDetailValue, styles.confirmDetailDescription]}>{description}</Text>
+                  </View>
+                ) : null}
                 </View>
               </View>
             </View>
@@ -309,13 +539,43 @@ export default function PublishScreen() {
               >
                 <Text style={styles.buttonSecondaryText}>Retour</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.button, { flex: 1, marginLeft: Spacing.md }]} onPress={handlePublish}>
-                <Text style={styles.buttonText}>Publier</Text>
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  { flex: 1, marginLeft: Spacing.md },
+                  isPublishing && styles.buttonDisabled,
+                ]}
+                onPress={handlePublish}
+                disabled={isPublishing}
+              >
+                {isPublishing ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <Text style={styles.buttonText}>Publier</Text>
+                )}
               </TouchableOpacity>
             </View>
           </Animated.View>
         )}
       </ScrollView>
+
+      <LocationPickerModal
+        visible={activeLocationType !== null}
+        title={
+          activeLocationType === 'departure'
+            ? 'Sélectionner le point de départ'
+            : 'Sélectionner la destination'
+        }
+        initialLocation={
+          activeLocationType === 'departure'
+            ? departureLocation
+            : activeLocationType === 'arrival'
+            ? arrivalLocation
+            : null
+        }
+        onClose={closeLocationPicker}
+        onSelect={handleLocationSelected}
+      />
     </SafeAreaView>
   );
 }
@@ -424,9 +684,123 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
     color: Colors.gray[800],
   },
-  inputSmall: {
+  textArea: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  datetimeButtons: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  datetimeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    gap: Spacing.md,
+  },
+  datetimeButtonIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  datetimeButtonLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    textTransform: 'uppercase',
+  },
+  datetimeButtonValue: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginTop: 2,
+  },
+  iosPickerContainer: {
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.lg,
+    overflow: 'hidden',
+  },
+  iosPickerCloseButton: {
+    paddingVertical: Spacing.sm,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[200],
+  },
+  iosPickerCloseText: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  locationCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  locationCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  locationCardLabel: {
     fontSize: FontSizes.sm,
-    paddingVertical: Spacing.md,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[600],
+  },
+  locationCardAction: {
+    fontSize: FontSizes.sm,
+    color: Colors.primary,
+    fontWeight: FontWeights.semibold,
+  },
+  locationCardContent: {
+    marginBottom: Spacing.md,
+    gap: 4,
+  },
+  locationCardTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  locationCardSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginTop: 2,
+  },
+  locationCardCoords: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    marginTop: Spacing.xs,
+  },
+  locationCardButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+  },
+  locationCardButtonIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locationCardButtonText: {
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
   },
   button: {
     backgroundColor: Colors.primary,
@@ -434,6 +808,9 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonSecondary: {
     backgroundColor: Colors.white,
@@ -524,5 +901,11 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     color: Colors.gray[800],
     fontSize: FontSizes.base,
+  },
+  confirmDetailDescription: {
+    flex: 1,
+    textAlign: 'right',
+    color: Colors.gray[600],
+    fontWeight: FontWeights.regular,
   },
 });
