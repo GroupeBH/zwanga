@@ -1,23 +1,59 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useAppSelector } from '@/store/hooks';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUpcomingTrips, selectCompletedTrips } from '@/store/selectors';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
 import { formatTime } from '@/utils/dateHelpers';
+import { useGetTripsQuery } from '@/store/api/tripApi';
+import { setTrips } from '@/store/slices/tripsSlice';
 
 type TripTab = 'upcoming' | 'completed';
 
 export default function TripsScreen() {
+  const dispatch = useAppDispatch();
   const upcomingTrips = useAppSelector(selectUpcomingTrips);
   const completedTrips = useAppSelector(selectCompletedTrips);
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TripTab>('upcoming');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const {
+    data: remoteTrips,
+    isLoading: tripsLoading,
+    isFetching: tripsFetching,
+    isError,
+    refetch,
+  } = useGetTripsQuery({});
+
+  useEffect(() => {
+    if (remoteTrips) {
+      dispatch(setTrips(remoteTrips));
+    }
+  }, [remoteTrips, dispatch]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const displayTrips = activeTab === 'upcoming' ? upcomingTrips : completedTrips;
+  const isEmpty = displayTrips.length === 0;
+  const showLoader = tripsLoading && isEmpty;
 
   const getStatusConfig = (status: string) => {
     switch (status) {
@@ -59,12 +95,35 @@ export default function TripsScreen() {
         </View>
       </View>
 
-      <ScrollView 
-        style={styles.scrollView} 
+      {isError && (
+        <View style={styles.errorBanner}>
+          <Ionicons name="warning" size={16} color={Colors.white} />
+          <Text style={styles.errorText}>Impossible de charger les trajets. Réessayez.</Text>
+          <TouchableOpacity onPress={refetch}>
+            <Text style={styles.errorAction}>Rafraîchir</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <ScrollView
+        style={styles.scrollView}
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing || tripsFetching}
+            onRefresh={handleRefresh}
+            tintColor={Colors.primary}
+          />
+        }
       >
-        {displayTrips.length === 0 ? (
+        {showLoader && (
+          <View style={styles.loaderContainer}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.loaderText}>Chargement des trajets...</Text>
+          </View>
+        )}
+        {displayTrips.length === 0 && !showLoader ? (
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIcon}>
               <Ionicons name="car-outline" size={48} color={Colors.gray[500]} />
@@ -219,6 +278,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.lg,
     paddingBottom: Spacing.xxl,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.danger,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.md,
+    borderRadius: BorderRadius.md,
+    ...CommonStyles.shadowSm,
+  },
+  errorText: {
+    color: Colors.white,
+    flex: 1,
+    marginLeft: Spacing.sm,
+    fontSize: FontSizes.sm,
+  },
+  errorAction: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+  },
+  loaderContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.xl,
+  },
+  loaderText: {
+    marginTop: Spacing.sm,
+    color: Colors.gray[600],
   },
   emptyContainer: {
     flex: 1,
