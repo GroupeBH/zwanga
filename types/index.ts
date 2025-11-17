@@ -15,7 +15,7 @@ export interface User {
   verified: boolean;
   identityVerified: boolean; // Vérification d'identité (carte + visage)
   vehicle?: Vehicle;
-  createdAt: Date;
+  createdAt: string; // ISO string date
 }
 
 export interface Vehicle {
@@ -45,8 +45,8 @@ export interface Trip {
   vehicleInfo: string;
   departure: Location;
   arrival: Location;
-  departureTime: Date;
-  arrivalTime: Date;
+  departureTime: string; // ISO string date
+  arrivalTime: string; // ISO string date
   price: number;
   availableSeats: number;
   totalSeats: number;
@@ -69,7 +69,7 @@ export interface Message {
   userName: string;
   userAvatar?: string;
   text: string;
-  timestamp: Date;
+  timestamp: string; // ISO string date
   read: boolean;
 }
 
@@ -79,7 +79,7 @@ export interface Conversation {
   userName: string;
   userAvatar?: string;
   lastMessage: string;
-  timestamp: Date;
+  timestamp: string; // ISO string date
   unreadCount: number;
 }
 
@@ -93,6 +93,6 @@ export interface Review {
   comment: string;
   tags: string[];
   tripId: string;
-  createdAt: Date;
+  createdAt: string; // ISO string date
 }
 

@@ -4,9 +4,25 @@ import { useLoginMutation, useRegisterMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch } from '@/store/hooks';
 import { setTokens, setUser } from '@/store/slices/authSlice';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+type NotifeeModule = typeof import('@notifee/react-native');
+type NotifeeDefault = NotifeeModule['default'];
+type AndroidImportanceEnum = NotifeeModule['AndroidImportance'];
+
+let notifeeInstance: NotifeeDefault | null = null;
+let androidImportanceEnum: AndroidImportanceEnum | undefined;
+
+try {
+  const notifeeModule = require('@notifee/react-native') as NotifeeModule;
+  notifeeInstance = notifeeModule.default ?? (notifeeModule as unknown as NotifeeDefault);
+  androidImportanceEnum = notifeeModule.AndroidImportance;
+} catch (error) {
+  console.warn('[Notifee] Module not available. Notifications disabled in this environment.');
+}
+
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -28,6 +44,16 @@ export default function AuthScreen() {
   const [role, setRole] = useState<'driver' | 'passenger' | 'both'>('passenger');
   const [identityVerified, setIdentityVerified] = useState(false);
   
+  // États pour les images
+  const [profilePicture, setProfilePicture] = useState<string | null>(null);
+  const [cniImage, setCniImage] = useState<string | null>(null);
+  const [selfieImage, setSelfieImage] = useState<string | null>(null);
+  const [errorModal, setErrorModal] = useState({
+    visible: false,
+    title: '',
+    message: '',
+  });
+  
   // Hooks RTK Query pour login et register
   const [login, { isLoading: isLoggingIn }] = useLoginMutation();
   const [register, { isLoading: isRegistering }] = useRegisterMutation();
@@ -48,11 +74,59 @@ export default function AuthScreen() {
     profile: '🎊 Dernière étape!',
   }[step];
 
+  const showErrorModal = (message: string, title = 'Quelque chose s\'est mal passé') => {
+    setErrorModal({
+      visible: true,
+      title,
+      message,
+    });
+  };
+
+  const hideErrorModal = () => {
+    setErrorModal((prev) => ({ ...prev, visible: false }));
+  };
+
+  const triggerSignupSuccessNotification = async (userName?: string) => {
+    if (!notifeeInstance) {
+      return;
+    }
+
+    try {
+      await notifeeInstance.requestPermission();
+      let channelId: string | undefined;
+
+      if (Platform.OS === 'android' && androidImportanceEnum) {
+        channelId = await notifeeInstance.createChannel({
+          id: 'zwanga-signup',
+          name: 'Confirmations Zwanga',
+          importance: androidImportanceEnum.HIGH,
+          vibration: true,
+        });
+      }
+
+      await notifeeInstance.displayNotification({
+        title: '🎉 Inscription réussie',
+        body: `${userName ? `${userName}, ` : ''}bienvenue sur Zwanga !`,
+        android: channelId
+          ? {
+              channelId,
+              pressAction: { id: 'default' },
+            }
+          : undefined,
+        ios: {
+          sound: 'default',
+        },
+      });
+    } catch (notificationError) {
+      console.warn('Notification inscription Notifee', notificationError);
+    }
+  };
+
   const handlePhoneSubmit = () => {
     if (phone.length >= 10) {
       setStep('sms');
     } else {
-      Alert.alert('Erreur', 'Veuillez entrer un numéro valide');
+      showErrorModal('Veuillez entrer un numéro valide');
     }
   };
 
@@ -66,7 +140,7 @@ export default function AuthScreen() {
           // Ici, on simule avec le numéro de téléphone
           const result = await login({ 
             phone, 
-            password: code // Dans un vrai cas, ce serait le mot de passe
+            // password: code // Dans un vrai cas, ce serait le mot de passe
           }).unwrap();
           
           // Les tokens sont automatiquement stockés dans SecureStore via onQueryStarted
@@ -79,13 +153,13 @@ export default function AuthScreen() {
           
           router.replace('/(tabs)');
         } catch (error: any) {
-          Alert.alert('Erreur', error?.data?.message || 'Erreur lors de la connexion');
+          showErrorModal(error?.data?.message || 'Erreur lors de la connexion');
         }
       } else {
         setStep('kyc');
       }
     } else {
-      Alert.alert('Erreur', 'Veuillez entrer le code complet');
+      showErrorModal('Veuillez entrer le code complet');
     }
   };
 
@@ -97,13 +171,14 @@ export default function AuthScreen() {
     if (firstName && lastName) {
       setStep('identity');
     } else {
-      Alert.alert('Erreur', 'Veuillez remplir tous les champs');
+      showErrorModal('Veuillez remplir tous les champs');
     }
   };
 
   const handleIdentityComplete = (data: { idCardImage: string; faceImage: string }) => {
-    // Ici, vous devriez envoyer les images au backend pour vérification
-    // Pour l'instant, on simule juste la vérification
+    // Stocker les images de la CNI et du selfie
+    setCniImage(data.idCardImage);
+    setSelfieImage(data.faceImage);
     setIdentityVerified(true);
     setStep('profile');
   };
@@ -113,35 +188,121 @@ export default function AuthScreen() {
     setStep('profile');
   };
 
+  const handleSelectProfilePicture = async () => {
+    try {
+      // Demander les permissions
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        showErrorModal('L\'accès à la galerie est nécessaire pour sélectionner une photo.', 'Permission requise');
+        return;
+      }
+
+      // Afficher le sélecteur d'image
+      Alert.alert(
+        'Photo de profil',
+        'Choisissez une source',
+        [
+          {
+            text: 'Caméra',
+            onPress: async () => {
+              const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
+              if (cameraStatus !== 'granted') {
+                showErrorModal('L\'accès à la caméra est nécessaire pour prendre une photo.', 'Permission requise');
+                return;
+              }
+
+              const result = await ImagePicker.launchCameraAsync({
+                mediaTypes: 'images',
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.8,
+              });
+
+              if (!result.canceled && result.assets[0]) {
+                setProfilePicture(result.assets[0].uri);
+              }
+            },
+          },
+          {
+            text: 'Galerie',
+            onPress: async () => {
+              const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: 'images',
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.8,
+              });
+
+              if (!result.canceled && result.assets[0]) {
+                setProfilePicture(result.assets[0].uri);
+              }
+            },
+          },
+          { text: 'Annuler', style: 'cancel' },
+        ]
+      );
+    } catch (error) {
+      console.error('Erreur lors de la sélection de l\'image:', error);
+      showErrorModal('Impossible de sélectionner l\'image. Veuillez réessayer.');
+    }
+  };
+
+  const appendImageToFormData = (
+    formData: FormData,
+    field: 'profilePicture' | 'cniImage' | 'selfieImage',
+    uri: string | null,
+  ) => {
+    if (!uri) return;
+
+    const fileName = `${field}-${Date.now()}.jpg`;
+    formData.append(field, {
+      uri,
+      name: fileName,
+      type: 'image/jpeg',
+    } as any);
+  };
+
   const handleProfileSubmit = async () => {
-    router.replace('/(tabs)');
-    // try {
-    //   // Appel API d'inscription
-    //   const result = await register({
-    //     phone,
-    //     firstName,
-    //     lastName,
-    //     role,
-    //   }).unwrap();
+    try {
+      const formData = new FormData();
+
+      formData.append('phone', phone);
+      formData.append('firstName', firstName);
+      formData.append('lastName', lastName);
+      formData.append('role', role);
+      formData.append('isDriver', JSON.stringify(role === 'driver' || role === 'both'));
+
+      if (email) {
+        formData.append('email', email.trim());
+      }
+
+      appendImageToFormData(formData, 'profilePicture', profilePicture);
+      appendImageToFormData(formData, 'cniImage', cniImage);
+      appendImageToFormData(formData, 'selfieImage', selfieImage);
       
-    //   // Mettre à jour l'utilisateur avec le statut de vérification d'identité
-    //   const userWithIdentity = {
-    //     ...result.user,
-    //     identityVerified,
-    //   };
+      // Appel API d'inscription avec les images
+      const result = await register(formData).unwrap();
       
-    //   // Les tokens sont automatiquement stockés dans SecureStore via onQueryStarted
-    //   // Mettre à jour le state Redux avec les tokens et l'utilisateur
-    //   dispatch(setTokens({
-    //     accessToken: result.accessToken,
-    //     refreshToken: result.refreshToken,
-    //   }));
-    //   dispatch(setUser(userWithIdentity));
+      // Mettre à jour l'utilisateur avec le statut de vérification d'identité
+      const userWithIdentity = {
+        ...result.user,
+        identityVerified,
+      };
       
-    //   router.replace('/(tabs)');
-    // } catch (error: any) {
-    //   Alert.alert('Erreur', error?.data?.message || 'Erreur lors de l\'inscription');
-    // }
+      // Les tokens sont automatiquement stockés dans SecureStore via onQueryStarted
+      // Mettre à jour le state Redux avec les tokens et l'utilisateur
+      dispatch(setTokens({
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+      }));
+      dispatch(setUser(userWithIdentity));
+
+      await triggerSignupSuccessNotification(result.user?.name || firstName || lastName || phone);
+      
+      router.replace('/(tabs)');
+    } catch (error: any) {
+      showErrorModal(error?.data?.message || 'Erreur lors de l\'inscription', 'Impossible de finaliser l\'inscription');
+    }
   };
 
   const resetForm = () => {
@@ -157,6 +318,7 @@ export default function AuthScreen() {
   };
 
   return (
+    <>
     <SafeAreaView style={styles.container}>
       {/* Header avec toggle et progression */}
       <View style={styles.header}>
@@ -198,7 +360,11 @@ export default function AuthScreen() {
         )}
       </View>
 
-      <ScrollView style={styles.scrollView}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollViewContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Étape 1: Numéro de téléphone */}
         {step === 'phone' && (
           <Animated.View entering={FadeInDown} exiting={FadeOutUp} style={styles.stepContainer}>
@@ -337,12 +503,12 @@ export default function AuthScreen() {
               <Text style={styles.buttonText}>Continuer</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
+            {/* <TouchableOpacity
               style={[styles.button, styles.buttonSecondary]}
               onPress={handleSkipKYC}
             >
               <Text style={styles.buttonSecondaryText}>Passer cette étape</Text>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </Animated.View>
         )}
 
@@ -361,12 +527,31 @@ export default function AuthScreen() {
         {step === 'profile' && mode === 'signup' && (
           <Animated.View entering={FadeInDown} exiting={FadeOutUp} style={styles.stepContainer}>
             <View style={styles.iconContainer}>
-              <View style={[styles.iconCircle, styles.iconCircleGreen]}>
-                <Ionicons name="person" size={48} color={Colors.success} />
-              </View>
-              <Text style={styles.stepTitle}>Configuration du profil</Text>
               <Text style={styles.stepSubtitle}>
                 Dites-nous comment vous utiliserez ZWANGA
+              </Text>
+            </View>
+
+            {/* Section Photo de profil */}
+            <View style={styles.profilePictureContainer}>
+              <Text style={styles.label}>Photo de profil (optionnel)</Text>
+              <TouchableOpacity
+                style={styles.profilePictureButton}
+                onPress={handleSelectProfilePicture}
+              >
+                {profilePicture ? (
+                  <Image source={{ uri: profilePicture }} style={styles.profilePictureImage} />
+                ) : (
+                  <View style={styles.profilePicturePlaceholder}>
+                    <Ionicons name="camera" size={32} color={Colors.gray[400]} />
+                  </View>
+                )}
+                <View style={styles.profilePictureEditBadge}>
+                  <Ionicons name="camera" size={16} color={Colors.white} />
+                </View>
+              </TouchableOpacity>
+              <Text style={styles.profilePictureHint}>
+                Ajoutez une photo pour que les autres utilisateurs vous reconnaissent
               </Text>
             </View>
 
@@ -401,7 +586,7 @@ export default function AuthScreen() {
 
               <TouchableOpacity
                 style={[styles.roleCard, role === 'both' && styles.roleCardActive, { marginBottom: Spacing.xl }]}
-                onPress={() => setRole('both')}
+                onPress={() => setRole('driver')}
               >
                 <View style={[styles.roleIcon, role === 'both' && styles.roleIconActive]}>
                   <Ionicons name="swap-horizontal" size={24} color={role === 'both' ? Colors.white : Colors.gray[600]} />
@@ -423,6 +608,29 @@ export default function AuthScreen() {
         )}
       </ScrollView>
     </SafeAreaView>
+
+    <Modal
+      visible={errorModal.visible}
+      transparent
+      animationType="fade"
+      onRequestClose={hideErrorModal}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalIconCircle}>
+            <Ionicons name="alert-circle" size={36} color={Colors.white} />
+          </View>
+          <Text style={styles.modalTitle}>
+            {errorModal.title || 'Une erreur est survenue'}
+          </Text>
+          <Text style={styles.modalMessage}>{errorModal.message}</Text>
+          <TouchableOpacity style={styles.modalButton} onPress={hideErrorModal}>
+            <Text style={styles.modalButtonText}>Compris</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -491,6 +699,10 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
     paddingHorizontal: Spacing.xl,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
+    paddingBottom: Spacing.xxl,
   },
   stepContainer: {
     marginTop: Spacing.xxl,
@@ -642,5 +854,98 @@ const styles = StyleSheet.create({
   roleSubtitle: {
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
+  },
+  profilePictureContainer: {
+    alignItems: 'center',
+    marginBottom: Spacing.xl,
+  },
+  profilePictureButton: {
+    position: 'relative',
+    marginBottom: Spacing.md,
+  },
+  profilePicturePlaceholder: {
+    width: 120,
+    height: 120,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[200],
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: Colors.gray[300],
+    borderStyle: 'dashed',
+  },
+  profilePictureImage: {
+    width: 120,
+    height: 120,
+    borderRadius: BorderRadius.full,
+    borderWidth: 3,
+    borderColor: Colors.primary,
+  },
+  profilePictureEditBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: Colors.white,
+  },
+  profilePictureHint: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    textAlign: 'center',
+    paddingHorizontal: Spacing.xl,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    gap: Spacing.lg,
+    ...(CommonStyles.shadowLg || CommonStyles.shadowSm),
+  },
+  modalIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.danger,
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: FontSizes.base,
+    color: Colors.gray[600],
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  modalButton: {
+    marginTop: Spacing.md,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
   },
 });

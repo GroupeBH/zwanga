@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 
 /**
@@ -5,10 +6,19 @@ import * as SecureStore from 'expo-secure-store';
  * Stocke de manière sécurisée les accessToken et refreshToken
  */
 
-// SecureStore n'accepte que des caractères alphanumériques, ".", "-", et "_"
-// On remplace ":" par "_" pour respecter les contraintes
-const ACCESS_TOKEN_KEY = '@zwanga_accessToken';
-const REFRESH_TOKEN_KEY = '@zwanga_refreshToken';
+const secureStoreKeys =
+  ((Constants.expoConfig?.extra as { secureStoreKeys?: { access?: string; refresh?: string } })?.secureStoreKeys ??
+    {});
+
+const sanitizeKey = (raw: string | undefined, fallback: string) => {
+  const key = raw?.trim() || fallback;
+  // SecureStore n'accepte que des caractères alphanumériques, ".", "-", et "_"
+  const sanitized = key.replace(/[^A-Za-z0-9._-]/g, '_');
+  return sanitized.length > 0 ? sanitized : fallback;
+};
+
+const ACCESS_TOKEN_KEY = sanitizeKey(secureStoreKeys.access, 'zwanga_accessToken');
+const REFRESH_TOKEN_KEY = sanitizeKey(secureStoreKeys.refresh, 'zwanga_refreshToken');
 
 /**
  * Stocke l'access token de manière sécurisée
