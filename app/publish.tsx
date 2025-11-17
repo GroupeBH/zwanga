@@ -11,7 +11,7 @@ import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -30,6 +30,67 @@ export default function PublishScreen() {
   const { checkIdentity } = useIdentityCheck();
   const [step, setStep] = useState<PublishStep>('route');
   const [createTrip, { isLoading: isPublishing }] = useCreateTripMutation();
+  type FeedbackModalState = {
+    visible: boolean;
+    type: 'success' | 'error';
+    title: string;
+    message: string;
+    confirmLabel: string;
+    secondaryLabel?: string;
+    onConfirm?: () => void;
+    onSecondary?: () => void;
+  };
+
+  const [feedbackModal, setFeedbackModal] = useState<FeedbackModalState>({
+    visible: false,
+    type: 'success',
+    title: '',
+    message: '',
+    confirmLabel: 'Fermer',
+  });
+
+  const closeFeedbackModal = () =>
+    setFeedbackModal((prev) => ({
+      ...prev,
+      visible: false,
+    }));
+
+  const openFeedbackModal = (
+    config: Partial<FeedbackModalState> & { title: string; message: string },
+  ) => {
+    setFeedbackModal({
+      visible: true,
+      type: config.type ?? 'error',
+      title: config.title,
+      message: config.message,
+      confirmLabel: config.confirmLabel ?? 'Fermer',
+      secondaryLabel: config.secondaryLabel,
+      onConfirm: config.onConfirm,
+      onSecondary: config.onSecondary,
+    });
+  };
+
+  const handleModalPrimary = () => {
+    closeFeedbackModal();
+    feedbackModal.onConfirm?.();
+  };
+
+  const handleModalSecondary = () => {
+    closeFeedbackModal();
+    feedbackModal.onSecondary?.();
+  };
+
+  const resetForm = () => {
+    setStep('route');
+    setDepartureLocation(null);
+    setArrivalLocation(null);
+    setActiveLocationType(null);
+    setDepartureDateTime(null);
+    setIosPickerMode(null);
+    setSeats('4');
+    setPrice('');
+    setDescription('');
+  };
 
   // Données du formulaire
   const [departureLocation, setDepartureLocation] = useState<MapLocationSelection | null>(null);
@@ -217,7 +278,11 @@ export default function PublishScreen() {
   const handleNextStep = () => {
     if (step === 'route') {
       if (!departureLocation || !arrivalLocation) {
-        Alert.alert('Erreur', 'Veuillez sélectionner un point de départ et une destination.');
+        openFeedbackModal({
+          type: 'error',
+          title: 'Itinéraire incomplet',
+          message: 'Veuillez sélectionner un point de départ et une destination.',
+        });
         return;
       }
       // Vérifier l'identité avant de continuer
@@ -227,7 +292,11 @@ export default function PublishScreen() {
       setStep('details');
     } else if (step === 'details') {
       if (!departureDateTime || !price) {
-        Alert.alert('Erreur', 'Veuillez remplir tous les détails');
+        openFeedbackModal({
+          type: 'error',
+          title: 'Informations manquantes',
+          message: 'Merci de renseigner la date de départ et le prix.',
+        });
         return;
       }
       setStep('confirm');
@@ -238,7 +307,11 @@ export default function PublishScreen() {
     if (isPublishing) return;
 
     if (!departureLocation || !arrivalLocation) {
-      Alert.alert('Erreur', 'Veuillez sélectionner vos points de départ et d’arrivée.');
+      openFeedbackModal({
+        type: 'error',
+        title: 'Itinéraire incomplet',
+        message: 'Veuillez sélectionner vos points de départ et d’arrivée.',
+      });
       return;
     }
 
@@ -252,7 +325,11 @@ export default function PublishScreen() {
       !departureDate ||
       Number.isNaN(departureDate.getTime())
     ) {
-      Alert.alert('Erreur', 'Veuillez vérifier les valeurs numériques et la date de départ.');
+      openFeedbackModal({
+        type: 'error',
+        title: 'Vérification requise',
+        message: 'Veuillez vérifier les valeurs numériques et la date de départ.',
+      });
       return;
     }
 
@@ -268,15 +345,26 @@ export default function PublishScreen() {
         description: description.trim() || undefined,
       } as any).unwrap();
 
-      Alert.alert('Succès', 'Votre trajet a été publié avec succès!', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      resetForm();
+      openFeedbackModal({
+        type: 'success',
+        title: 'Trajet publié',
+        message: 'Votre trajet a été publié avec succès !',
+        confirmLabel: 'Voir mes trajets',
+        onConfirm: () => router.push('/trips'),
+        secondaryLabel: 'Publier un autre',
+        onSecondary: () => {},
+      });
     } catch (error: any) {
       const message =
         error?.data?.message ??
         error?.error ??
         'Impossible de publier le trajet pour le moment. Veuillez réessayer.';
-      Alert.alert('Erreur', Array.isArray(message) ? message.join('\n') : message);
+      openFeedbackModal({
+        type: 'error',
+        title: 'Erreur',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
     }
   };
 
@@ -576,6 +664,51 @@ export default function PublishScreen() {
         onClose={closeLocationPicker}
         onSelect={handleLocationSelected}
       />
+
+      <Modal animationType="fade" transparent visible={feedbackModal.visible}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View
+              style={[
+                styles.modalIconWrapper,
+                feedbackModal.type === 'success'
+                  ? styles.modalIconSuccess
+                  : styles.modalIconError,
+              ]}
+            >
+              <Ionicons
+                name={feedbackModal.type === 'success' ? 'checkmark' : 'alert'}
+                size={32}
+                color={feedbackModal.type === 'success' ? Colors.white : Colors.white}
+              />
+            </View>
+            <Text style={styles.modalTitle}>{feedbackModal.title}</Text>
+            <Text style={styles.modalMessage}>{feedbackModal.message}</Text>
+            <View style={styles.modalActions}>
+              {feedbackModal.secondaryLabel && (
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonSecondary]}
+                  onPress={handleModalSecondary}
+                >
+                  <Text style={styles.modalButtonSecondaryText}>
+                    {feedbackModal.secondaryLabel}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[
+                  styles.modalButton,
+                  styles.modalButtonPrimary,
+                  feedbackModal.secondaryLabel && styles.modalButtonPrimaryFull,
+                ]}
+                onPress={handleModalPrimary}
+              >
+                <Text style={styles.modalButtonPrimaryText}>{feedbackModal.confirmLabel}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -907,5 +1040,76 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     color: Colors.gray[600],
     fontWeight: FontWeights.regular,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    alignItems: 'center',
+  },
+  modalIconWrapper: {
+    width: 72,
+    height: 72,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.lg,
+  },
+  modalIconSuccess: {
+    backgroundColor: Colors.success,
+  },
+  modalIconError: {
+    backgroundColor: Colors.danger,
+  },
+  modalTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    textAlign: 'center',
+    marginBottom: Spacing.sm,
+  },
+  modalMessage: {
+    fontSize: FontSizes.base,
+    color: Colors.gray[600],
+    textAlign: 'center',
+    marginBottom: Spacing.xl,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: Spacing.sm,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+  },
+  modalButtonSecondary: {
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    backgroundColor: Colors.white,
+  },
+  modalButtonSecondaryText: {
+    color: Colors.gray[800],
+    fontWeight: FontWeights.semibold,
+  },
+  modalButtonPrimary: {
+    backgroundColor: Colors.primary,
+  },
+  modalButtonPrimaryFull: {
+    flex: 1,
+  },
+  modalButtonPrimaryText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
   },
 });
