@@ -1,8 +1,8 @@
-import { getStoreDispatch } from '../store/storeAccessor';
-import { setTokens, logout } from '../store/slices/authSlice';
-import { getTokens, storeTokens, clearTokens } from './tokenStorage';
-import { isTokenExpired, isTokenExpiringSoon, decodeJWT } from '../utils/jwt';
 import { API_BASE_URL } from '../config/env';
+import { logout, setTokens } from '../store/slices/authSlice';
+import { getStoreDispatch } from '../store/storeAccessor';
+import { isTokenExpired, isTokenExpiringSoon } from '../utils/jwt';
+import { clearTokens, getTokens, storeTokens } from './tokenStorage';
 
 /**
  * Service de rafraîchissement automatique des tokens JWT
