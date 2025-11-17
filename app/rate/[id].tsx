@@ -109,7 +109,11 @@ export default function RateScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        contentContainerStyle={styles.scrollViewContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Onglet Notation */}
         {activeTab === 'rate' && (
           <Animated.View entering={FadeInDown}>
@@ -367,8 +371,12 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.xl,
+    paddingBottom: Spacing.xxl,
   },
   driverCard: {
     backgroundColor: Colors.white,

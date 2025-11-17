@@ -47,7 +47,11 @@ export default function MessagesScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        contentContainerStyle={styles.scrollViewContent}
+        showsVerticalScrollIndicator={false}
+      >
         {conversations.length === 0 ? (
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIcon}>
@@ -152,6 +156,10 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
+    paddingBottom: Spacing.xl,
   },
   emptyContainer: {
     flex: 1,
