@@ -1,20 +1,66 @@
+import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useUserLocation } from '@/hooks/useUserLocation';
+import {
+  TripSearchParams,
+  useGetTripsQuery,
+  useSearchTripsByCoordinatesMutation,
+} from '@/store/api/tripApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectAvailableTrips, selectSavedLocations } from '@/store/selectors';
 import { addSavedLocation } from '@/store/slices/locationSlice';
+import { setTrips } from '@/store/slices/tripsSlice';
 import { formatTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function HomeScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const trips = useAppSelector(selectAvailableTrips);
+  const { lastKnownLocation } = useUserLocation({ autoRequest: true });
+  const storedTrips = useAppSelector(selectAvailableTrips);
   const savedLocations = useAppSelector(selectSavedLocations);
+  const [queryParams, setQueryParams] = useState<TripSearchParams>({});
+  const [searchTripsByCoordinates, { isLoading: advancedSearching }] =
+    useSearchTripsByCoordinatesMutation();
+  const [activePicker, setActivePicker] = useState<'departure' | 'arrival' | null>(null);
+  const [filterDepartureLocation, setFilterDepartureLocation] = useState<MapLocationSelection | null>(
+    null,
+  );
+  const [filterArrivalLocation, setFilterArrivalLocation] = useState<MapLocationSelection | null>(
+    null,
+  );
+  const [departureRadius, setDepartureRadius] = useState('10');
+  const [arrivalRadius, setArrivalRadius] = useState('10');
+  const [minSeatsFilter, setMinSeatsFilter] = useState('');
+  const [maxPriceFilter, setMaxPriceFilter] = useState('');
+  const [showAdvancedFields, setShowAdvancedFields] = useState(false);
+  const [showQuickFields, setShowQuickFields] = useState(false);
+  const {
+    data: remoteTrips,
+    isLoading: tripsLoading,
+    isError: tripsError,
+    refetch: refetchTrips,
+  } = useGetTripsQuery(queryParams);
+  useEffect(() => {
+    if (remoteTrips) {
+      dispatch(setTrips(remoteTrips));
+    }
+  }, [remoteTrips, dispatch]);
+  const trips = remoteTrips ?? storedTrips;
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
   const [addMode, setAddMode] = useState(false);
@@ -22,6 +68,123 @@ export default function HomeScreen() {
   const [customAddress, setCustomAddress] = useState('');
   const [customLat, setCustomLat] = useState('');
   const [customLng, setCustomLng] = useState('');
+
+  useEffect(() => {
+    if (!lastKnownLocation) {
+      return;
+    }
+    setQueryParams((prev) => {
+      const current = prev.departureCoordinates;
+      const nextCoords: [number, number] = [
+        lastKnownLocation.coords.longitude,
+        lastKnownLocation.coords.latitude,
+      ];
+      if (
+        current &&
+        current[0] === nextCoords[0] &&
+        current[1] === nextCoords[1] &&
+        prev.departureRadiusKm
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        departureCoordinates: nextCoords,
+        departureRadiusKm: prev.departureRadiusKm ?? 20,
+      };
+    });
+  }, [lastKnownLocation]);
+
+  const handleQuickSearch = () => {
+    setQueryParams((prev) => ({
+      ...prev,
+      departureLocation: departure.trim() || undefined,
+      arrivalLocation: arrival.trim() || undefined,
+    }));
+    router.push('/trips');
+  };
+
+  const advancedDepartureSummary = useMemo(
+    () => ({
+      title: filterDepartureLocation?.title ?? 'Point de départ',
+      address: filterDepartureLocation?.address ?? 'Sélectionnez un lieu',
+      coords: filterDepartureLocation
+        ? `${filterDepartureLocation.latitude.toFixed(4)} / ${filterDepartureLocation.longitude.toFixed(4)}`
+        : 'Coordonnées inconnues',
+    }),
+    [filterDepartureLocation],
+  );
+
+  const advancedArrivalSummary = useMemo(
+    () => ({
+      title: filterArrivalLocation?.title ?? 'Destination',
+      address: filterArrivalLocation?.address ?? 'Sélectionnez un lieu',
+      coords: filterArrivalLocation
+        ? `${filterArrivalLocation.latitude.toFixed(4)} / ${filterArrivalLocation.longitude.toFixed(4)}`
+        : 'Coordonnées inconnues',
+    }),
+    [filterArrivalLocation],
+  );
+
+  const handleAdvancedLocationSelect = (selection: MapLocationSelection) => {
+    if (activePicker === 'departure') {
+      setFilterDepartureLocation(selection);
+    } else if (activePicker === 'arrival') {
+      setFilterArrivalLocation(selection);
+    }
+    setActivePicker(null);
+  };
+
+  const parseNumberInput = (value: string) => {
+    if (!value) {
+      return undefined;
+    }
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? undefined : parsed;
+  };
+
+  const handleAdvancedSearch = async () => {
+    if (!filterDepartureLocation || !filterArrivalLocation) {
+      Alert.alert('Sélection requise', 'Veuillez choisir les points de départ et d’arrivée.');
+      return;
+    }
+
+    const payload = {
+      departureCoordinates: [
+        filterDepartureLocation.longitude,
+        filterDepartureLocation.latitude,
+      ] as [number, number],
+      arrivalCoordinates: [filterArrivalLocation.longitude, filterArrivalLocation.latitude] as [
+        number,
+        number,
+      ],
+      departureRadiusKm: parseNumberInput(departureRadius) ?? 10,
+      arrivalRadiusKm: parseNumberInput(arrivalRadius) ?? 10,
+      minSeats: parseNumberInput(minSeatsFilter),
+      maxPrice: parseNumberInput(maxPriceFilter),
+    };
+
+    try {
+      const results = await searchTripsByCoordinates(payload).unwrap();
+      dispatch(setTrips(results));
+      router.push('/trips');
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        'Impossible de filtrer les trajets pour le moment.';
+      Alert.alert('Erreur', Array.isArray(message) ? message.join('\n') : message);
+    }
+  };
+
+  const handleClearAdvancedFilters = () => {
+    setFilterDepartureLocation(null);
+    setFilterArrivalLocation(null);
+    setDepartureRadius('10');
+    setArrivalRadius('10');
+    setMinSeatsFilter('');
+    setMaxPriceFilter('');
+  };
 
   const popularLocations = [
     { id: 'gombe', label: 'Gombe', address: 'Gombe, Kinshasa', coords: { latitude: -4.3206, longitude: 15.3115 } },
@@ -82,39 +245,138 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Recherche rapide */}
+        {/* Recherche intelligente */}
         <View style={styles.searchCard}>
-          <View style={styles.searchRow}>
-            <Ionicons name="location" size={20} color={Colors.success} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Point de départ"
-              placeholderTextColor={Colors.gray[500]}
-              value={departure}
-              onChangeText={setDeparture}
-            />
+          <View style={styles.advancedCard}>
+            {/* <Text style={styles.advancedTitle}>Recherche par carte</Text> */}
+            <View style={styles.advancedLocations}>
+              <TouchableOpacity
+                style={styles.advancedLocationButton}
+                onPress={() => setActivePicker('departure')}
+              >
+                <View style={[styles.advancedLocationIcon, { backgroundColor: Colors.success + '15' }]}>
+                  <Ionicons name="location" size={18} color={Colors.success} />
+                </View>
+                <View style={styles.advancedLocationContent}>
+                  <Text style={styles.advancedLocationLabel}>Départ</Text>
+                  <Text style={styles.advancedLocationTitle}>{advancedDepartureSummary.title}</Text>
+                  <Text style={styles.advancedLocationSubtitle}>{advancedDepartureSummary.address}</Text>
+                  <Text style={styles.advancedLocationCoords}>{advancedDepartureSummary.coords}</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.advancedLocationButton}
+                onPress={() => setActivePicker('arrival')}
+              >
+                <View style={[styles.advancedLocationIcon, { backgroundColor: Colors.primary + '15' }]}>
+                  <Ionicons name="navigate" size={18} color={Colors.primary} />
+                </View>
+                <View style={styles.advancedLocationContent}>
+                  <Text style={styles.advancedLocationLabel}>Arrivée</Text>
+                  <Text style={styles.advancedLocationTitle}>{advancedArrivalSummary.title}</Text>
+                  <Text style={styles.advancedLocationSubtitle}>{advancedArrivalSummary.address}</Text>
+                  <Text style={styles.advancedLocationCoords}>{advancedArrivalSummary.coords}</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.quickToggleRow}>
+              <Text style={styles.quickToggleLabel}>autres filtres</Text>
+              <TouchableOpacity
+                style={styles.quickToggleButton}
+                onPress={() => setShowAdvancedFields((prev) => !prev)}
+              >
+                <Ionicons
+                  name={showAdvancedFields ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color={Colors.primary}
+                />
+                <Text style={styles.quickToggleAction}>
+                  {showAdvancedFields ? 'Masquer' : 'Afficher'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {showAdvancedFields && (
+              <>
+                <View style={styles.advancedInputRow}>
+                  <View style={styles.advancedInputGroup}>
+                    <Text style={styles.advancedInputLabel}>Rayon départ (km)</Text>
+                    <TextInput
+                      style={styles.advancedInput}
+                      keyboardType="numeric"
+                      placeholder="10"
+                      placeholderTextColor={Colors.gray[400]}
+                      value={departureRadius}
+                      onChangeText={setDepartureRadius}
+                    />
+                  </View>
+                  <View style={styles.advancedInputGroup}>
+                    <Text style={styles.advancedInputLabel}>Rayon arrivée (km)</Text>
+                    <TextInput
+                      style={styles.advancedInput}
+                      keyboardType="numeric"
+                      placeholder="10"
+                      placeholderTextColor={Colors.gray[400]}
+                      value={arrivalRadius}
+                      onChangeText={setArrivalRadius}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.advancedInputRow}>
+                  <View style={styles.advancedInputGroup}>
+                    <Text style={styles.advancedInputLabel}>Places min.</Text>
+                    <TextInput
+                      style={styles.advancedInput}
+                      keyboardType="numeric"
+                      placeholder="1"
+                      placeholderTextColor={Colors.gray[400]}
+                      value={minSeatsFilter}
+                      onChangeText={setMinSeatsFilter}
+                    />
+                  </View>
+                  <View style={styles.advancedInputGroup}>
+                    <Text style={styles.advancedInputLabel}>Prix max (FC)</Text>
+                    <TextInput
+                      style={styles.advancedInput}
+                      keyboardType="numeric"
+                      placeholder="5000"
+                      placeholderTextColor={Colors.gray[400]}
+                      value={maxPriceFilter}
+                      onChangeText={setMaxPriceFilter}
+                    />
+                  </View>
+                </View>
+              </>
+            )}
+
+            <View style={styles.advancedButtons}>
+              <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={handleClearAdvancedFilters}>
+                <Text style={styles.buttonSecondaryText}>Réinitialiser</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  { flex: 1, marginLeft: Spacing.md },
+                  (advancedSearching || !filterDepartureLocation || !filterArrivalLocation) && styles.buttonDisabled,
+                ]}
+                onPress={handleAdvancedSearch}
+                disabled={advancedSearching}
+              >
+                {advancedSearching ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <Text style={styles.buttonText}>Appliquer</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
-          <View style={styles.searchDivider} />
-          <View style={styles.searchRow}>
-            <Ionicons name="navigate" size={20} color={Colors.primary} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Destination"
-              placeholderTextColor={Colors.gray[500]}
-              value={arrival}
-              onChangeText={setArrival}
-            />
-          </View>
-          <TouchableOpacity 
-            style={styles.searchButton}
-            onPress={() => router.push('/search')}
-          >
-            <Text style={styles.searchButtonText}>Rechercher</Text>
-          </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView} 
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
@@ -254,7 +516,37 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          {trips.slice(0, 3).map((trip, index) => (
+          {tripsLoading && (
+            <View style={styles.tripStateCard}>
+              <ActivityIndicator color={Colors.primary} />
+              <Text style={styles.tripStateText}>Chargement des trajets...</Text>
+            </View>
+          )}
+
+          {tripsError && !tripsLoading && (
+            <View style={styles.tripStateCard}>
+              <Ionicons name="alert-circle" size={24} color={Colors.danger} />
+              <Text style={styles.tripStateText}>Impossible de charger les trajets.</Text>
+              <TouchableOpacity style={styles.retryButton} onPress={refetchTrips}>
+                <Text style={styles.retryButtonText}>Réessayer</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {!tripsLoading && !tripsError && trips.length === 0 && (
+            <View style={styles.tripStateCard}>
+              <Ionicons name="car-outline" size={24} color={Colors.gray[500]} />
+              <Text style={styles.tripStateText}>Aucun trajet pour le moment.</Text>
+              <Text style={styles.tripStateSubText}>Publiez le vôtre ou revenez plus tard.</Text>
+            </View>
+          )}
+
+          {trips.slice(0, 3).map((trip, index) => {
+            const ratingValue =
+              typeof trip.driverRating === 'number'
+                ? trip.driverRating
+                : Number(trip.driverRating) || 4.9;
+            return (
             <Animated.View
               key={trip.id}
               entering={FadeInDown.delay(index * 100)}
@@ -264,24 +556,24 @@ export default function HomeScreen() {
                 <View style={styles.tripDriverInfo}>
                   <View style={styles.avatar} />
                   <View style={styles.tripDriverDetails}>
-                    <Text style={styles.driverName}>{trip.driverName}</Text>
+                    <Text style={styles.driverName}>{trip?.driverName ?? ''}</Text>
                     <View style={styles.driverMeta}>
                       <Ionicons name="star" size={14} color={Colors.secondary} />
-                      <Text style={styles.driverRating}>{trip.driverRating}</Text>
+                      <Text style={styles.driverRating}>{ratingValue.toFixed(1)}</Text>
                       <View style={styles.dot} />
-                      <Text style={styles.vehicleInfo}>{trip.vehicleInfo}</Text>
+                      <Text style={styles.vehicleInfo}>{trip?.vehicleInfo ?? ''}</Text>
                     </View>
                   </View>
                 </View>
                 <View style={styles.priceBadge}>
-                  <Text style={styles.priceText}>{trip.price} FC</Text>
+                  <Text style={styles.priceText}>{trip?.price ?? 0} FC</Text>
                 </View>
               </View>
 
               <View style={styles.tripRoute}>
                 <View style={styles.routeRow}>
                   <Ionicons name="location" size={16} color={Colors.success} />
-                  <Text style={styles.routeText}>{trip.departure.name}</Text>
+                  <Text style={styles.routeText}>{trip?.departure?.name ?? ''}</Text>
                   <Text style={styles.routeTime}>
                     {formatTime(trip.departureTime)}
                   </Text>
@@ -289,7 +581,7 @@ export default function HomeScreen() {
 
                 <View style={styles.routeRow}>
                   <Ionicons name="navigate" size={16} color={Colors.primary} />
-                  <Text style={styles.routeText}>{trip.arrival.name}</Text>
+                  <Text style={styles.routeText}>{trip?.arrival?.name ?? ''}</Text>
                   <Text style={styles.routeTime}>
                     {formatTime(trip.arrivalTime)}
                   </Text>
@@ -308,9 +600,28 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </View>
             </Animated.View>
-          ))}
+          );
+          })}
         </View>
       </ScrollView>
+
+      <LocationPickerModal
+        visible={activePicker !== null}
+        title={
+          activePicker === 'departure'
+            ? 'Sélectionner le point de départ'
+            : 'Sélectionner la destination'
+        }
+        initialLocation={
+          activePicker === 'departure'
+            ? filterDepartureLocation
+            : activePicker === 'arrival'
+            ? filterArrivalLocation
+            : null
+        }
+        onClose={() => setActivePicker(null)}
+        onSelect={handleAdvancedLocationSelect}
+      />
     </SafeAreaView>
   );
 }
@@ -531,6 +842,57 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontWeight: FontWeights.bold,
   },
+  quickToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.lg,
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.gray[50],
+  },
+  quickToggleLabel: {
+    color: Colors.gray[700],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+  },
+  quickToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  quickToggleAction: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.sm,
+  },
+  button: {
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+  },
+  buttonSecondary: {
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+  },
+  buttonSecondaryText: {
+    color: Colors.gray[700],
+    fontWeight: FontWeights.medium,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
   quickActions: {
     flexDirection: 'row',
   },
@@ -571,6 +933,120 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     marginBottom: Spacing.md,
     ...CommonStyles.shadowSm,
+  },
+  advancedCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+    ...CommonStyles.shadowSm,
+  },
+  advancedTitle: {
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: Spacing.md,
+  },
+  advancedLocations: {
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  advancedLocationButton: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    gap: Spacing.md,
+  },
+  advancedLocationIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  advancedLocationContent: {
+    flex: 1,
+  },
+  advancedLocationLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    textTransform: 'uppercase',
+  },
+  advancedLocationTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  advancedLocationSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  advancedLocationCoords: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+  },
+  advancedInputRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  advancedInputGroup: {
+    flex: 1,
+  },
+  advancedInputLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+    marginBottom: Spacing.xs,
+    textTransform: 'uppercase',
+  },
+  advancedInput: {
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+    backgroundColor: Colors.white,
+  },
+  advancedButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tripStateCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    marginBottom: Spacing.md,
+    gap: Spacing.sm,
+  },
+  tripStateText: {
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+  },
+  tripStateSubText: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: Spacing.xs,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+  },
+  retryButtonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
   },
   tripHeader: {
     flexDirection: 'row',

@@ -12,7 +12,25 @@ export default function MessagesScreen() {
   const conversations = useAppSelector(selectConversations);
   const router = useRouter();
 
-  const formatTimestamp = (date: Date) => {
+  const formatTimestamp = (rawValue: Date | string | number | null | undefined) => {
+    if (!rawValue) {
+      return '--';
+    }
+
+    let date: Date;
+
+    if (rawValue instanceof Date) {
+      date = rawValue;
+    } else if (typeof rawValue === 'number') {
+      date = new Date(rawValue);
+    } else {
+      const parsed = new Date(rawValue);
+      if (Number.isNaN(parsed.getTime())) {
+        return '--';
+      }
+      date = parsed;
+    }
+
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const minutes = Math.floor(diff / 60000);
