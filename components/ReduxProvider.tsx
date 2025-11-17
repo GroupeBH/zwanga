@@ -4,6 +4,7 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { store } from '@/store';
 import { initializeAuth } from '@/store/slices/authSlice';
 import { Colors } from '@/constants/styles';
+import { AuthGuard } from './AuthGuard';
 
 interface ReduxProviderProps {
   children: React.ReactNode;
@@ -37,7 +38,11 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
     );
   }
 
-  return <Provider store={store}>{children}</Provider>;
+  return (
+    <Provider store={store}>
+      <AuthGuard>{children}</AuthGuard>
+    </Provider>
+  );
 }
 
 const styles = StyleSheet.create({

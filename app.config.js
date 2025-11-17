@@ -59,7 +59,12 @@ module.exports = {
     // Variables d'environnement accessibles via Constants.expoConfig?.extra
     extra: {
       EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL || 'https://api.zwanga.cd/v1',
-      EXPO_PUBLIC_ENV: process.env.EXPO_PUBLIC_ENV || (process.env.NODE_ENV === 'production' ? 'production' : 'development'),
+      EXPO_PUBLIC_ENV:
+        process.env.EXPO_PUBLIC_ENV || (process.env.NODE_ENV === 'production' ? 'production' : 'development'),
+      secureStoreKeys: {
+        access: process.env.EXPO_PUBLIC_SECURESTORE_ACCESS_KEY || 'zwanga_accessToken',
+        refresh: process.env.EXPO_PUBLIC_SECURESTORE_REFRESH_KEY || 'zwanga_refreshToken',
+      },
     },
   },
 };

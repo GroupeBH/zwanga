@@ -18,7 +18,7 @@ export interface AuthResponse {
 export const authApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     // Connexion avec téléphone et mot de passe
-    login: builder.mutation<AuthResponse, { phone: string; password: string }>({
+    login: builder.mutation<AuthResponse, { phone: string }>({
       query: (credentials) => ({
         url: '/auth/login',
         method: 'POST',
@@ -37,16 +37,11 @@ export const authApi = baseApi.injectEndpoints({
     }),
 
     // Inscription d'un nouvel utilisateur
-    register: builder.mutation<AuthResponse, {
-      phone: string;
-      name: string;
-      email?: string;
-      role: 'driver' | 'passenger' | 'both';
-    }>({
-      query: (userData) => ({
+    register: builder.mutation<AuthResponse, FormData>({
+      query: (formData) => ({
         url: '/auth/register',
         method: 'POST',
-        body: userData,
+        body: formData,
       }),
       async onQueryStarted(arg, { dispatch, queryFulfilled }) {
         try {
@@ -77,6 +72,24 @@ export const authApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['User'],
     }),
+
+    // Rafraîchir l'access token avec le refresh token
+    refreshToken: builder.mutation<{ accessToken: string; refreshToken: string }, { refreshToken: string }>({
+      query: (data) => ({
+        url: '/auth/refresh',
+        method: 'POST',
+        body: data,
+      }),
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          // Stocker les nouveaux tokens dans SecureStore
+          await storeTokens(data.accessToken, data.refreshToken);
+        } catch (error) {
+          console.error('Erreur lors du stockage des tokens après refresh:', error);
+        }
+      },
+    }),
   }),
 });
 
@@ -85,6 +98,7 @@ export const {
   useRegisterMutation,
   useVerifyPhoneMutation,
   useVerifyKYCMutation,
+  useRefreshTokenMutation,
 } = authApi;
 
 
