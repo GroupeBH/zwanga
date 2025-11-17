@@ -7,6 +7,7 @@ import { useAppSelector } from '@/store/hooks';
 import { selectTrips } from '@/store/selectors';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
+import { formatTime } from '@/utils/dateHelpers';
 
 type FilterType = 'all' | 'car' | 'moto' | 'tricycle';
 
@@ -117,7 +118,11 @@ export default function SearchScreen() {
       </View>
 
       {/* Résultats */}
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        contentContainerStyle={styles.scrollViewContent}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.resultsCount}>
           {filteredTrips.length} trajet{filteredTrips.length > 1 ? 's' : ''} trouvé{filteredTrips.length > 1 ? 's' : ''}
         </Text>
@@ -162,7 +167,7 @@ export default function SearchScreen() {
                   <Ionicons name="location" size={16} color={Colors.success} />
                   <Text style={styles.routeText}>{trip.departure.name}</Text>
                   <Text style={styles.routeTime}>
-                    {trip.departureTime.getHours()}:{trip.departureTime.getMinutes().toString().padStart(2, '0')}
+                    {formatTime(trip.departureTime)}
                   </Text>
                 </View>
 
@@ -170,7 +175,7 @@ export default function SearchScreen() {
                   <Ionicons name="navigate" size={16} color={Colors.primary} />
                   <Text style={styles.routeText}>{trip.arrival.name}</Text>
                   <Text style={styles.routeTime}>
-                    {trip.arrivalTime.getHours()}:{trip.arrivalTime.getMinutes().toString().padStart(2, '0')}
+                    {formatTime(trip.arrivalTime)}
                   </Text>
                 </View>
               </View>
@@ -296,8 +301,12 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.lg,
+    paddingBottom: Spacing.xxl,
   },
   resultsCount: {
     fontSize: FontSizes.sm,

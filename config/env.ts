@@ -23,7 +23,7 @@ function getEnvConfig(): EnvConfig {
   const apiUrl = 
     extra.EXPO_PUBLIC_API_URL || 
     process.env.EXPO_PUBLIC_API_URL || 
-    'https://api.zwanga.cd/v1';
+    (__DEV__ ? 'http://192.168.226.134:5000/api/v1' : 'https://api.zwanga.cd/v1');
   
   const env = (
     extra.EXPO_PUBLIC_ENV || 
