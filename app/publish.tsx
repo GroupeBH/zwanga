@@ -102,7 +102,11 @@ export default function PublishScreen() {
         <View style={[styles.progressFill, { width: progressWidth }]} />
       </View>
 
-      <ScrollView style={styles.scrollView}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollViewContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Étape 1: Itinéraire */}
         {step === 'route' && (
           <Animated.View entering={FadeInDown} style={styles.stepContainer}>
@@ -355,8 +359,12 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.xl,
+    paddingBottom: Spacing.xxl,
   },
   stepContainer: {
     marginTop: Spacing.xl,

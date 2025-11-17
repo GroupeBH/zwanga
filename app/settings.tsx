@@ -71,7 +71,11 @@ export default function SettingsScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        contentContainerStyle={styles.scrollViewContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Vérification d'identité */}
         <Animated.View entering={FadeInDown.delay(0)} style={styles.section}>
           <Text style={styles.sectionLabel}>VÉRIFICATION</Text>
@@ -342,6 +346,10 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
+    paddingBottom: Spacing.xxl,
   },
   section: {
     marginTop: Spacing.xl,

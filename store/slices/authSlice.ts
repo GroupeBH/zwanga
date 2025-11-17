@@ -1,6 +1,7 @@
-import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
+import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { validateAndRefreshTokens } from '../../services/tokenRefresh';
+import { clearTokens, getTokens } from '../../services/tokenStorage';
 import type { User } from '../../types';
-import { storeTokens, clearTokens, getTokens } from '../../services/tokenStorage';
 import { decodeJWT, getUserInfoFromToken } from '../../utils/jwt';
 
 interface AuthState {
@@ -25,29 +26,40 @@ const initialState: AuthState = {
 
 /**
  * Thunk pour initialiser l'authentification depuis SecureStore
- * Retourne null si l'utilisateur n'est pas connecté (pas de tokens)
+ * Vérifie et rafraîchit les tokens si nécessaire
+ * Retourne null si l'utilisateur n'est pas connecté (pas de tokens ou tokens expirés)
  */
 export const initializeAuth = createAsyncThunk(
   'auth/initialize',
   async () => {
     try {
+      // Valider et rafraîchir les tokens si nécessaire
+      const isAuthenticated = await validateAndRefreshTokens();
+      
+      if (!isAuthenticated) {
+        console.log('Utilisateur non authentifié - aucun token valide');
+        return null;
+      }
+      
+      // Récupérer les tokens (potentiellement rafraîchis)
       const { accessToken, refreshToken } = await getTokens();
       
-      // Si aucun token n'existe, l'utilisateur n'est pas connecté
-      if (!accessToken) {
+      if (!accessToken || !refreshToken) {
         return null;
       }
       
       // Décoder le payload du token
       const payload = decodeJWT(accessToken);
       
-      // Si le token est invalide ou expiré, ne pas initialiser l'auth
       if (!payload) {
-        console.warn('Token JWT invalide lors de l\'initialisation');
+        console.warn('Token JWT invalide après rafraîchissement');
+        await clearTokens();
         return null;
       }
       
       const userInfo = getUserInfoFromToken(accessToken);
+      
+      console.log('Authentification initialisée avec succès');
       
       return {
         accessToken,
@@ -57,10 +69,8 @@ export const initializeAuth = createAsyncThunk(
       };
     } catch (error: any) {
       // En cas d'erreur, considérer que l'utilisateur n'est pas connecté
-      // Ne pas logger les erreurs liées à l'absence de tokens (c'est normal)
-      if (!error?.message?.includes('Invalid key') && !error?.message?.includes('not found')) {
-        console.error('Erreur lors de l\'initialisation de l\'auth:', error);
-      }
+      console.error('Erreur lors de l\'initialisation de l\'auth:', error);
+      await clearTokens();
       return null;
     }
   }

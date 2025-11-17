@@ -49,7 +49,7 @@ export function IdentityVerification({ onComplete, onSkip, canSkip = true }: Ide
           onPress: async () => {
             try {
               const result = await ImagePicker.launchCameraAsync({
-                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                mediaTypes: 'images',
                 allowsEditing: true,
                 aspect: [3, 2],
                 quality: 0.8,
@@ -80,7 +80,7 @@ export function IdentityVerification({ onComplete, onSkip, canSkip = true }: Ide
               }
 
               const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                mediaTypes: 'images',
                 allowsEditing: true,
                 aspect: [3, 2],
                 quality: 0.8,
@@ -110,7 +110,7 @@ export function IdentityVerification({ onComplete, onSkip, canSkip = true }: Ide
 
     try {
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: 'images',
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
