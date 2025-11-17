@@ -128,6 +128,7 @@ export default function ChatScreen() {
         <ScrollView
           ref={scrollViewRef}
           style={styles.messagesContainer}
+          contentContainerStyle={styles.messagesContent}
           showsVerticalScrollIndicator={false}
         >
           {/* Date separator */}
@@ -279,8 +280,12 @@ const styles = StyleSheet.create({
   },
   messagesContainer: {
     flex: 1,
+  },
+  messagesContent: {
+    flexGrow: 1,
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.lg,
+    paddingBottom: Spacing.lg,
   },
   dateSeparator: {
     alignItems: 'center',

@@ -1,6 +1,8 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { selectAvailableTrips } from '@/store/selectors';
+import { selectAvailableTrips, selectSavedLocations } from '@/store/selectors';
+import { addSavedLocation } from '@/store/slices/locationSlice';
+import { formatTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
@@ -12,10 +14,59 @@ export default function HomeScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const trips = useAppSelector(selectAvailableTrips);
+  const savedLocations = useAppSelector(selectSavedLocations);
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
+  const [addMode, setAddMode] = useState(false);
+  const [customLabel, setCustomLabel] = useState('');
+  const [customAddress, setCustomAddress] = useState('');
+  const [customLat, setCustomLat] = useState('');
+  const [customLng, setCustomLng] = useState('');
 
-  const popularLocations = ['Gombe', 'Lemba', 'Kintambo', 'Ngaliema', 'Bandalungwa', 'Kalamu'];
+  const popularLocations = [
+    { id: 'gombe', label: 'Gombe', address: 'Gombe, Kinshasa', coords: { latitude: -4.3206, longitude: 15.3115 } },
+    { id: 'lemba', label: 'Lemba', address: 'Lemba, Kinshasa', coords: { latitude: -4.419, longitude: 15.317 } },
+    { id: 'kintambo', label: 'Kintambo', address: 'Kintambo, Kinshasa', coords: { latitude: -4.334, longitude: 15.263 } },
+    { id: 'ngaliema', label: 'Ngaliema', address: 'Ngaliema, Kinshasa', coords: { latitude: -4.347, longitude: 15.244 } },
+    { id: 'bandal', label: 'Bandalungwa', address: 'Bandalungwa, Kinshasa', coords: { latitude: -4.375, longitude: 15.298 } },
+    { id: 'kalamu', label: 'Kalamu', address: 'Kalamu, Kinshasa', coords: { latitude: -4.360, longitude: 15.305 } },
+  ];
+
+  const handleLocationPress = (location: { coords: { latitude: number; longitude: number }; label: string }) => {
+    router.push({
+      pathname: '/search',
+      params: {
+        origin: location.label,
+        latitude: location.coords.latitude.toString(),
+        longitude: location.coords.longitude.toString(),
+      },
+    });
+  };
+
+  const handleAddLocation = () => {
+    if (!customLabel || !customAddress || !customLat || !customLng) return;
+    const latitude = parseFloat(customLat);
+    const longitude = parseFloat(customLng);
+
+    if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+      return;
+    }
+
+    dispatch(
+      addSavedLocation({
+        id: `${Date.now()}`,
+        label: customLabel,
+        address: customAddress,
+        coords: { latitude, longitude },
+      }),
+    );
+
+    setCustomLabel('');
+    setCustomAddress('');
+    setCustomLat('');
+    setCustomLng('');
+    setAddMode(false);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -63,20 +114,107 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        contentContainerStyle={styles.scrollViewContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Lieux populaires */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Lieux populaires</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Lieux populaires</Text>
+            <TouchableOpacity onPress={() => setAddMode((prev) => !prev)}>
+              <Text style={styles.seeAllText}>{addMode ? 'Annuler' : 'Ajouter'}</Text>
+            </TouchableOpacity>
+          </View>
           <View style={styles.popularLocations}>
-            {popularLocations.map((location, index) => (
+            {popularLocations.map((location) => (
               <TouchableOpacity
-                key={index}
-                style={styles.locationTag}
+                key={location.id}
+                style={styles.locationChip}
+                onPress={() => handleLocationPress(location)}
+                activeOpacity={0.85}
               >
-                <Text style={styles.locationTagText}>{location}</Text>
+                <Ionicons name="location" size={16} color={Colors.primary} />
+                <Text style={styles.locationChipText}>{location.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
+
+          {savedLocations.length > 0 && (
+            <View style={styles.savedSection}>
+              <Text style={styles.savedTitle}>Vos lieux favoris</Text>
+              {savedLocations.map((location) => (
+                <TouchableOpacity
+                  key={location.id}
+                  style={styles.locationCard}
+                  onPress={() => handleLocationPress(location)}
+                >
+                  <View style={[styles.locationIcon, { backgroundColor: Colors.secondary + '15' }]}>
+                    <Ionicons name="star" size={18} color={Colors.secondary} />
+                  </View>
+                  <View style={styles.locationInfo}>
+                    <Text style={styles.locationName}>{location.label}</Text>
+                    <Text style={styles.locationAddress}>{location.address}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {addMode && (
+            <View style={styles.addLocationCard}>
+              <Text style={styles.addLocationTitle}>Ajouter un lieu habituel</Text>
+              <View style={styles.addInputRow}>
+                <Ionicons name="bookmark" size={18} color={Colors.primary} />
+                <TextInput
+                  style={styles.addInput}
+                  placeholder="Nom (Maison, Bureau...)"
+                  placeholderTextColor={Colors.gray[500]}
+                  value={customLabel}
+                  onChangeText={setCustomLabel}
+                />
+              </View>
+              <View style={styles.addInputRow}>
+                <Ionicons name="location" size={18} color={Colors.primary} />
+                <TextInput
+                  style={styles.addInput}
+                  placeholder="Adresse"
+                  placeholderTextColor={Colors.gray[500]}
+                  value={customAddress}
+                  onChangeText={setCustomAddress}
+                />
+              </View>
+              <View style={styles.coordsRow}>
+                <View style={[styles.addInputRow, styles.coordInput]}>
+                  <Ionicons name="navigate" size={18} color={Colors.primary} />
+                  <TextInput
+                    style={styles.addInput}
+                    placeholder="Latitude"
+                    placeholderTextColor={Colors.gray[500]}
+                    keyboardType="numeric"
+                    value={customLat}
+                    onChangeText={setCustomLat}
+                  />
+                </View>
+                <View style={[styles.addInputRow, styles.coordInput]}>
+                  <Ionicons name="navigate" size={18} color={Colors.primary} />
+                  <TextInput
+                    style={styles.addInput}
+                    placeholder="Longitude"
+                    placeholderTextColor={Colors.gray[500]}
+                    keyboardType="numeric"
+                    value={customLng}
+                    onChangeText={setCustomLng}
+                  />
+                </View>
+              </View>
+              <TouchableOpacity style={styles.addButton} onPress={handleAddLocation}>
+                <Text style={styles.addButtonText}>Enregistrer</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* Actions rapides */}
@@ -145,7 +283,7 @@ export default function HomeScreen() {
                   <Ionicons name="location" size={16} color={Colors.success} />
                   <Text style={styles.routeText}>{trip.departure.name}</Text>
                   <Text style={styles.routeTime}>
-                    {trip.departureTime.getHours()}:{trip.departureTime.getMinutes().toString().padStart(2, '0')}
+                    {formatTime(trip.departureTime)}
                   </Text>
                 </View>
 
@@ -153,7 +291,7 @@ export default function HomeScreen() {
                   <Ionicons name="navigate" size={16} color={Colors.primary} />
                   <Text style={styles.routeText}>{trip.arrival.name}</Text>
                   <Text style={styles.routeTime}>
-                    {trip.arrivalTime.getHours()}:{trip.arrivalTime.getMinutes().toString().padStart(2, '0')}
+                    {formatTime(trip.arrivalTime)}
                   </Text>
                 </View>
               </View>
@@ -255,8 +393,12 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollViewContent: {
+    flexGrow: 1,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.xl,
+    paddingBottom: Spacing.xxl,
   },
   section: {
     marginBottom: Spacing.xl,
@@ -281,20 +423,113 @@ const styles = StyleSheet.create({
   popularLocations: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    marginBottom: Spacing.md,
   },
-  locationTag: {
+  locationChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: Colors.white,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
     marginRight: Spacing.sm,
     marginBottom: Spacing.sm,
+    ...CommonStyles.shadowSm,
+  },
+  locationChipText: {
+    marginLeft: Spacing.xs,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[800],
+    fontWeight: FontWeights.semibold,
+  },
+  locationCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    marginBottom: Spacing.sm,
+  },
+  locationIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '10',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  locationInfo: {
+    flex: 1,
+  },
+  locationName: {
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  locationAddress: {
+    color: Colors.gray[500],
+    fontSize: FontSizes.sm,
+    marginTop: 2,
+  },
+  savedSection: {
+    marginTop: Spacing.md,
+  },
+  savedTitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+    marginBottom: Spacing.sm,
+  },
+  addLocationCard: {
+    marginTop: Spacing.md,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
     borderWidth: 1,
     borderColor: Colors.gray[200],
+    gap: Spacing.sm,
   },
-  locationTagText: {
-    color: Colors.gray[700],
-    fontSize: FontSizes.sm,
+  addLocationTitle: {
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+    marginBottom: Spacing.sm,
+  },
+  addInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    gap: Spacing.sm,
+  },
+  addInput: {
+    flex: 1,
+    fontSize: FontSizes.base,
+    color: Colors.gray[800],
+    paddingVertical: Spacing.sm,
+  },
+  coordsRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  coordInput: {
+    flex: 1,
+  },
+  addButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+  },
+  addButtonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
   },
   quickActions: {
     flexDirection: 'row',

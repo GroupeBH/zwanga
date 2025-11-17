@@ -153,7 +153,11 @@ export default function SupportScreen() {
         </View>
       </View>
 
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        className="flex-1" 
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: 32 }}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Actions rapides */}
         <View className="px-6 pt-6 pb-4">
           <Text className="text-sm font-bold text-gray-500 mb-3">ACTIONS RAPIDES</Text>
