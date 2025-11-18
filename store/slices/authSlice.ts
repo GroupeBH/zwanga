@@ -2,7 +2,7 @@ import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { validateAndRefreshTokens } from '../../services/tokenRefresh';
 import { clearTokens, getTokens } from '../../services/tokenStorage';
 import type { User } from '../../types';
-import { decodeJWT, getUserInfoFromToken } from '../../utils/jwt';
+import { decodeJWT } from '../../utils/jwt';
 
 interface AuthState {
   user: User | null;
@@ -57,15 +57,13 @@ export const initializeAuth = createAsyncThunk(
         return null;
       }
       
-      const userInfo = getUserInfoFromToken(accessToken);
-      
       console.log('Authentification initialisée avec succès');
       
       return {
         accessToken,
         refreshToken,
         tokenPayload: payload,
-        userInfo,
+        userInfo: parseUserInfo(payload),
       };
     } catch (error: any) {
       // En cas d'erreur, considérer que l'utilisateur n'est pas connecté
@@ -80,7 +78,7 @@ const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
-    setUser: (state, action: PayloadAction<User>) => {
+    setUser: (state, action: PayloadAction<any>) => {
       state.user = action.payload;
       state.isAuthenticated = true;
       state.error = null;
@@ -90,20 +88,11 @@ const authSlice = createSlice({
       state.refreshToken = action.payload.refreshToken;
       
       // Décoder le payload du token
-      const payload = decodeJWT(action.payload.accessToken);
-      state.tokenPayload = payload;
-      
-      state.isAuthenticated = true;
-      state.error = null;
+      applyTokenDataToState(state, action.payload.accessToken);
     },
     setAccessToken: (state, action: PayloadAction<string>) => {
       state.accessToken = action.payload;
-      
-      // Décoder le payload du token
-      const payload = decodeJWT(action.payload);
-      state.tokenPayload = payload;
-      
-      state.isAuthenticated = true;
+      applyTokenDataToState(state, action.payload);
     },
     updateUser: (state, action: PayloadAction<Partial<User>>) => {
       if (state.user) {
@@ -145,9 +134,12 @@ const authSlice = createSlice({
           state.isAuthenticated = true;
           
           // Si on a des infos utilisateur dans le token, on peut les utiliser
-          if (action.payload.userInfo) {
-            // Note: Le user complet devrait être récupéré via une requête API
-            // Ici on utilise juste les infos du token comme placeholder
+          if (action.payload.userInfo){
+            const user = action.payload.userInfo;
+            // console.log("user from token", user);
+            if (user) {
+              state.user = user;
+            }
           }
         } else {
           state.isAuthenticated = false;
@@ -173,4 +165,28 @@ export const {
 } = authSlice.actions;
 
 export default authSlice.reducer;
+
+function parseUserInfo(payload: any): any | null {
+  if (!payload) {
+    return null;
+  }
+  return {
+    id: payload.sub,
+    phone: payload.phone,
+    role: (payload.role as User['role']),
+    iat: payload.iat ?? 0,
+    exp: payload.exp ?? 0,
+  };
+}
+
+function applyTokenDataToState(state: AuthState, accessToken: string) {
+  const payload = decodeJWT(accessToken);
+  state.tokenPayload = payload;
+  const user = parseUserInfo(payload);
+  if (user) {
+    state.user = user;
+  }
+  state.isAuthenticated = true;
+  state.error = null;
+}
 
