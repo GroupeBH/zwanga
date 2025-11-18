@@ -96,12 +96,22 @@ export default function HomeScreen() {
   }, [lastKnownLocation]);
 
   const handleQuickSearch = () => {
+    const trimmedDeparture = departure.trim();
+    const trimmedArrival = arrival.trim();
+
     setQueryParams((prev) => ({
       ...prev,
-      departureLocation: departure.trim() || undefined,
-      arrivalLocation: arrival.trim() || undefined,
+      departureLocation: trimmedDeparture || undefined,
+      arrivalLocation: trimmedArrival || undefined,
     }));
-    router.push('/trips');
+
+    router.push({
+      pathname: '/search',
+      params: {
+        ...(trimmedDeparture ? { departure: trimmedDeparture } : {}),
+        ...(trimmedArrival ? { arrival: trimmedArrival } : {}),
+      },
+    });
   };
 
   const advancedDepartureSummary = useMemo(
@@ -167,7 +177,10 @@ export default function HomeScreen() {
     try {
       const results = await searchTripsByCoordinates(payload).unwrap();
       dispatch(setTrips(results));
-      router.push('/trips');
+      router.push({
+        pathname: '/search',
+        params: { mode: 'map' },
+      });
     } catch (error: any) {
       const message =
         error?.data?.message ??

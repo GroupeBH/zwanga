@@ -38,9 +38,14 @@ export {
 } from './userApi';
 
 export {
-  useBookTripMutation, useCancelTripMutation, useCreateTripMutation, useGetTripByIdQuery,
+  useBookTripMutation,
+  useCreateTripMutation,
+  useDeleteTripMutation,
+  useGetTripByIdQuery,
   // Trips
-  useGetTripsQuery, useUpdateTripMutation
+  useGetTripsQuery,
+  useGetMyTripsQuery,
+  useUpdateTripMutation,
 } from './tripApi';
 
 export {

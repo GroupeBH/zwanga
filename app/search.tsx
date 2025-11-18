@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAppSelector } from '@/store/hooks';
 import { selectTrips } from '@/store/selectors';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -13,11 +13,21 @@ type FilterType = 'all' | 'car' | 'moto' | 'tricycle';
 
 export default function SearchScreen() {
   const router = useRouter();
+  const searchParams = useLocalSearchParams<{ departure?: string; arrival?: string }>();
   const trips = useAppSelector(selectTrips);
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [showFilters, setShowFilters] = useState(false);
+
+  useEffect(() => {
+    if (typeof searchParams.departure === 'string') {
+      setDeparture(searchParams.departure);
+    }
+    if (typeof searchParams.arrival === 'string') {
+      setArrival(searchParams.arrival);
+    }
+  }, [searchParams.departure, searchParams.arrival]);
 
   const filteredTrips = trips.filter(trip => {
     const matchesFilter = filter === 'all' || trip.vehicleType === filter;

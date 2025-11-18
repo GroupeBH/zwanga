@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,40 +7,61 @@ import {
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
+  Modal,
+  TextInput,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { selectUpcomingTrips, selectCompletedTrips } from '@/store/selectors';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
 import { formatTime } from '@/utils/dateHelpers';
-import { useGetTripsQuery } from '@/store/api/tripApi';
-import { setTrips } from '@/store/slices/tripsSlice';
+import {
+  useDeleteTripMutation,
+  useGetMyTripsQuery,
+  useUpdateTripMutation,
+} from '@/store/api/tripApi';
+import DateTimePicker, {
+  DateTimePickerAndroid,
+  DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
+import type { Trip } from '@/types';
 
 type TripTab = 'upcoming' | 'completed';
 
 export default function TripsScreen() {
-  const dispatch = useAppDispatch();
-  const upcomingTrips = useAppSelector(selectUpcomingTrips);
-  const completedTrips = useAppSelector(selectCompletedTrips);
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TripTab>('upcoming');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const {
-    data: remoteTrips,
+    data: myTrips,
     isLoading: tripsLoading,
     isFetching: tripsFetching,
     isError,
     refetch,
-  } = useGetTripsQuery({});
+  } = useGetMyTripsQuery();
+  const [updateTripMutation, { isLoading: isSavingTrip }] = useUpdateTripMutation();
+  const [deleteTripMutation, { isLoading: isDeletingTrip }] = useDeleteTripMutation();
+  const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Trip | null>(null);
+  const [editSeats, setEditSeats] = useState('');
+  const [editPrice, setEditPrice] = useState('');
+  const [editDateTime, setEditDateTime] = useState<Date | null>(null);
+  const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
+    null,
+  );
 
-  useEffect(() => {
-    if (remoteTrips) {
-      dispatch(setTrips(remoteTrips));
-    }
-  }, [remoteTrips, dispatch]);
+  const trips = myTrips ?? [];
+  const upcomingTrips = useMemo(
+    () => trips.filter((trip) => trip.status === 'upcoming' || trip.status === 'ongoing'),
+    [trips],
+  );
+  const completedTrips = useMemo(
+    () => trips.filter((trip) => trip.status === 'completed'),
+    [trips],
+  );
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -53,7 +74,158 @@ export default function TripsScreen() {
 
   const displayTrips = activeTab === 'upcoming' ? upcomingTrips : completedTrips;
   const isEmpty = displayTrips.length === 0;
-  const showLoader = tripsLoading && isEmpty;
+  const showLoader = tripsLoading && trips.length === 0;
+
+  const getDefaultFutureDate = () => {
+    const base = new Date();
+    base.setMinutes(0, 0, 0);
+    base.setHours(base.getHours() + 1);
+    return base;
+  };
+
+  const getEditBaseDate = () => {
+    if (editDateTime) {
+      return new Date(editDateTime);
+    }
+    return getDefaultFutureDate();
+  };
+
+  const applyEditDatePart = (pickedDate: Date) => {
+    const base = getEditBaseDate();
+    const next = new Date(base);
+    next.setFullYear(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
+    return next;
+  };
+
+  const applyEditTimePart = (pickedDate: Date) => {
+    const base = getEditBaseDate();
+    const next = new Date(base);
+    next.setHours(pickedDate.getHours(), pickedDate.getMinutes(), 0, 0);
+    return next;
+  };
+
+  const openDateOrTimePicker = (mode: 'date' | 'time') => {
+    const value = getEditBaseDate();
+    if (Platform.OS === 'android') {
+      DateTimePickerAndroid.open({
+        mode,
+        value,
+        is24Hour: true,
+        minimumDate: mode === 'date' ? new Date() : undefined,
+        onChange: (_event: DateTimePickerEvent, selectedDate?: Date) => {
+          if (!selectedDate) {
+            return;
+          }
+          setEditDateTime(mode === 'date' ? applyEditDatePart(selectedDate) : applyEditTimePart(selectedDate));
+        },
+      });
+    } else {
+      setIosPickerMode(mode);
+    }
+  };
+
+  const handleIosPickerChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (!selectedDate || !iosPickerMode) {
+      return;
+    }
+    setEditDateTime(
+      iosPickerMode === 'date' ? applyEditDatePart(selectedDate) : applyEditTimePart(selectedDate),
+    );
+  };
+
+  const closeIosPicker = () => setIosPickerMode(null);
+
+  const openEditModal = (trip: Trip) => {
+    setEditingTrip(trip);
+    setEditSeats(String(trip.availableSeats));
+    setEditPrice(String(trip.price));
+    const parsedDate = trip.departureTime ? new Date(trip.departureTime) : null;
+    setEditDateTime(parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : getDefaultFutureDate());
+  };
+
+  const closeEditModal = () => {
+    setEditingTrip(null);
+    setEditSeats('');
+    setEditPrice('');
+    setEditDateTime(null);
+    setIosPickerMode(null);
+  };
+
+  const openDeleteModal = (trip: Trip) => setDeleteTarget(trip);
+  const closeDeleteModal = () => setDeleteTarget(null);
+
+  const formattedEditDate = useMemo(() => {
+    if (!editDateTime) {
+      return 'Choisir la date';
+    }
+    return new Intl.DateTimeFormat('fr-FR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    }).format(editDateTime);
+  }, [editDateTime]);
+
+  const formattedEditTime = useMemo(() => {
+    if (!editDateTime) {
+      return 'Choisir l\'heure';
+    }
+    return new Intl.DateTimeFormat('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(editDateTime);
+  }, [editDateTime]);
+
+  const showFeedback = (type: 'success' | 'error', message: string | string[]) => {
+    setFeedback({
+      type,
+      message: Array.isArray(message) ? message.join('\n') : message,
+    });
+  };
+
+  const handleSaveTrip = async () => {
+    if (!editingTrip || !editDateTime) {
+      return;
+    }
+    const seatsValue = parseInt(editSeats, 10);
+    const priceValue = parseFloat(editPrice);
+    if (Number.isNaN(seatsValue) || Number.isNaN(priceValue) || seatsValue <= 0 || priceValue < 0) {
+      showFeedback('error', 'Veuillez vérifier le nombre de places et le prix.');
+      return;
+    }
+    try {
+      await updateTripMutation({
+        id: editingTrip.id,
+        updates: {
+          availableSeats: seatsValue,
+          pricePerSeat: priceValue,
+          departureDate: editDateTime.toISOString(),
+        },
+      }).unwrap();
+      showFeedback('success', 'Le trajet a été mis à jour.');
+      closeEditModal();
+    } catch (error: any) {
+      const message =
+        error?.data?.message ?? error?.error ?? 'Impossible de mettre à jour ce trajet pour le moment.';
+      showFeedback('error', message);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) {
+      return;
+    }
+    try {
+      await deleteTripMutation(deleteTarget.id).unwrap();
+      showFeedback('success', 'Le trajet a été supprimé.');
+      closeDeleteModal();
+    } catch (error: any) {
+      const message =
+        error?.data?.message ?? error?.error ?? 'Impossible de supprimer ce trajet pour le moment.';
+      showFeedback('error', message);
+    }
+  };
+
+  const canManageTrip = (trip: Trip) => trip.status === 'upcoming' || trip.status === 'ongoing';
 
   const getStatusConfig = (status: string) => {
     switch (status) {
@@ -103,6 +275,24 @@ export default function TripsScreen() {
             <Text style={styles.errorAction}>Rafraîchir</Text>
           </TouchableOpacity>
         </View>
+      )}
+
+      {feedback && (
+        <TouchableOpacity
+          style={[
+            styles.feedbackBanner,
+            feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError,
+          ]}
+          onPress={() => setFeedback(null)}
+        >
+          <Ionicons
+            name={feedback.type === 'success' ? 'checkmark-circle' : 'alert-circle'}
+            size={18}
+            color={Colors.white}
+          />
+          <Text style={styles.feedbackText}>{feedback.message}</Text>
+          <Ionicons name="close" size={16} color={Colors.white} />
+        </TouchableOpacity>
       )}
 
       <ScrollView
@@ -211,6 +401,35 @@ export default function TripsScreen() {
                     <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
                   </TouchableOpacity>
                 </View>
+
+                <View style={styles.ownerActionsRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.ownerActionButton,
+                      !canManageTrip(trip) && styles.ownerActionDisabled,
+                    ]}
+                    onPress={() => openEditModal(trip)}
+                    disabled={!canManageTrip(trip)}
+                  >
+                    <Ionicons name="create-outline" size={16} color={Colors.primary} />
+                    <Text style={styles.ownerActionText}>Modifier</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.ownerActionButton,
+                      styles.ownerActionDanger,
+                      { marginRight: 0 },
+                      !canManageTrip(trip) && styles.ownerActionDisabled,
+                    ]}
+                    onPress={() => openDeleteModal(trip)}
+                    disabled={!canManageTrip(trip)}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={Colors.danger} />
+                    <Text style={[styles.ownerActionText, styles.ownerActionDangerText]}>
+                      Supprimer
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </Animated.View>
             );
           })
@@ -224,6 +443,145 @@ export default function TripsScreen() {
       >
         <Ionicons name="add" size={32} color={Colors.white} />
       </TouchableOpacity>
+
+      <Modal transparent animationType="slide" visible={Boolean(editingTrip)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Modifier le trajet</Text>
+              {editingTrip && (
+                <Text style={styles.modalSubtitle}>
+                  {editingTrip.departure.name} → {editingTrip.arrival.name}
+                </Text>
+              )}
+            </View>
+
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>Places disponibles</Text>
+              <TextInput
+                style={styles.modalInput}
+                keyboardType="numeric"
+                placeholder="4"
+                placeholderTextColor={Colors.gray[400]}
+                value={editSeats}
+                onChangeText={setEditSeats}
+              />
+            </View>
+
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>Prix (FC)</Text>
+              <TextInput
+                style={styles.modalInput}
+                keyboardType="numeric"
+                placeholder="5000"
+                placeholderTextColor={Colors.gray[400]}
+                value={editPrice}
+                onChangeText={setEditPrice}
+              />
+            </View>
+
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>Date et heure de départ</Text>
+              <View style={styles.modalDatetimeRow}>
+                <TouchableOpacity
+                  style={styles.modalDatetimeButton}
+                  onPress={() => openDateOrTimePicker('date')}
+                >
+                  <Ionicons name="calendar" size={18} color={Colors.primary} />
+                  <View style={{ marginLeft: Spacing.sm }}>
+                    <Text style={styles.modalDatetimeLabel}>Date</Text>
+                    <Text style={styles.modalDatetimeValue}>{formattedEditDate}</Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalDatetimeButton, { marginRight: 0 }]}
+                  onPress={() => openDateOrTimePicker('time')}
+                >
+                  <Ionicons name="time" size={18} color={Colors.gray[700]} />
+                  <View style={{ marginLeft: Spacing.sm }}>
+                    <Text style={styles.modalDatetimeLabel}>Heure</Text>
+                    <Text style={styles.modalDatetimeValue}>{formattedEditTime}</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {Platform.OS === 'ios' && iosPickerMode && (
+              <View style={styles.iosPickerContainer}>
+                <DateTimePicker
+                  value={getEditBaseDate()}
+                  mode={iosPickerMode}
+                  display="inline"
+                  minuteInterval={5}
+                  minimumDate={iosPickerMode === 'date' ? new Date() : undefined}
+                  onChange={handleIosPickerChange}
+                />
+                <TouchableOpacity style={styles.iosPickerCloseButton} onPress={closeIosPicker}>
+                  <Text style={styles.iosPickerCloseText}>Terminé</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonSecondary]}
+                onPress={closeEditModal}
+              >
+                <Text style={styles.modalButtonSecondaryText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonPrimary, { marginRight: 0 }]}
+                onPress={handleSaveTrip}
+                disabled={isSavingTrip}
+              >
+                {isSavingTrip ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <Text style={styles.modalButtonPrimaryText}>Enregistrer</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal transparent animationType="fade" visible={Boolean(deleteTarget)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmCard}>
+            <View style={styles.confirmIcon}>
+              <Ionicons name="trash" size={28} color={Colors.danger} />
+            </View>
+            <Text style={styles.confirmTitle}>Supprimer ce trajet ?</Text>
+            <Text style={styles.confirmText}>
+              Cette action est irréversible. Les passagers seront informés de l'annulation.
+            </Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonSecondary]}
+                onPress={closeDeleteModal}
+              >
+                <Text style={styles.modalButtonSecondaryText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalButton,
+                  styles.modalButtonPrimary,
+                  styles.modalButtonDanger,
+                  { marginRight: 0 },
+                ]}
+                onPress={handleConfirmDelete}
+                disabled={isDeletingTrip}
+              >
+                {isDeletingTrip ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <Text style={styles.modalButtonPrimaryText}>Supprimer</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -300,6 +658,28 @@ const styles = StyleSheet.create({
   errorAction: {
     color: Colors.white,
     fontWeight: FontWeights.bold,
+  },
+  feedbackBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+  },
+  feedbackSuccess: {
+    backgroundColor: Colors.success,
+  },
+  feedbackError: {
+    backgroundColor: Colors.danger,
+  },
+  feedbackText: {
+    flex: 1,
+    color: Colors.white,
+    marginLeft: Spacing.sm,
+    marginRight: Spacing.sm,
+    fontSize: FontSizes.sm,
   },
   loaderContainer: {
     alignItems: 'center',
@@ -446,6 +826,37 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
     marginLeft: Spacing.xs,
   },
+  ownerActionsRow: {
+    flexDirection: 'row',
+    marginTop: Spacing.md,
+  },
+  ownerActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+    marginRight: Spacing.sm,
+  },
+  ownerActionDanger: {
+    borderColor: 'rgba(231, 76, 60, 0.3)',
+    backgroundColor: 'rgba(231, 76, 60, 0.08)',
+  },
+  ownerActionText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[800],
+  },
+  ownerActionDangerText: {
+    color: Colors.danger,
+  },
+  ownerActionDisabled: {
+    opacity: 0.5,
+  },
   detailsButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -459,6 +870,147 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.semibold,
     marginRight: Spacing.xs,
     fontSize: FontSizes.sm,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+  },
+  modalCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    ...CommonStyles.shadowLg,
+  },
+  modalHeader: {
+    marginBottom: Spacing.lg,
+  },
+  modalTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  modalSubtitle: {
+    marginTop: Spacing.xs,
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+  },
+  modalField: {
+    marginBottom: Spacing.lg,
+  },
+  modalLabel: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[700],
+    marginBottom: Spacing.xs,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+  },
+  modalDatetimeRow: {
+    flexDirection: 'row',
+  },
+  modalDatetimeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    marginRight: Spacing.sm,
+  },
+  modalDatetimeLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    textTransform: 'uppercase',
+  },
+  modalDatetimeValue: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+  },
+  iosPickerContainer: {
+    marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    overflow: 'hidden',
+  },
+  iosPickerCloseButton: {
+    paddingVertical: Spacing.sm,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[200],
+  },
+  iosPickerCloseText: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  modalActions: {
+    flexDirection: 'row',
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    marginRight: Spacing.sm,
+  },
+  modalButtonSecondary: {
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    backgroundColor: Colors.white,
+  },
+  modalButtonSecondaryText: {
+    color: Colors.gray[800],
+    fontWeight: FontWeights.semibold,
+  },
+  modalButtonPrimary: {
+    backgroundColor: Colors.primary,
+  },
+  modalButtonDanger: {
+    backgroundColor: Colors.danger,
+  },
+  modalButtonPrimaryText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+  },
+  confirmCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    alignItems: 'center',
+    ...CommonStyles.shadowLg,
+  },
+  confirmIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(231, 76, 60, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  confirmTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    textAlign: 'center',
+    marginBottom: Spacing.sm,
+  },
+  confirmText: {
+    fontSize: FontSizes.base,
+    color: Colors.gray[600],
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
   },
   fab: {
     position: 'absolute',

@@ -58,7 +58,7 @@ const baseQueryWithReauth: BaseQueryFn<
 export const baseApi = createApi({
   reducerPath: 'zwangaApi',
   baseQuery: retry(baseQueryWithReauth, { maxRetries: 0 }),
-  tagTypes: ['User', 'Trip', 'Message', 'Conversation', 'Review', 'Notification'],
+  tagTypes: ['User', 'Trip', 'MyTrips', 'Message', 'Conversation', 'Review', 'Notification'],
   endpoints: () => ({}),
 });
 
