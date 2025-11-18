@@ -1,6 +1,7 @@
 export type UserRole = 'driver' | 'passenger' | 'both';
 export type VehicleType = 'car' | 'moto' | 'tricycle';
 export type TripStatus = 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
+export type BookingStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'completed';
 export type PaymentMethod = 'orange_money' | 'm_pesa' | 'airtel_money' | 'cash';
 
 export interface User {
@@ -61,6 +62,23 @@ export interface Passenger {
   avatar?: string;
   rating: number;
   phone: string;
+}
+
+export interface Booking {
+  id: string;
+  tripId: string;
+  passengerId: string;
+  passengerName?: string;
+  passengerAvatar?: string;
+  passengerPhone?: string;
+  numberOfSeats: number;
+  status: BookingStatus;
+  rejectionReason?: string;
+  acceptedAt?: string;
+  cancelledAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  trip?: Trip;
 }
 
 export interface Message {

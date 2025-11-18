@@ -32,6 +32,7 @@ export default function ProfileScreen() {
 
   const menuItems = [
     { icon: 'person-outline', label: 'Modifier le profil', route: '/edit-profile' },
+    { icon: 'bookmark-outline', label: 'Mes réservations', route: '/bookings' },
     { icon: 'car-outline', label: 'Mon véhicule', route: '/vehicle' },
     { icon: 'wallet-outline', label: 'Paiement', route: '/payment' },
     { icon: 'settings-outline', label: 'Paramètres', route: '/settings' },
