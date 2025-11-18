@@ -41,10 +41,11 @@ Endpoints utilisateurs :
 ### `tripApi.ts`
 Endpoints trajets :
 - `getTrips` - Rechercher des trajets (avec filtres)
+- `getMyTrips` - Récupérer les trajets publiés par l'utilisateur connecté
 - `getTripById` - Récupérer un trajet par ID
 - `createTrip` - Créer un nouveau trajet
 - `updateTrip` - Mettre à jour un trajet
-- `cancelTrip` - Annuler un trajet
+- `deleteTrip` - Supprimer/annuler un trajet
 - `bookTrip` - Réserver des places
 
 ### `messageApi.ts`
