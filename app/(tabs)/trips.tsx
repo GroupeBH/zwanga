@@ -1,32 +1,32 @@
-import React, { useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  ActivityIndicator,
-  RefreshControl,
-  Modal,
-  TextInput,
-  Platform,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
-import { formatTime } from '@/utils/dateHelpers';
+import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import {
   useDeleteTripMutation,
   useGetMyTripsQuery,
   useUpdateTripMutation,
 } from '@/store/api/tripApi';
+import type { Trip } from '@/types';
+import { formatTime } from '@/utils/dateHelpers';
+import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
-import type { Trip } from '@/types';
+import { useRouter } from 'expo-router';
+import React, { useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Modal,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type TripTab = 'upcoming' | 'completed';
 
@@ -395,7 +395,7 @@ export default function TripsScreen() {
                   </View>
                   <TouchableOpacity
                     style={styles.detailsButton}
-                    onPress={() => router.push(`/trip/${trip.id}`)}
+                    onPress={() => router.push(`/trip/manage/${trip.id}`)}
                   >
                     <Text style={styles.detailsButtonText}>Détails</Text>
                     <Ionicons name="chevron-forward" size={16} color={Colors.primary} />

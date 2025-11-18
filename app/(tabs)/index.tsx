@@ -1,6 +1,5 @@
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { useUserLocation } from '@/hooks/useUserLocation';
 import {
   TripSearchParams,
   useGetTripsQuery,
@@ -27,10 +26,11 @@ import {
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+const RECENT_TRIPS_LIMIT = 5;
+
 export default function HomeScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { lastKnownLocation } = useUserLocation({ autoRequest: true });
   const storedTrips = useAppSelector(selectAvailableTrips);
   const savedLocations = useAppSelector(selectSavedLocations);
   const [queryParams, setQueryParams] = useState<TripSearchParams>({});
@@ -55,12 +55,23 @@ export default function HomeScreen() {
     isError: tripsError,
     refetch: refetchTrips,
   } = useGetTripsQuery(queryParams);
+
   useEffect(() => {
     if (remoteTrips) {
       dispatch(setTrips(remoteTrips));
     }
   }, [remoteTrips, dispatch]);
-  const trips = remoteTrips ?? storedTrips;
+
+  const baseTrips = remoteTrips ?? storedTrips ?? [];
+  const latestTrips = useMemo(() => {
+    return [...baseTrips]
+      .sort((a, b) => {
+        const dateA = new Date(a.departureTime).getTime();
+        const dateB = new Date(b.departureTime).getTime();
+        return dateB - dateA;
+      })
+      .slice(0, RECENT_TRIPS_LIMIT);
+  }, [baseTrips]);
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
   const [addMode, setAddMode] = useState(false);
@@ -68,32 +79,6 @@ export default function HomeScreen() {
   const [customAddress, setCustomAddress] = useState('');
   const [customLat, setCustomLat] = useState('');
   const [customLng, setCustomLng] = useState('');
-
-  useEffect(() => {
-    if (!lastKnownLocation) {
-      return;
-    }
-    setQueryParams((prev) => {
-      const current = prev.departureCoordinates;
-      const nextCoords: [number, number] = [
-        lastKnownLocation.coords.longitude,
-        lastKnownLocation.coords.latitude,
-      ];
-      if (
-        current &&
-        current[0] === nextCoords[0] &&
-        current[1] === nextCoords[1] &&
-        prev.departureRadiusKm
-      ) {
-        return prev;
-      }
-      return {
-        ...prev,
-        departureCoordinates: nextCoords,
-        departureRadiusKm: prev.departureRadiusKm ?? 20,
-      };
-    });
-  }, [lastKnownLocation]);
 
   const handleQuickSearch = () => {
     const trimmedDeparture = departure.trim();
@@ -179,7 +164,17 @@ export default function HomeScreen() {
       dispatch(setTrips(results));
       router.push({
         pathname: '/search',
-        params: { mode: 'map' },
+        params: {
+          mode: 'map',
+          departureLat: filterDepartureLocation.latitude.toString(),
+          departureLng: filterDepartureLocation.longitude.toString(),
+          arrivalLat: filterArrivalLocation.latitude.toString(),
+          arrivalLng: filterArrivalLocation.longitude.toString(),
+          departureRadiusKm: String(payload.departureRadiusKm ?? 10),
+          arrivalRadiusKm: String(payload.arrivalRadiusKm ?? 10),
+          departureLabel: filterDepartureLocation.title,
+          arrivalLabel: filterArrivalLocation.title,
+        },
       });
     } catch (error: any) {
       const message =
@@ -395,7 +390,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Lieux populaires */}
-        <View style={styles.section}>
+        {/* <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Lieux populaires</Text>
             <TouchableOpacity onPress={() => setAddMode((prev) => !prev)}>
@@ -490,7 +485,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
           )}
-        </View>
+        </View> */}
 
         {/* Actions rapides */}
         <View style={styles.section}>
@@ -546,7 +541,7 @@ export default function HomeScreen() {
             </View>
           )}
 
-          {!tripsLoading && !tripsError && trips.length === 0 && (
+          {!tripsLoading && !tripsError && baseTrips.length === 0 && (
             <View style={styles.tripStateCard}>
               <Ionicons name="car-outline" size={24} color={Colors.gray[500]} />
               <Text style={styles.tripStateText}>Aucun trajet pour le moment.</Text>
@@ -554,7 +549,7 @@ export default function HomeScreen() {
             </View>
           )}
 
-          {trips.slice(0, 3).map((trip, index) => {
+          {latestTrips.map((trip, index) => {
             const ratingValue =
               typeof trip.driverRating === 'number'
                 ? trip.driverRating
@@ -608,7 +603,10 @@ export default function HomeScreen() {
                     {trip.availableSeats} places disponibles
                   </Text>
                 </View>
-                <TouchableOpacity style={styles.reserveButton}>
+                <TouchableOpacity
+                  style={styles.reserveButton}
+                  onPress={() => router.push(`/trip/${trip.id}`)}
+                >
                   <Text style={styles.reserveButtonText}>Réserver</Text>
                 </TouchableOpacity>
               </View>
