@@ -24,6 +24,7 @@ import './notificationApi';
 import './reviewApi';
 import './tripApi';
 import './userApi';
+import './bookingApi';
 
 // Ré-exporter tous les hooks pour faciliter l'utilisation
 export {
@@ -47,6 +48,18 @@ export {
   useGetMyTripsQuery,
   useUpdateTripMutation,
 } from './tripApi';
+
+export {
+  // Bookings
+  useCreateBookingMutation,
+  useGetMyBookingsQuery,
+  useGetTripBookingsQuery,
+  useGetBookingByIdQuery,
+  useUpdateBookingStatusMutation,
+  useCancelBookingMutation,
+  useAcceptBookingMutation,
+  useRejectBookingMutation,
+} from './bookingApi';
 
 export {
   // Messages

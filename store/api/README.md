@@ -14,6 +14,7 @@ store/api/
 ├── reviewApi.ts        # Avis et signalements
 ├── notificationApi.ts  # Notifications
 ├── zwangaApi.ts        # Point d'entrée principal (ré-exporte tout)
+├── bookingApi.ts       # Réservations
 └── README.md           # Cette documentation
 ```
 
@@ -47,6 +48,17 @@ Endpoints trajets :
 - `updateTrip` - Mettre à jour un trajet
 - `deleteTrip` - Supprimer/annuler un trajet
 - `bookTrip` - Réserver des places
+
+### `bookingApi.ts`
+Endpoints réservations :
+- `createBooking` - Créer une nouvelle réservation
+- `getMyBookings` - Récupérer les réservations de l'utilisateur connecté
+- `getTripBookings` - Récupérer les réservations d'un trajet (conducteur)
+- `getBookingById` - Détails d'une réservation
+- `updateBookingStatus` - Accepter / refuser une réservation (conducteur)
+- `acceptBooking` - Accepter une réservation (conducteur)
+- `rejectBooking` - Refuser une réservation avec motif (conducteur)
+- `cancelBooking` - Annuler une réservation (passager)
 
 ### `messageApi.ts`
 Endpoints messages :

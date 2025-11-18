@@ -22,7 +22,7 @@ type ServerBooking = {
   passenger: ServerUser | null;
 };
 
-type ServerTrip = {
+export type ServerTrip = {
   id: string;
   driverId: string;
   driver?: ServerUser | null;
@@ -93,7 +93,7 @@ const mapPassengers = (bookings?: ServerBooking[]): Trip['passengers'] => {
     }));
 };
 
-const mapServerTripToClient = (trip: ServerTrip): Trip => {
+export const mapServerTripToClient = (trip: ServerTrip): Trip => {
   const departureCoords = fallbackCoordinate(trip.departureCoordinates);
   const arrivalCoords = fallbackCoordinate(trip.arrivalCoordinates);
   const bookedSeats =
