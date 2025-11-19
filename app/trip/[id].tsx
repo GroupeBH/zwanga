@@ -189,8 +189,9 @@ export default function TripDetailsScreen() {
 
       const conversation = await createConversation(payload).unwrap();
       router.push({
-        pathname: `/chat/${conversation.id}`,
+        pathname: '/chat/[id]',
         params: {
+          id: conversation.id,
           title: trip.driverName,
         },
       });

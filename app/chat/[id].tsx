@@ -1,9 +1,9 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { chatSocket } from '@/services/chatSocket';
+import { messageApi, useGetConversationMessagesQuery, useGetConversationQuery, useMarkConversationAsReadMutation, useSendConversationMessageMutation } from '@/store/api/messageApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { useGetConversationQuery, useGetConversationMessagesQuery, useMarkConversationAsReadMutation, useSendConversationMessageMutation, messageApi } from '@/store/api/messageApi';
-import { addMessage as addMessageAction, markConversationMessagesRead, setMessages, upsertConversation } from '@/store/slices/messagesSlice';
 import { selectUser } from '@/store/selectors';
+import { addMessage as addMessageAction, markConversationMessagesRead, setMessages, upsertConversation } from '@/store/slices/messagesSlice';
 import { Message } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -215,37 +215,37 @@ export default function ChatScreen() {
             <View style={styles.dateSeparator} key={label}>
               <View style={styles.dateBadge}>
                 <Text style={styles.dateText}>{label}</Text>
-              </View>
+          </View>
               {bucket.map((msg, index) => {
                 const isMe = msg.senderId === user?.id;
                 return (
-                  <Animated.View
-                    key={msg.id}
-                    entering={FadeInDown.delay(index * 50)}
-                    style={[styles.messageWrapper, isMe && styles.messageWrapperRight]}
-                  >
-                    <View
-                      style={[
-                        styles.messageBubble,
+            <Animated.View
+              key={msg.id}
+              entering={FadeInDown.delay(index * 50)}
+                    style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
+            >
+              <View
+                style={[
+                  styles.messageBubble,
                         isMe ? styles.messageBubbleMe : styles.messageBubbleOther,
-                      ]}
-                    >
+                ]}
+              >
                       <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{msg.content}</Text>
-                      <View style={styles.messageFooter}>
+                <View style={styles.messageFooter}>
                         <Text style={[styles.messageTime, isMe && styles.messageTimeMe]}>
                           {formatTime(msg.createdAt)}
-                        </Text>
+                  </Text>
                         {isMe && (
-                          <Ionicons
+                    <Ionicons
                             name={msg.isRead ? 'checkmark-done' : 'checkmark'}
-                            size={14}
-                            color={Colors.white}
-                            style={styles.checkIcon}
-                          />
-                        )}
-                      </View>
-                    </View>
-                  </Animated.View>
+                      size={14}
+                      color={Colors.white}
+                      style={styles.checkIcon}
+                    />
+                  )}
+                </View>
+              </View>
+            </Animated.View>
                 );
               })}
             </View>
@@ -281,11 +281,11 @@ export default function ChatScreen() {
               {sending ? (
                 <ActivityIndicator size="small" color={Colors.white} />
               ) : (
-                <Ionicons
-                  name="send"
-                  size={20}
-                  color={message.trim() ? Colors.white : Colors.gray[600]}
-                />
+              <Ionicons
+                name="send"
+                size={20}
+                color={message.trim() ? Colors.white : Colors.gray[600]}
+              />
               )}
             </TouchableOpacity>
           </View>
@@ -390,26 +390,37 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.xs,
     color: Colors.gray[600],
   },
-  messageWrapper: {
+  messageRow: {
+    width: '100%',
     marginBottom: Spacing.md,
-    alignItems: 'flex-start',
-  },
-  messageWrapperRight: {
+    flexDirection: 'row',
     alignItems: 'flex-end',
+  },
+  messageRowMe: {
+    justifyContent: 'flex-end',
+    paddingLeft: Spacing.xl,
+    paddingRight: Spacing.xs,
+  },
+  messageRowOther: {
+    justifyContent: 'flex-start',
+    paddingRight: Spacing.xl,
+    paddingLeft: Spacing.xs,
   },
   messageBubble: {
     maxWidth: '80%',
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
     borderRadius: BorderRadius.xl,
+    borderTopLeftRadius: BorderRadius.lg,
+    borderTopRightRadius: BorderRadius.lg,
   },
   messageBubbleMe: {
     backgroundColor: Colors.primary,
-    borderTopRightRadius: BorderRadius.sm,
+    borderBottomLeftRadius: BorderRadius.md,
   },
   messageBubbleOther: {
-    backgroundColor: Colors.white,
-    borderTopLeftRadius: BorderRadius.sm,
+    backgroundColor: Colors.gray[100],
+    borderBottomRightRadius: BorderRadius.md,
     ...CommonStyles.shadowSm,
   },
   messageText: {
