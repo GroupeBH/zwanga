@@ -13,6 +13,7 @@ store/api/
 ├── messageApi.ts       # Conversations & messages
 ├── reviewApi.ts        # Avis et signalements
 ├── notificationApi.ts  # Notifications
+├── vehicleApi.ts       # Véhicules
 ├── zwangaApi.ts        # Point d'entrée principal (ré-exporte tout)
 ├── bookingApi.ts       # Réservations
 └── README.md           # Cette documentation
@@ -80,6 +81,13 @@ Endpoints notifications :
 - `getNotifications` - Liste des notifications
 - `markNotificationAsRead` - Marquer comme lue
 
+### `vehicleApi.ts`
+Endpoints véhicules :
+- `getVehicles` - Liste des véhicules de l'utilisateur connecté
+- `createVehicle` - Ajouter un véhicule
+- `updateVehicle` - Modifier un véhicule
+- `deleteVehicle` - Supprimer un véhicule
+
 ## Utilisation
 
 ### Import depuis le fichier principal
@@ -88,7 +96,8 @@ Endpoints notifications :
 import { 
   useLoginMutation,
   useGetTripsQuery,
-  useSendConversationMessageMutation 
+  useSendConversationMessageMutation,
+  useCreateVehicleMutation
 } from '@/store/api/zwangaApi';
 ```
 

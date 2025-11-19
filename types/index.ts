@@ -24,13 +24,16 @@ export interface User {
 }
 
 export interface Vehicle {
-  type: VehicleType;
+  id: string;
+  ownerId: string;
   brand: string;
   model: string;
-  year: string;
   color: string;
-  plateNumber: string;
-  seats: number;
+  licensePlate: string;
+  photoUrl?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Location {

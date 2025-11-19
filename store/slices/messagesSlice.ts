@@ -28,7 +28,7 @@ const messagesSlice = createSlice({
     upsertConversation: (state, action: PayloadAction<Conversation>) => {
       const index = state.conversations.findIndex((conv) => conv.id === action.payload.id);
       if (index === -1) {
-        state.conversations.unshift(action.payload);
+      state.conversations.unshift(action.payload);
       } else {
         state.conversations[index] = action.payload;
       }
@@ -49,7 +49,7 @@ const messagesSlice = createSlice({
         state.messages[conversationId] = [];
       }
       state.messages[conversationId].push(message);
-
+      
       const convIndex = state.conversations.findIndex((c) => c.id === conversationId);
       if (convIndex !== -1) {
         const conversation = state.conversations[convIndex];

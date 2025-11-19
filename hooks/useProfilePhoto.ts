@@ -126,10 +126,10 @@ export function useProfilePhoto() {
       const avatarUrl = imageUri; // À remplacer par l'URL du serveur
 
       // Mettre à jour via l'API
-      await updateUserMutation({ avatar: avatarUrl }).unwrap();
+      await updateUserMutation({ profilePicture: avatarUrl }).unwrap();
 
       // Mettre à jour le state Redux
-      dispatch(updateUser({ avatar: avatarUrl }));
+      dispatch(updateUser({ avatar: avatarUrl, profilePicture: avatarUrl }));
 
       Alert.alert('Succès', 'Photo de profil mise à jour avec succès');
       return true;
