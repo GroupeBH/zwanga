@@ -25,6 +25,7 @@ import './reviewApi';
 import './tripApi';
 import './userApi';
 import './bookingApi';
+import './vehicleApi';
 
 // Ré-exporter tous les hooks pour faciliter l'utilisation
 export {
@@ -80,6 +81,14 @@ export {
   useGetBookingMessagesQuery,
   useMarkMessageAsReadMutation,
 } from './messageApi';
+
+export {
+  // Vehicles
+  useGetVehiclesQuery,
+  useCreateVehicleMutation,
+  useUpdateVehicleMutation,
+  useDeleteVehicleMutation,
+} from './vehicleApi';
 
 export {
   // Reviews

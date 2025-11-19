@@ -1,4 +1,4 @@
-import type { KycDocument, ProfileStats, ProfileSummary, User, UserRole } from '../../types';
+import type { KycDocument, ProfileStats, ProfileSummary, User, UserRole, Vehicle } from '../../types';
 import { baseApi } from './baseApi';
 
 type ServerUser = Record<string, any>;
@@ -8,7 +8,22 @@ const buildFullName = (user: ServerUser) => {
   return combined || user.name || 'Utilisateur';
 };
 
-const mapServerUser = (user: ServerUser): User => ({
+const mapServerVehicle = (vehicle: any): Vehicle => ({
+  id: vehicle.id,
+  ownerId: vehicle.ownerId,
+  brand: vehicle.brand ?? '',
+  model: vehicle.model ?? '',
+  color: vehicle.color ?? '',
+  licensePlate: vehicle.licensePlate ?? '',
+  photoUrl: vehicle.photoUrl ?? null,
+  isActive: vehicle.isActive ?? true,
+  createdAt: vehicle.createdAt ?? new Date().toISOString(),
+  updatedAt: vehicle.updatedAt ?? new Date().toISOString(),
+});
+
+const mapServerUser = (user: ServerUser): User => {
+  const vehicleEntry = user.vehicles?.[0];
+  return {
   id: user.id,
   name: buildFullName(user),
   firstName: user.firstName,
@@ -22,10 +37,11 @@ const mapServerUser = (user: ServerUser): User => ({
   totalTrips: user.totalTrips ?? 0,
   verified: Boolean(user.isEmailVerified || user.isPhoneVerified || user.isDriver),
   identityVerified: Boolean(user.kycDocuments?.some?.((doc: any) => doc.status === 'approved')),
-  vehicle: user.vehicles?.[0],
+    vehicle: vehicleEntry ? mapServerVehicle(vehicleEntry) : undefined,
   isDriver: user.isDriver ?? false,
   createdAt: user.createdAt ?? new Date().toISOString(),
-});
+  };
+};
 
 const mapProfileSummary = (payload: { user: ServerUser; stats: ProfileStats }): ProfileSummary => ({
   user: mapServerUser(payload.user),
