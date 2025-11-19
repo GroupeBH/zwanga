@@ -87,7 +87,7 @@ export default function TripDetailsScreen() {
   
   const pulseAnim = useSharedValue(1);
 
-  console.log('trip', trip);
+  // console.log('trip', trip);
 
   useEffect(() => {
     if (trip?.status === 'ongoing') {

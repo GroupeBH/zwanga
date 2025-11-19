@@ -35,7 +35,12 @@ export {
 
 export {
   // User
-  useGetCurrentUserQuery, useGetUserByIdQuery, useUpdateUserMutation
+  useGetProfileSummaryQuery,
+  useGetCurrentUserQuery,
+  useGetUserByIdQuery,
+  useUpdateUserMutation,
+  useUploadKycMutation,
+  useGetKycStatusQuery
 } from './userApi';
 
 export {
