@@ -15,6 +15,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Modal,
   ScrollView,
   StyleSheet,
@@ -64,6 +65,13 @@ export default function TripDetailsScreen() {
   const tripId = typeof id === 'string' ? (id as string) : '';
   const trip = useAppSelector((state) => selectTripById(tripId)(state));
   const user = useAppSelector(selectUser);
+  const driverPhone = useMemo(() => {
+    if (!trip) {
+      return undefined;
+    }
+    const extendedTrip = trip as typeof trip & { driver?: { phone?: string } };
+    return extendedTrip.driver?.phone ?? trip.driverPhone;
+  }, [trip]);
   const {
     data: myBookings,
     isLoading: myBookingsLoading,
@@ -555,9 +563,33 @@ export default function TripDetailsScreen() {
                   </>
                 )}
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.driverActionButton, styles.driverActionButtonGreen]}>
-                <Ionicons name="call" size={20} color={Colors.success} />
-                <Text style={[styles.driverActionText, { color: Colors.success }]}>Appeler</Text>
+              <TouchableOpacity
+                style={[styles.driverActionButton, styles.driverActionButtonGreen]}
+                disabled={!driverPhone}
+                onPress={() => {
+                  if (driverPhone) {
+                    Linking.openURL(`tel:${driverPhone}`);
+                  } else {
+                    Alert.alert(
+                      'Numéro manquant',
+                      'Le numéro de téléphone du conducteur n’est pas disponible.',
+                    );
+                  }
+                }}
+              >
+                <Ionicons
+                  name="call"
+                  size={20}
+                  color={driverPhone ? Colors.success : Colors.gray[400]}
+                />
+                <Text
+                  style={[
+                    styles.driverActionText,
+                    { color: driverPhone ? Colors.success : Colors.gray[500] },
+                  ]}
+                >
+                  Appeler
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
