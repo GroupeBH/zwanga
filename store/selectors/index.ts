@@ -20,6 +20,7 @@ export const selectUserCoordinates = (state: RootState) => state.location.lastKn
 export const selectLocationRadius = (state: RootState) => state.location.radiusKm;
 export const selectVehicleFilter = (state: RootState) => state.location.vehicleFilter;
 export const selectTripSearchQuery = (state: RootState) => state.location.searchQuery;
+export const selectTripSearchMode = (state: RootState) => state.location.searchMode;
 export const selectSavedLocations = (state: RootState) => state.location.savedLocations;
 
 // === TRIPS SELECTORS ===
@@ -50,8 +51,15 @@ const distanceBetween = (
 };
 
 export const selectTripsMatchingMapFilters = createSelector(
-  [selectTrips, selectUserCoordinates, selectLocationRadius, selectVehicleFilter, selectTripSearchQuery],
-  (trips, coords, radiusKm, vehicleFilter, searchQuery) => {
+  [
+    selectTrips,
+    selectUserCoordinates,
+    selectLocationRadius,
+    selectVehicleFilter,
+    selectTripSearchQuery,
+    selectTripSearchMode,
+  ],
+  (trips, coords, radiusKm, vehicleFilter, searchQuery, searchMode) => {
     const hasCoordinateQuery = Boolean(searchQuery && searchQuery.includes(','));
     let parsedCoordinate: { latitude: number; longitude: number } | null = null;
 
@@ -71,15 +79,23 @@ export const selectTripsMatchingMapFilters = createSelector(
 
       if (searchQuery && !hasCoordinateQuery) {
         const normalized = searchQuery.toLowerCase();
-        const matchesQuery =
-          trip.departure.name.toLowerCase().includes(normalized) ||
-          trip.arrival.name.toLowerCase().includes(normalized);
+        let matchesQuery = false;
+
+        if (searchMode === 'all' || searchMode === 'departure') {
+          matchesQuery =
+            matchesQuery || trip.departure.name.toLowerCase().includes(normalized);
+        }
+
+        if (searchMode === 'all' || searchMode === 'arrival') {
+          matchesQuery = matchesQuery || trip.arrival.name.toLowerCase().includes(normalized);
+        }
+
         if (!matchesQuery) {
           return false;
         }
       }
 
-      const referenceCoords = parsedCoordinate ?? coords;
+      const referenceCoords = parsedCoordinate ?? (!searchQuery ? coords : null);
       if (referenceCoords && trip.departure?.lat && trip.departure?.lng) {
         const dist = distanceBetween(
           { latitude: trip.departure.lat, longitude: trip.departure.lng },

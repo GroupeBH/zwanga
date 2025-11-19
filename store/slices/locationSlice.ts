@@ -14,6 +14,7 @@ export interface TrackedLocation {
 }
 
 export type VehicleFilter = 'all' | 'car' | 'moto' | 'tricycle';
+export type TripSearchMode = 'all' | 'departure' | 'arrival';
 export interface SavedLocation {
   id: string;
   label: string;
@@ -28,6 +29,7 @@ interface LocationState {
   radiusKm: number;
   vehicleFilter: VehicleFilter;
   searchQuery: string;
+  searchMode: TripSearchMode;
   savedLocations: SavedLocation[];
 }
 
@@ -38,6 +40,7 @@ const initialState: LocationState = {
   radiusKm: 10,
   vehicleFilter: 'all',
   searchQuery: '',
+  searchMode: 'all',
   savedLocations: [],
 };
 
@@ -63,6 +66,9 @@ const locationSlice = createSlice({
     setSearchQuery(state, action: PayloadAction<string>) {
       state.searchQuery = action.payload;
     },
+    setSearchMode(state, action: PayloadAction<TripSearchMode>) {
+      state.searchMode = action.payload;
+    },
     addSavedLocation(state, action: PayloadAction<SavedLocation>) {
       state.savedLocations = [...state.savedLocations, action.payload];
     },
@@ -79,6 +85,7 @@ export const {
   setRadiusKm,
   setVehicleFilter,
   setSearchQuery,
+  setSearchMode,
   addSavedLocation,
   removeSavedLocation,
 } = locationSlice.actions;
