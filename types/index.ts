@@ -11,11 +11,15 @@ export interface User {
   email?: string;
   role: UserRole;
   avatar?: string;
+  profilePicture?: string | null;
+  firstName?: string;
+  lastName?: string;
   rating: number;
   totalTrips: number;
   verified: boolean;
   identityVerified: boolean; // Vérification d'identité (carte + visage)
   vehicle?: Vehicle;
+  isDriver?: boolean;
   createdAt: string; // ISO string date
 }
 
@@ -121,6 +125,33 @@ export interface Conversation {
   participants: ConversationParticipant[];
   lastMessage?: Message | null;
   unreadCount: number;
+}
+
+export type KycStatus = 'pending' | 'approved' | 'rejected';
+
+export interface KycDocument {
+  id: string;
+  userId: string;
+  cniFrontUrl: string;
+  cniBackUrl: string;
+  selfieUrl: string;
+  status: KycStatus;
+  rejectionReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProfileStats {
+  vehicles: number;
+  tripsAsDriver: number;
+  bookingsAsPassenger: number;
+  bookingsAsDriver: number;
+  messagesSent: number;
+}
+
+export interface ProfileSummary {
+  user: User;
+  stats: ProfileStats;
 }
 
 export interface Review {
