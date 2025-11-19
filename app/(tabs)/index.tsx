@@ -20,9 +20,8 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -48,7 +47,6 @@ export default function HomeScreen() {
   const [arrivalRadius, setArrivalRadius] = useState('10');
   const [minSeatsFilter, setMinSeatsFilter] = useState('');
   const [maxPriceFilter, setMaxPriceFilter] = useState('');
-  const [showAdvancedFields, setShowAdvancedFields] = useState(false);
   const [showQuickFields, setShowQuickFields] = useState(false);
   const {
     data: remoteTrips,
@@ -245,6 +243,7 @@ export default function HomeScreen() {
 
   const unreadNotifications =
     notifications?.filter((notification) => !notification.read && !notification.readAt).length ?? 0;
+  const hasLocationSelections = Boolean(filterDepartureLocation && filterArrivalLocation);
 
   const openNotifications = () => {
     router.push('/notifications');
@@ -307,97 +306,28 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.quickToggleRow}>
-              <Text style={styles.quickToggleLabel}>autres filtres</Text>
-              <TouchableOpacity
-                style={styles.quickToggleButton}
-                onPress={() => setShowAdvancedFields((prev) => !prev)}
-              >
-                <Ionicons
-                  name={showAdvancedFields ? 'chevron-up' : 'chevron-down'}
-                  size={16}
-                  color={Colors.primary}
-                />
-                <Text style={styles.quickToggleAction}>
-                  {showAdvancedFields ? 'Masquer' : 'Afficher'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {showAdvancedFields && (
-              <>
-                <View style={styles.advancedInputRow}>
-                  <View style={styles.advancedInputGroup}>
-                    <Text style={styles.advancedInputLabel}>Rayon départ (km)</Text>
-                    <TextInput
-                      style={styles.advancedInput}
-                      keyboardType="numeric"
-                      placeholder="10"
-                      placeholderTextColor={Colors.gray[400]}
-                      value={departureRadius}
-                      onChangeText={setDepartureRadius}
-                    />
-                  </View>
-                  <View style={styles.advancedInputGroup}>
-                    <Text style={styles.advancedInputLabel}>Rayon arrivée (km)</Text>
-                    <TextInput
-                      style={styles.advancedInput}
-                      keyboardType="numeric"
-                      placeholder="10"
-                      placeholderTextColor={Colors.gray[400]}
-                      value={arrivalRadius}
-                      onChangeText={setArrivalRadius}
-                    />
-                  </View>
-                </View>
-
-                <View style={styles.advancedInputRow}>
-                  <View style={styles.advancedInputGroup}>
-                    <Text style={styles.advancedInputLabel}>Places min.</Text>
-                    <TextInput
-                      style={styles.advancedInput}
-                      keyboardType="numeric"
-                      placeholder="1"
-                      placeholderTextColor={Colors.gray[400]}
-                      value={minSeatsFilter}
-                      onChangeText={setMinSeatsFilter}
-                    />
-                  </View>
-                  <View style={styles.advancedInputGroup}>
-                    <Text style={styles.advancedInputLabel}>Prix max (FC)</Text>
-                    <TextInput
-                      style={styles.advancedInput}
-                      keyboardType="numeric"
-                      placeholder="5000"
-                      placeholderTextColor={Colors.gray[400]}
-                      value={maxPriceFilter}
-                      onChangeText={setMaxPriceFilter}
-                    />
-                  </View>
-                </View>
-              </>
+            {hasLocationSelections && (
+              <View style={styles.advancedButtons}>
+                <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={handleClearAdvancedFilters}>
+                  <Text style={styles.buttonSecondaryText}>Réinitialiser</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.button,
+                    { flex: 1, marginLeft: Spacing.md },
+                    (advancedSearching || !hasLocationSelections) && styles.buttonDisabled,
+                  ]}
+                  onPress={handleAdvancedSearch}
+                  disabled={advancedSearching}
+                >
+                  {advancedSearching ? (
+                    <ActivityIndicator color={Colors.white} />
+                  ) : (
+                    <Text style={styles.buttonText}>Appliquer</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             )}
-
-            <View style={styles.advancedButtons}>
-              <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={handleClearAdvancedFilters}>
-                <Text style={styles.buttonSecondaryText}>Réinitialiser</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.button,
-                  { flex: 1, marginLeft: Spacing.md },
-                  (advancedSearching || !filterDepartureLocation || !filterArrivalLocation) && styles.buttonDisabled,
-                ]}
-                onPress={handleAdvancedSearch}
-                disabled={advancedSearching}
-              >
-                {advancedSearching ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <Text style={styles.buttonText}>Appliquer</Text>
-                )}
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </View>
