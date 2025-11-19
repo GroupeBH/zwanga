@@ -49,6 +49,7 @@ export interface Trip {
   driverName: string;
   driverAvatar?: string;
   driverRating: number;
+  driverPhone?: string;
   vehicleType: VehicleType;
   vehicleInfo: string;
   departure: Location;

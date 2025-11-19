@@ -8,7 +8,7 @@ import { Message } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -184,8 +184,20 @@ export default function ChatScreen() {
             </View>
           </View>
 
-          <TouchableOpacity style={styles.headerButton}>
-            <Ionicons name="call" size={20} color={Colors.primary} />
+          <TouchableOpacity
+            style={styles.headerButton}
+            disabled={!counterpart?.phone}
+            onPress={() => {
+              if (counterpart?.phone) {
+                Linking.openURL(`tel:${counterpart.phone}`);
+              }
+            }}
+          >
+            <Ionicons
+              name="call"
+              size={20}
+              color={counterpart?.phone ? Colors.primary : Colors.gray[400]}
+            />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.headerButton}>
