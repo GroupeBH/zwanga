@@ -10,7 +10,7 @@ store/api/
 ├── authApi.ts          # Authentification
 ├── userApi.ts          # Utilisateurs
 ├── tripApi.ts          # Trajets
-├── messageApi.ts       # Messages
+├── messageApi.ts       # Conversations & messages
 ├── reviewApi.ts        # Avis et signalements
 ├── notificationApi.ts  # Notifications
 ├── zwangaApi.ts        # Point d'entrée principal (ré-exporte tout)
@@ -61,11 +61,13 @@ Endpoints réservations :
 - `cancelBooking` - Annuler une réservation (passager)
 
 ### `messageApi.ts`
-Endpoints messages :
-- `getConversations` - Liste des conversations
-- `getMessages` - Messages d'une conversation
-- `sendMessage` - Envoyer un message
-- `markMessagesAsRead` - Marquer comme lus
+Endpoints conversations / messages :
+- `listConversations` - Liste paginée des conversations de l'utilisateur
+- `getConversation` - Détails d'une conversation (participants, dernier message…)
+- `getConversationMessages` - Messages d'une conversation
+- `sendConversationMessage` - Envoyer un message
+- `markConversationAsRead` - Marquer une conversation comme lue
+- `createConversation`, `addParticipants`, `removeParticipant`
 
 ### `reviewApi.ts`
 Endpoints avis et signalements :
@@ -86,7 +88,7 @@ Endpoints notifications :
 import { 
   useLoginMutation,
   useGetTripsQuery,
-  useSendMessageMutation 
+  useSendConversationMessageMutation 
 } from '@/store/api/zwangaApi';
 ```
 

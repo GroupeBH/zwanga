@@ -4,6 +4,7 @@ import {
   useCreateBookingMutation,
   useGetMyBookingsQuery,
 } from '@/store/api/bookingApi';
+import { useCreateConversationMutation } from '@/store/api/messageApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
 import type { BookingStatus } from '@/types';
@@ -71,6 +72,7 @@ export default function TripDetailsScreen() {
   } = useGetMyBookingsQuery();
   const [createBooking, { isLoading: isBooking }] = useCreateBookingMutation();
   const [cancelBookingMutation, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
+  const [createConversation, { isLoading: isCreatingConversation }] = useCreateConversationMutation();
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
   const [bookingSeats, setBookingSeats] = useState('1');
   const [bookingModalError, setBookingModalError] = useState('');
@@ -84,6 +86,8 @@ export default function TripDetailsScreen() {
   };
   
   const pulseAnim = useSharedValue(1);
+
+  console.log('trip', trip);
 
   useEffect(() => {
     if (trip?.status === 'ongoing') {
@@ -164,6 +168,39 @@ export default function TripDetailsScreen() {
   const handleViewBookings = () => {
     closeBookingSuccessModal();
     router.push('/bookings');
+  };
+
+  const handleContactDriver = async () => {
+    if (!trip || !user || trip.driverId === user.id) {
+      return;
+    }
+
+    try {
+      const payload: {
+        participantIds: string[];
+        bookingId?: string;
+      } = {
+        participantIds: [trip.driverId],
+      };
+
+      if (activeBooking?.id) {
+        payload.bookingId = activeBooking.id;
+      }
+
+      const conversation = await createConversation(payload).unwrap();
+      router.push({
+        pathname: `/chat/${conversation.id}`,
+        params: {
+          title: trip.driverName,
+        },
+      });
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        "Impossible d'ouvrir la conversation pour le moment.";
+      Alert.alert('Erreur', Array.isArray(message) ? message.join('\n') : message);
+    }
   };
 
   const adjustBookingSeats = (delta: number) => {
@@ -505,10 +542,17 @@ export default function TripDetailsScreen() {
             <View style={styles.driverActions}>
               <TouchableOpacity
                 style={styles.driverActionButton}
-                onPress={() => router.push(`/chat/${trip.driverId}`)}
+                onPress={handleContactDriver}
+                disabled={isCreatingConversation}
               >
-                <Ionicons name="chatbubble" size={20} color={Colors.primary} />
-                <Text style={styles.driverActionText}>Message</Text>
+                {isCreatingConversation ? (
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                ) : (
+                  <>
+                    <Ionicons name="chatbubble" size={20} color={Colors.primary} />
+                    <Text style={styles.driverActionText}>Message</Text>
+                  </>
+                )}
               </TouchableOpacity>
               <TouchableOpacity style={[styles.driverActionButton, styles.driverActionButtonGreen]}>
                 <Ionicons name="call" size={20} color={Colors.success} />

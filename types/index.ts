@@ -81,23 +81,45 @@ export interface Booking {
   trip?: Trip;
 }
 
+export interface BasicUserInfo {
+  id: string;
+  firstName?: string;
+  lastName?: string;
+  profilePicture?: string | null;
+  phone?: string;
+}
+
+export interface ConversationParticipant {
+  id: string;
+  conversationId?: string;
+  userId: string;
+  user: BasicUserInfo | null;
+  lastReadAt?: string | null;
+  isMuted: boolean;
+}
+
 export interface Message {
   id: string;
-  userId: string;
-  userName: string;
-  userAvatar?: string;
-  text: string;
-  timestamp: string; // ISO string date
-  read: boolean;
+  conversationId: string;
+  bookingId?: string | null;
+  senderId: string;
+  sender?: BasicUserInfo | null;
+  content: string;
+  isRead: boolean;
+  readAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Conversation {
   id: string;
-  userId: string;
-  userName: string;
-  userAvatar?: string;
-  lastMessage: string;
-  timestamp: string; // ISO string date
+  title?: string | null;
+  bookingId?: string | null;
+  lastMessageAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  participants: ConversationParticipant[];
+  lastMessage?: Message | null;
   unreadCount: number;
 }
 

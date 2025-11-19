@@ -62,9 +62,18 @@ export {
 } from './bookingApi';
 
 export {
-  // Messages
-  useGetConversationsQuery,
-  useGetMessagesQuery, useMarkMessagesAsReadMutation, useSendMessageMutation
+  // Conversations & messages
+  useListConversationsQuery,
+  useLazyListConversationsQuery,
+  useGetConversationQuery,
+  useGetConversationMessagesQuery,
+  useSendConversationMessageMutation,
+  useCreateConversationMutation,
+  useMarkConversationAsReadMutation,
+  useAddParticipantsMutation,
+  useRemoveParticipantMutation,
+  useGetBookingMessagesQuery,
+  useMarkMessageAsReadMutation,
 } from './messageApi';
 
 export {
