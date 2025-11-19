@@ -190,7 +190,10 @@ export const selectMessagesByConversationId = (conversationId: string) =>
 export const selectConversationByUserId = (userId: string) =>
   createSelector(
     [selectConversations],
-    (conversations) => conversations.find(conv => conv.userId === userId)
+    (conversations) =>
+      conversations.find((conv) =>
+        conv.participants?.some((participant) => participant.userId === userId),
+      ),
   );
 
 // Conversations avec messages non lus
