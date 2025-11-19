@@ -35,6 +35,7 @@ export default function ProfileScreen() {
     { icon: 'bookmark-outline', label: 'Mes réservations', route: '/bookings' },
     { icon: 'car-outline', label: 'Mon véhicule', route: '/vehicle' },
     { icon: 'wallet-outline', label: 'Paiement', route: '/payment' },
+    { icon: 'notifications-outline', label: 'Notifications', route: '/notifications' },
     { icon: 'settings-outline', label: 'Paramètres', route: '/settings' },
     { icon: 'help-circle-outline', label: 'Aide & Support', route: '/support' },
   ];

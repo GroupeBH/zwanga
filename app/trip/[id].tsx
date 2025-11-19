@@ -22,6 +22,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import MapView, { Marker, Polyline } from 'react-native-maps';
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -77,7 +78,7 @@ export default function TripDetailsScreen() {
     visible: false,
     seats: 0,
   });
-  const [expanded, setExpanded] = useState(false);
+  const [mapModalVisible, setMapModalVisible] = useState(false);
   const refreshBookingLists = () => {
     refetchMyBookings();
   };
@@ -255,6 +256,49 @@ export default function TripDetailsScreen() {
   };
 
   const config = statusConfig[trip.status];
+  const departureCoordinate = useMemo(
+    () => ({
+      latitude: trip.departure.lat,
+      longitude: trip.departure.lng,
+    }),
+    [trip.departure.lat, trip.departure.lng],
+  );
+
+  const arrivalCoordinate = useMemo(
+    () => ({
+      latitude: trip.arrival.lat,
+      longitude: trip.arrival.lng,
+    }),
+    [trip.arrival.lat, trip.arrival.lng],
+  );
+
+  const mapRegion = useMemo(() => {
+    const latitudeCenter = (departureCoordinate.latitude + arrivalCoordinate.latitude) / 2;
+    const longitudeCenter = (departureCoordinate.longitude + arrivalCoordinate.longitude) / 2;
+    const latitudeDelta =
+      Math.max(Math.abs(departureCoordinate.latitude - arrivalCoordinate.latitude), 0.05) * 1.6;
+    const longitudeDelta =
+      Math.max(Math.abs(departureCoordinate.longitude - arrivalCoordinate.longitude), 0.05) * 1.6;
+
+    return {
+      latitude: latitudeCenter,
+      longitude: longitudeCenter,
+      latitudeDelta,
+      longitudeDelta,
+    };
+  }, [arrivalCoordinate, departureCoordinate]);
+
+  const currentCoordinate = useMemo(() => {
+    if (trip.status !== 'ongoing' || typeof progress !== 'number') {
+      return null;
+    }
+    const ratio = Math.min(Math.max(progress, 0), 100) / 100;
+    return {
+      latitude: departureCoordinate.latitude + (arrivalCoordinate.latitude - departureCoordinate.latitude) * ratio,
+      longitude:
+        departureCoordinate.longitude + (arrivalCoordinate.longitude - departureCoordinate.longitude) * ratio,
+    };
+  }, [arrivalCoordinate, departureCoordinate, progress, trip.status]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -279,66 +323,102 @@ export default function TripDetailsScreen() {
         {/* Carte interactive */}
         <TouchableOpacity
           style={styles.mapContainer}
-          onPress={() => setExpanded(!expanded)}
-          activeOpacity={0.9}
+          onPress={() => setMapModalVisible(true)}
+          activeOpacity={0.95}
         >
-          <View style={[styles.map, expanded && styles.mapExpanded]}>
-            {/* Carte simulée */}
-            <View style={styles.mapContent}>
-              {/* Grille de fond */}
-              <View style={styles.mapGrid}>
-                {[...Array(10)].map((_, i) => (
-                  <View
-                    key={`v-${i}`}
-                    style={[styles.gridLine, { left: `${i * 10}%`, width: 1, height: '100%' }]}
-                  />
-                ))}
-                {[...Array(10)].map((_, i) => (
-                  <View
-                    key={`h-${i}`}
-                    style={[styles.gridLine, { top: `${i * 10}%`, height: 1, width: '100%' }]}
-                  />
-                ))}
-              </View>
+          <View style={styles.mapPreview}>
+            <MapView
+              style={styles.mapView}
+              initialRegion={mapRegion}
+              pointerEvents="none"
+              scrollEnabled={false}
+              zoomEnabled={false}
+              pitchEnabled={false}
+              rotateEnabled={false}
+            >
+              <Polyline
+                coordinates={[departureCoordinate, arrivalCoordinate]}
+                strokeColor={Colors.primary}
+                strokeWidth={4}
+                lineCap="round"
+                lineDashPattern={[1]}
+              />
 
-              {/* Marqueur départ */}
-              <View style={styles.markerStart}>
+              <Marker coordinate={departureCoordinate} title="Départ" description={trip.departure.name}>
                 <View style={styles.markerStartCircle}>
-                  <Ionicons name="location" size={20} color={Colors.white} />
+                  <Ionicons name="location" size={18} color={Colors.white} />
                 </View>
-              </View>
+              </Marker>
 
-              {/* Marqueur arrivée */}
-              <View style={styles.markerEnd}>
+              <Marker coordinate={arrivalCoordinate} title="Arrivée" description={trip.arrival.name}>
                 <View style={styles.markerEndCircle}>
-                  <Ionicons name="navigate" size={20} color={Colors.white} />
+                  <Ionicons name="navigate" size={18} color={Colors.white} />
                 </View>
-              </View>
+              </Marker>
 
-              {/* Position actuelle (si en cours) */}
-              {trip.status === 'ongoing' && (
-                <Animated.View
-                  style={[
-                    pulseStyle,
-                    styles.markerCurrent,
-                    { left: `${30 + progress * 0.4}%`, top: `${40 + progress * 0.2}%` }
-                  ]}
-                >
-                  <View style={styles.markerCurrentCircle}>
-                    <Ionicons name="car" size={20} color={Colors.white} />
-                  </View>
-                </Animated.View>
+              {currentCoordinate && (
+                <Marker coordinate={currentCoordinate} title="Position actuelle">
+                  <Animated.View style={pulseStyle}>
+                    <View style={styles.markerCurrentCircle}>
+                      <Ionicons name="car-sport" size={18} color={Colors.white} />
+                    </View>
+                  </Animated.View>
+                </Marker>
               )}
+            </MapView>
+
+            <View style={styles.mapOverlay}>
+              <Text style={styles.mapOverlayText}>Touchez pour agrandir</Text>
             </View>
 
-            {/* Bouton agrandir */}
             <View style={styles.expandButton}>
-              <TouchableOpacity style={styles.expandButtonInner}>
-                <Ionicons name={expanded ? 'contract' : 'expand'} size={20} color={Colors.gray[600]} />
-              </TouchableOpacity>
+              <View style={styles.expandButtonInner}>
+                <Ionicons name="expand" size={20} color={Colors.gray[700]} />
+              </View>
             </View>
           </View>
         </TouchableOpacity>
+
+        <Modal visible={mapModalVisible} animationType="fade" transparent onRequestClose={() => setMapModalVisible(false)}>
+          <View style={styles.mapModalOverlay}>
+            <View style={styles.mapModalContent}>
+              <MapView style={styles.fullscreenMap} initialRegion={mapRegion}>
+                <Polyline
+                  coordinates={[departureCoordinate, arrivalCoordinate]}
+                  strokeColor={Colors.primary}
+                  strokeWidth={5}
+                  lineCap="round"
+                />
+
+                <Marker coordinate={departureCoordinate} title="Départ" description={trip.departure.address}>
+                  <View style={styles.markerStartCircle}>
+                    <Ionicons name="location" size={20} color={Colors.white} />
+                  </View>
+                </Marker>
+
+                <Marker coordinate={arrivalCoordinate} title="Arrivée" description={trip.arrival.address}>
+                  <View style={styles.markerEndCircle}>
+                    <Ionicons name="navigate" size={20} color={Colors.white} />
+                  </View>
+                </Marker>
+
+                {currentCoordinate && (
+                  <Marker coordinate={currentCoordinate} title="Position actuelle">
+                    <Animated.View style={pulseStyle}>
+                      <View style={styles.markerCurrentCircle}>
+                        <Ionicons name="car-sport" size={20} color={Colors.white} />
+                      </View>
+                    </Animated.View>
+                  </Marker>
+                )}
+              </MapView>
+
+              <TouchableOpacity style={styles.closeMapButton} onPress={() => setMapModalVisible(false)}>
+                <Ionicons name="close" size={24} color={Colors.white} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
 
         {/* Statut du trajet */}
         <View style={styles.statusContainer}>
@@ -782,33 +862,32 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxl,
   },
   mapContainer: {
-    position: 'relative',
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.xl,
   },
-  map: {
-    height: 192,
+  mapPreview: {
+    height: 220,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
     backgroundColor: Colors.gray[200],
+    ...CommonStyles.shadowSm,
   },
-  mapExpanded: {
-    height: 384,
+  mapView: {
+    ...StyleSheet.absoluteFillObject,
   },
-  mapContent: {
+  mapOverlay: {
     position: 'absolute',
-    inset: 0,
-    backgroundColor: '#E3F2FD',
+    bottom: Spacing.md,
+    left: Spacing.md,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
   },
-  mapGrid: {
-    position: 'absolute',
-    inset: 0,
-    opacity: 0.2,
-  },
-  gridLine: {
-    position: 'absolute',
-    backgroundColor: Colors.gray[400],
-  },
-  markerStart: {
-    position: 'absolute',
-    left: '20%',
-    top: '30%',
+  mapOverlayText: {
+    color: Colors.white,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
   },
   markerStartCircle: {
     width: 32,
@@ -818,11 +897,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  markerEnd: {
-    position: 'absolute',
-    left: '70%',
-    top: '60%',
-  },
   markerEndCircle: {
     width: 32,
     height: 32,
@@ -830,9 +904,6 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  markerCurrent: {
-    position: 'absolute',
   },
   markerCurrentCircle: {
     width: 40,
@@ -845,8 +916,8 @@ const styles = StyleSheet.create({
   },
   expandButton: {
     position: 'absolute',
-    bottom: Spacing.lg,
-    right: Spacing.lg,
+    bottom: Spacing.md,
+    right: Spacing.md,
   },
   expandButtonInner: {
     width: 40,
@@ -856,6 +927,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...CommonStyles.shadowLg,
+  },
+  mapModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    padding: Spacing.md,
+    justifyContent: 'center',
+  },
+  mapModalContent: {
+    flex: 1,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+  },
+  fullscreenMap: {
+    width: '100%',
+    height: '100%',
+  },
+  closeMapButton: {
+    position: 'absolute',
+    top: Spacing.xl,
+    right: Spacing.xl,
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   statusContainer: {
     paddingHorizontal: Spacing.xl,

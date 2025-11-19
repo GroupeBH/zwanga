@@ -1,5 +1,6 @@
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useGetNotificationsQuery } from '@/store/api/notificationApi';
 import {
   TripSearchParams,
   useGetTripsQuery,
@@ -55,6 +56,9 @@ export default function HomeScreen() {
     isError: tripsError,
     refetch: refetchTrips,
   } = useGetTripsQuery(queryParams);
+  const { data: notifications } = useGetNotificationsQuery(undefined, {
+    refetchOnMountOrArgChange: true,
+  });
 
   useEffect(() => {
     if (remoteTrips) {
@@ -239,6 +243,13 @@ export default function HomeScreen() {
     setAddMode(false);
   };
 
+  const unreadNotifications =
+    notifications?.filter((notification) => !notification.read && !notification.readAt).length ?? 0;
+
+  const openNotifications = () => {
+    router.push('/notifications');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -248,8 +259,15 @@ export default function HomeScreen() {
             <Text style={styles.greeting}>Bonjour 👋</Text>
             <Text style={styles.headerTitle}>Trouvez votre trajet</Text>
           </View>
-          <TouchableOpacity style={styles.notificationButton}>
+          <TouchableOpacity style={styles.notificationButton} onPress={openNotifications}>
             <Ionicons name="notifications" size={24} color={Colors.white} />
+            {unreadNotifications > 0 && (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>
+                  {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -674,6 +692,24 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xs / 2,
+  },
+  notificationBadgeText: {
+    color: Colors.white,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
   },
   searchCard: {
     backgroundColor: Colors.white,

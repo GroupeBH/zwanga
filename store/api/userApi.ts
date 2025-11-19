@@ -28,6 +28,14 @@ export const userApi = baseApi.injectEndpoints({
       query: (id) => `/users/${id}`,
       providesTags: (result, error, id) => [{ type: 'User', id }],
     }),
+
+    updateFcmToken: builder.mutation<{ message: string }, { fcmToken: string }>({
+      query: ({ fcmToken }) => ({
+        url: '/users/fcm-token',
+        method: 'POST',
+        body: { fcmToken },
+      }),
+    }),
   }),
 });
 
@@ -35,6 +43,7 @@ export const {
   useGetCurrentUserQuery,
   useUpdateUserMutation,
   useGetUserByIdQuery,
+  useUpdateFcmTokenMutation,
 } = userApi;
 
 
