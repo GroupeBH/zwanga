@@ -17,6 +17,7 @@ let refreshPromise: Promise<string> | null = null;
  * @returns true si l'utilisateur est authentifié, false sinon
  */
 export async function validateAndRefreshTokens(): Promise<boolean> {
+
   try {
     const { accessToken, refreshToken } = await getTokens();
 
