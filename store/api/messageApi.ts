@@ -1,5 +1,6 @@
 import { baseApi } from './baseApi';
 import type { Conversation, Message } from '../../types';
+import type { BaseEndpointBuilder } from './types';
 
 type PaginatedResponse<T> = {
   data: T[];
@@ -32,13 +33,13 @@ type ConversationMessagesArgs = {
 };
 
 export const messageApi = baseApi.injectEndpoints({
-  endpoints: (builder) => ({
+  endpoints: (builder: BaseEndpointBuilder) => ({
     listConversations: builder.query<PaginatedResponse<Conversation>, ListParams | void>({
-      query: (params) => ({
+      query: (params?: ListParams) => ({
         url: '/conversations',
         params,
       }),
-      providesTags: (result) =>
+      providesTags: (result: PaginatedResponse<Conversation> | undefined) =>
         result
           ? [
               ...result.data.map(({ id }) => ({ type: 'Conversation' as const, id })),
@@ -48,32 +49,32 @@ export const messageApi = baseApi.injectEndpoints({
     }),
 
     getConversation: builder.query<Conversation, string>({
-      query: (id) => `/conversations/${id}`,
-      providesTags: (result, error, id) => [{ type: 'Conversation', id }],
+      query: (id: string) => `/conversations/${id}`,
+      providesTags: (_result, _error, id: string) => [{ type: 'Conversation', id }],
     }),
 
     getConversationMessages: builder.query<Message[], ConversationMessagesArgs>({
-      query: ({ conversationId }) => `/conversations/${conversationId}/messages`,
-      providesTags: (result, error, { conversationId }) => [
+      query: ({ conversationId }: ConversationMessagesArgs) => `/conversations/${conversationId}/messages`,
+      providesTags: (_result, _error, { conversationId }: ConversationMessagesArgs) => [
         { type: 'Message', id: conversationId },
         { type: 'Conversation', id: conversationId },
       ],
     }),
 
     sendConversationMessage: builder.mutation<Message, SendConversationMessagePayload>({
-      query: ({ conversationId, content }) => ({
+      query: ({ conversationId, content }: SendConversationMessagePayload) => ({
         url: `/conversations/${conversationId}/messages`,
         method: 'POST',
         body: { content },
       }),
-      invalidatesTags: (result, error, { conversationId }) => [
+      invalidatesTags: (_result, _error, { conversationId }: SendConversationMessagePayload) => [
         { type: 'Message', id: conversationId },
         { type: 'Conversation', id: conversationId },
       ],
     }),
 
     createConversation: builder.mutation<Conversation, CreateConversationPayload>({
-      query: (payload) => ({
+      query: (payload: CreateConversationPayload) => ({
         url: '/conversations',
         method: 'POST',
         body: payload,
@@ -82,23 +83,23 @@ export const messageApi = baseApi.injectEndpoints({
     }),
 
     markConversationAsRead: builder.mutation<{ message: string }, string>({
-      query: (conversationId) => ({
+      query: (conversationId: string) => ({
         url: `/conversations/${conversationId}/read`,
         method: 'POST',
       }),
-      invalidatesTags: (result, error, id) => [{ type: 'Conversation', id }],
+      invalidatesTags: (_result, _error, id: string) => [{ type: 'Conversation', id }],
     }),
 
     addParticipants: builder.mutation<
       Conversation,
       { conversationId: string; userIds: string[] }
     >({
-      query: ({ conversationId, userIds }) => ({
+      query: ({ conversationId, userIds }: { conversationId: string; userIds: string[] }) => ({
         url: `/conversations/${conversationId}/participants`,
         method: 'POST',
         body: { userIds },
       }),
-      invalidatesTags: (result, error, { conversationId }) => [
+      invalidatesTags: (_result, _error, { conversationId }: { conversationId: string }) => [
         { type: 'Conversation', id: conversationId },
       ],
     }),
@@ -107,22 +108,22 @@ export const messageApi = baseApi.injectEndpoints({
       { message: string },
       { conversationId: string; userId: string }
     >({
-      query: ({ conversationId, userId }) => ({
+      query: ({ conversationId, userId }: { conversationId: string; userId: string }) => ({
         url: `/conversations/${conversationId}/participants/${userId}`,
         method: 'DELETE',
       }),
-      invalidatesTags: (result, error, { conversationId }) => [
+      invalidatesTags: (_result, _error, { conversationId }: { conversationId: string }) => [
         { type: 'Conversation', id: conversationId },
       ],
     }),
 
     getBookingMessages: builder.query<Message[], string>({
-      query: (bookingId) => `/chat/booking/${bookingId}/messages`,
-      providesTags: (result, error, bookingId) => [{ type: 'Message', id: bookingId }],
+      query: (bookingId: string) => `/chat/booking/${bookingId}/messages`,
+      providesTags: (_result, _error, bookingId: string) => [{ type: 'Message', id: bookingId }],
     }),
 
     markMessageAsRead: builder.mutation<{ message: string }, string>({
-      query: (messageId) => ({
+      query: (messageId: string) => ({
         url: `/chat/messages/${messageId}/read`,
         method: 'PUT',
       }),

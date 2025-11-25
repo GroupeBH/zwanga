@@ -21,6 +21,23 @@ export interface User {
   vehicle?: Vehicle;
   isDriver?: boolean;
   createdAt: string; // ISO string date
+  status?: string;
+}
+
+export interface TripDriverInfo {
+  id: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  profilePicture?: string | null;
+  role?: UserRole;
+  status?: string;
+  isDriver?: boolean;
+}
+
+export interface GeoPoint {
+  type: 'Point';
+  coordinates: [number, number];
 }
 
 export interface Vehicle {
@@ -49,7 +66,7 @@ export interface Trip {
   driverName: string;
   driverAvatar?: string;
   driverRating: number;
-  driverPhone?: string;
+  driver?: TripDriverInfo | null;
   vehicleType: VehicleType;
   vehicleInfo: string;
   departure: Location;
@@ -62,6 +79,8 @@ export interface Trip {
   status: TripStatus;
   passengers?: Passenger[];
   progress?: number;
+  currentLocation?: GeoPoint | null;
+  lastLocationUpdateAt?: string | null;
 }
 
 export interface Passenger {

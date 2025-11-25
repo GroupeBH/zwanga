@@ -1,5 +1,6 @@
 import type { KycDocument, ProfileStats, ProfileSummary, User, UserRole, Vehicle } from '../../types';
 import { baseApi } from './baseApi';
+import type { BaseEndpointBuilder } from './types';
 
 type ServerUser = Record<string, any>;
 
@@ -53,7 +54,7 @@ const mapProfileSummary = (payload: { user: ServerUser; stats: ProfileStats }): 
  * Gère les opérations CRUD sur les utilisateurs
  */
 export const userApi = baseApi.injectEndpoints({
-  endpoints: (builder) => ({
+  endpoints: (builder: BaseEndpointBuilder) => ({
     getProfileSummary: builder.query<ProfileSummary, void>({
       query: () => '/users/me',
       providesTags: ['User'],
@@ -71,7 +72,7 @@ export const userApi = baseApi.injectEndpoints({
 
     // Mettre à jour le profil de l'utilisateur connecté
     updateUser: builder.mutation<User, Partial<User>>({
-      query: (updates) => ({
+      query: (updates: Partial<User>) => ({
         url: '/users/me',
         method: 'PUT',
         body: updates,
@@ -82,13 +83,13 @@ export const userApi = baseApi.injectEndpoints({
 
     // Récupérer un utilisateur par son ID
     getUserById: builder.query<User, string>({
-      query: (id) => `/users/${id}`,
-      providesTags: (result, error, id) => [{ type: 'User', id }],
+      query: (id: string) => `/users/${id}`,
+      providesTags: (_result: User | undefined, _error: unknown, id: string) => [{ type: 'User', id }],
       transformResponse: (response: ServerUser) => mapServerUser(response),
     }),
 
     uploadKyc: builder.mutation<KycDocument, { cniFrontUrl: string; cniBackUrl: string; selfieUrl: string }>({
-      query: (body) => ({
+      query: (body: { cniFrontUrl: string; cniBackUrl: string; selfieUrl: string }) => ({
         url: '/users/kyc',
         method: 'POST',
         body,
@@ -100,7 +101,7 @@ export const userApi = baseApi.injectEndpoints({
     }),
 
     updateFcmToken: builder.mutation<{ message: string }, { fcmToken: string }>({
-      query: ({ fcmToken }) => ({
+      query: ({ fcmToken }: { fcmToken: string }) => ({
         url: '/users/fcm-token',
         method: 'POST',
         body: { fcmToken },

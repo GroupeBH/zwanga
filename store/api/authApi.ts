@@ -1,6 +1,7 @@
 import { storeTokens } from '../../services/tokenStorage';
 import type { User } from '../../types';
 import { baseApi } from './baseApi';
+import type { BaseEndpointBuilder } from './types';
 
 /**
  * Interface de réponse d'authentification avec tokens JWT
@@ -16,15 +17,18 @@ export interface AuthResponse {
  * Gère la connexion, l'inscription, la vérification téléphone et KYC
  */
 export const authApi = baseApi.injectEndpoints({
-  endpoints: (builder) => ({
+  endpoints: (builder: BaseEndpointBuilder) => ({
     // Connexion avec téléphone et mot de passe
     login: builder.mutation<AuthResponse, { phone: string }>({
-      query: (credentials) => ({
+      query: (credentials: { phone: string }) => ({
         url: '/auth/login',
         method: 'POST',
         body: credentials,
       }),
-      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+      async onQueryStarted(
+        _arg: { phone: string },
+        { queryFulfilled }: { queryFulfilled: Promise<{ data: AuthResponse }> },
+      ) {
         try {
           const { data } = await queryFulfilled;
           // Stocker les tokens dans SecureStore
@@ -38,12 +42,15 @@ export const authApi = baseApi.injectEndpoints({
 
     // Inscription d'un nouvel utilisateur
     register: builder.mutation<AuthResponse, FormData>({
-      query: (formData) => ({
+      query: (formData: FormData) => ({
         url: '/auth/register',
         method: 'POST',
         body: formData,
       }),
-      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+      async onQueryStarted(
+        _arg: FormData,
+        { queryFulfilled }: { queryFulfilled: Promise<{ data: AuthResponse }> },
+      ) {
         try {
           const { data } = await queryFulfilled;
           // Stocker les tokens dans SecureStore
@@ -56,7 +63,7 @@ export const authApi = baseApi.injectEndpoints({
 
     // Vérification du numéro de téléphone avec code SMS
     verifyPhone: builder.mutation<{ verified: boolean }, { phone: string; code: string }>({
-      query: (data) => ({
+      query: (data: { phone: string; code: string }) => ({
         url: '/auth/verify-phone',
         method: 'POST',
         body: data,
@@ -65,7 +72,7 @@ export const authApi = baseApi.injectEndpoints({
 
     // Vérification KYC (Know Your Customer)
     verifyKYC: builder.mutation<{ verified: boolean }, { idNumber: string; fullName: string }>({
-      query: (data) => ({
+      query: (data: { idNumber: string; fullName: string }) => ({
         url: '/auth/verify-kyc',
         method: 'POST',
         body: data,
@@ -75,12 +82,15 @@ export const authApi = baseApi.injectEndpoints({
 
     // Rafraîchir l'access token avec le refresh token
     refreshToken: builder.mutation<{ accessToken: string; refreshToken: string }, { refreshToken: string }>({
-      query: (data) => ({
+      query: (data: { refreshToken: string }) => ({
         url: '/auth/refresh',
         method: 'POST',
         body: data,
       }),
-      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+      async onQueryStarted(
+        _arg: { refreshToken: string },
+        { queryFulfilled }: { queryFulfilled: Promise<{ data: { accessToken: string; refreshToken: string } }> },
+      ) {
         try {
           const { data } = await queryFulfilled;
           // Stocker les nouveaux tokens dans SecureStore

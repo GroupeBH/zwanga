@@ -1,6 +1,6 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
-import { useGetKycStatusQuery, useGetProfileSummaryQuery } from '@/store/api/userApi';
+import { useGetKycStatusQuery, useGetProfileSummaryQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
@@ -8,7 +8,7 @@ import { logout } from '@/store/slices/authSlice';
 import type { Vehicle } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -24,30 +24,41 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { convertImageToBase64 } from '@/utils/imageHelpers';
 
 export default function ProfileScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const user = useAppSelector(selectUser);
-  const { changeProfilePhoto, isUploading } = useProfilePhoto();
+  const { changeProfilePhoto, pickImage, isUploading } = useProfilePhoto();
   const [refreshing, setRefreshing] = useState(false);
   const [vehicleModalVisible, setVehicleModalVisible] = useState(false);
   const [vehicleBrand, setVehicleBrand] = useState('');
   const [vehicleModel, setVehicleModel] = useState('');
   const [vehicleColor, setVehicleColor] = useState('');
   const [vehiclePlate, setVehiclePlate] = useState('');
+  const [kycModalVisible, setKycModalVisible] = useState(false);
+  const [kycFrontImage, setKycFrontImage] = useState<string | null>(null);
+  const [kycBackImage, setKycBackImage] = useState<string | null>(null);
+  const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
+  const [kycSubmitting, setKycSubmitting] = useState(false);
   const {
     data: profileSummary,
     isLoading: profileLoading,
     refetch: refetchProfile,
   } = useGetProfileSummaryQuery();
-  const { data: kycStatus, isLoading: kycLoading } = useGetKycStatusQuery();
+  const {
+    data: kycStatus,
+    isLoading: kycLoading,
+    refetch: refetchKycStatus,
+  } = useGetKycStatusQuery();
   const {
     data: vehicles,
     isLoading: vehiclesLoading,
     refetch: refetchVehicles,
   } = useGetVehiclesQuery();
   const [createVehicle, { isLoading: creatingVehicle }] = useCreateVehicleMutation();
+  const [uploadKyc, { isLoading: uploadingKyc }] = useUploadKycMutation();
 
   const currentUser = profileSummary?.user ?? user;
   const stats = profileSummary?.stats;
@@ -82,7 +93,7 @@ export default function ProfileScreen() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([refetchProfile(), refetchVehicles()]);
+      await Promise.all([refetchProfile(), refetchVehicles(), refetchKycStatus()]);
     } finally {
       setRefreshing(false);
     }
@@ -94,6 +105,19 @@ export default function ProfileScreen() {
     setVehicleColor('');
     setVehiclePlate('');
   };
+
+  const resetKycForm = () => {
+    setKycFrontImage(null);
+    setKycBackImage(null);
+    setKycSelfieImage(null);
+  };
+
+  useEffect(() => {
+    if (!kycModalVisible) {
+      resetKycForm();
+      setKycSubmitting(false);
+    }
+  }, [kycModalVisible]);
 
   const handleAddVehicle = async () => {
     if (!vehicleBrand.trim() || !vehicleModel.trim() || !vehicleColor.trim() || !vehiclePlate.trim()) {
@@ -118,8 +142,93 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleOpenKycModal = () => {
+    setKycModalVisible(true);
+  };
+
+  const handleCloseKycModal = () => {
+    if (kycSubmitting || uploadingKyc) {
+      return;
+    }
+    setKycModalVisible(false);
+  };
+
+  const handlePickKycImage = (field: 'front' | 'back' | 'selfie') => {
+    Alert.alert(
+      'Ajouter un document',
+      'Choisissez une source',
+      [
+        {
+          text: 'Caméra',
+          onPress: async () => {
+            const uri = await pickImage('camera');
+            if (uri) {
+              if (field === 'front') setKycFrontImage(uri);
+              if (field === 'back') setKycBackImage(uri);
+              if (field === 'selfie') setKycSelfieImage(uri);
+            }
+          },
+        },
+        {
+          text: 'Galerie',
+          onPress: async () => {
+            const uri = await pickImage('gallery');
+            if (uri) {
+              if (field === 'front') setKycFrontImage(uri);
+              if (field === 'back') setKycBackImage(uri);
+              if (field === 'selfie') setKycSelfieImage(uri);
+            }
+          },
+        },
+        {
+          text: 'Annuler',
+          style: 'cancel',
+        },
+      ],
+    );
+  };
+
+  const buildDataUri = async (uri: string) => {
+    const base64 = await convertImageToBase64(uri);
+    return `data:image/jpeg;base64,${base64}`;
+  };
+
+  const handleSubmitKyc = async () => {
+    if (!kycFrontImage || !kycBackImage || !kycSelfieImage) {
+      Alert.alert('Documents requis', 'Merci de fournir les deux faces de votre pièce ainsi qu’un selfie.');
+      return;
+    }
+    try {
+      setKycSubmitting(true);
+      const [frontData, backData, selfieData] = await Promise.all([
+        buildDataUri(kycFrontImage),
+        buildDataUri(kycBackImage),
+        buildDataUri(kycSelfieImage),
+      ]);
+      await uploadKyc({
+        cniFrontUrl: frontData,
+        cniBackUrl: backData,
+        selfieUrl: selfieData,
+      }).unwrap();
+      setKycModalVisible(false);
+      await Promise.all([refetchKycStatus(), refetchProfile()]);
+      Alert.alert('Succès', 'Vos documents ont été envoyés. Nous vous informerons lors de la vérification.');
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        'Impossible de soumettre les documents pour le moment.';
+      Alert.alert('Erreur KYC', Array.isArray(message) ? message.join('\n') : message);
+    } finally {
+      setKycSubmitting(false);
+    }
+  };
+
+  const isKycBusy = kycSubmitting || uploadingKyc;
+  const isKycFormValid = Boolean(kycFrontImage && kycBackImage && kycSelfieImage);
   const isKycApproved = kycStatus?.status === 'approved';
   const isKycPending = kycStatus?.status === 'pending';
+  const isKycRejected = kycStatus?.status === 'rejected';
 
   const badges = [
     ...(currentUser?.isDriver
@@ -278,24 +387,38 @@ export default function ProfileScreen() {
                 ? 'Vérifié'
                 : isKycPending
                 ? 'En cours de vérification'
+                : isKycRejected
+                ? 'Rejeté'
                 : 'Non vérifié'}
             </Text>
-            {!isKycApproved && (
-              <TouchableOpacity
-                style={styles.kycButton}
-                onPress={() =>
-                  Alert.alert(
-                    'KYC',
-                    'La soumission des documents sera bientôt disponible dans l’application.',
-                  )
-                }
-              >
-                <Text style={styles.kycButtonText}>
-                  {isKycPending ? 'Modifier mes documents' : 'Soumettre mes documents'}
-                </Text>
-                <Ionicons name="chevron-forward" size={18} color={Colors.primary} />
-              </TouchableOpacity>
-            )}
+            {isKycRejected && kycStatus?.rejectionReason ? (
+              <Text style={styles.kycRejectionText}>
+                Motif: {kycStatus.rejectionReason}
+              </Text>
+            ) : null}
+            <Text style={styles.kycHelperText}>
+              {isKycApproved
+                ? 'Vos documents sont validés. Vous pouvez les mettre à jour si nécessaire.'
+                : isKycPending
+                ? 'Nous vérifions vos documents. Vous pouvez les actualiser en cas de changement.'
+                : 'Ajoutez vos documents officiels pour confirmer votre identité.'}
+            </Text>
+            <TouchableOpacity
+              style={[styles.kycButton, isKycBusy && styles.kycButtonDisabled]}
+              onPress={handleOpenKycModal}
+              disabled={isKycBusy}
+            >
+              {isKycBusy ? (
+                <ActivityIndicator color={Colors.primary} size="small" />
+              ) : (
+                <>
+                  <Text style={styles.kycButtonText}>
+                    {isKycApproved ? 'Mettre à jour mes documents' : 'Soumettre mes documents'}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={Colors.primary} />
+                </>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -443,6 +566,134 @@ export default function ProfileScreen() {
                   <ActivityIndicator color={Colors.white} />
                 ) : (
                   <Text style={styles.vehicleSaveButtonText}>Ajouter</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={kycModalVisible} transparent animationType="fade" onRequestClose={handleCloseKycModal}>
+        <View style={styles.kycModalOverlay}>
+          <View style={styles.kycModalCard}>
+            <View style={styles.kycModalHeader}>
+              <Text style={styles.kycModalTitle}>
+                {isKycApproved ? 'Mettre à jour mes documents' : 'Soumettre mes documents'}
+              </Text>
+              <TouchableOpacity onPress={handleCloseKycModal}>
+                <Ionicons name="close" size={22} color={Colors.gray[700]} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={styles.kycModalContent}>
+              <Text style={styles.kycModalSubtitle}>
+                Ajoutez des photos nettes de votre pièce d’identité (recto/verso) ainsi qu’un selfie récent.
+              </Text>
+
+              <View style={styles.kycUploadsGrid}>
+                <View style={styles.kycUploadCard}>
+                  <TouchableOpacity
+                    style={styles.kycUploadBody}
+                    onPress={() => handlePickKycImage('front')}
+                    activeOpacity={0.9}
+                  >
+                    {kycFrontImage ? (
+                      <Image source={{ uri: kycFrontImage }} style={styles.kycUploadPreview} />
+                    ) : (
+                      <View style={styles.kycUploadPlaceholder}>
+                        <Ionicons name='document-text-outline' size={32} color={Colors.primary} />
+                        <Text style={styles.kycUploadPlaceholderText}>Recto de la pièce</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                  <View style={styles.kycUploadFooter}>
+                    <Text style={styles.kycUploadLabel}>Recto</Text>
+                    {kycFrontImage && (
+                      <TouchableOpacity
+                        style={styles.kycRemoveButton}
+                        onPress={() => setKycFrontImage(null)}
+                      >
+                        <Ionicons name='trash' size={16} color={Colors.danger} />
+                        <Text style={styles.kycRemoveText}>Supprimer</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+
+                <View style={styles.kycUploadCard}>
+                  <TouchableOpacity
+                    style={styles.kycUploadBody}
+                    onPress={() => handlePickKycImage('back')}
+                    activeOpacity={0.9}
+                  >
+                    {kycBackImage ? (
+                      <Image source={{ uri: kycBackImage }} style={styles.kycUploadPreview} />
+                    ) : (
+                      <View style={styles.kycUploadPlaceholder}>
+                        <Ionicons name='document-outline' size={32} color={Colors.primary} />
+                        <Text style={styles.kycUploadPlaceholderText}>Verso de la pièce</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                  <View style={styles.kycUploadFooter}>
+                    <Text style={styles.kycUploadLabel}>Verso</Text>
+                    {kycBackImage && (
+                      <TouchableOpacity
+                        style={styles.kycRemoveButton}
+                        onPress={() => setKycBackImage(null)}
+                      >
+                        <Ionicons name='trash' size={16} color={Colors.danger} />
+                        <Text style={styles.kycRemoveText}>Supprimer</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+
+                <View style={styles.kycUploadCard}>
+                  <TouchableOpacity
+                    style={styles.kycUploadBody}
+                    onPress={() => handlePickKycImage('selfie')}
+                    activeOpacity={0.9}
+                  >
+                    {kycSelfieImage ? (
+                      <Image source={{ uri: kycSelfieImage }} style={styles.kycUploadPreview} />
+                    ) : (
+                      <View style={styles.kycUploadPlaceholder}>
+                        <Ionicons name='person-circle-outline' size={36} color={Colors.primary} />
+                        <Text style={styles.kycUploadPlaceholderText}>Selfie récent</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                  <View style={styles.kycUploadFooter}>
+                    <Text style={styles.kycUploadLabel}>Selfie</Text>
+                    {kycSelfieImage && (
+                      <TouchableOpacity
+                        style={styles.kycRemoveButton}
+                        onPress={() => setKycSelfieImage(null)}
+                      >
+                        <Ionicons name='trash' size={16} color={Colors.danger} />
+                        <Text style={styles.kycRemoveText}>Supprimer</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              </View>
+
+              <Text style={styles.kycTips}>
+                Formats acceptés: JPG ou PNG. Assurez-vous que les informations soient parfaitement lisibles.
+              </Text>
+
+              <TouchableOpacity
+                style={[
+                  styles.kycSubmitButton,
+                  (!isKycFormValid || isKycBusy) && styles.kycSubmitButtonDisabled,
+                ]}
+                onPress={handleSubmitKyc}
+                disabled={!isKycFormValid || isKycBusy}
+              >
+                {isKycBusy ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <Text style={styles.kycSubmitButtonText}>Envoyer mes documents</Text>
                 )}
               </TouchableOpacity>
             </ScrollView>
@@ -710,6 +961,16 @@ const styles = StyleSheet.create({
   kycStatusPending: {
     color: Colors.secondary,
   },
+  kycRejectionText: {
+    color: Colors.danger,
+    fontSize: FontSizes.sm,
+    marginBottom: Spacing.xs,
+  },
+  kycHelperText: {
+    color: Colors.gray[600],
+    marginBottom: Spacing.md,
+    fontSize: FontSizes.sm,
+  },
   kycButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -720,9 +981,121 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,
   },
+  kycButtonDisabled: {
+    opacity: 0.6,
+  },
   kycButtonText: {
     color: Colors.primary,
     fontWeight: FontWeights.semibold,
+  },
+  kycModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    padding: Spacing.lg,
+    justifyContent: 'center',
+  },
+  kycModalCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    maxHeight: '92%',
+    overflow: 'hidden',
+  },
+  kycModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.xl,
+    paddingBottom: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+  },
+  kycModalTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  kycModalContent: {
+    paddingHorizontal: Spacing.xl,
+    paddingBottom: Spacing.xl,
+  },
+  kycModalSubtitle: {
+    color: Colors.gray[600],
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.md,
+    fontSize: FontSizes.sm,
+  },
+  kycUploadsGrid: {
+    marginTop: Spacing.sm,
+  },
+  kycUploadCard: {
+    marginBottom: Spacing.lg,
+  },
+  kycUploadBody: {
+    height: 165,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.gray[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  kycUploadPreview: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  kycUploadPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  kycUploadPlaceholderText: {
+    textAlign: 'center',
+    color: Colors.gray[600],
+    marginTop: Spacing.sm,
+  },
+  kycUploadFooter: {
+    marginTop: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  kycUploadLabel: {
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[800],
+  },
+  kycRemoveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  kycRemoveText: {
+    color: Colors.danger,
+    fontSize: FontSizes.sm,
+  },
+  kycTips: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+    marginTop: Spacing.sm,
+  },
+  kycSubmitButton: {
+    marginTop: Spacing.xl,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.lg,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+    ...CommonStyles.shadowMd,
+  },
+  kycSubmitButtonDisabled: {
+    backgroundColor: Colors.gray[400],
+    shadowColor: 'transparent',
+  },
+  kycSubmitButtonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.base,
   },
   vehiclesContainer: {
     paddingHorizontal: Spacing.xl,

@@ -1,4 +1,6 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useUserLocation } from '@/hooks/useUserLocation';
+import { trackingSocket } from '@/services/trackingSocket';
 import {
   useCancelBookingMutation,
   useCreateBookingMutation,
@@ -7,11 +9,11 @@ import {
 import { useCreateConversationMutation } from '@/store/api/messageApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
-import type { BookingStatus } from '@/types';
+import type { BookingStatus, GeoPoint } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -27,6 +29,34 @@ import {
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+const pointToLatLng = (point?: GeoPoint | null) => {
+  if (!point?.coordinates || point.coordinates.length < 2) {
+    return null;
+  }
+  const [longitude, latitude] = point.coordinates;
+  if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+    return null;
+  }
+  return {
+    latitude: Number(latitude),
+    longitude: Number(longitude),
+  };
+};
+
+const arrayToLatLng = (coordinates?: [number, number] | null) => {
+  if (!coordinates || coordinates.length < 2) {
+    return null;
+  }
+  const [longitude, latitude] = coordinates;
+  if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+    return null;
+  }
+  return {
+    latitude: Number(latitude),
+    longitude: Number(longitude),
+  };
+};
 
 const BOOKING_STATUS_CONFIG: Record<
   BookingStatus,
@@ -65,19 +95,35 @@ export default function TripDetailsScreen() {
   const tripId = typeof id === 'string' ? (id as string) : '';
   const trip = useAppSelector((state) => selectTripById(tripId)(state));
   const user = useAppSelector(selectUser);
-  const driverPhone = useMemo(() => {
-    if (!trip) {
-      return undefined;
-    }
-    const extendedTrip = trip as typeof trip & { driver?: { phone?: string } };
-    return extendedTrip.driver?.phone ?? trip.driverPhone;
-  }, [trip]);
+  const driverPhone = trip?.driver?.phone ?? null;
+  const isTripDriver = Boolean(trip && user && trip.driverId === user.id);
   const {
     data: myBookings,
     isLoading: myBookingsLoading,
     isFetching: myBookingsFetching,
     refetch: refetchMyBookings,
   } = useGetMyBookingsQuery();
+  const {
+    lastKnownLocation,
+    requestPermission: requestDriverLocationPermission,
+    stopWatching: stopDriverLocationWatching,
+  } = useUserLocation({ autoRequest: false });
+  const requestLocationRef = useRef(requestDriverLocationPermission);
+  const stopWatchingRef = useRef(stopDriverLocationWatching);
+  useEffect(() => {
+    requestLocationRef.current = requestDriverLocationPermission;
+    stopWatchingRef.current = stopDriverLocationWatching;
+  }, [requestDriverLocationPermission, stopDriverLocationWatching]);
+  const initialLiveCoordinate = useMemo(() => pointToLatLng(trip?.currentLocation ?? null), [trip?.currentLocation]);
+  const [liveDriverCoordinate, setLiveDriverCoordinate] = useState(initialLiveCoordinate);
+  const [liveDriverUpdatedAt, setLiveDriverUpdatedAt] = useState<string | null>(trip?.lastLocationUpdateAt ?? null);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
+  useEffect(() => {
+    setLiveDriverCoordinate(initialLiveCoordinate);
+  }, [initialLiveCoordinate]);
+  useEffect(() => {
+    setLiveDriverUpdatedAt(trip?.lastLocationUpdateAt ?? null);
+  }, [trip?.lastLocationUpdateAt]);
   const [createBooking, { isLoading: isBooking }] = useCreateBookingMutation();
   const [cancelBookingMutation, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
   const [createConversation, { isLoading: isCreatingConversation }] = useCreateConversationMutation();
@@ -107,6 +153,17 @@ export default function TripDetailsScreen() {
     }
   }, [trip?.status]);
 
+  useEffect(() => {
+    if (!trip || !isTripDriver || trip.status !== 'ongoing') {
+      stopWatchingRef.current?.();
+      return;
+    }
+    requestLocationRef.current?.();
+    return () => {
+      stopWatchingRef.current?.();
+    };
+  }, [trip?.id, trip?.status, isTripDriver]);
+
   const pulseStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulseAnim.value }],
   }));
@@ -117,12 +174,70 @@ export default function TripDetailsScreen() {
     }
     return (
       myBookings.find(
-        (booking) =>
+        (booking: any) =>
           booking.tripId === trip.id &&
           (booking.status === 'pending' || booking.status === 'accepted'),
       ) ?? null
     );
   }, [myBookings, trip]);
+  const hasAcceptedBooking = activeBooking?.status === 'accepted';
+  const canTrackTrip = Boolean(trip && user && (isTripDriver || hasAcceptedBooking));
+
+  useEffect(() => {
+    if (!trip || !canTrackTrip) {
+      setTrackingError(null);
+      return;
+    }
+    let isMounted = true;
+    trackingSocket
+      .joinTrip(trip.id)
+      .then(() => trackingSocket.requestDriverLocation(trip.id))
+      .catch(() => {});
+
+    const unsubscribeLocation = trackingSocket.subscribeToDriverLocation((payload) => {
+      if (!isMounted || payload.tripId !== trip.id) {
+        return;
+      }
+      const nextCoordinate = arrayToLatLng(payload.coordinates ?? null);
+      setLiveDriverUpdatedAt(payload.updatedAt ?? new Date().toISOString());
+      if (nextCoordinate) {
+        setLiveDriverCoordinate(nextCoordinate);
+        setTrackingError(null);
+      } else {
+        setLiveDriverCoordinate(null);
+      }
+    });
+
+    const unsubscribeErrors = trackingSocket.subscribeToErrors((message) => {
+      if (isMounted) {
+        setTrackingError(message);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      trackingSocket.leaveTrip(trip.id);
+      unsubscribeLocation();
+      unsubscribeErrors();
+    };
+  }, [trip?.id, canTrackTrip]);
+
+  useEffect(() => {
+    if (!trip || !isTripDriver || trip.status !== 'ongoing') {
+      return;
+    }
+    const coords = lastKnownLocation?.coords;
+    if (!coords) {
+      return;
+    }
+    trackingSocket.updateDriverLocation(trip.id, [Number(coords.longitude), Number(coords.latitude)]);
+  }, [
+    trip?.id,
+    trip?.status,
+    isTripDriver,
+    lastKnownLocation?.coords?.latitude,
+    lastKnownLocation?.coords?.longitude,
+  ]);
 
   const availableSeats = trip ? Math.max(trip.availableSeats, 0) : 0;
   const seatLimit = Math.max(availableSeats, 1);
@@ -148,6 +263,39 @@ export default function TripDetailsScreen() {
   }
 
   const progress = trip.progress || 0;
+  const trackingStatusTitle = liveDriverCoordinate ? 'Suivi en direct' : 'Position estimée';
+  const trackingStatusSubtitle = useMemo(() => {
+    if (trackingError) {
+      return trackingError;
+    }
+    if (!liveDriverCoordinate) {
+      return isTripDriver
+        ? 'Partage automatique activé dès que la localisation est disponible.'
+        : 'Le conducteur n’a pas encore partagé sa position.';
+    }
+    if (!liveDriverUpdatedAt) {
+      return 'Mise à jour en cours...';
+    }
+    const timestamp = new Date(liveDriverUpdatedAt).getTime();
+    if (Number.isNaN(timestamp)) {
+      return `Mise à jour à ${new Date(liveDriverUpdatedAt).toLocaleTimeString('fr-FR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })}`;
+    }
+    const diffMs = Date.now() - timestamp;
+    if (diffMs < 60 * 1000) {
+      return 'Mis à jour il y a quelques secondes';
+    }
+    if (diffMs < 60 * 60 * 1000) {
+      const mins = Math.floor(diffMs / (60 * 1000));
+      return `Mis à jour il y a ${mins} min`;
+    }
+    return `Mis à jour à ${new Date(liveDriverUpdatedAt).toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`;
+  }, [isTripDriver, liveDriverCoordinate, liveDriverUpdatedAt, trackingError]);
   const activeBookingStatus = activeBooking ? BOOKING_STATUS_CONFIG[activeBooking.status] : null;
   const openBookingModal = () => {
     setBookingSeats('1');
@@ -301,7 +449,8 @@ export default function TripDetailsScreen() {
     cancelled: { color: Colors.gray[600], bgColor: Colors.gray[200], label: 'Annulé' },
   };
 
-  const config = statusConfig[trip.status];
+  const config = statusConfig[trip.status as keyof typeof statusConfig];
+
   const departureCoordinate = useMemo(
     () => ({
       latitude: trip.departure.lat,
@@ -334,7 +483,7 @@ export default function TripDetailsScreen() {
     };
   }, [arrivalCoordinate, departureCoordinate]);
 
-  const currentCoordinate = useMemo(() => {
+  const estimatedCoordinate = useMemo(() => {
     if (trip.status !== 'ongoing' || typeof progress !== 'number') {
       return null;
     }
@@ -345,6 +494,7 @@ export default function TripDetailsScreen() {
         departureCoordinate.longitude + (arrivalCoordinate.longitude - departureCoordinate.longitude) * ratio,
     };
   }, [arrivalCoordinate, departureCoordinate, progress, trip.status]);
+  const currentCoordinate = liveDriverCoordinate ?? estimatedCoordinate;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -465,6 +615,35 @@ export default function TripDetailsScreen() {
             </View>
           </View>
         </Modal>
+
+        {canTrackTrip && (
+          <View style={styles.trackingBanner}>
+            <View style={styles.trackingBannerLeft}>
+              <View
+                style={[
+                  styles.trackingStatusDot,
+                  liveDriverCoordinate ? styles.trackingStatusDotActive : styles.trackingStatusDotIdle,
+                ]}
+              />
+              <View>
+                <Text style={styles.trackingTitle}>{trackingStatusTitle}</Text>
+                <Text style={styles.trackingSubtitle}>{trackingStatusSubtitle}</Text>
+              </View>
+            </View>
+            {!isTripDriver && (
+              <TouchableOpacity
+                style={styles.trackingRefreshButton}
+                onPress={() => {
+                  if (trip) {
+                    trackingSocket.requestDriverLocation(trip.id);
+                  }
+                }}
+              >
+                <Ionicons name="refresh" size={16} color={Colors.primary} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         {/* Statut du trajet */}
         <View style={styles.statusContainer}>
@@ -1028,6 +1207,55 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: BorderRadius.full,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trackingBanner: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.xl,
+    padding: Spacing.md,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    ...CommonStyles.shadowSm,
+  },
+  trackingBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: Spacing.md,
+  },
+  trackingStatusDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    marginRight: Spacing.md,
+  },
+  trackingStatusDotActive: {
+    backgroundColor: Colors.success,
+  },
+  trackingStatusDotIdle: {
+    backgroundColor: Colors.gray[400],
+  },
+  trackingTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
+  },
+  trackingSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginTop: 2,
+  },
+  trackingRefreshButton: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },

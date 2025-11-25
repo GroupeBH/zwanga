@@ -1,7 +1,7 @@
 import { createApi, fetchBaseQuery, retry } from '@reduxjs/toolkit/query/react';
 import type { BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import { API_BASE_URL } from '../../config/env';
-import { getValidAccessToken, handle401Error } from '../../services/tokenRefresh';
+import { getValidAccessToken } from '../../services/tokenRefresh';
 import type { RootState } from '../index';
 
 /**
@@ -31,21 +31,9 @@ const baseQueryWithReauth: BaseQueryFn<
   // Première tentative
   let result = await baseQueryWithAuth(args, api, extraOptions);
 
-  // Si erreur 401 (Unauthorized), tenter de rafraîchir le token
+  // Si erreur 401 (Unauthorized), laisser la requête échouer et gérer côté UI
   if (result.error && result.error.status === 401) {
-    console.log('Erreur 401 - tentative de rafraîchissement du token');
-    
-    // Tenter de rafraîchir le token
-    const refreshed = await handle401Error();
-    
-    if (refreshed) {
-      // Le token a été rafraîchi, réessayer la requête
-      console.log('Token rafraîchi, nouvelle tentative de la requête');
-      result = await baseQueryWithAuth(args, api, extraOptions);
-    } else {
-      // Impossible de rafraîchir, l'utilisateur sera redirigé vers login
-      console.log('Impossible de rafraîchir le token - déconnexion');
-    }
+    console.log('Erreur 401 détectée - aucun rafraîchissement automatique (handle401 désactivé)');
   }
 
   return result;
