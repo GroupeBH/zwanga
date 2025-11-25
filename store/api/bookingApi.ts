@@ -1,5 +1,6 @@
 import type { Booking, BookingStatus } from '../../types';
 import { baseApi } from './baseApi';
+import type { BaseEndpointBuilder } from './types';
 import type { ServerTrip } from './tripApi';
 import { mapServerTripToClient } from './tripApi';
 
@@ -52,9 +53,9 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
 });
 
 export const bookingApi = baseApi.injectEndpoints({
-  endpoints: (builder) => ({
+  endpoints: (builder: BaseEndpointBuilder) => ({
     createBooking: builder.mutation<Booking, { tripId: string; numberOfSeats: number }>({
-      query: (body) => ({
+      query: (body: { tripId: string; numberOfSeats: number }) => ({
         url: '/bookings',
         method: 'POST',
         body,
@@ -72,10 +73,10 @@ export const bookingApi = baseApi.injectEndpoints({
           : ['Booking'],
     }),
     getTripBookings: builder.query<Booking[], string>({
-      query: (tripId) => `/bookings/trip/${tripId}`,
+      query: (tripId: string) => `/bookings/trip/${tripId}`,
       transformResponse: (response: ServerBooking[]) =>
         response.map((booking) => mapServerBookingToClient(booking)),
-      providesTags: (result, _error, arg) =>
+      providesTags: (result: Booking[] | undefined, _error: unknown, arg: string) =>
         result
           ? [
               ...result.map(({ id }) => ({ type: 'Booking' as const, id })),
@@ -85,15 +86,17 @@ export const bookingApi = baseApi.injectEndpoints({
           : [{ type: 'Trip', id: arg }, 'Booking'],
     }),
     getBookingById: builder.query<Booking, string>({
-      query: (id) => `/bookings/${id}`,
+      query: (id: string) => `/bookings/${id}`,
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
-      providesTags: (_result, _error, id) => [{ type: 'Booking', id }],
+      providesTags: (_result: Booking | undefined, _error: unknown, id: string) => [
+        { type: 'Booking', id },
+      ],
     }),
     updateBookingStatus: builder.mutation<
       Booking,
       { id: string; status: BookingStatus; rejectionReason?: string }
     >({
-      query: ({ id, ...body }) => ({
+      query: ({ id, ...body }: { id: string; status: BookingStatus; rejectionReason?: string }) => ({
         url: `/bookings/${id}/status`,
         method: 'PUT',
         body,
@@ -110,14 +113,14 @@ export const bookingApi = baseApi.injectEndpoints({
           : ['Booking', 'Trip'],
     }),
     cancelBooking: builder.mutation<void, string>({
-      query: (id) => ({
+      query: (id: string) => ({
         url: `/bookings/${id}/cancel`,
         method: 'PUT',
       }),
-      invalidatesTags: (_result, _error, id) => [{ type: 'Booking', id }, 'Booking', 'Trip'],
+      invalidatesTags: (_result, _error, id: string) => [{ type: 'Booking', id }, 'Booking', 'Trip'],
     }),
     acceptBooking: builder.mutation<Booking, string>({
-      query: (id) => ({
+      query: (id: string) => ({
         url: `/bookings/${id}/accept`,
         method: 'PUT',
       }),
@@ -133,7 +136,7 @@ export const bookingApi = baseApi.injectEndpoints({
           : ['Booking', 'Trip'],
     }),
     rejectBooking: builder.mutation<Booking, { id: string; reason: string }>({
-      query: ({ id, reason }) => ({
+      query: ({ id, reason }: { id: string; reason: string }) => ({
         url: `/bookings/${id}/reject`,
         method: 'PUT',
         body: { reason },

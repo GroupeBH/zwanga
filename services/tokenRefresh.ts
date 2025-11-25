@@ -167,19 +167,19 @@ export async function handle401Error(): Promise<boolean> {
   console.log('Erreur 401 détectée, tentative de rafraîchissement...');
   const { accessToken, refreshToken } = await getTokens();
 
-  if (!accessToken || !refreshToken) {
+  if (!accessToken && !refreshToken) {
     console.log('Tokens manquants, déconnexion requise');
     await clearTokens();
     getStoreDispatch()(logout());
     return false;
   }
 
-  if (!isTokenExpired(accessToken)) {
+  if (!accessToken || !isTokenExpired(accessToken)) {
     console.log('Access token encore valide, pas de refresh');
     return false;
   }
 
-  if (isTokenExpired(refreshToken)) {
+  if (!refreshToken || isTokenExpired(refreshToken)) {
     console.log('Refresh token expiré');
     await clearTokens();
     getStoreDispatch()(logout());

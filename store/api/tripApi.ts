@@ -1,5 +1,6 @@
 import type { Trip, TripStatus, VehicleType } from '../../types';
 import { baseApi } from './baseApi';
+import type { BaseEndpointBuilder } from './types';
 
 type CoordinatesTuple = [number, number] | null | undefined;
 
@@ -172,15 +173,15 @@ type UpdateTripRequest = Partial<CreateTripPayload> & {
 
 export const tripApi = baseApi.injectEndpoints({
   overrideExisting: true,
-  endpoints: (builder) => ({
+  endpoints: (builder: BaseEndpointBuilder) => ({
     // Rechercher des trajets avec filtres
     getTrips: builder.query<Trip[], TripSearchParams>({
-      query: (params) => ({
+      query: (params: TripSearchParams) => ({
         url: '/trips',
         params,
       }),
       transformResponse: (response: ServerTrip[]) => response.map(mapServerTripToClient),
-      providesTags: (result) =>
+      providesTags: (result: Trip[] | undefined) =>
         result
           ? [...result.map(({ id }) => ({ type: 'Trip' as const, id })), 'Trip']
           : ['Trip'],
@@ -196,7 +197,7 @@ export const tripApi = baseApi.injectEndpoints({
           : ['MyTrips'],
     }),
     searchTripsByCoordinates: builder.mutation<Trip[], TripSearchByPointsPayload>({
-      query: (body) => ({
+      query: (body: TripSearchByPointsPayload) => ({
         url: '/trips/search/coordinates',
         method: 'POST',
         body,
@@ -207,14 +208,14 @@ export const tripApi = baseApi.injectEndpoints({
 
     // Récupérer un trajet par son ID
     getTripById: builder.query<Trip, string>({
-      query: (id) => `/trips/${id}`,
+      query: (id: string) => `/trips/${id}`,
       transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
-      providesTags: (result, error, id) => [{ type: 'Trip', id }],
+      providesTags: (_result, _error, id: string) => [{ type: 'Trip', id }],
     }),
 
     // Créer un nouveau trajet
     createTrip: builder.mutation<Trip, CreateTripPayload>({
-      query: (trip) => ({
+      query: (trip: CreateTripPayload) => ({
         url: '/trips',
         method: 'POST',
         body: trip,
@@ -225,13 +226,13 @@ export const tripApi = baseApi.injectEndpoints({
 
     // Mettre à jour un trajet existant
     updateTrip: builder.mutation<Trip, { id: string; updates: UpdateTripRequest }>({
-      query: ({ id, updates }) => ({
+      query: ({ id, updates }: { id: string; updates: UpdateTripRequest }) => ({
         url: `/trips/${id}`,
         method: 'PUT',
         body: updates,
       }),
       transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
-      invalidatesTags: (result, error, { id }) => [
+      invalidatesTags: (_result, _error, { id }: { id: string }) => [
         { type: 'Trip', id },
         { type: 'MyTrips', id },
         'Trip',
@@ -241,11 +242,11 @@ export const tripApi = baseApi.injectEndpoints({
 
     // Annuler un trajet
     deleteTrip: builder.mutation<void, string>({
-      query: (id) => ({
+      query: (id: string) => ({
         url: `/trips/${id}`,
         method: 'DELETE',
       }),
-      invalidatesTags: (result, error, id) => [
+      invalidatesTags: (_result, _error, id: string) => [
         { type: 'Trip', id },
         { type: 'MyTrips', id },
         'Trip',
@@ -255,12 +256,15 @@ export const tripApi = baseApi.injectEndpoints({
 
     // Réserver des places sur un trajet
     bookTrip: builder.mutation<void, { tripId: string; seats: number }>({
-      query: ({ tripId, seats }) => ({
+      query: ({ tripId, seats }: { tripId: string; seats: number }) => ({
         url: `/trips/${tripId}/book`,
         method: 'POST',
         body: { seats },
       }),
-      invalidatesTags: (result, error, { tripId }) => [{ type: 'Trip', id: tripId }, 'Trip'],
+      invalidatesTags: (_result, _error, { tripId }: { tripId: string }) => [
+        { type: 'Trip', id: tripId },
+        'Trip',
+      ],
     }),
   }),
 });

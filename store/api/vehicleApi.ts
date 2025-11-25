@@ -1,5 +1,6 @@
 import { baseApi } from './baseApi';
 import type { Vehicle } from '../../types';
+import type { BaseEndpointBuilder } from './types';
 
 type CreateVehiclePayload = {
   brand: string;
@@ -14,16 +15,16 @@ type UpdateVehiclePayload = Partial<CreateVehiclePayload> & {
 };
 
 export const vehicleApi = baseApi.injectEndpoints({
-  endpoints: (builder) => ({
+  endpoints: (builder: BaseEndpointBuilder) => ({
     getVehicles: builder.query<Vehicle[], void>({
       query: () => '/vehicles',
-      providesTags: (result) =>
+      providesTags: (result: Vehicle[] | undefined) =>
         result
           ? [...result.map(({ id }) => ({ type: 'Vehicle' as const, id })), 'Vehicle']
           : ['Vehicle'],
     }),
     createVehicle: builder.mutation<Vehicle, CreateVehiclePayload>({
-      query: (body) => ({
+      query: (body: CreateVehiclePayload) => ({
         url: '/vehicles',
         method: 'POST',
         body,
@@ -31,19 +32,23 @@ export const vehicleApi = baseApi.injectEndpoints({
       invalidatesTags: ['Vehicle', 'User'],
     }),
     updateVehicle: builder.mutation<Vehicle, { id: string; data: UpdateVehiclePayload }>({
-      query: ({ id, data }) => ({
+      query: ({ id, data }: { id: string; data: UpdateVehiclePayload }) => ({
         url: `/vehicles/${id}`,
         method: 'PUT',
         body: data,
       }),
-      invalidatesTags: (result, error, { id }) => [{ type: 'Vehicle', id }, 'Vehicle', 'User'],
+      invalidatesTags: (_result, _error, { id }: { id: string }) => [
+        { type: 'Vehicle', id },
+        'Vehicle',
+        'User',
+      ],
     }),
     deleteVehicle: builder.mutation<{ message: string }, string>({
-      query: (id) => ({
+      query: (id: string) => ({
         url: `/vehicles/${id}`,
         method: 'DELETE',
       }),
-      invalidatesTags: (result, error, id) => [{ type: 'Vehicle', id }, 'Vehicle', 'User'],
+      invalidatesTags: (_result, _error, id: string) => [{ type: 'Vehicle', id }, 'Vehicle', 'User'],
     }),
   }),
 });
