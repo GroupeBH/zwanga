@@ -1,86 +1,86 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useAppSelector } from '@/store/hooks';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
+import React, { useEffect } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
-  withSpring,
-  withSequence,
-  withTiming,
   useSharedValue,
+  withDelay,
+  withTiming,
 } from 'react-native-reanimated';
-import { Colors, Spacing, BorderRadius, FontSizes, FontWeights } from '@/constants/styles';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAppSelector } from '@/store/hooks';
 
 export default function SplashScreen() {
   const router = useRouter();
   const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
-  const scale = useSharedValue(0);
-  const opacity = useSharedValue(0);
+
+  const logoScale = useSharedValue(0.9);
+  const logoOpacity = useSharedValue(0);
+  const titleOpacity = useSharedValue(0);
+  const progress = useSharedValue(0);
 
   useEffect(() => {
-    // Animation du logo
-    scale.value = withSequence(
-      withSpring(1.2, { damping: 2 }),
-      withSpring(1)
-    );
-    opacity.value = withTiming(1, { duration: 500 });
+    logoScale.value = withTiming(1, { duration: 600 });
+    logoOpacity.value = withTiming(1, { duration: 600 });
+    titleOpacity.value = withDelay(150, withTiming(1, { duration: 700 }));
+    progress.value = withTiming(1, { duration: 1800 });
 
-    // Vérifier le premier lancement et l'authentification
     const checkFirstLaunch = async () => {
       try {
         const hasSeenOnboarding = await AsyncStorage.getItem('hasSeenOnboarding');
-        
-        // Attendre un peu pour l'animation
         setTimeout(async () => {
           if (!hasSeenOnboarding) {
-            // Premier lancement : afficher l'onboarding
             router.replace('/onboarding');
           } else if (isAuthenticated) {
-            // Utilisateur déjà connecté : aller directement à l'app
             router.replace('/(tabs)');
           } else {
-            // Utilisateur non connecté : aller à l'authentification
             router.replace('/auth');
           }
-        }, 2000);
+        }, 1800);
       } catch (error) {
         console.error('Error checking first launch:', error);
-        // En cas d'erreur, rediriger vers l'authentification
-        setTimeout(() => {
-          router.replace('/auth');
-        }, 2000);
+        setTimeout(() => router.replace('/auth'), 1800);
       }
     };
 
     checkFirstLaunch();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, logoOpacity, logoScale, progress, router, titleOpacity]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
+  const logoStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: logoScale.value }],
+    opacity: logoOpacity.value,
+  }));
+
+  const titleStyle = useAnimatedStyle(() => ({
+    opacity: titleOpacity.value,
+    transform: [
+      {
+        translateY: withTiming(titleOpacity.value ? 0 : 12, { duration: 700 }),
+      },
+    ],
+  }));
+
+  const progressStyle = useAnimatedStyle(() => ({
+    width: `${progress.value * 100}%`,
   }));
 
   return (
     <View style={styles.container}>
-      <Animated.View style={[animatedStyle, styles.logoContainer]}>
+      <View style={styles.glow} />
+      <Animated.View style={[styles.logoContainer, logoStyle]}>
         <View style={styles.logoCircle}>
           <Text style={styles.logoText}>Z</Text>
         </View>
-        <Text style={styles.title}>ZWANGA</Text>
-        <Text style={styles.subtitle}>Covoiturage à Kinshasa</Text>
+        <Animated.Text style={[styles.title, titleStyle]}>ZWANGA</Animated.Text>
+        <Animated.Text style={[styles.subtitle, titleStyle]}>
+          Covoiturage à Kinshasa
+        </Animated.Text>
       </Animated.View>
-      
-      <Animated.View style={[animatedStyle, styles.loadingContainer]}>
-        <View style={styles.loadingDots}>
-          {[0, 1, 2].map((i) => (
-            <View
-              key={i}
-              style={[styles.dot, { opacity: 0.5 + i * 0.2 }]}
-            />
-          ))}
-        </View>
-      </Animated.View>
+
+      <View style={styles.progressWrapper}>
+        <Animated.View style={[styles.progressFill, progressStyle]} />
+      </View>
     </View>
   );
 }
@@ -91,6 +91,15 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  glow: {
+    position: 'absolute',
+    width: 260,
+    height: 260,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    top: '35%',
+    left: '25%',
   },
   logoContainer: {
     alignItems: 'center',
@@ -120,18 +129,17 @@ const styles = StyleSheet.create({
     color: Colors.white,
     opacity: 0.9,
   },
-  loadingContainer: {
+  progressWrapper: {
     position: 'absolute',
     bottom: 80,
-  },
-  loadingDots: {
-    flexDirection: 'row',
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    backgroundColor: Colors.white,
+    width: '60%',
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.25)',
     borderRadius: BorderRadius.full,
-    marginHorizontal: Spacing.xs,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: Colors.white,
   },
 });
