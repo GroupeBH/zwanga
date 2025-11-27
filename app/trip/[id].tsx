@@ -1,5 +1,7 @@
+import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackingSocket } from '@/services/trackingSocket';
@@ -146,6 +148,9 @@ export default function TripDetailsScreen() {
   });
   const [mapModalVisible, setMapModalVisible] = useState(false);
   const [driverReviewsModalVisible, setDriverReviewsModalVisible] = useState(false);
+  const { shouldShow: shouldShowTripGuide, complete: completeTripGuide } =
+    useTutorialGuide('trip_detail_screen');
+  const [tripGuideVisible, setTripGuideVisible] = useState(false);
   const { data: driverReviews } = useGetReviewsQuery(trip?.driverId ?? '', {
     skip: !trip?.driverId,
   });
@@ -158,9 +163,21 @@ export default function TripDetailsScreen() {
     (driverReviewCount && driverReviews
       ? driverReviews.reduce((sum, review) => sum + review.rating, 0) / driverReviewCount
       : trip?.driverRating ?? 0);
-    const refreshBookingLists = () => {
-      refetchMyBookings();
-    };
+
+  const refreshBookingLists = () => {
+    refetchMyBookings();
+  };
+
+  useEffect(() => {
+    if (shouldShowTripGuide) {
+      setTripGuideVisible(true);
+    }
+  }, [shouldShowTripGuide]);
+
+  const dismissTripGuide = () => {
+    setTripGuideVisible(false);
+    completeTripGuide();
+  };
   
   const pulseAnim = useSharedValue(1);
 
@@ -1129,6 +1146,13 @@ export default function TripDetailsScreen() {
           </Animated.View>
         </View>
       </Modal>
+
+      <TutorialOverlay
+        visible={tripGuideVisible}
+        title="Découvrez ce trajet"
+        message="Suivez la progression du conducteur, contactez-le ou réservez vos places depuis cet écran."
+        onDismiss={dismissTripGuide}
+      />
     </SafeAreaView>
   );
 }

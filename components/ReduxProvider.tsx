@@ -1,6 +1,7 @@
 import { DialogProvider } from '@/components/ui/DialogProvider';
 import { Colors } from '@/constants/styles';
 import { IdentityProvider } from '@/contexts/IdentityContext';
+import { TutorialProvider } from '@/contexts/TutorialContext';
 import { store } from '@/store';
 import { initializeAuth } from '@/store/slices/authSlice';
 import React, { useEffect, useState } from 'react';
@@ -44,7 +45,9 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
     <Provider store={store}>
       <AuthGuard>
         <DialogProvider>
-          <IdentityProvider>{children}</IdentityProvider>
+          <TutorialProvider>
+            <IdentityProvider>{children}</IdentityProvider>
+          </TutorialProvider>
         </DialogProvider>
       </AuthGuard>
     </Provider>

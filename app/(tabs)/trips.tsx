@@ -1,4 +1,6 @@
+import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useTutorialGuide } from '@/contexts/TutorialContext';
 import {
   useDeleteTripMutation,
   useGetMyTripsQuery,
@@ -12,7 +14,7 @@ import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -52,6 +54,20 @@ export default function TripsScreen() {
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
     null,
   );
+  const { shouldShow: shouldShowTripsGuide, complete: completeTripsGuide } =
+    useTutorialGuide('trips_screen');
+  const [tripsGuideVisible, setTripsGuideVisible] = useState(false);
+
+  useEffect(() => {
+    if (shouldShowTripsGuide) {
+      setTripsGuideVisible(true);
+    }
+  }, [shouldShowTripsGuide]);
+
+  const dismissTripsGuide = () => {
+    setTripsGuideVisible(false);
+    completeTripsGuide();
+  };
 
   const trips = myTrips ?? [];
   const upcomingTrips = useMemo(
@@ -582,6 +598,13 @@ export default function TripsScreen() {
           </View>
         </View>
       </Modal>
+
+      <TutorialOverlay
+        visible={tripsGuideVisible}
+        title="Gérez vos trajets"
+        message="Retrouvez vos trajets publiés, modifiez-les ou publiez un nouveau trajet depuis ce tableau de bord."
+        onDismiss={dismissTripsGuide}
+      />
     </SafeAreaView>
   );
 }
