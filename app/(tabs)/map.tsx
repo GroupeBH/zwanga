@@ -1,3 +1,4 @@
+import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useUserLocation } from '@/hooks/useUserLocation';
@@ -16,6 +17,7 @@ import { setTrips } from '@/store/slices/tripsSlice';
 import { formatTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useTutorialGuide } from '@/contexts/TutorialContext';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -62,10 +64,24 @@ export default function MapScreen() {
   const searchMode = useAppSelector(selectTripSearchMode);
   const activeSearchQuery = useAppSelector(selectTripSearchQuery);
   const [search, setSearch] = useState(activeSearchQuery);
+  const { shouldShow: shouldShowMapGuide, complete: completeMapGuide } =
+    useTutorialGuide('map_screen');
+  const [mapGuideVisible, setMapGuideVisible] = useState(false);
 
   useEffect(() => {
     setSearch(activeSearchQuery);
   }, [activeSearchQuery]);
+
+  useEffect(() => {
+    if (shouldShowMapGuide) {
+      setMapGuideVisible(true);
+    }
+  }, [shouldShowMapGuide]);
+
+  const dismissMapGuide = () => {
+    setMapGuideVisible(false);
+    completeMapGuide();
+  };
 
   const initialRegion = useMemo(() => {
     if (userCoords) {
@@ -477,6 +493,13 @@ export default function MapScreen() {
           <Text style={styles.loadingText}>Localisation en cours…</Text>
         </View>
       )}
+
+      <TutorialOverlay
+        visible={mapGuideVisible}
+        title="Explorez les trajets"
+        message="Filtrez par zone, véhicule ou destination puis tapez sur un marqueur pour rejoindre rapidement un trajet."
+        onDismiss={dismissMapGuide}
+      />
     </SafeAreaView>
   );
 }

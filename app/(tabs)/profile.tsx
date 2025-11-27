@@ -1,8 +1,10 @@
 import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardModal';
+import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
-import { useGetReviewsQuery, useGetAverageRatingQuery } from '@/store/api/reviewApi';
+import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -91,6 +93,20 @@ export default function ProfileScreen() {
     return total / reviews.length;
   }, [avgRatingData?.averageRating, reviews, currentUser?.rating]);
   const featuredReviews = useMemo(() => (reviews ?? []).slice(0, 3), [reviews]);
+  const { shouldShow: shouldShowProfileGuide, complete: completeProfileGuide } =
+    useTutorialGuide('profile_screen');
+  const [profileGuideVisible, setProfileGuideVisible] = useState(false);
+
+  useEffect(() => {
+    if (shouldShowProfileGuide) {
+      setProfileGuideVisible(true);
+    }
+  }, [shouldShowProfileGuide]);
+
+  const handleDismissProfileGuide = () => {
+    setProfileGuideVisible(false);
+    completeProfileGuide();
+  };
 
   const derivedStats = useMemo(
     () => [
@@ -763,6 +779,13 @@ export default function ProfileScreen() {
           </Animated.View>
         </View>
       </Modal>
+
+      <TutorialOverlay
+        visible={profileGuideVisible}
+        title="Votre espace Zwanga"
+        message="Consultez vos statistiques, vos avis et vos documents KYC depuis cet écran. Glissez vers le bas pour tout rafraîchir."
+        onDismiss={handleDismissProfileGuide}
+      />
     </SafeAreaView>
   );
 }
