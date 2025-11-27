@@ -80,15 +80,17 @@ export default function SettingsScreen() {
         <Animated.View entering={FadeInDown.delay(0)} style={styles.section}>
           <Text style={styles.sectionLabel}>VÉRIFICATION</Text>
           <View style={styles.card}>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => setShowIdentityModal(true)}
-            >
-              <View style={[styles.menuIcon, user?.identityVerified ? styles.menuIconSuccess : styles.menuIconWarning]}>
-                <Ionicons 
-                  name={user?.identityVerified ? 'checkmark-circle' : 'alert-circle'} 
-                  size={20} 
-                  color={user?.identityVerified ? Colors.success : Colors.warning} 
+            <View style={styles.menuItem}>
+              <View
+                style={[
+                  styles.menuIcon,
+                  user?.identityVerified ? styles.menuIconSuccess : styles.menuIconWarning,
+                ]}
+              >
+                <Ionicons
+                  name={user?.identityVerified ? 'checkmark-circle' : 'alert-circle'}
+                  size={20}
+                  color={user?.identityVerified ? Colors.success : Colors.warning}
                 />
               </View>
               <View style={styles.menuTextContainer}>
@@ -96,15 +98,17 @@ export default function SettingsScreen() {
                   {user?.identityVerified ? 'Identité vérifiée' : 'Vérifier mon identité'}
                 </Text>
                 <Text style={styles.menuSubtext}>
-                  {user?.identityVerified 
-                    ? 'Votre identité a été vérifiée' 
+                  {user?.identityVerified
+                    ? 'Vos documents ont été validés par l’équipe.'
                     : 'Requis pour publier et réserver des trajets'}
                 </Text>
               </View>
               {!user?.identityVerified && (
-                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                <TouchableOpacity onPress={() => setShowIdentityModal(true)}>
+                  <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                </TouchableOpacity>
               )}
-            </TouchableOpacity>
+            </View>
           </View>
         </Animated.View>
 
