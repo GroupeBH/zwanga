@@ -24,7 +24,6 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { convertImageToBase64 } from '@/utils/imageHelpers';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -63,6 +62,13 @@ export default function ProfileScreen() {
   const currentUser = profileSummary?.user ?? user;
   const stats = profileSummary?.stats;
   const vehicleList: Vehicle[] = vehicles ?? [];
+
+  const isKycApproved = kycStatus?.status === 'approved';
+  const isKycPending = kycStatus?.status === 'pending';
+  const isKycRejected = kycStatus?.status === 'rejected';
+  const isKycBusy = kycSubmitting || uploadingKyc;
+  const isKycFormValid = Boolean(kycFrontImage && kycBackImage && kycSelfieImage);
+  const isKycActionDisabled = isKycBusy || isKycApproved;
 
   const derivedStats = useMemo(
     () => [
@@ -143,6 +149,13 @@ export default function ProfileScreen() {
   };
 
   const handleOpenKycModal = () => {
+    if (isKycApproved) {
+      Alert.alert(
+        'KYC validé',
+        'Vos documents sont déjà vérifiés. Contactez notre support si vous devez les modifier.',
+      );
+      return;
+    }
     setKycModalVisible(true);
   };
 
@@ -188,9 +201,32 @@ export default function ProfileScreen() {
     );
   };
 
-  const buildDataUri = async (uri: string) => {
-    const base64 = await convertImageToBase64(uri);
-    return `data:image/jpeg;base64,${base64}`;
+  const buildKycFormData = () => {
+    const formData = new FormData();
+    const appendFile = (field: 'cniFront' | 'cniBack' | 'selfie', uri: string | null) => {
+      if (!uri) return;
+      const extensionMatch = uri.split('.').pop()?.split('?')[0]?.toLowerCase();
+      const extension = extensionMatch && extensionMatch.length <= 5 ? extensionMatch : 'jpg';
+      const mimeType =
+        extension === 'png'
+          ? 'image/png'
+          : extension === 'webp'
+          ? 'image/webp'
+          : extension === 'heic'
+          ? 'image/heic'
+          : 'image/jpeg';
+      formData.append(field, {
+        uri,
+        type: mimeType,
+        name: `${field}-${Date.now()}.${extension === 'jpg' ? 'jpg' : extension}`,
+      } as any);
+    };
+
+    appendFile('cniFront', kycFrontImage);
+    appendFile('cniBack', kycBackImage);
+    appendFile('selfie', kycSelfieImage);
+
+    return formData;
   };
 
   const handleSubmitKyc = async () => {
@@ -200,16 +236,8 @@ export default function ProfileScreen() {
     }
     try {
       setKycSubmitting(true);
-      const [frontData, backData, selfieData] = await Promise.all([
-        buildDataUri(kycFrontImage),
-        buildDataUri(kycBackImage),
-        buildDataUri(kycSelfieImage),
-      ]);
-      await uploadKyc({
-        cniFrontUrl: frontData,
-        cniBackUrl: backData,
-        selfieUrl: selfieData,
-      }).unwrap();
+      const formData = buildKycFormData();
+      await uploadKyc(formData).unwrap();
       setKycModalVisible(false);
       await Promise.all([refetchKycStatus(), refetchProfile()]);
       Alert.alert('Succès', 'Vos documents ont été envoyés. Nous vous informerons lors de la vérification.');
@@ -224,11 +252,11 @@ export default function ProfileScreen() {
     }
   };
 
-  const isKycBusy = kycSubmitting || uploadingKyc;
-  const isKycFormValid = Boolean(kycFrontImage && kycBackImage && kycSelfieImage);
-  const isKycApproved = kycStatus?.status === 'approved';
-  const isKycPending = kycStatus?.status === 'pending';
-  const isKycRejected = kycStatus?.status === 'rejected';
+  useEffect(() => {
+    if (isKycApproved && kycModalVisible) {
+      setKycModalVisible(false);
+    }
+  }, [isKycApproved, kycModalVisible]);
 
   const badges = [
     ...(currentUser?.isDriver
@@ -398,24 +426,33 @@ export default function ProfileScreen() {
             ) : null}
             <Text style={styles.kycHelperText}>
               {isKycApproved
-                ? 'Vos documents sont validés. Vous pouvez les mettre à jour si nécessaire.'
+                ? 'Vos documents sont validés. Contactez le support pour toute mise à jour.'
                 : isKycPending
                 ? 'Nous vérifions vos documents. Vous pouvez les actualiser en cas de changement.'
                 : 'Ajoutez vos documents officiels pour confirmer votre identité.'}
             </Text>
             <TouchableOpacity
-              style={[styles.kycButton, isKycBusy && styles.kycButtonDisabled]}
+              style={[
+                styles.kycButton,
+                isKycActionDisabled && styles.kycButtonDisabled,
+                isKycApproved && styles.kycButtonLocked,
+              ]}
               onPress={handleOpenKycModal}
-              disabled={isKycBusy}
+              disabled={isKycActionDisabled}
             >
               {isKycBusy ? (
                 <ActivityIndicator color={Colors.primary} size="small" />
               ) : (
                 <>
-                  <Text style={styles.kycButtonText}>
-                    {isKycApproved ? 'Mettre à jour mes documents' : 'Soumettre mes documents'}
+                  <Text
+                    style={[
+                      styles.kycButtonText,
+                      isKycApproved && styles.kycButtonTextMuted,
+                    ]}
+                  >
+                    {isKycApproved ? 'Documents vérifiés' : 'Soumettre mes documents'}
                   </Text>
-                  <Ionicons name="chevron-forward" size={18} color={Colors.primary} />
+                  {!isKycApproved && <Ionicons name="chevron-forward" size={18} color={Colors.primary} />}
                 </>
               )}
             </TouchableOpacity>
@@ -516,7 +553,13 @@ export default function ProfileScreen() {
                 <Ionicons name="close" size={22} color={Colors.gray[600]} />
               </TouchableOpacity>
             </View>
-            <ScrollView contentContainerStyle={styles.vehicleModalContent}>
+            <Text style={styles.vehicleModalSubtitle}>
+              Indiquez les détails exacts de votre véhicule pour rassurer vos passagers.
+            </Text>
+            <ScrollView
+              contentContainerStyle={styles.vehicleModalContent}
+              showsVerticalScrollIndicator={false}
+            >
               <View style={styles.vehicleInputGroup}>
                 <Text style={styles.vehicleInputLabel}>Marque</Text>
                 <TextInput
@@ -584,7 +627,11 @@ export default function ProfileScreen() {
                 <Ionicons name="close" size={22} color={Colors.gray[700]} />
               </TouchableOpacity>
             </View>
-            <ScrollView contentContainerStyle={styles.kycModalContent}>
+            <ScrollView
+              contentContainerStyle={styles.kycModalContent}
+              pointerEvents={isKycBusy ? 'none' : 'auto'}
+              scrollEnabled={!isKycBusy}
+            >
               <Text style={styles.kycModalSubtitle}>
                 Ajoutez des photos nettes de votre pièce d’identité (recto/verso) ainsi qu’un selfie récent.
               </Text>
@@ -697,6 +744,20 @@ export default function ProfileScreen() {
                 )}
               </TouchableOpacity>
             </ScrollView>
+            {isKycBusy && (
+              <View style={styles.kycBusyOverlay}>
+                <View style={styles.kycBusyCard}>
+                  <View style={styles.kycBusyIcon}>
+                    <Ionicons name="shield-checkmark" size={28} color={Colors.white} />
+                  </View>
+                  <Text style={styles.kycBusyTitle}>Envoi sécurisé…</Text>
+                  <Text style={styles.kycBusyText}>
+                    Nous chiffrons vos documents avant de les transmettre à notre équipe de conformité.
+                  </Text>
+                  <ActivityIndicator color={Colors.white} style={styles.kycBusyLoader} />
+                </View>
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -984,13 +1045,20 @@ const styles = StyleSheet.create({
   kycButtonDisabled: {
     opacity: 0.6,
   },
+  kycButtonLocked: {
+    borderColor: Colors.gray[300],
+    backgroundColor: Colors.gray[100],
+  },
   kycButtonText: {
     color: Colors.primary,
     fontWeight: FontWeights.semibold,
   },
+  kycButtonTextMuted: {
+    color: Colors.gray[500],
+  },
   kycModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(15,23,42,0.55)',
     padding: Spacing.lg,
     justifyContent: 'center',
   },
@@ -999,6 +1067,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xl,
     maxHeight: '92%',
     overflow: 'hidden',
+    ...CommonStyles.shadowLg,
   },
   kycModalHeader: {
     flexDirection: 'row',
@@ -1097,6 +1166,50 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     fontSize: FontSizes.base,
   },
+  kycBusyOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  kycBusyCard: {
+    width: '90%',
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+    alignItems: 'center',
+    ...CommonStyles.shadowLg,
+  },
+  kycBusyIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  kycBusyTitle: {
+    color: Colors.white,
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.semibold,
+    marginBottom: Spacing.xs,
+  },
+  kycBusyText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: FontSizes.sm,
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
+    lineHeight: 20,
+  },
+  kycBusyLoader: {
+    marginTop: Spacing.sm,
+  },
   vehiclesContainer: {
     paddingHorizontal: Spacing.xl,
     marginBottom: Spacing.xl,
@@ -1153,7 +1266,7 @@ const styles = StyleSheet.create({
   },
   vehicleModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: 'rgba(15,23,42,0.55)',
     justifyContent: 'center',
     padding: Spacing.xl,
   },
@@ -1161,6 +1274,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
+    maxHeight: '90%',
+    ...CommonStyles.shadowLg,
   },
   vehicleModalHeader: {
     flexDirection: 'row',
@@ -1173,8 +1288,14 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
+  vehicleModalSubtitle: {
+    color: Colors.gray[600],
+    marginBottom: Spacing.md,
+    fontSize: FontSizes.sm,
+  },
   vehicleModalContent: {
     gap: Spacing.md,
+    paddingBottom: Spacing.lg,
   },
   vehicleInputGroup: {
     gap: Spacing.xs,
@@ -1190,12 +1311,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     color: Colors.gray[900],
+    backgroundColor: Colors.gray[50],
   },
   vehicleSaveButton: {
     backgroundColor: Colors.primary,
     borderRadius: BorderRadius.xl,
     paddingVertical: Spacing.sm,
     alignItems: 'center',
+    ...CommonStyles.shadowMd,
   },
   vehicleSaveButtonDisabled: {
     opacity: 0.6,

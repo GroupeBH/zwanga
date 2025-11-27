@@ -1,10 +1,11 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackingSocket } from '@/services/trackingSocket';
 import {
-  useCancelBookingMutation,
-  useCreateBookingMutation,
-  useGetMyBookingsQuery,
+    useCancelBookingMutation,
+    useCreateBookingMutation,
+    useGetMyBookingsQuery,
 } from '@/store/api/bookingApi';
 import { useCreateConversationMutation } from '@/store/api/messageApi';
 import { useAppSelector } from '@/store/hooks';
@@ -15,16 +16,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Linking,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Linking,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
@@ -95,6 +96,7 @@ export default function TripDetailsScreen() {
   const tripId = typeof id === 'string' ? (id as string) : '';
   const trip = useAppSelector((state) => selectTripById(tripId)(state));
   const user = useAppSelector(selectUser);
+  const { checkIdentity, isIdentityVerified } = useIdentityCheck();
   const driverPhone = trip?.driver?.phone ?? null;
   const isTripDriver = Boolean(trip && user && trip.driverId === user.id);
   const {
@@ -296,8 +298,13 @@ export default function TripDetailsScreen() {
       minute: '2-digit',
     })}`;
   }, [isTripDriver, liveDriverCoordinate, liveDriverUpdatedAt, trackingError]);
-  const activeBookingStatus = activeBooking ? BOOKING_STATUS_CONFIG[activeBooking.status] : null;
+  const activeBookingStatus = activeBooking && activeBooking.status in BOOKING_STATUS_CONFIG
+    ? BOOKING_STATUS_CONFIG[activeBooking.status as keyof typeof BOOKING_STATUS_CONFIG]
+    : null;
   const openBookingModal = () => {
+    if (!checkIdentity('book')) {
+      return;
+    }
     setBookingSeats('1');
     setBookingModalError('');
     setBookingModalVisible(true);
@@ -888,23 +895,28 @@ export default function TripDetailsScreen() {
                       : 'Ce trajet est complet'}
                   </Text>
                   <Text style={styles.bookingHintSubtitle}>
-                    Prix par place : {trip.price} FC
+                    {isIdentityVerified
+                      ? `Prix par place : ${trip.price} FC`
+                      : 'Vérifiez votre identité pour envoyer une demande de réservation.'}
                   </Text>
                 </View>
                 </View>
             <TouchableOpacity
-                  style={[
-                    styles.actionButton,
-                    (availableSeats <= 0 || myBookingsLoading) && styles.actionButtonDisabled,
-                  ]}
-                  onPress={openBookingModal}
-                  disabled={availableSeats <= 0 || myBookingsLoading}
+              style={[
+                styles.actionButton,
+                (!isIdentityVerified || availableSeats <= 0 || myBookingsLoading) &&
+                  styles.actionButtonDisabled,
+              ]}
+              onPress={openBookingModal}
+              disabled={!isIdentityVerified || availableSeats <= 0 || myBookingsLoading}
             >
-                  {myBookingsLoading ? (
-                    <ActivityIndicator color={Colors.white} />
-                  ) : (
-                    <Text style={styles.actionButtonText}>Réserver ce trajet</Text>
-                  )}
+              {myBookingsLoading ? (
+                <ActivityIndicator color={Colors.white} />
+              ) : (
+                <Text style={styles.actionButtonText}>
+                  {isIdentityVerified ? 'Réserver ce trajet' : 'KYC requis'}
+                </Text>
+              )}
             </TouchableOpacity>
               </>
             )}

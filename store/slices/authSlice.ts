@@ -174,6 +174,7 @@ function parseUserInfo(payload: any): any | null {
     id: payload.sub,
     phone: payload.phone,
     role: (payload.role as User['role']),
+    status: payload.status,
     iat: payload.iat ?? 0,
     exp: payload.exp ?? 0,
   };

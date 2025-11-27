@@ -250,7 +250,7 @@ export default function BookingsScreen() {
             <Text style={styles.emptySubtitle}>{emptyText}</Text>
             <TouchableOpacity
               style={styles.primaryButton}
-              onPress={() => router.push('/')}
+              onPress={() => router.push('/search')}
             >
               <Ionicons name="search" size={18} color={Colors.white} />
               <Text style={styles.primaryButtonText}>Rechercher un trajet</Text>

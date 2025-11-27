@@ -1,4 +1,5 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import {
   useAcceptBookingMutation,
   useGetTripBookingsQuery,
@@ -64,12 +65,14 @@ export default function ManageTripScreen() {
   const { id } = useLocalSearchParams();
   const tripId = typeof id === 'string' ? id : '';
   const user = useAppSelector(selectUser);
+  const { isIdentityVerified } = useIdentityCheck();
   const {
     data: trip,
     isLoading: tripLoading,
     isFetching: tripFetching,
     refetch: refetchTrip,
   } = useGetTripByIdQuery(tripId, { skip: !tripId });
+  // console.log("check owner", trip?.driverId, user?.id);
   const isOwner = useMemo(() => !!trip && !!user && trip.driverId === user.id, [trip, user]);
   const {
     data: bookings,
@@ -80,6 +83,8 @@ export default function ManageTripScreen() {
   const [acceptBooking, { isLoading: isAccepting }] = useAcceptBookingMutation();
   const [rejectBooking, { isLoading: isRejecting }] = useRejectBookingMutation();
   const [updateTrip, { isLoading: isCancellingTrip }] = useUpdateTripMutation();
+
+  console.log("this bookings", bookings);
 
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
@@ -224,6 +229,25 @@ export default function ManageTripScreen() {
           </Text>
           <TouchableOpacity style={styles.primaryButton} onPress={() => router.back()}>
             <Text style={styles.primaryButtonText}>Retour</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!isIdentityVerified) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centerContent}>
+          <Ionicons name="shield-outline" size={34} color={Colors.primary} />
+          <Text style={[styles.emptyText, { marginTop: Spacing.sm }]}>
+            Votre identité doit être vérifiée (KYC validé) pour gérer vos trajets.
+          </Text>
+          <TouchableOpacity
+            style={[styles.primaryButton, { marginTop: Spacing.lg }]}
+            onPress={() => router.push('/profile')}
+          >
+            <Text style={styles.primaryButtonText}>Compléter mon KYC</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
