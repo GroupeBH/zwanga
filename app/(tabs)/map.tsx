@@ -1,4 +1,5 @@
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useDialog } from '@/components/ui/DialogProvider';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { TripSearchParams, useLazyGetTripsQuery } from '@/store/api/tripApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -18,7 +19,6 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Platform,
   ScrollView,
@@ -52,6 +52,7 @@ const distanceInKm = (a: LatLng, b: LatLng) => {
 export default function MapScreen() {
   const dispatch = useAppDispatch();
   const router = useRouter();
+  const { showDialog } = useDialog();
   const { permissionStatus, requestPermission } = useUserLocation({ autoRequest: true });
   const [triggerTripSearch, { isFetching: isApplyingSearch }] = useLazyGetTripsQuery();
   const userCoords = useAppSelector(selectUserCoordinates);
@@ -136,7 +137,11 @@ export default function MapScreen() {
     } catch (error: any) {
       const message =
         error?.data?.message ?? error?.error ?? "Impossible d'appliquer le filtre pour le moment.";
-      Alert.alert('Erreur de recherche', Array.isArray(message) ? message.join('\n') : message);
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur de recherche',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
     }
   };
 
@@ -150,7 +155,11 @@ export default function MapScreen() {
     } catch (error: any) {
       const message =
         error?.data?.message ?? error?.error ?? "Impossible de réinitialiser la recherche.";
-      Alert.alert('Erreur', Array.isArray(message) ? message.join('\n') : message);
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
     }
   };
 

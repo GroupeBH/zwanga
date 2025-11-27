@@ -1,3 +1,9 @@
+import { useDialog } from '@/components/ui/DialogProvider';
+import { useGetKycStatusQuery } from '@/store/api/userApi';
+import { useAppSelector } from '@/store/hooks';
+import { selectUser } from '@/store/selectors';
+import type { KycDocument } from '@/types';
+import { useRouter } from 'expo-router';
 import React, {
   createContext,
   useCallback,
@@ -5,12 +11,6 @@ import React, {
   useMemo,
   type ReactNode,
 } from 'react';
-import { Alert } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useAppSelector } from '@/store/hooks';
-import { selectUser } from '@/store/selectors';
-import { useGetKycStatusQuery } from '@/store/api/userApi';
-import type { KycDocument } from '@/types';
 
 type IdentityAction = 'publish' | 'book' | 'manage';
 
@@ -27,6 +27,7 @@ const IdentityContext = createContext<IdentityContextValue | undefined>(undefine
 
 export function IdentityProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const { showDialog } = useDialog();
   const user = useAppSelector(selectUser);
   const {
     data: kycStatusData,
@@ -56,21 +57,19 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
             ? 'gérer vos trajets'
             : 'réserver un trajet ou contacter un conducteur';
 
-      Alert.alert(
-        'KYC requis',
-        `Pour ${actionText}, vous devez finaliser la vérification de votre identité (CNI + selfie).`,
-        [
-          { text: 'Annuler', style: 'cancel' },
-          {
-            text: 'Compléter maintenant',
-            onPress: () => router.push('/profile'),
-          },
+      showDialog({
+        variant: 'warning',
+        title: 'KYC requis',
+        message: `Pour ${actionText}, vous devez finaliser la vérification de votre identité (CNI + selfie).`,
+        actions: [
+          { label: 'Plus tard', variant: 'ghost' },
+          { label: 'Compléter maintenant', variant: 'primary', onPress: () => router.push('/profile') },
         ],
-      );
+      });
 
       return false;
     },
-    [isIdentityVerified, router],
+    [isIdentityVerified, router, showDialog],
   );
 
   const value = useMemo<IdentityContextValue>(

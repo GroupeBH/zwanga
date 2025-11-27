@@ -1,5 +1,6 @@
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useDialog } from '@/components/ui/DialogProvider';
 import { useGetNotificationsQuery } from '@/store/api/notificationApi';
 import {
   TripSearchParams,
@@ -16,7 +17,6 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -31,6 +31,7 @@ const RECENT_TRIPS_LIMIT = 5;
 export default function HomeScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
+  const { showDialog } = useDialog();
   const storedTrips = useAppSelector(selectAvailableTrips);
   const savedLocations = useAppSelector(selectSavedLocations);
   const [queryParams, setQueryParams] = useState<TripSearchParams>({});
@@ -142,7 +143,11 @@ export default function HomeScreen() {
 
   const handleAdvancedSearch = async () => {
     if (!filterDepartureLocation || !filterArrivalLocation) {
-      Alert.alert('Sélection requise', 'Veuillez choisir les points de départ et d’arrivée.');
+      showDialog({
+        variant: 'warning',
+        title: 'Sélection requise',
+        message: 'Veuillez choisir les points de départ et d’arrivée.',
+      });
       return;
     }
 
@@ -183,7 +188,11 @@ export default function HomeScreen() {
         error?.data?.message ??
         error?.error ??
         'Impossible de filtrer les trajets pour le moment.';
-      Alert.alert('Erreur', Array.isArray(message) ? message.join('\n') : message);
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
     }
   };
 

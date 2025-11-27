@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -13,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { useDialog } from '@/components/ui/DialogProvider';
 import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
 import {
   useCancelBookingMutation,
@@ -56,6 +56,7 @@ const STATUS_CONFIG: Record<
 
 export default function BookingsScreen() {
   const router = useRouter();
+  const { showDialog } = useDialog();
   const [activeTab, setActiveTab] = useState<BookingTab>('active');
 
   const {
@@ -84,14 +85,15 @@ export default function BookingsScreen() {
       : 'Aucune réservation passée pour le moment.';
 
   const handleCancel = (bookingId: string) => {
-    Alert.alert(
-      'Annuler la réservation',
-      'Souhaitez-vous annuler cette réservation ?',
-      [
-        { text: 'Non', style: 'cancel' },
+    showDialog({
+      variant: 'warning',
+      title: 'Annuler la réservation',
+      message: 'Souhaitez-vous annuler cette réservation ? Le conducteur en sera informé.',
+      actions: [
+        { label: 'Garder', variant: 'ghost' },
         {
-          text: 'Oui, annuler',
-          style: 'destructive',
+          label: 'Oui, annuler',
+          variant: 'primary',
           onPress: async () => {
             try {
               await cancelBooking(bookingId).unwrap();
@@ -101,12 +103,16 @@ export default function BookingsScreen() {
                 error?.data?.message ??
                 error?.error ??
                 'Impossible d’annuler la réservation pour le moment.';
-              Alert.alert('Erreur', Array.isArray(message) ? message.join('\n') : message);
+              showDialog({
+                variant: 'danger',
+                title: 'Erreur',
+                message: Array.isArray(message) ? message.join('\n') : message,
+              });
             }
           },
         },
       ],
-    );
+    });
   };
 
   const renderBookingCard = (bookingId: string, booking: typeof displayBookings[number], index: number) => {

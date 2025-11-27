@@ -1,4 +1,5 @@
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
+import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useCreateTripMutation } from '@/store/api/tripApi';
@@ -30,55 +31,7 @@ export default function PublishScreen() {
   const { isIdentityVerified } = useIdentityCheck();
   const [step, setStep] = useState<PublishStep>('route');
   const [createTrip, { isLoading: isPublishing }] = useCreateTripMutation();
-  type FeedbackModalState = {
-    visible: boolean;
-    type: 'success' | 'error';
-    title: string;
-    message: string;
-    confirmLabel: string;
-    secondaryLabel?: string;
-    onConfirm?: () => void;
-    onSecondary?: () => void;
-  };
-
-  const [feedbackModal, setFeedbackModal] = useState<FeedbackModalState>({
-    visible: false,
-    type: 'success',
-    title: '',
-    message: '',
-    confirmLabel: 'Fermer',
-  });
-
-  const closeFeedbackModal = () =>
-    setFeedbackModal((prev) => ({
-      ...prev,
-      visible: false,
-    }));
-
-  const openFeedbackModal = (
-    config: Partial<FeedbackModalState> & { title: string; message: string },
-  ) => {
-    setFeedbackModal({
-      visible: true,
-      type: config.type ?? 'error',
-      title: config.title,
-      message: config.message,
-      confirmLabel: config.confirmLabel ?? 'Fermer',
-      secondaryLabel: config.secondaryLabel,
-      onConfirm: config.onConfirm,
-      onSecondary: config.onSecondary,
-    });
-  };
-
-  const handleModalPrimary = () => {
-    closeFeedbackModal();
-    feedbackModal.onConfirm?.();
-  };
-
-  const handleModalSecondary = () => {
-    closeFeedbackModal();
-    feedbackModal.onSecondary?.();
-  };
+  const { showDialog } = useDialog();
 
   const [kycModalVisible, setKycModalVisible] = useState(false);
   const openKycModal = () => setKycModalVisible(true);
@@ -307,8 +260,8 @@ export default function PublishScreen() {
       setStep('details');
     } else if (step === 'details') {
       if (!departureDateTime || !price) {
-        openFeedbackModal({
-          type: 'error',
+        showDialog({
+          variant: 'warning',
           title: 'Informations manquantes',
           message: 'Merci de renseigner la date de départ et le prix.',
         });
@@ -322,8 +275,8 @@ export default function PublishScreen() {
     if (isPublishing) return;
 
     if (!departureLocation || !arrivalLocation) {
-      openFeedbackModal({
-        type: 'error',
+      showDialog({
+        variant: 'warning',
         title: 'Itinéraire incomplet',
         message: 'Veuillez sélectionner vos points de départ et d’arrivée.',
       });
@@ -340,8 +293,8 @@ export default function PublishScreen() {
       !departureDate ||
       Number.isNaN(departureDate.getTime())
     ) {
-      openFeedbackModal({
-        type: 'error',
+      showDialog({
+        variant: 'warning',
         title: 'Vérification requise',
         message: 'Veuillez vérifier les valeurs numériques et la date de départ.',
       });
@@ -366,22 +319,22 @@ export default function PublishScreen() {
       } as any).unwrap();
 
       resetForm();
-      openFeedbackModal({
-        type: 'success',
+      showDialog({
+        variant: 'success',
         title: 'Trajet publié',
         message: 'Votre trajet a été publié avec succès !',
-        confirmLabel: 'Voir mes trajets',
-        onConfirm: () => router.push('/trips'),
-        secondaryLabel: 'Publier un autre',
-        onSecondary: () => {},
+        actions: [
+          { label: 'Publier un autre', variant: 'secondary', onPress: () => {} },
+          { label: 'Voir mes trajets', variant: 'primary', onPress: () => router.push('/trips') },
+        ],
       });
     } catch (error: any) {
       const message =
         error?.data?.message ??
         error?.error ??
         'Impossible de publier le trajet pour le moment. Veuillez réessayer.';
-      openFeedbackModal({
-        type: 'error',
+      showDialog({
+        variant: 'danger',
         title: 'Erreur',
         message: Array.isArray(message) ? message.join('\n') : message,
       });
@@ -708,50 +661,6 @@ export default function PublishScreen() {
         onSelect={handleLocationSelected}
       />
 
-      <Modal animationType="fade" transparent visible={feedbackModal.visible}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View
-              style={[
-                styles.modalIconWrapper,
-                feedbackModal.type === 'success'
-                  ? styles.modalIconSuccess
-                  : styles.modalIconError,
-              ]}
-            >
-              <Ionicons
-                name={feedbackModal.type === 'success' ? 'checkmark' : 'alert'}
-                size={32}
-                color={feedbackModal.type === 'success' ? Colors.white : Colors.white}
-              />
-            </View>
-            <Text style={styles.modalTitle}>{feedbackModal.title}</Text>
-            <Text style={styles.modalMessage}>{feedbackModal.message}</Text>
-            <View style={styles.modalActions}>
-              {feedbackModal.secondaryLabel && (
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.modalButtonSecondary]}
-                  onPress={handleModalSecondary}
-                >
-                  <Text style={styles.modalButtonSecondaryText}>
-                    {feedbackModal.secondaryLabel}
-                  </Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={[
-                  styles.modalButton,
-                  styles.modalButtonPrimary,
-                  feedbackModal.secondaryLabel && styles.modalButtonPrimaryFull,
-                ]}
-                onPress={handleModalPrimary}
-              >
-                <Text style={styles.modalButtonPrimaryText}>{feedbackModal.confirmLabel}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       <Modal
         transparent
@@ -1184,77 +1093,6 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     color: Colors.gray[600],
     fontWeight: FontWeights.regular,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.xl,
-  },
-  modalCard: {
-    width: '100%',
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.xl,
-    alignItems: 'center',
-  },
-  modalIconWrapper: {
-    width: 72,
-    height: 72,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.lg,
-  },
-  modalIconSuccess: {
-    backgroundColor: Colors.success,
-  },
-  modalIconError: {
-    backgroundColor: Colors.danger,
-  },
-  modalTitle: {
-    fontSize: FontSizes.xl,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    textAlign: 'center',
-    marginBottom: Spacing.sm,
-  },
-  modalMessage: {
-    fontSize: FontSizes.base,
-    color: Colors.gray[600],
-    textAlign: 'center',
-    marginBottom: Spacing.xl,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    width: '100%',
-    gap: Spacing.sm,
-  },
-  modalButton: {
-    flex: 1,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
-    alignItems: 'center',
-  },
-  modalButtonSecondary: {
-    borderWidth: 1,
-    borderColor: Colors.gray[300],
-    backgroundColor: Colors.white,
-  },
-  modalButtonSecondaryText: {
-    color: Colors.gray[800],
-    fontWeight: FontWeights.semibold,
-  },
-  modalButtonPrimary: {
-    backgroundColor: Colors.primary,
-  },
-  modalButtonPrimaryFull: {
-    flex: 1,
-  },
-  modalButtonPrimaryText: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
   },
   kycModalOverlay: {
     flex: 1,

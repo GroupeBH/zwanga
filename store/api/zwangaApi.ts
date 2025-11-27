@@ -92,7 +92,9 @@ export {
 
 export {
   // Reviews
-  useCreateReviewMutation, useGetReviewsQuery, useReportUserMutation
+  useCreateReviewMutation,
+  useGetReviewsQuery,
+  useGetAverageRatingQuery,
 } from './reviewApi';
 
 export {

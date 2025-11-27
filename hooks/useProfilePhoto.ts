@@ -1,9 +1,9 @@
-import { useState } from 'react';
-import { Alert } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+import { useDialog } from '@/components/ui/DialogProvider';
+import { useUpdateUserMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch } from '@/store/hooks';
 import { updateUser } from '@/store/slices/authSlice';
-import { useUpdateUserMutation } from '@/store/api/zwangaApi';
+import * as ImagePicker from 'expo-image-picker';
+import { useState } from 'react';
 
 /**
  * Hook pour gérer la photo de profil
@@ -13,25 +13,28 @@ export function useProfilePhoto() {
   const dispatch = useAppDispatch();
   const [updateUserMutation, { isLoading }] = useUpdateUserMutation();
   const [isUploading, setIsUploading] = useState(false);
+  const { showDialog } = useDialog();
 
   const requestPermissions = async () => {
     // Demander la permission caméra
     const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
     if (cameraStatus !== 'granted') {
-      Alert.alert(
-        'Permission requise',
-        'L\'accès à la caméra est nécessaire pour prendre une photo de profil.'
-      );
+      showDialog({
+        variant: 'warning',
+        title: 'Permission requise',
+        message: 'L\'accès à la caméra est nécessaire pour prendre une photo de profil.',
+      });
       return false;
     }
 
     // Demander la permission galerie
     const { status: mediaStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (mediaStatus !== 'granted') {
-      Alert.alert(
-        'Permission requise',
-        'L\'accès à la galerie est nécessaire pour sélectionner une photo.'
-      );
+      showDialog({
+        variant: 'warning',
+        title: 'Permission requise',
+        message: 'L\'accès à la galerie est nécessaire pour sélectionner une photo.',
+      });
       return false;
     }
 
@@ -68,74 +71,91 @@ export function useProfilePhoto() {
       return null;
     } catch (error) {
       console.error('Erreur lors de la sélection de l\'image:', error);
-      Alert.alert('Erreur', 'Impossible de sélectionner l\'image');
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: 'Impossible de sélectionner l\'image',
+      });
       return null;
     }
   };
 
   const showImagePicker = (): Promise<string | null> => {
     return new Promise((resolve) => {
-      Alert.alert(
-        'Changer la photo de profil',
-        'Choisissez une source',
-        [
+      showDialog({
+        variant: 'info',
+        title: 'Changer la photo de profil',
+        message: 'Choisissez une source',
+        actions: [
           {
-            text: 'Caméra',
+            label: 'Caméra',
+            variant: 'primary',
             onPress: async () => {
               const uri = await pickImage('camera');
               resolve(uri);
             },
           },
           {
-            text: 'Galerie',
+            label: 'Galerie',
+            variant: 'secondary',
             onPress: async () => {
               const uri = await pickImage('gallery');
               resolve(uri);
             },
           },
           {
-            text: 'Annuler',
-            style: 'cancel',
+            label: 'Annuler',
+            variant: 'ghost',
             onPress: () => resolve(null),
           },
-        ]
-      );
+        ],
+      });
     });
   };
 
   const updateProfilePhoto = async (imageUri: string) => {
     try {
       setIsUploading(true);
+      const extensionMatch = imageUri.split('.').pop()?.split('?')[0]?.toLowerCase();
+      const extension = extensionMatch && extensionMatch.length <= 4 ? extensionMatch : 'jpg';
+      const mimeType =
+        extension === 'png'
+          ? 'image/png'
+          : extension === 'webp'
+            ? 'image/webp'
+            : extension === 'heic'
+              ? 'image/heic'
+              : 'image/jpeg';
 
-      // Dans un vrai cas, vous devriez uploader l'image vers un serveur
-      // et récupérer l'URL. Pour l'instant, on utilise l'URI locale
-      // TODO: Implémenter l'upload vers le backend
-      
-      // Simuler l'upload (dans un vrai cas, utiliser FormData)
-      // const formData = new FormData();
-      // formData.append('avatar', {
-      //   uri: imageUri,
-      //   type: 'image/jpeg',
-      //   name: 'avatar.jpg',
-      // } as any);
-      
-      // const response = await updateUserMutation({ avatar: uploadedUrl }).unwrap();
+      const formData = new FormData();
+      formData.append('profilePicture', {
+        uri: imageUri,
+        name: `profile-${Date.now()}.${extension}`,
+        type: mimeType,
+      } as any);
 
-      // Pour l'instant, on met à jour directement avec l'URI locale
-      // Dans un vrai cas, utiliser l'URL retournée par le serveur
-      const avatarUrl = imageUri; // À remplacer par l'URL du serveur
+      const updatedUser = await updateUserMutation(formData).unwrap();
 
-      // Mettre à jour via l'API
-      await updateUserMutation({ profilePicture: avatarUrl }).unwrap();
+      dispatch(
+        updateUser({
+          avatar: updatedUser.profilePicture ?? updatedUser.avatar,
+          profilePicture: updatedUser.profilePicture ?? null,
+        }),
+      );
 
-      // Mettre à jour le state Redux
-      dispatch(updateUser({ avatar: avatarUrl, profilePicture: avatarUrl }));
-
-      Alert.alert('Succès', 'Photo de profil mise à jour avec succès');
+      showDialog({
+        variant: 'success',
+        title: 'Succès',
+        message: 'Photo de profil mise à jour avec succès',
+      });
       return true;
     } catch (error: any) {
       console.error('Erreur lors de la mise à jour de la photo:', error);
-      Alert.alert('Erreur', error?.data?.message || 'Impossible de mettre à jour la photo de profil');
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: error?.data?.message || 'Impossible de mettre à jour la photo de profil',
+      });
       return false;
     } finally {
       setIsUploading(false);

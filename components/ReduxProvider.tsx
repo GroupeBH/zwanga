@@ -1,3 +1,4 @@
+import { DialogProvider } from '@/components/ui/DialogProvider';
 import { Colors } from '@/constants/styles';
 import { IdentityProvider } from '@/contexts/IdentityContext';
 import { store } from '@/store';
@@ -42,7 +43,9 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
   return (
     <Provider store={store}>
       <AuthGuard>
-        <IdentityProvider>{children}</IdentityProvider>
+        <DialogProvider>
+          <IdentityProvider>{children}</IdentityProvider>
+        </DialogProvider>
       </AuthGuard>
     </Provider>
   );

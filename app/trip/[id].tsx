@@ -1,13 +1,15 @@
+import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackingSocket } from '@/services/trackingSocket';
 import {
-    useCancelBookingMutation,
-    useCreateBookingMutation,
-    useGetMyBookingsQuery,
+  useCancelBookingMutation,
+  useCreateBookingMutation,
+  useGetMyBookingsQuery,
 } from '@/store/api/bookingApi';
 import { useCreateConversationMutation } from '@/store/api/messageApi';
+import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
 import type { BookingStatus, GeoPoint } from '@/types';
@@ -16,19 +18,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Linking,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Linking,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
-import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import Animated, {
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const pointToLatLng = (point?: GeoPoint | null) => {
@@ -97,6 +104,7 @@ export default function TripDetailsScreen() {
   const trip = useAppSelector((state) => selectTripById(tripId)(state));
   const user = useAppSelector(selectUser);
   const { checkIdentity, isIdentityVerified } = useIdentityCheck();
+  const { showDialog } = useDialog();
   const driverPhone = trip?.driver?.phone ?? null;
   const isTripDriver = Boolean(trip && user && trip.driverId === user.id);
   const {
@@ -137,9 +145,22 @@ export default function TripDetailsScreen() {
     seats: 0,
   });
   const [mapModalVisible, setMapModalVisible] = useState(false);
-  const refreshBookingLists = () => {
-    refetchMyBookings();
-  };
+  const [driverReviewsModalVisible, setDriverReviewsModalVisible] = useState(false);
+  const { data: driverReviews } = useGetReviewsQuery(trip?.driverId ?? '', {
+    skip: !trip?.driverId,
+  });
+  const { data: driverAverageData } = useGetAverageRatingQuery(trip?.driverId ?? '', {
+    skip: !trip?.driverId,
+  });
+  const driverReviewCount = driverReviews?.length ?? 0;
+  const driverReviewAverage =
+    driverAverageData?.averageRating ??
+    (driverReviewCount && driverReviews
+      ? driverReviews.reduce((sum, review) => sum + review.rating, 0) / driverReviewCount
+      : trip?.driverRating ?? 0);
+    const refreshBookingLists = () => {
+      refetchMyBookings();
+    };
   
   const pulseAnim = useSharedValue(1);
 
@@ -363,7 +384,11 @@ export default function TripDetailsScreen() {
         error?.data?.message ??
         error?.error ??
         "Impossible d'ouvrir la conversation pour le moment.";
-      Alert.alert('Erreur', Array.isArray(message) ? message.join('\n') : message);
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
     }
   };
 
@@ -412,14 +437,22 @@ export default function TripDetailsScreen() {
     }
     try {
       await cancelBookingMutation(activeBooking.id).unwrap();
-      Alert.alert('Réservation annulée', 'Votre réservation a été annulée.');
-       refreshBookingLists();
+      showDialog({
+        variant: 'success',
+        title: 'Réservation annulée',
+        message: 'Votre réservation a été annulée avec succès.',
+      });
+      refreshBookingLists();
     } catch (error: any) {
       const message =
         error?.data?.message ??
         error?.error ??
         'Impossible d’annuler la réservation pour le moment.';
-      Alert.alert('Erreur', Array.isArray(message) ? message.join('\n') : message);
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
     }
   };
 
@@ -427,18 +460,15 @@ export default function TripDetailsScreen() {
     if (!activeBooking) {
       return;
     }
-    Alert.alert(
-      'Annuler la réservation',
-      'Souhaitez-vous vraiment annuler cette réservation ?',
-      [
-        { text: 'Non', style: 'cancel' },
-        {
-          text: 'Oui, annuler',
-          style: 'destructive',
-          onPress: () => handleCancelBooking(),
-        },
+    showDialog({
+      variant: 'warning',
+      title: 'Annuler la réservation',
+      message: 'Souhaitez-vous vraiment annuler cette réservation ?',
+      actions: [
+        { label: 'Garder', variant: 'ghost' },
+        { label: 'Oui, annuler', variant: 'primary', onPress: () => handleCancelBooking() },
       ],
-    );
+    });
   };
 
   const estimatedTotal = useMemo(() => {
@@ -727,10 +757,26 @@ export default function TripDetailsScreen() {
                 <Text style={styles.driverName}>{trip.driverName}</Text>
                 <View style={styles.driverMeta}>
                   <Ionicons name="star" size={16} color={Colors.secondary} />
-                  <Text style={styles.driverRating}>{trip.driverRating}</Text>
+                  <Text style={styles.driverRating}>{driverReviewAverage.toFixed(1)}</Text>
                   <View style={styles.driverDot} />
                   <Text style={styles.driverVehicle}>{trip.vehicleInfo}</Text>
                 </View>
+                <TouchableOpacity
+                  style={styles.driverReviewLink}
+                  onPress={() => setDriverReviewsModalVisible(true)}
+                  disabled={driverReviewCount === 0}
+                >
+                  <Text
+                    style={[
+                      styles.driverReviewLinkText,
+                      driverReviewCount === 0 && styles.driverReviewLinkTextDisabled,
+                    ]}
+                  >
+                    {driverReviewCount > 0
+                      ? `${driverReviewCount} avis`
+                      : 'Pas encore d’avis'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -756,10 +802,11 @@ export default function TripDetailsScreen() {
                   if (driverPhone) {
                     Linking.openURL(`tel:${driverPhone}`);
                   } else {
-                    Alert.alert(
-                      'Numéro manquant',
-                      'Le numéro de téléphone du conducteur n’est pas disponible.',
-                    );
+                  showDialog({
+                    variant: 'info',
+                    title: 'Numéro manquant',
+                    message: 'Le numéro de téléphone du conducteur n’est pas disponible.',
+                  });
                   }
                 }}
               >
@@ -1035,6 +1082,51 @@ export default function TripDetailsScreen() {
               </TouchableOpacity>
             </View>
           </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={driverReviewsModalVisible}
+        onRequestClose={() => setDriverReviewsModalVisible(false)}
+      >
+        <View style={styles.reviewsModalOverlay}>
+          <Animated.View entering={FadeInDown} style={styles.reviewsModalCard}>
+            <View style={styles.reviewsModalHeader}>
+              <Text style={styles.reviewsModalTitle}>Avis sur {trip?.driverName}</Text>
+              <TouchableOpacity onPress={() => setDriverReviewsModalVisible(false)}>
+                <Ionicons name="close" size={20} color={Colors.gray[600]} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={styles.reviewsModalContent}
+              contentContainerStyle={{ paddingBottom: Spacing.xl }}
+              showsVerticalScrollIndicator={false}
+            >
+              {driverReviewCount === 0 ? (
+                <Text style={styles.reviewsEmptyText}>Pas encore d'avis pour ce conducteur.</Text>
+              ) : (
+                driverReviews?.map((review) => (
+                  <View key={review.id} style={styles.reviewItem}>
+                    <View style={styles.reviewItemHeader}>
+                      <Text style={styles.reviewAuthor}>{review.fromUserName ?? 'Utilisateur'}</Text>
+                      <View style={styles.reviewRating}>
+                        <Ionicons name="star" size={16} color={Colors.secondary} />
+                        <Text style={styles.reviewRatingText}>{review.rating.toFixed(1)}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.reviewDate}>
+                      {new Date(review.createdAt).toLocaleDateString('fr-FR')}
+                    </Text>
+                    {review.comment ? (
+                      <Text style={styles.reviewComment}>{review.comment}</Text>
+                    ) : null}
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </Animated.View>
         </View>
       </Modal>
     </SafeAreaView>
@@ -1461,6 +1553,17 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.sm,
     fontSize: FontSizes.base,
   },
+  driverReviewLink: {
+    marginTop: Spacing.xs,
+  },
+  driverReviewLinkText: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
+  driverReviewLinkTextDisabled: {
+    color: Colors.gray[400],
+  },
   detailsList: {
     marginTop: Spacing.md,
   },
@@ -1730,6 +1833,71 @@ const styles = StyleSheet.create({
   bookingModalButtonPrimaryText: {
     color: Colors.white,
     fontWeight: FontWeights.bold,
+  },
+  reviewsModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+  },
+  reviewsModalCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    maxHeight: '85%',
+    padding: Spacing.lg,
+  },
+  reviewsModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  reviewsModalTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  reviewsModalContent: {
+    flex: 1,
+  },
+  reviewsEmptyText: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+  },
+  reviewItem: {
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  reviewItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  reviewAuthor: {
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[800],
+  },
+  reviewDate: {
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+    marginTop: Spacing.xs,
+  },
+  reviewRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  reviewRatingText: {
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+  },
+  reviewComment: {
+    color: Colors.gray[700],
+    marginTop: Spacing.sm,
+    fontSize: FontSizes.sm,
   },
   driverManageHeader: {
     flexDirection: 'row',

@@ -179,14 +179,13 @@ export interface ProfileSummary {
 
 export interface Review {
   id: string;
-  fromUserId: string;
-  fromUserName: string;
+  ratedUserId: string;
+  raterId: string;
+  fromUserName?: string;
   fromUserAvatar?: string;
-  toUserId: string;
   rating: number;
-  comment: string;
-  tags: string[];
-  tripId: string;
+  comment?: string;
+  tripId?: string | null;
   createdAt: string; // ISO string date
 }
 
