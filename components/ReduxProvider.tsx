@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { Provider } from 'react-redux';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { Colors } from '@/constants/styles';
+import { IdentityProvider } from '@/contexts/IdentityContext';
 import { store } from '@/store';
 import { initializeAuth } from '@/store/slices/authSlice';
-import { Colors } from '@/constants/styles';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { Provider } from 'react-redux';
 import { AuthGuard } from './AuthGuard';
 
 interface ReduxProviderProps {
@@ -40,7 +41,9 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
 
   return (
     <Provider store={store}>
-      <AuthGuard>{children}</AuthGuard>
+      <AuthGuard>
+        <IdentityProvider>{children}</IdentityProvider>
+      </AuthGuard>
     </Provider>
   );
 }

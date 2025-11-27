@@ -1,8 +1,8 @@
 import type { Booking, BookingStatus } from '../../types';
 import { baseApi } from './baseApi';
-import type { BaseEndpointBuilder } from './types';
 import type { ServerTrip } from './tripApi';
 import { mapServerTripToClient } from './tripApi';
+import type { BaseEndpointBuilder } from './types';
 
 type ServerUser = {
   id: string;
@@ -49,7 +49,7 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
   cancelledAt: booking.cancelledAt ?? undefined,
   createdAt: booking.createdAt,
   updatedAt: booking.updatedAt,
-  trip: booking.trip ? mapServerTripToClient(booking.trip) : undefined,
+  trip: booking.trip ? mapServerTripToClient(booking.trip) : booking.trip,
 });
 
 export const bookingApi = baseApi.injectEndpoints({

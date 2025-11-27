@@ -8,12 +8,12 @@ require('dotenv').config();
 
 module.exports = {
   expo: {
-    name: 'zwanga-app',
+    name: 'zwanga',
     slug: 'zwanga-app',
     version: '1.0.0',
     orientation: 'portrait',
     icon: './assets/images/icon.png',
-    scheme: 'zwangaapp',
+    scheme: 'zwanga',
     userInterfaceStyle: 'automatic',
     newArchEnabled: true,
 
@@ -23,7 +23,7 @@ module.exports = {
 
     android: {
       googleServicesFile: './google-services.json',
-      package: 'com.zwanga.app',
+      package: 'com.zwanga',
       adaptiveIcon: {
         backgroundColor: '#E6F4FE',
         foregroundImage: './assets/images/android-icon-foreground.png',

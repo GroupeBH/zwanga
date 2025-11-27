@@ -27,7 +27,7 @@ type PublishStep = 'route' | 'details' | 'confirm';
 
 export default function PublishScreen() {
   const router = useRouter();
-  const { checkIdentity } = useIdentityCheck();
+  const { isIdentityVerified } = useIdentityCheck();
   const [step, setStep] = useState<PublishStep>('route');
   const [createTrip, { isLoading: isPublishing }] = useCreateTripMutation();
   type FeedbackModalState = {
@@ -79,6 +79,21 @@ export default function PublishScreen() {
     closeFeedbackModal();
     feedbackModal.onSecondary?.();
   };
+
+  const [kycModalVisible, setKycModalVisible] = useState(false);
+  const openKycModal = () => setKycModalVisible(true);
+  const closeKycModal = () => setKycModalVisible(false);
+
+  const handleStartKyc = () => {
+    closeKycModal();
+    router.push('/profile');
+  };
+
+  const kycChecklist = [
+    { icon: 'id-card', title: 'Carte nationale', subtitle: 'Recto-verso bien lisible' },
+    { icon: 'camera', title: 'Selfie sécurisé', subtitle: 'Prenez une photo nette de votre visage' },
+    { icon: 'time', title: 'Validation express', subtitle: 'Moins de 24h en moyenne' },
+  ] as const;
 
   const resetForm = () => {
     setStep('route');
@@ -285,10 +300,10 @@ export default function PublishScreen() {
         });
         return;
       }
-      // Vérifier l'identité avant de continuer
-      // if (!checkIdentity('publish')) {
-      //   return;
-      // }
+      if (!isIdentityVerified) {
+        openKycModal();
+        return;
+      }
       setStep('details');
     } else if (step === 'details') {
       if (!departureDateTime || !price) {
@@ -330,6 +345,11 @@ export default function PublishScreen() {
         title: 'Vérification requise',
         message: 'Veuillez vérifier les valeurs numériques et la date de départ.',
       });
+      return;
+    }
+
+    if (!isIdentityVerified) {
+      openKycModal();
       return;
     }
 
@@ -389,6 +409,27 @@ export default function PublishScreen() {
       <View style={styles.progressBar}>
         <View style={[styles.progressFill, { width: progressWidth }]} />
       </View>
+
+      {!isIdentityVerified && (
+        <View style={styles.identityWarningCard}>
+          <View style={styles.identityWarningIcon}>
+            <Ionicons name="shield" size={20} color={Colors.primary} />
+          </View>
+          <View style={styles.identityWarningContent}>
+            <Text style={styles.identityWarningTitle}>KYC requis</Text>
+            <Text style={styles.identityWarningText}>
+              Vérifiez votre identité pour pouvoir publier et confirmer vos trajets.
+            </Text>
+            <TouchableOpacity
+              style={styles.identityWarningButton}
+              onPress={() => router.push('/profile')}
+            >
+              <Text style={styles.identityWarningButtonText}>Compléter ma vérification</Text>
+              <Ionicons name="chevron-forward" size={14} color={Colors.white} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       <ScrollView 
         style={styles.scrollView}
@@ -631,15 +672,17 @@ export default function PublishScreen() {
                 style={[
                   styles.button,
                   { flex: 1, marginLeft: Spacing.md },
-                  isPublishing && styles.buttonDisabled,
+                  (isPublishing || !isIdentityVerified) && styles.buttonDisabled,
                 ]}
                 onPress={handlePublish}
-                disabled={isPublishing}
+                disabled={isPublishing || !isIdentityVerified}
               >
                 {isPublishing ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
-                  <Text style={styles.buttonText}>Publier</Text>
+                  <Text style={styles.buttonText}>
+                    {isIdentityVerified ? 'Publier' : 'KYC requis'}
+                  </Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -709,6 +752,63 @@ export default function PublishScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={kycModalVisible}
+        onRequestClose={closeKycModal}
+      >
+        <View style={styles.kycModalOverlay}>
+          <Animated.View entering={FadeInDown} style={styles.kycModalCard}>
+            <View style={styles.kycModalHero}>
+              <View style={styles.kycModalBadge}>
+                <Ionicons name="shield-checkmark" size={28} color={Colors.white} />
+              </View>
+              <Text style={styles.kycModalTitle}>Vérification requise</Text>
+              <Text style={styles.kycModalSubtitle}>
+                Publiez vos trajets en toute confiance en confirmant votre identité. Cela prend
+                moins de 5 minutes et protège la communauté.
+              </Text>
+            </View>
+
+            <View style={styles.kycModalHighlights}>
+              <View style={styles.kycHighlight}>
+                <Ionicons name="flash" size={18} color={Colors.success} />
+                <Text style={styles.kycHighlightText}>Validation rapide</Text>
+              </View>
+              <View style={styles.kycHighlight}>
+                <Ionicons name="lock-closed" size={18} color={Colors.primary} />
+                <Text style={styles.kycHighlightText}>Données protégées</Text>
+              </View>
+            </View>
+
+            <View style={styles.kycChecklist}>
+              {kycChecklist.map((item) => (
+                <View key={item.title} style={styles.kycChecklistItem}>
+                  <View style={styles.kycChecklistIcon}>
+                    <Ionicons name={item.icon} size={18} color={Colors.primary} />
+                  </View>
+                  <View style={styles.kycChecklistContent}>
+                    <Text style={styles.kycChecklistTitle}>{item.title}</Text>
+                    <Text style={styles.kycChecklistSubtitle}>{item.subtitle}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.kycModalActions}>
+              <TouchableOpacity style={styles.kycPrimaryButton} onPress={handleStartKyc}>
+                <Text style={styles.kycPrimaryButtonText}>Commencer ma vérification</Text>
+                <Ionicons name="arrow-forward" size={18} color={Colors.white} />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.kycSecondaryButton} onPress={closeKycModal}>
+                <Text style={styles.kycSecondaryButtonText}>Plus tard</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -749,6 +849,50 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     backgroundColor: Colors.primary,
+  },
+  identityWarningCard: {
+    flexDirection: 'row',
+    backgroundColor: Colors.primary + '12',
+    borderRadius: BorderRadius.xl,
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.md,
+    padding: Spacing.md,
+    gap: Spacing.md,
+  },
+  identityWarningIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  identityWarningContent: {
+    flex: 1,
+  },
+  identityWarningTitle: {
+    fontWeight: FontWeights.semibold,
+    color: Colors.primary,
+  },
+  identityWarningText: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+    marginVertical: Spacing.xs,
+  },
+  identityWarningButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+  },
+  identityWarningButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
   },
   scrollView: {
     flex: 1,
@@ -1111,5 +1255,121 @@ const styles = StyleSheet.create({
   modalButtonPrimaryText: {
     color: Colors.white,
     fontWeight: FontWeights.bold,
+  },
+  kycModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+  },
+  kycModalCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xxl,
+    padding: Spacing.xl,
+    gap: Spacing.lg,
+  },
+  kycModalHero: {
+    alignItems: 'center',
+    textAlign: 'center',
+    gap: Spacing.sm,
+  },
+  kycModalBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.sm,
+  },
+  kycModalTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    textAlign: 'center',
+  },
+  kycModalSubtitle: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.base,
+    textAlign: 'center',
+  },
+  kycModalHighlights: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+  },
+  kycHighlight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: Colors.gray[100],
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+  },
+  kycHighlightText: {
+    color: Colors.gray[700],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+  },
+  kycChecklist: {
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+  },
+  kycChecklistItem: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    alignItems: 'center',
+    paddingVertical: Spacing.xs,
+  },
+  kycChecklistIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '10',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  kycChecklistContent: {
+    flex: 1,
+  },
+  kycChecklistTitle: {
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[800],
+  },
+  kycChecklistSubtitle: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+  },
+  kycModalActions: {
+    gap: Spacing.sm,
+  },
+  kycPrimaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.primary,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.full,
+  },
+  kycPrimaryButtonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.base,
+  },
+  kycSecondaryButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[100],
+  },
+  kycSecondaryButtonText: {
+    color: Colors.gray[700],
+    fontWeight: FontWeights.semibold,
   },
 });

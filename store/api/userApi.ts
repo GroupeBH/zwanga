@@ -88,12 +88,13 @@ export const userApi = baseApi.injectEndpoints({
       transformResponse: (response: ServerUser) => mapServerUser(response),
     }),
 
-    uploadKyc: builder.mutation<KycDocument, { cniFrontUrl: string; cniBackUrl: string; selfieUrl: string }>({
-      query: (body: { cniFrontUrl: string; cniBackUrl: string; selfieUrl: string }) => ({
+    uploadKyc: builder.mutation<KycDocument, FormData>({
+      query: (formData: FormData) => ({
         url: '/users/kyc',
         method: 'POST',
-        body,
+        body: formData,
       }),
+      invalidatesTags: ['User'],
     }),
 
     getKycStatus: builder.query<KycDocument | null, void>({
