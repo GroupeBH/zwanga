@@ -2,65 +2,60 @@ import type { Review } from '../../types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 
-/**
- * API avis et signalements
- * Gère les avis utilisateurs et les signalements
- */
+const buildFullName = (user?: { firstName?: string | null; lastName?: string | null; phone?: string }) => {
+  if (!user) {
+    return 'Utilisateur';
+  }
+  const fullName = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
+  return fullName || user.phone || 'Utilisateur';
+};
+
+const mapServerRating = (rating: any): Review => ({
+  id: rating.id,
+  ratedUserId: rating.ratedUserId,
+  raterId: rating.raterId,
+  rating: rating.rating,
+  comment: rating.comment ?? undefined,
+  tripId: rating.tripId ?? null,
+  createdAt: rating.createdAt ?? new Date().toISOString(),
+  fromUserName: buildFullName(rating.rater),
+  fromUserAvatar: rating.rater?.profilePicture ?? undefined,
+});
+
 export const reviewApi = baseApi.injectEndpoints({
   endpoints: (builder: BaseEndpointBuilder) => ({
-    // Créer un avis après un trajet
     createReview: builder.mutation<
       Review,
       {
-        tripId: string;
-        toUserId: string;
+        tripId?: string;
+        ratedUserId: string;
         rating: number;
-        comment: string;
-        tags: string[];
+        comment?: string;
       }
     >({
-      query: (review: {
-        tripId: string;
-        toUserId: string;
-        rating: number;
-        comment: string;
-        tags: string[];
-      }) => ({
-        url: '/reviews',
+      query: (payload) => ({
+        url: '/ratings',
         method: 'POST',
-        body: review,
+        body: payload,
       }),
+      transformResponse: (response: any) => mapServerRating(response),
       invalidatesTags: ['User', 'Trip'],
     }),
 
-    // Signaler un utilisateur
-    reportUser: builder.mutation<
-      void,
-      {
-        userId: string;
-        tripId: string;
-        reason: string;
-        details: string;
-      }
-    >({
-      query: (report: { userId: string; tripId: string; reason: string; details: string }) => ({
-        url: '/reports',
-        method: 'POST',
-        body: report,
-      }),
+    getReviews: builder.query<Review[], string>({
+      query: (userId: string) => `/ratings/user/${userId}`,
+      transformResponse: (response: any[]) => response.map(mapServerRating),
+      providesTags: (_result, _error, userId) => [{ type: 'User', id: userId }],
     }),
 
-    // Récupérer les avis d'un utilisateur
-    getReviews: builder.query<Review[], string>({
-      query: (userId: string) => `/users/${userId}/reviews`,
+    getAverageRating: builder.query<{ userId: string; averageRating: number }, string>({
+      query: (userId: string) => `/ratings/user/${userId}/average`,
     }),
   }),
 });
 
 export const {
   useCreateReviewMutation,
-  useReportUserMutation,
   useGetReviewsQuery,
+  useGetAverageRatingQuery,
 } = reviewApi;
-
-

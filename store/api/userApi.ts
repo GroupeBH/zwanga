@@ -71,11 +71,11 @@ export const userApi = baseApi.injectEndpoints({
     }),
 
     // Mettre à jour le profil de l'utilisateur connecté
-    updateUser: builder.mutation<User, Partial<User>>({
-      query: (updates: Partial<User>) => ({
+    updateUser: builder.mutation<User, FormData>({
+      query: (formData: FormData) => ({
         url: '/users/me',
         method: 'PUT',
-        body: updates,
+        body: formData,
       }),
       transformResponse: (response: ServerUser) => mapServerUser(response),
       invalidatesTags: ['User'],

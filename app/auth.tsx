@@ -1,4 +1,5 @@
 import { IdentityVerification } from '@/components/IdentityVerification';
+import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useLoginMutation, useRegisterMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch } from '@/store/hooks';
@@ -9,7 +10,6 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   NativeSyntheticEvent,
@@ -84,6 +84,7 @@ const vehicleOptions: VehicleOption[] = [
 export default function AuthScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
+  const { showDialog } = useDialog();
   const [mode, setMode] = useState<AuthMode>('login');
   const [step, setStep] = useState<AuthStep>('phone');
   const [phone, setPhone] = useState('');
@@ -329,50 +330,48 @@ export default function AuthScreen() {
         return;
       }
 
-      // Afficher le sélecteur d'image
-      Alert.alert(
-        'Photo de profil',
-        'Choisissez une source',
-        [
-          {
-            text: 'Caméra',
-            onPress: async () => {
-              const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
-              if (cameraStatus !== 'granted') {
-                showErrorModal('L\'accès à la caméra est nécessaire pour prendre une photo.', 'Permission requise');
-                return;
-              }
+      const openCamera = async () => {
+        const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
+        if (cameraStatus !== 'granted') {
+          showErrorModal('L\'accès à la caméra est nécessaire pour prendre une photo.', 'Permission requise');
+          return;
+        }
 
-              const result = await ImagePicker.launchCameraAsync({
-                mediaTypes: 'images',
-                allowsEditing: true,
-                aspect: [1, 1],
-                quality: 0.8,
-              });
+        const result = await ImagePicker.launchCameraAsync({
+          mediaTypes: 'images',
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        });
 
-              if (!result.canceled && result.assets[0]) {
-                setProfilePicture(result.assets[0].uri);
-              }
-            },
-          },
-          {
-            text: 'Galerie',
-            onPress: async () => {
-              const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: 'images',
-                allowsEditing: true,
-                aspect: [1, 1],
-                quality: 0.8,
-              });
+        if (!result.canceled && result.assets[0]) {
+          setProfilePicture(result.assets[0].uri);
+        }
+      };
 
-              if (!result.canceled && result.assets[0]) {
-                setProfilePicture(result.assets[0].uri);
-              }
-            },
-          },
-          { text: 'Annuler', style: 'cancel' },
-        ]
-      );
+      const openGallery = async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: 'images',
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        });
+
+        if (!result.canceled && result.assets[0]) {
+          setProfilePicture(result.assets[0].uri);
+        }
+      };
+
+      showDialog({
+        variant: 'info',
+        title: 'Photo de profil',
+        message: 'Choisissez comment ajouter votre photo de profil.',
+        actions: [
+          { label: 'Caméra', variant: 'primary', onPress: openCamera },
+          { label: 'Galerie', variant: 'secondary', onPress: openGallery },
+          { label: 'Annuler', variant: 'ghost' },
+        ],
+      });
     } catch (error) {
       console.error('Erreur lors de la sélection de l\'image:', error);
       showErrorModal('Impossible de sélectionner l\'image. Veuillez réessayer.');

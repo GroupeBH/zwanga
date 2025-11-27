@@ -60,15 +60,14 @@ export default function EditProfileScreen() {
       return;
     }
     try {
-      const payload: Record<string, any> = {
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        phone: phone.trim(),
-      };
+      const formData = new FormData();
+      formData.append('firstName', firstName.trim());
+      formData.append('lastName', lastName.trim());
+      formData.append('phone', phone.trim());
       if (canBecomeDriver) {
-        payload.wantsToBeDriver = wantsToBeDriver;
+        formData.append('wantsToBeDriver', wantsToBeDriver ? 'true' : 'false');
       }
-      const updated = await updateUserMutation(payload).unwrap();
+      const updated = await updateUserMutation(formData).unwrap();
       dispatch(
         updateUserAction({
           id: updated.id,
@@ -192,7 +191,7 @@ export default function EditProfileScreen() {
               </Text>
               <TouchableOpacity
                 style={styles.driverButton}
-                onPress={() => router.push('/vehicle')}
+                onPress={() => router.push('/profile')}
               >
                 <Ionicons name="car" size={16} color={Colors.primary} />
                 <Text style={styles.driverButtonText}>Ajouter mon véhicule</Text>

@@ -1,9 +1,10 @@
+import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import {
-  useAcceptBookingMutation,
-  useGetTripBookingsQuery,
-  useRejectBookingMutation,
+    useAcceptBookingMutation,
+    useGetTripBookingsQuery,
+    useRejectBookingMutation,
 } from '@/store/api/bookingApi';
 import { useGetTripByIdQuery, useUpdateTripMutation } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
@@ -14,15 +15,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -156,16 +156,19 @@ export default function ManageTripScreen() {
     }
   };
 
+  const { showDialog } = useDialog();
+
   const handleCancelTrip = () => {
     if (!trip) return;
-    Alert.alert(
-      'Annuler le trajet',
-      'Les passagers seront notifiés. Continuer ?',
-      [
-        { text: 'Non', style: 'cancel' },
+    showDialog({
+      variant: 'warning',
+      title: 'Annuler le trajet',
+      message: 'Les passagers seront notifiés immédiatement. Voulez-vous continuer ?',
+      actions: [
+        { label: 'Retour', variant: 'ghost' },
         {
-          text: 'Oui, annuler',
-          style: 'destructive',
+          label: 'Oui, annuler',
+          variant: 'primary',
           onPress: async () => {
             try {
               await updateTrip({ id: trip.id, updates: { status: 'cancelled' } }).unwrap();
@@ -179,8 +182,7 @@ export default function ManageTripScreen() {
           },
         },
       ],
-      { cancelable: true },
-    );
+    });
   };
 
   // console.log("this user is owner", isOwner);
@@ -478,6 +480,21 @@ export default function ManageTripScreen() {
             </View>
           </View>
         </View>
+
+        {trip.status === 'completed' && (
+          <TouchableOpacity
+            style={styles.reviewCta}
+            onPress={() => router.push(`/rate/${trip.id}`)}
+          >
+            <Ionicons name="star" size={20} color={Colors.white} />
+            <View style={{ marginLeft: Spacing.sm }}>
+              <Text style={styles.reviewCtaTitle}>Évaluer mes passagers</Text>
+              <Text style={styles.reviewCtaSubtitle}>
+                Partagez votre ressenti pour améliorer la communauté.
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
       </Modal>
     </SafeAreaView>
   );
@@ -618,6 +635,25 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
     color: Colors.gray[800],
     flex: 1,
+  },
+  reviewCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.md,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    gap: Spacing.sm,
+    ...CommonStyles.shadowSm,
+    width: '100%',
+  },
+  reviewCtaTitle: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+  },
+  reviewCtaSubtitle: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: FontSizes.sm,
   },
   summaryDivider: {
     height: 1,
