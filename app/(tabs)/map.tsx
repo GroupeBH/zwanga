@@ -1,21 +1,27 @@
-import { Colors, FontSizes, FontWeights, Spacing, BorderRadius } from '@/constants/styles';
+import { TutorialOverlay } from '@/components/TutorialOverlay';
+import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useDialog } from '@/components/ui/DialogProvider';
 import { useUserLocation } from '@/hooks/useUserLocation';
+import { TripSearchParams, useLazyGetTripsQuery } from '@/store/api/tripApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
   selectLocationRadius,
+  selectTripSearchMode,
+  selectTripSearchQuery,
   selectTripsMatchingMapFilters,
   selectUserCoordinates,
   selectVehicleFilter,
 } from '@/store/selectors';
-import { setRadiusKm, setSearchQuery, setVehicleFilter } from '@/store/slices/locationSlice';
+import { setRadiusKm, setSearchMode, setSearchQuery, setVehicleFilter, TripSearchMode } from '@/store/slices/locationSlice';
+import { setTrips } from '@/store/slices/tripsSlice';
 import { formatTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import React, { useMemo, useState } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTutorialGuide } from '@/contexts/TutorialContext';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Platform,
   ScrollView,
   StyleSheet,
@@ -24,16 +30,58 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+type LatLng = { latitude: number; longitude: number };
+
+const toRadians = (value: number) => (value * Math.PI) / 180;
+
+const distanceInKm = (a: LatLng, b: LatLng) => {
+  const dLat = toRadians(b.latitude - a.latitude);
+  const dLon = toRadians(b.longitude - a.longitude);
+  const lat1 = toRadians(a.latitude);
+  const lat2 = toRadians(b.latitude);
+
+  const haversine =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
+
+  const c = 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+  return 6371 * c;
+};
 
 export default function MapScreen() {
   const dispatch = useAppDispatch();
   const router = useRouter();
+  const { showDialog } = useDialog();
   const { permissionStatus, requestPermission } = useUserLocation({ autoRequest: true });
+  const [triggerTripSearch, { isFetching: isApplyingSearch }] = useLazyGetTripsQuery();
   const userCoords = useAppSelector(selectUserCoordinates);
   const trips = useAppSelector(selectTripsMatchingMapFilters);
   const radiusKm = useAppSelector(selectLocationRadius);
   const vehicleFilter = useAppSelector(selectVehicleFilter);
-  const [search, setSearch] = useState('');
+  const searchMode = useAppSelector(selectTripSearchMode);
+  const activeSearchQuery = useAppSelector(selectTripSearchQuery);
+  const [search, setSearch] = useState(activeSearchQuery);
+  const { shouldShow: shouldShowMapGuide, complete: completeMapGuide } =
+    useTutorialGuide('map_screen');
+  const [mapGuideVisible, setMapGuideVisible] = useState(false);
+
+  useEffect(() => {
+    setSearch(activeSearchQuery);
+  }, [activeSearchQuery]);
+
+  useEffect(() => {
+    if (shouldShowMapGuide) {
+      setMapGuideVisible(true);
+    }
+  }, [shouldShowMapGuide]);
+
+  const dismissMapGuide = () => {
+    setMapGuideVisible(false);
+    completeMapGuide();
+  };
 
   const initialRegion = useMemo(() => {
     if (userCoords) {
@@ -74,8 +122,85 @@ export default function MapScreen() {
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
-    dispatch(setSearchQuery(value));
   };
+
+  const buildSearchParams = (query: string): TripSearchParams => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      return {};
+    }
+
+    if (searchMode === 'departure') {
+      return { departureLocation: trimmed };
+    }
+
+    if (searchMode === 'arrival') {
+      return { arrivalLocation: trimmed };
+    }
+
+    // Mode "tous" : on reste large côté backend et on laisse la recherche locale
+    return { departureLocation: trimmed };
+  };
+
+  const applySearchQuery = async () => {
+    const trimmedQuery = (search ?? '').trim();
+    dispatch(setSearchQuery(trimmedQuery));
+
+    try {
+      const params = buildSearchParams(trimmedQuery);
+      const results = await triggerTripSearch(params).unwrap();
+      dispatch(setTrips(results));
+    } catch (error: any) {
+      const message =
+        error?.data?.message ?? error?.error ?? "Impossible d'appliquer le filtre pour le moment.";
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur de recherche',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
+  };
+
+  const clearSearchQuery = async () => {
+    setSearch('');
+    dispatch(setSearchQuery(''));
+    try {
+      const params = buildSearchParams('');
+      const results = await triggerTripSearch(params).unwrap();
+      dispatch(setTrips(results));
+    } catch (error: any) {
+      const message =
+        error?.data?.message ?? error?.error ?? "Impossible de réinitialiser la recherche.";
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
+  };
+
+  const placeholder = useMemo(() => {
+    if (searchMode === 'departure') {
+      return 'Rechercher un point de départ';
+    }
+    if (searchMode === 'arrival') {
+      return 'Rechercher un point d’arrivée';
+    }
+    return 'Rechercher un départ ou une arrivée';
+  }, [searchMode]);
+
+  const searchModes: { key: TripSearchMode; label: string }[] = useMemo(
+    () => [
+      { key: 'all', label: 'Tous' },
+      { key: 'departure', label: 'Départ' },
+      { key: 'arrival', label: 'Arrivée' },
+    ],
+    [],
+  );
+
+  const isApplyDisabled = useMemo(() => {
+    return ((search ?? '').trim() === (activeSearchQuery ?? '').trim()) || isApplyingSearch;
+  }, [activeSearchQuery, isApplyingSearch, search]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -96,15 +221,69 @@ export default function MapScreen() {
               ? { latitude: trip.arrival.lat, longitude: trip.arrival.lng }
               : null;
 
+          const userDistance =
+            userCoords && departureCoords
+              ? distanceInKm(
+                  { latitude: departureCoords.latitude, longitude: departureCoords.longitude },
+                  { latitude: userCoords.latitude, longitude: userCoords.longitude },
+                )
+              : null;
+
+          const driverInitials = trip.driverName
+            ? trip.driverName
+                .split(' ')
+                .map((word) => word[0])
+                .join('')
+                .slice(0, 2)
+                .toUpperCase()
+            : 'DR';
+
           return (
             <React.Fragment key={trip.id}>
               {departureCoords && (
                 <Marker
                   coordinate={departureCoords}
-                  title={`Départ: ${trip.departure.name}`}
-                  description={`Vers ${trip.arrival.name}`}
-                  pinColor={Colors.primary}
-                />
+                  anchor={{ x: 0.5, y: 1 }}
+                  onCalloutPress={() => router.push(`/trip/${trip.id}`)}
+                >
+                  <View style={styles.driverMarkerWrapper}>
+                    <View style={styles.driverMarker}>
+                      {trip.driverAvatar ? (
+                        <Image source={{ uri: trip.driverAvatar }} style={styles.driverMarkerImage} />
+                      ) : (
+                        <Text style={styles.driverMarkerInitials}>{driverInitials}</Text>
+                      )}
+                    </View>
+                    <View style={styles.driverMarkerHalo} />
+                  </View>
+                  <Callout tooltip onPress={() => router.push(`/trip/${trip.id}`)}>
+                    <View style={styles.calloutCard}>
+                      <Text style={styles.calloutTitle}>{trip.driverName}</Text>
+                      <Text style={styles.calloutSubtitle}>
+                        {trip.departure.name} ➜ {trip.arrival.name}
+                      </Text>
+                      {userDistance !== null && (
+                        <Text style={styles.calloutDistance}>
+                          À{' '}
+                          {userDistance < 1
+                            ? `${Math.round(userDistance * 1000)} m`
+                            : `${userDistance.toFixed(1)} km`}{' '}
+                          du départ
+                        </Text>
+                      )}
+                      <View style={styles.calloutDivider} />
+                      <View style={styles.calloutFooter}>
+                        <Text style={styles.calloutSchedule}>
+                          {formatTime(trip.departureTime)} • {trip.availableSeats} place(s)
+                        </Text>
+                        <View style={styles.calloutCta}>
+                          <Text style={styles.calloutCtaText}>Voir trajet</Text>
+                          <Ionicons name="chevron-forward" size={14} color={Colors.white} />
+                        </View>
+                      </View>
+                    </View>
+                  </Callout>
+                </Marker>
               )}
               {arrivalCoords && (
                 <Marker
@@ -127,11 +306,62 @@ export default function MapScreen() {
             <Ionicons name="search" size={18} color={Colors.gray[500]} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Rechercher un départ ou une arrivée"
+              placeholder={placeholder}
               placeholderTextColor={Colors.gray[500]}
               value={search}
               onChangeText={handleSearchChange}
+              returnKeyType="search"
+              onSubmitEditing={applySearchQuery}
             />
+          </View>
+          <View style={styles.searchActions}>
+            <TouchableOpacity
+              style={[styles.applyButton, isApplyDisabled && styles.applyButtonDisabled]}
+              onPress={applySearchQuery}
+              disabled={isApplyDisabled}
+            >
+              {isApplyingSearch ? (
+                <ActivityIndicator size="small" color={Colors.white} />
+              ) : (
+                <>
+                  <Ionicons name="funnel" size={16} color={isApplyDisabled ? Colors.gray[400] : Colors.white} />
+                  <Text style={[styles.applyButtonText, isApplyDisabled && styles.applyButtonTextDisabled]}>
+                    Appliquer
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+            {Boolean(activeSearchQuery) && (
+              <TouchableOpacity
+                style={styles.clearButton}
+                onPress={clearSearchQuery}
+                disabled={isApplyingSearch}
+              >
+                <Ionicons name="close-circle" size={16} color={Colors.primary} />
+                <Text style={styles.clearButtonText}>Effacer</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <View style={styles.searchModeRow}>
+            {searchModes.map((mode) => (
+              <TouchableOpacity
+                key={mode.key}
+                style={[
+                  styles.searchModeChip,
+                  searchMode === mode.key && styles.searchModeChipActive,
+                ]}
+                onPress={() => dispatch(setSearchMode(mode.key))}
+              >
+                <Text
+                  style={[
+                    styles.searchModeChipText,
+                    searchMode === mode.key && styles.searchModeChipTextActive,
+                  ]}
+                >
+                  {mode.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
           <View style={styles.filtersRow}>
             {['all', 'car', 'moto', 'tricycle'].map((type) => (
@@ -263,6 +493,13 @@ export default function MapScreen() {
           <Text style={styles.loadingText}>Localisation en cours…</Text>
         </View>
       )}
+
+      <TutorialOverlay
+        visible={mapGuideVisible}
+        title="Explorez les trajets"
+        message="Filtrez par zone, véhicule ou destination puis tapez sur un marqueur pour rejoindre rapidement un trajet."
+        onDismiss={dismissMapGuide}
+      />
     </SafeAreaView>
   );
 }
@@ -308,10 +545,71 @@ const styles = StyleSheet.create({
     color: Colors.gray[800],
     paddingVertical: Spacing.sm,
   },
+  searchActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+  },
+  applyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    gap: Spacing.xs,
+    backgroundColor: Colors.primary,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+  },
+  applyButtonDisabled: {
+    backgroundColor: Colors.gray[200],
+  },
+  applyButtonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.semibold,
+  },
+  applyButtonTextDisabled: {
+    color: Colors.gray[500],
+  },
+  clearButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  clearButtonText: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
   filtersRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.sm,
+  },
+  searchModeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  searchModeChip: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: 999,
+    backgroundColor: Colors.gray[100],
+  },
+  searchModeChipActive: {
+    backgroundColor: Colors.gray[900],
+  },
+  searchModeChipText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    fontWeight: FontWeights.medium,
+  },
+  searchModeChipTextActive: {
+    color: Colors.white,
   },
   filterChip: {
     paddingHorizontal: Spacing.md,
@@ -370,6 +668,91 @@ const styles = StyleSheet.create({
   radiusButtonTextActive: {
     color: Colors.black,
     fontWeight: FontWeights.bold,
+  },
+  driverMarkerWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  driverMarker: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: Colors.white,
+    overflow: 'hidden',
+  },
+  driverMarkerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  driverMarkerInitials: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+  },
+  driverMarkerHalo: {
+    position: 'absolute',
+    width: 64,
+    height: 64,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '33',
+  },
+  calloutCard: {
+    width: 220,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  calloutTitle: {
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    fontSize: FontSizes.base,
+  },
+  calloutSubtitle: {
+    color: Colors.gray[600],
+    marginTop: 2,
+    fontSize: FontSizes.sm,
+  },
+  calloutDistance: {
+    marginTop: Spacing.xs,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+  },
+  calloutDivider: {
+    height: 1,
+    backgroundColor: Colors.gray[200],
+    marginVertical: Spacing.sm,
+  },
+  calloutFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  calloutSchedule: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+    flex: 1,
+  },
+  calloutCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+  },
+  calloutCtaText: {
+    color: Colors.white,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
   },
   bottomSheet: {
     position: 'absolute',

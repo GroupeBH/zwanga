@@ -1,20 +1,80 @@
+import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useDialog } from '@/components/ui/DialogProvider';
+import { useGetNotificationsQuery } from '@/store/api/notificationApi';
+import {
+  TripSearchParams,
+  useGetTripsQuery,
+  useSearchTripsByCoordinatesMutation,
+} from '@/store/api/tripApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectAvailableTrips, selectSavedLocations } from '@/store/selectors';
 import { addSavedLocation } from '@/store/slices/locationSlice';
+import { setTrips } from '@/store/slices/tripsSlice';
 import { formatTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+const RECENT_TRIPS_LIMIT = 5;
 
 export default function HomeScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const trips = useAppSelector(selectAvailableTrips);
+  const { showDialog } = useDialog();
+  const storedTrips = useAppSelector(selectAvailableTrips);
   const savedLocations = useAppSelector(selectSavedLocations);
+  const [queryParams, setQueryParams] = useState<TripSearchParams>({});
+  const [searchTripsByCoordinates, { isLoading: advancedSearching }] =
+    useSearchTripsByCoordinatesMutation();
+  const [activePicker, setActivePicker] = useState<'departure' | 'arrival' | null>(null);
+  const [filterDepartureLocation, setFilterDepartureLocation] = useState<MapLocationSelection | null>(
+    null,
+  );
+  const [filterArrivalLocation, setFilterArrivalLocation] = useState<MapLocationSelection | null>(
+    null,
+  );
+  const [departureRadius, setDepartureRadius] = useState('10');
+  const [arrivalRadius, setArrivalRadius] = useState('10');
+  const [minSeatsFilter, setMinSeatsFilter] = useState('');
+  const [maxPriceFilter, setMaxPriceFilter] = useState('');
+  const [showQuickFields, setShowQuickFields] = useState(false);
+  const {
+    data: remoteTrips,
+    isLoading: tripsLoading,
+    isError: tripsError,
+    refetch: refetchTrips,
+  } = useGetTripsQuery(queryParams);
+  const { data: notifications } = useGetNotificationsQuery(undefined, {
+    refetchOnMountOrArgChange: true,
+  });
+
+  useEffect(() => {
+    if (remoteTrips) {
+      dispatch(setTrips(remoteTrips));
+    }
+  }, [remoteTrips, dispatch]);
+
+  const baseTrips = remoteTrips ?? storedTrips ?? [];
+  const latestTrips = useMemo(() => {
+    return [...baseTrips]
+      .sort((a, b) => {
+        const dateA = new Date(a.departureTime).getTime();
+        const dateB = new Date(b.departureTime).getTime();
+        return dateB - dateA;
+      })
+      .slice(0, RECENT_TRIPS_LIMIT);
+  }, [baseTrips]);
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
   const [addMode, setAddMode] = useState(false);
@@ -22,6 +82,128 @@ export default function HomeScreen() {
   const [customAddress, setCustomAddress] = useState('');
   const [customLat, setCustomLat] = useState('');
   const [customLng, setCustomLng] = useState('');
+
+  const handleQuickSearch = () => {
+    const trimmedDeparture = departure.trim();
+    const trimmedArrival = arrival.trim();
+
+    setQueryParams((prev) => ({
+      ...prev,
+      departureLocation: trimmedDeparture || undefined,
+      arrivalLocation: trimmedArrival || undefined,
+    }));
+
+    router.push({
+      pathname: '/search',
+      params: {
+        ...(trimmedDeparture ? { departure: trimmedDeparture } : {}),
+        ...(trimmedArrival ? { arrival: trimmedArrival } : {}),
+      },
+    });
+  };
+
+  const advancedDepartureSummary = useMemo(
+    () => ({
+      title: filterDepartureLocation?.title ?? 'Point de départ',
+      address: filterDepartureLocation?.address ?? 'Sélectionnez un lieu',
+      coords: filterDepartureLocation
+        ? `${filterDepartureLocation.latitude.toFixed(4)} / ${filterDepartureLocation.longitude.toFixed(4)}`
+        : 'Coordonnées inconnues',
+    }),
+    [filterDepartureLocation],
+  );
+
+  const advancedArrivalSummary = useMemo(
+    () => ({
+      title: filterArrivalLocation?.title ?? 'Destination',
+      address: filterArrivalLocation?.address ?? 'Sélectionnez un lieu',
+      coords: filterArrivalLocation
+        ? `${filterArrivalLocation.latitude.toFixed(4)} / ${filterArrivalLocation.longitude.toFixed(4)}`
+        : 'Coordonnées inconnues',
+    }),
+    [filterArrivalLocation],
+  );
+
+  const handleAdvancedLocationSelect = (selection: MapLocationSelection) => {
+    if (activePicker === 'departure') {
+      setFilterDepartureLocation(selection);
+    } else if (activePicker === 'arrival') {
+      setFilterArrivalLocation(selection);
+    }
+    setActivePicker(null);
+  };
+
+  const parseNumberInput = (value: string) => {
+    if (!value) {
+      return undefined;
+    }
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? undefined : parsed;
+  };
+
+  const handleAdvancedSearch = async () => {
+    if (!filterDepartureLocation || !filterArrivalLocation) {
+      showDialog({
+        variant: 'warning',
+        title: 'Sélection requise',
+        message: 'Veuillez choisir les points de départ et d’arrivée.',
+      });
+      return;
+    }
+
+    const payload = {
+      departureCoordinates: [
+        filterDepartureLocation.longitude,
+        filterDepartureLocation.latitude,
+      ] as [number, number],
+      arrivalCoordinates: [filterArrivalLocation.longitude, filterArrivalLocation.latitude] as [
+        number,
+        number,
+      ],
+      departureRadiusKm: parseNumberInput(departureRadius) ?? 10,
+      arrivalRadiusKm: parseNumberInput(arrivalRadius) ?? 10,
+      minSeats: parseNumberInput(minSeatsFilter),
+      maxPrice: parseNumberInput(maxPriceFilter),
+    };
+
+    try {
+      const results = await searchTripsByCoordinates(payload).unwrap();
+      dispatch(setTrips(results));
+      router.push({
+        pathname: '/search',
+        params: {
+          mode: 'map',
+          departureLat: filterDepartureLocation.latitude.toString(),
+          departureLng: filterDepartureLocation.longitude.toString(),
+          arrivalLat: filterArrivalLocation.latitude.toString(),
+          arrivalLng: filterArrivalLocation.longitude.toString(),
+          departureRadiusKm: String(payload.departureRadiusKm ?? 10),
+          arrivalRadiusKm: String(payload.arrivalRadiusKm ?? 10),
+          departureLabel: filterDepartureLocation.title,
+          arrivalLabel: filterArrivalLocation.title,
+        },
+      });
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        'Impossible de filtrer les trajets pour le moment.';
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
+  };
+
+  const handleClearAdvancedFilters = () => {
+    setFilterDepartureLocation(null);
+    setFilterArrivalLocation(null);
+    setDepartureRadius('10');
+    setArrivalRadius('10');
+    setMinSeatsFilter('');
+    setMaxPriceFilter('');
+  };
 
   const popularLocations = [
     { id: 'gombe', label: 'Gombe', address: 'Gombe, Kinshasa', coords: { latitude: -4.3206, longitude: 15.3115 } },
@@ -68,6 +250,14 @@ export default function HomeScreen() {
     setAddMode(false);
   };
 
+  const unreadNotifications =
+    notifications?.filter((notification) => !notification.read && !notification.readAt).length ?? 0;
+  const hasLocationSelections = Boolean(filterDepartureLocation && filterArrivalLocation);
+
+  const openNotifications = () => {
+    router.push('/notifications');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -77,50 +267,87 @@ export default function HomeScreen() {
             <Text style={styles.greeting}>Bonjour 👋</Text>
             <Text style={styles.headerTitle}>Trouvez votre trajet</Text>
           </View>
-          <TouchableOpacity style={styles.notificationButton}>
+          <TouchableOpacity style={styles.notificationButton} onPress={openNotifications}>
             <Ionicons name="notifications" size={24} color={Colors.white} />
+            {unreadNotifications > 0 && (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>
+                  {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
 
-        {/* Recherche rapide */}
+        {/* Recherche intelligente */}
         <View style={styles.searchCard}>
-          <View style={styles.searchRow}>
-            <Ionicons name="location" size={20} color={Colors.success} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Point de départ"
-              placeholderTextColor={Colors.gray[500]}
-              value={departure}
-              onChangeText={setDeparture}
-            />
+          <View style={styles.advancedCard}>
+            {/* <Text style={styles.advancedTitle}>Recherche par carte</Text> */}
+            <View style={styles.advancedLocations}>
+              <TouchableOpacity
+                style={styles.advancedLocationButton}
+                onPress={() => setActivePicker('departure')}
+              >
+                <View style={[styles.advancedLocationIcon, { backgroundColor: Colors.success + '15' }]}>
+                  <Ionicons name="location" size={18} color={Colors.success} />
+                </View>
+                <View style={styles.advancedLocationContent}>
+                  <Text style={styles.advancedLocationLabel}>Départ</Text>
+                  <Text style={styles.advancedLocationTitle}>{advancedDepartureSummary.title}</Text>
+                  <Text style={styles.advancedLocationSubtitle}>{advancedDepartureSummary.address}</Text>
+                  <Text style={styles.advancedLocationCoords}>{advancedDepartureSummary.coords}</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.advancedLocationButton}
+                onPress={() => setActivePicker('arrival')}
+              >
+                <View style={[styles.advancedLocationIcon, { backgroundColor: Colors.primary + '15' }]}>
+                  <Ionicons name="navigate" size={18} color={Colors.primary} />
+                </View>
+                <View style={styles.advancedLocationContent}>
+                  <Text style={styles.advancedLocationLabel}>Arrivée</Text>
+                  <Text style={styles.advancedLocationTitle}>{advancedArrivalSummary.title}</Text>
+                  <Text style={styles.advancedLocationSubtitle}>{advancedArrivalSummary.address}</Text>
+                  <Text style={styles.advancedLocationCoords}>{advancedArrivalSummary.coords}</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            {hasLocationSelections && (
+              <View style={styles.advancedButtons}>
+                <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={handleClearAdvancedFilters}>
+                  <Text style={styles.buttonSecondaryText}>Réinitialiser</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.button,
+                    { flex: 1, marginLeft: Spacing.md },
+                    (advancedSearching || !hasLocationSelections) && styles.buttonDisabled,
+                  ]}
+                  onPress={handleAdvancedSearch}
+                  disabled={advancedSearching}
+                >
+                  {advancedSearching ? (
+                    <ActivityIndicator color={Colors.white} />
+                  ) : (
+                    <Text style={styles.buttonText}>Appliquer</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
-          <View style={styles.searchDivider} />
-          <View style={styles.searchRow}>
-            <Ionicons name="navigate" size={20} color={Colors.primary} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Destination"
-              placeholderTextColor={Colors.gray[500]}
-              value={arrival}
-              onChangeText={setArrival}
-            />
-          </View>
-          <TouchableOpacity 
-            style={styles.searchButton}
-            onPress={() => router.push('/search')}
-          >
-            <Text style={styles.searchButtonText}>Rechercher</Text>
-          </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView} 
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
       >
         {/* Lieux populaires */}
-        <View style={styles.section}>
+        {/* <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Lieux populaires</Text>
             <TouchableOpacity onPress={() => setAddMode((prev) => !prev)}>
@@ -215,7 +442,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
           )}
-        </View>
+        </View> */}
 
         {/* Actions rapides */}
         <View style={styles.section}>
@@ -254,7 +481,37 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          {trips.slice(0, 3).map((trip, index) => (
+          {tripsLoading && (
+            <View style={styles.tripStateCard}>
+              <ActivityIndicator color={Colors.primary} />
+              <Text style={styles.tripStateText}>Chargement des trajets...</Text>
+            </View>
+          )}
+
+          {tripsError && !tripsLoading && (
+            <View style={styles.tripStateCard}>
+              <Ionicons name="alert-circle" size={24} color={Colors.danger} />
+              <Text style={styles.tripStateText}>Impossible de charger les trajets.</Text>
+              <TouchableOpacity style={styles.retryButton} onPress={refetchTrips}>
+                <Text style={styles.retryButtonText}>Réessayer</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {!tripsLoading && !tripsError && baseTrips.length === 0 && (
+            <View style={styles.tripStateCard}>
+              <Ionicons name="car-outline" size={24} color={Colors.gray[500]} />
+              <Text style={styles.tripStateText}>Aucun trajet pour le moment.</Text>
+              <Text style={styles.tripStateSubText}>Publiez le vôtre ou revenez plus tard.</Text>
+            </View>
+          )}
+
+          {latestTrips.map((trip, index) => {
+            const ratingValue =
+              typeof trip.driverRating === 'number'
+                ? trip.driverRating
+                : Number(trip.driverRating) || 4.9;
+            return (
             <Animated.View
               key={trip.id}
               entering={FadeInDown.delay(index * 100)}
@@ -264,24 +521,24 @@ export default function HomeScreen() {
                 <View style={styles.tripDriverInfo}>
                   <View style={styles.avatar} />
                   <View style={styles.tripDriverDetails}>
-                    <Text style={styles.driverName}>{trip.driverName}</Text>
+                    <Text style={styles.driverName}>{trip?.driverName ?? ''}</Text>
                     <View style={styles.driverMeta}>
                       <Ionicons name="star" size={14} color={Colors.secondary} />
-                      <Text style={styles.driverRating}>{trip.driverRating}</Text>
+                      <Text style={styles.driverRating}>{ratingValue.toFixed(1)}</Text>
                       <View style={styles.dot} />
-                      <Text style={styles.vehicleInfo}>{trip.vehicleInfo}</Text>
+                      <Text style={styles.vehicleInfo}>{trip?.vehicleInfo ?? ''}</Text>
                     </View>
                   </View>
                 </View>
                 <View style={styles.priceBadge}>
-                  <Text style={styles.priceText}>{trip.price} FC</Text>
+                  <Text style={styles.priceText}>{trip?.price ?? 0} FC</Text>
                 </View>
               </View>
 
               <View style={styles.tripRoute}>
                 <View style={styles.routeRow}>
                   <Ionicons name="location" size={16} color={Colors.success} />
-                  <Text style={styles.routeText}>{trip.departure.name}</Text>
+                  <Text style={styles.routeText}>{trip?.departure?.name ?? ''}</Text>
                   <Text style={styles.routeTime}>
                     {formatTime(trip.departureTime)}
                   </Text>
@@ -289,7 +546,7 @@ export default function HomeScreen() {
 
                 <View style={styles.routeRow}>
                   <Ionicons name="navigate" size={16} color={Colors.primary} />
-                  <Text style={styles.routeText}>{trip.arrival.name}</Text>
+                  <Text style={styles.routeText}>{trip?.arrival?.name ?? ''}</Text>
                   <Text style={styles.routeTime}>
                     {formatTime(trip.arrivalTime)}
                   </Text>
@@ -303,14 +560,36 @@ export default function HomeScreen() {
                     {trip.availableSeats} places disponibles
                   </Text>
                 </View>
-                <TouchableOpacity style={styles.reserveButton}>
+                <TouchableOpacity
+                  style={styles.reserveButton}
+                  onPress={() => router.push(`/trip/${trip.id}`)}
+                >
                   <Text style={styles.reserveButtonText}>Réserver</Text>
                 </TouchableOpacity>
               </View>
             </Animated.View>
-          ))}
+          );
+          })}
         </View>
       </ScrollView>
+
+      <LocationPickerModal
+        visible={activePicker !== null}
+        title={
+          activePicker === 'departure'
+            ? 'Sélectionner le point de départ'
+            : 'Sélectionner la destination'
+        }
+        initialLocation={
+          activePicker === 'departure'
+            ? filterDepartureLocation
+            : activePicker === 'arrival'
+            ? filterArrivalLocation
+            : null
+        }
+        onClose={() => setActivePicker(null)}
+        onSelect={handleAdvancedLocationSelect}
+      />
     </SafeAreaView>
   );
 }
@@ -352,6 +631,24 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xs / 2,
+  },
+  notificationBadgeText: {
+    color: Colors.white,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
   },
   searchCard: {
     backgroundColor: Colors.white,
@@ -531,6 +828,57 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontWeight: FontWeights.bold,
   },
+  quickToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.lg,
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.gray[50],
+  },
+  quickToggleLabel: {
+    color: Colors.gray[700],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+  },
+  quickToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  quickToggleAction: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.sm,
+  },
+  button: {
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+  },
+  buttonSecondary: {
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+  },
+  buttonSecondaryText: {
+    color: Colors.gray[700],
+    fontWeight: FontWeights.medium,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
   quickActions: {
     flexDirection: 'row',
   },
@@ -571,6 +919,120 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     marginBottom: Spacing.md,
     ...CommonStyles.shadowSm,
+  },
+  advancedCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+    ...CommonStyles.shadowSm,
+  },
+  advancedTitle: {
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: Spacing.md,
+  },
+  advancedLocations: {
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  advancedLocationButton: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    gap: Spacing.md,
+  },
+  advancedLocationIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  advancedLocationContent: {
+    flex: 1,
+  },
+  advancedLocationLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    textTransform: 'uppercase',
+  },
+  advancedLocationTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  advancedLocationSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  advancedLocationCoords: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+  },
+  advancedInputRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  advancedInputGroup: {
+    flex: 1,
+  },
+  advancedInputLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+    marginBottom: Spacing.xs,
+    textTransform: 'uppercase',
+  },
+  advancedInput: {
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+    backgroundColor: Colors.white,
+  },
+  advancedButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tripStateCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    marginBottom: Spacing.md,
+    gap: Spacing.sm,
+  },
+  tripStateText: {
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+  },
+  tripStateSubText: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: Spacing.xs,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+  },
+  retryButtonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
   },
   tripHeader: {
     flexDirection: 'row',

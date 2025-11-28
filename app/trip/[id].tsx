@@ -1,25 +1,187 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Alert, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useAppSelector, useAppDispatch } from '@/store/hooks';
-import { selectTripById } from '@/store/selectors';
-import { updateTrip } from '@/store/slices/tripsSlice';
-import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
-import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
+import { TutorialOverlay } from '@/components/TutorialOverlay';
+import { useDialog } from '@/components/ui/DialogProvider';
+import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import { useUserLocation } from '@/hooks/useUserLocation';
+import { trackingSocket } from '@/services/trackingSocket';
+import {
+  useCancelBookingMutation,
+  useCreateBookingMutation,
+  useGetMyBookingsQuery,
+} from '@/store/api/bookingApi';
+import { useCreateConversationMutation } from '@/store/api/messageApi';
+import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
+import { useAppSelector } from '@/store/hooks';
+import { selectTripById, selectUser } from '@/store/selectors';
+import type { BookingStatus, GeoPoint } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
+import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Linking,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import MapView, { Marker, Polyline } from 'react-native-maps';
+import Animated, {
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+const pointToLatLng = (point?: GeoPoint | null) => {
+  if (!point?.coordinates || point.coordinates.length < 2) {
+    return null;
+  }
+  const [longitude, latitude] = point.coordinates;
+  if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+    return null;
+  }
+  return {
+    latitude: Number(latitude),
+    longitude: Number(longitude),
+  };
+};
+
+const arrayToLatLng = (coordinates?: [number, number] | null) => {
+  if (!coordinates || coordinates.length < 2) {
+    return null;
+  }
+  const [longitude, latitude] = coordinates;
+  if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+    return null;
+  }
+  return {
+    latitude: Number(latitude),
+    longitude: Number(longitude),
+  };
+};
+
+const BOOKING_STATUS_CONFIG: Record<
+  BookingStatus,
+  { label: string; color: string; background: string }
+> = {
+  pending: {
+    label: 'En attente',
+    color: Colors.secondary,
+    background: 'rgba(247, 184, 1, 0.2)',
+  },
+  accepted: {
+    label: 'Confirmée',
+    color: Colors.success,
+    background: 'rgba(46, 204, 113, 0.18)',
+  },
+  rejected: {
+    label: 'Refusée',
+    color: Colors.danger,
+    background: 'rgba(239, 68, 68, 0.16)',
+  },
+  cancelled: {
+    label: 'Annulée',
+    color: Colors.gray[600],
+    background: 'rgba(156, 163, 175, 0.2)',
+  },
+  completed: {
+    label: 'Terminée',
+    color: Colors.gray[600],
+    background: 'rgba(107, 114, 128, 0.18)',
+  },
+};
 
 export default function TripDetailsScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
-  const dispatch = useAppDispatch();
-  const { checkIdentity } = useIdentityCheck();
-  const trip = useAppSelector(state => selectTripById(id as string)(state));
-  const [expanded, setExpanded] = useState(false);
+  const tripId = typeof id === 'string' ? (id as string) : '';
+  const trip = useAppSelector((state) => selectTripById(tripId)(state));
+  const user = useAppSelector(selectUser);
+  const { checkIdentity, isIdentityVerified } = useIdentityCheck();
+  const { showDialog } = useDialog();
+  const driverPhone = trip?.driver?.phone ?? null;
+  const isTripDriver = Boolean(trip && user && trip.driverId === user.id);
+  const {
+    data: myBookings,
+    isLoading: myBookingsLoading,
+    isFetching: myBookingsFetching,
+    refetch: refetchMyBookings,
+  } = useGetMyBookingsQuery();
+  const {
+    lastKnownLocation,
+    requestPermission: requestDriverLocationPermission,
+    stopWatching: stopDriverLocationWatching,
+  } = useUserLocation({ autoRequest: false });
+  const requestLocationRef = useRef(requestDriverLocationPermission);
+  const stopWatchingRef = useRef(stopDriverLocationWatching);
+  useEffect(() => {
+    requestLocationRef.current = requestDriverLocationPermission;
+    stopWatchingRef.current = stopDriverLocationWatching;
+  }, [requestDriverLocationPermission, stopDriverLocationWatching]);
+  const initialLiveCoordinate = useMemo(() => pointToLatLng(trip?.currentLocation ?? null), [trip?.currentLocation]);
+  const [liveDriverCoordinate, setLiveDriverCoordinate] = useState(initialLiveCoordinate);
+  const [liveDriverUpdatedAt, setLiveDriverUpdatedAt] = useState<string | null>(trip?.lastLocationUpdateAt ?? null);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
+  useEffect(() => {
+    setLiveDriverCoordinate(initialLiveCoordinate);
+  }, [initialLiveCoordinate]);
+  useEffect(() => {
+    setLiveDriverUpdatedAt(trip?.lastLocationUpdateAt ?? null);
+  }, [trip?.lastLocationUpdateAt]);
+  const [createBooking, { isLoading: isBooking }] = useCreateBookingMutation();
+  const [cancelBookingMutation, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
+  const [createConversation, { isLoading: isCreatingConversation }] = useCreateConversationMutation();
+  const [bookingModalVisible, setBookingModalVisible] = useState(false);
+  const [bookingSeats, setBookingSeats] = useState('1');
+  const [bookingModalError, setBookingModalError] = useState('');
+  const [bookingSuccess, setBookingSuccess] = useState<{ visible: boolean; seats: number }>({
+    visible: false,
+    seats: 0,
+  });
+  const [mapModalVisible, setMapModalVisible] = useState(false);
+  const [driverReviewsModalVisible, setDriverReviewsModalVisible] = useState(false);
+  const { shouldShow: shouldShowTripGuide, complete: completeTripGuide } =
+    useTutorialGuide('trip_detail_screen');
+  const [tripGuideVisible, setTripGuideVisible] = useState(false);
+  const { data: driverReviews } = useGetReviewsQuery(trip?.driverId ?? '', {
+    skip: !trip?.driverId,
+  });
+  const { data: driverAverageData } = useGetAverageRatingQuery(trip?.driverId ?? '', {
+    skip: !trip?.driverId,
+  });
+  const driverReviewCount = driverReviews?.length ?? 0;
+  const driverReviewAverage =
+    driverAverageData?.averageRating ??
+    (driverReviewCount && driverReviews
+      ? driverReviews.reduce((sum, review) => sum + review.rating, 0) / driverReviewCount
+      : trip?.driverRating ?? 0);
+
+  const refreshBookingLists = () => {
+    refetchMyBookings();
+  };
+
+  useEffect(() => {
+    if (shouldShowTripGuide) {
+      setTripGuideVisible(true);
+    }
+  }, [shouldShowTripGuide]);
+
+  const dismissTripGuide = () => {
+    setTripGuideVisible(false);
+    completeTripGuide();
+  };
   
   const pulseAnim = useSharedValue(1);
+
+  // console.log('trip', trip);
 
   useEffect(() => {
     if (trip?.status === 'ongoing') {
@@ -31,41 +193,309 @@ export default function TripDetailsScreen() {
     }
   }, [trip?.status]);
 
+  useEffect(() => {
+    if (!trip || !isTripDriver || trip.status !== 'ongoing') {
+      stopWatchingRef.current?.();
+      return;
+    }
+    requestLocationRef.current?.();
+    return () => {
+      stopWatchingRef.current?.();
+    };
+  }, [trip?.id, trip?.status, isTripDriver]);
+
   const pulseStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulseAnim.value }],
   }));
 
+  const activeBooking = useMemo(() => {
+    if (!trip || !myBookings) {
+      return null;
+    }
+    return (
+      myBookings.find(
+        (booking: any) =>
+          booking.tripId === trip.id &&
+          (booking.status === 'pending' || booking.status === 'accepted'),
+      ) ?? null
+    );
+  }, [myBookings, trip]);
+  const hasAcceptedBooking = activeBooking?.status === 'accepted';
+  const canTrackTrip = Boolean(trip && user && (isTripDriver || hasAcceptedBooking));
+
+  useEffect(() => {
+    if (!trip || !canTrackTrip) {
+      setTrackingError(null);
+      return;
+    }
+    let isMounted = true;
+    trackingSocket
+      .joinTrip(trip.id)
+      .then(() => trackingSocket.requestDriverLocation(trip.id))
+      .catch(() => {});
+
+    const unsubscribeLocation = trackingSocket.subscribeToDriverLocation((payload) => {
+      if (!isMounted || payload.tripId !== trip.id) {
+        return;
+      }
+      const nextCoordinate = arrayToLatLng(payload.coordinates ?? null);
+      setLiveDriverUpdatedAt(payload.updatedAt ?? new Date().toISOString());
+      if (nextCoordinate) {
+        setLiveDriverCoordinate(nextCoordinate);
+        setTrackingError(null);
+      } else {
+        setLiveDriverCoordinate(null);
+      }
+    });
+
+    const unsubscribeErrors = trackingSocket.subscribeToErrors((message) => {
+      if (isMounted) {
+        setTrackingError(message);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      trackingSocket.leaveTrip(trip.id);
+      unsubscribeLocation();
+      unsubscribeErrors();
+    };
+  }, [trip?.id, canTrackTrip]);
+
+  useEffect(() => {
+    if (!trip || !isTripDriver || trip.status !== 'ongoing') {
+      return;
+    }
+    const coords = lastKnownLocation?.coords;
+    if (!coords) {
+      return;
+    }
+    trackingSocket.updateDriverLocation(trip.id, [Number(coords.longitude), Number(coords.latitude)]);
+  }, [
+    trip?.id,
+    trip?.status,
+    isTripDriver,
+    lastKnownLocation?.coords?.latitude,
+    lastKnownLocation?.coords?.longitude,
+  ]);
+
+  const availableSeats = trip ? Math.max(trip.availableSeats, 0) : 0;
+  const seatLimit = Math.max(availableSeats, 1);
+
   if (!trip) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Trajet non trouvé</Text>
+      <SafeAreaView style={[styles.container, { backgroundColor: Colors.white }]}>
+        <View style={styles.emptyStateContainer}>
+          <View style={styles.emptyStateIcon}>
+            <Ionicons name="car-sport" size={32} color={Colors.primary} />
+          </View>
+          <Text style={styles.emptyStateTitle}>Trajet introuvable</Text>
+          <Text style={styles.emptyStateText}>
+            Ce trajet n’existe plus ou a été supprimé par son propriétaire.
+          </Text>
+          <TouchableOpacity style={styles.primaryButton} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={16} color={Colors.white} />
+            <Text style={styles.primaryButtonText}>Retour</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
-  const handleCancelTrip = () => {
-    Alert.alert(
-      'Annuler le trajet',
-      'Êtes-vous sûr de vouloir annuler ce trajet ?',
-      [
-        { text: 'Non', style: 'cancel' },
-        {
-          text: 'Oui, annuler',
-          style: 'destructive',
-          onPress: () => {
-            dispatch(updateTrip({ id: trip.id, updates: { status: 'cancelled' } }));
-            Alert.alert('Trajet annulé', 'Le trajet a été annulé avec succès.', [
-              { text: 'OK', onPress: () => router.back() }
-            ]);
-          },
-        },
-      ]
-    );
+  const progress = trip.progress || 0;
+  const trackingStatusTitle = liveDriverCoordinate ? 'Suivi en direct' : 'Position estimée';
+  const trackingStatusSubtitle = useMemo(() => {
+    if (trackingError) {
+      return trackingError;
+    }
+    if (!liveDriverCoordinate) {
+      return isTripDriver
+        ? 'Partage automatique activé dès que la localisation est disponible.'
+        : 'Le conducteur n’a pas encore partagé sa position.';
+    }
+    if (!liveDriverUpdatedAt) {
+      return 'Mise à jour en cours...';
+    }
+    const timestamp = new Date(liveDriverUpdatedAt).getTime();
+    if (Number.isNaN(timestamp)) {
+      return `Mise à jour à ${new Date(liveDriverUpdatedAt).toLocaleTimeString('fr-FR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      })}`;
+    }
+    const diffMs = Date.now() - timestamp;
+    if (diffMs < 60 * 1000) {
+      return 'Mis à jour il y a quelques secondes';
+    }
+    if (diffMs < 60 * 60 * 1000) {
+      const mins = Math.floor(diffMs / (60 * 1000));
+      return `Mis à jour il y a ${mins} min`;
+    }
+    return `Mis à jour à ${new Date(liveDriverUpdatedAt).toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`;
+  }, [isTripDriver, liveDriverCoordinate, liveDriverUpdatedAt, trackingError]);
+  const activeBookingStatus = activeBooking && activeBooking.status in BOOKING_STATUS_CONFIG
+    ? BOOKING_STATUS_CONFIG[activeBooking.status as keyof typeof BOOKING_STATUS_CONFIG]
+    : null;
+  const openBookingModal = () => {
+    if (!checkIdentity('book')) {
+      return;
+    }
+    setBookingSeats('1');
+    setBookingModalError('');
+    setBookingModalVisible(true);
   };
 
-  const progress = trip.progress || 0;
+  const closeBookingModal = () => {
+    if (isBooking) {
+      return;
+    }
+    setBookingModalVisible(false);
+  };
+
+  const openBookingSuccessModal = (seats: number) => {
+    setBookingSuccess({ visible: true, seats });
+  };
+
+  const closeBookingSuccessModal = () => {
+    if (isBooking) {
+      return;
+    }
+    setBookingSuccess({ visible: false, seats: 0 });
+  };
+
+  const handleViewBookings = () => {
+    closeBookingSuccessModal();
+    router.push('/bookings');
+  };
+
+  const handleContactDriver = async () => {
+    if (!trip || !user || trip.driverId === user.id) {
+      return;
+    }
+
+    try {
+      const payload: {
+        participantIds: string[];
+        bookingId?: string;
+      } = {
+        participantIds: [trip.driverId],
+      };
+
+      if (activeBooking?.id) {
+        payload.bookingId = activeBooking.id;
+      }
+
+      const conversation = await createConversation(payload).unwrap();
+      router.push({
+        pathname: '/chat/[id]',
+        params: {
+          id: conversation.id,
+          title: trip.driverName,
+        },
+      });
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        "Impossible d'ouvrir la conversation pour le moment.";
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
+  };
+
+  const adjustBookingSeats = (delta: number) => {
+    setBookingSeats((prev) => {
+      const current = parseInt(prev, 10);
+      const fallback = Number.isNaN(current) ? 1 : current;
+      const next = Math.min(Math.max(fallback + delta, 1), seatLimit);
+      return String(next);
+    });
+  };
+
+  const handleConfirmBooking = async () => {
+    if (isBooking || !trip) {
+      return;
+    }
+    const seatsValue = parseInt(bookingSeats, 10);
+    if (Number.isNaN(seatsValue) || seatsValue <= 0) {
+      setBookingModalError('Veuillez indiquer un nombre de places valide.');
+      return;
+    }
+    if (seatsValue > seatLimit) {
+      setBookingModalError(
+        `Il reste seulement ${seatLimit} place${seatLimit > 1 ? 's' : ''} pour ce trajet.`,
+      );
+      return;
+    }
+    try {
+      await createBooking({ tripId: trip.id, numberOfSeats: seatsValue }).unwrap();
+      setBookingModalVisible(false);
+      setBookingModalError('');
+      openBookingSuccessModal(seatsValue);
+      refreshBookingLists();
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        'Impossible de créer la réservation pour le moment.';
+      setBookingModalError(Array.isArray(message) ? message.join('\n') : message);
+    }
+  };
+
+  const handleCancelBooking = async () => {
+    if (!activeBooking) {
+      return;
+    }
+    try {
+      await cancelBookingMutation(activeBooking.id).unwrap();
+      showDialog({
+        variant: 'success',
+        title: 'Réservation annulée',
+        message: 'Votre réservation a été annulée avec succès.',
+      });
+      refreshBookingLists();
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        'Impossible d’annuler la réservation pour le moment.';
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
+  };
+
+  const confirmCancelBooking = () => {
+    if (!activeBooking) {
+      return;
+    }
+    showDialog({
+      variant: 'warning',
+      title: 'Annuler la réservation',
+      message: 'Souhaitez-vous vraiment annuler cette réservation ?',
+      actions: [
+        { label: 'Garder', variant: 'ghost' },
+        { label: 'Oui, annuler', variant: 'primary', onPress: () => handleCancelBooking() },
+      ],
+    });
+  };
+
+  const estimatedTotal = useMemo(() => {
+    const seatsValue = parseInt(bookingSeats, 10);
+    if (Number.isNaN(seatsValue) || seatsValue <= 0) {
+      return 0;
+    }
+    return seatsValue * trip.price;
+  }, [bookingSeats, trip.price]);
+
   const statusConfig = {
     upcoming: { color: Colors.secondary, bgColor: 'rgba(247, 184, 1, 0.1)', label: 'À venir' },
     ongoing: { color: Colors.info, bgColor: 'rgba(52, 152, 219, 0.1)', label: 'En cours' },
@@ -73,7 +503,52 @@ export default function TripDetailsScreen() {
     cancelled: { color: Colors.gray[600], bgColor: Colors.gray[200], label: 'Annulé' },
   };
 
-  const config = statusConfig[trip.status];
+  const config = statusConfig[trip.status as keyof typeof statusConfig];
+
+  const departureCoordinate = useMemo(
+    () => ({
+      latitude: trip.departure.lat,
+      longitude: trip.departure.lng,
+    }),
+    [trip.departure.lat, trip.departure.lng],
+  );
+
+  const arrivalCoordinate = useMemo(
+    () => ({
+      latitude: trip.arrival.lat,
+      longitude: trip.arrival.lng,
+    }),
+    [trip.arrival.lat, trip.arrival.lng],
+  );
+
+  const mapRegion = useMemo(() => {
+    const latitudeCenter = (departureCoordinate.latitude + arrivalCoordinate.latitude) / 2;
+    const longitudeCenter = (departureCoordinate.longitude + arrivalCoordinate.longitude) / 2;
+    const latitudeDelta =
+      Math.max(Math.abs(departureCoordinate.latitude - arrivalCoordinate.latitude), 0.05) * 1.6;
+    const longitudeDelta =
+      Math.max(Math.abs(departureCoordinate.longitude - arrivalCoordinate.longitude), 0.05) * 1.6;
+
+    return {
+      latitude: latitudeCenter,
+      longitude: longitudeCenter,
+      latitudeDelta,
+      longitudeDelta,
+    };
+  }, [arrivalCoordinate, departureCoordinate]);
+
+  const estimatedCoordinate = useMemo(() => {
+    if (trip.status !== 'ongoing' || typeof progress !== 'number') {
+      return null;
+    }
+    const ratio = Math.min(Math.max(progress, 0), 100) / 100;
+    return {
+      latitude: departureCoordinate.latitude + (arrivalCoordinate.latitude - departureCoordinate.latitude) * ratio,
+      longitude:
+        departureCoordinate.longitude + (arrivalCoordinate.longitude - departureCoordinate.longitude) * ratio,
+    };
+  }, [arrivalCoordinate, departureCoordinate, progress, trip.status]);
+  const currentCoordinate = liveDriverCoordinate ?? estimatedCoordinate;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -98,66 +573,131 @@ export default function TripDetailsScreen() {
         {/* Carte interactive */}
         <TouchableOpacity
           style={styles.mapContainer}
-          onPress={() => setExpanded(!expanded)}
-          activeOpacity={0.9}
+          onPress={() => setMapModalVisible(true)}
+          activeOpacity={0.95}
         >
-          <View style={[styles.map, expanded && styles.mapExpanded]}>
-            {/* Carte simulée */}
-            <View style={styles.mapContent}>
-              {/* Grille de fond */}
-              <View style={styles.mapGrid}>
-                {[...Array(10)].map((_, i) => (
-                  <View
-                    key={`v-${i}`}
-                    style={[styles.gridLine, { left: `${i * 10}%`, width: 1, height: '100%' }]}
-                  />
-                ))}
-                {[...Array(10)].map((_, i) => (
-                  <View
-                    key={`h-${i}`}
-                    style={[styles.gridLine, { top: `${i * 10}%`, height: 1, width: '100%' }]}
-                  />
-                ))}
-              </View>
+          <View style={styles.mapPreview}>
+            <MapView
+              style={styles.mapView}
+              initialRegion={mapRegion}
+              pointerEvents="none"
+              scrollEnabled={false}
+              zoomEnabled={false}
+              pitchEnabled={false}
+              rotateEnabled={false}
+            >
+              <Polyline
+                coordinates={[departureCoordinate, arrivalCoordinate]}
+                strokeColor={Colors.primary}
+                strokeWidth={4}
+                lineCap="round"
+                lineDashPattern={[1]}
+              />
 
-              {/* Marqueur départ */}
-              <View style={styles.markerStart}>
+              <Marker coordinate={departureCoordinate} title="Départ" description={trip.departure.name}>
                 <View style={styles.markerStartCircle}>
-                  <Ionicons name="location" size={20} color={Colors.white} />
+                  <Ionicons name="location" size={18} color={Colors.white} />
                 </View>
-              </View>
+              </Marker>
 
-              {/* Marqueur arrivée */}
-              <View style={styles.markerEnd}>
+              <Marker coordinate={arrivalCoordinate} title="Arrivée" description={trip.arrival.name}>
                 <View style={styles.markerEndCircle}>
-                  <Ionicons name="navigate" size={20} color={Colors.white} />
+                  <Ionicons name="navigate" size={18} color={Colors.white} />
                 </View>
-              </View>
+              </Marker>
 
-              {/* Position actuelle (si en cours) */}
-              {trip.status === 'ongoing' && (
-                <Animated.View
-                  style={[
-                    pulseStyle,
-                    styles.markerCurrent,
-                    { left: `${30 + progress * 0.4}%`, top: `${40 + progress * 0.2}%` }
-                  ]}
-                >
-                  <View style={styles.markerCurrentCircle}>
-                    <Ionicons name="car" size={20} color={Colors.white} />
-                  </View>
-                </Animated.View>
+              {currentCoordinate && (
+                <Marker coordinate={currentCoordinate} title="Position actuelle">
+                  <Animated.View style={pulseStyle}>
+                    <View style={styles.markerCurrentCircle}>
+                      <Ionicons name="car-sport" size={18} color={Colors.white} />
+                    </View>
+                  </Animated.View>
+                </Marker>
               )}
+            </MapView>
+
+            <View style={styles.mapOverlay}>
+              <Text style={styles.mapOverlayText}>Touchez pour agrandir</Text>
             </View>
 
-            {/* Bouton agrandir */}
             <View style={styles.expandButton}>
-              <TouchableOpacity style={styles.expandButtonInner}>
-                <Ionicons name={expanded ? 'contract' : 'expand'} size={20} color={Colors.gray[600]} />
-              </TouchableOpacity>
+              <View style={styles.expandButtonInner}>
+                <Ionicons name="expand" size={20} color={Colors.gray[700]} />
+              </View>
             </View>
           </View>
         </TouchableOpacity>
+
+        <Modal visible={mapModalVisible} animationType="fade" transparent onRequestClose={() => setMapModalVisible(false)}>
+          <View style={styles.mapModalOverlay}>
+            <View style={styles.mapModalContent}>
+              <MapView style={styles.fullscreenMap} initialRegion={mapRegion}>
+                <Polyline
+                  coordinates={[departureCoordinate, arrivalCoordinate]}
+                  strokeColor={Colors.primary}
+                  strokeWidth={5}
+                  lineCap="round"
+                />
+
+                <Marker coordinate={departureCoordinate} title="Départ" description={trip.departure.address}>
+                  <View style={styles.markerStartCircle}>
+                    <Ionicons name="location" size={20} color={Colors.white} />
+                  </View>
+                </Marker>
+
+                <Marker coordinate={arrivalCoordinate} title="Arrivée" description={trip.arrival.address}>
+                  <View style={styles.markerEndCircle}>
+                    <Ionicons name="navigate" size={20} color={Colors.white} />
+                  </View>
+                </Marker>
+
+                {currentCoordinate && (
+                  <Marker coordinate={currentCoordinate} title="Position actuelle">
+                    <Animated.View style={pulseStyle}>
+                      <View style={styles.markerCurrentCircle}>
+                        <Ionicons name="car-sport" size={20} color={Colors.white} />
+                      </View>
+                    </Animated.View>
+                  </Marker>
+                )}
+              </MapView>
+
+              <TouchableOpacity style={styles.closeMapButton} onPress={() => setMapModalVisible(false)}>
+                <Ionicons name="close" size={24} color={Colors.white} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {canTrackTrip && (
+          <View style={styles.trackingBanner}>
+            <View style={styles.trackingBannerLeft}>
+              <View
+                style={[
+                  styles.trackingStatusDot,
+                  liveDriverCoordinate ? styles.trackingStatusDotActive : styles.trackingStatusDotIdle,
+                ]}
+              />
+              <View>
+                <Text style={styles.trackingTitle}>{trackingStatusTitle}</Text>
+                <Text style={styles.trackingSubtitle}>{trackingStatusSubtitle}</Text>
+              </View>
+            </View>
+            {!isTripDriver && (
+              <TouchableOpacity
+                style={styles.trackingRefreshButton}
+                onPress={() => {
+                  if (trip) {
+                    trackingSocket.requestDriverLocation(trip.id);
+                  }
+                }}
+              >
+                <Ionicons name="refresh" size={16} color={Colors.primary} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         {/* Statut du trajet */}
         <View style={styles.statusContainer}>
@@ -234,24 +774,72 @@ export default function TripDetailsScreen() {
                 <Text style={styles.driverName}>{trip.driverName}</Text>
                 <View style={styles.driverMeta}>
                   <Ionicons name="star" size={16} color={Colors.secondary} />
-                  <Text style={styles.driverRating}>{trip.driverRating}</Text>
+                  <Text style={styles.driverRating}>{driverReviewAverage.toFixed(1)}</Text>
                   <View style={styles.driverDot} />
                   <Text style={styles.driverVehicle}>{trip.vehicleInfo}</Text>
                 </View>
+                <TouchableOpacity
+                  style={styles.driverReviewLink}
+                  onPress={() => setDriverReviewsModalVisible(true)}
+                  disabled={driverReviewCount === 0}
+                >
+                  <Text
+                    style={[
+                      styles.driverReviewLinkText,
+                      driverReviewCount === 0 && styles.driverReviewLinkTextDisabled,
+                    ]}
+                  >
+                    {driverReviewCount > 0
+                      ? `${driverReviewCount} avis`
+                      : 'Pas encore d’avis'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
 
             <View style={styles.driverActions}>
               <TouchableOpacity
                 style={styles.driverActionButton}
-                onPress={() => router.push(`/chat/${trip.driverId}`)}
+                onPress={handleContactDriver}
+                disabled={isCreatingConversation}
               >
-                <Ionicons name="chatbubble" size={20} color={Colors.primary} />
-                <Text style={styles.driverActionText}>Message</Text>
+                {isCreatingConversation ? (
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                ) : (
+                  <>
+                    <Ionicons name="chatbubble" size={20} color={Colors.primary} />
+                    <Text style={styles.driverActionText}>Message</Text>
+                  </>
+                )}
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.driverActionButton, styles.driverActionButtonGreen]}>
-                <Ionicons name="call" size={20} color={Colors.success} />
-                <Text style={[styles.driverActionText, { color: Colors.success }]}>Appeler</Text>
+              <TouchableOpacity
+                style={[styles.driverActionButton, styles.driverActionButtonGreen]}
+                disabled={!driverPhone}
+                onPress={() => {
+                  if (driverPhone) {
+                    Linking.openURL(`tel:${driverPhone}`);
+                  } else {
+                  showDialog({
+                    variant: 'info',
+                    title: 'Numéro manquant',
+                    message: 'Le numéro de téléphone du conducteur n’est pas disponible.',
+                  });
+                  }
+                }}
+              >
+                <Ionicons
+                  name="call"
+                  size={20}
+                  color={driverPhone ? Colors.success : Colors.gray[400]}
+                />
+                <Text
+                  style={[
+                    styles.driverActionText,
+                    { color: driverPhone ? Colors.success : Colors.gray[500] },
+                  ]}
+                >
+                  Appeler
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -268,7 +856,9 @@ export default function TripDetailsScreen() {
                   <Ionicons name="people" size={20} color={Colors.gray[600]} />
                   <Text style={styles.detailLabel}>Places disponibles</Text>
                 </View>
-                <Text style={styles.detailValue}>{trip.availableSeats}/{trip.totalSeats}</Text>
+                <Text style={styles.detailValue}>
+                  {trip.availableSeats}/{trip.totalSeats}
+                </Text>
               </View>
 
               <View style={styles.detailRow}>
@@ -276,7 +866,9 @@ export default function TripDetailsScreen() {
                   <Ionicons name="cash" size={20} color={Colors.gray[600]} />
                   <Text style={styles.detailLabel}>Prix</Text>
                 </View>
-                <Text style={[styles.detailValue, { color: Colors.success }]}>{trip.price} FC</Text>
+                <Text style={[styles.detailValue, { color: Colors.success }]}>
+                  {trip.price} FC
+                </Text>
               </View>
 
               <View style={styles.detailRow}>
@@ -293,24 +885,105 @@ export default function TripDetailsScreen() {
         {/* Actions */}
         {trip.status === 'upcoming' && (
           <View style={styles.actionsContainer}>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => {
-                // Vérifier l'identité avant de réserver
-                if (checkIdentity('book')) {
-                  Alert.alert('Réservation', 'Fonctionnalité en développement');
-                }
-              }}
-            >
-              <Text style={styles.actionButtonText}>Réserver ce trajet</Text>
-            </TouchableOpacity>
+            {activeBooking && activeBookingStatus ? (
+              <View style={styles.bookingCard}>
+                <View style={styles.bookingCardHeader}>
+                  <View>
+                    <Text style={styles.bookingCardTitle}>Ma réservation</Text>
+                    <Text style={styles.bookingCardSubtitle}>
+                      {activeBooking.numberOfSeats} place{activeBooking.numberOfSeats > 1 ? 's' : ''}{' '}
+                      • {trip.price} FC / place
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.bookingStatusBadge,
+                      { backgroundColor: activeBookingStatus.background },
+                    ]}
+                  >
+                    <Text style={[styles.bookingStatusText, { color: activeBookingStatus.color }]}>
+                      {activeBookingStatus.label}
+                    </Text>
+                  </View>
+                </View>
 
+                <View style={styles.bookingCardInfo}>
+                  <View style={styles.bookingInfoItem}>
+                    <Text style={styles.bookingInfoLabel}>Montant estimé</Text>
+                    <Text style={styles.bookingInfoValue}>
+                      {activeBooking.numberOfSeats * trip.price} FC
+                    </Text>
+                  </View>
+                  <View style={styles.bookingInfoItem}>
+                    <Text style={styles.bookingInfoLabel}>Statut</Text>
+                    <Text style={styles.bookingInfoValue}>{activeBookingStatus.label}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.bookingActionsRow}>
             <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={handleCancelTrip}
-            >
-              <Text style={styles.cancelButtonText}>Annuler le trajet</Text>
+                    style={[styles.bookingActionButton, styles.bookingActionDanger]}
+                    onPress={confirmCancelBooking}
+                    disabled={isCancellingBooking}
+                  >
+                    {isCancellingBooking ? (
+                      <ActivityIndicator size="small" color={Colors.danger} />
+                    ) : (
+                      <>
+                        <Ionicons name="close-circle" size={18} color={Colors.danger} />
+                        <Text style={[styles.bookingActionText, styles.bookingActionDangerText]}>
+                          Annuler la réservation
+                        </Text>
+                      </>
+                    )}
             </TouchableOpacity>
+                </View>
+
+                {myBookingsFetching && (
+                  <View style={styles.bookingRefreshingRow}>
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                    <Text style={styles.bookingRefreshingText}>Actualisation…</Text>
+                  </View>
+                )}
+              </View>
+            ) : (
+              <>
+                <View style={styles.bookingHintCard}>
+                  <View style={styles.bookingHintIcon}>
+                    <Ionicons name="information-circle" size={20} color={Colors.primary} />
+                  </View>
+                <View style={styles.bookingHintContent}>
+                  <Text style={styles.bookingHintTitle}>
+                    {availableSeats > 0
+                      ? `Il reste ${availableSeats} place${availableSeats > 1 ? 's' : ''} disponibles`
+                      : 'Ce trajet est complet'}
+                  </Text>
+                  <Text style={styles.bookingHintSubtitle}>
+                    {isIdentityVerified
+                      ? `Prix par place : ${trip.price} FC`
+                      : 'Vérifiez votre identité pour envoyer une demande de réservation.'}
+                  </Text>
+                </View>
+                </View>
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                (!isIdentityVerified || availableSeats <= 0 || myBookingsLoading) &&
+                  styles.actionButtonDisabled,
+              ]}
+              onPress={openBookingModal}
+              disabled={!isIdentityVerified || availableSeats <= 0 || myBookingsLoading}
+            >
+              {myBookingsLoading ? (
+                <ActivityIndicator color={Colors.white} />
+              ) : (
+                <Text style={styles.actionButtonText}>
+                  {isIdentityVerified ? 'Réserver ce trajet' : 'KYC requis'}
+                </Text>
+              )}
+            </TouchableOpacity>
+              </>
+            )}
           </View>
         )}
 
@@ -325,6 +998,161 @@ export default function TripDetailsScreen() {
           </View>
         )}
       </ScrollView>
+
+      <Modal animationType="fade" transparent visible={bookingModalVisible}>
+        <View style={styles.bookingModalOverlay}>
+          <View style={styles.bookingModalCard}>
+            <Text style={styles.bookingModalTitle}>Réserver ce trajet</Text>
+            <Text style={styles.bookingModalDescription}>
+              Choisissez le nombre de places à réserver.
+            </Text>
+
+            <View style={styles.bookingSeatRow}>
+              <TouchableOpacity
+                style={styles.bookingSeatButton}
+                onPress={() => adjustBookingSeats(-1)}
+                disabled={isBooking}
+              >
+                <Ionicons name="remove" size={18} color={Colors.primary} />
+              </TouchableOpacity>
+              <TextInput
+                style={styles.bookingSeatInput}
+                keyboardType="numeric"
+                placeholder="1"
+                placeholderTextColor={Colors.gray[400]}
+                value={bookingSeats}
+                onChangeText={(value) => setBookingSeats(value.replace(/[^0-9]/g, ''))}
+                editable={!isBooking}
+              />
+              <TouchableOpacity
+                style={styles.bookingSeatButton}
+                onPress={() => adjustBookingSeats(1)}
+                disabled={isBooking}
+              >
+                <Ionicons name="add" size={18} color={Colors.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.bookingModalHint}>
+              Maximum {seatLimit} place{seatLimit > 1 ? 's' : ''} disponibles
+            </Text>
+            <Text style={styles.bookingModalPrice}>
+              Total estimé :{' '}
+              <Text style={styles.bookingModalPriceValue}>{estimatedTotal} FC</Text>
+            </Text>
+
+            {bookingModalError ? (
+              <Text style={styles.bookingModalError}>{bookingModalError}</Text>
+            ) : null}
+
+            <View style={styles.bookingModalActions}>
+              <TouchableOpacity
+                style={[styles.bookingModalButton, styles.bookingModalButtonSecondary]}
+                onPress={closeBookingModal}
+                disabled={isBooking}
+              >
+                <Text style={styles.bookingModalButtonSecondaryText}>Fermer</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.bookingModalButton, styles.bookingModalButtonPrimary]}
+                onPress={handleConfirmBooking}
+                disabled={isBooking}
+              >
+                {isBooking ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <Text style={styles.bookingModalButtonPrimaryText}>Confirmer</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal animationType="fade" transparent visible={bookingSuccess.visible}>
+        <View style={styles.feedbackModalOverlay}>
+          <View style={styles.feedbackModalCard}>
+            <View style={styles.feedbackModalIcon}>
+              <Ionicons name="checkmark-circle" size={32} color={Colors.white} />
+            </View>
+            <Text style={styles.feedbackModalTitle}>Demande envoyée</Text>
+            <Text style={styles.feedbackModalText}>
+              Votre réservation de {bookingSuccess.seats} place
+              {bookingSuccess.seats > 1 ? 's' : ''} est en attente de confirmation du conducteur.
+            </Text>
+            <View style={styles.feedbackModalActions}>
+              <TouchableOpacity
+                style={[
+                  styles.feedbackModalButton,
+                  styles.feedbackModalSecondary,
+                  styles.feedbackModalButtonSpacing,
+                ]}
+                onPress={closeBookingSuccessModal}
+              >
+                <Text style={styles.feedbackModalSecondaryText}>Fermer</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.feedbackModalButton, styles.feedbackModalPrimary]}
+                onPress={handleViewBookings}
+              >
+                <Text style={styles.feedbackModalPrimaryText}>Mes réservations</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={driverReviewsModalVisible}
+        onRequestClose={() => setDriverReviewsModalVisible(false)}
+      >
+        <View style={styles.reviewsModalOverlay}>
+          <Animated.View entering={FadeInDown} style={styles.reviewsModalCard}>
+            <View style={styles.reviewsModalHeader}>
+              <Text style={styles.reviewsModalTitle}>Avis sur {trip?.driverName}</Text>
+              <TouchableOpacity onPress={() => setDriverReviewsModalVisible(false)}>
+                <Ionicons name="close" size={20} color={Colors.gray[600]} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={styles.reviewsModalContent}
+              contentContainerStyle={{ paddingBottom: Spacing.xl }}
+              showsVerticalScrollIndicator={false}
+            >
+              {driverReviewCount === 0 ? (
+                <Text style={styles.reviewsEmptyText}>Pas encore d'avis pour ce conducteur.</Text>
+              ) : (
+                driverReviews?.map((review) => (
+                  <View key={review.id} style={styles.reviewItem}>
+                    <View style={styles.reviewItemHeader}>
+                      <Text style={styles.reviewAuthor}>{review.fromUserName ?? 'Utilisateur'}</Text>
+                      <View style={styles.reviewRating}>
+                        <Ionicons name="star" size={16} color={Colors.secondary} />
+                        <Text style={styles.reviewRatingText}>{review.rating.toFixed(1)}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.reviewDate}>
+                      {new Date(review.createdAt).toLocaleDateString('fr-FR')}
+                    </Text>
+                    {review.comment ? (
+                      <Text style={styles.reviewComment}>{review.comment}</Text>
+                    ) : null}
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </Modal>
+
+      <TutorialOverlay
+        visible={tripGuideVisible}
+        title="Découvrez ce trajet"
+        message="Suivez la progression du conducteur, contactez-le ou réservez vos places depuis cet écran."
+        onDismiss={dismissTripGuide}
+      />
     </SafeAreaView>
   );
 }
@@ -338,6 +1166,56 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  emptyStateContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+  },
+  emptyStateIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  emptyStateTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: Spacing.sm,
+  },
+  emptyStateText: {
+    color: Colors.gray[600],
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
+  },
+  primaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.xs,
+  },
+  primaryButtonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+  },
+  loaderContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+  },
+  loaderText: {
+    marginTop: Spacing.sm,
+    color: Colors.gray[600],
   },
   emptyText: {
     color: Colors.gray[600],
@@ -368,33 +1246,32 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxl,
   },
   mapContainer: {
-    position: 'relative',
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.xl,
   },
-  map: {
-    height: 192,
+  mapPreview: {
+    height: 220,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
     backgroundColor: Colors.gray[200],
+    ...CommonStyles.shadowSm,
   },
-  mapExpanded: {
-    height: 384,
+  mapView: {
+    ...StyleSheet.absoluteFillObject,
   },
-  mapContent: {
+  mapOverlay: {
     position: 'absolute',
-    inset: 0,
-    backgroundColor: '#E3F2FD',
+    bottom: Spacing.md,
+    left: Spacing.md,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
   },
-  mapGrid: {
-    position: 'absolute',
-    inset: 0,
-    opacity: 0.2,
-  },
-  gridLine: {
-    position: 'absolute',
-    backgroundColor: Colors.gray[400],
-  },
-  markerStart: {
-    position: 'absolute',
-    left: '20%',
-    top: '30%',
+  mapOverlayText: {
+    color: Colors.white,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
   },
   markerStartCircle: {
     width: 32,
@@ -404,11 +1281,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  markerEnd: {
-    position: 'absolute',
-    left: '70%',
-    top: '60%',
-  },
   markerEndCircle: {
     width: 32,
     height: 32,
@@ -416,9 +1288,6 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  markerCurrent: {
-    position: 'absolute',
   },
   markerCurrentCircle: {
     width: 40,
@@ -431,8 +1300,8 @@ const styles = StyleSheet.create({
   },
   expandButton: {
     position: 'absolute',
-    bottom: Spacing.lg,
-    right: Spacing.lg,
+    bottom: Spacing.md,
+    right: Spacing.md,
   },
   expandButtonInner: {
     width: 40,
@@ -443,6 +1312,81 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...CommonStyles.shadowLg,
   },
+  mapModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    padding: Spacing.md,
+    justifyContent: 'center',
+  },
+  mapModalContent: {
+    flex: 1,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+  },
+  fullscreenMap: {
+    width: '100%',
+    height: '100%',
+  },
+  closeMapButton: {
+    position: 'absolute',
+    top: Spacing.xl,
+    right: Spacing.xl,
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trackingBanner: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.xl,
+    padding: Spacing.md,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    ...CommonStyles.shadowSm,
+  },
+  trackingBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: Spacing.md,
+  },
+  trackingStatusDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    marginRight: Spacing.md,
+  },
+  trackingStatusDotActive: {
+    backgroundColor: Colors.success,
+  },
+  trackingStatusDotIdle: {
+    backgroundColor: Colors.gray[400],
+  },
+  trackingTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
+  },
+  trackingSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginTop: 2,
+  },
+  trackingRefreshButton: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   statusContainer: {
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.xl,
@@ -451,6 +1395,17 @@ const styles = StyleSheet.create({
   statusCard: {
     borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
+  },
+  statusBadge: {
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    alignSelf: 'flex-start',
+  },
+  statusText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+    textTransform: 'uppercase',
   },
   statusHeader: {
     flexDirection: 'row',
@@ -622,6 +1577,17 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.sm,
     fontSize: FontSizes.base,
   },
+  driverReviewLink: {
+    marginTop: Spacing.xs,
+  },
+  driverReviewLinkText: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
+  driverReviewLinkTextDisabled: {
+    color: Colors.gray[400],
+  },
   detailsList: {
     marginTop: Spacing.md,
   },
@@ -663,6 +1629,9 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     textAlign: 'center',
   },
+  actionButtonDisabled: {
+    opacity: 0.5,
+  },
   cancelButton: {
     borderWidth: 1,
     borderColor: 'rgba(239, 68, 68, 0.2)',
@@ -676,5 +1645,474 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     textAlign: 'center',
+  },
+  bookingCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+    ...CommonStyles.shadowSm,
+  },
+  bookingCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.md,
+  },
+  bookingCardTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  bookingCardSubtitle: {
+    color: Colors.gray[600],
+    marginTop: Spacing.xs,
+  },
+  bookingStatusBadge: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+  },
+  bookingStatusText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+    textTransform: 'uppercase',
+  },
+  bookingCardInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.md,
+  },
+  bookingInfoItem: {
+    flex: 1,
+  },
+  bookingInfoLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    marginBottom: Spacing.xs,
+    textTransform: 'uppercase',
+  },
+  bookingInfoValue: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  bookingActionsRow: {
+    flexDirection: 'row',
+  },
+  bookingActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.md,
+  },
+  bookingActionText: {
+    marginLeft: Spacing.sm,
+    color: Colors.gray[800],
+    fontWeight: FontWeights.semibold,
+  },
+  bookingActionDanger: {
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+  },
+  bookingActionDangerText: {
+    color: Colors.danger,
+  },
+  bookingRefreshingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.md,
+  },
+  bookingRefreshingText: {
+    color: Colors.gray[500],
+    fontSize: FontSizes.sm,
+    marginLeft: Spacing.sm,
+  },
+  bookingHintCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    ...CommonStyles.shadowSm,
+  },
+  bookingHintIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  bookingHintContent: {
+    flex: 1,
+  },
+  bookingHintTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  bookingHintSubtitle: {
+    marginTop: Spacing.xs,
+    color: Colors.gray[600],
+  },
+  bookingModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+  },
+  bookingModalCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    ...CommonStyles.shadowLg,
+  },
+  bookingModalTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: Spacing.xs,
+  },
+  bookingModalDescription: {
+    color: Colors.gray[600],
+    marginBottom: Spacing.lg,
+  },
+  bookingSeatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  bookingSeatButton: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bookingSeatInput: {
+    flex: 1,
+    marginHorizontal: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    textAlign: 'center',
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  bookingModalHint: {
+    color: Colors.gray[500],
+    fontSize: FontSizes.sm,
+    marginBottom: Spacing.xs,
+  },
+  bookingModalPrice: {
+    fontSize: FontSizes.base,
+    color: Colors.gray[700],
+    marginBottom: Spacing.sm,
+  },
+  bookingModalPriceValue: {
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+  },
+  bookingModalError: {
+    color: Colors.danger,
+    marginBottom: Spacing.sm,
+  },
+  bookingModalActions: {
+    flexDirection: 'row',
+    marginTop: Spacing.md,
+  },
+  bookingModalButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.sm,
+  },
+  bookingModalButtonSecondary: {
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    backgroundColor: Colors.white,
+  },
+  bookingModalButtonSecondaryText: {
+    color: Colors.gray[800],
+    fontWeight: FontWeights.semibold,
+  },
+  bookingModalButtonPrimary: {
+    backgroundColor: Colors.primary,
+    marginRight: 0,
+  },
+  bookingModalButtonPrimaryText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+  },
+  reviewsModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+  },
+  reviewsModalCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    maxHeight: '85%',
+    padding: Spacing.lg,
+  },
+  reviewsModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  reviewsModalTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  reviewsModalContent: {
+    flex: 1,
+  },
+  reviewsEmptyText: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+  },
+  reviewItem: {
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  reviewItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  reviewAuthor: {
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[800],
+  },
+  reviewDate: {
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+    marginTop: Spacing.xs,
+  },
+  reviewRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  reviewRatingText: {
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+  },
+  reviewComment: {
+    color: Colors.gray[700],
+    marginTop: Spacing.sm,
+    fontSize: FontSizes.sm,
+  },
+  driverManageHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.md,
+  },
+  driverManageSubtitle: {
+    color: Colors.gray[500],
+    fontSize: FontSizes.sm,
+    marginTop: Spacing.xs,
+  },
+  refreshButton: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  driverBookingLoader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.lg,
+  },
+  driverBookingLoaderText: {
+    marginLeft: Spacing.sm,
+    color: Colors.gray[500],
+  },
+  driverBookingEmpty: {
+    alignItems: 'center',
+    paddingVertical: Spacing.xl,
+    paddingHorizontal: Spacing.md,
+  },
+  driverBookingEmptyTitle: {
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+    marginTop: Spacing.sm,
+  },
+  driverBookingEmptyText: {
+    textAlign: 'center',
+    color: Colors.gray[500],
+    marginTop: Spacing.xs,
+  },
+  driverBookingCard: {
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginTop: Spacing.md,
+  },
+  driverBookingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  driverBookingAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  driverBookingInfo: {
+    flex: 1,
+  },
+  driverBookingName: {
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  driverBookingMeta: {
+    color: Colors.gray[500],
+    fontSize: FontSizes.sm,
+    marginTop: 2,
+  },
+  reasonBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.07)',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  reasonText: {
+    flex: 1,
+    color: Colors.danger,
+    fontSize: FontSizes.sm,
+    marginLeft: Spacing.xs,
+  },
+  driverBookingFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: Spacing.sm,
+  },
+  driverDecisionRow: {
+    flexDirection: 'row',
+  },
+  driverDecisionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+  },
+  driverDecisionButtonSpacing: {
+    marginRight: Spacing.sm,
+  },
+  driverDecisionAccept: {
+    backgroundColor: Colors.primary,
+  },
+  driverDecisionReject: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+  },
+  driverDecisionText: {
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
+  },
+  driverDecisionGhost: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  driverDecisionGhostText: {
+    color: Colors.primary,
+    fontWeight: FontWeights.semibold,
+    marginLeft: Spacing.xs,
+  },
+  feedbackModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+  },
+  feedbackModalCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    alignItems: 'center',
+    ...CommonStyles.shadowLg,
+  },
+  feedbackModalIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.success,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.lg,
+  },
+  feedbackModalTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: Spacing.sm,
+    textAlign: 'center',
+  },
+  feedbackModalText: {
+    textAlign: 'center',
+    color: Colors.gray[600],
+    marginBottom: Spacing.lg,
+  },
+  feedbackModalActions: {
+    flexDirection: 'row',
+    width: '100%',
+  },
+  feedbackModalButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+  },
+  feedbackModalButtonSpacing: {
+    marginRight: Spacing.sm,
+  },
+  feedbackModalSecondary: {
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    backgroundColor: Colors.white,
+  },
+  feedbackModalPrimary: {
+    backgroundColor: Colors.primary,
+  },
+  feedbackModalSecondaryText: {
+    color: Colors.gray[800],
+    fontWeight: FontWeights.semibold,
+  },
+  feedbackModalPrimaryText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
   },
 });

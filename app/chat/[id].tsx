@@ -1,81 +1,137 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { chatSocket } from '@/services/chatSocket';
+import { messageApi, useGetConversationMessagesQuery, useGetConversationQuery, useMarkConversationAsReadMutation, useSendConversationMessageMutation } from '@/store/api/messageApi';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { selectUser } from '@/store/selectors';
+import { addMessage as addMessageAction, markConversationMessagesRead, setMessages, upsertConversation } from '@/store/slices/messagesSlice';
+import { Message } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-interface Message {
-  id: string;
-  text: string;
-  isMe: boolean;
-  timestamp: Date;
-  read: boolean;
-}
-
 export default function ChatScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams();
+  const dispatch = useAppDispatch();
+  const { id, title: initialTitle } = useLocalSearchParams<{ id?: string; title?: string }>();
+  const conversationId = typeof id === 'string' ? id : '';
   const scrollViewRef = useRef<ScrollView>(null);
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      text: 'Bonjour! Je suis intéressé par votre trajet.',
-      isMe: false,
-      timestamp: new Date(Date.now() - 3600000),
-      read: true,
-    },
-    {
-      id: '2',
-      text: 'Bonjour! Pas de problème, il reste des places.',
-      isMe: true,
-      timestamp: new Date(Date.now() - 3500000),
-      read: true,
-    },
-    {
-      id: '3',
-      text: 'Rendez-vous au rond-point ?',
-      isMe: false,
-      timestamp: new Date(Date.now() - 600000),
-      read: true,
-    },
-    {
-      id: '4',
-      text: 'Oui, à 14h comme prévu. À tout à l\'heure !',
-      isMe: true,
-      timestamp: new Date(Date.now() - 300000),
-      read: true,
-    },
-  ]);
+  const user = useAppSelector(selectUser);
+
+  const { data: conversation, isLoading: conversationLoading } = useGetConversationQuery(conversationId, {
+    skip: !conversationId,
+  });
+  const { data: messagesData, isLoading: messagesLoading } = useGetConversationMessagesQuery(
+    { conversationId },
+    { skip: !conversationId },
+  );
+  const [sendMessageMutation, { isLoading: sending }] = useSendConversationMessageMutation();
+  const [markConversationAsRead] = useMarkConversationAsReadMutation();
+
+  const messages = messagesData ?? [];
 
   useEffect(() => {
-    setTimeout(() => {
+    if (conversation) {
+      dispatch(upsertConversation(conversation));
+    }
+  }, [conversation, dispatch]);
+
+  useEffect(() => {
+    if (conversationId && messagesData) {
+      dispatch(setMessages({ conversationId, messages: messagesData }));
+      dispatch(markConversationMessagesRead(conversationId));
+    }
+  }, [conversationId, dispatch, messagesData]);
+
+  useEffect(() => {
+    if (conversationId) {
+      markConversationAsRead(conversationId);
+    }
+  }, [conversationId, markConversationAsRead]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
+    return () => clearTimeout(timeout);
   }, [messages]);
 
-  const handleSend = () => {
-    if (!message.trim()) return;
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    let joined = false;
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      text: message.trim(),
-      isMe: true,
-      timestamp: new Date(),
-      read: false,
+    const setupSocket = async () => {
+      if (conversation?.bookingId) {
+        await chatSocket.joinBookingRoom(conversation.bookingId);
+        joined = true;
+      }
+
+      unsubscribe = chatSocket.subscribeToMessages((incoming) => {
+        if (incoming.conversationId === conversationId) {
+          dispatch(
+            messageApi.util.updateQueryData('getConversationMessages', { conversationId }, (draft) => {
+              draft.push(incoming);
+            }),
+          );
+          dispatch(
+            addMessageAction({
+              conversationId,
+              message: incoming,
+              isMine: incoming.senderId === user?.id,
+            }),
+          );
+        }
+      });
     };
 
-    setMessages([...messages, newMessage]);
+    setupSocket();
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+      if (joined && conversation?.bookingId) {
+        chatSocket.leaveBookingRoom(conversation.bookingId);
+      }
+    };
+  }, [conversation?.bookingId, conversationId, dispatch, user?.id]);
+
+  const handleSend = async () => {
+    if (!message.trim() || !conversationId) {
+      return;
+    }
+
+    const content = message.trim();
     setMessage('');
+
+    try {
+      const saved = await sendMessageMutation({ conversationId, content }).unwrap();
+      dispatch(
+        messageApi.util.updateQueryData('getConversationMessages', { conversationId }, (draft) => {
+          draft.push(saved);
+        }),
+      );
+      dispatch(
+        addMessageAction({
+          conversationId,
+          message: saved,
+          isMine: true,
+        }),
+      );
+    } catch (error) {
+      console.warn('Erreur lors de l\'envoi du message:', error);
+      setMessage(content);
+    }
   };
 
-  const formatTime = (date: Date) => {
+  const formatTime = (dateValue: string) => {
+    const date = new Date(dateValue);
     return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
   };
 
-  const formatDate = (date: Date) => {
+  const formatDate = (dateValue: string) => {
+    const date = new Date(dateValue);
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
@@ -89,9 +145,28 @@ export default function ChatScreen() {
     }
   };
 
+  const counterpart = useMemo(() => {
+    return conversation?.participants.find((participant) => participant.userId !== user?.id)?.user;
+  }, [conversation?.participants, user?.id]);
+
+  const headerTitle =
+    conversation?.title ||
+    (counterpart ? `${counterpart.firstName ?? ''} ${counterpart.lastName ?? ''}`.trim() : initialTitle) ||
+    'Conversation';
+
+  const groupedMessages = useMemo(() => {
+    return messages.reduce<Record<string, Message[]>>((acc, msg) => {
+      const label = formatDate(msg.createdAt);
+      if (!acc[label]) {
+        acc[label] = [];
+      }
+      acc[label].push(msg);
+      return acc;
+    }, {});
+  }, [messages]);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
@@ -101,16 +176,28 @@ export default function ChatScreen() {
           <View style={styles.userInfo}>
             <View style={styles.avatar} />
             <View style={styles.userDetails}>
-              <Text style={styles.userName}>Jean Mukendi</Text>
+              <Text style={styles.userName}>{headerTitle}</Text>
               <View style={styles.userStatus}>
                 <View style={styles.onlineDot} />
-                <Text style={styles.userStatusText}>En ligne</Text>
+                <Text style={styles.userStatusText}>{conversationLoading ? 'Chargement…' : 'En ligne'}</Text>
               </View>
             </View>
           </View>
 
-          <TouchableOpacity style={styles.headerButton}>
-            <Ionicons name="call" size={20} color={Colors.primary} />
+          <TouchableOpacity
+            style={styles.headerButton}
+            disabled={!counterpart?.phone}
+            onPress={() => {
+              if (counterpart?.phone) {
+                Linking.openURL(`tel:${counterpart.phone}`);
+              }
+            }}
+          >
+            <Ionicons
+              name="call"
+              size={20}
+              color={counterpart?.phone ? Colors.primary : Colors.gray[400]}
+            />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.headerButton}>
@@ -124,42 +211,45 @@ export default function ChatScreen() {
         style={styles.keyboardView}
         keyboardVerticalOffset={0}
       >
-        {/* Messages */}
         <ScrollView
           ref={scrollViewRef}
           style={styles.messagesContainer}
           contentContainerStyle={styles.messagesContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Date separator */}
-          <View style={styles.dateSeparator}>
-            <View style={styles.dateBadge}>
-              <Text style={styles.dateText}>{formatDate(new Date())}</Text>
+          {messagesLoading && (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator color={Colors.primary} />
             </View>
-          </View>
+          )}
 
-          {messages.map((msg, index) => (
+          {Object.entries(groupedMessages).map(([label, bucket]) => (
+            <View style={styles.dateSeparator} key={label}>
+              <View style={styles.dateBadge}>
+                <Text style={styles.dateText}>{label}</Text>
+          </View>
+              {bucket.map((msg, index) => {
+                const isMe = msg.senderId === user?.id;
+                return (
             <Animated.View
               key={msg.id}
               entering={FadeInDown.delay(index * 50)}
-              style={[styles.messageWrapper, msg.isMe && styles.messageWrapperRight]}
+                    style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
             >
               <View
                 style={[
                   styles.messageBubble,
-                  msg.isMe ? styles.messageBubbleMe : styles.messageBubbleOther,
+                        isMe ? styles.messageBubbleMe : styles.messageBubbleOther,
                 ]}
               >
-                <Text style={[styles.messageText, msg.isMe && styles.messageTextMe]}>
-                  {msg.text}
-                </Text>
+                      <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{msg.content}</Text>
                 <View style={styles.messageFooter}>
-                  <Text style={[styles.messageTime, msg.isMe && styles.messageTimeMe]}>
-                    {formatTime(msg.timestamp)}
+                        <Text style={[styles.messageTime, isMe && styles.messageTimeMe]}>
+                          {formatTime(msg.createdAt)}
                   </Text>
-                  {msg.isMe && (
+                        {isMe && (
                     <Ionicons
-                      name={msg.read ? 'checkmark-done' : 'checkmark'}
+                            name={msg.isRead ? 'checkmark-done' : 'checkmark'}
                       size={14}
                       color={Colors.white}
                       style={styles.checkIcon}
@@ -168,10 +258,12 @@ export default function ChatScreen() {
                 </View>
               </View>
             </Animated.View>
+                );
+              })}
+            </View>
           ))}
         </ScrollView>
 
-        {/* Input */}
         <View style={styles.inputContainer}>
           <View style={styles.inputRow}>
             <TouchableOpacity style={styles.inputButton}>
@@ -196,13 +288,17 @@ export default function ChatScreen() {
             <TouchableOpacity
               style={[styles.sendButton, message.trim() && styles.sendButtonActive]}
               onPress={handleSend}
-              disabled={!message.trim()}
+              disabled={!message.trim() || sending}
             >
+              {sending ? (
+                <ActivityIndicator size="small" color={Colors.white} />
+              ) : (
               <Ionicons
                 name="send"
                 size={20}
                 color={message.trim() ? Colors.white : Colors.gray[600]}
               />
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -287,6 +383,11 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.lg,
     paddingBottom: Spacing.lg,
   },
+  loadingContainer: {
+    paddingVertical: Spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   dateSeparator: {
     alignItems: 'center',
     marginBottom: Spacing.lg,
@@ -301,26 +402,37 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.xs,
     color: Colors.gray[600],
   },
-  messageWrapper: {
+  messageRow: {
+    width: '100%',
     marginBottom: Spacing.md,
-    alignItems: 'flex-start',
-  },
-  messageWrapperRight: {
+    flexDirection: 'row',
     alignItems: 'flex-end',
+  },
+  messageRowMe: {
+    justifyContent: 'flex-end',
+    paddingLeft: Spacing.xl,
+    paddingRight: Spacing.xs,
+  },
+  messageRowOther: {
+    justifyContent: 'flex-start',
+    paddingRight: Spacing.xl,
+    paddingLeft: Spacing.xs,
   },
   messageBubble: {
     maxWidth: '80%',
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
     borderRadius: BorderRadius.xl,
+    borderTopLeftRadius: BorderRadius.lg,
+    borderTopRightRadius: BorderRadius.lg,
   },
   messageBubbleMe: {
     backgroundColor: Colors.primary,
-    borderTopRightRadius: BorderRadius.sm,
+    borderBottomLeftRadius: BorderRadius.md,
   },
   messageBubbleOther: {
-    backgroundColor: Colors.white,
-    borderTopLeftRadius: BorderRadius.sm,
+    backgroundColor: Colors.gray[100],
+    borderBottomRightRadius: BorderRadius.md,
     ...CommonStyles.shadowSm,
   },
   messageText: {

@@ -24,6 +24,8 @@ import './notificationApi';
 import './reviewApi';
 import './tripApi';
 import './userApi';
+import './bookingApi';
+import './vehicleApi';
 
 // Ré-exporter tous les hooks pour faciliter l'utilisation
 export {
@@ -34,24 +36,65 @@ export {
 
 export {
   // User
-  useGetCurrentUserQuery, useGetUserByIdQuery, useUpdateUserMutation
+  useGetProfileSummaryQuery,
+  useGetCurrentUserQuery,
+  useGetUserByIdQuery,
+  useUpdateUserMutation,
+  useUploadKycMutation,
+  useGetKycStatusQuery
 } from './userApi';
 
 export {
-  useBookTripMutation, useCancelTripMutation, useCreateTripMutation, useGetTripByIdQuery,
+  useBookTripMutation,
+  useCreateTripMutation,
+  useDeleteTripMutation,
+  useGetTripByIdQuery,
   // Trips
-  useGetTripsQuery, useUpdateTripMutation
+  useGetTripsQuery,
+  useGetMyTripsQuery,
+  useUpdateTripMutation,
 } from './tripApi';
 
 export {
-  // Messages
-  useGetConversationsQuery,
-  useGetMessagesQuery, useMarkMessagesAsReadMutation, useSendMessageMutation
+  // Bookings
+  useCreateBookingMutation,
+  useGetMyBookingsQuery,
+  useGetTripBookingsQuery,
+  useGetBookingByIdQuery,
+  useUpdateBookingStatusMutation,
+  useCancelBookingMutation,
+  useAcceptBookingMutation,
+  useRejectBookingMutation,
+} from './bookingApi';
+
+export {
+  // Conversations & messages
+  useListConversationsQuery,
+  useLazyListConversationsQuery,
+  useGetConversationQuery,
+  useGetConversationMessagesQuery,
+  useSendConversationMessageMutation,
+  useCreateConversationMutation,
+  useMarkConversationAsReadMutation,
+  useAddParticipantsMutation,
+  useRemoveParticipantMutation,
+  useGetBookingMessagesQuery,
+  useMarkMessageAsReadMutation,
 } from './messageApi';
 
 export {
+  // Vehicles
+  useGetVehiclesQuery,
+  useCreateVehicleMutation,
+  useUpdateVehicleMutation,
+  useDeleteVehicleMutation,
+} from './vehicleApi';
+
+export {
   // Reviews
-  useCreateReviewMutation, useGetReviewsQuery, useReportUserMutation
+  useCreateReviewMutation,
+  useGetReviewsQuery,
+  useGetAverageRatingQuery,
 } from './reviewApi';
 
 export {

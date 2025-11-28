@@ -10,10 +10,12 @@ store/api/
 ├── authApi.ts          # Authentification
 ├── userApi.ts          # Utilisateurs
 ├── tripApi.ts          # Trajets
-├── messageApi.ts       # Messages
+├── messageApi.ts       # Conversations & messages
 ├── reviewApi.ts        # Avis et signalements
 ├── notificationApi.ts  # Notifications
+├── vehicleApi.ts       # Véhicules
 ├── zwangaApi.ts        # Point d'entrée principal (ré-exporte tout)
+├── bookingApi.ts       # Réservations
 └── README.md           # Cette documentation
 ```
 
@@ -41,18 +43,32 @@ Endpoints utilisateurs :
 ### `tripApi.ts`
 Endpoints trajets :
 - `getTrips` - Rechercher des trajets (avec filtres)
+- `getMyTrips` - Récupérer les trajets publiés par l'utilisateur connecté
 - `getTripById` - Récupérer un trajet par ID
 - `createTrip` - Créer un nouveau trajet
 - `updateTrip` - Mettre à jour un trajet
-- `cancelTrip` - Annuler un trajet
+- `deleteTrip` - Supprimer/annuler un trajet
 - `bookTrip` - Réserver des places
 
+### `bookingApi.ts`
+Endpoints réservations :
+- `createBooking` - Créer une nouvelle réservation
+- `getMyBookings` - Récupérer les réservations de l'utilisateur connecté
+- `getTripBookings` - Récupérer les réservations d'un trajet (conducteur)
+- `getBookingById` - Détails d'une réservation
+- `updateBookingStatus` - Accepter / refuser une réservation (conducteur)
+- `acceptBooking` - Accepter une réservation (conducteur)
+- `rejectBooking` - Refuser une réservation avec motif (conducteur)
+- `cancelBooking` - Annuler une réservation (passager)
+
 ### `messageApi.ts`
-Endpoints messages :
-- `getConversations` - Liste des conversations
-- `getMessages` - Messages d'une conversation
-- `sendMessage` - Envoyer un message
-- `markMessagesAsRead` - Marquer comme lus
+Endpoints conversations / messages :
+- `listConversations` - Liste paginée des conversations de l'utilisateur
+- `getConversation` - Détails d'une conversation (participants, dernier message…)
+- `getConversationMessages` - Messages d'une conversation
+- `sendConversationMessage` - Envoyer un message
+- `markConversationAsRead` - Marquer une conversation comme lue
+- `createConversation`, `addParticipants`, `removeParticipant`
 
 ### `reviewApi.ts`
 Endpoints avis et signalements :
@@ -65,6 +81,13 @@ Endpoints notifications :
 - `getNotifications` - Liste des notifications
 - `markNotificationAsRead` - Marquer comme lue
 
+### `vehicleApi.ts`
+Endpoints véhicules :
+- `getVehicles` - Liste des véhicules de l'utilisateur connecté
+- `createVehicle` - Ajouter un véhicule
+- `updateVehicle` - Modifier un véhicule
+- `deleteVehicle` - Supprimer un véhicule
+
 ## Utilisation
 
 ### Import depuis le fichier principal
@@ -73,7 +96,8 @@ Endpoints notifications :
 import { 
   useLoginMutation,
   useGetTripsQuery,
-  useSendMessageMutation 
+  useSendConversationMessageMutation,
+  useCreateVehicleMutation
 } from '@/store/api/zwangaApi';
 ```
 

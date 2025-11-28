@@ -1,18 +1,48 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, StyleSheet } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useAppSelector } from '@/store/hooks';
-import { selectConversations } from '@/store/selectors';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { selectConversations, selectUser } from '@/store/selectors';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Colors, Spacing, BorderRadius, FontSizes, FontWeights } from '@/constants/styles';
+import { useListConversationsQuery } from '@/store/api/messageApi';
+import { setConversations } from '@/store/slices/messagesSlice';
 
 export default function MessagesScreen() {
+  const dispatch = useAppDispatch();
+  const user = useAppSelector(selectUser);
   const conversations = useAppSelector(selectConversations);
+  const [search, setSearch] = useState('');
+  const { data, isLoading, isFetching } = useListConversationsQuery({ page: 1, limit: 50 });
   const router = useRouter();
 
-  const formatTimestamp = (date: Date) => {
+  useEffect(() => {
+    if (data?.data) {
+      dispatch(setConversations(data.data));
+    }
+  }, [data, dispatch]);
+
+  const formatTimestamp = (rawValue: Date | string | number | null | undefined) => {
+    if (!rawValue) {
+      return '--';
+    }
+
+    let date: Date;
+
+    if (rawValue instanceof Date) {
+      date = rawValue;
+    } else if (typeof rawValue === 'number') {
+      date = new Date(rawValue);
+    } else {
+      const parsed = new Date(rawValue);
+      if (Number.isNaN(parsed.getTime())) {
+        return '--';
+      }
+      date = parsed;
+    }
+
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const minutes = Math.floor(diff / 60000);
@@ -23,6 +53,40 @@ export default function MessagesScreen() {
     if (minutes < 60) return `${minutes}m`;
     if (hours < 24) return `${hours}h`;
     return `${days}j`;
+  };
+
+  const filteredConversations = useMemo(() => {
+    if (!search.trim()) {
+      return conversations;
+    }
+    const normalized = search.trim().toLowerCase();
+    return conversations.filter((conversation) => {
+      const counterpart = conversation.participants.find((participant) => participant.userId !== user?.id);
+      const counterpartName = counterpart?.user
+        ? `${counterpart.user.firstName ?? ''} ${counterpart.user.lastName ?? ''}`.trim()
+        : '';
+      const title = conversation.title ?? counterpartName;
+      const lastMessage = conversation.lastMessage?.content ?? '';
+      return (
+        title?.toLowerCase().includes(normalized) ||
+        lastMessage.toLowerCase().includes(normalized) ||
+        counterpartName.toLowerCase().includes(normalized)
+      );
+    });
+  }, [conversations, search, user?.id]);
+
+  const getConversationTitle = (conversation: typeof conversations[number]) => {
+    if (conversation.title) {
+      return conversation.title;
+    }
+    const counterpart = conversation.participants.find((participant) => participant.userId !== user?.id);
+    if (counterpart?.user) {
+      const fullName = `${counterpart.user.firstName ?? ''} ${counterpart.user.lastName ?? ''}`.trim();
+      if (fullName) {
+        return fullName;
+      }
+    }
+    return 'Conversation';
   };
 
   return (
@@ -43,16 +107,25 @@ export default function MessagesScreen() {
             style={styles.searchInput}
             placeholder="Rechercher une conversation"
             placeholderTextColor={Colors.gray[500]}
+            value={search}
+            onChangeText={setSearch}
           />
         </View>
       </View>
+
+      {(isLoading || isFetching) && (
+        <View style={styles.loadingBanner}>
+          <ActivityIndicator color={Colors.primary} />
+          <Text style={styles.loadingText}>Mise à jour des messages…</Text>
+        </View>
+      )}
 
       <ScrollView 
         style={styles.scrollView} 
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
       >
-        {conversations.length === 0 ? (
+        {filteredConversations.length === 0 ? (
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIcon}>
               <Ionicons name="chatbubbles-outline" size={48} color={Colors.gray[500]} />
@@ -63,14 +136,25 @@ export default function MessagesScreen() {
             </Text>
           </View>
         ) : (
-          conversations.map((conversation, index) => (
+          filteredConversations.map((conversation, index) => {
+            const subtitle = conversation.lastMessage?.content ?? 'Conversation démarrée';
+            const timestamp = formatTimestamp(conversation.lastMessage?.createdAt ?? conversation.lastMessageAt);
+            const title = getConversationTitle(conversation);
+            return (
             <Animated.View
               key={conversation.id}
               entering={FadeInDown.delay(index * 50)}
             >
               <TouchableOpacity
                 style={styles.conversationItem}
-                onPress={() => router.push(`/chat/${conversation.userId}`)}
+                  onPress={() =>
+                    router.push({
+                      pathname: `/chat/${conversation.id}`,
+                      params: {
+                        title,
+                      },
+                    })
+                  }
               >
                 <View style={styles.avatarContainer}>
                   <View style={styles.avatar} />
@@ -79,20 +163,20 @@ export default function MessagesScreen() {
 
                 <View style={styles.conversationContent}>
                   <View style={styles.conversationHeader}>
-                    <Text style={styles.conversationName}>{conversation.userName}</Text>
-                    <Text style={styles.conversationTime}>{formatTimestamp(conversation.timestamp)}</Text>
+                    <Text style={styles.conversationName}>{title}</Text>
+                    <Text style={styles.conversationTime}>{timestamp}</Text>
                   </View>
                   <View style={styles.conversationFooter}>
                     <Text
                       style={[
                         styles.conversationMessage,
-                        conversation.unreadCount > 0 && styles.conversationMessageUnread,
+                          (conversation.unreadCount ?? 0) > 0 && styles.conversationMessageUnread,
                       ]}
                       numberOfLines={1}
                     >
-                      {conversation.lastMessage}
+                        {subtitle}
                     </Text>
-                    {conversation.unreadCount > 0 && (
+                      {(conversation.unreadCount ?? 0) > 0 && (
                       <View style={styles.unreadBadge}>
                         <Text style={styles.unreadBadgeText}>{conversation.unreadCount}</Text>
                       </View>
@@ -101,7 +185,8 @@ export default function MessagesScreen() {
                 </View>
               </TouchableOpacity>
             </Animated.View>
-          ))
+            );
+          })
         )}
       </ScrollView>
     </SafeAreaView>
@@ -160,6 +245,18 @@ const styles = StyleSheet.create({
   scrollViewContent: {
     flexGrow: 1,
     paddingBottom: Spacing.xl,
+  },
+  loadingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    backgroundColor: Colors.gray[100],
+  },
+  loadingText: {
+    color: Colors.gray[700],
+    fontSize: FontSizes.sm,
   },
   emptyContainer: {
     flex: 1,
