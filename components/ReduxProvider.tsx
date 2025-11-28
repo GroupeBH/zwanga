@@ -1,9 +1,12 @@
-import React, { useEffect, useState } from 'react';
-import { Provider } from 'react-redux';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { DialogProvider } from '@/components/ui/DialogProvider';
+import { Colors } from '@/constants/styles';
+import { IdentityProvider } from '@/contexts/IdentityContext';
+import { TutorialProvider } from '@/contexts/TutorialContext';
 import { store } from '@/store';
 import { initializeAuth } from '@/store/slices/authSlice';
-import { Colors } from '@/constants/styles';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { Provider } from 'react-redux';
 import { AuthGuard } from './AuthGuard';
 
 interface ReduxProviderProps {
@@ -40,7 +43,13 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
 
   return (
     <Provider store={store}>
-      <AuthGuard>{children}</AuthGuard>
+      <AuthGuard>
+        <DialogProvider>
+          <TutorialProvider>
+            <IdentityProvider>{children}</IdentityProvider>
+          </TutorialProvider>
+        </DialogProvider>
+      </AuthGuard>
     </Provider>
   );
 }

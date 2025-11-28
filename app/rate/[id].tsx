@@ -1,21 +1,48 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, TextInput, ScrollView, Alert, StyleSheet } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, TouchableOpacity, TextInput, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
+import { useDialog } from '@/components/ui/DialogProvider';
+import { useAppSelector } from '@/store/hooks';
+import { selectUser } from '@/store/selectors';
+import { useCreateReviewMutation } from '@/store/api/reviewApi';
+import { useGetTripByIdQuery } from '@/store/api/tripApi';
+import { useGetTripBookingsQuery } from '@/store/api/bookingApi';
 
 type TabType = 'rate' | 'report';
 
 export default function RateScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
+  const user = useAppSelector(selectUser);
+  const tripId = typeof id === 'string' ? id : '';
+  const { data: trip } = useGetTripByIdQuery(tripId, { skip: !tripId });
+  const isTripDriver = trip?.driverId === user?.id;
+  const { data: tripBookings } = useGetTripBookingsQuery(tripId, {
+    skip: !isTripDriver || !tripId,
+  });
   const [activeTab, setActiveTab] = useState<TabType>('rate');
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [reportReason, setReportReason] = useState('');
+  const [selectedPassenger, setSelectedPassenger] = useState<string | null>(null);
+  const { showDialog } = useDialog();
+  const [createReview, { isLoading: isSubmittingReview }] = useCreateReviewMutation();
+
+  const passengers = useMemo(() => {
+    if (!tripBookings) return [];
+    return tripBookings
+      .filter((booking) => booking.status === 'completed' || booking.status === 'accepted')
+      .map((booking) => ({
+        id: booking.passengerId,
+        name: booking.passengerName ?? 'Passager',
+        seats: booking.numberOfSeats,
+      }));
+  }, [tripBookings]);
 
   const rateTags = [
     { id: 'punctual', label: 'Ponctuel', icon: 'time' },
@@ -43,30 +70,81 @@ export default function RateScreen() {
     }
   };
 
-  const handleSubmitRating = () => {
+  const handleSubmitRating = async () => {
     if (rating === 0) {
-      Alert.alert('Erreur', 'Veuillez sélectionner une note');
+      showDialog({
+        variant: 'warning',
+        title: 'Note requise',
+        message: 'Veuillez sélectionner une note avant de soumettre votre avis.',
+      });
       return;
     }
 
-    Alert.alert(
-      'Évaluation envoyée',
-      'Merci pour votre évaluation !',
-      [{ text: 'OK', onPress: () => router.back() }]
-    );
+    if (!trip || !tripId) {
+      showDialog({
+        variant: 'danger',
+        title: 'Trajet introuvable',
+        message: 'Impossible de charger les informations du trajet.',
+      });
+      return;
+    }
+
+    const targetUserId = isTripDriver ? selectedPassenger : trip.driverId;
+    if (!targetUserId) {
+      showDialog({
+        variant: 'warning',
+        title: 'Passager requis',
+        message: 'Sélectionnez le passager que vous souhaitez évaluer.',
+      });
+      return;
+    }
+
+    try {
+      const tagsSummary =
+        selectedTags.length > 0 ? `\n\nTags: ${selectedTags.map((tag) => `#${tag}`).join(' ')}` : '';
+      await createReview({
+        tripId,
+        ratedUserId: targetUserId,
+        rating,
+        comment: `${comment.trim()}${tagsSummary}`.trim(),
+      }).unwrap();
+
+      showDialog({
+        variant: 'success',
+        title: 'Évaluation envoyée',
+        message: 'Merci pour votre évaluation !',
+        actions: [{ label: 'Retour', variant: 'primary', onPress: () => router.back() }],
+      });
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        'Impossible de soumettre votre avis pour le moment.';
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
   };
 
   const handleSubmitReport = () => {
     if (!reportReason) {
-      Alert.alert('Erreur', 'Veuillez sélectionner une raison');
+      showDialog({
+        variant: 'warning',
+        title: 'Raison requise',
+        message: 'Veuillez sélectionner une raison avant de signaler ce trajet.',
+      });
       return;
     }
 
-    Alert.alert(
-      'Signalement envoyé',
-      'Nous examinerons votre signalement. Merci pour votre contribution à la sécurité de la communauté.',
-      [{ text: 'OK', onPress: () => router.back() }]
-    );
+    showDialog({
+      variant: 'info',
+      title: 'Signalement envoyé',
+      message:
+        'Nous examinerons votre signalement. Merci pour votre contribution à la sécurité de la communauté.',
+      actions: [{ label: 'Fermer', variant: 'primary', onPress: () => router.back() }],
+    });
   };
 
   const getRatingText = () => {
@@ -117,23 +195,81 @@ export default function RateScreen() {
         {/* Onglet Notation */}
         {activeTab === 'rate' && (
           <Animated.View entering={FadeInDown}>
-            {/* Info conducteur */}
+            {/* Info conducteur / passager */}
             <View style={styles.driverCard}>
               <View style={styles.driverInfo}>
                 <View style={styles.driverAvatar} />
                 <View style={styles.driverDetails}>
-                  <Text style={styles.driverName}>Jean Mukendi</Text>
+                  <Text style={styles.driverName}>
+                    {isTripDriver ? 'Choisissez un passager' : trip?.driverName ?? 'Conducteur'}
+                  </Text>
                   <View style={styles.driverMeta}>
                     <Ionicons name="star" size={16} color={Colors.secondary} />
-                    <Text style={styles.driverMetaText}>4.8 · Toyota Corolla</Text>
+                    <Text style={styles.driverMetaText}>
+                      {isTripDriver
+                        ? 'Attribuez une note à vos passagers'
+                        : `${trip?.driverRating?.toFixed?.(1) ?? '—'} · ${
+                            trip?.vehicleInfo ?? 'Véhicule à confirmer'
+                          }`}
+                    </Text>
                   </View>
+                  {trip && (
+                    <Text style={styles.driverTrip}>
+                      {trip.departure?.name ?? 'Départ'} → {trip.arrival?.name ?? 'Arrivée'}
+                    </Text>
+                  )}
                 </View>
               </View>
+              {isTripDriver && (
+                <View style={styles.dropSection}>
+                  <Text style={styles.dropLabel}>Sélectionner un passager</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.passengerChips}
+                  >
+                    {passengers.length === 0 ? (
+                      <Text style={styles.emptyPassengerText}>
+                        Aucun passager à évaluer pour ce trajet.
+                      </Text>
+                    ) : (
+                      passengers.map((passenger) => {
+                        const active = selectedPassenger === passenger.id;
+                        return (
+                          <TouchableOpacity
+                            key={passenger.id}
+                            style={[styles.passengerChip, active && styles.passengerChipActive]}
+                            onPress={() => setSelectedPassenger(passenger.id)}
+                          >
+                            <Ionicons
+                              name="person"
+                              size={16}
+                              color={active ? Colors.white : Colors.gray[600]}
+                            />
+                            <Text
+                              style={[
+                                styles.passengerChipText,
+                                active && styles.passengerChipTextActive,
+                              ]}
+                            >
+                              {passenger.name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })
+                    )}
+                  </ScrollView>
+                </View>
+              )}
             </View>
 
             {/* Étoiles */}
             <View style={styles.ratingContainer}>
-              <Text style={styles.ratingTitle}>Comment s'est passé le trajet ?</Text>
+              <Text style={styles.ratingTitle}>
+                {isTripDriver
+                  ? 'Comment s’est comporté ce passager ?'
+                  : "Comment s'est passé le trajet ?"}
+              </Text>
               <View style={styles.starsContainer}>
                 {[1, 2, 3, 4, 5].map((star) => (
                   <TouchableOpacity
@@ -212,11 +348,17 @@ export default function RateScreen() {
 
             {/* Bouton Envoyer */}
             <TouchableOpacity
-              style={[styles.submitButton, rating > 0 ? styles.submitButtonActive : styles.submitButtonDisabled]}
+              style={[
+                styles.submitButton,
+                rating > 0 ? styles.submitButtonActive : styles.submitButtonDisabled,
+                isSubmittingReview && styles.submitButtonDisabled,
+              ]}
               onPress={handleSubmitRating}
-              disabled={rating === 0}
+              disabled={rating === 0 || isSubmittingReview}
             >
-              <Text style={styles.submitButtonText}>Envoyer l'évaluation</Text>
+              <Text style={styles.submitButtonText}>
+                {isSubmittingReview ? 'Envoi…' : "Envoyer l'évaluation"}
+              </Text>
             </TouchableOpacity>
           </Animated.View>
         )}
@@ -242,8 +384,10 @@ export default function RateScreen() {
               <View style={styles.driverInfo}>
                 <View style={styles.driverAvatar} />
                 <View style={styles.driverDetails}>
-                  <Text style={styles.driverName}>Jean Mukendi</Text>
-                  <Text style={styles.driverTrip}>Trajet: Gombe → Lemba</Text>
+                  <Text style={styles.driverName}>{trip?.driverName ?? 'Conducteur'}</Text>
+                  <Text style={styles.driverTrip}>
+                    Trajet: {trip?.departure?.name ?? 'Départ'} → {trip?.arrival?.name ?? 'Arrivée'}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -414,6 +558,35 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.xs,
     fontSize: FontSizes.base,
   },
+  passengerChips: {
+    marginTop: Spacing.md,
+  },
+  passengerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    marginRight: Spacing.sm,
+    backgroundColor: Colors.white,
+  },
+  passengerChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  passengerChipText: {
+    marginLeft: Spacing.xs,
+    color: Colors.gray[600],
+    fontWeight: FontWeights.medium,
+  },
+  passengerChipTextActive: {
+    color: Colors.white,
+  },
+  emptyPassengerText: {
+    color: Colors.gray[500],
+  },
   driverTrip: {
     color: Colors.gray[600],
     fontSize: FontSizes.base,
@@ -500,6 +673,14 @@ const styles = StyleSheet.create({
     color: Colors.gray[500],
     marginTop: Spacing.xs,
     textAlign: 'right',
+  },
+  dropSection: {
+    marginBottom: Spacing.lg,
+  },
+  dropLabel: {
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[700],
+    marginBottom: Spacing.sm,
   },
   submitButton: {
     paddingVertical: Spacing.lg,

@@ -1,15 +1,17 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Switch, StyleSheet, Modal } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
-import { useAppSelector, useAppDispatch } from '@/store/hooks';
+import { IdentityVerification } from '@/components/IdentityVerification';
+import { TutorialOverlay } from '@/components/TutorialOverlay';
+import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useTutorialGuide } from '@/contexts/TutorialContext';
+import { useProfilePhoto } from '@/hooks/useProfilePhoto';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { updateUser } from '@/store/slices/authSlice';
-import { IdentityVerification } from '@/components/IdentityVerification';
-import { useProfilePhoto } from '@/hooks/useProfilePhoto';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { Modal, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -17,6 +19,9 @@ export default function SettingsScreen() {
   const dispatch = useAppDispatch();
   const [showIdentityModal, setShowIdentityModal] = useState(false);
   const { changeProfilePhoto } = useProfilePhoto();
+  const { shouldShow: shouldShowSettingsGuide, complete: completeSettingsGuide } =
+    useTutorialGuide('settings_screen');
+  const [settingsGuideVisible, setSettingsGuideVisible] = useState(false);
   const [notifications, setNotifications] = useState({
     tripUpdates: true,
     messages: true,
@@ -34,6 +39,17 @@ export default function SettingsScreen() {
     darkMode: false,
     autoAccept: false,
   });
+
+  useEffect(() => {
+    if (shouldShowSettingsGuide) {
+      setSettingsGuideVisible(true);
+    }
+  }, [shouldShowSettingsGuide]);
+
+  const dismissSettingsGuide = () => {
+    setSettingsGuideVisible(false);
+    completeSettingsGuide();
+  };
 
   const handleIdentityComplete = (data: { idCardImage: string; faceImage: string }) => {
     // Mettre à jour l'utilisateur avec identityVerified = true
@@ -77,36 +93,40 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Vérification d'identité */}
-        <Animated.View entering={FadeInDown.delay(0)} style={styles.section}>
+        {/* <Animated.View entering={FadeInDown.delay(0)} style={styles.section}>
           <Text style={styles.sectionLabel}>VÉRIFICATION</Text>
           <View style={styles.card}>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => setShowIdentityModal(true)}
-            >
-              <View style={[styles.menuIcon, user?.identityVerified ? styles.menuIconSuccess : styles.menuIconWarning]}>
-                <Ionicons 
-                  name={user?.identityVerified ? 'checkmark-circle' : 'alert-circle'} 
-                  size={20} 
-                  color={user?.identityVerified ? Colors.success : Colors.warning} 
+            <View style={styles.menuItem}>
+              <View
+                style={[
+                  styles.menuIcon,
+                  user?.identityVerified ? styles.menuIconSuccess : styles.menuIconWarning,
+                ]}
+              >
+                <Ionicons
+                  name={user?.identityVerified ? 'checkmark-circle' : 'alert-circle'}
+                  size={20}
+                  color={user?.identityVerified ? Colors.success : Colors.warning}
                 />
               </View>
               <View style={styles.menuTextContainer}>
                 <Text style={styles.menuText}>
-                  {user?.identityVerified ? 'Identité vérifiée' : 'Vérifier mon identité'}
+                  {user?.status === 'active' ? 'Identité vérifiée' : 'Vérifier mon identité'}
                 </Text>
                 <Text style={styles.menuSubtext}>
-                  {user?.identityVerified 
-                    ? 'Votre identité a été vérifiée' 
+                  {user?.status === 'active'
+                    ? 'Vos documents ont été validés par l’équipe.'
                     : 'Requis pour publier et réserver des trajets'}
                 </Text>
               </View>
               {!user?.identityVerified && (
-                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                <TouchableOpacity onPress={() => setShowIdentityModal(true)}>
+                  <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                </TouchableOpacity>
               )}
-            </TouchableOpacity>
+            </View>
           </View>
-        </Animated.View>
+        </Animated.View> */}
 
         {/* Compte */}
         <Animated.View entering={FadeInDown.delay(100)} style={styles.section}>
@@ -315,6 +335,13 @@ export default function SettingsScreen() {
           />
         </SafeAreaView>
       </Modal>
+
+      <TutorialOverlay
+        visible={settingsGuideVisible}
+        title="Personnalisez votre expérience"
+        message="Activez vos notifications, contrôlez la confidentialité ou mettez à jour vos informations depuis cet écran."
+        onDismiss={dismissSettingsGuide}
+      />
     </SafeAreaView>
   );
 }

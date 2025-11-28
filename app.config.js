@@ -8,20 +8,22 @@ require('dotenv').config();
 
 module.exports = {
   expo: {
-    name: 'zwanga-app',
+    name: 'zwanga',
     slug: 'zwanga-app',
     version: '1.0.0',
     orientation: 'portrait',
     icon: './assets/images/icon.png',
-    scheme: 'zwangaapp',
+    scheme: 'zwanga',
     userInterfaceStyle: 'automatic',
     newArchEnabled: true,
+
     ios: {
       supportsTablet: true,
     },
+
     android: {
       googleServicesFile: './google-services.json',
-      package: 'com.zwanga.app',
+      package: 'com.zwanga',
       adaptiveIcon: {
         backgroundColor: '#E6F4FE',
         foregroundImage: './assets/images/android-icon-foreground.png',
@@ -31,10 +33,31 @@ module.exports = {
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
     },
+
     web: {
       output: 'static',
       favicon: './assets/images/favicon.png',
     },
+
+    // ✅ EXTRA — version fusionnée et corrigée
+    extra: {
+      // project ID pour EAS (obligatoire)
+      eas: {
+        projectId: "164a67a3-04b8-4c34-9616-576391669e76"
+      },
+
+      // variables publiques
+      EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL || 'https://api.zwanga.cd/v1',
+      EXPO_PUBLIC_ENV:
+        process.env.EXPO_PUBLIC_ENV ||
+        (process.env.NODE_ENV === 'production' ? 'production' : 'development'),
+
+      secureStoreKeys: {
+        access: process.env.EXPO_PUBLIC_SECURESTORE_ACCESS_KEY,
+        refresh: process.env.EXPO_PUBLIC_SECURESTORE_REFRESH_KEY,
+      }
+    },
+
     plugins: [
       'expo-router',
       'expo-notifications',
@@ -52,20 +75,10 @@ module.exports = {
       ],
       'expo-secure-store',
     ],
+
     experiments: {
       typedRoutes: true,
       reactCompiler: true,
-    },
-    // Variables d'environnement accessibles via Constants.expoConfig?.extra
-    extra: {
-      EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL || 'https://api.zwanga.cd/v1',
-      EXPO_PUBLIC_ENV:
-        process.env.EXPO_PUBLIC_ENV || (process.env.NODE_ENV === 'production' ? 'production' : 'development'),
-      secureStoreKeys: {
-        access: process.env.EXPO_PUBLIC_SECURESTORE_ACCESS_KEY || 'zwanga_accessToken',
-        refresh: process.env.EXPO_PUBLIC_SECURESTORE_REFRESH_KEY || 'zwanga_refreshToken',
-      },
-    },
+    }
   },
 };
-

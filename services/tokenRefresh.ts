@@ -17,6 +17,7 @@ let refreshPromise: Promise<string> | null = null;
  * @returns true si l'utilisateur est authentifié, false sinon
  */
 export async function validateAndRefreshTokens(): Promise<boolean> {
+
   try {
     const { accessToken, refreshToken } = await getTokens();
 
@@ -139,6 +140,8 @@ export async function getValidAccessToken(): Promise<string | null> {
     const { accessToken, refreshToken } = await getTokens();
 
     if (!accessToken || !refreshToken) {
+      await clearTokens();
+      getStoreDispatch()(logout());
       return null;
     }
 
@@ -162,33 +165,35 @@ export async function getValidAccessToken(): Promise<string | null> {
  */
 export async function handle401Error(): Promise<boolean> {
   console.log('Erreur 401 détectée, tentative de rafraîchissement...');
-  
-  const { refreshToken } = await getTokens();
+  const { accessToken, refreshToken } = await getTokens();
 
-  if (!refreshToken) {
-    console.log('Pas de refresh token disponible');
+  if (!accessToken && !refreshToken) {
+    console.log('Tokens manquants, déconnexion requise');
     await clearTokens();
     getStoreDispatch()(logout());
     return false;
   }
 
-  // Vérifier que le refresh token n'est pas expiré
-  if (isTokenExpired(refreshToken)) {
+  if (!accessToken || !isTokenExpired(accessToken)) {
+    console.log('Access token encore valide, pas de refresh');
+    return false;
+  }
+
+  if (!refreshToken || isTokenExpired(refreshToken)) {
     console.log('Refresh token expiré');
     await clearTokens();
     getStoreDispatch()(logout());
     return false;
   }
 
-  // Tenter de rafraîchir
   const newAccessToken = await refreshAccessToken(refreshToken);
-  
+
   if (newAccessToken) {
     console.log('Token rafraîchi après 401');
     return true;
-  } else {
-    console.log('Échec du rafraîchissement après 401');
-    return false;
   }
+
+  console.log('Échec du rafraîchissement après 401');
+  return false;
 }
 

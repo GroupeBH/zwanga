@@ -1,4 +1,5 @@
 import { IdentityVerification } from '@/components/IdentityVerification';
+import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useLoginMutation, useRegisterMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch } from '@/store/hooks';
@@ -6,17 +7,18 @@ import { setTokens, setUser } from '@/store/slices/authSlice';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
+  NativeSyntheticEvent,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TextInputKeyPressEventData,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -82,10 +84,12 @@ const vehicleOptions: VehicleOption[] = [
 export default function AuthScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
+  const { showDialog } = useDialog();
   const [mode, setMode] = useState<AuthMode>('login');
   const [step, setStep] = useState<AuthStep>('phone');
   const [phone, setPhone] = useState('');
   const [smsCode, setSmsCode] = useState(['', '', '', '', '', '']);
+  const smsInputRefs = useRef<Array<TextInput | null>>([]);
   const [fullName, setFullName] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -102,9 +106,72 @@ export default function AuthScreen() {
   const currentStepIndex = stepSequence.indexOf(step);
   const canGoBack = currentStepIndex > 0;
 
+  useEffect(() => {
+    if (step !== 'sms') {
+      return;
+    }
+    const timer = setTimeout(() => {
+      smsInputRefs.current[0]?.focus();
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [step]);
+
   const handlePreviousStep = () => {
     if (currentStepIndex > 0) {
       setStep(stepSequence[currentStepIndex - 1]);
+    }
+  };
+
+  const handleSmsInputChange = (value: string, index: number) => {
+    const sanitized = value.replace(/\D/g, '');
+    if (sanitized.length > 1) {
+      const digits = sanitized.split('');
+      const updated = [...smsCode];
+      let cursor = index;
+      digits.forEach((digit) => {
+        if (cursor <= updated.length - 1) {
+          updated[cursor] = digit;
+        }
+        cursor += 1;
+      });
+      setSmsCode(updated);
+      if (cursor <= updated.length - 1) {
+        smsInputRefs.current[cursor]?.focus();
+      } else {
+        smsInputRefs.current[updated.length - 1]?.blur();
+      }
+      return;
+    }
+
+    const nextCode = [...smsCode];
+    nextCode[index] = sanitized;
+    setSmsCode(nextCode);
+
+    if (sanitized && index < nextCode.length - 1) {
+      smsInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleSmsKeyPress = (
+    event: NativeSyntheticEvent<TextInputKeyPressEventData>,
+    index: number,
+  ) => {
+    if (event.nativeEvent.key !== 'Backspace') {
+      return;
+    }
+
+    if (smsCode[index]) {
+      const updated = [...smsCode];
+      updated[index] = '';
+      setSmsCode(updated);
+      return;
+    }
+
+    if (index > 0) {
+      smsInputRefs.current[index - 1]?.focus();
+      const updated = [...smsCode];
+      updated[index - 1] = '';
+      setSmsCode(updated);
     }
   };
 
@@ -263,50 +330,48 @@ export default function AuthScreen() {
         return;
       }
 
-      // Afficher le sélecteur d'image
-      Alert.alert(
-        'Photo de profil',
-        'Choisissez une source',
-        [
-          {
-            text: 'Caméra',
-            onPress: async () => {
-              const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
-              if (cameraStatus !== 'granted') {
-                showErrorModal('L\'accès à la caméra est nécessaire pour prendre une photo.', 'Permission requise');
-                return;
-              }
+      const openCamera = async () => {
+        const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
+        if (cameraStatus !== 'granted') {
+          showErrorModal('L\'accès à la caméra est nécessaire pour prendre une photo.', 'Permission requise');
+          return;
+        }
 
-              const result = await ImagePicker.launchCameraAsync({
-                mediaTypes: 'images',
-                allowsEditing: true,
-                aspect: [1, 1],
-                quality: 0.8,
-              });
+        const result = await ImagePicker.launchCameraAsync({
+          mediaTypes: 'images',
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        });
 
-              if (!result.canceled && result.assets[0]) {
-                setProfilePicture(result.assets[0].uri);
-              }
-            },
-          },
-          {
-            text: 'Galerie',
-            onPress: async () => {
-              const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: 'images',
-                allowsEditing: true,
-                aspect: [1, 1],
-                quality: 0.8,
-              });
+        if (!result.canceled && result.assets[0]) {
+          setProfilePicture(result.assets[0].uri);
+        }
+      };
 
-              if (!result.canceled && result.assets[0]) {
-                setProfilePicture(result.assets[0].uri);
-              }
-            },
-          },
-          { text: 'Annuler', style: 'cancel' },
-        ]
-      );
+      const openGallery = async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: 'images',
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        });
+
+        if (!result.canceled && result.assets[0]) {
+          setProfilePicture(result.assets[0].uri);
+        }
+      };
+
+      showDialog({
+        variant: 'info',
+        title: 'Photo de profil',
+        message: 'Choisissez comment ajouter votre photo de profil.',
+        actions: [
+          { label: 'Caméra', variant: 'primary', onPress: openCamera },
+          { label: 'Galerie', variant: 'secondary', onPress: openGallery },
+          { label: 'Annuler', variant: 'ghost' },
+        ],
+      });
     } catch (error) {
       console.error('Erreur lors de la sélection de l\'image:', error);
       showErrorModal('Impossible de sélectionner l\'image. Veuillez réessayer.');
@@ -526,16 +591,19 @@ export default function AuthScreen() {
             <View style={styles.smsCodeContainer}>
               {smsCode.map((digit, index) => (
                 <TextInput
-                  key={index}
+                  key={`sms-input-${index}`}
+                  ref={(ref) => {
+                    smsInputRefs.current[index] = ref;
+                  }}
                   style={styles.smsInput}
                   keyboardType="number-pad"
+                  returnKeyType="done"
                   maxLength={1}
                   value={digit}
-                  onChangeText={(text) => {
-                    const newCode = [...smsCode];
-                    newCode[index] = text;
-                    setSmsCode(newCode);
-                  }}
+                  onChangeText={(text) => handleSmsInputChange(text, index)}
+                  onKeyPress={(event) => handleSmsKeyPress(event, index)}
+                  selectTextOnFocus
+                  importantForAutofill="no"
                 />
               ))}
             </View>

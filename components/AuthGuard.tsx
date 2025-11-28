@@ -1,4 +1,5 @@
 import { Colors } from '@/constants/styles';
+import { useUpdateFcmTokenMutation } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
   selectAccessToken,
@@ -9,6 +10,7 @@ import {
 import { useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { obtainFcmToken, clearStoredFcmToken } from '@/services/pushNotifications';
 import { refreshAccessToken } from '@/services/tokenRefresh';
 import { isTokenExpired } from '@/utils/jwt';
 import { logout } from '@/store/slices/authSlice';
@@ -26,6 +28,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const isLoading = useAppSelector(selectIsLoading);
   const accessToken = useAppSelector(selectAccessToken);
   const refreshToken = useAppSelector(selectRefreshToken);
+  const [updateFcmTokenMutation] = useUpdateFcmTokenMutation();
   const inAuthGroup = segments[0] === 'auth';
 
   useEffect(() => {
@@ -91,6 +94,39 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       router.replace('/(tabs)');
     }
   }, [isAuthenticated, isLoading, segments, inAuthGroup, router]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncTokenWithBackend = async (token: string | null) => {
+      if (!token) {
+        return;
+      }
+      try {
+        await updateFcmTokenMutation({ fcmToken: token }).unwrap();
+      } catch (error) {
+        console.warn('Impossible d\'envoyer le token FCM au serveur:', error);
+      }
+    };
+
+    const registerPushToken = async () => {
+      if (!isAuthenticated) {
+        await clearStoredFcmToken();
+        return;
+      }
+
+      const token = await obtainFcmToken();
+      if (!cancelled) {
+        await syncTokenWithBackend(token);
+      }
+    };
+
+    registerPushToken();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, updateFcmTokenMutation]);
 
   // Afficher un loader pendant le chargement initial
   if (isLoading) {

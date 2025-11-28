@@ -6,9 +6,14 @@ import * as SecureStore from 'expo-secure-store';
  * Stocke de manière sécurisée les accessToken et refreshToken
  */
 
+type SecureStoreKeyConfig = {
+  access?: string;
+  refresh?: string;
+  fcm?: string;
+};
+
 const secureStoreKeys =
-  ((Constants.expoConfig?.extra as { secureStoreKeys?: { access?: string; refresh?: string } })?.secureStoreKeys ??
-    {});
+  ((Constants.expoConfig?.extra as { secureStoreKeys?: SecureStoreKeyConfig })?.secureStoreKeys ?? {});
 
 const sanitizeKey = (raw: string | undefined, fallback: string) => {
   const key = raw?.trim() || fallback;
@@ -19,6 +24,7 @@ const sanitizeKey = (raw: string | undefined, fallback: string) => {
 
 const ACCESS_TOKEN_KEY = sanitizeKey(secureStoreKeys.access, 'zwanga_accessToken');
 const REFRESH_TOKEN_KEY = sanitizeKey(secureStoreKeys.refresh, 'zwanga_refreshToken');
+const FCM_TOKEN_KEY = sanitizeKey(secureStoreKeys.fcm, 'zwanga_fcmToken');
 
 /**
  * Stocke l'access token de manière sécurisée
@@ -151,6 +157,43 @@ export async function clearTokens(): Promise<void> {
     ]);
   } catch (error) {
     console.error('Erreur lors de la suppression des tokens:', error);
+  }
+}
+
+/**
+ * Stocke le token FCM pour éviter les requêtes réseaux inutiles
+ */
+export async function storeFcmToken(token: string): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(FCM_TOKEN_KEY, token);
+  } catch (error) {
+    console.error('Erreur lors du stockage du token FCM:', error);
+  }
+}
+
+/**
+ * Récupère le token FCM sauvegardé
+ */
+export async function getStoredFcmToken(): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(FCM_TOKEN_KEY);
+  } catch (error: any) {
+    if (error?.message?.includes('Invalid key') || error?.message?.includes('not found')) {
+      return null;
+    }
+    console.error('Erreur lors de la récupération du token FCM:', error);
+    return null;
+  }
+}
+
+/**
+ * Supprime le token FCM sauvegardé
+ */
+export async function removeFcmToken(): Promise<void> {
+  try {
+    await SecureStore.deleteItemAsync(FCM_TOKEN_KEY);
+  } catch (error) {
+    console.error('Erreur lors de la suppression du token FCM:', error);
   }
 }
 

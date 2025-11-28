@@ -27,6 +27,11 @@
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
+    "extra": {
+      "eas": {
+        "projectId": "164a67a3-04b8-4c34-9616-576391669e76"
+      }
+    },
     "plugins": [
       "expo-router",
       "expo-notifications",

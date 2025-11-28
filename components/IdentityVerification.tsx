@@ -1,10 +1,11 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
+import { useDialog } from '@/components/ui/DialogProvider';
 
 type VerificationStep = 'idCard' | 'face' | 'completed';
 
@@ -21,15 +22,17 @@ export function IdentityVerification({ onComplete, onSkip, canSkip = true }: Ide
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [isProcessing, setIsProcessing] = useState(false);
   const cameraRef = useRef<CameraView>(null);
+  const { showDialog } = useDialog();
 
   const requestPermissions = async () => {
     if (!cameraPermission?.granted) {
       const { granted } = await requestCameraPermission();
       if (!granted) {
-        Alert.alert(
-          'Permission requise',
-          'L\'accès à la caméra est nécessaire pour scanner votre identité.'
-        );
+        showDialog({
+          variant: 'warning',
+          title: 'Permission requise',
+          message: 'L\'accès à la caméra est nécessaire pour scanner votre identité.',
+        });
         return false;
       }
     }
@@ -40,68 +43,78 @@ export function IdentityVerification({ onComplete, onSkip, canSkip = true }: Ide
     const hasPermission = await requestPermissions();
     if (!hasPermission) return;
 
-    Alert.alert(
-      'Scanner la carte d\'identité',
-      'Choisissez une méthode',
-      [
-        {
-          text: 'Prendre une photo',
-          onPress: async () => {
-            try {
-              const result = await ImagePicker.launchCameraAsync({
-                mediaTypes: 'images',
-                allowsEditing: true,
-                aspect: [3, 2],
-                quality: 0.8,
-              });
+    const captureCard = async () => {
+      try {
+        const result = await ImagePicker.launchCameraAsync({
+          mediaTypes: 'images',
+          allowsEditing: true,
+          aspect: [3, 2],
+          quality: 0.8,
+        });
 
-              if (!result.canceled && result.assets[0]) {
-                setIdCardImage(result.assets[0].uri);
-                // Simuler le traitement OCR (dans un vrai cas, envoyer au backend)
-                setIsProcessing(true);
-                setTimeout(() => {
-                  setIsProcessing(false);
-                  setStep('face');
-                }, 2000);
-              }
-            } catch (error) {
-              Alert.alert('Erreur', 'Impossible de prendre la photo');
-            }
-          },
-        },
-        {
-          text: 'Choisir depuis la galerie',
-          onPress: async () => {
-            try {
-              const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-              if (status !== 'granted') {
-                Alert.alert('Permission requise', 'L\'accès à la galerie est nécessaire');
-                return;
-              }
+        if (!result.canceled && result.assets[0]) {
+          setIdCardImage(result.assets[0].uri);
+          setIsProcessing(true);
+          setTimeout(() => {
+            setIsProcessing(false);
+            setStep('face');
+          }, 2000);
+        }
+      } catch (error) {
+        showDialog({
+          variant: 'danger',
+          title: 'Erreur',
+          message: 'Impossible de prendre la photo',
+        });
+      }
+    };
 
-              const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: 'images',
-                allowsEditing: true,
-                aspect: [3, 2],
-                quality: 0.8,
-              });
+    const pickFromGallery = async () => {
+      try {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          showDialog({
+            variant: 'warning',
+            title: 'Permission requise',
+            message: 'L\'accès à la galerie est nécessaire',
+          });
+          return;
+        }
 
-              if (!result.canceled && result.assets[0]) {
-                setIdCardImage(result.assets[0].uri);
-                setIsProcessing(true);
-                setTimeout(() => {
-                  setIsProcessing(false);
-                  setStep('face');
-                }, 2000);
-              }
-            } catch (error) {
-              Alert.alert('Erreur', 'Impossible de sélectionner l\'image');
-            }
-          },
-        },
-        { text: 'Annuler', style: 'cancel' },
-      ]
-    );
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: 'images',
+          allowsEditing: true,
+          aspect: [3, 2],
+          quality: 0.8,
+        });
+
+        if (!result.canceled && result.assets[0]) {
+          setIdCardImage(result.assets[0].uri);
+          setIsProcessing(true);
+          setTimeout(() => {
+            setIsProcessing(false);
+            setStep('face');
+          }, 2000);
+        }
+      } catch (error) {
+        showDialog({
+          variant: 'danger',
+          title: 'Erreur',
+          message: 'Impossible de sélectionner l’image',
+        });
+      }
+    };
+
+    showDialog({
+      variant: 'info',
+      title: 'Scanner la carte d\'identité',
+      message: 'Choisissez une méthode de capture',
+      actions: [
+        { label: 'Prendre une photo', variant: 'primary', onPress: captureCard },
+        { label: 'Choisir dans la galerie', variant: 'secondary', onPress: pickFromGallery },
+        { label: 'Annuler', variant: 'ghost' },
+      ],
+    });
   };
 
   const handleScanFace = async () => {
@@ -135,7 +148,11 @@ export function IdentityVerification({ onComplete, onSkip, canSkip = true }: Ide
         }, 2000);
       }
     } catch (error) {
-      Alert.alert('Erreur', 'Impossible de prendre la photo');
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: 'Impossible de prendre la photo',
+      });
     }
   };
 
