@@ -1,6 +1,7 @@
 {
   "cli": {
-    "appVersionSource": "local"
+    "appVersionSource": "local",
+    "version": ">= 10.0.0"
   },
   "build": {
     "dev": {
@@ -12,6 +13,7 @@
     },
     "production": {
       "distribution": "store",
+      "autoIncrement": true,
       "android": {
         "buildType": "app-bundle",
         "image": "latest"
