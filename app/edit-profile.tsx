@@ -44,7 +44,7 @@ export default function EditProfileScreen() {
       setFirstName(user.firstName ?? '');
       setLastName(user.lastName ?? '');
       setPhone(user.phone ?? '');
-      setWantsToBeDriver(Boolean(user.isDriver));
+      setWantsToBeDriver(user?.role === 'driver');
     }
   }, [user]);
 
@@ -65,7 +65,7 @@ export default function EditProfileScreen() {
       formData.append('lastName', lastName.trim());
       formData.append('phone', phone.trim());
       if (canBecomeDriver) {
-        formData.append('wantsToBeDriver', wantsToBeDriver ? 'true' : 'false');
+        formData.append('role', wantsToBeDriver ? 'driver' : 'passenger');
       }
       const updated = await updateUserMutation(formData).unwrap();
       dispatch(

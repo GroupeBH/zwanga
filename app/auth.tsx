@@ -611,10 +611,14 @@ export default function AuthScreen() {
             <TouchableOpacity
               style={[styles.button, smsCode.join('').length === 6 ? styles.buttonPrimary : styles.buttonDisabled]}
               onPress={handleSmsSubmit}
-              disabled={smsCode.join('').length !== 6}
+              disabled={smsCode.join('').length !== 6 || isLoggingIn}
             >
               <Text style={styles.buttonText}>
-                {mode === 'login' ? 'Se connecter' : 'Vérifier'}
+                {mode === 'login' ?
+                  isLoggingIn ? 
+                    <ActivityIndicator color={Colors.white} /> : 'Se connecter' :'Vérifier'
+                }
+                {}
               </Text>
             </TouchableOpacity>
 
