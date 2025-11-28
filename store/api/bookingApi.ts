@@ -49,7 +49,7 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
   cancelledAt: booking.cancelledAt ?? undefined,
   createdAt: booking.createdAt,
   updatedAt: booking.updatedAt,
-  trip: booking.trip ? mapServerTripToClient(booking.trip) : booking.trip,
+  trip: booking.trip ? mapServerTripToClient(booking.trip) : undefined,
 });
 
 export const bookingApi = baseApi.injectEndpoints({
