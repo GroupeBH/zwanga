@@ -33,6 +33,11 @@ module.exports = {
       },
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
+      // Explicitly block ACTIVITY_RECOGNITION permission
+      // We only use Accelerometer for device stability detection, not activity recognition
+      blockedPermissions: [
+        'android.permission.ACTIVITY_RECOGNITION',
+      ],
     },
 
     web: {
@@ -52,6 +57,7 @@ module.exports = {
       EXPO_PUBLIC_ENV:
         process.env.EXPO_PUBLIC_ENV ||
         (process.env.NODE_ENV === 'production' ? 'production' : 'development'),
+      EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
 
       secureStoreKeys: {
         access: process.env.EXPO_PUBLIC_SECURESTORE_ACCESS_KEY,
