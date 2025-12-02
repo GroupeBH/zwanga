@@ -1,28 +1,28 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  ActivityIndicator,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useAppSelector } from '@/store/hooks';
-import { selectTrips } from '@/store/selectors';
-import type { Trip } from '@/types';
-import {
-  TripSearchParams,
   TripSearchByPointsPayload,
+  TripSearchParams,
   useGetTripsQuery,
   useSearchTripsByCoordinatesMutation,
 } from '@/store/api/tripApi';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
+import { useAppSelector } from '@/store/hooks';
+import { selectTrips } from '@/store/selectors';
+import type { Trip } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
+import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type FilterType = 'all' | 'car' | 'moto' | 'tricycle';
 
@@ -322,7 +322,7 @@ export default function SearchScreen() {
           {filteredTrips.length} trajet{filteredTrips.length > 1 ? 's' : ''} trouvé{filteredTrips.length > 1 ? 's' : ''}
         </Text>
 
-        {filteredTrips.length === 0 ? (
+        {!isAdvancedSearching && filteredTrips.length === 0 ? (
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIcon}>
               <Ionicons name="search-outline" size={48} color={Colors.gray[500]} />

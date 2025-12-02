@@ -303,7 +303,7 @@ export default function ProfileScreen() {
   }, [isKycApproved, kycModalVisible]);
 
   const badges = [
-    ...(currentUser?.isDriver
+    ...(currentUser?.role === 'driver'
       ? [{ icon: 'car', color: Colors.primary, label: 'Conducteur' }]
       : []),
     ...(isKycApproved
