@@ -3,7 +3,7 @@ import { useAppSelector } from '@/store/hooks';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -70,7 +70,11 @@ export default function SplashScreen() {
       <View style={styles.glow} />
       <Animated.View style={[styles.logoContainer, logoStyle]}>
         <View style={styles.logoCircle}>
-          <Text style={styles.logoText}>Z</Text>
+          <Image 
+            source={require('@/assets/images/zwanga-transparent.png')} 
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
         </View>
         <Animated.Text style={[styles.title, titleStyle]}>ZWANGA</Animated.Text>
         <Animated.Text style={[styles.subtitle, titleStyle]}>
@@ -112,11 +116,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.xl,
+    padding: Spacing.md,
   },
-  logoText: {
-    fontSize: 60,
-    fontWeight: FontWeights.bold,
-    color: Colors.primary,
+  logoImage: {
+    width: '100%',
+    height: '100%',
   },
   title: {
     fontSize: FontSizes.xxxxl,
