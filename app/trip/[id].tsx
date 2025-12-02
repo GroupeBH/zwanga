@@ -16,6 +16,7 @@ import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
 import type { BookingStatus, GeoPoint } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
+import { getRouteCoordinates } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -151,6 +152,8 @@ export default function TripDetailsScreen() {
   const { shouldShow: shouldShowTripGuide, complete: completeTripGuide } =
     useTutorialGuide('trip_detail_screen');
   const [tripGuideVisible, setTripGuideVisible] = useState(false);
+  const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }> | null>(null);
+  const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const { data: driverReviews } = useGetReviewsQuery(trip?.driverId ?? '', {
     skip: !trip?.driverId,
   });
@@ -521,6 +524,24 @@ export default function TripDetailsScreen() {
     [trip.arrival.lat, trip.arrival.lng],
   );
 
+  // Load route coordinates when trip changes
+  useEffect(() => {
+    if (!trip) {
+      return;
+    }
+    setIsLoadingRoute(true);
+    getRouteCoordinates(departureCoordinate, arrivalCoordinate)
+      .then((coords) => {
+        setRouteCoordinates(coords);
+        setIsLoadingRoute(false);
+      })
+      .catch(() => {
+        // Fallback to straight line if route API fails
+        setRouteCoordinates([departureCoordinate, arrivalCoordinate]);
+        setIsLoadingRoute(false);
+      });
+  }, [departureCoordinate, arrivalCoordinate, trip?.id]);
+
   const mapRegion = useMemo(() => {
     const latitudeCenter = (departureCoordinate.latitude + arrivalCoordinate.latitude) / 2;
     const longitudeCenter = (departureCoordinate.longitude + arrivalCoordinate.longitude) / 2;
@@ -586,13 +607,23 @@ export default function TripDetailsScreen() {
               pitchEnabled={false}
               rotateEnabled={false}
             >
-              <Polyline
-                coordinates={[departureCoordinate, arrivalCoordinate]}
-                strokeColor={Colors.primary}
-                strokeWidth={4}
-                lineCap="round"
-                lineDashPattern={[1]}
-              />
+              {routeCoordinates && routeCoordinates.length > 0 ? (
+                <Polyline
+                  coordinates={routeCoordinates}
+                  strokeColor={Colors.primary}
+                  strokeWidth={4}
+                  lineCap="round"
+                  lineJoin="round"
+                />
+              ) : (
+                <Polyline
+                  coordinates={[departureCoordinate, arrivalCoordinate]}
+                  strokeColor={Colors.primary}
+                  strokeWidth={4}
+                  lineCap="round"
+                  lineDashPattern={[1]}
+                />
+              )}
 
               <Marker coordinate={departureCoordinate} title="Départ" description={trip.departure.name}>
                 <View style={styles.markerStartCircle}>
@@ -633,12 +664,22 @@ export default function TripDetailsScreen() {
           <View style={styles.mapModalOverlay}>
             <View style={styles.mapModalContent}>
               <MapView style={styles.fullscreenMap} initialRegion={mapRegion}>
-                <Polyline
-                  coordinates={[departureCoordinate, arrivalCoordinate]}
-                  strokeColor={Colors.primary}
-                  strokeWidth={5}
-                  lineCap="round"
-                />
+                {routeCoordinates && routeCoordinates.length > 0 ? (
+                  <Polyline
+                    coordinates={routeCoordinates}
+                    strokeColor={Colors.primary}
+                    strokeWidth={5}
+                    lineCap="round"
+                    lineJoin="round"
+                  />
+                ) : (
+                  <Polyline
+                    coordinates={[departureCoordinate, arrivalCoordinate]}
+                    strokeColor={Colors.primary}
+                    strokeWidth={5}
+                    lineCap="round"
+                  />
+                )}
 
                 <Marker coordinate={departureCoordinate} title="Départ" description={trip.departure.address}>
                   <View style={styles.markerStartCircle}>

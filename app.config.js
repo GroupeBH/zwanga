@@ -12,7 +12,7 @@ module.exports = {
     slug: 'zwanga-app',
     version: '1.0.1',
     orientation: 'portrait',
-    icon: './assets/images/icon.png',
+    icon: './assets/images/zwanga.png',
     scheme: 'zwanga',
     userInterfaceStyle: 'automatic',
     newArchEnabled: true,
@@ -24,14 +24,20 @@ module.exports = {
     android: {
       googleServicesFile: './google-services.json',
       package: 'com.zwanga',
+      versionCode: 3,
       adaptiveIcon: {
         backgroundColor: '#E6F4FE',
-        foregroundImage: './assets/images/android-icon-foreground.png',
+        foregroundImage: './assets/images/zwanga-adaptative.png',
         backgroundImage: './assets/images/android-icon-background.png',
         monochromeImage: './assets/images/android-icon-monochrome.png',
       },
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
+      // Explicitly block ACTIVITY_RECOGNITION permission
+      // We only use Accelerometer for device stability detection, not activity recognition
+      blockedPermissions: [
+        'android.permission.ACTIVITY_RECOGNITION',
+      ],
     },
 
     web: {
@@ -47,10 +53,11 @@ module.exports = {
       },
 
       // variables publiques
-      EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL || 'https://api.zwanga.cd/v1',
+      EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
       EXPO_PUBLIC_ENV:
         process.env.EXPO_PUBLIC_ENV ||
         (process.env.NODE_ENV === 'production' ? 'production' : 'development'),
+      EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
 
       secureStoreKeys: {
         access: process.env.EXPO_PUBLIC_SECURESTORE_ACCESS_KEY,
@@ -64,7 +71,7 @@ module.exports = {
       [
         'expo-splash-screen',
         {
-          image: './assets/images/splash-icon.png',
+          image: './assets/images/zwanga2000.png',
           imageWidth: 200,
           resizeMode: 'contain',
           backgroundColor: '#ffffff',
