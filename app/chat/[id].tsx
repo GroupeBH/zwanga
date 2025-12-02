@@ -412,6 +412,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     paddingLeft: Spacing.xl,
     paddingRight: Spacing.xs,
+    backgroundColor: Colors.primary,
   },
   messageRowOther: {
     justifyContent: 'flex-start',
