@@ -1,3 +1,4 @@
+import notifee from '@notifee/react-native';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
@@ -26,6 +27,15 @@ export async function ensureAndroidChannel(): Promise<void> {
     return;
   }
 
+  // Créer le canal avec Notifee pour les notifications en background
+  await notifee.createChannel({
+    id: DEFAULT_CHANNEL_ID,
+    name: 'Notifications Zwanga',
+    importance: 4, // AndroidImportance.HIGH
+    vibration: true,
+  });
+
+  // Créer aussi le canal avec expo-notifications pour compatibilité
   await Notifications.setNotificationChannelAsync(DEFAULT_CHANNEL_ID, {
     name: 'Notifications Zwanga',
     importance: Notifications.AndroidImportance.MAX,
@@ -37,9 +47,12 @@ export async function ensureAndroidChannel(): Promise<void> {
 async function getExpoProjectId(): Promise<string | undefined> {
   const expoConfig: any = Constants.expoConfig ?? Constants.manifest2?.extra;
   return (
-    expoConfig?.extra?.eas?.projectId ??
-    expoConfig?.projectId ??
-    Constants.manifest?.extra?.eas?.projectId
+    // Try multiple fallbacks, handling types that may lack "extra"
+    (
+      (expoConfig?.extra && expoConfig.extra.eas?.projectId) ??
+      expoConfig?.projectId ??
+      (Constants.manifest && (Constants.manifest as any).extra?.eas?.projectId)
+    )
   );
 }
 
@@ -96,5 +109,87 @@ export function subscribeToFcmRefresh(): (() => void) | undefined {
 
 export async function clearStoredFcmToken(): Promise<void> {
   await removeFcmToken();
+}
+
+/**
+ * Affiche une notification avec Notifee (fonctionne en background)
+ */
+export async function displayNotification(
+  title: string,
+  body: string,
+  data?: Record<string, any>,
+): Promise<string | null> {
+  try {
+    await ensureAndroidChannel();
+
+    // Notifee utilise une structure différente pour les données
+    const notificationData: any = {
+      title,
+      body,
+      android: {
+        channelId: DEFAULT_CHANNEL_ID,
+        pressAction: {
+          id: 'default',
+        },
+      },
+      ios: {
+        sound: 'default',
+      },
+    };
+
+    // Ajouter les données personnalisées si disponibles
+    if (data && Object.keys(data).length > 0) {
+      // Les données peuvent être passées via les propriétés de la notification
+      // ou stockées séparément pour être récupérées lors du clic
+      notificationData.data = data;
+    }
+
+    const notificationId = await notifee.displayNotification(notificationData);
+
+    return notificationId;
+  } catch (error) {
+    console.warn('Erreur lors de l\'affichage de la notification:', error);
+    return null;
+  }
+}
+
+/**
+ * Configure les handlers de notifications en foreground avec Notifee
+ * Cette fonction doit être appelée au démarrage de l'application
+ * Note: onBackgroundEvent doit être appelé au niveau racine (dans NotificationHandler.tsx)
+ */
+export function setupForegroundNotificationHandlers(
+  onNotificationPress?: (data: Record<string, any>) => void,
+): () => void {
+  // Handler pour les notifications reçues quand l'app est en foreground
+  // Note: onForegroundEvent n'existe pas dans certaines versions de Notifee
+  // On utilisera expo-notifications pour les notifications en foreground
+  // et Notifee pour les afficher et gérer les clics
+  
+  // Retourner une fonction de nettoyage (vide pour l'instant)
+  return () => {
+    // Nettoyage si nécessaire
+  };
+}
+
+/**
+ * Traite une notification FCM reçue et l'affiche avec Notifee
+ * Cette fonction doit être appelée quand une notification est reçue depuis FCM
+ */
+export async function handleIncomingNotification(
+  notification: Notifications.Notification,
+): Promise<void> {
+  try {
+    const { title, body, data } = notification.request.content;
+
+    // Afficher la notification avec Notifee (fonctionne même en background)
+    await displayNotification(
+      title || 'Zwanga',
+      body || '',
+      data as Record<string, any>,
+    );
+  } catch (error) {
+    console.warn('Erreur lors du traitement de la notification entrante:', error);
+  }
 }
 
