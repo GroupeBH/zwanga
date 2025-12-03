@@ -1,6 +1,7 @@
 import { TutorialOverlay } from '@/components/TutorialOverlay';
-import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { TripSearchParams, useLazyGetTripsQuery } from '@/store/api/tripApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -16,8 +17,9 @@ import { setRadiusKm, setSearchMode, setSearchQuery, setVehicleFilter, TripSearc
 import { setTrips } from '@/store/slices/tripsSlice';
 import { formatTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
+import Mapbox from '@rnmapbox/maps';
+import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
-import { useTutorialGuide } from '@/contexts/TutorialContext';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -30,10 +32,17 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type LatLng = { latitude: number; longitude: number };
+
+// Initialize Mapbox with access token from config
+const mapboxToken = 
+  Constants.expoConfig?.extra?.MAPBOX_TOKEN ||
+  process.env.MAPBOX_TOKEN;
+if (mapboxToken) {
+  Mapbox.setAccessToken(mapboxToken);
+}
 
 const toRadians = (value: number) => (value * Math.PI) / 180;
 
@@ -83,42 +92,57 @@ export default function MapScreen() {
     completeMapGuide();
   };
 
-  const initialRegion = useMemo(() => {
+  const initialCamera = useMemo(() => {
     if (userCoords) {
       return {
-        latitude: userCoords.latitude,
-        longitude: userCoords.longitude,
-        latitudeDelta: 0.2,
-        longitudeDelta: 0.2,
+        centerCoordinate: [userCoords.longitude, userCoords.latitude] as [number, number],
+        zoomLevel: 12,
       };
     }
 
     if (trips.length > 0 && trips[0].departure?.lat && trips[0].departure?.lng) {
       return {
-        latitude: trips[0].departure.lat,
-        longitude: trips[0].departure.lng,
-        latitudeDelta: 1,
-        longitudeDelta: 1,
+        centerCoordinate: [trips[0].departure.lng, trips[0].departure.lat] as [number, number],
+        zoomLevel: 10,
       };
     }
 
     return {
-      latitude: -4.441931,
-      longitude: 15.266293,
-      latitudeDelta: 2,
-      longitudeDelta: 2,
+      centerCoordinate: [15.266293, -4.441931] as [number, number],
+      zoomLevel: 9,
     };
   }, [userCoords, trips]);
 
-  const renderPolyline = (tripId: string, color: string, coordinates: { latitude: number; longitude: number }[]) =>
-    coordinates.length >= 2 ? (
-      <Polyline
+  const renderPolyline = (tripId: string, color: string, coordinates: { latitude: number; longitude: number }[]) => {
+    if (coordinates.length < 2) return null;
+    
+    const lineCoordinates = coordinates.map(coord => [coord.longitude, coord.latitude] as [number, number]);
+    
+    return (
+      <Mapbox.ShapeSource
         key={`${tripId}-polyline`}
-        coordinates={coordinates}
-        strokeWidth={3}
-        strokeColor={color}
-      />
-    ) : null;
+        id={`${tripId}-route`}
+        shape={{
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: lineCoordinates,
+          },
+        }}
+      >
+        <Mapbox.LineLayer
+          id={`${tripId}-route-line`}
+          style={{
+            lineColor: color,
+            lineWidth: 3,
+            lineCap: 'round',
+            lineJoin: 'round',
+          }}
+        />
+      </Mapbox.ShapeSource>
+    );
+  };
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
@@ -204,13 +228,24 @@ export default function MapScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <MapView
+      <Mapbox.MapView
         style={styles.map}
-        provider={PROVIDER_GOOGLE}
-        showsCompass={false}
-        showsUserLocation={!!userCoords}
-        initialRegion={initialRegion}
+        styleURL={Mapbox.StyleURL.Street}
+        compassEnabled={false}
       >
+        <Mapbox.Camera
+          defaultSettings={{
+            centerCoordinate: initialCamera.centerCoordinate,
+            zoomLevel: initialCamera.zoomLevel,
+          }}
+          animationMode="flyTo"
+          animationDuration={0}
+        />
+        
+        {userCoords && (
+          <Mapbox.UserLocation visible={true} />
+        )}
+
         {trips.map((trip) => {
           const departureCoords =
             trip.departure?.lat && trip.departure?.lng
@@ -241,23 +276,32 @@ export default function MapScreen() {
           return (
             <React.Fragment key={trip.id}>
               {departureCoords && (
-                <Marker
-                  coordinate={departureCoords}
+                <Mapbox.PointAnnotation
+                  id={`departure-${trip.id}`}
+                  coordinate={[departureCoords.longitude, departureCoords.latitude]}
                   anchor={{ x: 0.5, y: 1 }}
-                  onCalloutPress={() => router.push(`/trip/${trip.id}`)}
                 >
-                  <View style={styles.driverMarkerWrapper}>
-                    <View style={styles.driverMarker}>
-                      {trip.driverAvatar ? (
-                        <Image source={{ uri: trip.driverAvatar }} style={styles.driverMarkerImage} />
-                      ) : (
-                        <Text style={styles.driverMarkerInitials}>{driverInitials}</Text>
-                      )}
+                  <TouchableOpacity
+                    onPress={() => router.push(`/trip/${trip.id}`)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.driverMarkerWrapper}>
+                      <View style={styles.driverMarker}>
+                        {trip.driverAvatar ? (
+                          <Image source={{ uri: trip.driverAvatar }} style={styles.driverMarkerImage} />
+                        ) : (
+                          <Text style={styles.driverMarkerInitials}>{driverInitials}</Text>
+                        )}
+                      </View>
+                      <View style={styles.driverMarkerHalo} />
                     </View>
-                    <View style={styles.driverMarkerHalo} />
-                  </View>
-                  <Callout tooltip onPress={() => router.push(`/trip/${trip.id}`)}>
-                    <View style={styles.calloutCard}>
+                  </TouchableOpacity>
+                  <Mapbox.Callout title={trip.driverName}>
+                    <TouchableOpacity
+                      style={styles.calloutCard}
+                      onPress={() => router.push(`/trip/${trip.id}`)}
+                      activeOpacity={0.8}
+                    >
                       <Text style={styles.calloutTitle}>{trip.driverName}</Text>
                       <Text style={styles.calloutSubtitle}>
                         {trip.departure.name} ➜ {trip.arrival.name}
@@ -281,16 +325,25 @@ export default function MapScreen() {
                           <Ionicons name="chevron-forward" size={14} color={Colors.white} />
                         </View>
                       </View>
-                    </View>
-                  </Callout>
-                </Marker>
+                    </TouchableOpacity>
+                  </Mapbox.Callout>
+                </Mapbox.PointAnnotation>
               )}
               {arrivalCoords && (
-                <Marker
-                  coordinate={arrivalCoords}
-                  title={`Arrivée: ${trip.arrival.name}`}
-                  pinColor={Colors.secondary}
-                />
+                <Mapbox.PointAnnotation
+                  id={`arrival-${trip.id}`}
+                  coordinate={[arrivalCoords.longitude, arrivalCoords.latitude]}
+                >
+                  <View
+                    style={[
+                      styles.arrivalMarker,
+                      { backgroundColor: Colors.secondary },
+                    ]}
+                  >
+                    <Ionicons name="navigate" size={16} color={Colors.white} />
+                  </View>
+                  <Mapbox.Callout title={`Arrivée: ${trip.arrival.name}`} />
+                </Mapbox.PointAnnotation>
               )}
               {departureCoords &&
                 arrivalCoords &&
@@ -298,7 +351,7 @@ export default function MapScreen() {
             </React.Fragment>
           );
         })}
-      </MapView>
+      </Mapbox.MapView>
 
       <View pointerEvents="box-none" style={styles.topOverlay}>
         <View style={styles.searchCard}>
@@ -698,6 +751,15 @@ const styles = StyleSheet.create({
     height: 64,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.primary + '33',
+  },
+  arrivalMarker: {
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.white,
   },
   calloutCard: {
     width: 220,

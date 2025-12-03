@@ -7,66 +7,29 @@ import Constants from 'expo-constants';
 type LatLng = { latitude: number; longitude: number };
 
 /**
- * Decode Google Maps encoded polyline string to coordinates
- * @param encoded - Encoded polyline string from Google Directions API
- * @returns Array of coordinates
- */
-function decodePolyline(encoded: string): LatLng[] {
-  const poly: LatLng[] = [];
-  let index = 0;
-  const len = encoded.length;
-  let lat = 0;
-  let lng = 0;
-
-  while (index < len) {
-    let b: number;
-    let shift = 0;
-    let result = 0;
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-    const dlat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
-    lat += dlat;
-
-    shift = 0;
-    result = 0;
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-    const dlng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
-    lng += dlng;
-
-    poly.push({ latitude: lat * 1e-5, longitude: lng * 1e-5 });
-  }
-  return poly;
-}
-
-/**
- * Get route coordinates between two points using Google Directions API
- * Falls back to straight line if API fails or key is not configured
+ * Get route coordinates between two points using Mapbox Directions API
+ * Falls back to straight line if API fails or token is not configured
  */
 export async function getRouteCoordinates(
   origin: LatLng,
   destination: LatLng,
 ): Promise<LatLng[]> {
   try {
-    // Get API key from environment variables
+    // Get Mapbox access token from environment variables
     const extra = Constants.expoConfig?.extra || {};
-    const apiKey = 
-      extra.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || 
-      process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+    const accessToken = 
+      extra.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || 
+      process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
 
-    if (!apiKey) {
-      console.warn('Google Maps API key not configured. Using straight line.');
+    if (!accessToken) {
+      console.warn('Mapbox access token not configured. Using straight line.');
       return [origin, destination];
     }
 
-    // Use Google Directions API
-    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&key=${apiKey}`;
+    // Mapbox Directions API v5
+    // Format: [longitude, latitude] for coordinates
+    const coordinates = `${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}`;
+    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordinates}?geometries=geojson&access_token=${accessToken}`;
     
     const response = await fetch(url, {
       method: 'GET',
@@ -76,23 +39,26 @@ export async function getRouteCoordinates(
     });
 
     if (!response.ok) {
-      throw new Error(`Directions API failed: ${response.status}`);
+      throw new Error(`Mapbox Directions API failed: ${response.status}`);
     }
 
     const data = await response.json();
 
-    if (data.status === 'OK' && data.routes?.[0]?.overview_polyline?.points) {
-      // Decode the polyline
-      const encodedPolyline = data.routes[0].overview_polyline.points;
-      return decodePolyline(encodedPolyline);
+    if (data.code === 'Ok' && data.routes?.[0]?.geometry?.coordinates) {
+      // Mapbox returns coordinates as [longitude, latitude] arrays
+      const coordinates = data.routes[0].geometry.coordinates as [number, number][];
+      return coordinates.map(([lng, lat]) => ({
+        latitude: lat,
+        longitude: lng,
+      }));
     }
 
-    if (data.status === 'ZERO_RESULTS') {
+    if (data.code === 'NoRoute') {
       console.warn('No route found between points. Using straight line.');
       return [origin, destination];
     }
 
-    throw new Error(`Directions API error: ${data.status} - ${data.error_message || 'Unknown error'}`);
+    throw new Error(`Mapbox Directions API error: ${data.code} - ${data.message || 'Unknown error'}`);
   } catch (error) {
     console.warn('Failed to fetch route, using straight line:', error);
     // Fallback to straight line
