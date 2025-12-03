@@ -15,7 +15,7 @@ module.exports = {
     icon: './assets/images/zwanga.png',
     scheme: 'zwanga',
     userInterfaceStyle: 'automatic',
-    newArchEnabled: true,
+    newArchEnabled: false,
 
     ios: {
       supportsTablet: true,
