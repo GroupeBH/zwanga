@@ -2,9 +2,9 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import {
-    useAcceptBookingMutation,
-    useGetTripBookingsQuery,
-    useRejectBookingMutation,
+  useAcceptBookingMutation,
+  useGetTripBookingsQuery,
+  useRejectBookingMutation,
 } from '@/store/api/bookingApi';
 import { useGetTripByIdQuery, useUpdateTripMutation } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
@@ -13,20 +13,20 @@ import type { Booking, BookingStatus } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
 import { getRouteCoordinates } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
+import Mapbox from '@rnmapbox/maps';
+import Constants from 'expo-constants';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
-import Mapbox from '@rnmapbox/maps';
-import Constants from 'expo-constants';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -95,7 +95,7 @@ export default function ManageTripScreen() {
   const [rejectBooking, { isLoading: isRejecting }] = useRejectBookingMutation();
   const [updateTrip, { isLoading: isCancellingTrip }] = useUpdateTripMutation();
 
-  console.log("this bookings", bookings);
+  // console.log("this bookings", bookings);
 
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
