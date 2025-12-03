@@ -1,12 +1,14 @@
 # Configuration Google Maps API pour le routage
 
+> **Note** : Cette configuration est actuellement **en retrait**. Le projet utilise **Mapbox Directions API** pour le routage. Consultez `MAPBOX_DIRECTIONS_SETUP.md` pour la configuration actuelle.
+
 ## Problème
 
 `react-native-maps` (Expo Maps) ne fournit **pas** d'API de routage intégrée. Il faut utiliser une API externe pour calculer les trajets réels.
 
-## Solution : Google Directions API
+## Solution : Google Directions API (En retrait)
 
-Nous utilisons **Google Directions API** pour obtenir les coordonnées du trajet réel entre deux points.
+Nous utilisons actuellement **Mapbox Directions API**. Google Directions API peut être activé plus tard si nécessaire.
 
 ## Configuration
 

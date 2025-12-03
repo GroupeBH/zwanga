@@ -57,7 +57,10 @@ module.exports = {
       EXPO_PUBLIC_ENV:
         process.env.EXPO_PUBLIC_ENV ||
         (process.env.NODE_ENV === 'production' ? 'production' : 'development'),
-      EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
+      // Mapbox access token for routing
+      EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN,
+      // Google Maps API key (désactivé pour le moment, en attente de configuration)
+      // EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
 
       secureStoreKeys: {
         access: process.env.EXPO_PUBLIC_SECURESTORE_ACCESS_KEY,
@@ -68,6 +71,18 @@ module.exports = {
     plugins: [
       'expo-router',
       'expo-notifications',
+      [
+        '@rnmapbox/maps',
+        {
+          RNMapboxMapsImpl: 'mapbox',
+          android: {
+            accessToken: process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN,
+          },
+          ios: {
+            accessToken: process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN,
+          }
+        }
+      ],
       [
         'expo-splash-screen',
         {

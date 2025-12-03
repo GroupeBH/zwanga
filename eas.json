@@ -8,7 +8,8 @@
       "developmentClient": true,
       "distribution": "internal",
       "android": {
-        "image": "ubuntu-18.04-jdk-11-ndk-r19c"
+         "buildType": "app-bundle",
+        "image": "latest"
       }
     },
     "production": {
