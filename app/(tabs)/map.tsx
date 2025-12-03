@@ -38,8 +38,8 @@ type LatLng = { latitude: number; longitude: number };
 
 // Initialize Mapbox with access token from config
 const mapboxToken = 
-  Constants.expoConfig?.extra?.MAPBOX_TOKEN ||
-  process.env.MAPBOX_TOKEN;
+  Constants.expoConfig?.extra?.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ||
+  process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
 if (mapboxToken) {
   Mapbox.setAccessToken(mapboxToken);
 }
