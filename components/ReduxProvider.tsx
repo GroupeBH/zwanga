@@ -8,6 +8,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Provider } from 'react-redux';
 import { AuthGuard } from './AuthGuard';
+import { NotificationHandler } from './NotificationHandler';
 
 interface ReduxProviderProps {
   children: React.ReactNode;
@@ -43,6 +44,7 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
 
   return (
     <Provider store={store}>
+      <NotificationHandler />
       <AuthGuard>
         <DialogProvider>
           <TutorialProvider>

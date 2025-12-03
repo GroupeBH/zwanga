@@ -1,3 +1,8 @@
+import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { Ionicons } from '@expo/vector-icons';
+import Mapbox from '@rnmapbox/maps';
+import Constants from 'expo-constants';
+import * as Location from 'expo-location';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -9,10 +14,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
-import * as Location from 'expo-location';
-import { Ionicons } from '@expo/vector-icons';
-import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+
+// Initialize Mapbox with access token from config
+const mapboxToken = 
+  Constants.expoConfig?.extra?.MAPBOX_TOKEN ||
+  process.env.MAPBOX_TOKEN;
+if (mapboxToken) {
+  Mapbox.setAccessToken(mapboxToken);
+}
 
 export type MapLocationSelection = {
   title: string;
@@ -31,26 +40,34 @@ type LocationPickerModalProps = {
 
 type SearchResult = MapLocationSelection;
 
-const DEFAULT_REGION: Region = {
-  latitude: -4.441931,
-  longitude: 15.266293,
-  latitudeDelta: 0.25,
-  longitudeDelta: 0.25,
+const DEFAULT_CAMERA = {
+  centerCoordinate: [15.266293, -4.441931] as [number, number],
+  zoomLevel: 11,
 };
 
 function formatAddressFromGeocode(
   data?: Partial<Location.LocationGeocodedAddress> | Location.LocationGeocodedLocation,
 ) {
   if (!data) return '';
-  const streetLine = [data.streetNumber, data.street].filter(Boolean).join(' ').trim();
+  
+  // Check if it's LocationGeocodedAddress (has address fields) or LocationGeocodedLocation (only coordinates)
+  const isAddress = 'street' in data || 'streetNumber' in data || 'city' in data;
+  
+  if (!isAddress) {
+    // It's LocationGeocodedLocation, return empty or coordinates
+    return '';
+  }
+  
+  // It's LocationGeocodedAddress, format the address
+  const addressData = data as Partial<Location.LocationGeocodedAddress>;
+  const streetLine = [addressData.streetNumber, addressData.street].filter(Boolean).join(' ').trim();
   const parts = [
-    // @ts-expect-error - some platforms expose name/featureName fields
-    (data as any)?.name,
+    (addressData as any)?.name,
     streetLine,
-    data.district,
-    data.city || data.subregion,
-    data.region,
-    data.country,
+    addressData.district,
+    addressData.city || addressData.subregion,
+    addressData.region,
+    addressData.country,
   ]
     .map((value) => value?.toString().trim())
     .filter(Boolean);
@@ -79,11 +96,12 @@ export default function LocationPickerModal({
   title = 'Choisir un lieu',
   initialLocation,
 }: LocationPickerModalProps) {
-  const mapRef = useRef<MapView | null>(null);
+  const mapRef = useRef<Mapbox.MapView | null>(null);
+  const cameraRef = useRef<Mapbox.Camera | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [region, setRegion] = useState<Region>(DEFAULT_REGION);
+  const [camera, setCamera] = useState(DEFAULT_CAMERA);
   const [selectedLocation, setSelectedLocation] = useState<MapLocationSelection | null>(
     initialLocation ?? null,
   );
@@ -115,14 +133,16 @@ export default function LocationPickerModal({
   }, [initialLocation, visible]);
 
   const animateToCoordinate = (latitude: number, longitude: number) => {
-    const nextRegion: Region = {
-      latitude,
-      longitude,
-      latitudeDelta: 0.05,
-      longitudeDelta: 0.05,
+    const nextCamera = {
+      centerCoordinate: [longitude, latitude] as [number, number],
+      zoomLevel: 14,
     };
-    setRegion(nextRegion);
-    mapRef.current?.animateToRegion(nextRegion, 350);
+    setCamera(nextCamera);
+    cameraRef.current?.setCamera({
+      centerCoordinate: nextCamera.centerCoordinate,
+      zoomLevel: nextCamera.zoomLevel,
+      animationDuration: 350,
+    });
   };
 
   const requestUserLocation = async () => {
@@ -157,12 +177,14 @@ export default function LocationPickerModal({
   };
 
   const handleMapPress = async (event: any) => {
-    const coordinate = event.nativeEvent.coordinate;
+    // Mapbox returns coordinates as [longitude, latitude]
+    const [longitude, latitude] = event.geometry.coordinates;
+    const coordinate = { latitude, longitude };
     setSelectedLocation({
       title: 'Point sélectionné',
-      address: 'Détermination de l’adresse…',
-      latitude: coordinate.latitude,
-      longitude: coordinate.longitude,
+      address: 'Détermination de l\'adresse…',
+      latitude,
+      longitude,
     });
     try {
       const [address] = await Location.reverseGeocodeAsync(coordinate);
@@ -187,7 +209,12 @@ export default function LocationPickerModal({
       }
       const mappedResults: SearchResult[] = results.slice(0, 5).map((result, index) => {
         const fallbackTitle = query || `Résultat ${index + 1}`;
-        const title = result.name || result.street || result.city || fallbackTitle;
+        // Try to extract title fields if they exist, otherwise use fallback
+        const title =
+          (typeof result === 'object' && result !== null && 'name' in result && typeof (result as any).name === 'string' && (result as any).name) ||
+          (typeof result === 'object' && result !== null && 'street' in result && typeof (result as any).street === 'string' && (result as any).street) ||
+          (typeof result === 'object' && result !== null && 'city' in result && typeof (result as any).city === 'string' && (result as any).city) ||
+          fallbackTitle;
         const address = formatAddressFromGeocode(result) || fallbackTitle;
         return {
           title,
@@ -288,25 +315,35 @@ export default function LocationPickerModal({
           </View>
         )}
 
-        <MapView
+        <Mapbox.MapView
           ref={mapRef}
-          provider={PROVIDER_GOOGLE}
           style={styles.map}
-          initialRegion={region}
-          region={region}
-          onRegionChangeComplete={setRegion}
+          styleURL={Mapbox.StyleURL.Street}
           onPress={handleMapPress}
         >
+          <Mapbox.Camera
+            ref={cameraRef}
+            defaultSettings={camera}
+            animationMode="flyTo"
+            animationDuration={0}
+          />
+          
           {selectedLocation && (
-            <Marker
-              coordinate={{
-                latitude: selectedLocation.latitude,
-                longitude: selectedLocation.longitude,
-              }}
-              pinColor={Colors.primary}
-            />
+            <Mapbox.PointAnnotation
+              id="selected-location"
+              coordinate={[selectedLocation.longitude, selectedLocation.latitude]}
+            >
+              <View
+                style={[
+                  styles.selectedMarker,
+                  { backgroundColor: Colors.primary },
+                ]}
+              >
+                <Ionicons name="pin" size={20} color={Colors.white} />
+              </View>
+            </Mapbox.PointAnnotation>
           )}
-        </MapView>
+        </Mapbox.MapView>
 
         <View style={styles.locationDetails}>
           <Ionicons name="pin" size={20} color={Colors.primary} />
@@ -438,6 +475,19 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
     marginTop: Spacing.md,
+  },
+  selectedMarker: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: Colors.white,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
   locationDetails: {
     flexDirection: 'row',

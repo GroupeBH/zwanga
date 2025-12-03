@@ -11,9 +11,10 @@ import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
+import { getRouteCoordinates } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
     Modal,
@@ -24,8 +25,18 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import Mapbox from '@rnmapbox/maps';
+import Constants from 'expo-constants';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+// Initialize Mapbox with access token from config
+const mapboxToken = 
+  Constants.expoConfig?.extra?.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ||
+  process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
+if (mapboxToken) {
+  Mapbox.setAccessToken(mapboxToken);
+}
 
 type FeedbackState = { type: 'success' | 'error'; message: string } | null;
 
@@ -92,11 +103,73 @@ export default function ManageTripScreen() {
   const [rejectError, setRejectError] = useState('');
   const [targetBooking, setTargetBooking] = useState<Booking | null>(null);
   const [processingBookingId, setProcessingBookingId] = useState<string | null>(null);
+  const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }> | null>(null);
+  const [isLoadingRoute, setIsLoadingRoute] = useState(false);
+  const [mapModalVisible, setMapModalVisible] = useState(false);
 
   const refreshAll = () => {
     refetchTrip();
     refetchBookings();
   };
+
+  // Calculate coordinates for map
+  const departureCoordinate = useMemo(
+    () => trip ? {
+      latitude: trip.departure.lat,
+      longitude: trip.departure.lng,
+    } : null,
+    [trip?.departure.lat, trip?.departure.lng],
+  );
+
+  const arrivalCoordinate = useMemo(
+    () => trip ? {
+      latitude: trip.arrival.lat,
+      longitude: trip.arrival.lng,
+    } : null,
+    [trip?.arrival.lat, trip?.arrival.lng],
+  );
+
+  // Load route coordinates when trip changes
+  useEffect(() => {
+    if (!trip || !departureCoordinate || !arrivalCoordinate) {
+      return;
+    }
+    setIsLoadingRoute(true);
+    getRouteCoordinates(departureCoordinate, arrivalCoordinate)
+      .then((coords) => {
+        setRouteCoordinates(coords);
+        setIsLoadingRoute(false);
+      })
+      .catch(() => {
+        // Fallback to straight line if route API fails
+        setRouteCoordinates([departureCoordinate, arrivalCoordinate]);
+        setIsLoadingRoute(false);
+      });
+  }, [departureCoordinate, arrivalCoordinate, trip?.id]);
+
+  const mapCamera = useMemo(() => {
+    if (!departureCoordinate || !arrivalCoordinate) {
+      return {
+        centerCoordinate: [15.266293, -4.441931] as [number, number],
+        zoomLevel: 11,
+      };
+    }
+    const latitudeCenter = (departureCoordinate.latitude + arrivalCoordinate.latitude) / 2;
+    const longitudeCenter = (departureCoordinate.longitude + arrivalCoordinate.longitude) / 2;
+    const latitudeDelta =
+      Math.max(Math.abs(departureCoordinate.latitude - arrivalCoordinate.latitude), 0.05) * 1.6;
+    const longitudeDelta =
+      Math.max(Math.abs(departureCoordinate.longitude - arrivalCoordinate.longitude), 0.05) * 1.6;
+
+    // Calculate zoom level from delta (approximate)
+    const maxDelta = Math.max(latitudeDelta, longitudeDelta);
+    const zoomLevel = Math.max(9, 15 - Math.log2(maxDelta * 111)); // Rough conversion
+
+    return {
+      centerCoordinate: [longitudeCenter, latitudeCenter] as [number, number],
+      zoomLevel: Math.min(Math.max(zoomLevel, 9), 15),
+    };
+  }, [arrivalCoordinate, departureCoordinate]);
 
   const showFeedback = (type: 'success' | 'error', message: string | string[]) => {
     setFeedback({
@@ -303,6 +376,112 @@ export default function ManageTripScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Carte interactive */}
+        {departureCoordinate && arrivalCoordinate && (
+          <TouchableOpacity
+            style={styles.mapContainer}
+            onPress={() => setMapModalVisible(true)}
+            activeOpacity={0.95}
+          >
+            <View style={styles.mapPreview}>
+              <Mapbox.MapView
+                style={styles.mapView}
+                styleURL={Mapbox.StyleURL.Street}
+                scrollEnabled={false}
+                zoomEnabled={false}
+                pitchEnabled={false}
+                rotateEnabled={false}
+              >
+                <Mapbox.Camera
+                  defaultSettings={{
+                    centerCoordinate: mapCamera.centerCoordinate,
+                    zoomLevel: mapCamera.zoomLevel,
+                  }}
+                  animationMode="none"
+                />
+
+                {/* Route polyline */}
+                {routeCoordinates && routeCoordinates.length > 0 ? (
+                  <Mapbox.ShapeSource
+                    id="route-preview"
+                    shape={{
+                      type: 'Feature',
+                      properties: {},
+                      geometry: {
+                        type: 'LineString',
+                        coordinates: routeCoordinates.map(coord => [coord.longitude, coord.latitude] as [number, number]),
+                      },
+                    }}
+                  >
+                    <Mapbox.LineLayer
+                      id="route-preview-line"
+                      style={{
+                        lineColor: Colors.primary,
+                        lineWidth: 4,
+                        lineCap: 'round',
+                        lineJoin: 'round',
+                      }}
+                    />
+                  </Mapbox.ShapeSource>
+                ) : (
+                  <Mapbox.ShapeSource
+                    id="route-preview-fallback"
+                    shape={{
+                      type: 'Feature',
+                      properties: {},
+                      geometry: {
+                        type: 'LineString',
+                        coordinates: [
+                          [departureCoordinate.longitude, departureCoordinate.latitude],
+                          [arrivalCoordinate.longitude, arrivalCoordinate.latitude],
+                        ],
+                      },
+                    }}
+                  >
+                    <Mapbox.LineLayer
+                      id="route-preview-fallback-line"
+                      style={{
+                        lineColor: Colors.primary,
+                        lineWidth: 4,
+                        lineCap: 'round',
+                        lineDasharray: [1, 1],
+                      }}
+                    />
+                  </Mapbox.ShapeSource>
+                )}
+
+                <Mapbox.PointAnnotation
+                  id="departure-preview"
+                  coordinate={[departureCoordinate.longitude, departureCoordinate.latitude]}
+                >
+                  <View style={styles.markerStartCircle}>
+                    <Ionicons name="location" size={18} color={Colors.white} />
+                  </View>
+                </Mapbox.PointAnnotation>
+
+                <Mapbox.PointAnnotation
+                  id="arrival-preview"
+                  coordinate={[arrivalCoordinate.longitude, arrivalCoordinate.latitude]}
+                >
+                  <View style={styles.markerEndCircle}>
+                    <Ionicons name="navigate" size={18} color={Colors.white} />
+                  </View>
+                </Mapbox.PointAnnotation>
+              </Mapbox.MapView>
+
+              <View style={styles.mapOverlay}>
+                <Text style={styles.mapOverlayText}>Touchez pour agrandir</Text>
+              </View>
+
+              <View style={styles.expandButton}>
+                <View style={styles.expandButtonInner}>
+                  <Ionicons name="expand" size={20} color={Colors.gray[700]} />
+                </View>
+              </View>
+            </View>
+          </TouchableOpacity>
+        )}
+
         <View style={styles.summaryCard}>
           <View style={styles.summaryStatus}>
             <Text style={styles.summaryLabel}>Statut</Text>
@@ -496,6 +675,106 @@ export default function ManageTripScreen() {
           </TouchableOpacity>
         )}
       </Modal>
+
+      {/* Map Modal */}
+      {departureCoordinate && arrivalCoordinate && (
+        <Modal visible={mapModalVisible} animationType="fade" transparent onRequestClose={() => setMapModalVisible(false)}>
+          <View style={styles.mapModalOverlay}>
+            <View style={styles.mapModalContent}>
+              <Mapbox.MapView
+                style={styles.fullscreenMap}
+                styleURL={Mapbox.StyleURL.Street}
+              >
+                <Mapbox.Camera
+                  defaultSettings={{
+                    centerCoordinate: mapCamera.centerCoordinate,
+                    zoomLevel: mapCamera.zoomLevel,
+                  }}
+                  animationMode="flyTo"
+                  animationDuration={500}
+                />
+
+                {/* Route polyline */}
+                {routeCoordinates && routeCoordinates.length > 0 ? (
+                  <Mapbox.ShapeSource
+                    id="route-fullscreen"
+                    shape={{
+                      type: 'Feature',
+                      properties: {},
+                      geometry: {
+                        type: 'LineString',
+                        coordinates: routeCoordinates.map(coord => [coord.longitude, coord.latitude] as [number, number]),
+                      },
+                    }}
+                  >
+                    <Mapbox.LineLayer
+                      id="route-fullscreen-line"
+                      style={{
+                        lineColor: Colors.primary,
+                        lineWidth: 5,
+                        lineCap: 'round',
+                        lineJoin: 'round',
+                      }}
+                    />
+                  </Mapbox.ShapeSource>
+                ) : (
+                  <Mapbox.ShapeSource
+                    id="route-fullscreen-fallback"
+                    shape={{
+                      type: 'Feature',
+                      properties: {},
+                      geometry: {
+                        type: 'LineString',
+                        coordinates: [
+                          [departureCoordinate.longitude, departureCoordinate.latitude],
+                          [arrivalCoordinate.longitude, arrivalCoordinate.latitude],
+                        ],
+                      },
+                    }}
+                  >
+                    <Mapbox.LineLayer
+                      id="route-fullscreen-fallback-line"
+                      style={{
+                        lineColor: Colors.primary,
+                        lineWidth: 5,
+                        lineCap: 'round',
+                      }}
+                    />
+                  </Mapbox.ShapeSource>
+                )}
+
+                <Mapbox.PointAnnotation
+                  id="departure-fullscreen"
+                  coordinate={[departureCoordinate.longitude, departureCoordinate.latitude]}
+                >
+                  <View style={styles.markerStartCircle}>
+                    <Ionicons name="location" size={20} color={Colors.white} />
+                  </View>
+                  <Mapbox.Callout title="Départ">
+                    <Text>{trip.departure.address}</Text>
+                  </Mapbox.Callout>
+                </Mapbox.PointAnnotation>
+
+                <Mapbox.PointAnnotation
+                  id="arrival-fullscreen"
+                  coordinate={[arrivalCoordinate.longitude, arrivalCoordinate.latitude]}
+                >
+                  <View style={styles.markerEndCircle}>
+                    <Ionicons name="navigate" size={20} color={Colors.white} />
+                  </View>
+                  <Mapbox.Callout title="Arrivée">
+                    <Text>{trip.arrival.address}</Text>
+                  </Mapbox.Callout>
+                </Mapbox.PointAnnotation>
+              </Mapbox.MapView>
+
+              <TouchableOpacity style={styles.closeMapButton} onPress={() => setMapModalVisible(false)}>
+                <Ionicons name="close" size={24} color={Colors.white} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -870,6 +1149,90 @@ const styles = StyleSheet.create({
   bookingModalButtonPrimaryText: {
     color: Colors.white,
     fontWeight: FontWeights.bold,
+  },
+  mapContainer: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.xl,
+  },
+  mapPreview: {
+    height: 220,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+    backgroundColor: Colors.gray[200],
+    ...CommonStyles.shadowSm,
+  },
+  mapView: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  mapOverlay: {
+    position: 'absolute',
+    bottom: Spacing.md,
+    left: Spacing.md,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+  },
+  mapOverlayText: {
+    color: Colors.white,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+  },
+  expandButton: {
+    position: 'absolute',
+    bottom: Spacing.md,
+    right: Spacing.md,
+  },
+  expandButtonInner: {
+    width: 40,
+    height: 40,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...CommonStyles.shadowLg,
+  },
+  markerStartCircle: {
+    width: 32,
+    height: 32,
+    backgroundColor: Colors.success,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markerEndCircle: {
+    width: 32,
+    height: 32,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    padding: Spacing.md,
+    justifyContent: 'center',
+  },
+  mapModalContent: {
+    flex: 1,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+  },
+  fullscreenMap: {
+    width: '100%',
+    height: '100%',
+  },
+  closeMapButton: {
+    position: 'absolute',
+    top: Spacing.xl,
+    right: Spacing.xl,
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 
