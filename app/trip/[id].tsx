@@ -1,3 +1,4 @@
+import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardModal';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
@@ -12,12 +13,15 @@ import {
 } from '@/store/api/bookingApi';
 import { useCreateConversationMutation } from '@/store/api/messageApi';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
+import { useGetKycStatusQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
 import type { BookingStatus, GeoPoint } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
 import { getRouteCoordinates } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
+import Mapbox from '@rnmapbox/maps';
+import Constants from 'expo-constants';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -31,8 +35,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import Mapbox from '@rnmapbox/maps';
-import Constants from 'expo-constants';
 import Animated, {
   FadeInDown,
   useAnimatedStyle,
@@ -163,6 +165,16 @@ export default function TripDetailsScreen() {
   const [tripGuideVisible, setTripGuideVisible] = useState(false);
   const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }> | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
+  const [kycWizardVisible, setKycWizardVisible] = useState(false);
+  const [kycFrontImage, setKycFrontImage] = useState<string | null>(null);
+  const [kycBackImage, setKycBackImage] = useState<string | null>(null);
+  const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
+  const [kycSubmitting, setKycSubmitting] = useState(false);
+  const {
+    data: kycStatus,
+    refetch: refetchKycStatus,
+  } = useGetKycStatusQuery();
+  const [uploadKyc, { isLoading: uploadingKyc }] = useUploadKycMutation();
   const { data: driverReviews } = useGetReviewsQuery(trip?.driverId ?? '', {
     skip: !trip?.driverId,
   });
@@ -352,7 +364,9 @@ export default function TripDetailsScreen() {
     ? BOOKING_STATUS_CONFIG[activeBooking.status as keyof typeof BOOKING_STATUS_CONFIG]
     : null;
   const openBookingModal = () => {
-    if (!checkIdentity('book')) {
+    if (!isIdentityVerified) {
+      // Ouvrir directement le modal KYC si l'utilisateur n'est pas vérifié
+      setKycWizardVisible(true);
       return;
     }
     setBookingSeats('1');
@@ -425,9 +439,45 @@ export default function TripDetailsScreen() {
     setBookingSeats((prev) => {
       const current = parseInt(prev, 10);
       const fallback = Number.isNaN(current) ? 1 : current;
-      const next = Math.min(Math.max(fallback + delta, 1), seatLimit);
+      // Limiter à 2 places maximum par utilisateur et au nombre de places disponibles
+      const maxSeats = Math.min(2, seatLimit);
+      const next = Math.min(Math.max(fallback + delta, 1), maxSeats);
       return String(next);
     });
+  };
+
+  const handleBookingSeatsChange = (value: string) => {
+    // Permettre seulement les chiffres
+    const numericValue = value.replace(/[^0-9]/g, '');
+    
+    if (numericValue === '') {
+      setBookingSeats('');
+      setBookingModalError('');
+      return;
+    }
+
+    const seatsNum = parseInt(numericValue, 10);
+    
+    // Vérifier si la valeur est supérieure à 2
+    if (seatsNum > 2) {
+      setBookingModalError('Un seul utilisateur ne peut pas réserver plus de deux places.');
+      // Limiter à 2 places maximum
+      setBookingSeats('2');
+      return;
+    }
+
+    // Vérifier si la valeur dépasse les places disponibles
+    if (seatsNum > seatLimit) {
+      setBookingModalError(
+        `Il ne reste que ${seatLimit} place${seatLimit > 1 ? 's' : ''} disponible${seatLimit > 1 ? 's' : ''}.`,
+      );
+      setBookingSeats(String(seatLimit));
+      return;
+    }
+
+    // Valeur valide
+    setBookingSeats(numericValue);
+    setBookingModalError('');
   };
 
   const handleConfirmBooking = async () => {
@@ -437,6 +487,11 @@ export default function TripDetailsScreen() {
     const seatsValue = parseInt(bookingSeats, 10);
     if (Number.isNaN(seatsValue) || seatsValue <= 0) {
       setBookingModalError('Veuillez indiquer un nombre de places valide.');
+      return;
+    }
+    // Vérifier la limite de 2 places par utilisateur
+    if (seatsValue > 2) {
+      setBookingModalError('Un seul utilisateur ne peut pas réserver plus de deux places.');
       return;
     }
     if (seatsValue > seatLimit) {
@@ -499,6 +554,89 @@ export default function TripDetailsScreen() {
       ],
     });
   };
+
+  const closeKycWizard = () => {
+    if (kycSubmitting || uploadingKyc) {
+      return;
+    }
+    setKycWizardVisible(false);
+  };
+
+  const buildKycFormData = (files?: Partial<KycCaptureResult>) => {
+    const formData = new FormData();
+    const appendFile = (field: 'cniFront' | 'cniBack' | 'selfie', uri: string | null | undefined) => {
+      if (!uri) return;
+      const extensionMatch = uri.split('.').pop()?.split('?')[0]?.toLowerCase();
+      const extension = extensionMatch && extensionMatch.length <= 5 ? extensionMatch : 'jpg';
+      const mimeType =
+        extension === 'png'
+          ? 'image/png'
+          : extension === 'webp'
+          ? 'image/webp'
+          : extension === 'heic'
+          ? 'image/heic'
+          : 'image/jpeg';
+      formData.append(field, {
+        uri,
+        type: mimeType,
+        name: `${field}-${Date.now()}.${extension === 'jpg' ? 'jpg' : extension}`,
+      } as any);
+    };
+
+    appendFile('cniFront', files?.front ?? kycFrontImage);
+    appendFile('cniBack', files?.back ?? kycBackImage);
+    appendFile('selfie', files?.selfie ?? kycSelfieImage);
+
+    return formData;
+  };
+
+  const handleSubmitKyc = async (documents?: Partial<KycCaptureResult>) => {
+    const front = documents?.front ?? kycFrontImage;
+    const back = documents?.back ?? kycBackImage;
+    const selfie = documents?.selfie ?? kycSelfieImage;
+
+    if (!front || !back || !selfie) {
+      showDialog({
+        variant: 'warning',
+        title: 'Documents requis',
+        message: 'Merci de fournir les deux faces de votre pièce ainsi qu\'un selfie.',
+      });
+      return;
+    }
+    try {
+      setKycSubmitting(true);
+      const formData = buildKycFormData({ front, back, selfie });
+      await uploadKyc(formData).unwrap();
+      setKycWizardVisible(false);
+      await refetchKycStatus();
+      showDialog({
+        variant: 'success',
+        title: 'Documents envoyés',
+        message: 'Nous vous informerons dès que la vérification sera terminée.',
+      });
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        'Impossible de soumettre les documents pour le moment.';
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur KYC',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    } finally {
+      setKycSubmitting(false);
+    }
+  };
+
+  const handleKycWizardComplete = async (payload: KycCaptureResult) => {
+    setKycFrontImage(payload.front);
+    setKycBackImage(payload.back);
+    setKycSelfieImage(payload.selfie);
+    await handleSubmitKyc(payload);
+  };
+
+  const isKycBusy = kycSubmitting || uploadingKyc;
 
   const estimatedTotal = useMemo(() => {
     const seatsValue = parseInt(bookingSeats, 10);
@@ -1128,11 +1266,11 @@ export default function TripDetailsScreen() {
             <TouchableOpacity
               style={[
                 styles.actionButton,
-                (!isIdentityVerified || availableSeats <= 0 || myBookingsLoading) &&
+                (availableSeats <= 0 || myBookingsLoading) &&
                   styles.actionButtonDisabled,
               ]}
               onPress={openBookingModal}
-              disabled={!isIdentityVerified || availableSeats <= 0 || myBookingsLoading}
+              disabled={availableSeats <= 0 || myBookingsLoading}
             >
               {myBookingsLoading ? (
                 <ActivityIndicator color={Colors.white} />
@@ -1181,8 +1319,9 @@ export default function TripDetailsScreen() {
                 placeholder="1"
                 placeholderTextColor={Colors.gray[400]}
                 value={bookingSeats}
-                onChangeText={(value) => setBookingSeats(value.replace(/[^0-9]/g, ''))}
+                onChangeText={handleBookingSeatsChange}
                 editable={!isBooking}
+                maxLength={1}
               />
               <TouchableOpacity
                 style={styles.bookingSeatButton}
@@ -1194,7 +1333,7 @@ export default function TripDetailsScreen() {
             </View>
 
             <Text style={styles.bookingModalHint}>
-              Maximum {seatLimit} place{seatLimit > 1 ? 's' : ''} disponibles
+              Maximum 2 places par utilisateur{seatLimit < 2 ? ` (${seatLimit} disponible${seatLimit > 1 ? 's' : ''})` : ''}
             </Text>
             <Text style={styles.bookingModalPrice}>
               Total estimé :{' '}
@@ -1312,6 +1451,18 @@ export default function TripDetailsScreen() {
         title="Découvrez ce trajet"
         message="Suivez la progression du conducteur, contactez-le ou réservez vos places depuis cet écran."
         onDismiss={dismissTripGuide}
+      />
+
+      <KycWizardModal
+        visible={kycWizardVisible}
+        onClose={closeKycWizard}
+        isSubmitting={isKycBusy}
+        initialValues={{
+          front: kycFrontImage,
+          back: kycBackImage,
+          selfie: kycSelfieImage,
+        }}
+        onComplete={handleKycWizardComplete}
       />
     </SafeAreaView>
   );
