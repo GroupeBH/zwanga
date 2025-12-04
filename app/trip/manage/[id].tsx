@@ -83,7 +83,7 @@ export default function ManageTripScreen() {
     isFetching: tripFetching,
     refetch: refetchTrip,
   } = useGetTripByIdQuery(tripId, { skip: !tripId });
-  // console.log("check owner", trip?.driverId, user?.id);
+  console.log("check owner", trip?.driverId, user?.id);
   const isOwner = useMemo(() => !!trip && !!user && trip.driverId === user.id, [trip, user]);
   const {
     data: bookings,

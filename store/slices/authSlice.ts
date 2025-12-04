@@ -136,7 +136,7 @@ const authSlice = createSlice({
           // Si on a des infos utilisateur dans le token, on peut les utiliser
           if (action.payload.userInfo){
             const user = action.payload.userInfo;
-            // console.log("user from token", user);
+            console.log("user from token", user);
             if (user) {
               state.user = user;
             }
