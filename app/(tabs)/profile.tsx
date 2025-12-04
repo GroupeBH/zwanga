@@ -313,7 +313,6 @@ export default function ProfileScreen() {
 
   const menuItems = [
     { icon: 'person-outline', label: 'Modifier le profil', route: '/edit-profile' },
-    { icon: 'bookmark-outline', label: 'Mes réservations', route: '/bookings' },
     { icon: 'notifications-outline', label: 'Notifications', route: '/notifications' },
     { icon: 'settings-outline', label: 'Paramètres', route: '/settings' },
     { icon: 'help-circle-outline', label: 'Aide & Support', route: '/support' },
@@ -360,14 +359,15 @@ export default function ProfileScreen() {
                   <Text style={styles.avatarEmoji}>👤</Text>
                 </View>
               )}
-              {isUploading ? (
+              {isUploading && (
                 <View style={styles.uploadingOverlay}>
                   <ActivityIndicator size="small" color={Colors.white} />
                 </View>
-              ) : (
-                <View style={styles.editBadge}>
-                  <Ionicons name="camera" size={14} color={Colors.white} />
-                </View>
+              // ) : (
+              //   <View style={styles.editBadge}>
+              //     <Ionicons name="camera" size={14} color={Colors.white} />
+              //   </View>
+              // )}}
               )}
               {currentUser?.identityVerified && (
                 <View style={styles.verifiedBadge}>
@@ -377,6 +377,22 @@ export default function ProfileScreen() {
             </TouchableOpacity>
             <Text style={styles.userName}>{currentUser?.name || 'Utilisateur'}</Text>
             <Text style={styles.userPhone}>{currentUser?.phone || ''}</Text>
+
+            {/* Bouton pour modifier la photo de profil */}
+            <TouchableOpacity
+              style={styles.changePhotoButton}
+              onPress={changeProfilePhoto}
+              disabled={isUploading}
+            >
+              {isUploading ? (
+                <ActivityIndicator size="small" color={Colors.white} />
+              ) : (
+                <>
+                  <Ionicons name="camera" size={16} color={Colors.white} />
+                  <Text style={styles.changePhotoButtonText}>Modifier la photo</Text>
+                </>
+              )}
+            </TouchableOpacity>
 
             {/* Rating */}
             <View style={styles.ratingBadge}>
@@ -391,6 +407,26 @@ export default function ProfileScreen() {
               </View>
             )}
           </View>
+        </View>
+
+        {/* Réservations - Mise en avant */}
+        <View style={styles.bookingsContainer}>
+          <TouchableOpacity
+            style={styles.bookingsCard}
+            onPress={() => router.push('/bookings')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.bookingsIconContainer}>
+              <Ionicons name="bookmark" size={28} color={Colors.primary} />
+            </View>
+            <View style={styles.bookingsContent}>
+              <Text style={styles.bookingsTitle}>Mes réservations</Text>
+              <Text style={styles.bookingsSubtitle}>
+                Gérez vos trajets en tant que passager ou conducteur
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color={Colors.primary} />
+          </TouchableOpacity>
         </View>
 
         {/* Statistiques */}
@@ -926,9 +962,64 @@ const styles = StyleSheet.create({
     color: Colors.white,
     opacity: 0.85,
   },
-  statsContainer: {
+  changePhotoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  changePhotoButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
+  bookingsContainer: {
     paddingHorizontal: Spacing.xl,
     marginTop: -Spacing.xl,
+    marginBottom: Spacing.lg,
+  },
+  bookingsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    gap: Spacing.md,
+    ...CommonStyles.shadowMd,
+    borderWidth: 2,
+    borderColor: Colors.primary + '20',
+  },
+  bookingsIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bookingsContent: {
+    flex: 1,
+  },
+  bookingsTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: Spacing.xs,
+  },
+  bookingsSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  statsContainer: {
+    paddingHorizontal: Spacing.xl,
     marginBottom: Spacing.xl,
   },
   statsCard: {

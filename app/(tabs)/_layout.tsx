@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: BorderRadius.xl,
   },
   tabBarAndroid: {
-    height: 105,
+    height: 125,
     paddingBottom: Spacing.sm,
     paddingTop: Spacing.sm,
   },
