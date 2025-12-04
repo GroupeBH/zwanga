@@ -36,6 +36,7 @@ export default function PublishScreen() {
   const { showDialog } = useDialog();
 
   const [kycModalVisible, setKycModalVisible] = useState(false);
+  const [kycWizardVisible, setKycWizardVisible] = useState(false);
   const [kycFrontImage, setKycFrontImage] = useState<string | null>(null);
   const [kycBackImage, setKycBackImage] = useState<string | null>(null);
   const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
@@ -53,10 +54,12 @@ export default function PublishScreen() {
       return;
     }
     setKycModalVisible(false);
+    setKycWizardVisible(false);
   };
 
   const handleStartKyc = () => {
-    setKycModalVisible(true);
+    setKycWizardVisible(true);
+    setKycModalVisible(false);
   };
 
   const buildKycFormData = (files?: Partial<KycCaptureResult>) => {
@@ -131,6 +134,7 @@ export default function PublishScreen() {
     setKycBackImage(payload.back);
     setKycSelfieImage(payload.selfie);
     await handleSubmitKyc(payload);
+    setKycWizardVisible(false);
   };
 
   const isKycBusy = kycSubmitting || uploadingKyc;
@@ -755,7 +759,7 @@ export default function PublishScreen() {
       />
 
       <KycWizardModal
-        visible={kycModalVisible}
+        visible={kycWizardVisible}
         onClose={closeKycModal}
         isSubmitting={isKycBusy}
         initialValues={{

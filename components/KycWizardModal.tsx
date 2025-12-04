@@ -1,3 +1,7 @@
+import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { Ionicons } from '@expo/vector-icons';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { Accelerometer, type AccelerometerMeasurement } from 'expo-sensors';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -8,11 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import { Accelerometer, type AccelerometerMeasurement } from 'expo-sensors';
-import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 
 export type KycCaptureKey = 'front' | 'back' | 'selfie';
 
@@ -49,7 +49,7 @@ const DOCUMENT_STEPS: Array<{ key: KycCaptureKey; title: string; description: st
 ];
 
 const STABILITY_THRESHOLD = 0.045;
-const STABILITY_DURATION_MS = 800;
+const STABILITY_DURATION_MS = 1500;
 
 export function KycWizardModal({
   visible,
