@@ -41,7 +41,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
   const normalizedUserStatus = user?.status?.toLowerCase?.();
   const isKycApproved = kycStatusData?.status === 'approved';
   const isIdentityVerified = Boolean(
-    isKycApproved || user?.identityVerified || normalizedUserStatus === 'active',
+    isKycApproved || user?.status === 'active' || normalizedUserStatus === 'active',
   );
 
   const checkIdentity = useCallback(

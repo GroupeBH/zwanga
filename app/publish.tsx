@@ -1,8 +1,10 @@
+import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardModal';
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useCreateTripMutation } from '@/store/api/tripApi';
+import { useGetKycStatusQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -34,13 +36,104 @@ export default function PublishScreen() {
   const { showDialog } = useDialog();
 
   const [kycModalVisible, setKycModalVisible] = useState(false);
+  const [kycFrontImage, setKycFrontImage] = useState<string | null>(null);
+  const [kycBackImage, setKycBackImage] = useState<string | null>(null);
+  const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
+  const [kycSubmitting, setKycSubmitting] = useState(false);
+  
+  const {
+    data: kycStatus,
+    refetch: refetchKycStatus,
+  } = useGetKycStatusQuery();
+  const [uploadKyc, { isLoading: uploadingKyc }] = useUploadKycMutation();
+
   const openKycModal = () => setKycModalVisible(true);
-  const closeKycModal = () => setKycModalVisible(false);
+  const closeKycModal = () => {
+    if (kycSubmitting || uploadingKyc) {
+      return;
+    }
+    setKycModalVisible(false);
+  };
 
   const handleStartKyc = () => {
-    closeKycModal();
-    router.push('/profile');
+    setKycModalVisible(true);
   };
+
+  const buildKycFormData = (files?: Partial<KycCaptureResult>) => {
+    const formData = new FormData();
+    const appendFile = (field: 'cniFront' | 'cniBack' | 'selfie', uri: string | null | undefined) => {
+      if (!uri) return;
+      const extensionMatch = uri.split('.').pop()?.split('?')[0]?.toLowerCase();
+      const extension = extensionMatch && extensionMatch.length <= 5 ? extensionMatch : 'jpg';
+      const mimeType =
+        extension === 'png'
+          ? 'image/png'
+          : extension === 'webp'
+          ? 'image/webp'
+          : extension === 'heic'
+          ? 'image/heic'
+          : 'image/jpeg';
+      formData.append(field, {
+        uri,
+        type: mimeType,
+        name: `${field}-${Date.now()}.${extension === 'jpg' ? 'jpg' : extension}`,
+      } as any);
+    };
+
+    appendFile('cniFront', files?.front ?? kycFrontImage);
+    appendFile('cniBack', files?.back ?? kycBackImage);
+    appendFile('selfie', files?.selfie ?? kycSelfieImage);
+
+    return formData;
+  };
+
+  const handleSubmitKyc = async (documents?: Partial<KycCaptureResult>) => {
+    const front = documents?.front ?? kycFrontImage;
+    const back = documents?.back ?? kycBackImage;
+    const selfie = documents?.selfie ?? kycSelfieImage;
+
+    if (!front || !back || !selfie) {
+      showDialog({
+        variant: 'warning',
+        title: 'Documents requis',
+        message: 'Merci de fournir les deux faces de votre pièce ainsi qu\'un selfie.',
+      });
+      return;
+    }
+    try {
+      setKycSubmitting(true);
+      const formData = buildKycFormData({ front, back, selfie });
+      await uploadKyc(formData).unwrap();
+      setKycModalVisible(false);
+      await refetchKycStatus();
+      showDialog({
+        variant: 'success',
+        title: 'Documents envoyés',
+        message: 'Nous vous informerons dès que la vérification sera terminée.',
+      });
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        'Impossible de soumettre les documents pour le moment.';
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur KYC',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    } finally {
+      setKycSubmitting(false);
+    }
+  };
+
+  const handleKycWizardComplete = async (payload: KycCaptureResult) => {
+    setKycFrontImage(payload.front);
+    setKycBackImage(payload.back);
+    setKycSelfieImage(payload.selfie);
+    await handleSubmitKyc(payload);
+  };
+
+  const isKycBusy = kycSubmitting || uploadingKyc;
 
   const kycChecklist = [
     { icon: 'id-card', title: 'Carte nationale', subtitle: 'Recto-verso bien lisible' },
@@ -246,8 +339,8 @@ export default function PublishScreen() {
   const handleNextStep = () => {
     if (step === 'route') {
       if (!departureLocation || !arrivalLocation) {
-        openFeedbackModal({
-          type: 'error',
+        showDialog({
+          variant: 'warning',
           title: 'Itinéraire incomplet',
           message: 'Veuillez sélectionner un point de départ et une destination.',
         });
@@ -375,7 +468,7 @@ export default function PublishScreen() {
             </Text>
             <TouchableOpacity
               style={styles.identityWarningButton}
-              onPress={() => router.push('/profile')}
+              onPress={handleStartKyc}
             >
               <Text style={styles.identityWarningButtonText}>Compléter ma vérification</Text>
               <Ionicons name="chevron-forward" size={14} color={Colors.white} />
@@ -659,6 +752,18 @@ export default function PublishScreen() {
         }
         onClose={closeLocationPicker}
         onSelect={handleLocationSelected}
+      />
+
+      <KycWizardModal
+        visible={kycModalVisible}
+        onClose={closeKycModal}
+        isSubmitting={isKycBusy}
+        initialValues={{
+          front: kycFrontImage,
+          back: kycBackImage,
+          selfie: kycSelfieImage,
+        }}
+        onComplete={handleKycWizardComplete}
       />
 
 

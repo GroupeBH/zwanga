@@ -196,7 +196,7 @@ export default function SearchScreen() {
             <Ionicons name="location" size={18} color={Colors.success} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Départ"
+              placeholder="Choisissez votre point de départ"
               placeholderTextColor={Colors.gray[500]}
               value={departure}
               onChangeText={setDeparture}
@@ -207,7 +207,7 @@ export default function SearchScreen() {
             <Ionicons name="navigate" size={18} color={Colors.primary} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Arrivée"
+              placeholder="Choisissez votre point d'arrivée"
               placeholderTextColor={Colors.gray[500]}
               value={arrival}
               onChangeText={setArrival}
