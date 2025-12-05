@@ -4,7 +4,8 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useCreateTripMutation } from '@/store/api/tripApi';
-import { useGetKycStatusQuery, useUploadKycMutation } from '@/store/api/userApi';
+import { useGetKycStatusQuery, useGetProfileSummaryQuery, useUploadKycMutation } from '@/store/api/userApi';
+import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -41,7 +42,7 @@ export default function PublishScreen() {
   const [kycBackImage, setKycBackImage] = useState<string | null>(null);
   const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
   const [kycSubmitting, setKycSubmitting] = useState(false);
-  
+
   const {
     data: kycStatus,
     refetch: refetchKycStatus,
@@ -72,10 +73,10 @@ export default function PublishScreen() {
         extension === 'png'
           ? 'image/png'
           : extension === 'webp'
-          ? 'image/webp'
-          : extension === 'heic'
-          ? 'image/heic'
-          : 'image/jpeg';
+            ? 'image/webp'
+            : extension === 'heic'
+              ? 'image/heic'
+              : 'image/jpeg';
       formData.append(field, {
         uri,
         type: mimeType,
@@ -145,6 +146,24 @@ export default function PublishScreen() {
     { icon: 'time', title: 'Validation express', subtitle: 'Moins de 24h en moyenne' },
   ] as const;
 
+  // Driver and Vehicle Management
+  const { data: profileSummary } = useGetProfileSummaryQuery();
+  const user = profileSummary?.user;
+  const isDriver = user?.isDriver ?? false;
+  const [showDriverRequiredModal, setShowDriverRequiredModal] = useState(false);
+
+  const { data: vehicles = [], refetch: refetchVehicles } = useGetVehiclesQuery(undefined, {
+    skip: !isDriver,
+  });
+  const [createVehicle, { isLoading: isCreatingVehicle }] = useCreateVehicleMutation();
+
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const [showVehicleForm, setShowVehicleForm] = useState(false);
+  const [vehicleBrand, setVehicleBrand] = useState('');
+  const [vehicleModel, setVehicleModel] = useState('');
+  const [vehicleColor, setVehicleColor] = useState('');
+  const [vehicleLicensePlate, setVehicleLicensePlate] = useState('');
+
   const resetForm = () => {
     setStep('route');
     setDepartureLocation(null);
@@ -155,6 +174,12 @@ export default function PublishScreen() {
     setSeats('4');
     setPrice('');
     setDescription('');
+    setSelectedVehicleId(null);
+    setShowVehicleForm(false);
+    setVehicleBrand('');
+    setVehicleModel('');
+    setVehicleColor('');
+    setVehicleLicensePlate('');
   };
 
   // Données du formulaire
@@ -340,7 +365,57 @@ export default function PublishScreen() {
     }).format(departureDateTime);
   }, [departureDateTime]);
 
+  const handleCreateVehicle = async () => {
+    if (!vehicleBrand.trim() || !vehicleModel.trim() || !vehicleColor.trim() || !vehicleLicensePlate.trim()) {
+      showDialog({
+        variant: 'warning',
+        title: 'Informations manquantes',
+        message: 'Veuillez remplir tous les champs du véhicule.',
+      });
+      return;
+    }
+
+    try {
+      const newVehicle = await createVehicle({
+        brand: vehicleBrand.trim(),
+        model: vehicleModel.trim(),
+        color: vehicleColor.trim(),
+        licensePlate: vehicleLicensePlate.trim(),
+      }).unwrap();
+
+      await refetchVehicles();
+      setSelectedVehicleId(newVehicle.id);
+      setShowVehicleForm(false);
+      setVehicleBrand('');
+      setVehicleModel('');
+      setVehicleColor('');
+      setVehicleLicensePlate('');
+
+      showDialog({
+        variant: 'success',
+        title: 'Véhicule ajouté',
+        message: 'Votre véhicule a été ajouté avec succès.',
+      });
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        'Impossible d\'ajouter le véhicule pour le moment.';
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
+  };
+
   const handleNextStep = () => {
+    // Check driver status first
+    if (!isDriver) {
+      setShowDriverRequiredModal(true);
+      return;
+    }
+
     if (step === 'route') {
       if (!departureLocation || !arrivalLocation) {
         showDialog({
@@ -361,6 +436,14 @@ export default function PublishScreen() {
           variant: 'warning',
           title: 'Informations manquantes',
           message: 'Merci de renseigner la date de départ et le prix.',
+        });
+        return;
+      }
+      if (!selectedVehicleId) {
+        showDialog({
+          variant: 'warning',
+          title: 'Véhicule requis',
+          message: 'Veuillez sélectionner un véhicule pour continuer.',
         });
         return;
       }
@@ -398,6 +481,20 @@ export default function PublishScreen() {
       return;
     }
 
+    if (!isDriver) {
+      setShowDriverRequiredModal(true);
+      return;
+    }
+
+    if (!selectedVehicleId) {
+      showDialog({
+        variant: 'warning',
+        title: 'Véhicule requis',
+        message: 'Veuillez sélectionner un véhicule pour publier votre trajet.',
+      });
+      return;
+    }
+
     if (!isIdentityVerified) {
       openKycModal();
       return;
@@ -413,6 +510,7 @@ export default function PublishScreen() {
         availableSeats: seatsValue,
         pricePerSeat: priceValue,
         description: description.trim() || undefined,
+        vehicleId: selectedVehicleId,
       } as any).unwrap();
 
       resetForm();
@@ -421,7 +519,7 @@ export default function PublishScreen() {
         title: 'Trajet publié',
         message: 'Votre trajet a été publié avec succès !',
         actions: [
-          { label: 'Publier un autre', variant: 'secondary', onPress: () => {} },
+          { label: 'Publier un autre', variant: 'secondary', onPress: () => { } },
           { label: 'Voir mes trajets', variant: 'primary', onPress: () => router.push('/trips') },
         ],
       });
@@ -481,7 +579,7 @@ export default function PublishScreen() {
         </View>
       )}
 
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
@@ -562,6 +660,153 @@ export default function PublishScreen() {
                   <TouchableOpacity style={styles.iosPickerCloseButton} onPress={closeIosPicker}>
                     <Text style={styles.iosPickerCloseText}>Terminé</Text>
                   </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+            {/* Vehicle Selection */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Véhicule *</Text>
+
+              {vehicles.length === 0 ? (
+                <View style={styles.vehicleEmptyState}>
+                  <Ionicons name="car-outline" size={48} color={Colors.gray[400]} />
+                  <Text style={styles.vehicleEmptyTitle}>Aucun véhicule</Text>
+                  <Text style={styles.vehicleEmptyText}>
+                    Ajoutez votre premier véhicule pour publier des trajets
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.addVehicleButton}
+                    onPress={() => setShowVehicleForm(true)}
+                  >
+                    <Ionicons name="add-circle" size={20} color={Colors.white} />
+                    <Text style={styles.addVehicleButtonText}>Ajouter un véhicule</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.vehicleScrollView}
+                    contentContainerStyle={styles.vehicleScrollContent}
+                  >
+                    {vehicles.map((vehicle) => (
+                      <TouchableOpacity
+                        key={vehicle.id}
+                        style={[
+                          styles.vehicleCard,
+                          selectedVehicleId === vehicle.id && styles.vehicleCardActive,
+                        ]}
+                        onPress={() => setSelectedVehicleId(vehicle.id)}
+                      >
+                        <View style={styles.vehicleCardHeader}>
+                          <Ionicons
+                            name="car"
+                            size={24}
+                            color={selectedVehicleId === vehicle.id ? Colors.primary : Colors.gray[600]}
+                          />
+                          {selectedVehicleId === vehicle.id && (
+                            <View style={styles.vehicleCardBadge}>
+                              <Ionicons name="checkmark" size={14} color={Colors.white} />
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.vehicleCardBrand}>{vehicle.brand}</Text>
+                        <Text style={styles.vehicleCardModel}>{vehicle.model}</Text>
+                        <Text style={styles.vehicleCardDetails}>
+                          {vehicle.color} • {vehicle.licensePlate}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+
+                  <TouchableOpacity
+                    style={styles.addVehicleButtonSecondary}
+                    onPress={() => setShowVehicleForm(true)}
+                  >
+                    <Ionicons name="add" size={18} color={Colors.primary} />
+                    <Text style={styles.addVehicleButtonSecondaryText}>Ajouter un autre véhicule</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              {/* Inline Vehicle Creation Form */}
+              {showVehicleForm && (
+                <View style={styles.vehicleForm}>
+                  <View style={styles.vehicleFormHeader}>
+                    <Text style={styles.vehicleFormTitle}>Nouveau véhicule</Text>
+                    <TouchableOpacity onPress={() => setShowVehicleForm(false)}>
+                      <Ionicons name="close" size={24} color={Colors.gray[600]} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.vehicleFormInputGroup}>
+                    <Text style={styles.vehicleFormLabel}>Marque *</Text>
+                    <TextInput
+                      style={styles.vehicleFormInput}
+                      placeholder="Ex: Toyota"
+                      value={vehicleBrand}
+                      onChangeText={setVehicleBrand}
+                    />
+                  </View>
+
+                  <View style={styles.vehicleFormInputGroup}>
+                    <Text style={styles.vehicleFormLabel}>Modèle *</Text>
+                    <TextInput
+                      style={styles.vehicleFormInput}
+                      placeholder="Ex: Corolla"
+                      value={vehicleModel}
+                      onChangeText={setVehicleModel}
+                    />
+                  </View>
+
+                  <View style={styles.vehicleFormInputGroup}>
+                    <Text style={styles.vehicleFormLabel}>Couleur *</Text>
+                    <TextInput
+                      style={styles.vehicleFormInput}
+                      placeholder="Ex: Blanc"
+                      value={vehicleColor}
+                      onChangeText={setVehicleColor}
+                    />
+                  </View>
+
+                  <View style={styles.vehicleFormInputGroup}>
+                    <Text style={styles.vehicleFormLabel}>Plaque d'immatriculation *</Text>
+                    <TextInput
+                      style={styles.vehicleFormInput}
+                      placeholder="Ex: AB-123-CD"
+                      value={vehicleLicensePlate}
+                      onChangeText={setVehicleLicensePlate}
+                      autoCapitalize="characters"
+                    />
+                  </View>
+
+                  <View style={styles.vehicleFormButtons}>
+                    <TouchableOpacity
+                      style={[styles.vehicleFormButton, styles.vehicleFormButtonSecondary]}
+                      onPress={() => {
+                        setShowVehicleForm(false);
+                        setVehicleBrand('');
+                        setVehicleModel('');
+                        setVehicleColor('');
+                        setVehicleLicensePlate('');
+                      }}
+                    >
+                      <Text style={styles.vehicleFormButtonSecondaryText}>Annuler</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.vehicleFormButton, styles.vehicleFormButtonPrimary]}
+                      onPress={handleCreateVehicle}
+                      disabled={isCreatingVehicle}
+                    >
+                      {isCreatingVehicle ? (
+                        <ActivityIndicator size="small" color={Colors.white} />
+                      ) : (
+                        <Text style={styles.vehicleFormButtonPrimaryText}>Enregistrer</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
                 </View>
               )}
             </View>
@@ -682,7 +927,7 @@ export default function PublishScreen() {
                       <Ionicons name="time" size={18} color={Colors.gray[600]} />
                       <Text style={styles.confirmDetailLabel}>Heure de départ</Text>
                     </View>
-                  <Text style={styles.confirmDetailValue}>{formattedFullDateTime}</Text>
+                    <Text style={styles.confirmDetailValue}>{formattedFullDateTime}</Text>
                   </View>
                   <View style={styles.confirmDetailRow}>
                     <View style={styles.confirmDetailLeft}>
@@ -698,15 +943,15 @@ export default function PublishScreen() {
                     </View>
                     <Text style={[styles.confirmDetailValue, { color: Colors.success }]}>{price} FC/pers</Text>
                   </View>
-                {description ? (
-                  <View style={styles.confirmDetailRow}>
-                    <View style={styles.confirmDetailLeft}>
-                      <Ionicons name="chatbox-ellipses" size={18} color={Colors.gray[600]} />
-                      <Text style={styles.confirmDetailLabel}>Description</Text>
+                  {description ? (
+                    <View style={styles.confirmDetailRow}>
+                      <View style={styles.confirmDetailLeft}>
+                        <Ionicons name="chatbox-ellipses" size={18} color={Colors.gray[600]} />
+                        <Text style={styles.confirmDetailLabel}>Description</Text>
+                      </View>
+                      <Text style={[styles.confirmDetailValue, styles.confirmDetailDescription]}>{description}</Text>
                     </View>
-                    <Text style={[styles.confirmDetailValue, styles.confirmDetailDescription]}>{description}</Text>
-                  </View>
-                ) : null}
+                  ) : null}
                 </View>
               </View>
             </View>
@@ -751,12 +996,52 @@ export default function PublishScreen() {
           activeLocationType === 'departure'
             ? departureLocation
             : activeLocationType === 'arrival'
-            ? arrivalLocation
-            : null
+              ? arrivalLocation
+              : null
         }
         onClose={closeLocationPicker}
         onSelect={handleLocationSelected}
       />
+
+      {/* Driver Required Modal */}
+      <Modal
+        transparent
+        animationType="fade"
+        visible={showDriverRequiredModal}
+        onRequestClose={() => setShowDriverRequiredModal(false)}
+      >
+        <View style={styles.driverModalOverlay}>
+          <Animated.View entering={FadeInDown} style={styles.driverModalCard}>
+            <View style={styles.driverModalIcon}>
+              <Ionicons name="car" size={48} color={Colors.primary} />
+            </View>
+            <Text style={styles.driverModalTitle}>Compte conducteur requis</Text>
+            <Text style={styles.driverModalMessage}>
+              Pour publier des trajets, vous devez d'abord activer votre compte conducteur et ajouter un véhicule dans votre profil.
+            </Text>
+            <View style={styles.driverModalButtons}>
+              <TouchableOpacity
+                style={[styles.driverModalButton, styles.driverModalButtonSecondary]}
+                onPress={() => {
+                  setShowDriverRequiredModal(false);
+                  router.back();
+                }}
+              >
+                <Text style={styles.driverModalButtonSecondaryText}>Retour</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.driverModalButton, styles.driverModalButtonPrimary]}
+                onPress={() => {
+                  setShowDriverRequiredModal(false);
+                  router.push('/edit-profile');
+                }}
+              >
+                <Text style={styles.driverModalButtonPrimaryText}>Devenir conducteur</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
 
       <KycWizardModal
         visible={kycWizardVisible}
@@ -1316,6 +1601,221 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[100],
   },
   kycSecondaryButtonText: {
+    color: Colors.gray[700],
+    fontWeight: FontWeights.semibold,
+  },
+  // Driver Required Modal Styles
+  driverModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.lg,
+  },
+  driverModalCard: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  driverModalIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  driverModalTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    textAlign: 'center',
+  },
+  driverModalMessage: {
+    fontSize: FontSizes.base,
+    color: Colors.gray[600],
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  driverModalButtons: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    width: '100%',
+    marginTop: Spacing.md,
+  },
+  driverModalButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.xl,
+    alignItems: 'center',
+  },
+  driverModalButtonPrimary: {
+    backgroundColor: Colors.primary,
+  },
+  driverModalButtonSecondary: {
+    backgroundColor: Colors.gray[200],
+  },
+  driverModalButtonPrimaryText: {
+    color: Colors.white,
+    fontWeight: FontWeights.semibold,
+  },
+  driverModalButtonSecondaryText: {
+    color: Colors.gray[700],
+    fontWeight: FontWeights.semibold,
+  },
+  // Vehicle Selection Styles
+  vehicleEmptyState: {
+    alignItems: 'center',
+    padding: Spacing.xl,
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.lg,
+    gap: Spacing.md,
+  },
+  vehicleEmptyTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+  },
+  vehicleEmptyText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+    textAlign: 'center',
+  },
+  addVehicleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    marginTop: Spacing.sm,
+  },
+  addVehicleButtonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.semibold,
+  },
+  vehicleScrollView: {
+    marginVertical: Spacing.sm,
+  },
+  vehicleScrollContent: {
+    gap: Spacing.md,
+    paddingRight: Spacing.md,
+  },
+  vehicleCard: {
+    width: 140,
+    padding: Spacing.md,
+    backgroundColor: Colors.white,
+    borderWidth: 2,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.lg,
+    gap: Spacing.xs,
+  },
+  vehicleCardActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '08',
+  },
+  vehicleCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  vehicleCardBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleCardBrand: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
+  },
+  vehicleCardModel: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  vehicleCardDetails: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+  },
+  addVehicleButtonSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingVertical: Spacing.sm,
+    justifyContent: 'center',
+  },
+  addVehicleButtonSecondaryText: {
+    color: Colors.primary,
+    fontWeight: FontWeights.semibold,
+    fontSize: FontSizes.sm,
+  },
+  // Vehicle Form Styles
+  vehicleForm: {
+    marginTop: Spacing.md,
+    padding: Spacing.md,
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.lg,
+    gap: Spacing.md,
+  },
+  vehicleFormHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  vehicleFormTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
+  },
+  vehicleFormInputGroup: {
+    gap: Spacing.xs,
+  },
+  vehicleFormLabel: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    fontWeight: FontWeights.medium,
+  },
+  vehicleFormInput: {
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    fontSize: FontSizes.base,
+    backgroundColor: Colors.white,
+  },
+  vehicleFormButtons: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginTop: Spacing.sm,
+  },
+  vehicleFormButton: {
+    flex: 1,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.lg,
+    alignItems: 'center',
+  },
+  vehicleFormButtonPrimary: {
+    backgroundColor: Colors.primary,
+  },
+  vehicleFormButtonSecondary: {
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+  },
+  vehicleFormButtonPrimaryText: {
+    color: Colors.white,
+    fontWeight: FontWeights.semibold,
+  },
+  vehicleFormButtonSecondaryText: {
     color: Colors.gray[700],
     fontWeight: FontWeights.semibold,
   },

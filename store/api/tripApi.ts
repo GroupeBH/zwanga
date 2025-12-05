@@ -165,6 +165,7 @@ type CreateTripPayload = {
   availableSeats: number;
   pricePerSeat: number;
   description?: string;
+  vehicleId?: string;
 };
 
 type UpdateTripRequest = Partial<CreateTripPayload> & {
