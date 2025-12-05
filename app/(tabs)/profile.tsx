@@ -320,7 +320,7 @@ export default function ProfileScreen() {
 
   const handleLogout = () => {
     dispatch(logout());
-    router.replace('/auth');
+    // router.replace('/auth');
   };
 
   return (
