@@ -1,7 +1,10 @@
+import { KycCaptureResult, KycWizardModal } from '@/components/KycWizardModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, Spacing } from '@/constants/styles';
+import { useUploadKycMutation } from '@/store/api/userApi';
 import { useLoginMutation, useRegisterMutation } from '@/store/api/zwangaApi';
-import { useAppDispatch } from '@/store/hooks';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { selectIsAuthenticated } from '@/store/selectors';
 import { setTokens, setUser } from '@/store/slices/authSlice';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -41,11 +44,11 @@ try {
 }
 
 type AuthMode = 'login' | 'signup';
-type AuthStep = 'phone' | 'sms' | 'profile';
+type AuthStep = 'phone' | 'sms' | 'profile' | 'kyc';
 type VehicleType = 'sedan' | 'suv' | 'van' | 'moto';
 
 const LOGIN_STEPS: AuthStep[] = ['phone', 'sms'];
-const SIGNUP_STEPS: AuthStep[] = ['phone', 'sms', 'profile'];
+const SIGNUP_STEPS: AuthStep[] = ['phone', 'sms', 'profile', 'kyc'];
 
 type VehicleOption = {
   id: VehicleType;
@@ -85,6 +88,7 @@ export default function AuthScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { showDialog } = useDialog();
+  const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const [mode, setMode] = useState<AuthMode>('login');
   const [step, setStep] = useState<AuthStep>('phone');
 
@@ -109,6 +113,10 @@ export default function AuthScreen() {
   // API Hooks
   const [login, { isLoading: isLoggingIn }] = useLoginMutation();
   const [register, { isLoading: isRegistering }] = useRegisterMutation();
+  const [uploadKyc] = useUploadKycMutation();
+  const [kycModalVisible, setKycModalVisible] = useState(false);
+  const [kycSubmitting, setKycSubmitting] = useState(false);
+  const [kycFiles, setKycFiles] = useState<KycCaptureResult | null>(null);
 
   const stepSequence = mode === 'login' ? LOGIN_STEPS : SIGNUP_STEPS;
   const currentStepIndex = stepSequence.indexOf(step);
@@ -121,6 +129,7 @@ export default function AuthScreen() {
     phone: '',
     sms: mode === 'login' ? '🎉 Authentification réussie !' : '🚀 Vérification en cours...',
     profile: '✨ Créez votre identité unique !',
+    kyc: '🔒 Vérification d\'identité',
   }[step];
 
   // Effects
@@ -132,6 +141,23 @@ export default function AuthScreen() {
       return () => clearTimeout(timer);
     }
   }, [step]);
+
+  // Redirect if already authenticated on mount (e.g. app restart) or after successful login/signup
+  // Redirect if already authenticated on mount (e.g. app restart) or after successful login/signup
+  useEffect(() => {
+    console.log('[AuthScreen] Auth state changed. isAuthenticated:', isAuthenticated, 'Mode:', mode, 'Step:', step);
+    if (isAuthenticated) {
+      if (mode === 'signup') {
+        // DO NOT Redirect here. Let the user complete KYC.
+        console.log('[AuthScreen] Signup success -> Staying on Auth for KYC');
+      } else {
+        console.log('[AuthScreen] Login success -> /(tabs)');
+        router.replace('/(tabs)');
+      }
+    }
+  }, [isAuthenticated, mode]);
+
+
 
   // Methods
   const handlePreviousStep = () => {
@@ -155,6 +181,7 @@ export default function AuthScreen() {
     setVehicleColor('');
     setVehiclePlate('');
     setVehicleModalVisible(false);
+    setKycFiles(null);
   };
 
   const triggerSignupSuccessNotification = async (userName?: string) => {
@@ -234,7 +261,7 @@ export default function AuthScreen() {
           const result = await login({ phone }).unwrap();
           dispatch(setTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken }));
           dispatch(setUser(result.user));
-          router.replace('/(tabs)');
+          // Navigation handled by useEffect
         } catch (error: any) {
           showDialog({ variant: 'danger', title: 'Erreur', message: error?.data?.message || 'Erreur lors de la connexion' });
         }
@@ -289,25 +316,30 @@ export default function AuthScreen() {
     }
   };
 
-  const handleProfileSubmit = async () => {
-    try {
-      if (!firstName.trim() || !lastName.trim()) {
-        showDialog({ variant: 'warning', title: 'Information manquante', message: 'Veuillez entrer votre nom et prénom.' });
+  const validateProfileAndContinue = () => {
+    if (!firstName.trim() || !lastName.trim()) {
+      showDialog({ variant: 'warning', title: 'Information manquante', message: 'Veuillez entrer votre nom et prénom.' });
+      return;
+    }
+
+    const requiresVehicleSelection = role === 'driver';
+    if (requiresVehicleSelection) {
+      if (!vehicleType) {
+        showDialog({ variant: 'warning', title: 'Véhicule', message: 'Veuillez sélectionner un type de véhicule.' });
         return;
       }
-
-      const requiresVehicleSelection = role === 'driver'; // Simplified: driver only for vehicle
-      if (requiresVehicleSelection) {
-        if (!vehicleType) {
-          showDialog({ variant: 'warning', title: 'Véhicule', message: 'Veuillez sélectionner un type de véhicule.' });
-          return;
-        }
-        if (!vehicleBrand.trim() || !vehicleModel.trim() || !vehiclePlate.trim()) {
-          showDialog({ variant: 'warning', title: 'Véhicule', message: 'Veuillez compléter les informations du véhicule.' });
-          return;
-        }
+      if (!vehicleBrand.trim() || !vehicleModel.trim() || !vehiclePlate.trim()) {
+        showDialog({ variant: 'warning', title: 'Véhicule', message: 'Veuillez compléter les informations du véhicule.' });
+        return;
       }
+    }
 
+    setStep('kyc');
+  };
+
+  const handleFinalRegister = async () => {
+    try {
+      const requiresVehicleSelection = role === 'driver';
       const formData = new FormData();
       formData.append('phone', phone);
       formData.append('firstName', firstName);
@@ -332,13 +364,22 @@ export default function AuthScreen() {
         } as any);
       }
 
+      // 1. Register User
       const result = await register(formData).unwrap();
       dispatch(setTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken }));
       dispatch(setUser(result.user));
+
+      // 2. Upload KYC if files exist
+      if (kycFiles) {
+        setKycSubmitting(true);
+        const kycData = buildKycFormData(kycFiles);
+        await uploadKyc(kycData).unwrap();
+      }
+
       await triggerSignupSuccessNotification(result.user?.name || firstName);
 
-      // DIRECTLY GO TO HOME, NO KYC
-      router.replace('/(tabs)');
+      // 3. Navigate (AuthGuard or Effect will handle, but we can force it too if needed)
+      // The useEffect on `isAuthenticated` handles redirection to tabs.
 
     } catch (error: any) {
       showDialog({
@@ -346,8 +387,37 @@ export default function AuthScreen() {
         title: 'Erreur',
         message: error?.data?.message || "Erreur lors de l'inscription",
       });
+    } finally {
+      setKycSubmitting(false);
     }
   };
+
+
+
+
+
+  const buildKycFormData = (files: KycCaptureResult) => {
+    const formData = new FormData();
+    const appendFile = (field: string, uri: string) => {
+      const ext = uri.split('.').pop()?.split('?')[0]?.toLowerCase() || 'jpg';
+      formData.append(field, {
+        uri,
+        type: 'image/jpeg',
+        name: `${field}-${Date.now()}.${ext}`,
+      } as any);
+    };
+    appendFile('cniFront', files.front);
+    appendFile('cniBack', files.back);
+    appendFile('selfie', files.selfie);
+    return formData;
+  };
+
+  const handleKycWizardComplete = async (payload: KycCaptureResult) => {
+    setKycFiles(payload);
+    setKycModalVisible(false);
+  };
+
+
 
   return (
     <SafeAreaView style={styles.container}>
@@ -442,7 +512,7 @@ export default function AuthScreen() {
               {smsCode.map((digit, index) => (
                 <TextInput
                   key={`sms-${index}`}
-                  ref={(ref) => (smsInputRefs.current[index] = ref)}
+                  ref={(ref) => { smsInputRefs.current[index] = ref; }}
                   style={[styles.smsInput, digit ? styles.smsInputFilled : null]}
                   keyboardType="number-pad"
                   maxLength={1}
@@ -577,55 +647,147 @@ export default function AuthScreen() {
 
             <TouchableOpacity
               style={[styles.mainButton, styles.mainButtonActive, { marginTop: Spacing.xl, marginBottom: Spacing.xxl }]}
-              onPress={handleProfileSubmit}
-              disabled={isRegistering}
+              onPress={validateProfileAndContinue}
             >
-              {isRegistering ? <ActivityIndicator color="white" /> : <Text style={styles.mainButtonText}>Confirmer l'inscription</Text>}
+              <Text style={styles.mainButtonText}>Continuer</Text>
             </TouchableOpacity>
 
           </Animated.View>
         )}
 
+        {/* Step: KYC */}
+        {step === 'kyc' && (
+          <Animated.View entering={FadeInDown.springify()} exiting={FadeOutUp} style={styles.stepContainer}>
+            <View style={styles.heroSection}>
+              <View style={[styles.logoContainer, { backgroundColor: Colors.info + '15' }]}>
+                <Ionicons name="shield-checkmark" size={48} color={Colors.info} />
+              </View>
+              <Text style={styles.heroTitle}>Identité vérifiée</Text>
+              <Text style={styles.heroSubtitle}>Augmentez la confiance de votre profil.</Text>
+            </View>
+
+            <View style={styles.kycBenefitsContainer}>
+              <View style={styles.benefitRow}>
+                <Ionicons name="checkbox" size={24} color={Colors.success} style={{ marginBottom: 2 }} />
+                <Text style={styles.benefitText}>Badge "Vérifié" sur votre profil</Text>
+              </View>
+              <View style={styles.benefitRow}>
+                <Ionicons name="flash" size={24} color={Colors.warning} style={{ marginBottom: 2 }} />
+                <Text style={styles.benefitText}>Accès prioritaire aux trajets</Text>
+              </View>
+              <View style={styles.benefitRow}>
+                <Ionicons name="heart" size={24} color={Colors.danger} style={{ marginBottom: 2 }} />
+                <Text style={styles.benefitText}>Plus de confiance des membres</Text>
+              </View>
+            </View>
+
+            <View style={{ gap: 16 }}>
+              <TouchableOpacity style={[styles.mainButton, kycFiles ? styles.mainButtonActive : { backgroundColor: Colors.primary + '20' }]} onPress={() => setKycModalVisible(true)}>
+                <Text style={[styles.mainButtonText, !kycFiles && { color: Colors.primary }]}>
+                  {kycFiles ? 'Documents scannés (Modifier)' : 'Scanner mes documents'}
+                </Text>
+                <Ionicons name={kycFiles ? "checkmark-circle" : "scan"} size={20} color={kycFiles ? "white" : Colors.primary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.mainButton, styles.mainButtonActive, { backgroundColor: kycFiles ? Colors.success : Colors.primary }]}
+                onPress={handleFinalRegister}
+                disabled={isRegistering || kycSubmitting}
+              >
+                {isRegistering || kycSubmitting ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <>
+                    <Text style={styles.mainButtonText}>{kycFiles ? "Terminer l'inscription" : "S'inscrire sans vérification"}</Text>
+                    <Ionicons name="arrow-forward" size={20} color="white" />
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        )}
+
       </ScrollView>
 
-      {/* Vehicle Modal */}
-      <Modal visible={vehicleModalVisible} transparent animationType="slide" onRequestClose={() => setVehicleModalVisible(false)}>
+      {/* Vehicle Details Modal */}
+      <Modal
+        visible={vehicleModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setVehicleModalVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Votre véhicule</Text>
+              <Text style={styles.modalTitle}>Détails du véhicule</Text>
               <TouchableOpacity onPress={() => setVehicleModalVisible(false)}>
-                <Ionicons name="close" size={24} color={Colors.gray[500]} />
+                <Ionicons name="close" size={24} color={Colors.gray[900]} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <View style={{ gap: 16 }}>
               <View style={styles.inputWrapper}>
-                <Text style={styles.inputLabelSmall}>Marque</Text>
-                <TextInput style={styles.input} value={vehicleBrand} onChangeText={setVehicleBrand} placeholder="ex: Toyota" />
+                <Ionicons name="car-sport-outline" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Marque (ex: Toyota)"
+                  placeholderTextColor={Colors.gray[400]}
+                  value={vehicleBrand}
+                  onChangeText={setVehicleBrand}
+                />
               </View>
-              <View style={styles.inputWrapper}>
-                <Text style={styles.inputLabelSmall}>Modèle</Text>
-                <TextInput style={styles.input} value={vehicleModel} onChangeText={setVehicleModel} placeholder="ex: Rav4" />
-              </View>
-              <View style={styles.rowInputs}>
-                <View style={[styles.inputWrapper, { flex: 1 }]}>
-                  <Text style={styles.inputLabelSmall}>Couleur</Text>
-                  <TextInput style={styles.input} value={vehicleColor} onChangeText={setVehicleColor} placeholder="ex: Noir" />
-                </View>
-                <View style={[styles.inputWrapper, { flex: 1 }]}>
-                  <Text style={styles.inputLabelSmall}>Plaque</Text>
-                  <TextInput style={styles.input} value={vehiclePlate} onChangeText={(t) => setVehiclePlate(t.toUpperCase())} placeholder="ABC 123" />
-                </View>
-              </View>
-            </ScrollView>
 
-            <TouchableOpacity style={[styles.mainButton, styles.mainButtonActive]} onPress={() => setVehicleModalVisible(false)}>
-              <Text style={styles.mainButtonText}>Enregistrer</Text>
-            </TouchableOpacity>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="car-outline" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Modèle (ex: RAV4)"
+                  placeholderTextColor={Colors.gray[400]}
+                  value={vehicleModel}
+                  onChangeText={setVehicleModel}
+                />
+              </View>
+
+              <View style={styles.inputWrapper}>
+                <Ionicons name="color-palette-outline" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Couleur"
+                  placeholderTextColor={Colors.gray[400]}
+                  value={vehicleColor}
+                  onChangeText={setVehicleColor}
+                />
+              </View>
+
+              <View style={styles.inputWrapper}>
+                <Ionicons name="card-outline" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Plaque (ex: 1234AB01)"
+                  placeholderTextColor={Colors.gray[400]}
+                  value={vehiclePlate}
+                  onChangeText={setVehiclePlate}
+                  autoCapitalize="characters"
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.mainButton, styles.mainButtonActive]}
+                onPress={() => setVehicleModalVisible(false)}
+              >
+                <Text style={styles.mainButtonText}>Valider</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
+
+      <KycWizardModal
+        visible={kycModalVisible}
+        onClose={() => setKycModalVisible(false)}
+        onComplete={handleKycWizardComplete}
+        isSubmitting={kycSubmitting}
+      />
 
     </SafeAreaView>
   );
@@ -652,7 +814,7 @@ const styles = StyleSheet.create({
   motivationalText: { textAlign: 'center', color: Colors.primary, fontSize: 12, fontWeight: '600', marginTop: 4 },
 
   scrollView: { flex: 1 },
-  scrollViewContent: { paddingHorizontal: Spacing.xl, paddingBottom: 40 },
+  scrollViewContent: { paddingHorizontal: Spacing.xl, paddingBottom: 40, flexGrow: 1 },
 
   stepContainer: { flex: 1 },
 
@@ -661,7 +823,7 @@ const styles = StyleSheet.create({
   heroSectionCompact: { alignItems: 'center', marginVertical: Spacing.md },
   logoContainer: { width: 80, height: 80, borderRadius: 25, backgroundColor: Colors.primary + '15', alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.md },
   heroTitle: { fontSize: 28, fontWeight: '800', color: Colors.gray[900], marginBottom: 4, textAlign: 'center' },
-  heroSubtitle: { fontSize: 16, color: Colors.gray[500], textAlign: 'center' },
+  heroSubtitle: { fontSize: 16, color: Colors.gray[500], textAlign: 'center', paddingHorizontal: 20 },
 
   // Forms
   formSection: { gap: Spacing.lg, marginTop: Spacing.lg },
@@ -716,6 +878,11 @@ const styles = StyleSheet.create({
   vehicleDetailsInfo: { flex: 1 },
   vehicleDetailsTitle: { fontSize: 16, fontWeight: '700', color: Colors.gray[900] },
   vehicleDetailsSubtitle: { fontSize: 14, color: Colors.gray[500], marginTop: 2 },
+
+  // KYC Screen
+  kycBenefitsContainer: { gap: 16, marginVertical: 32, paddingHorizontal: 16 },
+  benefitRow: { flexDirection: 'row', alignItems: 'center', gap: 16, backgroundColor: '#F9FAFB', padding: 16, borderRadius: 16 },
+  benefitText: { fontSize: 15, fontWeight: '600', color: Colors.gray[800] },
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
