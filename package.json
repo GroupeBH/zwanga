@@ -24,6 +24,7 @@
     "expo": "~54.0.23",
     "expo-camera": "^17.0.9",
     "expo-constants": "~18.0.10",
+    "expo-contacts": "~15.0.11",
     "expo-dev-client": "~6.0.18",
     "expo-device": "~8.0.9",
     "expo-file-system": "^19.0.17",

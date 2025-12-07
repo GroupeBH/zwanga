@@ -84,6 +84,12 @@ module.exports = {
         }
       ],
       [
+        'expo-contacts',
+        {
+          contactsPermission: 'Autorisez zwanga à accéder à vos contacts.'
+        }
+      ],
+      [
         'expo-splash-screen',
         {
           image: './assets/images/zwanga2000.png',

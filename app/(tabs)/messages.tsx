@@ -1,14 +1,14 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, StyleSheet, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useListConversationsQuery } from '@/store/api/messageApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectConversations, selectUser } from '@/store/selectors';
-import { useRouter } from 'expo-router';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-import { Colors, Spacing, BorderRadius, FontSizes, FontWeights } from '@/constants/styles';
-import { useListConversationsQuery } from '@/store/api/messageApi';
 import { setConversations } from '@/store/slices/messagesSlice';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function MessagesScreen() {
   const dispatch = useAppDispatch();
@@ -95,8 +95,11 @@ export default function MessagesScreen() {
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <Text style={styles.headerTitle}>Messages</Text>
-          <TouchableOpacity style={styles.addButton}>
-            <Ionicons name="add" size={24} color={Colors.primary} />
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => router.push('/invite')}
+          >
+            <Ionicons name="person-add" size={20} color={Colors.primary} />
           </TouchableOpacity>
         </View>
 
@@ -120,8 +123,8 @@ export default function MessagesScreen() {
         </View>
       )}
 
-      <ScrollView 
-        style={styles.scrollView} 
+      <ScrollView
+        style={styles.scrollView}
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
       >
@@ -141,12 +144,12 @@ export default function MessagesScreen() {
             const timestamp = formatTimestamp(conversation.lastMessage?.createdAt ?? conversation.lastMessageAt);
             const title = getConversationTitle(conversation);
             return (
-            <Animated.View
-              key={conversation.id}
-              entering={FadeInDown.delay(index * 50)}
-            >
-              <TouchableOpacity
-                style={styles.conversationItem}
+              <Animated.View
+                key={conversation.id}
+                entering={FadeInDown.delay(index * 50)}
+              >
+                <TouchableOpacity
+                  style={styles.conversationItem}
                   onPress={() =>
                     router.push({
                       pathname: `/chat/${conversation.id}`,
@@ -155,36 +158,36 @@ export default function MessagesScreen() {
                       },
                     })
                   }
-              >
-                <View style={styles.avatarContainer}>
-                  <View style={styles.avatar} />
-                  <View style={styles.onlineBadge} />
-                </View>
+                >
+                  <View style={styles.avatarContainer}>
+                    <View style={styles.avatar} />
+                    <View style={styles.onlineBadge} />
+                  </View>
 
-                <View style={styles.conversationContent}>
-                  <View style={styles.conversationHeader}>
-                    <Text style={styles.conversationName}>{title}</Text>
-                    <Text style={styles.conversationTime}>{timestamp}</Text>
-                  </View>
-                  <View style={styles.conversationFooter}>
-                    <Text
-                      style={[
-                        styles.conversationMessage,
+                  <View style={styles.conversationContent}>
+                    <View style={styles.conversationHeader}>
+                      <Text style={styles.conversationName}>{title}</Text>
+                      <Text style={styles.conversationTime}>{timestamp}</Text>
+                    </View>
+                    <View style={styles.conversationFooter}>
+                      <Text
+                        style={[
+                          styles.conversationMessage,
                           (conversation.unreadCount ?? 0) > 0 && styles.conversationMessageUnread,
-                      ]}
-                      numberOfLines={1}
-                    >
+                        ]}
+                        numberOfLines={1}
+                      >
                         {subtitle}
-                    </Text>
+                      </Text>
                       {(conversation.unreadCount ?? 0) > 0 && (
-                      <View style={styles.unreadBadge}>
-                        <Text style={styles.unreadBadgeText}>{conversation.unreadCount}</Text>
-                      </View>
-                    )}
+                        <View style={styles.unreadBadge}>
+                          <Text style={styles.unreadBadgeText}>{conversation.unreadCount}</Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
-                </View>
-              </TouchableOpacity>
-            </Animated.View>
+                </TouchableOpacity>
+              </Animated.View>
             );
           })
         )}
