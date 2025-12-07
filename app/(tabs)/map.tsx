@@ -3,7 +3,7 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useUserLocation } from '@/hooks/useUserLocation';
-import { TripSearchParams, useLazyGetTripsQuery } from '@/store/api/tripApi';
+import { TripSearchParams, useLazyGetTripsQuery, useSearchTripsByCoordinatesMutation } from '@/store/api/tripApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
   selectLocationRadius,
@@ -13,17 +13,18 @@ import {
   selectUserCoordinates,
   selectVehicleFilter,
 } from '@/store/selectors';
-import { setRadiusKm, setSearchMode, setSearchQuery, setVehicleFilter, TripSearchMode } from '@/store/slices/locationSlice';
+import { setRadiusKm, setSearchQuery, TripSearchMode } from '@/store/slices/locationSlice';
 import { setTrips } from '@/store/slices/tripsSlice';
 import { formatTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import Mapbox from '@rnmapbox/maps';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  LayoutAnimation,
   Platform,
   ScrollView,
   StyleSheet,
@@ -37,7 +38,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 type LatLng = { latitude: number; longitude: number };
 
 // Initialize Mapbox with access token from config
-const mapboxToken = 
+const mapboxToken =
   Constants.expoConfig?.extra?.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ||
   process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
 if (mapboxToken) {
@@ -66,6 +67,7 @@ export default function MapScreen() {
   const { showDialog } = useDialog();
   const { permissionStatus, requestPermission } = useUserLocation({ autoRequest: true });
   const [triggerTripSearch, { isFetching: isApplyingSearch }] = useLazyGetTripsQuery();
+  const [searchByCoordinates, { isLoading: isSearchingArea }] = useSearchTripsByCoordinatesMutation();
   const userCoords = useAppSelector(selectUserCoordinates);
   const trips = useAppSelector(selectTripsMatchingMapFilters);
   const radiusKm = useAppSelector(selectLocationRadius);
@@ -76,6 +78,30 @@ export default function MapScreen() {
   const { shouldShow: shouldShowMapGuide, complete: completeMapGuide } =
     useTutorialGuide('map_screen');
   const [mapGuideVisible, setMapGuideVisible] = useState(false);
+  const cameraRef = useRef<Mapbox.Camera>(null);
+  const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
+  const [isMapMoving, setIsMapMoving] = useState(false);
+
+  const toggleMapExpansion = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsMapExpanded(!isMapExpanded);
+  };
+
+  const centerOnUser = async () => {
+    if (permissionStatus !== 'granted') {
+      await requestPermission();
+      return;
+    }
+
+    if (userCoords) {
+      cameraRef.current?.setCamera({
+        centerCoordinate: [userCoords.longitude, userCoords.latitude],
+        zoomLevel: 14,
+        animationDuration: 1000,
+      });
+    }
+  };
 
   useEffect(() => {
     setSearch(activeSearchQuery);
@@ -115,9 +141,9 @@ export default function MapScreen() {
 
   const renderPolyline = (tripId: string, color: string, coordinates: { latitude: number; longitude: number }[]) => {
     if (coordinates.length < 2) return null;
-    
+
     const lineCoordinates = coordinates.map(coord => [coord.longitude, coord.latitude] as [number, number]);
-    
+
     return (
       <Mapbox.ShapeSource
         key={`${tripId}-polyline`}
@@ -162,7 +188,6 @@ export default function MapScreen() {
       return { arrivalLocation: trimmed };
     }
 
-    // Mode "tous" : on reste large côté backend et on laisse la recherche locale
     return { departureLocation: trimmed };
   };
 
@@ -226,14 +251,38 @@ export default function MapScreen() {
     return ((search ?? '').trim() === (activeSearchQuery ?? '').trim()) || isApplyingSearch;
   }, [activeSearchQuery, isApplyingSearch, search]);
 
+  const getCoordinates = (center: any): [number, number] | null => {
+    if (!center) return null;
+    if (Array.isArray(center) && center.length === 2 && typeof center[0] === 'number' && typeof center[1] === 'number') {
+      return center as [number, number];
+    }
+    if (typeof center === 'object') {
+      const lng = center.lng ?? center.longitude ?? center[0];
+      const lat = center.lat ?? center.latitude ?? center[1];
+      if (typeof lng === 'number' && typeof lat === 'number') {
+        return [lng, lat];
+      }
+    }
+    return null;
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <Mapbox.MapView
         style={styles.map}
-        styleURL={Mapbox.StyleURL.Street}
+        styleURL={Mapbox.StyleURL.SatelliteStreet}
         compassEnabled={false}
+        onCameraChanged={(state) => {
+          const coords = getCoordinates(state.properties.center);
+          if (coords) {
+            setMapCenter(coords);
+          }
+          setIsMapMoving(true);
+        }}
+        onMapIdle={() => setIsMapMoving(false)}
       >
         <Mapbox.Camera
+          ref={cameraRef}
           defaultSettings={{
             centerCoordinate: initialCamera.centerCoordinate,
             zoomLevel: initialCamera.zoomLevel,
@@ -241,7 +290,7 @@ export default function MapScreen() {
           animationMode="flyTo"
           animationDuration={0}
         />
-        
+
         {userCoords && (
           <Mapbox.UserLocation visible={true} />
         )}
@@ -259,18 +308,18 @@ export default function MapScreen() {
           const userDistance =
             userCoords && departureCoords
               ? distanceInKm(
-                  { latitude: departureCoords.latitude, longitude: departureCoords.longitude },
-                  { latitude: userCoords.latitude, longitude: userCoords.longitude },
-                )
+                { latitude: departureCoords.latitude, longitude: departureCoords.longitude },
+                { latitude: userCoords.latitude, longitude: userCoords.longitude },
+              )
               : null;
 
           const driverInitials = trip.driverName
             ? trip.driverName
-                .split(' ')
-                .map((word) => word[0])
-                .join('')
-                .slice(0, 2)
-                .toUpperCase()
+              .split(' ')
+              .map((word) => word[0])
+              .join('')
+              .slice(0, 2)
+              .toUpperCase()
             : 'DR';
 
           return (
@@ -353,181 +402,260 @@ export default function MapScreen() {
         })}
       </Mapbox.MapView>
 
-      <View pointerEvents="box-none" style={styles.topOverlay}>
-        <View style={styles.searchCard}>
-          <View style={styles.searchRow}>
-            <Ionicons name="search" size={18} color={Colors.gray[500]} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder={placeholder}
-              placeholderTextColor={Colors.gray[500]}
-              value={search}
-              onChangeText={handleSearchChange}
-              returnKeyType="search"
-              onSubmitEditing={applySearchQuery}
-            />
-          </View>
-          <View style={styles.searchActions}>
-            <TouchableOpacity
-              style={[styles.applyButton, isApplyDisabled && styles.applyButtonDisabled]}
-              onPress={applySearchQuery}
-              disabled={isApplyDisabled}
-            >
-              {isApplyingSearch ? (
-                <ActivityIndicator size="small" color={Colors.white} />
-              ) : (
-                <>
-                  <Ionicons name="funnel" size={16} color={isApplyDisabled ? Colors.gray[400] : Colors.white} />
-                  <Text style={[styles.applyButtonText, isApplyDisabled && styles.applyButtonTextDisabled]}>
-                    Appliquer
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-            {Boolean(activeSearchQuery) && (
-              <TouchableOpacity
-                style={styles.clearButton}
-                onPress={clearSearchQuery}
-                disabled={isApplyingSearch}
-              >
-                <Ionicons name="close-circle" size={16} color={Colors.primary} />
-                <Text style={styles.clearButtonText}>Effacer</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          <View style={styles.searchModeRow}>
-            {searchModes.map((mode) => (
-              <TouchableOpacity
-                key={mode.key}
-                style={[
-                  styles.searchModeChip,
-                  searchMode === mode.key && styles.searchModeChipActive,
-                ]}
-                onPress={() => dispatch(setSearchMode(mode.key))}
-              >
-                <Text
-                  style={[
-                    styles.searchModeChipText,
-                    searchMode === mode.key && styles.searchModeChipTextActive,
-                  ]}
-                >
-                  {mode.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <View style={styles.filtersRow}>
-            {['all', 'car', 'moto', 'tricycle'].map((type) => (
-              <TouchableOpacity
-                key={type}
-                style={[
-                  styles.filterChip,
-                  vehicleFilter === type && styles.filterChipActive,
-                ]}
-                onPress={() => dispatch(setVehicleFilter(type as any))}
-              >
-                <Text
-                  style={[
-                    styles.filterChipText,
-                    vehicleFilter === type && styles.filterChipTextActive,
-                  ]}
-                >
-                  {type === 'all' ? 'Tous' : type.toUpperCase()}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.radiusCard}>
-          <Text style={styles.radiusLabel}>Rayon de recherche: {radiusKm} km</Text>
-          <View style={styles.radiusButtons}>
-            {[5, 10, 20, 50].map((value) => (
-              <TouchableOpacity
-                key={value}
-                style={[
-                  styles.radiusButton,
-                  radiusKm === value && styles.radiusButtonActive,
-                ]}
-                onPress={() => dispatch(setRadiusKm(value))}
-              >
-                <Text
-                  style={[
-                    styles.radiusButtonText,
-                    radiusKm === value && styles.radiusButtonTextActive,
-                  ]}
-                >
-                  {value} km
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+      {/* Center Pin for Drag-to-Search */}
+      <View style={styles.centerPinContainer} pointerEvents="none">
+        <View style={styles.centerPinHalo} />
+        <Ionicons name="location" size={36} color={Colors.primary} style={styles.centerPinIcon} />
+        <View style={styles.centerPinShadow} />
       </View>
 
-      <View style={styles.bottomSheet}>
-        <View style={styles.sheetHeader}>
-          <View>
-            <Text style={styles.sheetTitle}>Trajets à proximité</Text>
-            <Text style={styles.sheetSubtitle}>{trips.length} itinéraire(s) trouvé(s)</Text>
-          </View>
-          <TouchableOpacity style={styles.refreshButton} onPress={requestPermission}>
-            <Ionicons name="locate" size={20} color={Colors.primary} />
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          style={styles.sheetScroll}
-          contentContainerStyle={styles.sheetContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {trips.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="map-outline" size={36} color={Colors.gray[400]} />
-              <Text style={styles.emptyTitle}>Aucun trajet autour de vous</Text>
-              <Text style={styles.emptyText}>
-                Ajustez le rayon ou la recherche pour découvrir davantage d’options.
-              </Text>
+      {!isMapExpanded && (
+        <View pointerEvents="box-none" style={styles.topOverlay}>
+          <View style={styles.searchCard}>
+            <View style={styles.searchRow}>
+              <Ionicons name="search" size={18} color={Colors.gray[500]} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder={placeholder}
+                placeholderTextColor={Colors.gray[500]}
+                value={search}
+                onChangeText={handleSearchChange}
+                returnKeyType="search"
+                onSubmitEditing={applySearchQuery}
+              />
             </View>
-          ) : (
-            trips.map((trip) => (
+            <View style={styles.searchActions}>
               <TouchableOpacity
-                key={trip.id}
-                style={styles.tripCard}
-                onPress={() => router.push(`/trip/${trip.id}`)}
+                style={[styles.applyButton, isApplyDisabled && styles.applyButtonDisabled]}
+                onPress={applySearchQuery}
+                disabled={isApplyDisabled}
               >
-                <View style={styles.tripCardHeader}>
-                  <View>
-                    <Text style={styles.tripDriverName}>{trip.driverName}</Text>
-                    <Text style={styles.tripVehicle}>{trip.vehicleInfo}</Text>
-                  </View>
-                  <Text style={styles.tripPrice}>{trip.price} FC</Text>
-                </View>
-                <View style={styles.tripRouteRow}>
-                  <Ionicons name="location" size={16} color={Colors.success} />
-                  <Text style={styles.tripRouteText}>{trip.departure.name}</Text>
-                  <Text style={styles.tripTime}>{formatTime(trip.departureTime)}</Text>
-                </View>
-                <View style={styles.tripRouteRow}>
-                  <Ionicons name="navigate" size={16} color={Colors.primary} />
-                  <Text style={styles.tripRouteText}>{trip.arrival.name}</Text>
-                  <Text style={styles.tripTime}>{formatTime(trip.arrivalTime)}</Text>
-                </View>
-                <View style={styles.tripFooter}>
-                  <View style={styles.tripFooterLeft}>
-                    <Ionicons name="people" size={15} color={Colors.gray[600]} />
-                    <Text style={styles.tripSeats}>{trip.availableSeats} places</Text>
-                  </View>
-                  <View style={styles.tripFooterRight}>
-                    <Text style={styles.tripDetailsText}>Voir détails</Text>
-                    <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
-                  </View>
-                </View>
+                {isApplyingSearch ? (
+                  <ActivityIndicator size="small" color={Colors.white} />
+                ) : (
+                  <>
+                    <Ionicons name="funnel" size={16} color={isApplyDisabled ? Colors.gray[400] : Colors.white} />
+                    <Text style={[styles.applyButtonText, isApplyDisabled && styles.applyButtonTextDisabled]}>
+                      Appliquer
+                    </Text>
+                  </>
+                )}
               </TouchableOpacity>
-            ))
-          )}
-        </ScrollView>
+              {Boolean(activeSearchQuery) && (
+                <TouchableOpacity
+                  style={styles.clearButton}
+                  onPress={clearSearchQuery}
+                  disabled={isApplyingSearch}
+                >
+                  <Ionicons name="close-circle" size={16} color={Colors.primary} />
+                  <Text style={styles.clearButtonText}>Effacer</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {/* <View style={styles.searchModeRow}>
+              {searchModes.map((mode) => (
+                <TouchableOpacity
+                  key={mode.key}
+                  style={[
+                    styles.searchModeChip,
+                    searchMode === mode.key && styles.searchModeChipActive,
+                  ]}
+                  onPress={() => dispatch(setSearchMode(mode.key))}
+                >
+                  <Text
+                    style={[
+                      styles.searchModeChipText,
+                      searchMode === mode.key && styles.searchModeChipTextActive,
+                    ]}
+                  >
+                    {mode.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View> */}
+            {/* <View style={styles.filtersRow}>
+              {['all', 'car', 'moto', 'tricycle'].map((type) => (
+                <TouchableOpacity
+                  key={type}
+                  style={[
+                    styles.filterChip,
+                    vehicleFilter === type && styles.filterChipActive,
+                  ]}
+                  onPress={() => dispatch(setVehicleFilter(type as any))}
+                >
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      vehicleFilter === type && styles.filterChipTextActive,
+                    ]}
+                  >
+                    {type === 'all' ? 'Tous' : type.toUpperCase()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View> */}
+          </View>
+
+          <View style={styles.radiusCard}>
+            <Text style={styles.radiusLabel}>Rayon de recherche: {radiusKm} km</Text>
+            <View style={styles.radiusButtons}>
+              {[5, 10, 20, 50].map((value) => (
+                <TouchableOpacity
+                  key={value}
+                  style={[
+                    styles.radiusButton,
+                    radiusKm === value && styles.radiusButtonActive,
+                  ]}
+                  onPress={() => dispatch(setRadiusKm(value))}
+                >
+                  <Text
+                    style={[
+                      styles.radiusButtonText,
+                      radiusKm === value && styles.radiusButtonTextActive,
+                    ]}
+                  >
+                    {value} km
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Map Controls: Expand & Location */}
+      <View style={[styles.mapControls, isMapExpanded && styles.mapControlsExpanded]}>
+        <TouchableOpacity
+          style={styles.controlButton}
+          onPress={toggleMapExpansion}
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name={isMapExpanded ? "contract" : "expand"}
+            size={20}
+            color={Colors.gray[800]}
+          />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.locationButton}
+          onPress={centerOnUser}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="locate" size={18} color={Colors.primary} />
+          <Text style={styles.locationButtonText}>Voir ma position</Text>
+        </TouchableOpacity>
       </View>
+
+      {/* "Search Here" Button */}
+      {isMapExpanded && !isMapMoving && (
+        <TouchableOpacity
+          style={styles.searchHereButton}
+          activeOpacity={0.8}
+          onPress={async () => {
+            const sanitizedCoords = getCoordinates(mapCenter);
+            if (sanitizedCoords) {
+              try {
+                // Uncommented to use radius from state
+                const results = await searchByCoordinates({
+                  departureCoordinates: sanitizedCoords,
+                  departureRadiusKm: radiusKm,
+                  // We need to provide required fields for the payload even if we don't use them?
+                  // The interface makes arrivalCoordinates optional now, so we should be good.
+                }).unwrap();
+                dispatch(setTrips(results));
+
+                showDialog({
+                  variant: 'success',
+                  title: 'Recherche effectuée',
+                  message: `${results.length} trajet(s) trouvé(s) dans cette zone.`,
+                });
+              } catch (error: any) {
+                const message =
+                  error?.data?.message ?? error?.error ?? "Impossible de rechercher dans cette zone.";
+                showDialog({
+                  variant: 'danger',
+                  title: 'Erreur',
+                  message: Array.isArray(message) ? message.join('\n') : message,
+                });
+              }
+            }
+          }}
+          disabled={isSearchingArea}
+        >
+          {isSearchingArea ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <Text style={styles.searchHereText}>Rechercher dans cette zone</Text>
+          )}
+        </TouchableOpacity>
+      )}
+
+      {!isMapExpanded && (
+        <View style={styles.bottomSheet}>
+          <View style={styles.sheetHeader}>
+            <View>
+              <Text style={styles.sheetTitle}>Trajets à proximité</Text>
+              <Text style={styles.sheetSubtitle}>{trips.length} itinéraire(s) trouvé(s)</Text>
+            </View>
+            {/* <TouchableOpacity style={styles.refreshButton} onPress={requestPermission}>
+              <Ionicons name="locate" size={20} color={Colors.primary} />
+            </TouchableOpacity> */}
+          </View>
+
+          <ScrollView
+            style={styles.sheetScroll}
+            contentContainerStyle={styles.sheetContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {trips.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="map-outline" size={36} color={Colors.gray[400]} />
+                <Text style={styles.emptyTitle}>Aucun trajet autour de vous</Text>
+                <Text style={styles.emptyText}>
+                  Ajustez le rayon ou la recherche pour découvrir davantage d’options.
+                </Text>
+              </View>
+            ) : (
+              trips.map((trip) => (
+                <TouchableOpacity
+                  key={trip.id}
+                  style={styles.tripCard}
+                  onPress={() => router.push(`/trip/${trip.id}`)}
+                >
+                  <View style={styles.tripCardHeader}>
+                    <View>
+                      <Text style={styles.tripDriverName}>{trip.driverName}</Text>
+                      <Text style={styles.tripVehicle}>{trip.vehicleInfo}</Text>
+                    </View>
+                    <Text style={styles.tripPrice}>{trip.price} FC</Text>
+                  </View>
+                  <View style={styles.tripRouteRow}>
+                    <Ionicons name="location" size={16} color={Colors.success} />
+                    <Text style={styles.tripRouteText}>{trip.departure.name}</Text>
+                    <Text style={styles.tripTime}>{formatTime(trip.departureTime)}</Text>
+                  </View>
+                  <View style={styles.tripRouteRow}>
+                    <Ionicons name="navigate" size={16} color={Colors.primary} />
+                    <Text style={styles.tripRouteText}>{trip.arrival.name}</Text>
+                    <Text style={styles.tripTime}>{formatTime(trip.arrivalTime)}</Text>
+                  </View>
+                  <View style={styles.tripFooter}>
+                    <View style={styles.tripFooterLeft}>
+                      <Ionicons name="people" size={15} color={Colors.gray[600]} />
+                      <Text style={styles.tripSeats}>{trip.availableSeats} places</Text>
+                    </View>
+                    <View style={styles.tripFooterRight}>
+                      <Text style={styles.tripDetailsText}>Voir détails</Text>
+                      <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      )}
 
       {permissionStatus === 'denied' && (
         <View style={styles.permissionBanner}>
@@ -571,6 +699,7 @@ const styles = StyleSheet.create({
     left: Spacing.lg,
     right: Spacing.lg,
     gap: Spacing.md,
+    zIndex: 10,
   },
   searchCard: {
     backgroundColor: Colors.white,
@@ -735,6 +864,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 3,
     borderColor: Colors.white,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
     overflow: 'hidden',
   },
   driverMarkerImage: {
@@ -743,14 +876,17 @@ const styles = StyleSheet.create({
   },
   driverMarkerInitials: {
     color: Colors.white,
+    fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
   },
   driverMarkerHalo: {
     position: 'absolute',
-    width: 64,
-    height: 64,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary + '33',
+    bottom: -4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.primary,
+    opacity: 0.5,
   },
   arrivalMarker: {
     width: 32,
@@ -758,116 +894,208 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: Colors.white,
-  },
-  calloutCard: {
-    width: 220,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
     shadowColor: Colors.black,
     shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 6,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  calloutCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: Spacing.sm,
+    width: 220,
+    gap: 4,
   },
   calloutTitle: {
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    fontSize: FontSizes.base,
   },
   calloutSubtitle: {
+    fontSize: FontSizes.xs,
     color: Colors.gray[600],
-    marginTop: 2,
-    fontSize: FontSizes.sm,
   },
   calloutDistance: {
-    marginTop: Spacing.xs,
     fontSize: FontSizes.xs,
-    color: Colors.gray[500],
+    color: Colors.success,
+    fontWeight: FontWeights.medium,
   },
   calloutDivider: {
     height: 1,
-    backgroundColor: Colors.gray[200],
-    marginVertical: Spacing.sm,
+    backgroundColor: Colors.gray[100],
+    marginVertical: 4,
   },
   calloutFooter: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: Spacing.sm,
+    alignItems: 'center',
   },
   calloutSchedule: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[600],
-    flex: 1,
+    fontSize: 10,
+    color: Colors.gray[500],
   },
   calloutCta: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 4,
+    gap: 2,
   },
   calloutCtaText: {
     color: Colors.white,
-    fontSize: FontSizes.xs,
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+  },
+  centerPinContainer: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -18,
+    marginTop: -38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
+  centerPinHalo: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: Colors.primary,
+    opacity: 0.2,
+    position: 'absolute',
+    bottom: 0,
+    transform: [{ scaleX: 1.5 }],
+  },
+  centerPinIcon: {
+    marginBottom: 8,
+    zIndex: 21,
+  },
+  centerPinShadow: {
+    width: 10,
+    height: 4,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    borderRadius: 5,
+    position: 'absolute',
+    bottom: 2,
+  },
+  mapControls: {
+    position: 'absolute',
+    right: Spacing.lg,
+    bottom: '48%', // Default position
+    gap: Spacing.md,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  mapControlsExpanded: {
+    bottom: Spacing.xl,
+  },
+  controlButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.black,
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  locationButton: {
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.white,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+    gap: Spacing.xs,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  locationButtonText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[900],
     fontWeight: FontWeights.semibold,
+  },
+  searchHereButton: {
+    position: 'absolute',
+    top: Platform.select({ ios: 60, android: 40 }),
+    alignSelf: 'center',
+    backgroundColor: Colors.white,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    zIndex: 25,
+  },
+  searchHereText: {
+    color: Colors.primary,
+    fontWeight: FontWeights.semibold,
+    fontSize: FontSizes.sm,
   },
   bottomSheet: {
     position: 'absolute',
+    bottom: 0,
     left: 0,
     right: 0,
-    bottom: 0,
+    height: '45%',
     backgroundColor: Colors.white,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingTop: Spacing.lg,
-    paddingBottom: Platform.select({ ios: Spacing.xl + 20, android: Spacing.xl }),
-    paddingHorizontal: Spacing.lg,
     shadowColor: Colors.black,
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.1,
     shadowRadius: 10,
-    elevation: 15,
-    maxHeight: '45%',
+    elevation: 10,
+    zIndex: 15,
   },
   sheetHeader: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
+    alignItems: 'flex-start',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
   },
   sheetTitle: {
-    fontSize: FontSizes.lg,
+    fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
   sheetSubtitle: {
     fontSize: FontSizes.sm,
-    color: Colors.gray[600],
+    color: Colors.gray[500],
     marginTop: 2,
   },
   refreshButton: {
-    width: 40,
-    height: 40,
+    padding: Spacing.sm,
+    backgroundColor: Colors.gray[50],
     borderRadius: BorderRadius.full,
-    backgroundColor: Colors.gray[100],
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   sheetScroll: {
     flex: 1,
   },
   sheetContent: {
-    paddingBottom: Spacing.lg,
+    padding: Spacing.lg,
+    paddingTop: Spacing.md,
     gap: Spacing.md,
+    paddingBottom: Spacing.xl * 2,
   },
   tripCard: {
-    backgroundColor: Colors.gray[50],
-    borderRadius: 18,
-    padding: Spacing.lg,
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    padding: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.gray[200],
     gap: Spacing.sm,
@@ -875,17 +1103,16 @@ const styles = StyleSheet.create({
   tripCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   tripDriverName: {
     fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
+    fontWeight: FontWeights.semibold,
     color: Colors.gray[900],
   },
   tripVehicle: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    marginTop: 2,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
   },
   tripPrice: {
     fontSize: FontSizes.lg,
@@ -993,4 +1220,3 @@ const styles = StyleSheet.create({
     color: Colors.gray[700],
   },
 });
-

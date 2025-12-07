@@ -73,7 +73,7 @@ const arrayToLatLng = (coordinates?: [number, number] | null) => {
 };
 
 // Initialize Mapbox with access token from config
-const mapboxToken = 
+const mapboxToken =
   Constants.expoConfig?.extra?.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ||
   process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
 if (mapboxToken) {
@@ -202,7 +202,7 @@ export default function TripDetailsScreen() {
     setTripGuideVisible(false);
     completeTripGuide();
   };
-  
+
   const pulseAnim = useSharedValue(1);
 
   // console.log('trip', trip);
@@ -256,7 +256,7 @@ export default function TripDetailsScreen() {
     trackingSocket
       .joinTrip(trip.id)
       .then(() => trackingSocket.requestDriverLocation(trip.id))
-      .catch(() => {});
+      .catch(() => { });
 
     const unsubscribeLocation = trackingSocket.subscribeToDriverLocation((payload) => {
       if (!isMounted || payload.tripId !== trip.id) {
@@ -449,7 +449,7 @@ export default function TripDetailsScreen() {
   const handleBookingSeatsChange = (value: string) => {
     // Permettre seulement les chiffres
     const numericValue = value.replace(/[^0-9]/g, '');
-    
+
     if (numericValue === '') {
       setBookingSeats('');
       setBookingModalError('');
@@ -457,7 +457,7 @@ export default function TripDetailsScreen() {
     }
 
     const seatsNum = parseInt(numericValue, 10);
-    
+
     // Vérifier si la valeur est supérieure à 2
     if (seatsNum > 2) {
       setBookingModalError('Un seul utilisateur ne peut pas réserver plus de deux places.');
@@ -572,10 +572,10 @@ export default function TripDetailsScreen() {
         extension === 'png'
           ? 'image/png'
           : extension === 'webp'
-          ? 'image/webp'
-          : extension === 'heic'
-          ? 'image/heic'
-          : 'image/jpeg';
+            ? 'image/webp'
+            : extension === 'heic'
+              ? 'image/heic'
+              : 'image/jpeg';
       formData.append(field, {
         uri,
         type: mimeType,
@@ -735,8 +735,8 @@ export default function TripDetailsScreen() {
         </View>
       </View>
 
-      <ScrollView 
-        style={styles.scrollView} 
+      <ScrollView
+        style={styles.scrollView}
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
       >
@@ -862,7 +862,7 @@ export default function TripDetailsScreen() {
             <View style={styles.mapModalContent}>
               <Mapbox.MapView
                 style={styles.fullscreenMap}
-                styleURL={Mapbox.StyleURL.Street}
+                styleURL={Mapbox.StyleURL.SatelliteStreet}
               >
                 <Mapbox.Camera
                   defaultSettings={{
@@ -1027,7 +1027,7 @@ export default function TripDetailsScreen() {
         <View style={styles.section}>
           <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>ITINÉRAIRE</Text>
-            
+
             <View style={styles.routeContainer}>
               <View style={styles.routeIconContainer}>
                 <View style={styles.routeIconStart}>
@@ -1065,7 +1065,7 @@ export default function TripDetailsScreen() {
         <View style={styles.section}>
           <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>CONDUCTEUR</Text>
-            
+
             <View style={styles.driverInfo}>
               <View style={styles.driverAvatar} />
               <View style={styles.driverDetails}>
@@ -1117,11 +1117,11 @@ export default function TripDetailsScreen() {
                   if (driverPhone) {
                     Linking.openURL(`tel:${driverPhone}`);
                   } else {
-                  showDialog({
-                    variant: 'info',
-                    title: 'Numéro manquant',
-                    message: 'Le numéro de téléphone du conducteur n’est pas disponible.',
-                  });
+                    showDialog({
+                      variant: 'info',
+                      title: 'Numéro manquant',
+                      message: 'Le numéro de téléphone du conducteur n’est pas disponible.',
+                    });
                   }
                 }}
               >
@@ -1147,7 +1147,7 @@ export default function TripDetailsScreen() {
         <View style={styles.section}>
           <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>DÉTAILS</Text>
-            
+
             <View style={styles.detailsList}>
               <View style={styles.detailRow}>
                 <View style={styles.detailLeft}>
@@ -1219,7 +1219,7 @@ export default function TripDetailsScreen() {
                 </View>
 
                 <View style={styles.bookingActionsRow}>
-            <TouchableOpacity
+                  <TouchableOpacity
                     style={[styles.bookingActionButton, styles.bookingActionDanger]}
                     onPress={confirmCancelBooking}
                     disabled={isCancellingBooking}
@@ -1234,7 +1234,7 @@ export default function TripDetailsScreen() {
                         </Text>
                       </>
                     )}
-            </TouchableOpacity>
+                  </TouchableOpacity>
                 </View>
 
                 {myBookingsFetching && (
@@ -1250,36 +1250,36 @@ export default function TripDetailsScreen() {
                   <View style={styles.bookingHintIcon}>
                     <Ionicons name="information-circle" size={20} color={Colors.primary} />
                   </View>
-                <View style={styles.bookingHintContent}>
-                  <Text style={styles.bookingHintTitle}>
-                    {availableSeats > 0
-                      ? `Il reste ${availableSeats} place${availableSeats > 1 ? 's' : ''} disponibles`
-                      : 'Ce trajet est complet'}
-                  </Text>
-                  <Text style={styles.bookingHintSubtitle}>
-                    {isIdentityVerified
-                      ? `Prix par place : ${trip.price} FC`
-                      : 'Vérifiez votre identité pour envoyer une demande de réservation.'}
-                  </Text>
+                  <View style={styles.bookingHintContent}>
+                    <Text style={styles.bookingHintTitle}>
+                      {availableSeats > 0
+                        ? `Il reste ${availableSeats} place${availableSeats > 1 ? 's' : ''} disponibles`
+                        : 'Ce trajet est complet'}
+                    </Text>
+                    <Text style={styles.bookingHintSubtitle}>
+                      {isIdentityVerified
+                        ? `Prix par place : ${trip.price} FC`
+                        : 'Vérifiez votre identité pour envoyer une demande de réservation.'}
+                    </Text>
+                  </View>
                 </View>
-                </View>
-            <TouchableOpacity
-              style={[
-                styles.actionButton,
-                (availableSeats <= 0 || myBookingsLoading) &&
-                  styles.actionButtonDisabled,
-              ]}
-              onPress={openBookingModal}
-              disabled={availableSeats <= 0 || myBookingsLoading}
-            >
-              {myBookingsLoading ? (
-                <ActivityIndicator color={Colors.white} />
-              ) : (
-                <Text style={styles.actionButtonText}>
-                  {isIdentityVerified ? 'Réserver ce trajet' : 'KYC requis'}
-                </Text>
-              )}
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.actionButton,
+                    (availableSeats <= 0 || myBookingsLoading) &&
+                    styles.actionButtonDisabled,
+                  ]}
+                  onPress={openBookingModal}
+                  disabled={availableSeats <= 0 || myBookingsLoading}
+                >
+                  {myBookingsLoading ? (
+                    <ActivityIndicator color={Colors.white} />
+                  ) : (
+                    <Text style={styles.actionButtonText}>
+                      {isIdentityVerified ? 'Réserver ce trajet' : 'KYC requis'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
               </>
             )}
           </View>

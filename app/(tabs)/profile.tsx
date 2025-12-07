@@ -74,6 +74,8 @@ export default function ProfileScreen() {
   const isKycRejected = kycStatus?.status === 'rejected';
   const isKycBusy = kycSubmitting || uploadingKyc;
   const isKycActionDisabled = isKycBusy || isKycApproved;
+
+  console.log("kycstatus:", kycStatus)
   const userId = currentUser?.id ?? '';
   const { data: reviews } = useGetReviewsQuery(userId, {
     skip: !userId,
@@ -232,10 +234,10 @@ export default function ProfileScreen() {
         extension === 'png'
           ? 'image/png'
           : extension === 'webp'
-          ? 'image/webp'
-          : extension === 'heic'
-          ? 'image/heic'
-          : 'image/jpeg';
+            ? 'image/webp'
+            : extension === 'heic'
+              ? 'image/heic'
+              : 'image/jpeg';
       formData.append(field, {
         uri,
         type: mimeType,
@@ -320,7 +322,7 @@ export default function ProfileScreen() {
 
   const handleLogout = () => {
     dispatch(logout());
-    router.replace('/auth');
+    // router.replace('/auth');
   };
 
   return (
@@ -343,7 +345,7 @@ export default function ProfileScreen() {
 
           {/* Infos utilisateur */}
           <View style={styles.userInfo}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.avatarContainer}
               onPress={changeProfilePhoto}
               disabled={isUploading}
@@ -363,11 +365,11 @@ export default function ProfileScreen() {
                 <View style={styles.uploadingOverlay}>
                   <ActivityIndicator size="small" color={Colors.white} />
                 </View>
-              // ) : (
-              //   <View style={styles.editBadge}>
-              //     <Ionicons name="camera" size={14} color={Colors.white} />
-              //   </View>
-              // )}}
+                // ) : (
+                //   <View style={styles.editBadge}>
+                //     <Ionicons name="camera" size={14} color={Colors.white} />
+                //   </View>
+                // )}}
               )}
               {currentUser?.identityVerified && (
                 <View style={styles.verifiedBadge}>
@@ -548,10 +550,10 @@ export default function ProfileScreen() {
               {isKycApproved
                 ? 'Vérifié'
                 : isKycPending
-                ? 'En cours de vérification'
-                : isKycRejected
-                ? 'Rejeté'
-                : 'Non vérifié'}
+                  ? 'En cours de vérification'
+                  : isKycRejected
+                    ? 'Rejeté'
+                    : 'Non vérifié'}
             </Text>
             {isKycRejected && kycStatus?.rejectionReason ? (
               <Text style={styles.kycRejectionText}>
@@ -562,8 +564,8 @@ export default function ProfileScreen() {
               {isKycApproved
                 ? 'Vos documents sont validés. Contactez le support pour toute mise à jour.'
                 : isKycPending
-                ? 'Nous vérifions vos documents. Vous pouvez les actualiser en cas de changement.'
-                : 'Ajoutez vos documents officiels pour confirmer votre identité.'}
+                  ? 'Nous vérifions vos documents. Vous pouvez les actualiser en cas de changement.'
+                  : 'Ajoutez vos documents officiels pour confirmer votre identité.'}
             </Text>
             <TouchableOpacity
               style={[

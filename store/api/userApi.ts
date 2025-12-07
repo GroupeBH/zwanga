@@ -1,4 +1,6 @@
+import { getRefreshToken } from '../../services/tokenStorage';
 import type { KycDocument, ProfileStats, ProfileSummary, User, UserRole, Vehicle } from '../../types';
+import { authApi } from './authApi';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 
@@ -25,22 +27,22 @@ const mapServerVehicle = (vehicle: any): Vehicle => ({
 const mapServerUser = (user: ServerUser): User => {
   const vehicleEntry = user.vehicles?.[0];
   return {
-  id: user.id,
-  name: buildFullName(user),
-  firstName: user.firstName,
-  lastName: user.lastName,
-  phone: user.phone ?? '',
-  email: user.email ?? undefined,
-  role: (user.role ?? 'passenger') as UserRole,
-  avatar: user.profilePicture ?? user.avatar ?? undefined,
-  profilePicture: user.profilePicture ?? null,
-  rating: user.rating ?? 0,
-  totalTrips: user.totalTrips ?? 0,
-  verified: Boolean(user.isEmailVerified || user.isPhoneVerified || user.isDriver),
-  identityVerified: Boolean(user.kycDocuments?.some?.((doc: any) => doc.status === 'approved')),
+    id: user.id,
+    name: buildFullName(user),
+    firstName: user.firstName,
+    lastName: user.lastName,
+    phone: user.phone ?? '',
+    email: user.email ?? undefined,
+    role: (user.role ?? 'passenger') as UserRole,
+    avatar: user.profilePicture ?? user.avatar ?? undefined,
+    profilePicture: user.profilePicture ?? null,
+    rating: user.rating ?? 0,
+    totalTrips: user.totalTrips ?? 0,
+    verified: Boolean(user.isEmailVerified || user.isPhoneVerified || user.isDriver),
+    identityVerified: Boolean(user.kycDocuments?.some?.((doc: any) => doc.status === 'approved')),
     vehicle: vehicleEntry ? mapServerVehicle(vehicleEntry) : undefined,
-  isDriver: user.isDriver ?? false,
-  createdAt: user.createdAt ?? new Date().toISOString(),
+    isDriver: user.isDriver ?? false,
+    createdAt: user.createdAt ?? new Date().toISOString(),
   };
 };
 
@@ -94,6 +96,34 @@ export const userApi = baseApi.injectEndpoints({
         method: 'POST',
         body: formData,
       }),
+      async onQueryStarted(
+        _arg: FormData,
+        { queryFulfilled, dispatch },
+      ) {
+        try {
+          // Wait for KYC upload to complete successfully
+          await queryFulfilled;
+
+          // Get current refresh token from secure storage
+          const refreshToken = await getRefreshToken();
+
+          if (refreshToken) {
+            // Trigger token refresh to get new JWT with updated KYC status
+            // This ensures the access token immediately reflects the new KYC status
+            await dispatch(
+              authApi.endpoints.refreshToken.initiate({ refreshToken })
+            ).unwrap();
+
+            console.log('Tokens refreshed successfully after KYC upload');
+          } else {
+            console.warn('No refresh token available after KYC upload');
+          }
+        } catch (error) {
+          // Don't throw - KYC upload was successful, token refresh is optional
+          // The user can still continue using the app with the old token
+          console.error('Error refreshing tokens after KYC upload:', error);
+        }
+      },
       invalidatesTags: ['User'],
     }),
 

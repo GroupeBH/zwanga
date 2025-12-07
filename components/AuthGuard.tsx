@@ -1,4 +1,6 @@
 import { Colors } from '@/constants/styles';
+import { clearStoredFcmToken, obtainFcmToken } from '@/services/pushNotifications';
+import { refreshAccessToken } from '@/services/tokenRefresh';
 import { useUpdateFcmTokenMutation } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
@@ -7,13 +9,11 @@ import {
   selectIsLoading,
   selectRefreshToken,
 } from '@/store/selectors';
+import { logout } from '@/store/slices/authSlice';
+import { isTokenExpired } from '@/utils/jwt';
 import { useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { obtainFcmToken, clearStoredFcmToken } from '@/services/pushNotifications';
-import { refreshAccessToken } from '@/services/tokenRefresh';
-import { isTokenExpired } from '@/utils/jwt';
-import { logout } from '@/store/slices/authSlice';
 
 /**
  * Composant de protection des routes
@@ -82,17 +82,15 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
 
     // Déterminer si on est dans une route protégée (tabs)
+    console.log(`[AuthGuard] Check: Auth=${isAuthenticated}, InAuthGroup=${inAuthGroup}, Segments=${JSON.stringify(segments)}`);
+
     if (!isAuthenticated && !inAuthGroup) {
-      // L'utilisateur n'est pas authentifié et n'est pas sur la page auth
-      // Rediriger vers auth
-      console.log('Non authentifié - redirection vers /auth');
+      console.log('[AuthGuard] Non authentifié et hors du groupe auth - redirection vers /auth');
       router.replace('/auth');
     } else if (isAuthenticated && inAuthGroup) {
-      // L'utilisateur est authentifié mais est sur la page auth
-      // Rediriger vers les tabs
-      console.log('Authentifié - redirection vers /(tabs)');
-      router.replace('/(tabs)');
+      console.log('[AuthGuard] Authentifié dans le groupe auth. Pas de redirection automatique (pour permettre KYC).');
     }
+    // Auto-redirection suppressed to allow post-registration flows (KYC)
   }, [isAuthenticated, isLoading, segments, inAuthGroup, router]);
 
   useEffect(() => {
