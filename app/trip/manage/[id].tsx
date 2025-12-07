@@ -31,7 +31,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Initialize Mapbox with access token from config
-const mapboxToken = 
+const mapboxToken =
   Constants.expoConfig?.extra?.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ||
   process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
 if (mapboxToken) {
@@ -386,7 +386,7 @@ export default function ManageTripScreen() {
             <View style={styles.mapPreview}>
               <Mapbox.MapView
                 style={styles.mapView}
-                styleURL={Mapbox.StyleURL.Street}
+                styleURL={Mapbox.StyleURL.SatelliteStreet}
                 scrollEnabled={false}
                 zoomEnabled={false}
                 pitchEnabled={false}
