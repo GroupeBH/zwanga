@@ -90,7 +90,7 @@ export default function MessagesScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
@@ -152,8 +152,9 @@ export default function MessagesScreen() {
                   style={styles.conversationItem}
                   onPress={() =>
                     router.push({
-                      pathname: `/chat/${conversation.id}`,
+                      pathname: '/chat/[id]',
                       params: {
+                        id: conversation.id,
                         title,
                       },
                     })
@@ -247,7 +248,7 @@ const styles = StyleSheet.create({
   },
   scrollViewContent: {
     flexGrow: 1,
-    paddingBottom: Spacing.xl,
+    paddingBottom: 120, // Increased for edge-to-edge
   },
   loadingBanner: {
     flexDirection: 'row',
