@@ -257,11 +257,11 @@ export default function TripsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Mes trajets</Text>
-        
+
         {/* Tabs */}
         <View style={styles.tabsContainer}>
           <TouchableOpacity
@@ -336,7 +336,7 @@ export default function TripsScreen() {
             </View>
             <Text style={styles.emptyTitle}>Aucun trajet</Text>
             <Text style={styles.emptyText}>
-              {activeTab === 'upcoming' 
+              {activeTab === 'upcoming'
                 ? 'Vous n\'avez pas de trajet à venir'
                 : 'Vous n\'avez pas encore terminé de trajet'
               }
@@ -658,7 +658,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.lg,
-    paddingBottom: Spacing.xxl,
+    paddingBottom: 120, // Increased for edge-to-edge
   },
   errorBanner: {
     flexDirection: 'row',
