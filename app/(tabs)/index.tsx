@@ -260,7 +260,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
@@ -703,7 +703,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.xl,
-    paddingBottom: Spacing.xxl,
+    paddingBottom: 120, // Increased to ensure content is not hidden behind the tab bar
   },
   section: {
     marginBottom: Spacing.xl,
