@@ -148,12 +148,14 @@ export async function removeRefreshToken(): Promise<void> {
 
 /**
  * Supprime tous les tokens du stockage sécurisé
+ * Vide complètement le SecureStore (access token, refresh token, FCM token)
  */
 export async function clearTokens(): Promise<void> {
   try {
     await Promise.all([
       removeAccessToken(),
       removeRefreshToken(),
+      removeFcmToken(),
     ]);
   } catch (error) {
     console.error('Erreur lors de la suppression des tokens:', error);

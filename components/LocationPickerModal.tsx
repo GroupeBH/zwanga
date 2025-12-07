@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 
 // Initialize Mapbox with access token from config
-const mapboxToken = 
+const mapboxToken =
   Constants.expoConfig?.extra?.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ||
   process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
 if (mapboxToken) {
@@ -49,15 +49,15 @@ function formatAddressFromGeocode(
   data?: Partial<Location.LocationGeocodedAddress> | Location.LocationGeocodedLocation,
 ) {
   if (!data) return '';
-  
+
   // Check if it's LocationGeocodedAddress (has address fields) or LocationGeocodedLocation (only coordinates)
   const isAddress = 'street' in data || 'streetNumber' in data || 'city' in data;
-  
+
   if (!isAddress) {
     // It's LocationGeocodedLocation, return empty or coordinates
     return '';
   }
-  
+
   // It's LocationGeocodedAddress, format the address
   const addressData = data as Partial<Location.LocationGeocodedAddress>;
   const streetLine = [addressData.streetNumber, addressData.street].filter(Boolean).join(' ').trim();
@@ -318,7 +318,7 @@ export default function LocationPickerModal({
         <Mapbox.MapView
           ref={mapRef}
           style={styles.map}
-          styleURL={Mapbox.StyleURL.Street}
+          styleURL={Mapbox.StyleURL.SatelliteStreet}
           onPress={handleMapPress}
         >
           <Mapbox.Camera
@@ -327,7 +327,7 @@ export default function LocationPickerModal({
             animationMode="flyTo"
             animationDuration={0}
           />
-          
+
           {selectedLocation && (
             <Mapbox.PointAnnotation
               id="selected-location"

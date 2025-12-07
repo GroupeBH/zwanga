@@ -27,7 +27,9 @@ export default function RootLayout() {
           <Stack.Screen name="support" options={{ headerShown: false }} />
           <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="trip/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="verification" options={{ headerShown: false }} />
           <Stack.Screen name="rate/[id]" options={{ headerShown: false, presentation: 'modal' }} />
+          <Stack.Screen name="invite" options={{ headerShown: false, presentation: 'modal' }} />
         </Stack>
         <StatusBar style="auto" />
       </ThemeProvider>

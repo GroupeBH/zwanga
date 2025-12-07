@@ -147,13 +147,13 @@ export type TripSearchParams = {
 };
 
 export type TripSearchByPointsPayload = {
-  departureCoordinates: [number, number];
-  arrivalCoordinates: [number, number];
-  departureRadiusKm?: number;
-  arrivalRadiusKm?: number;
-  departureDate?: string;
-  minSeats?: number;
-  maxPrice?: number;
+  departureCoordinates: [number, number] | null;
+  arrivalCoordinates?: [number, number] | null;
+  departureRadiusKm?: number | null;
+  arrivalRadiusKm?: number | null;
+  departureDate?: string | null;
+  minSeats?: number | null;
+  maxPrice?: number | null;
 };
 
 type CreateTripPayload = {
@@ -165,6 +165,7 @@ type CreateTripPayload = {
   availableSeats: number;
   pricePerSeat: number;
   description?: string;
+  vehicleId?: string;
 };
 
 type UpdateTripRequest = Partial<CreateTripPayload> & {
