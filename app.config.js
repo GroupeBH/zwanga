@@ -28,8 +28,12 @@ module.exports = {
         NSCameraUsageDescription: "L'appareil photo est utilisé pour prendre des photos de profil ou des documents.",
         NSPhotoLibraryUsageDescription: "Zwanga nécessite l'accès à votre galerie pour permettre l'envoi d'images.",
         NSContactsUsageDescription: "Zwanga utilise vos contacts pour faciliter l'invitation d'amis.",
-        NSUserTrackingUsageDescription: "Votre identifiant peut être utilisé pour fournir une meilleure expérience publicitaire.",
-    }
+        // NSUserTrackingUsageDescription: "Votre identifiant peut être utilisé pour fournir une meilleure expérience publicitaire.",
+        ITSAppUsesNonExemptEncryption: false,
+      },
+      // config: {
+      //   usesNonExemptEncryption: false,
+      // },
     },
 
     android: {
