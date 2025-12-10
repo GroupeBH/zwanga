@@ -24,7 +24,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeInDown, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const RECENT_TRIPS_LIMIT = 5;
@@ -50,6 +50,7 @@ export default function HomeScreen() {
   const [minSeatsFilter, setMinSeatsFilter] = useState('');
   const [maxPriceFilter, setMaxPriceFilter] = useState('');
   const [showQuickFields, setShowQuickFields] = useState(false);
+  const [isHeaderExpanded, setIsHeaderExpanded] = useState(true);
   const {
     data: remoteTrips,
     isLoading: tripsLoading,
@@ -259,6 +260,11 @@ export default function HomeScreen() {
     router.push('/notifications');
   };
 
+  const animatedSearchCardStyle = useAnimatedStyle(() => ({
+    opacity: withTiming(isHeaderExpanded ? 1 : 0, { duration: 200 }),
+    maxHeight: withTiming(isHeaderExpanded ? 1000 : 0, { duration: 300 }),
+  }));
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
@@ -268,78 +274,97 @@ export default function HomeScreen() {
             <Text style={styles.greeting}>Bonjour 👋</Text>
             <Text style={styles.headerTitle}>Trouvez votre trajet</Text>
           </View>
-          <TouchableOpacity style={styles.notificationButton} onPress={openNotifications}>
-            <Ionicons name="notifications" size={24} color={Colors.white} />
-            {unreadNotifications > 0 && (
-              <View style={styles.notificationBadge}>
-                <Text style={styles.notificationBadgeText}>
-                  {unreadNotifications > 9 ? '9+' : unreadNotifications}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
+          <View style={styles.headerTopRight}>
+            <TouchableOpacity 
+              style={styles.expandButton} 
+              onPress={() => setIsHeaderExpanded(!isHeaderExpanded)}
+            >
+              <Ionicons 
+                name={isHeaderExpanded ? "chevron-up" : "chevron-down"} 
+                size={20} 
+                color={Colors.white} 
+              />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.notificationButton} onPress={openNotifications}>
+              <Ionicons name="notifications" size={24} color={Colors.white} />
+              {unreadNotifications > 0 && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>
+                    {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Recherche intelligente */}
-        <View style={styles.searchCard}>
-          <View style={styles.advancedCard}>
-            {/* <Text style={styles.advancedTitle}>Recherche par carte</Text> */}
-            <View style={styles.advancedLocations}>
-              <TouchableOpacity
-                style={styles.advancedLocationButton}
-                onPress={() => setActivePicker('departure')}
-              >
-                <View style={[styles.advancedLocationIcon, { backgroundColor: Colors.success + '15' }]}>
-                  <Ionicons name="location" size={18} color={Colors.success} />
-                </View>
-                <View style={styles.advancedLocationContent}>
-                  <Text style={styles.advancedLocationLabel}>Départ</Text>
-                  <Text style={styles.advancedLocationTitle}>{advancedDepartureSummary.title}</Text>
-                  <Text style={styles.advancedLocationSubtitle}>{advancedDepartureSummary.address}</Text>
-                  <Text style={styles.advancedLocationCoords}>{advancedDepartureSummary.coords}</Text>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.advancedLocationButton}
-                onPress={() => setActivePicker('arrival')}
-              >
-                <View style={[styles.advancedLocationIcon, { backgroundColor: Colors.primary + '15' }]}>
-                  <Ionicons name="navigate" size={18} color={Colors.primary} />
-                </View>
-                <View style={styles.advancedLocationContent}>
-                  <Text style={styles.advancedLocationLabel}>Arrivée</Text>
-                  <Text style={styles.advancedLocationTitle}>{advancedArrivalSummary.title}</Text>
-                  <Text style={styles.advancedLocationSubtitle}>{advancedArrivalSummary.address}</Text>
-                  <Text style={styles.advancedLocationCoords}>{advancedArrivalSummary.coords}</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-
-            {hasLocationSelections && (
-              <View style={styles.advancedButtons}>
-                <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={handleClearAdvancedFilters}>
-                  <Text style={styles.buttonSecondaryText}>Réinitialiser</Text>
-                </TouchableOpacity>
+        <Animated.View 
+          style={[
+            styles.searchCardContainer,
+            animatedSearchCardStyle,
+          ]}
+        >
+          <View style={styles.searchCard}>
+            <View style={styles.advancedCard}>
+              {/* <Text style={styles.advancedTitle}>Recherche par carte</Text> */}
+              <View style={styles.advancedLocations}>
                 <TouchableOpacity
-                  style={[
-                    styles.button,
-                    { flex: 1, marginLeft: Spacing.md },
-                    (advancedSearching || !hasLocationSelections) && styles.buttonDisabled,
-                  ]}
-                  onPress={handleAdvancedSearch}
-                  disabled={advancedSearching}
+                  style={styles.advancedLocationButton}
+                  onPress={() => setActivePicker('departure')}
                 >
-                  {advancedSearching ? (
-                    <ActivityIndicator color={Colors.white} />
-                  ) : (
-                    <Text style={styles.buttonText}>Appliquer</Text>
-                  )}
+                  <View style={[styles.advancedLocationIcon, { backgroundColor: Colors.success + '15' }]}>
+                    <Ionicons name="location" size={18} color={Colors.success} />
+                  </View>
+                  <View style={styles.advancedLocationContent}>
+                    <Text style={styles.advancedLocationLabel}>Départ</Text>
+                    <Text style={styles.advancedLocationTitle}>{advancedDepartureSummary.title}</Text>
+                    <Text style={styles.advancedLocationSubtitle}>{advancedDepartureSummary.address}</Text>
+                    <Text style={styles.advancedLocationCoords}>{advancedDepartureSummary.coords}</Text>
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.advancedLocationButton}
+                  onPress={() => setActivePicker('arrival')}
+                >
+                  <View style={[styles.advancedLocationIcon, { backgroundColor: Colors.primary + '15' }]}>
+                    <Ionicons name="navigate" size={18} color={Colors.primary} />
+                  </View>
+                  <View style={styles.advancedLocationContent}>
+                    <Text style={styles.advancedLocationLabel}>Arrivée</Text>
+                    <Text style={styles.advancedLocationTitle}>{advancedArrivalSummary.title}</Text>
+                    <Text style={styles.advancedLocationSubtitle}>{advancedArrivalSummary.address}</Text>
+                    <Text style={styles.advancedLocationCoords}>{advancedArrivalSummary.coords}</Text>
+                  </View>
                 </TouchableOpacity>
               </View>
-            )}
+
+              {hasLocationSelections && (
+                <View style={styles.advancedButtons}>
+                  <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={handleClearAdvancedFilters}>
+                    <Text style={styles.buttonSecondaryText}>Réinitialiser</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.button,
+                      { flex: 1, marginLeft: Spacing.md },
+                      (advancedSearching || !hasLocationSelections) && styles.buttonDisabled,
+                    ]}
+                    onPress={handleAdvancedSearch}
+                    disabled={advancedSearching}
+                  >
+                    {advancedSearching ? (
+                      <ActivityIndicator color={Colors.white} />
+                    ) : (
+                      <Text style={styles.buttonText}>Appliquer</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
           </View>
-        </View>
+        </Animated.View>
       </View>
 
       <ScrollView
@@ -611,7 +636,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.lg,
-    paddingBottom: Spacing.xl,
+    paddingBottom: Spacing.lg,
     borderBottomLeftRadius: BorderRadius.xxl,
     borderBottomRightRadius: BorderRadius.xxl,
   },
@@ -620,6 +645,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: Spacing.xl,
+  },
+  headerTopRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  expandButton: {
+    width: 40,
+    height: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   greeting: {
     color: Colors.white,
@@ -657,6 +695,10 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
+  },
+  searchCardContainer: {
+    marginTop: Spacing.md,
+    overflow: 'hidden',
   },
   searchCard: {
     backgroundColor: Colors.primary,
