@@ -18,7 +18,18 @@ module.exports = {
     newArchEnabled: false,
 
     ios: {
+      bundleIdentifier: "com.biso.zwanga",   // ⚠️ DOIT être unique et identique sur App Store Connect
+      buildNumber: "3",                      // Aligné avec version Android
       supportsTablet: true,
+      infoPlist: {
+        NSLocationWhenInUseUsageDescription: "Zwanga utilise votre position pour afficher les trajets à proximité.",
+        NSLocationAlwaysAndWhenInUseUsageDescription: "Zwanga utilise votre position pour détecter votre emplacement même lorsque l'application est en arrière-plan.",
+        NSLocationAlwaysUsageDescription: "Zwanga nécessite un accès constant à votre position pour fournir des trajets précis.",
+        NSCameraUsageDescription: "L'appareil photo est utilisé pour prendre des photos de profil ou des documents.",
+        NSPhotoLibraryUsageDescription: "Zwanga nécessite l'accès à votre galerie pour permettre l'envoi d'images.",
+        NSContactsUsageDescription: "Zwanga utilise vos contacts pour faciliter l'invitation d'amis.",
+        NSUserTrackingUsageDescription: "Votre identifiant peut être utilisé pour fournir une meilleure expérience publicitaire.",
+    }
     },
 
     android: {

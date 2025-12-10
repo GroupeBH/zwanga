@@ -10,6 +10,10 @@
       "android": {
         "buildType": "app-bundle",
         "image": "latest"
+      },
+      "ios": {
+        "image": "latest",
+        "simulator": false
       }
     },
     "production": {
@@ -18,6 +22,10 @@
       "android": {
         "buildType": "app-bundle",
         "image": "latest"
+      },
+      "ios": {
+        "image": "latest",
+        "simulator": false
       },
       "env": {
         "EXPO_PUBLIC_ENV": "production"
