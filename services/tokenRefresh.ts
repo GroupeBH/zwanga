@@ -1,3 +1,4 @@
+import { fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { API_BASE_URL } from '../config/env';
 import { logout, setTokens } from '../store/slices/authSlice';
 import { getStoreDispatch } from '../store/storeAccessor';
@@ -10,7 +11,14 @@ import { clearTokens, getTokens, storeTokens } from './tokenStorage';
  */
 
 let isRefreshing = false;
-let refreshPromise: Promise<string> | null = null;
+let refreshPromise: Promise<string | null> | null = null;
+
+// Créer un baseQuery sans authentification pour le refresh token
+// Cela garantit la même configuration que Redux Query mais sans header Authorization
+const refreshBaseQuery = fetchBaseQuery({
+  baseUrl: API_BASE_URL,
+  // Pas de prepareHeaders - on ne veut pas de header Authorization pour le refresh
+});
 
 /**
  * Vérifie si les tokens sont valides et rafraîchit si nécessaire
@@ -84,24 +92,60 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
 
   isRefreshing = true;
 
+  // Vérifier que API_BASE_URL est défini
+  if (!API_BASE_URL) {
+    console.error('API_BASE_URL est undefined!');
+    isRefreshing = false;
+    return Promise.resolve(null);
+  }
+
+  const refreshUrl = `${API_BASE_URL}/auth/refresh`;
+  console.log('Rafraîchissement de l\'access token');
+  console.log('  - API_BASE_URL:', API_BASE_URL);
+  console.log('  - URL complète:', refreshUrl);
+  console.log('  - Refresh token length:', refreshToken?.length || 0);
+  
+  // Vérifier que fetch est disponible
+  if (typeof fetch === 'undefined') {
+    console.error('fetch n\'est pas disponible dans cet environnement!');
+    isRefreshing = false;
+    return Promise.resolve(null);
+  }
+
   refreshPromise = (async () => {
     try {
-      // Appeler l'API de refresh
-      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      console.log('  - Début de la requête refresh');
+      console.log('  - Body:', JSON.stringify({ refreshToken: refreshToken.substring(0, 20) + '...' }));
+      
+      // Utiliser fetchBaseQuery pour garantir la même configuration que Redux Query
+      const result = await refreshBaseQuery(
+        {
+          url: '/auth/refresh',
+          method: 'POST',
+          body: { refreshToken },
         },
-        body: JSON.stringify({ refreshToken }),
-      });
+        // @ts-ignore - on n'a pas besoin de l'API pour cette requête isolée
+        { signal: new AbortController().signal },
+        {}
+      );
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      console.log('  - Requête envoyée avec succès');
+      console.log('  - Result:', result);
+
+      if (result.error) {
+        console.error('  - Error:', result.error);
+        console.error('  - Error status:', result.error.status);
+        console.error('  - Error data:', result.error.data);
+        throw new Error(`HTTP ${result.error.status}: ${JSON.stringify(result.error.data)}`);
       }
 
-      const data = await response.json();
+      const data = result.data as { accessToken: string; refreshToken: string };
+      console.log('  - Response data reçu:', { 
+        hasAccessToken: !!data?.accessToken, 
+        hasRefreshToken: !!data?.refreshToken 
+      });
 
-      if (!data.accessToken || !data.refreshToken) {
+      if (!data?.accessToken || !data?.refreshToken) {
         throw new Error('Tokens manquants dans la réponse');
       }
 
@@ -116,8 +160,17 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
 
       console.log('Tokens rafraîchis et stockés');
       return data.accessToken;
-    } catch (error) {
-      console.error('Erreur lors du rafraîchissement du token:', error);
+    } catch (error: any) {
+      console.error('Erreur lors du rafraîchissement du token:');
+      console.error('  - Type:', error?.name || typeof error);
+      console.error('  - Message:', error?.message);
+      console.error('  - Stack:', error?.stack);
+      
+      // Vérifier si c'est une erreur réseau
+      if (error?.name === 'AbortError' || error?.message?.includes('network') || error?.message?.includes('fetch')) {
+        console.error('  - Erreur réseau détectée - la requête n\'a pas atteint le serveur');
+      }
+      
       // En cas d'erreur, nettoyer et déconnecter
       await clearTokens();
       getStoreDispatch()(logout());
