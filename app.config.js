@@ -30,6 +30,7 @@ module.exports = {
         NSContactsUsageDescription: "Zwanga utilise vos contacts pour faciliter l'invitation d'amis.",
         // NSUserTrackingUsageDescription: "Votre identifiant peut être utilisé pour fournir une meilleure expérience publicitaire.",
         ITSAppUsesNonExemptEncryption: false,
+        UIBackgroundModes: ['remote-notification', 'fetch'],
       },
       // config: {
       //   usesNonExemptEncryption: false,
@@ -85,7 +86,25 @@ module.exports = {
 
     plugins: [
       'expo-router',
-      'expo-notifications',
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/zwanga.png",
+          "color": "#ffffff",
+          "defaultChannel": "default",
+          // "sounds": [
+          //   "./local/assets/notification_sound.wav",
+          //   "./local/assets/notification_sound_other.wav"
+          // ],
+          "enableBackgroundRemoteNotifications": true
+        }
+      ],
+      [
+        "expo-task-manager",
+        {
+          "backgroundNotificationTask": "background-notification-task"
+        }
+      ],
       [
         '@rnmapbox/maps',
         {
