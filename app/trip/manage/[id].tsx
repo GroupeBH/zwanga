@@ -386,7 +386,7 @@ export default function ManageTripScreen() {
             <View style={styles.mapPreview}>
               <Mapbox.MapView
                 style={styles.mapView}
-                styleURL={Mapbox.StyleURL.SatelliteStreet}
+                styleURL={Mapbox.StyleURL.Street}
                 scrollEnabled={false}
                 zoomEnabled={false}
                 pitchEnabled={false}
