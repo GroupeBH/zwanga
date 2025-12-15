@@ -318,7 +318,7 @@ export default function LocationPickerModal({
         <Mapbox.MapView
           ref={mapRef}
           style={styles.map}
-          styleURL={Mapbox.StyleURL.SatelliteStreet}
+          styleURL={Mapbox.StyleURL.Street}
           onPress={handleMapPress}
         >
           <Mapbox.Camera

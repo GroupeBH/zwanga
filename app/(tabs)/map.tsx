@@ -270,7 +270,7 @@ export default function MapScreen() {
     <SafeAreaView style={styles.container}>
       <Mapbox.MapView
         style={styles.map}
-        styleURL={Mapbox.StyleURL.SatelliteStreet}
+        styleURL={Mapbox.StyleURL.Street}
         compassEnabled={false}
         onCameraChanged={(state) => {
           const coords = getCoordinates(state.properties.center);
