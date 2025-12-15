@@ -12,12 +12,14 @@ import { selectAvailableTrips, selectSavedLocations } from '@/store/selectors';
 import { addSavedLocation } from '@/store/slices/locationSlice';
 import { setTrips } from '@/store/slices/tripsSlice';
 import { formatTime } from '@/utils/dateHelpers';
+import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -540,68 +542,85 @@ export default function HomeScreen() {
           )}
 
           {latestTrips.map((trip, index) => {
-            const ratingValue =
-              typeof trip.driverRating === 'number'
-                ? trip.driverRating
-                : Number(trip.driverRating) || 4.9;
-            return (
-              <Animated.View
-                key={trip.id}
-                entering={FadeInDown.delay(index * 100)}
-                style={styles.tripCard}
-              >
-                <View style={styles.tripHeader}>
-                  <View style={styles.tripDriverInfo}>
-                    <View style={styles.avatar} />
-                    <View style={styles.tripDriverDetails}>
-                      <Text style={styles.driverName}>{trip?.driverName ?? ''}</Text>
-                      <View style={styles.driverMeta}>
-                        <Ionicons name="star" size={14} color={Colors.secondary} />
-                        <Text style={styles.driverRating}>{ratingValue.toFixed(1)}</Text>
-                        <View style={styles.dot} />
-                        <Text style={styles.vehicleInfo}>{trip?.vehicleInfo ?? ''}</Text>
+            const TripCardWithArrival = () => {
+              const calculatedArrivalTime = useTripArrivalTime(trip);
+              const arrivalTimeDisplay = calculatedArrivalTime 
+                ? formatTime(calculatedArrivalTime.toISOString())
+                : formatTime(trip.arrivalTime);
+              
+              const ratingValue =
+                typeof trip.driverRating === 'number'
+                  ? trip.driverRating
+                  : Number(trip.driverRating) || 4.9;
+              
+              return (
+                <Animated.View
+                  key={trip.id}
+                  entering={FadeInDown.delay(index * 100)}
+                  style={styles.tripCard}
+                >
+                  <View style={styles.tripHeader}>
+                    <View style={styles.tripDriverInfo}>
+                      {trip.driverAvatar ? (
+                        <Image
+                          source={{ uri: trip.driverAvatar }}
+                          style={styles.avatar}
+                        />
+                      ) : (
+                        <View style={styles.avatar} />
+                      )}
+                      <View style={styles.tripDriverDetails}>
+                        <Text style={styles.driverName}>{trip?.driverName ?? ''}</Text>
+                        <View style={styles.driverMeta}>
+                          <Ionicons name="star" size={14} color={Colors.secondary} />
+                          <Text style={styles.driverRating}>{ratingValue.toFixed(1)}</Text>
+                          <View style={styles.dot} />
+                          <Text style={styles.vehicleInfo}>{trip?.vehicleInfo ?? ''}</Text>
+                        </View>
                       </View>
                     </View>
-                  </View>
-                  <View style={styles.priceBadge}>
-                    <Text style={styles.priceText}>{trip?.price ?? 0} FC</Text>
-                  </View>
-                </View>
-
-                <View style={styles.tripRoute}>
-                  <View style={styles.routeRow}>
-                    <Ionicons name="location" size={16} color={Colors.success} />
-                    <Text style={styles.routeText}>{trip?.departure?.name ?? ''}</Text>
-                    <Text style={styles.routeTime}>
-                      {formatTime(trip.departureTime)}
-                    </Text>
+                    <View style={styles.priceBadge}>
+                      <Text style={styles.priceText}>{trip?.price ?? 0} FC</Text>
+                    </View>
                   </View>
 
-                  <View style={styles.routeRow}>
-                    <Ionicons name="navigate" size={16} color={Colors.primary} />
-                    <Text style={styles.routeText}>{trip?.arrival?.name ?? ''}</Text>
-                    <Text style={styles.routeTime}>
-                      {formatTime(trip.arrivalTime)}
-                    </Text>
-                  </View>
-                </View>
+                  <View style={styles.tripRoute}>
+                    <View style={styles.routeRow}>
+                      <Ionicons name="location" size={16} color={Colors.success} />
+                      <Text style={styles.routeText}>{trip?.departure?.name ?? ''}</Text>
+                      <Text style={styles.routeTime}>
+                        {formatTime(trip.departureTime)}
+                      </Text>
+                    </View>
 
-                <View style={styles.tripFooter}>
-                  <View style={styles.tripFooterLeft}>
-                    <Ionicons name="people" size={16} color={Colors.gray[600]} />
-                    <Text style={styles.seatsText}>
-                      {trip.availableSeats} places disponibles
-                    </Text>
+                    <View style={styles.routeRow}>
+                      <Ionicons name="navigate" size={16} color={Colors.primary} />
+                      <Text style={styles.routeText}>{trip?.arrival?.name ?? ''}</Text>
+                      <Text style={styles.routeTime}>
+                        {arrivalTimeDisplay}
+                      </Text>
+                    </View>
                   </View>
-                  <TouchableOpacity
-                    style={styles.reserveButton}
-                    onPress={() => router.push(`/trip/${trip.id}`)}
-                  >
-                    <Text style={styles.reserveButtonText}>Réserver</Text>
-                  </TouchableOpacity>
-                </View>
-              </Animated.View>
-            );
+
+                  <View style={styles.tripFooter}>
+                    <View style={styles.tripFooterLeft}>
+                      <Ionicons name="people" size={16} color={Colors.gray[600]} />
+                      <Text style={styles.seatsText}>
+                        {trip.availableSeats} places disponibles
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.reserveButton}
+                      onPress={() => router.push(`/trip/${trip.id}`)}
+                    >
+                      <Text style={styles.reserveButtonText}>Réserver</Text>
+                    </TouchableOpacity>
+                  </View>
+                </Animated.View>
+              );
+            };
+
+            return <TripCardWithArrival key={trip.id} />;
           })}
         </View>
       </ScrollView>

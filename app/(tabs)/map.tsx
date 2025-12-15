@@ -16,6 +16,7 @@ import {
 import { setRadiusKm, setSearchQuery, TripSearchMode } from '@/store/slices/locationSlice';
 import { setTrips } from '@/store/slices/tripsSlice';
 import { formatTime } from '@/utils/dateHelpers';
+import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { Ionicons } from '@expo/vector-icons';
 import Mapbox from '@rnmapbox/maps';
 import Constants from 'expo-constants';
@@ -617,41 +618,64 @@ export default function MapScreen() {
                 </Text>
               </View>
             ) : (
-              trips.map((trip) => (
-                <TouchableOpacity
-                  key={trip.id}
-                  style={styles.tripCard}
-                  onPress={() => router.push(`/trip/${trip.id}`)}
-                >
-                  <View style={styles.tripCardHeader}>
-                    <View>
-                      <Text style={styles.tripDriverName}>{trip.driverName}</Text>
-                      <Text style={styles.tripVehicle}>{trip.vehicleInfo}</Text>
-                    </View>
-                    <Text style={styles.tripPrice}>{trip.price} FC</Text>
-                  </View>
-                  <View style={styles.tripRouteRow}>
-                    <Ionicons name="location" size={16} color={Colors.success} />
-                    <Text style={styles.tripRouteText}>{trip.departure.name}</Text>
-                    <Text style={styles.tripTime}>{formatTime(trip.departureTime)}</Text>
-                  </View>
-                  <View style={styles.tripRouteRow}>
-                    <Ionicons name="navigate" size={16} color={Colors.primary} />
-                    <Text style={styles.tripRouteText}>{trip.arrival.name}</Text>
-                    <Text style={styles.tripTime}>{formatTime(trip.arrivalTime)}</Text>
-                  </View>
-                  <View style={styles.tripFooter}>
-                    <View style={styles.tripFooterLeft}>
-                      <Ionicons name="people" size={15} color={Colors.gray[600]} />
-                      <Text style={styles.tripSeats}>{trip.availableSeats} places</Text>
-                    </View>
-                    <View style={styles.tripFooterRight}>
-                      <Text style={styles.tripDetailsText}>Voir détails</Text>
-                      <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))
+              trips.map((trip) => {
+                const TripCardWithArrival = () => {
+                  const calculatedArrivalTime = useTripArrivalTime(trip);
+                  const arrivalTimeDisplay = calculatedArrivalTime 
+                    ? formatTime(calculatedArrivalTime.toISOString())
+                    : formatTime(trip.arrivalTime);
+
+                  return (
+                    <TouchableOpacity
+                      key={trip.id}
+                      style={styles.tripCard}
+                      onPress={() => router.push(`/trip/${trip.id}`)}
+                    >
+                      <View style={styles.tripCardHeader}>
+                        <View style={styles.tripCardHeaderLeft}>
+                          {trip.driverAvatar ? (
+                            <Image
+                              source={{ uri: trip.driverAvatar }}
+                              style={styles.tripDriverAvatar}
+                            />
+                          ) : (
+                            <View style={styles.tripDriverAvatar}>
+                              <Ionicons name="person" size={16} color={Colors.gray[500]} />
+                            </View>
+                          )}
+                          <View>
+                            <Text style={styles.tripDriverName}>{trip.driverName}</Text>
+                            <Text style={styles.tripVehicle}>{trip.vehicleInfo}</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.tripPrice}>{trip.price} FC</Text>
+                      </View>
+                      <View style={styles.tripRouteRow}>
+                        <Ionicons name="location" size={16} color={Colors.success} />
+                        <Text style={styles.tripRouteText}>{trip.departure.name}</Text>
+                        <Text style={styles.tripTime}>{formatTime(trip.departureTime)}</Text>
+                      </View>
+                      <View style={styles.tripRouteRow}>
+                        <Ionicons name="navigate" size={16} color={Colors.primary} />
+                        <Text style={styles.tripRouteText}>{trip.arrival.name}</Text>
+                        <Text style={styles.tripTime}>{arrivalTimeDisplay}</Text>
+                      </View>
+                      <View style={styles.tripFooter}>
+                        <View style={styles.tripFooterLeft}>
+                          <Ionicons name="people" size={15} color={Colors.gray[600]} />
+                          <Text style={styles.tripSeats}>{trip.availableSeats} places</Text>
+                        </View>
+                        <View style={styles.tripFooterRight}>
+                          <Text style={styles.tripDetailsText}>Voir détails</Text>
+                          <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                };
+
+                return <TripCardWithArrival key={trip.id} />;
+              })
             )}
           </ScrollView>
         </View>
@@ -1104,6 +1128,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+  },
+  tripCardHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  tripDriverAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[300],
+    marginRight: Spacing.sm,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tripDriverName: {
     fontSize: FontSizes.base,
