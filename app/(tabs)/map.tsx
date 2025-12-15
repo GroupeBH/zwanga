@@ -648,7 +648,13 @@ export default function MapScreen() {
                             <Text style={styles.tripVehicle}>{trip.vehicleInfo}</Text>
                           </View>
                         </View>
-                        <Text style={styles.tripPrice}>{trip.price} FC</Text>
+                        {trip.price === 0 ? (
+                          <View style={styles.freeBadge}>
+                            <Text style={styles.freeBadgeText}>Gratuit</Text>
+                          </View>
+                        ) : (
+                          <Text style={styles.tripPrice}>{trip.price} FC</Text>
+                        )}
                       </View>
                       <View style={styles.tripRouteRow}>
                         <Ionicons name="location" size={16} color={Colors.success} />
@@ -1157,6 +1163,17 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
     color: Colors.primary,
+  },
+  freeBadge: {
+    backgroundColor: Colors.success + '15',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  freeBadgeText: {
+    color: Colors.success,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.base,
   },
   tripRouteRow: {
     flexDirection: 'row',

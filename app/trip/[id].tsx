@@ -654,7 +654,7 @@ export default function TripDetailsScreen() {
     if (Number.isNaN(seatsValue) || seatsValue <= 0) {
       return 0;
     }
-    return seatsValue * trip.price;
+    return trip.price === 0 ? 0 : seatsValue * trip.price;
   }, [bookingSeats, trip.price]);
 
   const statusConfig = {
@@ -1252,7 +1252,7 @@ export default function TripDetailsScreen() {
                   <Text style={styles.detailLabel}>Prix</Text>
                 </View>
                 <Text style={[styles.detailValue, { color: Colors.success }]}>
-                  {trip.price} FC
+                  {trip.price === 0 ? 'Gratuit' : `${trip.price} FC`}
                 </Text>
               </View>
 
@@ -1322,7 +1322,7 @@ export default function TripDetailsScreen() {
                     <Text style={styles.bookingCardTitle}>Ma réservation</Text>
                     <Text style={styles.bookingCardSubtitle}>
                       {activeBooking.numberOfSeats} place{activeBooking.numberOfSeats > 1 ? 's' : ''}{' '}
-                      • {trip.price} FC / place
+                      • {trip.price === 0 ? 'Gratuit' : `${trip.price} FC / place`}
                     </Text>
                   </View>
                   <View
@@ -1341,7 +1341,7 @@ export default function TripDetailsScreen() {
                   <View style={styles.bookingInfoItem}>
                     <Text style={styles.bookingInfoLabel}>Montant estimé</Text>
                     <Text style={styles.bookingInfoValue}>
-                      {activeBooking.numberOfSeats * trip.price} FC
+                      {trip.price === 0 ? 'Gratuit' : `${activeBooking.numberOfSeats * trip.price} FC`}
                     </Text>
                   </View>
                   <View style={styles.bookingInfoItem}>
@@ -1390,7 +1390,7 @@ export default function TripDetailsScreen() {
                     </Text>
                     <Text style={styles.bookingHintSubtitle}>
                       {isIdentityVerified
-                        ? `Prix par place : ${trip.price} FC`
+                        ? trip.price === 0 ? 'Prix par place : Gratuit' : `Prix par place : ${trip.price} FC`
                         : 'Vérifiez votre identité pour envoyer une demande de réservation.'}
                     </Text>
                   </View>
@@ -1469,7 +1469,9 @@ export default function TripDetailsScreen() {
             </Text>
             <Text style={styles.bookingModalPrice}>
               Total estimé :{' '}
-              <Text style={styles.bookingModalPriceValue}>{estimatedTotal} FC</Text>
+              <Text style={styles.bookingModalPriceValue}>
+                {estimatedTotal === 0 ? 'Gratuit' : `${estimatedTotal} FC`}
+              </Text>
             </Text>
 
             {bookingModalError ? (

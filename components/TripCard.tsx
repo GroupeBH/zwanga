@@ -51,7 +51,9 @@ export function TripCard({ trip, index = 0, onPress, showReserveButton = false, 
           </View>
         </View>
         <View style={styles.priceBadge}>
-          <Text style={styles.priceText}>{trip.price} FC</Text>
+          <Text style={styles.priceText}>
+            {trip.price === 0 ? 'Gratuit' : `${trip.price} FC`}
+          </Text>
         </View>
       </View>
 
