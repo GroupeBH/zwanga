@@ -8,6 +8,7 @@ import {
 } from '@/store/api/tripApi';
 import type { Trip } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
+import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -352,50 +353,64 @@ export default function TripsScreen() {
           </View>
         ) : (
           displayTrips.map((trip, index) => {
-            const statusConfig = getStatusConfig(trip.status);
-            return (
-              <Animated.View
-                key={trip.id}
-                entering={FadeInDown.delay(index * 100)}
-                style={styles.tripCard}
-              >
-                {/* Header */}
-                <View style={styles.tripHeader}>
-                  <View style={styles.tripDriverInfo}>
-                    <View style={styles.avatar} />
-                    <View style={styles.tripDriverDetails}>
-                      <Text style={styles.driverName}>{trip.driverName}</Text>
-                      <View style={styles.driverMeta}>
-                        <Ionicons name="star" size={14} color={Colors.secondary} />
-                        <Text style={styles.driverRating}>{trip.driverRating}</Text>
+            const TripCardWithArrival = () => {
+              const calculatedArrivalTime = useTripArrivalTime(trip);
+              const arrivalTimeDisplay = calculatedArrivalTime 
+                ? formatTime(calculatedArrivalTime.toISOString())
+                : formatTime(trip.arrivalTime);
+              
+              const statusConfig = getStatusConfig(trip.status);
+              
+              return (
+                <Animated.View
+                  key={trip.id}
+                  entering={FadeInDown.delay(index * 100)}
+                  style={styles.tripCard}
+                >
+                  {/* Header */}
+                  <View style={styles.tripHeader}>
+                    <View style={styles.tripDriverInfo}>
+                      {trip.driverAvatar ? (
+                        <Image
+                          source={{ uri: trip.driverAvatar }}
+                          style={styles.avatar}
+                        />
+                      ) : (
+                        <View style={styles.avatar} />
+                      )}
+                      <View style={styles.tripDriverDetails}>
+                        <Text style={styles.driverName}>{trip.driverName}</Text>
+                        <View style={styles.driverMeta}>
+                          <Ionicons name="star" size={14} color={Colors.secondary} />
+                          <Text style={styles.driverRating}>{trip.driverRating}</Text>
+                        </View>
                       </View>
                     </View>
+                    <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
+                      <Text style={[styles.statusText, { color: statusConfig.textColor }]}>
+                        {statusConfig.label}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
-                    <Text style={[styles.statusText, { color: statusConfig.textColor }]}>
-                      {statusConfig.label}
-                    </Text>
-                  </View>
-                </View>
 
-                {/* Route */}
-                <View style={styles.routeContainer}>
-                  <View style={styles.routeRow}>
-                    <Ionicons name="location" size={16} color={Colors.success} />
-                    <Text style={styles.routeText}>{trip.departure.name}</Text>
-                    <Text style={styles.routeTime}>
-                      {formatTime(trip.departureTime)}
-                    </Text>
+                  {/* Route */}
+                  <View style={styles.routeContainer}>
+                    <View style={styles.routeRow}>
+                      <Ionicons name="location" size={16} color={Colors.success} />
+                      <Text style={styles.routeText}>{trip.departure.name}</Text>
+                      <Text style={styles.routeTime}>
+                        {formatTime(trip.departureTime)}
+                      </Text>
+                    </View>
+                    <View style={styles.routeDivider} />
+                    <View style={styles.routeRow}>
+                      <Ionicons name="navigate" size={16} color={Colors.primary} />
+                      <Text style={styles.routeText}>{trip.arrival.name}</Text>
+                      <Text style={styles.routeTime}>
+                        {arrivalTimeDisplay}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.routeDivider} />
-                  <View style={styles.routeRow}>
-                    <Ionicons name="navigate" size={16} color={Colors.primary} />
-                    <Text style={styles.routeText}>{trip.arrival.name}</Text>
-                    <Text style={styles.routeTime}>
-                      {formatTime(trip.arrivalTime)}
-                    </Text>
-                  </View>
-                </View>
 
                 {/* Info */}
                 <View style={styles.tripFooter}>
@@ -418,36 +433,39 @@ export default function TripsScreen() {
                   </TouchableOpacity>
                 </View>
 
-                <View style={styles.ownerActionsRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.ownerActionButton,
-                      !canManageTrip(trip) && styles.ownerActionDisabled,
-                    ]}
-                    onPress={() => openEditModal(trip)}
-                    disabled={!canManageTrip(trip)}
-                  >
-                    <Ionicons name="create-outline" size={16} color={Colors.primary} />
-                    <Text style={styles.ownerActionText}>Modifier</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.ownerActionButton,
-                      styles.ownerActionDanger,
-                      { marginRight: 0 },
-                      !canManageTrip(trip) && styles.ownerActionDisabled,
-                    ]}
-                    onPress={() => openDeleteModal(trip)}
-                    disabled={!canManageTrip(trip)}
-                  >
-                    <Ionicons name="trash-outline" size={16} color={Colors.danger} />
-                    <Text style={[styles.ownerActionText, styles.ownerActionDangerText]}>
-                      Supprimer
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </Animated.View>
-            );
+                  <View style={styles.ownerActionsRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.ownerActionButton,
+                        !canManageTrip(trip) && styles.ownerActionDisabled,
+                      ]}
+                      onPress={() => openEditModal(trip)}
+                      disabled={!canManageTrip(trip)}
+                    >
+                      <Ionicons name="create-outline" size={16} color={Colors.primary} />
+                      <Text style={styles.ownerActionText}>Modifier</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.ownerActionButton,
+                        styles.ownerActionDanger,
+                        { marginRight: 0 },
+                        !canManageTrip(trip) && styles.ownerActionDisabled,
+                      ]}
+                      onPress={() => openDeleteModal(trip)}
+                      disabled={!canManageTrip(trip)}
+                    >
+                      <Ionicons name="trash-outline" size={16} color={Colors.danger} />
+                      <Text style={[styles.ownerActionText, styles.ownerActionDangerText]}>
+                        Supprimer
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </Animated.View>
+              );
+            };
+
+            return <TripCardWithArrival key={trip.id} />;
           })
         )}
       </ScrollView>

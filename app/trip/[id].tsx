@@ -10,6 +10,7 @@ import {
   useCancelBookingMutation,
   useCreateBookingMutation,
   useGetMyBookingsQuery,
+  useGetTripBookingsQuery,
 } from '@/store/api/bookingApi';
 import { useCreateConversationMutation } from '@/store/api/messageApi';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
@@ -18,7 +19,7 @@ import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
 import type { BookingStatus, GeoPoint } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
-import { getRouteCoordinates } from '@/utils/routeHelpers';
+import { getRouteInfo, type RouteInfo } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import Mapbox from '@rnmapbox/maps';
 import Constants from 'expo-constants';
@@ -26,6 +27,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Linking,
   Modal,
   ScrollView,
@@ -128,6 +130,10 @@ export default function TripDetailsScreen() {
     refetch: refetchMyBookings,
   } = useGetMyBookingsQuery();
   const {
+    data: tripBookings,
+    isLoading: tripBookingsLoading,
+  } = useGetTripBookingsQuery(tripId, { skip: !tripId });
+  const {
     lastKnownLocation,
     requestPermission: requestDriverLocationPermission,
     stopWatching: stopDriverLocationWatching,
@@ -165,7 +171,12 @@ export default function TripDetailsScreen() {
   const [tripGuideVisible, setTripGuideVisible] = useState(false);
   const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }> | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
+  const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
+  const [estimatedArrivalTime, setEstimatedArrivalTime] = useState<Date | null>(null);
+  const [calculatedArrivalTime, setCalculatedArrivalTime] = useState<Date | null>(null);
   const [kycWizardVisible, setKycWizardVisible] = useState(false);
+  const [imageModalVisible, setImageModalVisible] = useState(false);
+  const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [kycFrontImage, setKycFrontImage] = useState<string | null>(null);
   const [kycBackImage, setKycBackImage] = useState<string | null>(null);
   const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
@@ -671,23 +682,96 @@ export default function TripDetailsScreen() {
     [trip.arrival.lat, trip.arrival.lng],
   );
 
-  // Load route coordinates when trip changes
+  // Load route coordinates and info when trip changes
   useEffect(() => {
     if (!trip) {
       return;
     }
     setIsLoadingRoute(true);
-    getRouteCoordinates(departureCoordinate, arrivalCoordinate)
-      .then((coords) => {
-        setRouteCoordinates(coords);
+    getRouteInfo(departureCoordinate, arrivalCoordinate)
+      .then((info) => {
+        setRouteCoordinates(info.coordinates);
+        setRouteInfo(info);
+        
+        // Calculate arrival time based on departure time + route duration
+        if (info.duration > 0 && trip.departureTime) {
+          const departureDate = new Date(trip.departureTime);
+          const arrivalDate = new Date(departureDate.getTime() + info.duration * 1000);
+          setCalculatedArrivalTime(arrivalDate);
+        } else {
+          setCalculatedArrivalTime(null);
+        }
+        
         setIsLoadingRoute(false);
       })
       .catch(() => {
         // Fallback to straight line if route API fails
         setRouteCoordinates([departureCoordinate, arrivalCoordinate]);
+        setCalculatedArrivalTime(null);
         setIsLoadingRoute(false);
       });
-  }, [departureCoordinate, arrivalCoordinate, trip?.id]);
+  }, [departureCoordinate, arrivalCoordinate, trip?.id, trip?.departureTime]);
+
+  // Calculate estimated coordinate based on progress
+  const estimatedCoordinate = useMemo(() => {
+    if (!trip || trip.status !== 'ongoing' || typeof progress !== 'number') {
+      return null;
+    }
+    const ratio = Math.min(Math.max(progress, 0), 100) / 100;
+    return {
+      latitude: departureCoordinate.latitude + (arrivalCoordinate.latitude - departureCoordinate.latitude) * ratio,
+      longitude:
+        departureCoordinate.longitude + (arrivalCoordinate.longitude - departureCoordinate.longitude) * ratio,
+    };
+  }, [arrivalCoordinate, departureCoordinate, progress, trip?.status]);
+
+  // Calculate current coordinate for ETA calculation
+  const currentCoordinate = liveDriverCoordinate ?? estimatedCoordinate;
+
+  // Calculate estimated arrival time based on current position
+  useEffect(() => {
+    if (!trip || !routeInfo || trip.status !== 'ongoing' || !currentCoordinate) {
+      setEstimatedArrivalTime(null);
+      return;
+    }
+
+    let timeoutId: NodeJS.Timeout;
+    let isMounted = true;
+
+    const calculateETA = () => {
+      // Calculate remaining route from current position to destination
+      getRouteInfo(currentCoordinate, arrivalCoordinate)
+        .then((remainingRouteInfo) => {
+          if (!isMounted) return;
+          const remainingDurationSeconds = remainingRouteInfo.duration;
+          const estimatedArrival = new Date(Date.now() + remainingDurationSeconds * 1000);
+          setEstimatedArrivalTime(estimatedArrival);
+        })
+        .catch(() => {
+          if (!isMounted) return;
+          // Fallback: use progress to estimate remaining time
+          if (routeInfo.duration > 0 && typeof progress === 'number') {
+            const remainingProgress = (100 - Math.min(Math.max(progress, 0), 100)) / 100;
+            const remainingDurationSeconds = routeInfo.duration * remainingProgress;
+            const estimatedArrival = new Date(Date.now() + remainingDurationSeconds * 1000);
+            setEstimatedArrivalTime(estimatedArrival);
+          } else {
+            setEstimatedArrivalTime(null);
+          }
+        });
+    };
+
+    // Debounce: wait 5 seconds after position change before calculating
+    timeoutId = setTimeout(calculateETA, 5000);
+
+    // Also calculate immediately if this is the first time
+    calculateETA();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
+  }, [trip?.status, routeInfo, currentCoordinate, arrivalCoordinate, progress]);
 
   const mapCamera = useMemo(() => {
     const latitudeCenter = (departureCoordinate.latitude + arrivalCoordinate.latitude) / 2;
@@ -706,19 +790,6 @@ export default function TripDetailsScreen() {
       zoomLevel: Math.min(Math.max(zoomLevel, 9), 15),
     };
   }, [arrivalCoordinate, departureCoordinate]);
-
-  const estimatedCoordinate = useMemo(() => {
-    if (trip.status !== 'ongoing' || typeof progress !== 'number') {
-      return null;
-    }
-    const ratio = Math.min(Math.max(progress, 0), 100) / 100;
-    return {
-      latitude: departureCoordinate.latitude + (arrivalCoordinate.latitude - departureCoordinate.latitude) * ratio,
-      longitude:
-        departureCoordinate.longitude + (arrivalCoordinate.longitude - departureCoordinate.longitude) * ratio,
-    };
-  }, [arrivalCoordinate, departureCoordinate, progress, trip.status]);
-  const currentCoordinate = liveDriverCoordinate ?? estimatedCoordinate;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1016,7 +1087,7 @@ export default function TripDetailsScreen() {
                   <View style={[styles.progressFill, { width: `${progress}%` }]} />
                 </View>
                 <Text style={styles.etaText}>
-                  Arrivée estimée: {formatTime(trip.arrivalTime)}
+                  Arrivée estimée: {estimatedArrivalTime ? formatTime(estimatedArrivalTime.toISOString()) : calculatedArrivalTime ? formatTime(calculatedArrivalTime.toISOString()) : formatTime(trip.arrivalTime)}
                 </Text>
               </>
             )}
@@ -1054,7 +1125,7 @@ export default function TripDetailsScreen() {
                 <Text style={styles.routeName}>{trip.arrival.name}</Text>
                 <Text style={styles.routeAddress}>{trip.arrival.address}</Text>
                 <Text style={styles.routeTime}>
-                  Arrivée: {formatTime(trip.arrivalTime)}
+                  Arrivée: {calculatedArrivalTime ? formatTime(calculatedArrivalTime.toISOString()) : formatTime(trip.arrivalTime)}
                 </Text>
               </View>
             </View>
@@ -1067,7 +1138,23 @@ export default function TripDetailsScreen() {
             <Text style={styles.sectionTitle}>CONDUCTEUR</Text>
 
             <View style={styles.driverInfo}>
-              <View style={styles.driverAvatar} />
+              {trip.driverAvatar ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSelectedImageUri(trip.driverAvatar!);
+                    setImageModalVisible(true);
+                  }}
+                >
+                  <Image
+                    source={{ uri: trip.driverAvatar }}
+                    style={styles.driverAvatar}
+                  />
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.driverAvatar}>
+                  <Ionicons name="person" size={32} color={Colors.gray[500]} />
+                </View>
+              )}
               <View style={styles.driverDetails}>
                 <Text style={styles.driverName}>{trip.driverName}</Text>
                 <View style={styles.driverMeta}>
@@ -1179,6 +1266,51 @@ export default function TripDetailsScreen() {
             </View>
           </View>
         </View>
+
+        {/* Passagers */}
+        {tripBookings && tripBookings.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionTitle}>PASSAGERS</Text>
+              <View style={styles.passengersContainer}>
+                {tripBookings
+                  .filter((booking) => booking.status === 'accepted')
+                  .map((booking) => (
+                    <View key={booking.id} style={styles.passengerItem}>
+                      {booking.passengerAvatar ? (
+                        <TouchableOpacity
+                          onPress={() => {
+                            setSelectedImageUri(booking.passengerAvatar!);
+                            setImageModalVisible(true);
+                          }}
+                        >
+                          <Image
+                            source={{ uri: booking.passengerAvatar }}
+                            style={styles.passengerAvatar}
+                          />
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={styles.passengerAvatar}>
+                          <Ionicons name="person" size={20} color={Colors.gray[500]} />
+                        </View>
+                      )}
+                      <View style={styles.passengerInfo}>
+                        <Text style={styles.passengerName}>
+                          {booking.passengerName || 'Passager'}
+                        </Text>
+                        <Text style={styles.passengerSeats}>
+                          {booking.numberOfSeats} place{booking.numberOfSeats > 1 ? 's' : ''}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                {tripBookings.filter((booking) => booking.status === 'accepted').length === 0 && (
+                  <Text style={styles.noPassengersText}>Aucun passager confirmé</Text>
+                )}
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Actions */}
         {trip.status === 'upcoming' && (
@@ -1464,6 +1596,30 @@ export default function TripDetailsScreen() {
         }}
         onComplete={handleKycWizardComplete}
       />
+
+      {/* Image Modal */}
+      <Modal
+        visible={imageModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setImageModalVisible(false)}
+      >
+        <View style={styles.imageModalOverlay}>
+          <TouchableOpacity
+            style={styles.imageModalCloseButton}
+            onPress={() => setImageModalVisible(false)}
+          >
+            <Ionicons name="close" size={32} color={Colors.white} />
+          </TouchableOpacity>
+          {selectedImageUri && (
+            <Image
+              source={{ uri: selectedImageUri }}
+              style={styles.imageModalImage}
+              resizeMode="contain"
+            />
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1834,6 +1990,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[300],
     borderRadius: BorderRadius.full,
     marginRight: Spacing.lg,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   driverDetails: {
     flex: 1,
@@ -2425,5 +2584,60 @@ const styles = StyleSheet.create({
   feedbackModalPrimaryText: {
     color: Colors.white,
     fontWeight: FontWeights.bold,
+  },
+  passengersContainer: {
+    marginTop: Spacing.md,
+  },
+  passengerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  passengerAvatar: {
+    width: 48,
+    height: 48,
+    backgroundColor: Colors.gray[200],
+    borderRadius: BorderRadius.full,
+    marginRight: Spacing.md,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  passengerInfo: {
+    flex: 1,
+  },
+  passengerName: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
+    marginBottom: Spacing.xs,
+  },
+  passengerSeats: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  noPassengersText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: Spacing.md,
+  },
+  imageModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalCloseButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 1,
+    padding: Spacing.sm,
+  },
+  imageModalImage: {
+    width: '100%',
+    height: '100%',
   },
 });
