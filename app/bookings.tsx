@@ -171,7 +171,7 @@ export default function BookingsScreen() {
           <View style={styles.metaItem}>
             <Text style={styles.metaLabel}>Montant estimé</Text>
             <Text style={[styles.metaValue, { color: Colors.success }]}>
-              {trip ? booking.numberOfSeats * trip.price : booking.numberOfSeats} FC
+              {trip && trip.price === 0 ? 'Gratuit' : trip ? `${booking.numberOfSeats * trip.price} FC` : `${booking.numberOfSeats} FC`}
             </Text>
           </View>
         </View>

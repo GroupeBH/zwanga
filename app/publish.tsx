@@ -172,6 +172,7 @@ export default function PublishScreen() {
     setDepartureDateTime(null);
     setIosPickerMode(null);
     setSeats('4');
+    setIsFreeTrip(false);
     setPrice('');
     setDescription('');
     setSelectedVehicleId(null);
@@ -189,6 +190,7 @@ export default function PublishScreen() {
   const [departureDateTime, setDepartureDateTime] = useState<Date | null>(null);
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
   const [seats, setSeats] = useState('4');
+  const [isFreeTrip, setIsFreeTrip] = useState(false);
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
 
@@ -431,11 +433,19 @@ export default function PublishScreen() {
       }
       setStep('details');
     } else if (step === 'details') {
-      if (!departureDateTime || !price) {
+      if (!departureDateTime) {
         showDialog({
           variant: 'warning',
           title: 'Informations manquantes',
-          message: 'Merci de renseigner la date de départ et le prix.',
+          message: 'Merci de renseigner la date de départ.',
+        });
+        return;
+      }
+      if (!isFreeTrip && !price) {
+        showDialog({
+          variant: 'warning',
+          title: 'Informations manquantes',
+          message: 'Merci de renseigner le prix ou de sélectionner "Gratuit".',
         });
         return;
       }
@@ -464,12 +474,12 @@ export default function PublishScreen() {
     }
 
     const seatsValue = parseInt(seats, 10);
-    const priceValue = parseFloat(price);
+    const priceValue = isFreeTrip ? 0 : parseFloat(price);
     const departureDate = departureDateTime;
 
     if (
       Number.isNaN(seatsValue) ||
-      Number.isNaN(priceValue) ||
+      (!isFreeTrip && (Number.isNaN(priceValue) || priceValue <= 0)) ||
       !departureDate ||
       Number.isNaN(departureDate.getTime())
     ) {
@@ -509,6 +519,7 @@ export default function PublishScreen() {
         departureDate: departureDate.toISOString(),
         availableSeats: seatsValue,
         pricePerSeat: priceValue,
+        isFree: isFreeTrip,
         description: description.trim() || undefined,
         vehicleId: selectedVehicleId,
       } as any).unwrap();
@@ -826,15 +837,34 @@ export default function PublishScreen() {
             </View>
 
             <View style={[styles.inputGroup, { marginBottom: Spacing.xl }]}>
-              <Text style={styles.label}>Prix par personne (FC) *</Text>
+              <View style={styles.labelRow}>
+                <Text style={styles.label}>Prix par personne (FC) *</Text>
+                <TouchableOpacity
+                  style={styles.freeToggle}
+                  onPress={() => {
+                    setIsFreeTrip(!isFreeTrip);
+                    if (!isFreeTrip) {
+                      setPrice('');
+                    }
+                  }}
+                >
+                  <View style={[styles.toggleSwitch, isFreeTrip && styles.toggleSwitchActive]}>
+                    <View style={[styles.toggleThumb, isFreeTrip && styles.toggleThumbActive]} />
+                  </View>
+                  <Text style={[styles.freeToggleText, isFreeTrip && styles.freeToggleTextActive]}>
+                    Gratuit
+                  </Text>
+                </TouchableOpacity>
+              </View>
               <View style={styles.inputWithIcon}>
                 <Ionicons name="cash" size={20} color={Colors.gray[600]} />
                 <TextInput
-                  style={styles.input}
-                  placeholder="Ex: 2000"
+                  style={[styles.input, isFreeTrip && styles.inputDisabled]}
+                  placeholder={isFreeTrip ? "Gratuit" : "Ex: 2000"}
                   keyboardType="number-pad"
                   value={price}
                   onChangeText={setPrice}
+                  editable={!isFreeTrip}
                 />
               </View>
             </View>
@@ -941,7 +971,9 @@ export default function PublishScreen() {
                       <Ionicons name="cash" size={18} color={Colors.gray[600]} />
                       <Text style={styles.confirmDetailLabel}>Prix</Text>
                     </View>
-                    <Text style={[styles.confirmDetailValue, { color: Colors.success }]}>{price} FC/pers</Text>
+                    <Text style={[styles.confirmDetailValue, { color: Colors.success }]}>
+                      {isFreeTrip ? 'Gratuit' : `${price} FC/pers`}
+                    </Text>
                   </View>
                   {description ? (
                     <View style={styles.confirmDetailRow}>
@@ -1241,6 +1273,51 @@ const styles = StyleSheet.create({
   },
   inputGroup: {
     marginBottom: Spacing.lg,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  freeToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  toggleSwitch: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.gray[300],
+    padding: 2,
+    justifyContent: 'center',
+  },
+  toggleSwitchActive: {
+    backgroundColor: Colors.success,
+  },
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.white,
+    alignSelf: 'flex-start',
+  },
+  toggleThumbActive: {
+    alignSelf: 'flex-end',
+  },
+  freeToggleText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    fontWeight: FontWeights.medium,
+  },
+  freeToggleTextActive: {
+    color: Colors.success,
+    fontWeight: FontWeights.semibold,
+  },
+  inputDisabled: {
+    backgroundColor: Colors.gray[100],
+    color: Colors.gray[500],
   },
   label: {
     fontSize: FontSizes.sm,

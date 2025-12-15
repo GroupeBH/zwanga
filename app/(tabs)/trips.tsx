@@ -18,6 +18,7 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Modal,
   Platform,
   RefreshControl,
@@ -421,7 +422,11 @@ export default function TripsScreen() {
                     </View>
                     <View style={[styles.infoItem, { marginLeft: Spacing.lg }]}>
                       <Ionicons name="cash" size={16} color={Colors.gray[600]} />
-                      <Text style={styles.infoText}>{trip.price} FC</Text>
+                      {trip.price === 0 ? (
+                        <Text style={[styles.infoText, { color: Colors.success, fontWeight: FontWeights.bold }]}>Gratuit</Text>
+                      ) : (
+                        <Text style={styles.infoText}>{trip.price} FC</Text>
+                      )}
                     </View>
                   </View>
                   <TouchableOpacity

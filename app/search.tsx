@@ -368,9 +368,15 @@ export default function SearchScreen() {
                         </View>
                       </View>
                     </View>
-                    <View style={styles.priceBadge}>
-                      <Text style={styles.priceText}>{trip.price} FC</Text>
-                    </View>
+                    {trip.price === 0 ? (
+                      <View style={styles.freeBadge}>
+                        <Text style={styles.freeBadgeText}>Gratuit</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.priceBadge}>
+                        <Text style={styles.priceText}>{trip.price} FC</Text>
+                      </View>
+                    )}
                   </View>
 
                   <View style={styles.tripRoute}>
@@ -684,6 +690,17 @@ const styles = StyleSheet.create({
     color: Colors.success,
     fontWeight: FontWeights.bold,
     fontSize: FontSizes.sm,
+  },
+  freeBadge: {
+    backgroundColor: Colors.success + '15',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  freeBadgeText: {
+    color: Colors.success,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.base,
   },
   tripRoute: {
     marginBottom: Spacing.md,

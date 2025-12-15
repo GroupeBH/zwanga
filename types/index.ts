@@ -74,6 +74,7 @@ export interface Trip {
   departureTime: string; // ISO string date
   arrivalTime: string; // ISO string date
   price: number;
+  isFree?: boolean;
   availableSeats: number;
   totalSeats: number;
   status: TripStatus;
