@@ -1,6 +1,6 @@
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import type { Trip } from '@/types';
-import { formatTime } from '@/utils/dateHelpers';
+import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -61,17 +61,29 @@ export function TripCard({ trip, index = 0, onPress, showReserveButton = false, 
         <View style={styles.routeRow}>
           <Ionicons name="location" size={16} color={Colors.success} />
           <Text style={styles.routeText}>{trip.departure.name}</Text>
-          <Text style={styles.routeTime}>
-            {formatTime(trip.departureTime)}
-          </Text>
+          <View style={styles.timeContainer}>
+            <Text style={styles.routeDateLabel}>
+              {formatDateWithRelativeLabel(trip.departureTime, false)}
+            </Text>
+            <Text style={styles.routeTime}>
+              {formatTime(trip.departureTime)}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.routeRow}>
           <Ionicons name="navigate" size={16} color={Colors.primary} />
           <Text style={styles.routeText}>{trip.arrival.name}</Text>
-          <Text style={styles.routeTime}>
-            {arrivalTimeDisplay}
-          </Text>
+          <View style={styles.timeContainer}>
+            {calculatedArrivalTime && (
+              <Text style={styles.routeDateLabel}>
+                {formatDateWithRelativeLabel(calculatedArrivalTime.toISOString(), false)}
+              </Text>
+            )}
+            <Text style={styles.routeTime}>
+              {arrivalTimeDisplay}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -182,6 +194,15 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
     color: Colors.gray[800],
     marginLeft: Spacing.sm,
+  },
+  timeContainer: {
+    alignItems: 'flex-end',
+  },
+  routeDateLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.primary,
+    fontWeight: FontWeights.medium,
+    marginBottom: 2,
   },
   routeTime: {
     fontSize: FontSizes.sm,

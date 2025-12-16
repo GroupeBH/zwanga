@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Mapbox from '@rnmapbox/maps';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { searchMapboxPlaces, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
 
 // Initialize Mapbox with access token from config
 const mapboxToken =
@@ -101,6 +102,9 @@ export default function LocationPickerModal({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [mapboxSuggestions, setMapboxSuggestions] = useState<MapboxSearchSuggestion[]>([]);
+  const [mapboxLoading, setMapboxLoading] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [camera, setCamera] = useState(DEFAULT_CAMERA);
   const [selectedLocation, setSelectedLocation] = useState<MapLocationSelection | null>(
     initialLocation ?? null,
@@ -194,11 +198,72 @@ export default function LocationPickerModal({
     }
   };
 
+  // Recherche avec suggestions Mapbox en temps réel
+  const searchMapboxSuggestions = useCallback(async (query: string) => {
+    if (!query.trim() || query.trim().length < 2) {
+      setMapboxSuggestions([]);
+      return;
+    }
+
+    try {
+      setMapboxLoading(true);
+      const proximity = selectedLocation
+        ? { longitude: selectedLocation.longitude, latitude: selectedLocation.latitude }
+        : undefined;
+      const suggestions = await searchMapboxPlaces(query, proximity, 5);
+      setMapboxSuggestions(suggestions);
+    } catch (error) {
+      console.warn('Mapbox search failed', error);
+      setMapboxSuggestions([]);
+    } finally {
+      setMapboxLoading(false);
+    }
+  }, [selectedLocation]);
+
+  // Debounce pour les suggestions Mapbox
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (searchQuery.trim().length >= 2) {
+      searchTimeoutRef.current = setTimeout(() => {
+        searchMapboxSuggestions(searchQuery);
+      }, 300);
+    } else {
+      setMapboxSuggestions([]);
+    }
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery, searchMapboxSuggestions]);
+
   const handleSearchSubmit = async () => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
+      setMapboxSuggestions([]);
       return;
     }
+
+    // Si on a des suggestions Mapbox, utiliser la première
+    if (mapboxSuggestions.length > 0) {
+      const firstSuggestion = mapboxSuggestions[0];
+      const result: SearchResult = {
+        title: firstSuggestion.name,
+        address: firstSuggestion.fullAddress || firstSuggestion.name,
+        latitude: firstSuggestion.coordinates.latitude,
+        longitude: firstSuggestion.coordinates.longitude,
+      };
+      setSelectedLocation(result);
+      animateToCoordinate(result.latitude, result.longitude);
+      setMapboxSuggestions([]);
+      return;
+    }
+
+    // Sinon, utiliser expo-location comme fallback
     try {
       setSearchLoading(true);
       const query = searchQuery.trim();
@@ -209,7 +274,6 @@ export default function LocationPickerModal({
       }
       const mappedResults: SearchResult[] = results.slice(0, 5).map((result, index) => {
         const fallbackTitle = query || `Résultat ${index + 1}`;
-        // Try to extract title fields if they exist, otherwise use fallback
         const title =
           (typeof result === 'object' && result !== null && 'name' in result && typeof (result as any).name === 'string' && (result as any).name) ||
           (typeof result === 'object' && result !== null && 'street' in result && typeof (result as any).street === 'string' && (result as any).street) ||
@@ -240,6 +304,20 @@ export default function LocationPickerModal({
     setSelectedLocation(result);
     animateToCoordinate(result.latitude, result.longitude);
     setSearchResults([]);
+    setMapboxSuggestions([]);
+  };
+
+  const handleMapboxSuggestionPress = (suggestion: MapboxSearchSuggestion) => {
+    const result: SearchResult = {
+      title: suggestion.name,
+      address: suggestion.fullAddress || suggestion.name,
+      latitude: suggestion.coordinates.latitude,
+      longitude: suggestion.coordinates.longitude,
+    };
+    setSelectedLocation(result);
+    animateToCoordinate(result.latitude, result.longitude);
+    setMapboxSuggestions([]);
+    setSearchQuery(suggestion.name);
   };
 
   const handleConfirm = () => {
@@ -283,16 +361,43 @@ export default function LocationPickerModal({
             returnKeyType="search"
             onSubmitEditing={handleSearchSubmit}
           />
-          <TouchableOpacity onPress={handleSearchSubmit} disabled={searchLoading}>
-            {searchLoading ? (
-              <ActivityIndicator size="small" color={Colors.primary} />
-            ) : (
+          {(mapboxLoading || searchLoading) ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <TouchableOpacity onPress={handleSearchSubmit} disabled={searchLoading}>
               <Ionicons name="arrow-forward" size={20} color={Colors.primary} />
-            )}
-          </TouchableOpacity>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {searchResults.length > 0 && (
+        {/* Suggestions Mapbox en temps réel */}
+        {mapboxSuggestions.length > 0 && (
+          <View style={styles.resultsContainer}>
+            <FlatList
+              data={mapboxSuggestions}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.resultRow}
+                  onPress={() => handleMapboxSuggestionPress(item)}
+                >
+                  <Ionicons name="location" size={18} color={Colors.primary} />
+                  <View style={styles.resultContent}>
+                    <Text style={styles.resultTitle}>{item.name}</Text>
+                    {item.fullAddress && (
+                      <Text style={styles.resultSubtitle} numberOfLines={1}>
+                        {item.fullAddress}
+                      </Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        )}
+
+        {/* Résultats expo-location (fallback) */}
+        {mapboxSuggestions.length === 0 && searchResults.length > 0 && (
           <View style={styles.resultsContainer}>
             <FlatList
               data={searchResults}

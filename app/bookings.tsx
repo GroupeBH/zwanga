@@ -20,7 +20,7 @@ import {
   useGetMyBookingsQuery,
 } from '@/store/api/bookingApi';
 import type { BookingStatus } from '@/types';
-import { formatTime } from '@/utils/dateHelpers';
+import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 
 type BookingTab = 'active' | 'history';
@@ -151,7 +151,7 @@ export default function BookingsScreen() {
                   {trip?.departure.name ?? 'Trajet'} → {trip?.arrival.name ?? ''}
                 </Text>
                 <Text style={styles.bookingSubtitle}>
-                  {trip ? `${formatTime(trip.departureTime)} → ${arrivalTimeDisplay}` : ''}
+                  {trip ? `${formatDateWithRelativeLabel(trip.departureTime)} → ${arrivalTimeDisplay}` : ''}
                 </Text>
               </View>
             </View>
