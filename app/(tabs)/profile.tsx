@@ -315,6 +315,13 @@ export default function ProfileScreen() {
 
   const menuItems = [
     { icon: 'person-outline', label: 'Modifier le profil', route: '/edit-profile' },
+    { icon: 'document-text-outline', label: 'Mes demandes de trajet', route: '/my-requests' },
+    ...(currentUser?.isDriver
+      ? [
+          { icon: 'list-outline', label: 'Demandes disponibles', route: '/requests' },
+          { icon: 'briefcase-outline', label: 'Mes offres', route: '/my-offers' },
+        ]
+      : []),
     { icon: 'notifications-outline', label: 'Notifications', route: '/notifications' },
     { icon: 'settings-outline', label: 'Paramètres', route: '/settings' },
     { icon: 'help-circle-outline', label: 'Aide & Support', route: '/support' },
