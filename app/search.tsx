@@ -8,7 +8,7 @@ import {
 import { useAppSelector } from '@/store/hooks';
 import { selectTrips } from '@/store/selectors';
 import type { Trip } from '@/types';
-import { formatTime } from '@/utils/dateHelpers';
+import { formatTime, formatDateWithRelativeLabel, matchesDateFilter } from '@/utils/dateHelpers';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -27,6 +27,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type FilterType = 'all' | 'car' | 'moto' | 'tricycle';
+type DateFilterType = 'all' | 'today' | 'tomorrow' | 'yesterday';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -47,6 +48,7 @@ export default function SearchScreen() {
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
+  const [dateFilter, setDateFilter] = useState<DateFilterType>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [queryParams, setQueryParams] = useState<TripSearchParams>({});
   const [advancedTrips, setAdvancedTrips] = useState<Trip[] | null>(null);
@@ -176,9 +178,10 @@ export default function SearchScreen() {
 
   const filteredTrips = baseTrips.filter((trip) => {
     const matchesFilter = filter === 'all' || trip.vehicleType === filter;
+    const matchesDate = matchesDateFilter(trip.departureTime, dateFilter);
     const matchesDeparture = !departure || trip.departure.name.toLowerCase().includes(departure.toLowerCase());
     const matchesArrival = !arrival || trip.arrival.name.toLowerCase().includes(arrival.toLowerCase());
-    return matchesFilter && matchesDeparture && matchesArrival;
+    return matchesFilter && matchesDate && matchesDeparture && matchesArrival;
   });
 
   return (
@@ -252,7 +255,7 @@ export default function SearchScreen() {
           <View style={styles.filterButtonLeft}>
             <Ionicons name="filter" size={20} color={Colors.primary} />
             <Text style={styles.filterText}>Filtres</Text>
-            {filter !== 'all' && <View style={styles.filterDot} />}
+            {(filter !== 'all' || dateFilter !== 'all') && <View style={styles.filterDot} />}
           </View>
           <Ionicons
             name={showFilters ? 'chevron-up' : 'chevron-down'}
@@ -263,38 +266,81 @@ export default function SearchScreen() {
 
         {showFilters && (
           <Animated.View entering={FadeInDown} style={styles.filtersContainer}>
-            <TouchableOpacity
-              style={[styles.filterTag, filter === 'all' && styles.filterTagActive]}
-              onPress={() => setFilter('all')}
-            >
-              <Text style={[styles.filterTagText, filter === 'all' && styles.filterTagTextActive]}>
-                Tous
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.filterTag, filter === 'car' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
-              onPress={() => setFilter('car')}
-            >
-              <Text style={[styles.filterTagText, filter === 'car' && styles.filterTagTextActive]}>
-                🚗 Voiture
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.filterTag, filter === 'moto' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
-              onPress={() => setFilter('moto')}
-            >
-              <Text style={[styles.filterTagText, filter === 'moto' && styles.filterTagTextActive]}>
-                🏍️ Moto
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.filterTag, filter === 'tricycle' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
-              onPress={() => setFilter('tricycle')}
-            >
-              <Text style={[styles.filterTagText, filter === 'tricycle' && styles.filterTagTextActive]}>
-                🛺 Keke
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Type de véhicule</Text>
+              <View style={styles.filterRow}>
+                <TouchableOpacity
+                  style={[styles.filterTag, filter === 'all' && styles.filterTagActive]}
+                  onPress={() => setFilter('all')}
+                >
+                  <Text style={[styles.filterTagText, filter === 'all' && styles.filterTagTextActive]}>
+                    Tous
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.filterTag, filter === 'car' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
+                  onPress={() => setFilter('car')}
+                >
+                  <Text style={[styles.filterTagText, filter === 'car' && styles.filterTagTextActive]}>
+                    🚗 Voiture
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.filterTag, filter === 'moto' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
+                  onPress={() => setFilter('moto')}
+                >
+                  <Text style={[styles.filterTagText, filter === 'moto' && styles.filterTagTextActive]}>
+                    🏍️ Moto
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.filterTag, filter === 'tricycle' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
+                  onPress={() => setFilter('tricycle')}
+                >
+                  <Text style={[styles.filterTagText, filter === 'tricycle' && styles.filterTagTextActive]}>
+                    🛺 Keke
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Date de départ</Text>
+              <View style={styles.filterRow}>
+                <TouchableOpacity
+                  style={[styles.filterTag, dateFilter === 'all' && styles.filterTagActive]}
+                  onPress={() => setDateFilter('all')}
+                >
+                  <Text style={[styles.filterTagText, dateFilter === 'all' && styles.filterTagTextActive]}>
+                    Toutes
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.filterTag, dateFilter === 'today' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
+                  onPress={() => setDateFilter('today')}
+                >
+                  <Text style={[styles.filterTagText, dateFilter === 'today' && styles.filterTagTextActive]}>
+                    Aujourd'hui
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.filterTag, dateFilter === 'tomorrow' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
+                  onPress={() => setDateFilter('tomorrow')}
+                >
+                  <Text style={[styles.filterTagText, dateFilter === 'tomorrow' && styles.filterTagTextActive]}>
+                    Demain
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.filterTag, dateFilter === 'yesterday' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
+                  onPress={() => setDateFilter('yesterday')}
+                >
+                  <Text style={[styles.filterTagText, dateFilter === 'yesterday' && styles.filterTagTextActive]}>
+                    Hier
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </Animated.View>
         )}
       </View>
@@ -383,17 +429,29 @@ export default function SearchScreen() {
                     <View style={styles.routeRow}>
                       <Ionicons name="location" size={16} color={Colors.success} />
                       <Text style={styles.routeText}>{trip.departure.name}</Text>
-                      <Text style={styles.routeTime}>
-                        {formatTime(trip.departureTime)}
-                      </Text>
+                      <View style={styles.timeContainer}>
+                        <Text style={styles.routeDateLabel}>
+                          {formatDateWithRelativeLabel(trip.departureTime, false)}
+                        </Text>
+                        <Text style={styles.routeTime}>
+                          {formatTime(trip.departureTime)}
+                        </Text>
+                      </View>
                     </View>
 
                     <View style={styles.routeRow}>
                       <Ionicons name="navigate" size={16} color={Colors.primary} />
                       <Text style={styles.routeText}>{trip.arrival.name}</Text>
-                      <Text style={styles.routeTime}>
-                        {arrivalTimeDisplay}
-                      </Text>
+                      <View style={styles.timeContainer}>
+                        {calculatedArrivalTime && (
+                          <Text style={styles.routeDateLabel}>
+                            {formatDateWithRelativeLabel(calculatedArrivalTime.toISOString(), false)}
+                          </Text>
+                        )}
+                        <Text style={styles.routeTime}>
+                          {arrivalTimeDisplay}
+                        </Text>
+                      </View>
                     </View>
                   </View>
 
@@ -511,9 +569,22 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.xs,
   },
   filtersContainer: {
+    paddingTop: Spacing.md,
+    gap: Spacing.md,
+  },
+  filterSection: {
+    marginBottom: Spacing.md,
+  },
+  filterSectionTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+    marginBottom: Spacing.sm,
+  },
+  filterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingTop: Spacing.md,
+    gap: Spacing.sm,
   },
   filterTag: {
     paddingHorizontal: Spacing.lg,
@@ -715,6 +786,15 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.sm,
     flex: 1,
     fontSize: FontSizes.base,
+  },
+  timeContainer: {
+    alignItems: 'flex-end',
+  },
+  routeDateLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.primary,
+    fontWeight: FontWeights.medium,
+    marginBottom: 2,
   },
   routeTime: {
     fontSize: FontSizes.sm,

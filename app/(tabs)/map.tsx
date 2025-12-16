@@ -15,15 +15,16 @@ import {
 } from '@/store/selectors';
 import { setRadiusKm, setSearchQuery, TripSearchMode } from '@/store/slices/locationSlice';
 import { setTrips } from '@/store/slices/tripsSlice';
-import { formatTime } from '@/utils/dateHelpers';
+import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { Ionicons } from '@expo/vector-icons';
 import Mapbox from '@rnmapbox/maps';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Image,
   LayoutAnimation,
   Platform,
@@ -35,6 +36,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { searchMapboxPlaces, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
 
 type LatLng = { latitude: number; longitude: number };
 
@@ -83,6 +85,9 @@ export default function MapScreen() {
   const [isMapExpanded, setIsMapExpanded] = useState(false);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
   const [isMapMoving, setIsMapMoving] = useState(false);
+  const [mapboxSuggestions, setMapboxSuggestions] = useState<MapboxSearchSuggestion[]>([]);
+  const [mapboxLoading, setMapboxLoading] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const toggleMapExpansion = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -171,8 +176,74 @@ export default function MapScreen() {
     );
   };
 
+  // Recherche avec suggestions Mapbox en temps réel
+  const searchMapboxSuggestions = useCallback(async (query: string) => {
+    if (!query.trim() || query.trim().length < 2) {
+      setMapboxSuggestions([]);
+      return;
+    }
+
+    try {
+      setMapboxLoading(true);
+      const proximity = userCoords
+        ? { longitude: userCoords.longitude, latitude: userCoords.latitude }
+        : mapCenter
+          ? { longitude: mapCenter[0], latitude: mapCenter[1] }
+          : undefined;
+      const suggestions = await searchMapboxPlaces(query, proximity, 5);
+      setMapboxSuggestions(suggestions);
+    } catch (error) {
+      console.warn('Mapbox search failed', error);
+      setMapboxSuggestions([]);
+    } finally {
+      setMapboxLoading(false);
+    }
+  }, [userCoords, mapCenter]);
+
+  // Debounce pour les suggestions Mapbox
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (search && search.trim().length >= 2) {
+      searchTimeoutRef.current = setTimeout(() => {
+        searchMapboxSuggestions(search);
+      }, 300);
+    } else {
+      setMapboxSuggestions([]);
+    }
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [search, searchMapboxSuggestions]);
+
   const handleSearchChange = (value: string) => {
     setSearch(value);
+  };
+
+  const handleMapboxSuggestionPress = (suggestion: MapboxSearchSuggestion) => {
+    setSearch(suggestion.name);
+    setMapboxSuggestions([]);
+    // Appliquer la recherche avec le nom de la suggestion
+    dispatch(setSearchQuery(suggestion.name));
+    const params = buildSearchParams(suggestion.name);
+    triggerTripSearch(params).then((result) => {
+      if (result.data) {
+        dispatch(setTrips(result.data));
+      }
+    }).catch((error: any) => {
+      const message =
+        error?.data?.message ?? error?.error ?? "Impossible d'appliquer le filtre pour le moment.";
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur de recherche',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    });
   };
 
   const buildSearchParams = (query: string): TripSearchParams => {
@@ -424,7 +495,37 @@ export default function MapScreen() {
                 returnKeyType="search"
                 onSubmitEditing={applySearchQuery}
               />
+              {mapboxLoading && (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              )}
             </View>
+
+            {/* Suggestions Mapbox */}
+            {mapboxSuggestions.length > 0 && (
+              <View style={styles.suggestionsContainer}>
+                <FlatList
+                  data={mapboxSuggestions}
+                  keyExtractor={(item) => item.id}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.suggestionRow}
+                      onPress={() => handleMapboxSuggestionPress(item)}
+                    >
+                      <Ionicons name="location" size={16} color={Colors.primary} />
+                      <View style={styles.suggestionContent}>
+                        <Text style={styles.suggestionTitle}>{item.name}</Text>
+                        {item.fullAddress && (
+                          <Text style={styles.suggestionSubtitle} numberOfLines={1}>
+                            {item.fullAddress}
+                          </Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                  scrollEnabled={false}
+                />
+              </View>
+            )}
             <View style={styles.searchActions}>
               <TouchableOpacity
                 style={[styles.applyButton, isApplyDisabled && styles.applyButtonDisabled]}
@@ -659,12 +760,24 @@ export default function MapScreen() {
                       <View style={styles.tripRouteRow}>
                         <Ionicons name="location" size={16} color={Colors.success} />
                         <Text style={styles.tripRouteText}>{trip.departure.name}</Text>
-                        <Text style={styles.tripTime}>{formatTime(trip.departureTime)}</Text>
+                        <View style={styles.timeContainer}>
+                          <Text style={styles.routeDateLabel}>
+                            {formatDateWithRelativeLabel(trip.departureTime, false)}
+                          </Text>
+                          <Text style={styles.tripTime}>{formatTime(trip.departureTime)}</Text>
+                        </View>
                       </View>
                       <View style={styles.tripRouteRow}>
                         <Ionicons name="navigate" size={16} color={Colors.primary} />
                         <Text style={styles.tripRouteText}>{trip.arrival.name}</Text>
-                        <Text style={styles.tripTime}>{arrivalTimeDisplay}</Text>
+                        <View style={styles.timeContainer}>
+                          {calculatedArrivalTime && (
+                            <Text style={styles.routeDateLabel}>
+                              {formatDateWithRelativeLabel(calculatedArrivalTime.toISOString(), false)}
+                            </Text>
+                          )}
+                          <Text style={styles.tripTime}>{arrivalTimeDisplay}</Text>
+                        </View>
                       </View>
                       <View style={styles.tripFooter}>
                         <View style={styles.tripFooterLeft}>
@@ -756,6 +869,37 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
     color: Colors.gray[800],
     paddingVertical: Spacing.sm,
+  },
+  suggestionsContainer: {
+    maxHeight: 200,
+    marginTop: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
+    overflow: 'hidden',
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+  },
+  suggestionContent: {
+    marginLeft: Spacing.sm,
+    flex: 1,
+  },
+  suggestionTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[900],
+  },
+  suggestionSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginTop: 2,
   },
   searchActions: {
     flexDirection: 'row',
@@ -1184,6 +1328,15 @@ const styles = StyleSheet.create({
     flex: 1,
     color: Colors.gray[700],
     fontSize: FontSizes.base,
+  },
+  timeContainer: {
+    alignItems: 'flex-end',
+  },
+  routeDateLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.primary,
+    fontWeight: FontWeights.medium,
+    marginBottom: 2,
   },
   tripTime: {
     fontSize: FontSizes.sm,

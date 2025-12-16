@@ -1,4 +1,4 @@
-import * as TaskManager from 'expo-task-manager';
+import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { handleIncomingNotification } from './pushNotifications';
 
@@ -8,6 +8,19 @@ import { handleIncomingNotification } from './pushNotifications';
  * Il doit correspondre au nom configuré dans app.config.js
  */
 export const BACKGROUND_NOTIFICATION_TASK = 'background-notification-task';
+
+const isExpoGo = Constants.appOwnership === 'expo';
+
+// Importer TaskManager de manière conditionnelle pour éviter les erreurs dans Expo Go
+let TaskManager: typeof import('expo-task-manager') | null = null;
+
+try {
+  if (!isExpoGo) {
+    TaskManager = require('expo-task-manager');
+  }
+} catch (error) {
+  console.warn('expo-task-manager n\'est pas disponible. Les notifications en arrière-plan ne fonctionneront pas dans Expo Go.');
+}
 
 /**
  * Tâche de fond pour traiter les notifications push reçues en arrière-plan
@@ -19,7 +32,8 @@ export const BACKGROUND_NOTIFICATION_TASK = 'background-notification-task';
  * IMPORTANT: Cette fonction doit être définie AVANT que l'application ne démarre,
  * c'est pourquoi elle est définie au niveau racine du module.
  */
-TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => {
+if (TaskManager) {
+  TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => {
   try {
     if (error) {
       console.error('Erreur dans la tâche de notification en arrière-plan:', error);
@@ -47,14 +61,16 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
           identifier: taskData.id || `bg-${Date.now()}`,
           content: {
             title: taskData.title || 'Zwanga',
+            subtitle: null,
             body: taskData.body || '',
             data: taskData.data || {},
-            sound: true,
+            categoryIdentifier: null,
+            sound: 'default',
             badge: taskData.badge,
           },
           trigger: null,
         },
-        date: new Date(),
+        date: Date.now(),
       };
       await handleIncomingNotification(notification);
       console.log('Notification FCM traitée en arrière-plan:', notification.request.identifier);
@@ -65,7 +81,8 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
     console.error('Erreur lors du traitement de la notification en arrière-plan:', error);
     // Ne pas propager l'erreur pour éviter de bloquer le système de notifications
   }
-});
+  });
+}
 
 /**
  * Enregistre la tâche de fond pour les notifications push
@@ -75,6 +92,11 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
  */
 export async function registerBackgroundNotificationTask(): Promise<boolean> {
   try {
+    if (!TaskManager || isExpoGo) {
+      console.warn('Task Manager n\'est pas disponible. Les notifications en arrière-plan nécessitent un build de développement ou EAS.');
+      return false;
+    }
+
     // Vérifier si la tâche est déjà enregistrée
     const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_NOTIFICATION_TASK);
     
@@ -101,6 +123,10 @@ export async function registerBackgroundNotificationTask(): Promise<boolean> {
  */
 export async function unregisterBackgroundNotificationTask(): Promise<void> {
   try {
+    if (!TaskManager || isExpoGo) {
+      return;
+    }
+
     const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_NOTIFICATION_TASK);
     
     if (isRegistered) {
@@ -119,6 +145,9 @@ export async function unregisterBackgroundNotificationTask(): Promise<void> {
  */
 export async function isBackgroundNotificationTaskRegistered(): Promise<boolean> {
   try {
+    if (!TaskManager || isExpoGo) {
+      return false;
+    }
     return await TaskManager.isTaskRegisteredAsync(BACKGROUND_NOTIFICATION_TASK);
   } catch (error) {
     console.error('Erreur lors de la vérification de la tâche:', error);
