@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Mapbox from '@rnmapbox/maps';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { searchMapboxPlaces, getMapboxPlaceDetails, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
 
 // Initialize Mapbox with access token from config
 const mapboxToken =
@@ -101,6 +102,9 @@ export default function LocationPickerModal({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [mapboxSuggestions, setMapboxSuggestions] = useState<MapboxSearchSuggestion[]>([]);
+  const [mapboxLoading, setMapboxLoading] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [camera, setCamera] = useState(DEFAULT_CAMERA);
   const [selectedLocation, setSelectedLocation] = useState<MapLocationSelection | null>(
     initialLocation ?? null,
@@ -133,16 +137,37 @@ export default function LocationPickerModal({
   }, [initialLocation, visible]);
 
   const animateToCoordinate = (latitude: number, longitude: number) => {
-    const nextCamera = {
-      centerCoordinate: [longitude, latitude] as [number, number],
-      zoomLevel: 14,
-    };
-    setCamera(nextCamera);
-    cameraRef.current?.setCamera({
-      centerCoordinate: nextCamera.centerCoordinate,
-      zoomLevel: nextCamera.zoomLevel,
-      animationDuration: 350,
-    });
+    try {
+      // Valider les coordonnées avant d'animer
+      if (
+        typeof latitude !== 'number' ||
+        typeof longitude !== 'number' ||
+        isNaN(latitude) ||
+        isNaN(longitude) ||
+        !isFinite(latitude) ||
+        !isFinite(longitude) ||
+        latitude < -90 ||
+        latitude > 90 ||
+        longitude < -180 ||
+        longitude > 180
+      ) {
+        console.warn('Invalid coordinates for animation:', { latitude, longitude });
+        return;
+      }
+
+      const nextCamera = {
+        centerCoordinate: [longitude, latitude] as [number, number],
+        zoomLevel: 14,
+      };
+      setCamera(nextCamera);
+      cameraRef.current?.setCamera({
+        centerCoordinate: nextCamera.centerCoordinate,
+        zoomLevel: nextCamera.zoomLevel,
+        animationDuration: 350,
+      });
+    } catch (error) {
+      console.error('Error animating to coordinate:', error);
+    }
   };
 
   const requestUserLocation = async () => {
@@ -177,28 +202,150 @@ export default function LocationPickerModal({
   };
 
   const handleMapPress = async (event: any) => {
-    // Mapbox returns coordinates as [longitude, latitude]
-    const [longitude, latitude] = event.geometry.coordinates;
-    const coordinate = { latitude, longitude };
-    setSelectedLocation({
-      title: 'Point sélectionné',
-      address: 'Détermination de l\'adresse…',
-      latitude,
-      longitude,
-    });
     try {
-      const [address] = await Location.reverseGeocodeAsync(coordinate);
-      setSelectedLocation(buildSelectionFromCoordinate(coordinate, address));
+      // Vérifier que l'événement contient les coordonnées
+      if (!event?.geometry?.coordinates || !Array.isArray(event.geometry.coordinates)) {
+        console.warn('Invalid map press event:', event);
+        return;
+      }
+
+      // Mapbox returns coordinates as [longitude, latitude]
+      const [longitude, latitude] = event.geometry.coordinates;
+      
+      // Valider les coordonnées
+      if (
+        typeof longitude !== 'number' ||
+        typeof latitude !== 'number' ||
+        isNaN(longitude) ||
+        isNaN(latitude) ||
+        !isFinite(longitude) ||
+        !isFinite(latitude)
+      ) {
+        console.warn('Invalid coordinates:', { longitude, latitude });
+        return;
+      }
+
+      const coordinate = { latitude, longitude };
+      setSelectedLocation({
+        title: 'Point sélectionné',
+        address: 'Détermination de l\'adresse…',
+        latitude,
+        longitude,
+      });
+      
+      try {
+        const [address] = await Location.reverseGeocodeAsync(coordinate);
+        setSelectedLocation(buildSelectionFromCoordinate(coordinate, address));
+      } catch (error) {
+        console.warn('Reverse geocoding failed', error);
+        // Garder la sélection même si le reverse geocoding échoue
+        setSelectedLocation({
+          title: 'Point sélectionné',
+          address: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
+          latitude,
+          longitude,
+        });
+      }
     } catch (error) {
-      console.warn('Reverse geocoding failed', error);
+      console.error('Error handling map press:', error);
     }
   };
+
+  // Recherche avec suggestions Mapbox en temps réel
+  const searchMapboxSuggestions = useCallback(async (query: string) => {
+    if (!query.trim() || query.trim().length < 2) {
+      setMapboxSuggestions([]);
+      return;
+    }
+
+    try {
+      setMapboxLoading(true);
+      const proximity = selectedLocation
+        ? { longitude: selectedLocation.longitude, latitude: selectedLocation.latitude }
+        : undefined;
+      const suggestions = await searchMapboxPlaces(query, proximity, 5);
+      setMapboxSuggestions(suggestions);
+    } catch (error) {
+      console.warn('Mapbox search failed', error);
+      setMapboxSuggestions([]);
+    } finally {
+      setMapboxLoading(false);
+    }
+  }, [selectedLocation]);
+
+  // Debounce pour les suggestions Mapbox
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (searchQuery.trim().length >= 2) {
+      searchTimeoutRef.current = setTimeout(() => {
+        searchMapboxSuggestions(searchQuery);
+      }, 300);
+    } else {
+      setMapboxSuggestions([]);
+    }
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery, searchMapboxSuggestions]);
 
   const handleSearchSubmit = async () => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
+      setMapboxSuggestions([]);
       return;
     }
+
+    // Si on a des suggestions Mapbox, utiliser la première et récupérer les détails complets
+    if (mapboxSuggestions.length > 0) {
+      try {
+        setSearchLoading(true);
+        const firstSuggestion = mapboxSuggestions[0];
+        
+        // Utiliser getMapboxPlaceDetails pour obtenir les coordonnées complètes
+        const placeDetails = await getMapboxPlaceDetails(firstSuggestion.id);
+        
+        if (placeDetails && placeDetails.coordinates.latitude && placeDetails.coordinates.longitude) {
+          const result: SearchResult = {
+            title: placeDetails.name || firstSuggestion.name,
+            address: placeDetails.fullAddress || firstSuggestion.fullAddress || firstSuggestion.name,
+            latitude: placeDetails.coordinates.latitude,
+            longitude: placeDetails.coordinates.longitude,
+          };
+          setSelectedLocation(result);
+          animateToCoordinate(result.latitude, result.longitude);
+          setMapboxSuggestions([]);
+          setSearchQuery(placeDetails.name || firstSuggestion.name);
+          return;
+        } else {
+          // Fallback si retrieve échoue mais qu'on a des coordonnées dans la suggestion
+          if (firstSuggestion.coordinates.latitude && firstSuggestion.coordinates.longitude) {
+            const result: SearchResult = {
+              title: firstSuggestion.name,
+              address: firstSuggestion.fullAddress || firstSuggestion.name,
+              latitude: firstSuggestion.coordinates.latitude,
+              longitude: firstSuggestion.coordinates.longitude,
+            };
+            setSelectedLocation(result);
+            animateToCoordinate(result.latitude, result.longitude);
+            setMapboxSuggestions([]);
+            return;
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to retrieve place details, falling back to expo-location', error);
+        // Continue avec expo-location comme fallback
+      } finally {
+        setSearchLoading(false);
+      }
+    }
+
+    // Sinon, utiliser expo-location comme fallback
     try {
       setSearchLoading(true);
       const query = searchQuery.trim();
@@ -209,7 +356,6 @@ export default function LocationPickerModal({
       }
       const mappedResults: SearchResult[] = results.slice(0, 5).map((result, index) => {
         const fallbackTitle = query || `Résultat ${index + 1}`;
-        // Try to extract title fields if they exist, otherwise use fallback
         const title =
           (typeof result === 'object' && result !== null && 'name' in result && typeof (result as any).name === 'string' && (result as any).name) ||
           (typeof result === 'object' && result !== null && 'street' in result && typeof (result as any).street === 'string' && (result as any).street) ||
@@ -240,6 +386,58 @@ export default function LocationPickerModal({
     setSelectedLocation(result);
     animateToCoordinate(result.latitude, result.longitude);
     setSearchResults([]);
+    setMapboxSuggestions([]);
+  };
+
+  const handleMapboxSuggestionPress = async (suggestion: MapboxSearchSuggestion) => {
+    try {
+      setMapboxLoading(true);
+      
+      // Utiliser getMapboxPlaceDetails pour obtenir les coordonnées complètes
+      const placeDetails = await getMapboxPlaceDetails(suggestion.id);
+      
+      if (placeDetails && placeDetails.coordinates.latitude && placeDetails.coordinates.longitude) {
+        const result: SearchResult = {
+          title: placeDetails.name || suggestion.name || 'Lieu sélectionné',
+          address: placeDetails.fullAddress || suggestion.fullAddress || suggestion.name || 'Adresse non disponible',
+          latitude: placeDetails.coordinates.latitude,
+          longitude: placeDetails.coordinates.longitude,
+        };
+        setSelectedLocation(result);
+        animateToCoordinate(result.latitude, result.longitude);
+        setMapboxSuggestions([]);
+        setSearchQuery(placeDetails.name || suggestion.name || '');
+        return;
+      }
+      
+      // Fallback si retrieve échoue mais qu'on a des coordonnées dans la suggestion
+      if (
+        suggestion?.coordinates &&
+        suggestion.coordinates.latitude &&
+        suggestion.coordinates.longitude &&
+        typeof suggestion.coordinates.latitude === 'number' &&
+        typeof suggestion.coordinates.longitude === 'number' &&
+        !isNaN(suggestion.coordinates.latitude) &&
+        !isNaN(suggestion.coordinates.longitude)
+      ) {
+        const result: SearchResult = {
+          title: suggestion.name || 'Lieu sélectionné',
+          address: suggestion.fullAddress || suggestion.name || 'Adresse non disponible',
+          latitude: suggestion.coordinates.latitude,
+          longitude: suggestion.coordinates.longitude,
+        };
+        setSelectedLocation(result);
+        animateToCoordinate(result.latitude, result.longitude);
+        setMapboxSuggestions([]);
+        setSearchQuery(suggestion.name || '');
+      } else {
+        console.warn('Invalid suggestion coordinates:', suggestion);
+      }
+    } catch (error) {
+      console.error('Error handling Mapbox suggestion press:', error);
+    } finally {
+      setMapboxLoading(false);
+    }
   };
 
   const handleConfirm = () => {
@@ -283,16 +481,43 @@ export default function LocationPickerModal({
             returnKeyType="search"
             onSubmitEditing={handleSearchSubmit}
           />
-          <TouchableOpacity onPress={handleSearchSubmit} disabled={searchLoading}>
-            {searchLoading ? (
-              <ActivityIndicator size="small" color={Colors.primary} />
-            ) : (
+          {(mapboxLoading || searchLoading) ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <TouchableOpacity onPress={handleSearchSubmit} disabled={searchLoading}>
               <Ionicons name="arrow-forward" size={20} color={Colors.primary} />
-            )}
-          </TouchableOpacity>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {searchResults.length > 0 && (
+        {/* Suggestions Mapbox en temps réel */}
+        {mapboxSuggestions.length > 0 && (
+          <View style={styles.resultsContainer}>
+            <FlatList
+              data={mapboxSuggestions}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.resultRow}
+                  onPress={() => handleMapboxSuggestionPress(item)}
+                >
+                  <Ionicons name="location" size={18} color={Colors.primary} />
+                  <View style={styles.resultContent}>
+                    <Text style={styles.resultTitle}>{item.name}</Text>
+                    {item.fullAddress && (
+                      <Text style={styles.resultSubtitle} numberOfLines={1}>
+                        {item.fullAddress}
+                      </Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        )}
+
+        {/* Résultats expo-location (fallback) */}
+        {mapboxSuggestions.length === 0 && searchResults.length > 0 && (
           <View style={styles.resultsContainer}>
             <FlatList
               data={searchResults}
@@ -318,7 +543,7 @@ export default function LocationPickerModal({
         <Mapbox.MapView
           ref={mapRef}
           style={styles.map}
-          styleURL={Mapbox.StyleURL.SatelliteStreet}
+          styleURL={Mapbox.StyleURL.Street}
           onPress={handleMapPress}
         >
           <Mapbox.Camera

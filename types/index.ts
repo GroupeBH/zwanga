@@ -74,6 +74,7 @@ export interface Trip {
   departureTime: string; // ISO string date
   arrivalTime: string; // ISO string date
   price: number;
+  isFree?: boolean;
   availableSeats: number;
   totalSeats: number;
   status: TripStatus;
@@ -187,5 +188,73 @@ export interface Review {
   comment?: string;
   tripId?: string | null;
   createdAt: string; // ISO string date
+}
+
+export type TripRequestStatus = 'pending' | 'offers_received' | 'driver_selected' | 'cancelled' | 'expired';
+
+export interface TripRequest {
+  id: string;
+  passengerId: string;
+  passengerName?: string;
+  passengerAvatar?: string;
+  departure: Location;
+  arrival: Location;
+  departureDateMin: string; // ISO string date - Date/heure de départ minimum souhaitée
+  departureDateMax: string; // ISO string date - Date/heure de départ maximum acceptée
+  numberOfSeats: number;
+  maxPricePerSeat?: number | null; // Prix maximum par place accepté (optionnel)
+  description?: string | null;
+  status: TripRequestStatus;
+  selectedDriverId?: string | null; // Driver sélectionné par le passager
+  selectedVehicleId?: string | null; // Véhicule du driver sélectionné
+  selectedPricePerSeat?: number | null; // Prix accepté pour le driver sélectionné
+  selectedAt?: string | null; // Date de sélection du driver
+  createdAt: string;
+  updatedAt: string;
+  offers?: DriverOffer[]; // Offres reçues des drivers
+}
+
+export type DriverOfferStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
+
+export interface DriverOffer {
+  id: string;
+  tripRequestId: string;
+  driverId: string;
+  driverName?: string;
+  driverAvatar?: string;
+  driverRating?: number;
+  vehicleId?: string | null;
+  vehicleType?: VehicleType;
+  vehicleInfo?: string;
+  proposedDepartureDate: string; // ISO string date - Date/heure de départ proposée par le driver
+  pricePerSeat: number; // Prix proposé par place
+  availableSeats: number; // Nombre de places disponibles
+  message?: string | null; // Message optionnel du driver
+  status: DriverOfferStatus;
+  acceptedAt?: string | null;
+  rejectedAt?: string | null;
+  rejectionReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DriverOfferWithTripRequest extends DriverOffer {
+  tripRequest: {
+    id: string;
+    departureLocation: string;
+    arrivalLocation: string;
+    departureDateMin: string; // ISO string date
+    departureDateMax: string; // ISO string date
+    numberOfSeats: number;
+    maxPricePerSeat: number | null;
+    status: TripRequestStatus;
+    passenger: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      phone: string;
+      profilePicture: string | null;
+    };
+  };
 }
 

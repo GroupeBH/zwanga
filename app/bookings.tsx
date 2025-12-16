@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -19,7 +20,8 @@ import {
   useGetMyBookingsQuery,
 } from '@/store/api/bookingApi';
 import type { BookingStatus } from '@/types';
-import { formatTime } from '@/utils/dateHelpers';
+import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
+import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 
 type BookingTab = 'active' | 'history';
 
@@ -116,24 +118,43 @@ export default function BookingsScreen() {
   };
 
   const renderBookingCard = (bookingId: string, booking: typeof displayBookings[number], index: number) => {
-    const statusConfig = STATUS_CONFIG[booking.status];
-    const trip = booking.trip;
+    const BookingCardWithArrival = () => {
+      const statusConfig = STATUS_CONFIG[booking.status];
+      const trip = booking.trip;
+      const calculatedArrivalTime = useTripArrivalTime(trip || null);
+      const arrivalTimeDisplay = calculatedArrivalTime && trip
+        ? formatTime(calculatedArrivalTime.toISOString())
+        : trip?.arrivalTime
+        ? formatTime(trip.arrivalTime)
+        : '';
 
-    return (
-      <Animated.View
-        key={bookingId}
-        entering={FadeInDown.delay(index * 80)}
-        style={styles.bookingCard}
-      >
-        <View style={styles.bookingHeader}>
-          <View>
-            <Text style={styles.bookingTitle}>
-              {trip?.departure.name ?? 'Trajet'} → {trip?.arrival.name ?? ''}
-            </Text>
-            <Text style={styles.bookingSubtitle}>
-              {trip ? formatTime(trip.departureTime) : ''}
-            </Text>
-          </View>
+      return (
+        <Animated.View
+          key={bookingId}
+          entering={FadeInDown.delay(index * 80)}
+          style={styles.bookingCard}
+        >
+          <View style={styles.bookingHeader}>
+            <View style={styles.bookingHeaderLeft}>
+              {trip?.driverAvatar ? (
+                <Image
+                  source={{ uri: trip.driverAvatar }}
+                  style={styles.bookingDriverAvatar}
+                />
+              ) : (
+                <View style={styles.bookingDriverAvatar}>
+                  <Ionicons name="person" size={20} color={Colors.gray[500]} />
+                </View>
+              )}
+              <View>
+                <Text style={styles.bookingTitle}>
+                  {trip?.departure.name ?? 'Trajet'} → {trip?.arrival.name ?? ''}
+                </Text>
+                <Text style={styles.bookingSubtitle}>
+                  {trip ? `${formatDateWithRelativeLabel(trip.departureTime)} → ${arrivalTimeDisplay}` : ''}
+                </Text>
+              </View>
+            </View>
           <View style={[styles.statusBadge, { backgroundColor: statusConfig.background }]}>
             <Text style={[styles.statusText, { color: statusConfig.color }]}>
               {statusConfig.label}
@@ -150,7 +171,7 @@ export default function BookingsScreen() {
           <View style={styles.metaItem}>
             <Text style={styles.metaLabel}>Montant estimé</Text>
             <Text style={[styles.metaValue, { color: Colors.success }]}>
-              {trip ? booking.numberOfSeats * trip.price : booking.numberOfSeats} FC
+              {trip && trip.price === 0 ? 'Gratuit' : trip ? `${booking.numberOfSeats * trip.price} FC` : `${booking.numberOfSeats} FC`}
             </Text>
           </View>
         </View>
@@ -182,7 +203,10 @@ export default function BookingsScreen() {
           )}
         </View>
       </Animated.View>
-    );
+      );
+    };
+
+    return <BookingCardWithArrival key={bookingId} />;
   };
 
   return (
@@ -384,6 +408,21 @@ const styles = StyleSheet.create({
   bookingHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+  },
+  bookingHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  bookingDriverAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[200],
+    marginRight: Spacing.md,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   bookingTitle: {
     fontSize: FontSizes.lg,

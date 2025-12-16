@@ -3,6 +3,7 @@ import {
     handleIncomingNotification,
     setupForegroundNotificationHandlers,
 } from '@/services/pushNotifications';
+import { registerBackgroundNotificationTask } from '@/services/backgroundNotificationTask';
 import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
@@ -29,6 +30,11 @@ export function NotificationHandler() {
 
     // Créer le canal Android
     ensureAndroidChannel();
+
+    // Enregistrer la tâche de fond pour les notifications push
+    registerBackgroundNotificationTask().catch((error) => {
+      console.warn('Erreur lors de l\'enregistrement de la tâche de fond:', error);
+    });
 
     // Fonction pour naviguer selon le type de notification
     const handleNotificationPress = (data: Record<string, any>) => {
