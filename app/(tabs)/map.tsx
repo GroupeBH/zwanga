@@ -185,15 +185,33 @@ export default function MapScreen() {
 
     try {
       setMapboxLoading(true);
-      const proximity = userCoords
-        ? { longitude: userCoords.longitude, latitude: userCoords.latitude }
-        : mapCenter
-          ? { longitude: mapCenter[0], latitude: mapCenter[1] }
-          : undefined;
+      // Valider les coordonnées de proximité avant de les utiliser
+      let proximity: { longitude: number; latitude: number } | undefined = undefined;
+      
+      if (userCoords && 
+          typeof userCoords.longitude === 'number' && 
+          typeof userCoords.latitude === 'number' &&
+          !isNaN(userCoords.longitude) && 
+          !isNaN(userCoords.latitude) &&
+          isFinite(userCoords.longitude) && 
+          isFinite(userCoords.latitude)) {
+        proximity = { longitude: userCoords.longitude, latitude: userCoords.latitude };
+      } else if (mapCenter && 
+                 Array.isArray(mapCenter) && 
+                 mapCenter.length === 2 &&
+                 typeof mapCenter[0] === 'number' && 
+                 typeof mapCenter[1] === 'number' &&
+                 !isNaN(mapCenter[0]) && 
+                 !isNaN(mapCenter[1]) &&
+                 isFinite(mapCenter[0]) && 
+                 isFinite(mapCenter[1])) {
+        proximity = { longitude: mapCenter[0], latitude: mapCenter[1] };
+      }
+      
       const suggestions = await searchMapboxPlaces(query, proximity, 5);
       setMapboxSuggestions(suggestions);
     } catch (error) {
-      console.warn('Mapbox search failed', error);
+      // Les erreurs sont déjà gérées dans searchMapboxPlaces
       setMapboxSuggestions([]);
     } finally {
       setMapboxLoading(false);
