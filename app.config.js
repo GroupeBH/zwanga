@@ -92,10 +92,6 @@ module.exports = {
           "icon": "./assets/images/zwanga.png",
           "color": "#ffffff",
           "defaultChannel": "default",
-          // "sounds": [
-          //   "./local/assets/notification_sound.wav",
-          //   "./local/assets/notification_sound_other.wav"
-          // ],
           "enableBackgroundRemoteNotifications": true
         }
       ],

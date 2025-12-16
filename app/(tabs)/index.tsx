@@ -7,6 +7,7 @@ import {
   useGetTripsQuery,
   useSearchTripsByCoordinatesMutation,
 } from '@/store/api/tripApi';
+import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectAvailableTrips, selectSavedLocations } from '@/store/selectors';
 import { addSavedLocation } from '@/store/slices/locationSlice';
@@ -35,6 +36,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { showDialog } = useDialog();
+  const { data: currentUser } = useGetCurrentUserQuery();
   const storedTrips = useAppSelector(selectAvailableTrips);
   const savedLocations = useAppSelector(selectSavedLocations);
   const [queryParams, setQueryParams] = useState<TripSearchParams>({});
@@ -504,6 +506,44 @@ export default function HomeScreen() {
                 <Text style={styles.quickActionSubtitleb}>Trouvez votre route</Text>
               </LinearGradient>
             </TouchableOpacity>
+          </View>
+          
+          {/* Deuxième ligne d'actions rapides */}
+          <View style={[styles.quickActions, { marginTop: Spacing.md }]}>
+            <TouchableOpacity
+              style={[styles.quickActionCard, { marginRight: Spacing.md, backgroundColor: 'rgba(34, 197, 94, 0.1)', borderColor: 'rgba(34, 197, 94, 0.2)' }]}
+              onPress={() => router.push('/request')}
+            >
+              <View style={[styles.quickActionIcon, { backgroundColor: Colors.success }]}>
+                <Ionicons name="document-text" size={24} color={Colors.white} />
+              </View>
+              <Text style={styles.quickActionTitle}>Créer une demande</Text>
+              <Text style={styles.quickActionSubtitle}>Les drivers vous proposeront</Text>
+            </TouchableOpacity>
+
+            {currentUser?.isDriver ? (
+              <TouchableOpacity
+                style={[styles.quickActionCard, { backgroundColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.2)' }]}
+                onPress={() => router.push('/requests')}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: '#3B82F6' }]}>
+                  <Ionicons name="list-circle" size={24} color={Colors.white} />
+                </View>
+                <Text style={styles.quickActionTitle}>Demandes disponibles</Text>
+                <Text style={styles.quickActionSubtitle}>Faire des offres</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.quickActionCard, { backgroundColor: 'rgba(139, 92, 246, 0.1)', borderColor: 'rgba(139, 92, 246, 0.2)' }]}
+                onPress={() => router.push('/my-requests')}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: '#8B5CF6' }]}>
+                  <Ionicons name="list" size={24} color={Colors.white} />
+                </View>
+                <Text style={styles.quickActionTitle}>Mes demandes</Text>
+                <Text style={styles.quickActionSubtitle}>Voir mes demandes</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 

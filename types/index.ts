@@ -238,3 +238,23 @@ export interface DriverOffer {
   updatedAt: string;
 }
 
+export interface DriverOfferWithTripRequest extends DriverOffer {
+  tripRequest: {
+    id: string;
+    departureLocation: string;
+    arrivalLocation: string;
+    departureDateMin: string; // ISO string date
+    departureDateMax: string; // ISO string date
+    numberOfSeats: number;
+    maxPricePerSeat: number | null;
+    status: TripRequestStatus;
+    passenger: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      phone: string;
+      profilePicture: string | null;
+    };
+  };
+}
+

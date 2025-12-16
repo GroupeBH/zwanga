@@ -34,8 +34,8 @@ export default function RequestTripScreen() {
   const [arrivalLocation, setArrivalLocation] = useState<MapLocationSelection | null>(null);
   const [departureDateMin, setDepartureDateMin] = useState(new Date());
   const [departureDateMax, setDepartureDateMax] = useState(new Date(Date.now() + 24 * 60 * 60 * 1000)); // +24h par défaut
-  const [showDatePickerMin, setShowDatePickerMin] = useState(false);
-  const [showDatePickerMax, setShowDatePickerMax] = useState(false);
+  const [iosPickerModeMin, setIosPickerModeMin] = useState<'date' | 'time' | null>(null);
+  const [iosPickerModeMax, setIosPickerModeMax] = useState<'date' | 'time' | null>(null);
   const [numberOfSeats, setNumberOfSeats] = useState('1');
   const [maxPricePerSeat, setMaxPricePerSeat] = useState('');
   const [description, setDescription] = useState('');
@@ -43,53 +43,93 @@ export default function RequestTripScreen() {
   // Modals
   const [activePicker, setActivePicker] = useState<'departure' | 'arrival' | null>(null);
 
-  const handleDateMinChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowDatePickerMin(false);
-    }
-    if (selectedDate) {
-      setDepartureDateMin(selectedDate);
-      // Ajuster la date max si elle est antérieure à la date min
-      if (selectedDate >= departureDateMax) {
-        setDepartureDateMax(new Date(selectedDate.getTime() + 24 * 60 * 60 * 1000));
-      }
-    }
+  // Fonctions pour appliquer uniquement la date ou l'heure
+  const applyDatePart = (date: Date, currentDate: Date) => {
+    const next = new Date(currentDate);
+    next.setFullYear(date.getFullYear());
+    next.setMonth(date.getMonth());
+    next.setDate(date.getDate());
+    return next;
   };
 
-  const handleDateMaxChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowDatePickerMax(false);
-    }
-    if (selectedDate) {
-      if (selectedDate > departureDateMin) {
-        setDepartureDateMax(selectedDate);
-      }
-    }
+  const applyTimePart = (date: Date, currentDate: Date) => {
+    const next = new Date(currentDate);
+    next.setHours(date.getHours());
+    next.setMinutes(date.getMinutes());
+    next.setSeconds(0);
+    next.setMilliseconds(0);
+    return next;
   };
 
-  const openDatePickerMin = () => {
+  const openDateOrTimePickerMin = (mode: 'date' | 'time') => {
     if (Platform.OS === 'android') {
       DateTimePickerAndroid.open({
+        mode,
         value: departureDateMin,
-        onChange: handleDateMinChange,
-        mode: 'date',
-        minimumDate: new Date(),
+        is24Hour: true,
+        minimumDate: mode === 'date' ? new Date() : undefined,
+        onChange: (_event: DateTimePickerEvent, selectedDate?: Date) => {
+          if (!selectedDate) return;
+          setDepartureDateMin(
+            mode === 'date' 
+              ? applyDatePart(selectedDate, departureDateMin) 
+              : applyTimePart(selectedDate, departureDateMin)
+          );
+          // Ajuster la date max si nécessaire
+          if (mode === 'date' && selectedDate >= departureDateMax) {
+            setDepartureDateMax(new Date(selectedDate.getTime() + 24 * 60 * 60 * 1000));
+          }
+        },
       });
     } else {
-      setShowDatePickerMin(true);
+      setIosPickerModeMin(mode);
     }
   };
 
-  const openDatePickerMax = () => {
+  const openDateOrTimePickerMax = (mode: 'date' | 'time') => {
     if (Platform.OS === 'android') {
       DateTimePickerAndroid.open({
+        mode,
         value: departureDateMax,
-        onChange: handleDateMaxChange,
-        mode: 'date',
-        minimumDate: departureDateMin,
+        is24Hour: true,
+        minimumDate: mode === 'date' ? departureDateMin : undefined,
+        onChange: (_event: DateTimePickerEvent, selectedDate?: Date) => {
+          if (!selectedDate) return;
+          const newDate = mode === 'date' 
+            ? applyDatePart(selectedDate, departureDateMax) 
+            : applyTimePart(selectedDate, departureDateMax);
+          if (mode === 'date' && newDate > departureDateMin) {
+            setDepartureDateMax(newDate);
+          } else if (mode === 'time') {
+            setDepartureDateMax(newDate);
+          }
+        },
       });
     } else {
-      setShowDatePickerMax(true);
+      setIosPickerModeMax(mode);
+    }
+  };
+
+  const handleIosPickerChangeMin = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (!selectedDate || !iosPickerModeMin) return;
+    const newDate = iosPickerModeMin === 'date' 
+      ? applyDatePart(selectedDate, departureDateMin) 
+      : applyTimePart(selectedDate, departureDateMin);
+    setDepartureDateMin(newDate);
+    if (iosPickerModeMin === 'date' && newDate >= departureDateMax) {
+      setDepartureDateMax(new Date(newDate.getTime() + 24 * 60 * 60 * 1000));
+    }
+  };
+
+  const handleIosPickerChangeMax = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (!selectedDate || !iosPickerModeMax) return;
+    const newDate = iosPickerModeMax === 'date' 
+      ? applyDatePart(selectedDate, departureDateMax) 
+      : applyTimePart(selectedDate, departureDateMax);
+    if (iosPickerModeMax === 'date' && newDate > departureDateMin) {
+      setDepartureDateMax(newDate);
+    } else if (iosPickerModeMax === 'time') {
+      setDepartureDateMax(newDate);
     }
   };
 
@@ -113,14 +153,29 @@ export default function RequestTripScreen() {
         });
         return;
       }
-      if (departureDateMax <= departureDateMin) {
+      
+      // Valider les dates
+      const minDate = new Date(departureDateMin);
+      const maxDate = new Date(departureDateMax);
+      
+      if (minDate >= maxDate) {
         showDialog({
           title: 'Dates invalides',
-          message: 'La date de départ maximum doit être postérieure à la date minimum',
+          message: 'La date et heure de départ maximum doivent être postérieures à la date et heure minimum',
           variant: 'danger',
         });
         return;
       }
+      
+      if (minDate < new Date()) {
+        showDialog({
+          title: 'Date invalide',
+          message: 'La date de départ minimum ne peut pas être dans le passé',
+          variant: 'danger',
+        });
+        return;
+      }
+      
       setStep('confirm');
     }
   };
@@ -259,40 +314,125 @@ export default function RequestTripScreen() {
             <Text style={styles.stepSubtitle}>Remplissez les informations nécessaires</Text>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Date et heure de départ minimum</Text>
-              <TouchableOpacity style={styles.dateButton} onPress={openDatePickerMin}>
-                <Ionicons name="calendar" size={20} color={Colors.primary} />
-                <Text style={styles.dateButtonText}>{formatDate(departureDateMin)}</Text>
-              </TouchableOpacity>
-              {Platform.OS === 'ios' && showDatePickerMin && (
-                <DateTimePicker
-                  value={departureDateMin}
-                  mode="datetime"
-                  display="default"
-                  onChange={handleDateMinChange}
-                  minimumDate={new Date()}
-                />
+              <Text style={styles.label}>Date et heure de départ minimum *</Text>
+              <Text style={styles.helperText}>
+                Quand souhaitez-vous partir au plus tôt ?
+              </Text>
+              <View style={styles.datetimeButtons}>
+                <TouchableOpacity
+                  style={styles.datetimeButton}
+                  onPress={() => openDateOrTimePickerMin('date')}
+                >
+                  <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.primary + '15' }]}>
+                    <Ionicons name="calendar" size={20} color={Colors.primary} />
+                  </View>
+                  <View style={styles.datetimeButtonContent}>
+                    <Text style={styles.datetimeButtonLabel}>Date</Text>
+                    <Text style={styles.datetimeButtonValue}>
+                      {departureDateMin.toLocaleDateString('fr-FR', {
+                        weekday: 'short',
+                        day: 'numeric',
+                        month: 'short',
+                      })}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.datetimeButton}
+                  onPress={() => openDateOrTimePickerMin('time')}
+                >
+                  <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.success + '15' }]}>
+                    <Ionicons name="time" size={20} color={Colors.success} />
+                  </View>
+                  <View style={styles.datetimeButtonContent}>
+                    <Text style={styles.datetimeButtonLabel}>Heure</Text>
+                    <Text style={styles.datetimeButtonValue}>
+                      {departureDateMin.toLocaleTimeString('fr-FR', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+              {Platform.OS === 'ios' && iosPickerModeMin && (
+                <View style={styles.iosPickerContainer}>
+                  <DateTimePicker
+                    value={departureDateMin}
+                    mode={iosPickerModeMin}
+                    display="spinner"
+                    onChange={handleIosPickerChangeMin}
+                    minimumDate={iosPickerModeMin === 'date' ? new Date() : undefined}
+                  />
+                  <TouchableOpacity
+                    style={styles.iosPickerCloseButton}
+                    onPress={() => setIosPickerModeMin(null)}
+                  >
+                    <Text style={styles.iosPickerCloseText}>Confirmer</Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Date et heure de départ maximum (délai)</Text>
-              <TouchableOpacity style={styles.dateButton} onPress={openDatePickerMax}>
-                <Ionicons name="calendar-outline" size={20} color={Colors.primary} />
-                <Text style={styles.dateButtonText}>{formatDate(departureDateMax)}</Text>
-              </TouchableOpacity>
-              {Platform.OS === 'ios' && showDatePickerMax && (
-                <DateTimePicker
-                  value={departureDateMax}
-                  mode="datetime"
-                  display="default"
-                  onChange={handleDateMaxChange}
-                  minimumDate={departureDateMin}
-                />
-              )}
+              <Text style={styles.label}>Date et heure de départ maximum (délai) *</Text>
               <Text style={styles.helperText}>
-                Les drivers pourront proposer un départ entre ces deux dates
+                Jusqu'à quand pouvez-vous attendre ? Les drivers pourront proposer un départ entre ces deux dates.
               </Text>
+              <View style={styles.datetimeButtons}>
+                <TouchableOpacity
+                  style={styles.datetimeButton}
+                  onPress={() => openDateOrTimePickerMax('date')}
+                >
+                  <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.warning + '15' }]}>
+                    <Ionicons name="calendar-outline" size={20} color={Colors.warning} />
+                  </View>
+                  <View style={styles.datetimeButtonContent}>
+                    <Text style={styles.datetimeButtonLabel}>Date</Text>
+                    <Text style={styles.datetimeButtonValue}>
+                      {departureDateMax.toLocaleDateString('fr-FR', {
+                        weekday: 'short',
+                        day: 'numeric',
+                        month: 'short',
+                      })}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.datetimeButton}
+                  onPress={() => openDateOrTimePickerMax('time')}
+                >
+                  <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.info + '15' }]}>
+                    <Ionicons name="time-outline" size={20} color={Colors.info} />
+                  </View>
+                  <View style={styles.datetimeButtonContent}>
+                    <Text style={styles.datetimeButtonLabel}>Heure</Text>
+                    <Text style={styles.datetimeButtonValue}>
+                      {departureDateMax.toLocaleTimeString('fr-FR', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+              {Platform.OS === 'ios' && iosPickerModeMax && (
+                <View style={styles.iosPickerContainer}>
+                  <DateTimePicker
+                    value={departureDateMax}
+                    mode={iosPickerModeMax}
+                    display="spinner"
+                    onChange={handleIosPickerChangeMax}
+                    minimumDate={iosPickerModeMax === 'date' ? departureDateMin : undefined}
+                  />
+                  <TouchableOpacity
+                    style={styles.iosPickerCloseButton}
+                    onPress={() => setIosPickerModeMax(null)}
+                  >
+                    <Text style={styles.iosPickerCloseText}>Confirmer</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
             <View style={styles.inputGroup}>
@@ -578,6 +718,64 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
+  },
+  datetimeButtons: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginTop: Spacing.sm,
+  },
+  datetimeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    gap: Spacing.md,
+    backgroundColor: Colors.white,
+  },
+  datetimeButtonIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  datetimeButtonContent: {
+    flex: 1,
+  },
+  datetimeButtonLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    textTransform: 'uppercase',
+    fontWeight: FontWeights.medium,
+  },
+  datetimeButtonValue: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginTop: 2,
+  },
+  iosPickerContainer: {
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.lg,
+    overflow: 'hidden',
+    backgroundColor: Colors.white,
+  },
+  iosPickerCloseButton: {
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+  },
+  iosPickerCloseText: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.base,
   },
 });
 

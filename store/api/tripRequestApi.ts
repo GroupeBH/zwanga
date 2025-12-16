@@ -1,4 +1,4 @@
-import type { TripRequest, DriverOffer, DriverOfferStatus, TripRequestStatus } from '@/types';
+import type { TripRequest, DriverOffer, DriverOfferWithTripRequest, DriverOfferStatus, TripRequestStatus } from '@/types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 
@@ -71,6 +71,53 @@ type ServerDriverOffer = {
   rejectionReason: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+type ServerDriverOfferWithTripRequest = {
+  id: string;
+  tripRequestId: string;
+  driver: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    phone: string;
+    profilePicture: string | null;
+  };
+  vehicle: {
+    id: string;
+    brand: string;
+    model: string;
+    color: string;
+    licensePlate: string;
+    photoUrl: string | null;
+  } | null;
+  proposedDepartureDate: string;
+  pricePerSeat: number | string;
+  availableSeats: number;
+  message: string | null;
+  status: string;
+  acceptedAt: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  tripRequest: {
+    id: string;
+    departureLocation: string;
+    arrivalLocation: string;
+    departureDateMin: string;
+    departureDateMax: string;
+    numberOfSeats: number;
+    maxPricePerSeat: number | string | null;
+    status: string;
+    passenger: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      phone: string;
+      profilePicture: string | null;
+    };
+  };
 };
 
 const mapServerTripRequestToClient = (request: ServerTripRequest): TripRequest => {
@@ -181,6 +228,66 @@ const mapServerDriverOfferToClient = (offer: ServerDriverOffer): DriverOffer => 
   };
 };
 
+const mapServerDriverOfferWithTripRequestToClient = (offer: ServerDriverOfferWithTripRequest): DriverOfferWithTripRequest => {
+  const baseOffer = mapServerDriverOfferToClient({
+    id: offer.id,
+    tripRequestId: offer.tripRequestId,
+    driver: offer.driver,
+    vehicle: offer.vehicle,
+    proposedDepartureDate: offer.proposedDepartureDate,
+    pricePerSeat: offer.pricePerSeat,
+    availableSeats: offer.availableSeats,
+    message: offer.message,
+    status: offer.status,
+    acceptedAt: offer.acceptedAt,
+    rejectedAt: offer.rejectedAt,
+    rejectionReason: offer.rejectionReason,
+    createdAt: offer.createdAt,
+    updatedAt: offer.updatedAt,
+  });
+
+  const mapTripRequestStatus = (status: string): TripRequestStatus => {
+    switch ((status ?? '').toLowerCase()) {
+      case 'pending':
+        return 'pending';
+      case 'offers_received':
+        return 'offers_received';
+      case 'driver_selected':
+        return 'driver_selected';
+      case 'cancelled':
+      case 'canceled':
+        return 'cancelled';
+      case 'expired':
+        return 'expired';
+      default:
+        return 'pending';
+    }
+  };
+
+  return {
+    ...baseOffer,
+    tripRequest: {
+      id: offer.tripRequest.id,
+      departureLocation: offer.tripRequest.departureLocation,
+      arrivalLocation: offer.tripRequest.arrivalLocation,
+      departureDateMin: offer.tripRequest.departureDateMin,
+      departureDateMax: offer.tripRequest.departureDateMax,
+      numberOfSeats: offer.tripRequest.numberOfSeats,
+      maxPricePerSeat: typeof offer.tripRequest.maxPricePerSeat === 'string' 
+        ? parseFloat(offer.tripRequest.maxPricePerSeat) 
+        : offer.tripRequest.maxPricePerSeat,
+      status: mapTripRequestStatus(offer.tripRequest.status),
+      passenger: {
+        id: offer.tripRequest.passenger.id,
+        firstName: offer.tripRequest.passenger.firstName,
+        lastName: offer.tripRequest.passenger.lastName,
+        phone: offer.tripRequest.passenger.phone,
+        profilePicture: offer.tripRequest.passenger.profilePicture,
+      },
+    },
+  };
+};
+
 type CreateTripRequestPayload = {
   departureLocation: string;
   departureCoordinates: [number, number];
@@ -283,6 +390,20 @@ export const tripRequestApi = baseApi.injectEndpoints({
     }),
 
 
+    // Récupérer les offres du driver connecté
+    getMyDriverOffers: builder.query<DriverOfferWithTripRequest[], void>({
+      query: () => '/trip-requests/my-offers',
+      transformResponse: (response: ServerDriverOfferWithTripRequest[]) => response.map(mapServerDriverOfferWithTripRequestToClient),
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map(({ id }) => ({ type: 'DriverOffer' as const, id })),
+              'DriverOffer',
+              'MyDriverOffers',
+            ]
+          : ['MyDriverOffers', 'DriverOffer'],
+    }),
+
     // Accepter une offre de driver
     acceptDriverOffer: builder.mutation<TripRequest, { tripRequestId: string; payload: AcceptDriverOfferPayload }>({
       query: ({ tripRequestId, payload }: { tripRequestId: string; payload: AcceptDriverOfferPayload }) => ({
@@ -296,7 +417,24 @@ export const tripRequestApi = baseApi.injectEndpoints({
         'TripRequest',
         'MyTripRequests',
         'DriverOffer',
+        'MyDriverOffers',
         'Trip',
+      ],
+    }),
+
+    // Rejeter une offre de driver (si le backend le supporte)
+    rejectDriverOffer: builder.mutation<DriverOffer, { tripRequestId: string; offerId: string }>({
+      query: ({ tripRequestId, offerId }: { tripRequestId: string; offerId: string }) => ({
+        url: `/trip-requests/${tripRequestId}/offers/${offerId}/reject`,
+        method: 'POST',
+      }),
+      transformResponse: (response: ServerDriverOffer) => mapServerDriverOfferToClient(response),
+      invalidatesTags: (_result, _error, { tripRequestId }: { tripRequestId: string }) => [
+        { type: 'TripRequest', id: tripRequestId },
+        'TripRequest',
+        'MyTripRequests',
+        'DriverOffer',
+        'MyDriverOffers',
       ],
     }),
   }),
@@ -309,6 +447,8 @@ export const {
   useGetTripRequestByIdQuery,
   useCancelTripRequestMutation,
   useCreateDriverOfferMutation,
+  useGetMyDriverOffersQuery,
   useAcceptDriverOfferMutation,
+  useRejectDriverOfferMutation,
 } = tripRequestApi;
 
