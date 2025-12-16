@@ -733,8 +733,15 @@ export default function MapScreen() {
                 <Ionicons name="map-outline" size={36} color={Colors.gray[400]} />
                 <Text style={styles.emptyTitle}>Aucun trajet autour de vous</Text>
                 <Text style={styles.emptyText}>
-                  Ajustez le rayon ou la recherche pour découvrir davantage d’options.
+                  Ajustez le rayon ou la recherche pour découvrir davantage d'options.
                 </Text>
+                <TouchableOpacity
+                  style={styles.createRequestButton}
+                  onPress={() => router.push('/request')}
+                >
+                  <Ionicons name="add-circle" size={20} color={Colors.white} />
+                  <Text style={styles.createRequestButtonText}>Créer une demande de trajet</Text>
+                </TouchableOpacity>
               </View>
             ) : (
               trips.map((trip) => {
@@ -1401,6 +1408,23 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
     textAlign: 'center',
     fontSize: FontSizes.sm,
+    marginBottom: Spacing.sm,
+  },
+  createRequestButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+  },
+  createRequestButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    marginLeft: Spacing.sm,
   },
   permissionBanner: {
     position: 'absolute',

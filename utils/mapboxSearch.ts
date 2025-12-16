@@ -132,40 +132,52 @@ export async function searchMapboxPlaces(
     }
 
     // Transformer les suggestions de Mapbox en format standardisé
-    return data.suggestions.map((suggestion: any) => {
-      const [longitude, latitude] = suggestion.feature?.geometry?.coordinates || [0, 0];
-      const properties = suggestion.feature?.properties || {};
-      const context = suggestion.feature?.properties?.context || {};
+    return data.suggestions
+      .map((suggestion: any) => {
+        // Extraire les coordonnées - Mapbox Search Box API peut ne pas avoir de coordonnées dans les suggestions
+        // Il faut utiliser l'endpoint retrieve pour obtenir les coordonnées complètes
+        const coords = suggestion.feature?.geometry?.coordinates;
+        const [longitude, latitude] = Array.isArray(coords) && coords.length >= 2 
+          ? coords 
+          : [null, null];
+        
+        const properties = suggestion.feature?.properties || {};
+        const context = suggestion.feature?.properties?.context || {};
 
-      // Construire l'adresse complète
-      const addressParts = [
-        properties.name,
-        context.neighborhood?.name,
-        context.locality?.name,
-        context.district?.name,
-        context.region?.name,
-        context.country?.name,
-      ].filter(Boolean);
+        // Construire l'adresse complète
+        const addressParts = [
+          properties.name,
+          context.neighborhood?.name,
+          context.locality?.name,
+          context.district?.name,
+          context.region?.name,
+          context.country?.name,
+        ].filter(Boolean);
 
-      return {
-        id: suggestion.mapbox_id || suggestion.id || `suggestion-${Date.now()}-${Math.random()}`,
-        name: properties.name || suggestion.name || query,
-        fullAddress: addressParts.join(', ') || properties.full_address || suggestion.full_address || '',
-        placeType: properties.category || suggestion.place_type || [],
-        coordinates: {
-          latitude,
-          longitude,
-        },
-        context: {
-          country: context.country?.name,
-          region: context.region?.name,
-          district: context.district?.name,
-          locality: context.locality?.name,
-          neighborhood: context.neighborhood?.name,
-          postcode: context.postcode?.name,
-        },
-      };
-    });
+        return {
+          id: suggestion.mapbox_id || suggestion.id || `suggestion-${Date.now()}-${Math.random()}`,
+          name: properties.name || suggestion.name || query,
+          fullAddress: addressParts.join(', ') || properties.full_address || suggestion.full_address || '',
+          placeType: properties.category || suggestion.place_type || [],
+          coordinates: {
+            latitude: typeof latitude === 'number' && !isNaN(latitude) && isFinite(latitude) ? latitude : null,
+            longitude: typeof longitude === 'number' && !isNaN(longitude) && isFinite(longitude) ? longitude : null,
+          },
+          context: {
+            country: context.country?.name,
+            region: context.region?.name,
+            district: context.district?.name,
+            locality: context.locality?.name,
+            neighborhood: context.neighborhood?.name,
+            postcode: context.postcode?.name,
+          },
+        };
+      })
+      .filter((suggestion) => {
+        // Filtrer les suggestions sans coordonnées valides - on devra utiliser retrieve pour les obtenir
+        // Pour l'instant, on garde toutes les suggestions car elles ont un ID pour retrieve
+        return suggestion.id && suggestion.name;
+      });
   } catch (error: any) {
     // Ne logger que les erreurs non-400 (bad request) et non liées au session token pour éviter le spam
     const errorMessage = error?.message || '';
@@ -216,7 +228,28 @@ export async function getMapboxPlaceDetails(suggestionId: string): Promise<Mapbo
     }
 
     const feature = data.features[0];
-    const [longitude, latitude] = feature.geometry?.coordinates || [0, 0];
+    const coords = feature.geometry?.coordinates;
+    const [longitude, latitude] = Array.isArray(coords) && coords.length >= 2 
+      ? coords 
+      : [null, null];
+    
+    // Valider les coordonnées
+    if (
+      typeof latitude !== 'number' ||
+      typeof longitude !== 'number' ||
+      isNaN(latitude) ||
+      isNaN(longitude) ||
+      !isFinite(latitude) ||
+      !isFinite(longitude) ||
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      console.warn('Invalid coordinates in Mapbox place details:', { latitude, longitude });
+      return null;
+    }
+    
     const properties = feature.properties || {};
     const context = properties.context || {};
 

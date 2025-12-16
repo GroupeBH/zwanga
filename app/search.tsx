@@ -641,8 +641,15 @@ export default function SearchScreen() {
             </View>
             <Text style={styles.emptyTitle}>Aucun trajet trouvé</Text>
             <Text style={styles.emptyText}>
-              Essayez de modifier vos critères de recherche
+              Essayez de modifier vos critères de recherche ou créez une demande de trajet
             </Text>
+            <TouchableOpacity
+              style={styles.createRequestButton}
+              onPress={() => router.push('/request')}
+            >
+              <Ionicons name="add-circle" size={20} color={Colors.white} />
+              <Text style={styles.createRequestButtonText}>Créer une demande de trajet</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           filteredTrips.map((trip, index) => {
@@ -1026,6 +1033,23 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
     textAlign: 'center',
     fontSize: FontSizes.base,
+    marginBottom: Spacing.md,
+  },
+  createRequestButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+  },
+  createRequestButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    marginLeft: Spacing.sm,
   },
   tripCard: {
     backgroundColor: Colors.white,
