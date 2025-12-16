@@ -18,8 +18,8 @@ module.exports = {
     newArchEnabled: false,
 
     ios: {
-      bundleIdentifier: "com.biso.zwanga",   // ⚠️ DOIT être unique et identique sur App Store Connect
-      buildNumber: "3",                      // Aligné avec version Android
+      bundleIdentifier: "com.biso.zwanga",
+      buildNumber: "3",
       supportsTablet: true,
       infoPlist: {
         NSLocationWhenInUseUsageDescription: "Zwanga utilise votre position pour afficher les trajets à proximité.",
@@ -58,7 +58,7 @@ module.exports = {
 
     web: {
       output: 'static',
-      favicon: './assets/images/favicon.png',
+      favicon: './assets/images/zwanga.png',
     },
 
     // ✅ EXTRA — version fusionnée et corrigée
