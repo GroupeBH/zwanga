@@ -10,11 +10,13 @@ import { selectTrips } from '@/store/selectors';
 import type { Trip } from '@/types';
 import { formatTime, formatDateWithRelativeLabel, matchesDateFilter } from '@/utils/dateHelpers';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
+import { searchMapboxPlaces, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Image,
   ScrollView,
   StyleSheet,
@@ -47,6 +49,13 @@ export default function SearchScreen() {
   const storedTrips = useAppSelector(selectTrips);
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
+  const [departureSuggestions, setDepartureSuggestions] = useState<MapboxSearchSuggestion[]>([]);
+  const [arrivalSuggestions, setArrivalSuggestions] = useState<MapboxSearchSuggestion[]>([]);
+  const [departureLoading, setDepartureLoading] = useState(false);
+  const [arrivalLoading, setArrivalLoading] = useState(false);
+  const [activeSearchField, setActiveSearchField] = useState<'departure' | 'arrival' | null>(null);
+  const departureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const arrivalTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [filter, setFilter] = useState<FilterType>('all');
   const [dateFilter, setDateFilter] = useState<DateFilterType>('all');
   const [showFilters, setShowFilters] = useState(false);
@@ -70,7 +79,139 @@ export default function SearchScreen() {
     isFetching: queryFetching,
   } = useGetTripsQuery(queryParams);
 
+  // Recherche avec suggestions Mapbox pour le départ
+  const searchDepartureSuggestions = useCallback(async (query: string) => {
+    if (!query.trim() || query.trim().length < 2) {
+      setDepartureSuggestions([]);
+      return;
+    }
+
+    try {
+      setDepartureLoading(true);
+      const suggestions = await searchMapboxPlaces(query, undefined, 5);
+      setDepartureSuggestions(suggestions);
+    } catch (error) {
+      console.warn('Mapbox search failed for departure', error);
+      setDepartureSuggestions([]);
+    } finally {
+      setDepartureLoading(false);
+    }
+  }, []);
+
+  // Recherche avec suggestions Mapbox pour l'arrivée
+  const searchArrivalSuggestions = useCallback(async (query: string) => {
+    if (!query.trim() || query.trim().length < 2) {
+      setArrivalSuggestions([]);
+      return;
+    }
+
+    try {
+      setArrivalLoading(true);
+      const suggestions = await searchMapboxPlaces(query, undefined, 5);
+      setArrivalSuggestions(suggestions);
+    } catch (error) {
+      console.warn('Mapbox search failed for arrival', error);
+      setArrivalSuggestions([]);
+    } finally {
+      setArrivalLoading(false);
+    }
+  }, []);
+
+  // Debounce pour les suggestions de départ
+  useEffect(() => {
+    if (departureTimeoutRef.current) {
+      clearTimeout(departureTimeoutRef.current);
+    }
+
+    if (departure.trim().length >= 2 && activeSearchField === 'departure') {
+      departureTimeoutRef.current = setTimeout(() => {
+        searchDepartureSuggestions(departure);
+      }, 300);
+    } else {
+      setDepartureSuggestions([]);
+    }
+
+    return () => {
+      if (departureTimeoutRef.current) {
+        clearTimeout(departureTimeoutRef.current);
+      }
+    };
+  }, [departure, activeSearchField, searchDepartureSuggestions]);
+
+  // Debounce pour les suggestions d'arrivée
+  useEffect(() => {
+    if (arrivalTimeoutRef.current) {
+      clearTimeout(arrivalTimeoutRef.current);
+    }
+
+    if (arrival.trim().length >= 2 && activeSearchField === 'arrival') {
+      arrivalTimeoutRef.current = setTimeout(() => {
+        searchArrivalSuggestions(arrival);
+      }, 300);
+    } else {
+      setArrivalSuggestions([]);
+    }
+
+    return () => {
+      if (arrivalTimeoutRef.current) {
+        clearTimeout(arrivalTimeoutRef.current);
+      }
+    };
+  }, [arrival, activeSearchField, searchArrivalSuggestions]);
+
+  const handleDepartureSuggestionSelect = (suggestion: MapboxSearchSuggestion) => {
+    setDeparture(suggestion.name);
+    setDepartureSuggestions([]);
+    setActiveSearchField(null);
+  };
+
+  const handleArrivalSuggestionSelect = (suggestion: MapboxSearchSuggestion) => {
+    setArrival(suggestion.name);
+    setArrivalSuggestions([]);
+    setActiveSearchField(null);
+  };
+
+  // Fonction pour mettre en évidence le texte recherché
+  const highlightText = (text: string, query: string) => {
+    if (!query || query.trim().length === 0) {
+      return <Text>{text}</Text>;
+    }
+
+    const parts = text.split(new RegExp(`(${query})`, 'gi'));
+    return (
+      <Text>
+        {parts.map((part, index) =>
+          part.toLowerCase() === query.toLowerCase() ? (
+            <Text key={index} style={{ color: Colors.primary, fontWeight: FontWeights.semibold }}>
+              {part}
+            </Text>
+          ) : (
+            <Text key={index}>{part}</Text>
+          ),
+        )}
+      </Text>
+    );
+  };
+
+  // Fonction pour obtenir l'icône selon le type de lieu
+  const getPlaceIcon = (suggestion: MapboxSearchSuggestion) => {
+    const placeType = suggestion.placeType?.[0] || '';
+    if (placeType.includes('poi') || placeType.includes('category')) {
+      return 'search';
+    }
+    if (placeType.includes('station') || placeType.includes('transit')) {
+      return 'train';
+    }
+    if (placeType.includes('cafe') || placeType.includes('restaurant')) {
+      return 'cafe';
+    }
+    return 'location';
+  };
+
   const handleApplySearch = () => {
+    setDepartureSuggestions([]);
+    setArrivalSuggestions([]);
+    setActiveSearchField(null);
     if (advancedTrips) {
       return;
     }
@@ -197,28 +338,151 @@ export default function SearchScreen() {
 
         {/* Barre de recherche */}
         <View style={styles.searchBox}>
-          <View style={styles.searchRow}>
-            <Ionicons name="location" size={18} color={Colors.success} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Choisissez votre point de départ"
-              placeholderTextColor={Colors.gray[500]}
-              value={departure}
-              onChangeText={setDeparture}
-            />
+          <View style={styles.searchRowContainer}>
+            <View style={styles.searchRow}>
+              <Ionicons name="search" size={18} color={Colors.gray[500]} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Choisissez votre point de départ"
+                placeholderTextColor={Colors.gray[500]}
+                value={departure}
+                onChangeText={setDeparture}
+                onFocus={() => setActiveSearchField('departure')}
+                onBlur={() => {
+                  // Délai pour permettre le clic sur une suggestion
+                  setTimeout(() => {
+                    if (activeSearchField === 'departure') {
+                      setActiveSearchField(null);
+                    }
+                  }, 200);
+                }}
+              />
+              {departure.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setDeparture('');
+                    setDepartureSuggestions([]);
+                  }}
+                  style={styles.clearButton}
+                >
+                  <Ionicons name="close-circle" size={20} color={Colors.gray[400]} />
+                </TouchableOpacity>
+              )}
+              {departureLoading && (
+                <ActivityIndicator size="small" color={Colors.primary} style={styles.loadingIndicator} />
+              )}
+            </View>
           </View>
           <View style={styles.searchDivider} />
-          <View style={styles.searchRow}>
-            <Ionicons name="navigate" size={18} color={Colors.primary} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Choisissez votre point d'arrivée"
-              placeholderTextColor={Colors.gray[500]}
-              value={arrival}
-              onChangeText={setArrival}
-            />
+          <View style={styles.searchRowContainer}>
+            <View style={[styles.searchRow, styles.searchRowLast]}>
+              <Ionicons name="search" size={18} color={Colors.gray[500]} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Choisissez votre point d'arrivée"
+                placeholderTextColor={Colors.gray[500]}
+                value={arrival}
+                onChangeText={setArrival}
+                onFocus={() => setActiveSearchField('arrival')}
+                onBlur={() => {
+                  // Délai pour permettre le clic sur une suggestion
+                  setTimeout(() => {
+                    if (activeSearchField === 'arrival') {
+                      setActiveSearchField(null);
+                    }
+                  }, 200);
+                }}
+              />
+              {arrival.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setArrival('');
+                    setArrivalSuggestions([]);
+                  }}
+                  style={styles.clearButton}
+                >
+                  <Ionicons name="close-circle" size={20} color={Colors.gray[400]} />
+                </TouchableOpacity>
+              )}
+              {arrivalLoading && (
+                <ActivityIndicator size="small" color={Colors.primary} style={styles.loadingIndicator} />
+              )}
+            </View>
           </View>
         </View>
+        
+        {/* Suggestions affichées en dehors du searchBox pour éviter le chevauchement */}
+        {departureSuggestions.length > 0 && activeSearchField === 'departure' && (
+          <View style={styles.suggestionsContainerAbsolute}>
+            <FlatList
+              data={departureSuggestions}
+              keyExtractor={(item, index) => `${item.id}-${index}`}
+              renderItem={({ item, index }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.suggestionRow,
+                    index === departureSuggestions.length - 1 && styles.suggestionRowLast,
+                  ]}
+                  onPress={() => handleDepartureSuggestionSelect(item)}
+                >
+                  <Ionicons
+                    name={getPlaceIcon(item) as any}
+                    size={20}
+                    color={getPlaceIcon(item) === 'search' ? Colors.primary : Colors.gray[900]}
+                  />
+                  <View style={styles.suggestionContent}>
+                    <Text style={styles.suggestionTitle}>
+                      {highlightText(item.name, departure)}
+                    </Text>
+                    {item.fullAddress && (
+                      <Text style={styles.suggestionSubtitle} numberOfLines={1}>
+                        {item.fullAddress}
+                      </Text>
+                    )}
+                  </View>
+                  <Ionicons name="arrow-up-left" size={16} color={Colors.primary} />
+                </TouchableOpacity>
+              )}
+              scrollEnabled={false}
+            />
+          </View>
+        )}
+        
+        {arrivalSuggestions.length > 0 && activeSearchField === 'arrival' && (
+          <View style={styles.suggestionsContainerAbsolute}>
+            <FlatList
+              data={arrivalSuggestions}
+              keyExtractor={(item, index) => `${item.id}-${index}`}
+              renderItem={({ item, index }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.suggestionRow,
+                    index === arrivalSuggestions.length - 1 && styles.suggestionRowLast,
+                  ]}
+                  onPress={() => handleArrivalSuggestionSelect(item)}
+                >
+                  <Ionicons
+                    name={getPlaceIcon(item) as any}
+                    size={20}
+                    color={getPlaceIcon(item) === 'search' ? Colors.primary : Colors.gray[900]}
+                  />
+                  <View style={styles.suggestionContent}>
+                    <Text style={styles.suggestionTitle}>
+                      {highlightText(item.name, arrival)}
+                    </Text>
+                    {item.fullAddress && (
+                      <Text style={styles.suggestionSubtitle} numberOfLines={1}>
+                        {item.fullAddress}
+                      </Text>
+                    )}
+                  </View>
+                  <Ionicons name="arrow-up-left" size={16} color={Colors.primary} />
+                </TouchableOpacity>
+              )}
+              scrollEnabled={false}
+            />
+          </View>
+        )}
         <TouchableOpacity style={styles.searchButton} onPress={handleApplySearch}>
           {activeRadiusFilter ? (
             <Text style={styles.searchButtonText}>Filtrer la liste courante</Text>
@@ -526,6 +790,9 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontWeight: FontWeights.bold,
   },
+  searchRowContainer: {
+    position: 'relative',
+  },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -533,6 +800,11 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[200],
+  },
+  searchRowLast: {
+    marginBottom: 0,
+    paddingBottom: 0,
+    borderBottomWidth: 0,
   },
   searchDivider: {
     height: 1,
@@ -544,6 +816,64 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.md,
     fontSize: FontSizes.base,
     color: Colors.gray[800],
+  },
+  clearButton: {
+    marginLeft: Spacing.sm,
+    padding: Spacing.xs,
+  },
+  loadingIndicator: {
+    marginLeft: Spacing.sm,
+  },
+  suggestionsContainer: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.xs,
+    maxHeight: 300,
+    zIndex: 1000,
+    ...CommonStyles.shadowLg,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+  },
+  suggestionsContainerAbsolute: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.md,
+    marginTop: -Spacing.md,
+    marginBottom: Spacing.md,
+    marginHorizontal: Spacing.xl,
+    maxHeight: 300,
+    zIndex: 1000,
+    ...CommonStyles.shadowLg,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+  },
+  suggestionRowLast: {
+    borderBottomWidth: 0,
+  },
+  suggestionContent: {
+    flex: 1,
+    marginLeft: Spacing.md,
+  },
+  suggestionTitle: {
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+    fontWeight: FontWeights.medium,
+    marginBottom: Spacing.xs,
+  },
+  suggestionSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
   },
   filterButton: {
     flexDirection: 'row',
