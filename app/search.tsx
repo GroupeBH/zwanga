@@ -8,12 +8,16 @@ import {
 import { useAppSelector } from '@/store/hooks';
 import { selectTrips } from '@/store/selectors';
 import type { Trip } from '@/types';
-import { formatTime } from '@/utils/dateHelpers';
+import { formatTime, formatDateWithRelativeLabel, matchesDateFilter } from '@/utils/dateHelpers';
+import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
+import { searchMapboxPlaces, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -25,6 +29,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type FilterType = 'all' | 'car' | 'moto' | 'tricycle';
+type DateFilterType = 'all' | 'today' | 'tomorrow' | 'yesterday';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -44,7 +49,15 @@ export default function SearchScreen() {
   const storedTrips = useAppSelector(selectTrips);
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
+  const [departureSuggestions, setDepartureSuggestions] = useState<MapboxSearchSuggestion[]>([]);
+  const [arrivalSuggestions, setArrivalSuggestions] = useState<MapboxSearchSuggestion[]>([]);
+  const [departureLoading, setDepartureLoading] = useState(false);
+  const [arrivalLoading, setArrivalLoading] = useState(false);
+  const [activeSearchField, setActiveSearchField] = useState<'departure' | 'arrival' | null>(null);
+  const departureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const arrivalTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [filter, setFilter] = useState<FilterType>('all');
+  const [dateFilter, setDateFilter] = useState<DateFilterType>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [queryParams, setQueryParams] = useState<TripSearchParams>({});
   const [advancedTrips, setAdvancedTrips] = useState<Trip[] | null>(null);
@@ -66,7 +79,139 @@ export default function SearchScreen() {
     isFetching: queryFetching,
   } = useGetTripsQuery(queryParams);
 
+  // Recherche avec suggestions Mapbox pour le départ
+  const searchDepartureSuggestions = useCallback(async (query: string) => {
+    if (!query.trim() || query.trim().length < 2) {
+      setDepartureSuggestions([]);
+      return;
+    }
+
+    try {
+      setDepartureLoading(true);
+      const suggestions = await searchMapboxPlaces(query, undefined, 5);
+      setDepartureSuggestions(suggestions);
+    } catch (error) {
+      console.warn('Mapbox search failed for departure', error);
+      setDepartureSuggestions([]);
+    } finally {
+      setDepartureLoading(false);
+    }
+  }, []);
+
+  // Recherche avec suggestions Mapbox pour l'arrivée
+  const searchArrivalSuggestions = useCallback(async (query: string) => {
+    if (!query.trim() || query.trim().length < 2) {
+      setArrivalSuggestions([]);
+      return;
+    }
+
+    try {
+      setArrivalLoading(true);
+      const suggestions = await searchMapboxPlaces(query, undefined, 5);
+      setArrivalSuggestions(suggestions);
+    } catch (error) {
+      console.warn('Mapbox search failed for arrival', error);
+      setArrivalSuggestions([]);
+    } finally {
+      setArrivalLoading(false);
+    }
+  }, []);
+
+  // Debounce pour les suggestions de départ
+  useEffect(() => {
+    if (departureTimeoutRef.current) {
+      clearTimeout(departureTimeoutRef.current);
+    }
+
+    if (departure.trim().length >= 2 && activeSearchField === 'departure') {
+      departureTimeoutRef.current = setTimeout(() => {
+        searchDepartureSuggestions(departure);
+      }, 300);
+    } else {
+      setDepartureSuggestions([]);
+    }
+
+    return () => {
+      if (departureTimeoutRef.current) {
+        clearTimeout(departureTimeoutRef.current);
+      }
+    };
+  }, [departure, activeSearchField, searchDepartureSuggestions]);
+
+  // Debounce pour les suggestions d'arrivée
+  useEffect(() => {
+    if (arrivalTimeoutRef.current) {
+      clearTimeout(arrivalTimeoutRef.current);
+    }
+
+    if (arrival.trim().length >= 2 && activeSearchField === 'arrival') {
+      arrivalTimeoutRef.current = setTimeout(() => {
+        searchArrivalSuggestions(arrival);
+      }, 300);
+    } else {
+      setArrivalSuggestions([]);
+    }
+
+    return () => {
+      if (arrivalTimeoutRef.current) {
+        clearTimeout(arrivalTimeoutRef.current);
+      }
+    };
+  }, [arrival, activeSearchField, searchArrivalSuggestions]);
+
+  const handleDepartureSuggestionSelect = (suggestion: MapboxSearchSuggestion) => {
+    setDeparture(suggestion.name);
+    setDepartureSuggestions([]);
+    setActiveSearchField(null);
+  };
+
+  const handleArrivalSuggestionSelect = (suggestion: MapboxSearchSuggestion) => {
+    setArrival(suggestion.name);
+    setArrivalSuggestions([]);
+    setActiveSearchField(null);
+  };
+
+  // Fonction pour mettre en évidence le texte recherché
+  const highlightText = (text: string, query: string) => {
+    if (!query || query.trim().length === 0) {
+      return <Text>{text}</Text>;
+    }
+
+    const parts = text.split(new RegExp(`(${query})`, 'gi'));
+    return (
+      <Text>
+        {parts.map((part, index) =>
+          part.toLowerCase() === query.toLowerCase() ? (
+            <Text key={index} style={{ color: Colors.primary, fontWeight: FontWeights.semibold }}>
+              {part}
+            </Text>
+          ) : (
+            <Text key={index}>{part}</Text>
+          ),
+        )}
+      </Text>
+    );
+  };
+
+  // Fonction pour obtenir l'icône selon le type de lieu
+  const getPlaceIcon = (suggestion: MapboxSearchSuggestion) => {
+    const placeType = suggestion.placeType?.[0] || '';
+    if (placeType.includes('poi') || placeType.includes('category')) {
+      return 'search';
+    }
+    if (placeType.includes('station') || placeType.includes('transit')) {
+      return 'train';
+    }
+    if (placeType.includes('cafe') || placeType.includes('restaurant')) {
+      return 'cafe';
+    }
+    return 'location';
+  };
+
   const handleApplySearch = () => {
+    setDepartureSuggestions([]);
+    setArrivalSuggestions([]);
+    setActiveSearchField(null);
     if (advancedTrips) {
       return;
     }
@@ -174,9 +319,10 @@ export default function SearchScreen() {
 
   const filteredTrips = baseTrips.filter((trip) => {
     const matchesFilter = filter === 'all' || trip.vehicleType === filter;
+    const matchesDate = matchesDateFilter(trip.departureTime, dateFilter);
     const matchesDeparture = !departure || trip.departure.name.toLowerCase().includes(departure.toLowerCase());
     const matchesArrival = !arrival || trip.arrival.name.toLowerCase().includes(arrival.toLowerCase());
-    return matchesFilter && matchesDeparture && matchesArrival;
+    return matchesFilter && matchesDate && matchesDeparture && matchesArrival;
   });
 
   return (
@@ -192,28 +338,151 @@ export default function SearchScreen() {
 
         {/* Barre de recherche */}
         <View style={styles.searchBox}>
-          <View style={styles.searchRow}>
-            <Ionicons name="location" size={18} color={Colors.success} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Choisissez votre point de départ"
-              placeholderTextColor={Colors.gray[500]}
-              value={departure}
-              onChangeText={setDeparture}
-            />
+          <View style={styles.searchRowContainer}>
+            <View style={styles.searchRow}>
+              <Ionicons name="search" size={18} color={Colors.gray[500]} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Choisissez votre point de départ"
+                placeholderTextColor={Colors.gray[500]}
+                value={departure}
+                onChangeText={setDeparture}
+                onFocus={() => setActiveSearchField('departure')}
+                onBlur={() => {
+                  // Délai pour permettre le clic sur une suggestion
+                  setTimeout(() => {
+                    if (activeSearchField === 'departure') {
+                      setActiveSearchField(null);
+                    }
+                  }, 200);
+                }}
+              />
+              {departure.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setDeparture('');
+                    setDepartureSuggestions([]);
+                  }}
+                  style={styles.clearButton}
+                >
+                  <Ionicons name="close-circle" size={20} color={Colors.gray[400]} />
+                </TouchableOpacity>
+              )}
+              {departureLoading && (
+                <ActivityIndicator size="small" color={Colors.primary} style={styles.loadingIndicator} />
+              )}
+            </View>
           </View>
           <View style={styles.searchDivider} />
-          <View style={styles.searchRow}>
-            <Ionicons name="navigate" size={18} color={Colors.primary} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Choisissez votre point d'arrivée"
-              placeholderTextColor={Colors.gray[500]}
-              value={arrival}
-              onChangeText={setArrival}
-            />
+          <View style={styles.searchRowContainer}>
+            <View style={[styles.searchRow, styles.searchRowLast]}>
+              <Ionicons name="search" size={18} color={Colors.gray[500]} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Choisissez votre point d'arrivée"
+                placeholderTextColor={Colors.gray[500]}
+                value={arrival}
+                onChangeText={setArrival}
+                onFocus={() => setActiveSearchField('arrival')}
+                onBlur={() => {
+                  // Délai pour permettre le clic sur une suggestion
+                  setTimeout(() => {
+                    if (activeSearchField === 'arrival') {
+                      setActiveSearchField(null);
+                    }
+                  }, 200);
+                }}
+              />
+              {arrival.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setArrival('');
+                    setArrivalSuggestions([]);
+                  }}
+                  style={styles.clearButton}
+                >
+                  <Ionicons name="close-circle" size={20} color={Colors.gray[400]} />
+                </TouchableOpacity>
+              )}
+              {arrivalLoading && (
+                <ActivityIndicator size="small" color={Colors.primary} style={styles.loadingIndicator} />
+              )}
+            </View>
           </View>
         </View>
+        
+        {/* Suggestions affichées en dehors du searchBox pour éviter le chevauchement */}
+        {departureSuggestions.length > 0 && activeSearchField === 'departure' && (
+          <View style={styles.suggestionsContainerAbsolute}>
+            <FlatList
+              data={departureSuggestions}
+              keyExtractor={(item, index) => `${item.id}-${index}`}
+              renderItem={({ item, index }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.suggestionRow,
+                    index === departureSuggestions.length - 1 && styles.suggestionRowLast,
+                  ]}
+                  onPress={() => handleDepartureSuggestionSelect(item)}
+                >
+                  <Ionicons
+                    name={getPlaceIcon(item) as any}
+                    size={20}
+                    color={getPlaceIcon(item) === 'search' ? Colors.primary : Colors.gray[900]}
+                  />
+                  <View style={styles.suggestionContent}>
+                    <Text style={styles.suggestionTitle}>
+                      {highlightText(item.name, departure)}
+                    </Text>
+                    {item.fullAddress && (
+                      <Text style={styles.suggestionSubtitle} numberOfLines={1}>
+                        {item.fullAddress}
+                      </Text>
+                    )}
+                  </View>
+                  <Ionicons name="arrow-up-left" size={16} color={Colors.primary} />
+                </TouchableOpacity>
+              )}
+              scrollEnabled={false}
+            />
+          </View>
+        )}
+        
+        {arrivalSuggestions.length > 0 && activeSearchField === 'arrival' && (
+          <View style={styles.suggestionsContainerAbsolute}>
+            <FlatList
+              data={arrivalSuggestions}
+              keyExtractor={(item, index) => `${item.id}-${index}`}
+              renderItem={({ item, index }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.suggestionRow,
+                    index === arrivalSuggestions.length - 1 && styles.suggestionRowLast,
+                  ]}
+                  onPress={() => handleArrivalSuggestionSelect(item)}
+                >
+                  <Ionicons
+                    name={getPlaceIcon(item) as any}
+                    size={20}
+                    color={getPlaceIcon(item) === 'search' ? Colors.primary : Colors.gray[900]}
+                  />
+                  <View style={styles.suggestionContent}>
+                    <Text style={styles.suggestionTitle}>
+                      {highlightText(item.name, arrival)}
+                    </Text>
+                    {item.fullAddress && (
+                      <Text style={styles.suggestionSubtitle} numberOfLines={1}>
+                        {item.fullAddress}
+                      </Text>
+                    )}
+                  </View>
+                  <Ionicons name="arrow-up-left" size={16} color={Colors.primary} />
+                </TouchableOpacity>
+              )}
+              scrollEnabled={false}
+            />
+          </View>
+        )}
         <TouchableOpacity style={styles.searchButton} onPress={handleApplySearch}>
           {activeRadiusFilter ? (
             <Text style={styles.searchButtonText}>Filtrer la liste courante</Text>
@@ -250,7 +519,7 @@ export default function SearchScreen() {
           <View style={styles.filterButtonLeft}>
             <Ionicons name="filter" size={20} color={Colors.primary} />
             <Text style={styles.filterText}>Filtres</Text>
-            {filter !== 'all' && <View style={styles.filterDot} />}
+            {(filter !== 'all' || dateFilter !== 'all') && <View style={styles.filterDot} />}
           </View>
           <Ionicons
             name={showFilters ? 'chevron-up' : 'chevron-down'}
@@ -261,38 +530,81 @@ export default function SearchScreen() {
 
         {showFilters && (
           <Animated.View entering={FadeInDown} style={styles.filtersContainer}>
-            <TouchableOpacity
-              style={[styles.filterTag, filter === 'all' && styles.filterTagActive]}
-              onPress={() => setFilter('all')}
-            >
-              <Text style={[styles.filterTagText, filter === 'all' && styles.filterTagTextActive]}>
-                Tous
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.filterTag, filter === 'car' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
-              onPress={() => setFilter('car')}
-            >
-              <Text style={[styles.filterTagText, filter === 'car' && styles.filterTagTextActive]}>
-                🚗 Voiture
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.filterTag, filter === 'moto' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
-              onPress={() => setFilter('moto')}
-            >
-              <Text style={[styles.filterTagText, filter === 'moto' && styles.filterTagTextActive]}>
-                🏍️ Moto
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.filterTag, filter === 'tricycle' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
-              onPress={() => setFilter('tricycle')}
-            >
-              <Text style={[styles.filterTagText, filter === 'tricycle' && styles.filterTagTextActive]}>
-                🛺 Keke
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Type de véhicule</Text>
+              <View style={styles.filterRow}>
+                <TouchableOpacity
+                  style={[styles.filterTag, filter === 'all' && styles.filterTagActive]}
+                  onPress={() => setFilter('all')}
+                >
+                  <Text style={[styles.filterTagText, filter === 'all' && styles.filterTagTextActive]}>
+                    Tous
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.filterTag, filter === 'car' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
+                  onPress={() => setFilter('car')}
+                >
+                  <Text style={[styles.filterTagText, filter === 'car' && styles.filterTagTextActive]}>
+                    🚗 Voiture
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.filterTag, filter === 'moto' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
+                  onPress={() => setFilter('moto')}
+                >
+                  <Text style={[styles.filterTagText, filter === 'moto' && styles.filterTagTextActive]}>
+                    🏍️ Moto
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.filterTag, filter === 'tricycle' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
+                  onPress={() => setFilter('tricycle')}
+                >
+                  <Text style={[styles.filterTagText, filter === 'tricycle' && styles.filterTagTextActive]}>
+                    🛺 Keke
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.filterSection}>
+              <Text style={styles.filterSectionTitle}>Date de départ</Text>
+              <View style={styles.filterRow}>
+                <TouchableOpacity
+                  style={[styles.filterTag, dateFilter === 'all' && styles.filterTagActive]}
+                  onPress={() => setDateFilter('all')}
+                >
+                  <Text style={[styles.filterTagText, dateFilter === 'all' && styles.filterTagTextActive]}>
+                    Toutes
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.filterTag, dateFilter === 'today' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
+                  onPress={() => setDateFilter('today')}
+                >
+                  <Text style={[styles.filterTagText, dateFilter === 'today' && styles.filterTagTextActive]}>
+                    Aujourd'hui
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.filterTag, dateFilter === 'tomorrow' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
+                  onPress={() => setDateFilter('tomorrow')}
+                >
+                  <Text style={[styles.filterTagText, dateFilter === 'tomorrow' && styles.filterTagTextActive]}>
+                    Demain
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.filterTag, dateFilter === 'yesterday' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
+                  onPress={() => setDateFilter('yesterday')}
+                >
+                  <Text style={[styles.filterTagText, dateFilter === 'yesterday' && styles.filterTagTextActive]}>
+                    Hier
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </Animated.View>
         )}
       </View>
@@ -329,68 +641,111 @@ export default function SearchScreen() {
             </View>
             <Text style={styles.emptyTitle}>Aucun trajet trouvé</Text>
             <Text style={styles.emptyText}>
-              Essayez de modifier vos critères de recherche
+              Essayez de modifier vos critères de recherche ou créez une demande de trajet
             </Text>
+            <TouchableOpacity
+              style={styles.createRequestButton}
+              onPress={() => router.push('/request')}
+            >
+              <Ionicons name="add-circle" size={20} color={Colors.white} />
+              <Text style={styles.createRequestButtonText}>Créer une demande de trajet</Text>
+            </TouchableOpacity>
           </View>
         ) : (
-          filteredTrips.map((trip, index) => (
-            <Animated.View
-              key={trip.id}
-              entering={FadeInDown.delay(index * 100)}
-              style={styles.tripCard}
-            >
-              <View style={styles.tripHeader}>
-                <View style={styles.tripDriverInfo}>
-                  <View style={styles.avatar} />
-                  <View style={styles.tripDriverDetails}>
-                    <Text style={styles.driverName}>{trip.driverName}</Text>
-                    <View style={styles.driverMeta}>
-                      <Ionicons name="star" size={14} color={Colors.secondary} />
-                      <Text style={styles.driverRating}>{trip.driverRating}</Text>
-                      <View style={styles.dot} />
-                      <Text style={styles.vehicleInfo}>{trip.vehicleInfo}</Text>
+          filteredTrips.map((trip, index) => {
+            const TripCardWithArrival = () => {
+              const calculatedArrivalTime = useTripArrivalTime(trip);
+              const arrivalTimeDisplay = calculatedArrivalTime 
+                ? formatTime(calculatedArrivalTime.toISOString())
+                : formatTime(trip.arrivalTime);
+
+              return (
+                <Animated.View
+                  key={trip.id}
+                  entering={FadeInDown.delay(index * 100)}
+                  style={styles.tripCard}
+                >
+                  <View style={styles.tripHeader}>
+                    <View style={styles.tripDriverInfo}>
+                      {trip.driverAvatar ? (
+                        <Image
+                          source={{ uri: trip.driverAvatar }}
+                          style={styles.avatar}
+                        />
+                      ) : (
+                        <View style={styles.avatar} />
+                      )}
+                      <View style={styles.tripDriverDetails}>
+                        <Text style={styles.driverName}>{trip.driverName}</Text>
+                        <View style={styles.driverMeta}>
+                          <Ionicons name="star" size={14} color={Colors.secondary} />
+                          <Text style={styles.driverRating}>{trip.driverRating}</Text>
+                          <View style={styles.dot} />
+                          <Text style={styles.vehicleInfo}>{trip.vehicleInfo}</Text>
+                        </View>
+                      </View>
+                    </View>
+                    {trip.price === 0 ? (
+                      <View style={styles.freeBadge}>
+                        <Text style={styles.freeBadgeText}>Gratuit</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.priceBadge}>
+                        <Text style={styles.priceText}>{trip.price} FC</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={styles.tripRoute}>
+                    <View style={styles.routeRow}>
+                      <Ionicons name="location" size={16} color={Colors.success} />
+                      <Text style={styles.routeText}>{trip.departure.name}</Text>
+                      <View style={styles.timeContainer}>
+                        <Text style={styles.routeDateLabel}>
+                          {formatDateWithRelativeLabel(trip.departureTime, false)}
+                        </Text>
+                        <Text style={styles.routeTime}>
+                          {formatTime(trip.departureTime)}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.routeRow}>
+                      <Ionicons name="navigate" size={16} color={Colors.primary} />
+                      <Text style={styles.routeText}>{trip.arrival.name}</Text>
+                      <View style={styles.timeContainer}>
+                        {calculatedArrivalTime && (
+                          <Text style={styles.routeDateLabel}>
+                            {formatDateWithRelativeLabel(calculatedArrivalTime.toISOString(), false)}
+                          </Text>
+                        )}
+                        <Text style={styles.routeTime}>
+                          {arrivalTimeDisplay}
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                </View>
-                <View style={styles.priceBadge}>
-                  <Text style={styles.priceText}>{trip.price} FC</Text>
-                </View>
-              </View>
 
-              <View style={styles.tripRoute}>
-                <View style={styles.routeRow}>
-                  <Ionicons name="location" size={16} color={Colors.success} />
-                  <Text style={styles.routeText}>{trip.departure.name}</Text>
-                  <Text style={styles.routeTime}>
-                    {formatTime(trip.departureTime)}
-                  </Text>
-                </View>
+                  <View style={styles.tripFooter}>
+                    <View style={styles.tripFooterLeft}>
+                      <Ionicons name="people" size={16} color={Colors.gray[600]} />
+                      <Text style={styles.seatsText}>
+                        {trip.availableSeats} places disponibles
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.detailsButton}
+                      onPress={() => router.push(`/trip/${trip.id}`)}
+                    >
+                      <Text style={styles.detailsButtonText}>Voir détails</Text>
+                    </TouchableOpacity>
+                  </View>
+                </Animated.View>
+              );
+            };
 
-                <View style={styles.routeRow}>
-                  <Ionicons name="navigate" size={16} color={Colors.primary} />
-                  <Text style={styles.routeText}>{trip.arrival.name}</Text>
-                  <Text style={styles.routeTime}>
-                    {formatTime(trip.arrivalTime)}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.tripFooter}>
-                <View style={styles.tripFooterLeft}>
-                  <Ionicons name="people" size={16} color={Colors.gray[600]} />
-                  <Text style={styles.seatsText}>
-                    {trip.availableSeats} places disponibles
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.detailsButton}
-                  onPress={() => router.push(`/trip/${trip.id}`)}
-                >
-                  <Text style={styles.detailsButtonText}>Voir détails</Text>
-                </TouchableOpacity>
-              </View>
-            </Animated.View>
-          ))
+            return <TripCardWithArrival key={trip.id} />;
+          })
         )}
       </ScrollView>
     </SafeAreaView>
@@ -442,6 +797,9 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontWeight: FontWeights.bold,
   },
+  searchRowContainer: {
+    position: 'relative',
+  },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -449,6 +807,11 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[200],
+  },
+  searchRowLast: {
+    marginBottom: 0,
+    paddingBottom: 0,
+    borderBottomWidth: 0,
   },
   searchDivider: {
     height: 1,
@@ -460,6 +823,64 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.md,
     fontSize: FontSizes.base,
     color: Colors.gray[800],
+  },
+  clearButton: {
+    marginLeft: Spacing.sm,
+    padding: Spacing.xs,
+  },
+  loadingIndicator: {
+    marginLeft: Spacing.sm,
+  },
+  suggestionsContainer: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.xs,
+    maxHeight: 300,
+    zIndex: 1000,
+    ...CommonStyles.shadowLg,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+  },
+  suggestionsContainerAbsolute: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.md,
+    marginTop: -Spacing.md,
+    marginBottom: Spacing.md,
+    marginHorizontal: Spacing.xl,
+    maxHeight: 300,
+    zIndex: 1000,
+    ...CommonStyles.shadowLg,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+  },
+  suggestionRowLast: {
+    borderBottomWidth: 0,
+  },
+  suggestionContent: {
+    flex: 1,
+    marginLeft: Spacing.md,
+  },
+  suggestionTitle: {
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+    fontWeight: FontWeights.medium,
+    marginBottom: Spacing.xs,
+  },
+  suggestionSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
   },
   filterButton: {
     flexDirection: 'row',
@@ -485,9 +906,22 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.xs,
   },
   filtersContainer: {
+    paddingTop: Spacing.md,
+    gap: Spacing.md,
+  },
+  filterSection: {
+    marginBottom: Spacing.md,
+  },
+  filterSectionTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+    marginBottom: Spacing.sm,
+  },
+  filterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingTop: Spacing.md,
+    gap: Spacing.sm,
   },
   filterTag: {
     paddingHorizontal: Spacing.lg,
@@ -599,6 +1033,23 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
     textAlign: 'center',
     fontSize: FontSizes.base,
+    marginBottom: Spacing.md,
+  },
+  createRequestButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+  },
+  createRequestButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    marginLeft: Spacing.sm,
   },
   tripCard: {
     backgroundColor: Colors.white,
@@ -665,6 +1116,17 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     fontSize: FontSizes.sm,
   },
+  freeBadge: {
+    backgroundColor: Colors.success + '15',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  freeBadgeText: {
+    color: Colors.success,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.base,
+  },
   tripRoute: {
     marginBottom: Spacing.md,
   },
@@ -678,6 +1140,15 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.sm,
     flex: 1,
     fontSize: FontSizes.base,
+  },
+  timeContainer: {
+    alignItems: 'flex-end',
+  },
+  routeDateLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.primary,
+    fontWeight: FontWeights.medium,
+    marginBottom: 2,
   },
   routeTime: {
     fontSize: FontSizes.sm,
