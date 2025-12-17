@@ -131,6 +131,12 @@ export async function displayNotification(
         pressAction: {
           id: 'default',
         },
+        // Utiliser l'icône de l'application pour les notifications Android
+        // 'ic_launcher' est l'icône par défaut de l'app et est toujours disponible
+        // Si vous avez créé une icône de notification spécifique, vous pouvez utiliser 'ic_notification'
+        smallIcon: 'ic_launcher',
+        // Optionnel: grande icône (utilise l'icône de l'app par défaut)
+        // largeIcon: 'ic_launcher',
       },
       ios: {
         sound: 'default',
@@ -180,6 +186,12 @@ export async function handleIncomingNotification(
   notification: Notifications.Notification,
 ): Promise<void> {
   try {
+    // Vérifier que la notification a une structure valide
+    if (!notification || !notification.request || !notification.request.content) {
+      console.warn('Notification invalide reçue (structure manquante):', notification);
+      return;
+    }
+
     const { title, body, data } = notification.request.content;
 
     // Afficher la notification avec Notifee (fonctionne même en background)

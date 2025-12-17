@@ -1,17 +1,36 @@
 import Constants from 'expo-constants';
 
+/* =====================================================
+   CONFIG
+===================================================== */
+
 const mapboxToken =
   Constants.expoConfig?.extra?.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ||
   process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
 
-// Générer un session token unique pour cette session
-// Le session token doit être réutilisé pour toutes les requêtes d'une même session de recherche
+// Proximité par défaut : Kinshasa
+const DEFAULT_PROXIMITY = {
+  latitude: -4.325,
+  longitude: 15.322,
+};
+
+// Bounding box de la République Démocratique du Congo
+// Format: [longitude ouest, latitude sud, longitude est, latitude nord]
+const RDC_BBOX = '12.0,-13.5,31.3,5.4';
+
+// Code ISO du pays pour la RDC
+const RDC_COUNTRY_CODE = 'cd';
+
+/* =====================================================
+   SESSION TOKEN (obligatoire Mapbox Search Box)
+===================================================== */
+
 function generateSessionToken(): string {
-  // Utiliser un timestamp + un nombre aléatoire pour créer un token unique
-  return `session-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+  return `session-${Date.now()}-${Math.random()
+    .toString(36)
+    .substring(2, 15)}`;
 }
 
-// Stocker le session token actuel (généré une fois par session)
 let currentSessionToken: string | null = null;
 
 function getSessionToken(): string {
@@ -21,10 +40,13 @@ function getSessionToken(): string {
   return currentSessionToken;
 }
 
-// Réinitialiser le session token (utile pour démarrer une nouvelle session de recherche)
 export function resetSessionToken(): void {
   currentSessionToken = null;
 }
+
+/* =====================================================
+   TYPES
+===================================================== */
 
 export interface MapboxSearchSuggestion {
   id: string;
@@ -32,8 +54,8 @@ export interface MapboxSearchSuggestion {
   fullAddress: string;
   placeType: string[];
   coordinates: {
-    latitude: number;
-    longitude: number;
+    latitude: number | null;
+    longitude: number | null;
   };
   context?: {
     country?: string;
@@ -45,108 +67,69 @@ export interface MapboxSearchSuggestion {
   };
 }
 
-export interface MapboxSearchResponse {
-  suggestions: MapboxSearchSuggestion[];
-}
+/* =====================================================
+   SEARCH SUGGESTIONS
+===================================================== */
 
-/**
- * Recherche des suggestions de lieux via l'API Mapbox Search Box
- * @param query - Texte de recherche
- * @param proximity - Coordonnées pour prioriser les résultats proches (optionnel)
- * @param limit - Nombre maximum de résultats (par défaut: 5)
- * @returns Liste des suggestions
- */
 export async function searchMapboxPlaces(
   query: string,
   proximity?: { longitude: number; latitude: number },
   limit: number = 5,
 ): Promise<MapboxSearchSuggestion[]> {
-  if (!mapboxToken) {
-    console.warn('Mapbox access token not configured');
-    return [];
-  }
+  if (!mapboxToken || !query?.trim()) return [];
 
-  if (!query || query.trim().length === 0) {
-    return [];
-  }
-
-  // Valider la proximité si fournie
-  if (proximity) {
-    if (
-      typeof proximity.longitude !== 'number' ||
-      typeof proximity.latitude !== 'number' ||
-      isNaN(proximity.longitude) ||
-      isNaN(proximity.latitude) ||
-      !isFinite(proximity.longitude) ||
-      !isFinite(proximity.latitude)
-    ) {
-      console.warn('Invalid proximity coordinates, ignoring proximity parameter');
-      proximity = undefined;
-    }
-  }
-
-  // Valider et limiter le nombre de résultats
-  const validLimit = Math.min(Math.max(1, Math.floor(limit)), 10);
+  const trimmedQuery = query.trim().substring(0, 256);
+  const effectiveProximity = proximity ?? DEFAULT_PROXIMITY;
+  const validLimit = Math.min(Math.max(limit, 1), 10);
 
   try {
-    const baseUrl = 'https://api.mapbox.com/search/searchbox/v1/suggest';
-    let trimmedQuery = query.trim();
-    
-    // Valider que la requête n'est pas trop longue (limite Mapbox: ~256 caractères)
-    if (trimmedQuery.length > 256) {
-      trimmedQuery = trimmedQuery.substring(0, 256);
-    }
-    
-    // Encoder correctement la requête avec URLSearchParams (gère automatiquement l'encodage)
     const params = new URLSearchParams();
     params.append('q', trimmedQuery);
     params.append('access_token', mapboxToken);
-    params.append('session_token', getSessionToken()); // Ajouter le session token requis
+    params.append('session_token', getSessionToken());
     params.append('limit', validLimit.toString());
     params.append('language', 'fr');
-    params.append('types', 'place,locality,neighborhood,address,poi');
 
-    // Ajouter la proximité si disponible et valide
-    if (proximity) {
-      params.append('proximity', `${proximity.longitude},${proximity.latitude}`);
-    }
+    // 🔒 RESTRICTION GÉOGRAPHIQUE : République Démocratique du Congo uniquement
+    params.append('country', RDC_COUNTRY_CODE);
+    params.append('bbox', RDC_BBOX);
 
-    const url = `${baseUrl}?${params.toString()}`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
+    // Types de lieux détaillés : adresses, rues/avenues, quartiers, districts, localités, POI
+    // Inclut tous les types pertinents pour obtenir des résultats précis à Kinshasa
+    params.append(
+      'types',
+      'address,street,neighborhood,district,locality,place,poi',
+    );
+
+    params.append(
+      'proximity',
+      `${effectiveProximity.longitude},${effectiveProximity.latitude}`,
+    );
+
+    const url = `https://api.mapbox.com/search/searchbox/v1/suggest?${params.toString()}`;
+    const response = await fetch(url);
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error');
-      console.warn(`Mapbox Search API failed: ${response.status} - ${errorText}`);
-      throw new Error(`Mapbox Search API failed: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    if (!data.suggestions || !Array.isArray(data.suggestions)) {
+      console.warn('Mapbox suggest error:', response.status);
       return [];
     }
 
-    // Transformer les suggestions de Mapbox en format standardisé
-    return data.suggestions
-      .map((suggestion: any) => {
-        // Extraire les coordonnées - Mapbox Search Box API peut ne pas avoir de coordonnées dans les suggestions
-        // Il faut utiliser l'endpoint retrieve pour obtenir les coordonnées complètes
-        const coords = suggestion.feature?.geometry?.coordinates;
-        const [longitude, latitude] = Array.isArray(coords) && coords.length >= 2 
-          ? coords 
-          : [null, null];
-        
-        const properties = suggestion.feature?.properties || {};
-        const context = suggestion.feature?.properties?.context || {};
+    const data = await response.json();
+    if (!Array.isArray(data?.suggestions)) return [];
 
-        // Construire l'adresse complète
+    return data.suggestions
+      .map((s: any) => {
+        const feature = s.feature ?? {};
+        const context = feature.properties?.context ?? {};
+        const coords = feature.geometry?.coordinates ?? [];
+
+        const [longitude, latitude] =
+          Array.isArray(coords) && coords.length >= 2
+            ? coords
+            : [null, null];
+
         const addressParts = [
-          properties.name,
+          feature.properties?.name,
           context.neighborhood?.name,
           context.locality?.name,
           context.district?.name,
@@ -155,13 +138,19 @@ export async function searchMapboxPlaces(
         ].filter(Boolean);
 
         return {
-          id: suggestion.mapbox_id || suggestion.id || `suggestion-${Date.now()}-${Math.random()}`,
-          name: properties.name || suggestion.name || query,
-          fullAddress: addressParts.join(', ') || properties.full_address || suggestion.full_address || '',
-          placeType: properties.category || suggestion.place_type || [],
+          id: s.mapbox_id ?? s.id,
+          name: feature.properties?.name ?? s.name ?? trimmedQuery,
+          fullAddress:
+            addressParts.join(', ') ??
+            feature.properties?.full_address ??
+            '',
+          placeType:
+            feature.properties?.category ??
+            s.place_type ??
+            [],
           coordinates: {
-            latitude: typeof latitude === 'number' && !isNaN(latitude) && isFinite(latitude) ? latitude : null,
-            longitude: typeof longitude === 'number' && !isNaN(longitude) && isFinite(longitude) ? longitude : null,
+            latitude,
+            longitude,
           },
           context: {
             country: context.country?.name,
@@ -173,88 +162,111 @@ export async function searchMapboxPlaces(
           },
         };
       })
-      .filter((suggestion) => {
-        // Filtrer les suggestions sans coordonnées valides - on devra utiliser retrieve pour les obtenir
-        // Pour l'instant, on garde toutes les suggestions car elles ont un ID pour retrieve
-        return suggestion.id && suggestion.name;
+
+      /* =============================
+         FILTRAGE GÉOGRAPHIQUE (RDC uniquement)
+      ============================== */
+      .filter((s: MapboxSearchSuggestion) => {
+        // Vérifier que le résultat a un ID et un nom
+        if (!s.id || !s.name) return false;
+
+        // Vérifier que le pays est bien la RDC (si disponible)
+        if (s.context?.country) {
+          const countryLower = s.context.country.toLowerCase();
+          const rdcNames = ['république démocratique du congo', 'democratic republic of the congo', 'rdc', 'congo (kinshasa)', 'congo-kinshasa'];
+          const isRDC = rdcNames.some(name => countryLower.includes(name.toLowerCase()));
+          if (!isRDC && countryLower !== 'congo') {
+            return false;
+          }
+        }
+
+        // Vérifier que les coordonnées sont dans la bounding box de la RDC
+        if (s.coordinates.latitude !== null && s.coordinates.longitude !== null) {
+          const lat = s.coordinates.latitude;
+          const lng = s.coordinates.longitude;
+          // RDC bbox: [12.0, -13.5, 31.3, 5.4] (ouest, sud, est, nord)
+          if (lng < 12.0 || lng > 31.3 || lat < -13.5 || lat > 5.4) {
+            return false;
+          }
+        }
+
+        return true;
+      })
+
+      /* =============================
+         PRIORISATION (UX) - Favoriser les résultats détaillés et Kinshasa
+      ============================== */
+      .sort((a: any, b: any) => {
+        const weight = (s: MapboxSearchSuggestion) => {
+          let score = 0;
+          
+          // Prioriser les résultats les plus spécifiques et détaillés
+          if (s.placeType.includes('address')) score += 6; // Adresses spécifiques (plus précis)
+          else if (s.placeType.includes('street')) score += 5; // Rues et avenues (très pertinent)
+          else if (s.placeType.includes('neighborhood')) score += 4; // Quartiers (pertinent)
+          else if (s.placeType.includes('district')) score += 3; // Districts (pertinent)
+          else if (s.placeType.includes('poi')) score += 2; // Points d'intérêt (lieux spécifiques)
+          else if (s.placeType.includes('place')) score += 1; // Lieux génériques
+          // locality n'ajoute pas de score (moins prioritaire)
+          
+          // Bonus pour les résultats à Kinshasa (vérifier dans le contexte)
+          const locality = s.context?.locality?.toLowerCase() || '';
+          const region = s.context?.region?.toLowerCase() || '';
+          if (locality.includes('kinshasa') || region.includes('kinshasa')) {
+            score += 2; // Bonus pour Kinshasa
+          }
+          
+          // Bonus pour les résultats proches de Kinshasa (si coordonnées disponibles)
+          if (s.coordinates.latitude !== null && s.coordinates.longitude !== null) {
+            const lat = s.coordinates.latitude;
+            const lng = s.coordinates.longitude;
+            // Vérifier si dans la zone de Kinshasa (approximative)
+            // Kinshasa bbox approximative: [15.0, -4.6, 15.5, -4.2]
+            if (lng >= 15.0 && lng <= 15.5 && lat >= -4.6 && lat <= -4.2) {
+              score += 1; // Bonus pour proximité géographique
+            }
+          }
+          
+          return score;
+        };
+        return weight(b) - weight(a);
       });
-  } catch (error: any) {
-    // Ne logger que les erreurs non-400 (bad request) et non liées au session token pour éviter le spam
-    const errorMessage = error?.message || '';
-    if (errorMessage && 
-        !errorMessage.includes('400') && 
-        !errorMessage.includes('Session Token')) {
-      console.warn('Erreur lors de la recherche Mapbox:', errorMessage);
-    }
+  } catch (error) {
+    console.warn('Mapbox search error:', error);
     return [];
   }
 }
 
-/**
- * Récupère les détails complets d'une suggestion via son ID
- * @param suggestionId - ID de la suggestion Mapbox
- * @returns Détails complets du lieu
- */
-export async function getMapboxPlaceDetails(suggestionId: string): Promise<MapboxSearchSuggestion | null> {
-  if (!mapboxToken) {
-    console.warn('Mapbox access token not configured');
-    return null;
-  }
+/* =====================================================
+   RETRIEVE DETAILS (coordonnées finales)
+===================================================== */
+
+export async function getMapboxPlaceDetails(
+  suggestionId: string,
+): Promise<MapboxSearchSuggestion | null> {
+  if (!mapboxToken) return null;
 
   try {
-    const baseUrl = 'https://api.mapbox.com/search/searchbox/v1/retrieve';
     const params = new URLSearchParams({
       id: suggestionId,
       access_token: mapboxToken,
-      session_token: getSessionToken(), // Utiliser le même session token que pour les suggestions
+      session_token: getSessionToken(),
     });
 
-    const url = `${baseUrl}?${params.toString()}`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
+    const url = `https://api.mapbox.com/search/searchbox/v1/retrieve?${params.toString()}`;
+    const response = await fetch(url);
 
-    if (!response.ok) {
-      throw new Error(`Mapbox Retrieve API failed: ${response.status}`);
-    }
+    if (!response.ok) return null;
 
     const data = await response.json();
+    const feature = data?.features?.[0];
+    if (!feature?.geometry?.coordinates) return null;
 
-    if (!data.features || data.features.length === 0) {
-      return null;
-    }
+    const [longitude, latitude] = feature.geometry.coordinates;
 
-    const feature = data.features[0];
-    const coords = feature.geometry?.coordinates;
-    const [longitude, latitude] = Array.isArray(coords) && coords.length >= 2 
-      ? coords 
-      : [null, null];
-    
-    // Valider les coordonnées
-    if (
-      typeof latitude !== 'number' ||
-      typeof longitude !== 'number' ||
-      isNaN(latitude) ||
-      isNaN(longitude) ||
-      !isFinite(latitude) ||
-      !isFinite(longitude) ||
-      latitude < -90 ||
-      latitude > 90 ||
-      longitude < -180 ||
-      longitude > 180
-    ) {
-      console.warn('Invalid coordinates in Mapbox place details:', { latitude, longitude });
-      return null;
-    }
-    
-    const properties = feature.properties || {};
-    const context = properties.context || {};
-
+    const context = feature.properties?.context ?? {};
     const addressParts = [
-      properties.name,
+      feature.properties?.name,
       context.neighborhood?.name,
       context.locality?.name,
       context.district?.name,
@@ -264,9 +276,9 @@ export async function getMapboxPlaceDetails(suggestionId: string): Promise<Mapbo
 
     return {
       id: suggestionId,
-      name: properties.name || '',
-      fullAddress: addressParts.join(', ') || properties.full_address || '',
-      placeType: properties.category || [],
+      name: feature.properties?.name ?? '',
+      fullAddress: addressParts.join(', '),
+      placeType: feature.properties?.category ?? [],
       coordinates: {
         latitude,
         longitude,
@@ -281,8 +293,7 @@ export async function getMapboxPlaceDetails(suggestionId: string): Promise<Mapbo
       },
     };
   } catch (error) {
-    console.warn('Erreur lors de la récupération des détails Mapbox:', error);
+    console.warn('Mapbox retrieve error:', error);
     return null;
   }
 }
-

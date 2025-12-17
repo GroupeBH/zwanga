@@ -393,24 +393,13 @@ export default function LocationPickerModal({
     try {
       setMapboxLoading(true);
       
-      // Utiliser getMapboxPlaceDetails pour obtenir les coordonnées complètes
-      const placeDetails = await getMapboxPlaceDetails(suggestion.id);
+      // Essayer d'abord d'utiliser les coordonnées de la suggestion si elles sont valides
+      let finalLatitude: number | null = null;
+      let finalLongitude: number | null = null;
+      let finalName = suggestion.name || 'Lieu sélectionné';
+      let finalAddress = suggestion.fullAddress || suggestion.name || 'Adresse non disponible';
       
-      if (placeDetails && placeDetails.coordinates.latitude && placeDetails.coordinates.longitude) {
-        const result: SearchResult = {
-          title: placeDetails.name || suggestion.name || 'Lieu sélectionné',
-          address: placeDetails.fullAddress || suggestion.fullAddress || suggestion.name || 'Adresse non disponible',
-          latitude: placeDetails.coordinates.latitude,
-          longitude: placeDetails.coordinates.longitude,
-        };
-        setSelectedLocation(result);
-        animateToCoordinate(result.latitude, result.longitude);
-        setMapboxSuggestions([]);
-        setSearchQuery(placeDetails.name || suggestion.name || '');
-        return;
-      }
-      
-      // Fallback si retrieve échoue mais qu'on a des coordonnées dans la suggestion
+      // Vérifier si les coordonnées de la suggestion sont valides
       if (
         suggestion?.coordinates &&
         suggestion.coordinates.latitude &&
@@ -418,20 +407,83 @@ export default function LocationPickerModal({
         typeof suggestion.coordinates.latitude === 'number' &&
         typeof suggestion.coordinates.longitude === 'number' &&
         !isNaN(suggestion.coordinates.latitude) &&
-        !isNaN(suggestion.coordinates.longitude)
+        !isNaN(suggestion.coordinates.longitude) &&
+        isFinite(suggestion.coordinates.latitude) &&
+        isFinite(suggestion.coordinates.longitude)
       ) {
+        finalLatitude = suggestion.coordinates.latitude;
+        finalLongitude = suggestion.coordinates.longitude;
+      }
+      
+      // Essayer de récupérer les détails complets pour obtenir une adresse plus précise
+      try {
+        const placeDetails = await getMapboxPlaceDetails(suggestion.id);
+        
+        if (placeDetails) {
+          // Utiliser les coordonnées des détails si disponibles et valides
+          if (
+            placeDetails.coordinates.latitude &&
+            placeDetails.coordinates.longitude &&
+            typeof placeDetails.coordinates.latitude === 'number' &&
+            typeof placeDetails.coordinates.longitude === 'number' &&
+            !isNaN(placeDetails.coordinates.latitude) &&
+            !isNaN(placeDetails.coordinates.longitude) &&
+            isFinite(placeDetails.coordinates.latitude) &&
+            isFinite(placeDetails.coordinates.longitude)
+          ) {
+            finalLatitude = placeDetails.coordinates.latitude;
+            finalLongitude = placeDetails.coordinates.longitude;
+          }
+          
+          // Utiliser les informations des détails si disponibles
+          if (placeDetails.name) {
+            finalName = placeDetails.name;
+          }
+          if (placeDetails.fullAddress) {
+            finalAddress = placeDetails.fullAddress;
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to retrieve place details, using suggestion data:', error);
+        // Continuer avec les données de la suggestion
+      }
+      
+      // Si on a des coordonnées valides, créer le résultat et mettre à jour l'UI
+      if (finalLatitude !== null && finalLongitude !== null) {
         const result: SearchResult = {
-          title: suggestion.name || 'Lieu sélectionné',
-          address: suggestion.fullAddress || suggestion.name || 'Adresse non disponible',
-          latitude: suggestion.coordinates.latitude,
-          longitude: suggestion.coordinates.longitude,
+          title: finalName,
+          address: finalAddress,
+          latitude: finalLatitude,
+          longitude: finalLongitude,
         };
+        
         setSelectedLocation(result);
         animateToCoordinate(result.latitude, result.longitude);
         setMapboxSuggestions([]);
-        setSearchQuery(suggestion.name || '');
+        setSearchQuery(finalName);
       } else {
-        console.warn('Invalid suggestion coordinates:', suggestion);
+        // Si aucune coordonnée valide n'est disponible, essayer de géocoder le nom
+        console.warn('No valid coordinates found for suggestion, attempting geocoding:', suggestion);
+        try {
+          const geocodeResults = await Location.geocodeAsync(suggestion.name);
+          if (geocodeResults && geocodeResults.length > 0) {
+            const firstResult = geocodeResults[0];
+            const result: SearchResult = {
+              title: suggestion.name || 'Lieu sélectionné',
+              address: formatAddressFromGeocode(firstResult) || suggestion.fullAddress || suggestion.name || 'Adresse non disponible',
+              latitude: firstResult.latitude,
+              longitude: firstResult.longitude,
+            };
+            setSelectedLocation(result);
+            animateToCoordinate(result.latitude, result.longitude);
+            setMapboxSuggestions([]);
+            setSearchQuery(suggestion.name || '');
+          } else {
+            console.error('Geocoding failed for suggestion:', suggestion);
+          }
+        } catch (geocodeError) {
+          console.error('Error geocoding suggestion:', geocodeError);
+        }
       }
     } catch (error) {
       console.error('Error handling Mapbox suggestion press:', error);
