@@ -132,9 +132,9 @@ export async function displayNotification(
           id: 'default',
         },
         // Utiliser l'icône de l'application pour les notifications Android
-        // Expo génère automatiquement 'ic_notification' à partir de l'icône configurée dans app.config.js
-        // Si 'ic_notification' n'existe pas, utiliser 'ic_launcher' comme fallback
-        smallIcon: 'ic_notification',
+        // 'ic_launcher' est l'icône par défaut de l'app et est toujours disponible
+        // Si vous avez créé une icône de notification spécifique, vous pouvez utiliser 'ic_notification'
+        smallIcon: 'ic_launcher',
         // Optionnel: grande icône (utilise l'icône de l'app par défaut)
         // largeIcon: 'ic_launcher',
       },
@@ -186,6 +186,12 @@ export async function handleIncomingNotification(
   notification: Notifications.Notification,
 ): Promise<void> {
   try {
+    // Vérifier que la notification a une structure valide
+    if (!notification || !notification.request || !notification.request.content) {
+      console.warn('Notification invalide reçue (structure manquante):', notification);
+      return;
+    }
+
     const { title, body, data } = notification.request.content;
 
     // Afficher la notification avec Notifee (fonctionne même en background)

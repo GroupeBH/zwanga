@@ -377,7 +377,7 @@ export default function RequestTripScreen() {
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Date et heure de départ maximum (délai) *</Text>
               <Text style={styles.helperText}>
-                Jusqu'à quand pouvez-vous attendre ? Les drivers pourront proposer un départ entre ces deux dates.
+                Jusqu'à quand pouvez-vous attendre ? Les proprietaires de vehicules pourront proposer un départ entre ces deux dates.
               </Text>
               <View style={styles.datetimeButtons}>
                 <TouchableOpacity
