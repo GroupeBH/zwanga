@@ -52,8 +52,14 @@ if (TaskManager) {
     if (taskData.notification) {
       // Notification expo-notifications standard
       const notification = taskData.notification;
-      await handleIncomingNotification(notification);
-      console.log('Notification expo-notifications traitée en arrière-plan:', notification.request.identifier);
+      // Vérifier que la notification a une structure valide
+      if (notification && notification.request && notification.request.content) {
+        await handleIncomingNotification(notification);
+        const identifier = notification.request?.identifier || 'unknown';
+        console.log('Notification expo-notifications traitée en arrière-plan:', identifier);
+      } else {
+        console.warn('Notification invalide reçue (structure manquante):', notification);
+      }
     } else if (taskData.title || taskData.body) {
       // Notification FCM directe (format alternatif)
       const notification: Notifications.Notification = {
