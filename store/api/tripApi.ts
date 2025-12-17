@@ -107,6 +107,15 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     driverName: formatFullName(trip.driver),
     driverAvatar: trip.driver?.profilePicture ?? undefined,
     driverRating: trip.driver?.rating ?? 4.9,
+    driver: trip.driver
+      ? {
+          id: trip.driver.id,
+          name: formatFullName(trip.driver),
+          avatar: trip.driver.profilePicture ?? undefined,
+          rating: trip.driver.rating ?? 4.9,
+          phone: trip.driver.phone ?? '',
+        }
+      : null,
     vehicleType: trip.vehicleType ?? 'car',
     vehicleInfo: trip.description?.trim() || 'Informations véhicule fournies par le conducteur',
     departure: {

@@ -1,4 +1,5 @@
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { getMapboxPlaceDetails, searchMapboxPlaces, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
 import { Ionicons } from '@expo/vector-icons';
 import Mapbox from '@rnmapbox/maps';
 import Constants from 'expo-constants';
@@ -14,7 +15,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { searchMapboxPlaces, getMapboxPlaceDetails, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
 
 // Initialize Mapbox with access token from config
 const mapboxToken =
@@ -440,7 +440,16 @@ export default function LocationPickerModal({
     }
   };
 
-  const handleConfirm = () => {
+  const handleClose = useCallback(() => {
+    console.log('[LocationPickerModal] handleClose called, visible:', visible);
+    if (typeof onClose === 'function') {
+      onClose();
+    } else {
+      console.warn('[LocationPickerModal] onClose is not a function:', onClose);
+    }
+  }, [onClose, visible]);
+
+  const handleConfirm = useCallback(() => {
     if (!selectedLocation) {
       return;
     }
@@ -450,7 +459,8 @@ export default function LocationPickerModal({
       address: hasAddress ? selectedLocation.address : selectedLocation.title,
     };
     onSelect(selection);
-  };
+    handleClose(); // Fermer le modal après la sélection
+  }, [selectedLocation, onSelect, handleClose]);
 
   const coordinateDisplay = useMemo(() => {
     if (!selectedLocation) {
@@ -460,11 +470,16 @@ export default function LocationPickerModal({
   }, [selectedLocation]);
 
   return (
-    <Modal animationType="slide" visible={visible} onRequestClose={onClose}>
+    <Modal animationType="slide" visible={visible} onRequestClose={handleClose}>
       <View style={styles.modalContainer}>
         <View style={styles.modalHeader}>
-          <TouchableOpacity onPress={onClose} style={styles.headerButton}>
-            <Ionicons name="close" size={24} color={Colors.gray[900]} />
+          <TouchableOpacity 
+            onPress={handleClose} 
+            style={styles.headerButton}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+            activeOpacity={0.6}
+          >
+            <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
           <Text style={styles.modalTitle}>{title}</Text>
           <View style={styles.headerSpacer} />
@@ -540,35 +555,39 @@ export default function LocationPickerModal({
           </View>
         )}
 
-        <Mapbox.MapView
-          ref={mapRef}
-          style={styles.map}
-          styleURL={Mapbox.StyleURL.Street}
-          onPress={handleMapPress}
-        >
-          <Mapbox.Camera
-            ref={cameraRef}
-            defaultSettings={camera}
-            animationMode="flyTo"
-            animationDuration={0}
-          />
+        <View style={styles.mapContainer}>
+          {/* Zone de protection pour le header - bloque les touches du MapView */}
+          <View style={styles.headerProtection} />
+          <Mapbox.MapView
+            ref={mapRef}
+            style={styles.map}
+            styleURL={Mapbox.StyleURL.Street}
+            onPress={handleMapPress}
+          >
+            <Mapbox.Camera
+              ref={cameraRef}
+              defaultSettings={camera}
+              animationMode="flyTo"
+              animationDuration={0}
+            />
 
-          {selectedLocation && (
-            <Mapbox.PointAnnotation
-              id="selected-location"
-              coordinate={[selectedLocation.longitude, selectedLocation.latitude]}
-            >
-              <View
-                style={[
-                  styles.selectedMarker,
-                  { backgroundColor: Colors.primary },
-                ]}
+            {selectedLocation && (
+              <Mapbox.PointAnnotation
+                id="selected-location"
+                coordinate={[selectedLocation.longitude, selectedLocation.latitude]}
               >
-                <Ionicons name="pin" size={20} color={Colors.white} />
-              </View>
-            </Mapbox.PointAnnotation>
-          )}
-        </Mapbox.MapView>
+                <View
+                  style={[
+                    styles.selectedMarker,
+                    { backgroundColor: Colors.primary },
+                  ]}
+                >
+                  <Ionicons name="pin" size={20} color={Colors.white} />
+                </View>
+              </Mapbox.PointAnnotation>
+            )}
+          </Mapbox.MapView>
+        </View>
 
         <View style={styles.locationDetails}>
           <Ionicons name="pin" size={20} color={Colors.primary} />
@@ -636,12 +655,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.xl,
-    paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.xxl + Spacing.lg,
+    paddingBottom: Spacing.lg,
+    backgroundColor: Colors.white,
+    zIndex: 1000,
+    elevation: 5,
   },
   headerButton: {
     padding: Spacing.sm,
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerSpacer: {
     width: 32,
@@ -658,6 +684,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.gray[200],
     borderRadius: BorderRadius.lg,
     marginHorizontal: Spacing.lg,
+    marginTop: Spacing.sm,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
     gap: Spacing.sm,
@@ -697,9 +724,27 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
     marginTop: 2,
   },
+  mapWrapper: {
+    flex: 1,
+    position: 'relative',
+  },
+  mapContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  headerProtection: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 100, // Hauteur approximative du header
+    zIndex: 1001,
+    elevation: 6,
+    backgroundColor: 'transparent',
+  },
   map: {
     flex: 1,
-    marginTop: Spacing.md,
+    marginTop: 0,
   },
   selectedMarker: {
     width: 40,
@@ -717,8 +762,9 @@ const styles = StyleSheet.create({
   locationDetails: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
     borderTopWidth: 1,
     borderColor: Colors.gray[100],
     gap: Spacing.md,
@@ -745,8 +791,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xxl + Spacing.lg,
   },
   actionButton: {
     flexDirection: 'row',

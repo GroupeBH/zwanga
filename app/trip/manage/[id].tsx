@@ -11,7 +11,7 @@ import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
-import { getRouteCoordinates, getRouteInfo, type RouteInfo } from '@/utils/routeHelpers';
+import { getRouteInfo, type RouteInfo } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import Mapbox from '@rnmapbox/maps';
 import Constants from 'expo-constants';
@@ -196,6 +196,9 @@ export default function ManageTripScreen() {
 
     const calculateETA = () => {
       // Calculate remaining route from current position to destination
+      if (!currentCoordinate || !arrivalCoordinate) {
+        return;
+      }
       getRouteInfo(currentCoordinate, arrivalCoordinate)
         .then((remainingRouteInfo) => {
           if (!isMounted) return;
