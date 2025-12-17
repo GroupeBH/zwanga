@@ -131,6 +131,12 @@ export async function displayNotification(
         pressAction: {
           id: 'default',
         },
+        // Utiliser l'icône de l'application pour les notifications Android
+        // Expo génère automatiquement 'ic_notification' à partir de l'icône configurée dans app.config.js
+        // Si 'ic_notification' n'existe pas, utiliser 'ic_launcher' comme fallback
+        smallIcon: 'ic_notification',
+        // Optionnel: grande icône (utilise l'icône de l'app par défaut)
+        // largeIcon: 'ic_launcher',
       },
       ios: {
         sound: 'default',
