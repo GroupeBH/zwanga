@@ -61,7 +61,7 @@ export default function HomeScreen() {
     isError: tripsError,
     refetch: refetchTrips,
   } = useGetTripsQuery(queryParams);
-  const { data: notifications } = useGetNotificationsQuery(undefined, {
+  const { data: notificationsData } = useGetNotificationsQuery(undefined, {
     refetchOnMountOrArgChange: true,
   });
 
@@ -247,8 +247,7 @@ export default function HomeScreen() {
     setAddMode(false);
   };
 
-  const unreadNotifications =
-    notifications?.filter((notification) => !notification.read && !notification.readAt).length ?? 0;
+  const unreadNotifications = notificationsData?.unreadCount ?? 0;
   const hasLocationSelections = Boolean(filterDepartureLocation && filterArrivalLocation);
 
   const openNotifications = () => {
