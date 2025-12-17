@@ -53,6 +53,7 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
 });
 
 export const bookingApi = baseApi.injectEndpoints({
+  overrideExisting: true,
   endpoints: (builder: BaseEndpointBuilder) => ({
     createBooking: builder.mutation<Booking, { tripId: string; numberOfSeats: number }>({
       query: (body: { tripId: string; numberOfSeats: number }) => ({
