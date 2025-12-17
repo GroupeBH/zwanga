@@ -1,6 +1,7 @@
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { useGetNotificationsQuery } from '@/store/api/notificationApi';
 import {
   TripSearchParams,
@@ -12,8 +13,7 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectAvailableTrips, selectSavedLocations } from '@/store/selectors';
 import { addSavedLocation } from '@/store/slices/locationSlice';
 import { setTrips } from '@/store/slices/tripsSlice';
-import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
-import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
+import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -210,15 +210,6 @@ export default function HomeScreen() {
     setMinSeatsFilter('');
     setMaxPriceFilter('');
   };
-
-  const popularLocations = [
-    { id: 'gombe', label: 'Gombe', address: 'Gombe, Kinshasa', coords: { latitude: -4.3206, longitude: 15.3115 } },
-    { id: 'lemba', label: 'Lemba', address: 'Lemba, Kinshasa', coords: { latitude: -4.419, longitude: 15.317 } },
-    { id: 'kintambo', label: 'Kintambo', address: 'Kintambo, Kinshasa', coords: { latitude: -4.334, longitude: 15.263 } },
-    { id: 'ngaliema', label: 'Ngaliema', address: 'Ngaliema, Kinshasa', coords: { latitude: -4.347, longitude: 15.244 } },
-    { id: 'bandal', label: 'Bandalungwa', address: 'Bandalungwa, Kinshasa', coords: { latitude: -4.375, longitude: 15.298 } },
-    { id: 'kalamu', label: 'Kalamu', address: 'Kalamu, Kinshasa', coords: { latitude: -4.360, longitude: 15.305 } },
-  ];
 
   const handleLocationPress = (location: { coords: { latitude: number; longitude: number }; label: string }) => {
     router.push({
@@ -518,7 +509,7 @@ export default function HomeScreen() {
                 <Ionicons name="document-text" size={24} color={Colors.white} />
               </View>
               <Text style={styles.quickActionTitle}>Créer une demande</Text>
-              <Text style={styles.quickActionSubtitle}>Les drivers vous proposeront</Text>
+              <Text style={styles.quickActionSubtitle}>Les propriétaires vous ferons des offres</Text>
             </TouchableOpacity>
 
             {currentUser?.isDriver ? (

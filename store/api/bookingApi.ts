@@ -1,4 +1,4 @@
-import type { Booking, BookingStatus } from '../../types';
+import type { Booking, BookingStatus, WhatsAppNotificationData } from '../../types';
 import { baseApi } from './baseApi';
 import type { ServerTrip } from './tripApi';
 import { mapServerTripToClient } from './tripApi';
@@ -152,6 +152,16 @@ export const bookingApi = baseApi.injectEndpoints({
             ]
           : ['Booking', 'Trip'],
     }),
+    getWhatsAppNotificationData: builder.mutation<
+      WhatsAppNotificationData,
+      { bookingId: string; emergencyContactIds: string[] }
+    >({
+      query: ({ bookingId, emergencyContactIds }: { bookingId: string; emergencyContactIds: string[] }) => ({
+        url: `/bookings/${bookingId}/whatsapp-notification-data`,
+        method: 'POST',
+        body: { emergencyContactIds },
+      }),
+    }),
   }),
 });
 
@@ -164,5 +174,6 @@ export const {
   useCancelBookingMutation,
   useAcceptBookingMutation,
   useRejectBookingMutation,
+  useGetWhatsAppNotificationDataMutation,
 } = bookingApi;
 

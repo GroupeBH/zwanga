@@ -26,6 +26,8 @@ import './tripApi';
 import './userApi';
 import './bookingApi';
 import './vehicleApi';
+import './tripRequestApi';
+import './safetyApi';
 
 // Ré-exporter tous les hooks pour faciliter l'utilisation
 export {
@@ -102,4 +104,41 @@ export {
   useGetNotificationsQuery,
   useMarkNotificationAsReadMutation
 } from './notificationApi';
+
+export {
+  // Trip Requests
+  useCreateTripRequestMutation,
+  useGetAvailableTripRequestsQuery,
+  useGetMyTripRequestsQuery,
+  useGetTripRequestByIdQuery,
+  useCancelTripRequestMutation,
+  useCreateDriverOfferMutation,
+  useGetTripRequestOffersQuery,
+  useGetMyDriverOffersQuery,
+  useAcceptDriverOfferMutation,
+  useRejectDriverOfferMutation,
+  useCancelDriverOfferMutation,
+} from './tripRequestApi';
+
+export {
+  // Safety
+  useCreateEmergencyContactMutation,
+  useGetEmergencyContactsQuery,
+  useUpdateEmergencyContactMutation,
+  useDeleteEmergencyContactMutation,
+  useCreateSafetyAlertMutation,
+  useUpdateLocationMutation,
+  useGetSafetyAlertsQuery,
+  useGetSafetyAlertByIdQuery,
+  useUpdateSafetyAlertStatusMutation,
+  useCreateUserReportMutation,
+  useGetUserReportsQuery,
+  useGetUserReportByIdQuery,
+  useUpdateReportStatusMutation,
+} from './safetyApi';
+
+export {
+  // Booking WhatsApp
+  useGetWhatsAppNotificationDataMutation,
+} from './bookingApi';
 
