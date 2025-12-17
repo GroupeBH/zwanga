@@ -11,6 +11,7 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -356,28 +357,37 @@ export default function RequestTripScreen() {
                 </TouchableOpacity>
               </View>
               {Platform.OS === 'ios' && iosPickerModeMin && (
-                <View style={styles.iosPickerContainer}>
-                  <DateTimePicker
-                    value={departureDateMin}
-                    mode={iosPickerModeMin}
-                    display="spinner"
-                    onChange={handleIosPickerChangeMin}
-                    minimumDate={iosPickerModeMin === 'date' ? new Date() : undefined}
-                  />
-                  <TouchableOpacity
-                    style={styles.iosPickerCloseButton}
-                    onPress={() => setIosPickerModeMin(null)}
-                  >
-                    <Text style={styles.iosPickerCloseText}>Confirmer</Text>
-                  </TouchableOpacity>
-                </View>
+                <Modal
+                  transparent
+                  animationType="slide"
+                  visible={iosPickerModeMin !== null}
+                  onRequestClose={() => setIosPickerModeMin(null)}
+                >
+                  <View style={styles.iosPickerOverlay}>
+                    <View style={styles.iosPickerContainer}>
+                      <DateTimePicker
+                        value={departureDateMin}
+                        mode={iosPickerModeMin}
+                        display="spinner"
+                        onChange={handleIosPickerChangeMin}
+                        minimumDate={iosPickerModeMin === 'date' ? new Date() : undefined}
+                      />
+                      <TouchableOpacity
+                        style={styles.iosPickerCloseButton}
+                        onPress={() => setIosPickerModeMin(null)}
+                      >
+                        <Text style={styles.iosPickerCloseText}>Confirmer</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </Modal>
               )}
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Date et heure de départ maximum (délai) *</Text>
               <Text style={styles.helperText}>
-                Jusqu'à quand pouvez-vous attendre ? Les drivers pourront proposer un départ entre ces deux dates.
+                Jusqu'à quand pouvez-vous attendre ? Les proprietaires de vehicules pourront proposer un départ entre ces deux dates.
               </Text>
               <View style={styles.datetimeButtons}>
                 <TouchableOpacity
@@ -417,21 +427,30 @@ export default function RequestTripScreen() {
                 </TouchableOpacity>
               </View>
               {Platform.OS === 'ios' && iosPickerModeMax && (
-                <View style={styles.iosPickerContainer}>
-                  <DateTimePicker
-                    value={departureDateMax}
-                    mode={iosPickerModeMax}
-                    display="spinner"
-                    onChange={handleIosPickerChangeMax}
-                    minimumDate={iosPickerModeMax === 'date' ? departureDateMin : undefined}
-                  />
-                  <TouchableOpacity
-                    style={styles.iosPickerCloseButton}
-                    onPress={() => setIosPickerModeMax(null)}
-                  >
-                    <Text style={styles.iosPickerCloseText}>Confirmer</Text>
-                  </TouchableOpacity>
-                </View>
+                <Modal
+                  transparent
+                  animationType="slide"
+                  visible={iosPickerModeMax !== null}
+                  onRequestClose={() => setIosPickerModeMax(null)}
+                >
+                  <View style={styles.iosPickerOverlay}>
+                    <View style={styles.iosPickerContainer}>
+                      <DateTimePicker
+                        value={departureDateMax}
+                        mode={iosPickerModeMax}
+                        display="spinner"
+                        onChange={handleIosPickerChangeMax}
+                        minimumDate={iosPickerModeMax === 'date' ? departureDateMin : undefined}
+                      />
+                      <TouchableOpacity
+                        style={styles.iosPickerCloseButton}
+                        onPress={() => setIosPickerModeMax(null)}
+                      >
+                        <Text style={styles.iosPickerCloseText}>Confirmer</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </Modal>
               )}
             </View>
 
@@ -757,13 +776,17 @@ const styles = StyleSheet.create({
     color: Colors.gray[900],
     marginTop: 2,
   },
+  iosPickerOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
   iosPickerContainer: {
-    marginTop: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.lg,
-    overflow: 'hidden',
     backgroundColor: Colors.white,
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
+    paddingTop: Spacing.md,
+    overflow: 'hidden',
   },
   iosPickerCloseButton: {
     paddingVertical: Spacing.md,

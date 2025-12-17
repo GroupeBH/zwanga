@@ -3,6 +3,8 @@ import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constan
 import {
   useGetAvailableTripRequestsQuery,
 } from '@/store/api/tripRequestApi';
+import type { TripRequest } from '@/types';
+import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
@@ -18,8 +20,6 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
-import type { TripRequest } from '@/types';
 
 export default function TripRequestsScreen() {
   const router = useRouter();
@@ -36,13 +36,14 @@ export default function TripRequestsScreen() {
   };
 
   const renderTripRequestCard = ({ item, index }: { item: TripRequest; index: number }) => {
-    const statusConfig = {
+    const statusConfigMap: Record<string, { label: string; color: string; bg: string }> = {
       pending: { label: 'En attente', color: Colors.warning, bg: Colors.warning + '15' },
       offers_received: { label: 'Offres reçues', color: Colors.info, bg: Colors.info + '15' },
       driver_selected: { label: 'Driver sélectionné', color: Colors.success, bg: Colors.success + '15' },
       cancelled: { label: 'Annulée', color: Colors.danger, bg: Colors.danger + '15' },
       expired: { label: 'Expirée', color: Colors.gray[500], bg: Colors.gray[200] },
-    }[item.status] || statusConfig.pending;
+    };
+    const statusConfig = statusConfigMap[item.status] || statusConfigMap.pending;
 
     return (
       <Animated.View entering={FadeInDown.delay(index * 100)}>
@@ -105,11 +106,11 @@ export default function TripRequestsScreen() {
                 <Text style={styles.detailText}>Max: {item.maxPricePerSeat} FC/place</Text>
               </View>
             )}
-            {item.driverOffers && item.driverOffers.length > 0 && (
+            {item.offers && item.offers.length > 0 && (
               <View style={styles.detailRow}>
                 <Ionicons name="checkmark-circle-outline" size={16} color={Colors.info} />
                 <Text style={[styles.detailText, { color: Colors.info }]}>
-                  {item.driverOffers.length} offre{item.driverOffers.length > 1 ? 's' : ''} reçue{item.driverOffers.length > 1 ? 's' : ''}
+                  {item.offers.length} offre{item.offers.length > 1 ? 's' : ''} reçue{item.offers.length > 1 ? 's' : ''}
                 </Text>
               </View>
             )}

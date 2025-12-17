@@ -36,7 +36,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { searchMapboxPlaces, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
+import { searchMapboxPlaces, getMapboxPlaceDetails, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
 
 type LatLng = { latitude: number; longitude: number };
 
@@ -243,25 +243,60 @@ export default function MapScreen() {
     setSearch(value);
   };
 
-  const handleMapboxSuggestionPress = (suggestion: MapboxSearchSuggestion) => {
-    setSearch(suggestion.name);
-    setMapboxSuggestions([]);
-    // Appliquer la recherche avec le nom de la suggestion
-    dispatch(setSearchQuery(suggestion.name));
-    const params = buildSearchParams(suggestion.name);
-    triggerTripSearch(params).then((result) => {
-      if (result.data) {
-        dispatch(setTrips(result.data));
-      }
-    }).catch((error: any) => {
-      const message =
-        error?.data?.message ?? error?.error ?? "Impossible d'appliquer le filtre pour le moment.";
-      showDialog({
-        variant: 'danger',
-        title: 'Erreur de recherche',
-        message: Array.isArray(message) ? message.join('\n') : message,
+  const handleMapboxSuggestionPress = async (suggestion: MapboxSearchSuggestion) => {
+    try {
+      setMapboxLoading(true);
+      
+      // Récupérer les détails complets du lieu pour obtenir l'adresse complète
+      const placeDetails = await getMapboxPlaceDetails(suggestion.id);
+      
+      // Utiliser l'adresse complète si disponible, sinon utiliser le nom
+      const addressToUse = placeDetails?.fullAddress || suggestion.fullAddress || suggestion.name;
+      const displayName = placeDetails?.name || suggestion.name;
+      
+      setSearch(displayName);
+      setMapboxSuggestions([]);
+      
+      // Appliquer la recherche avec l'adresse complète pour une meilleure précision
+      dispatch(setSearchQuery(addressToUse));
+      const params = buildSearchParams(addressToUse);
+      triggerTripSearch(params).then((result) => {
+        if (result.data) {
+          dispatch(setTrips(result.data));
+        }
+      }).catch((error: any) => {
+        const message =
+          error?.data?.message ?? error?.error ?? "Impossible d'appliquer le filtre pour le moment.";
+        showDialog({
+          variant: 'danger',
+          title: 'Erreur de recherche',
+          message: Array.isArray(message) ? message.join('\n') : message,
+        });
       });
-    });
+    } catch (error) {
+      console.warn('Failed to retrieve place details, using suggestion data:', error);
+      // Fallback: utiliser les données de la suggestion directement
+      const addressToUse = suggestion.fullAddress || suggestion.name;
+      setSearch(suggestion.name);
+      setMapboxSuggestions([]);
+      dispatch(setSearchQuery(addressToUse));
+      const params = buildSearchParams(addressToUse);
+      triggerTripSearch(params).then((result) => {
+        if (result.data) {
+          dispatch(setTrips(result.data));
+        }
+      }).catch((error: any) => {
+        const message =
+          error?.data?.message ?? error?.error ?? "Impossible d'appliquer le filtre pour le moment.";
+        showDialog({
+          variant: 'danger',
+          title: 'Erreur de recherche',
+          message: Array.isArray(message) ? message.join('\n') : message,
+        });
+      });
+    } finally {
+      setMapboxLoading(false);
+    }
   };
 
   const buildSearchParams = (query: string): TripSearchParams => {
