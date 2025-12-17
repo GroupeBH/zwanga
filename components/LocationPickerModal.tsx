@@ -1,4 +1,5 @@
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { getMapboxPlaceDetails, searchMapboxPlaces, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
 import { Ionicons } from '@expo/vector-icons';
 import Mapbox from '@rnmapbox/maps';
 import Constants from 'expo-constants';
@@ -14,7 +15,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { searchMapboxPlaces, getMapboxPlaceDetails, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
 
 // Initialize Mapbox with access token from config
 const mapboxToken =
@@ -450,6 +450,7 @@ export default function LocationPickerModal({
       address: hasAddress ? selectedLocation.address : selectedLocation.title,
     };
     onSelect(selection);
+    onClose(); // Fermer le modal après la sélection
   };
 
   const coordinateDisplay = useMemo(() => {
@@ -463,8 +464,16 @@ export default function LocationPickerModal({
     <Modal animationType="slide" visible={visible} onRequestClose={onClose}>
       <View style={styles.modalContainer}>
         <View style={styles.modalHeader}>
-          <TouchableOpacity onPress={onClose} style={styles.headerButton}>
-            <Ionicons name="close" size={24} color={Colors.gray[900]} />
+          <TouchableOpacity 
+            onPress={() => {
+              console.log('[LocationPickerModal] Back button pressed');
+              onClose();
+            }} 
+            style={styles.headerButton}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+            activeOpacity={0.6}
+          >
+            <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
           <Text style={styles.modalTitle}>{title}</Text>
           <View style={styles.headerSpacer} />
@@ -639,9 +648,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.xl,
     paddingBottom: Spacing.md,
+    backgroundColor: Colors.white,
+    zIndex: 1000,
+    elevation: 5,
   },
   headerButton: {
     padding: Spacing.sm,
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerSpacer: {
     width: 32,
@@ -658,6 +674,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.gray[200],
     borderRadius: BorderRadius.lg,
     marginHorizontal: Spacing.lg,
+    marginTop: Spacing.sm,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
     gap: Spacing.sm,
@@ -697,9 +714,25 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
     marginTop: 2,
   },
+  mapWrapper: {
+    flex: 1,
+    position: 'relative',
+  },
+  headerTouchBlocker: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1001,
+    elevation: 6,
+  },
+  headerTouchArea: {
+    height: 100, // Hauteur approximative du header
+    backgroundColor: 'transparent',
+  },
   map: {
     flex: 1,
-    marginTop: Spacing.md,
+    marginTop: 0,
   },
   selectedMarker: {
     width: 40,
