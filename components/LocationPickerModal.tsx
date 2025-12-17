@@ -440,7 +440,16 @@ export default function LocationPickerModal({
     }
   };
 
-  const handleConfirm = () => {
+  const handleClose = useCallback(() => {
+    console.log('[LocationPickerModal] handleClose called, visible:', visible);
+    if (typeof onClose === 'function') {
+      onClose();
+    } else {
+      console.warn('[LocationPickerModal] onClose is not a function:', onClose);
+    }
+  }, [onClose, visible]);
+
+  const handleConfirm = useCallback(() => {
     if (!selectedLocation) {
       return;
     }
@@ -450,8 +459,8 @@ export default function LocationPickerModal({
       address: hasAddress ? selectedLocation.address : selectedLocation.title,
     };
     onSelect(selection);
-    onClose(); // Fermer le modal après la sélection
-  };
+    handleClose(); // Fermer le modal après la sélection
+  }, [selectedLocation, onSelect, handleClose]);
 
   const coordinateDisplay = useMemo(() => {
     if (!selectedLocation) {
@@ -461,14 +470,11 @@ export default function LocationPickerModal({
   }, [selectedLocation]);
 
   return (
-    <Modal animationType="slide" visible={visible} onRequestClose={onClose}>
+    <Modal animationType="slide" visible={visible} onRequestClose={handleClose}>
       <View style={styles.modalContainer}>
         <View style={styles.modalHeader}>
           <TouchableOpacity 
-            onPress={() => {
-              console.log('[LocationPickerModal] Back button pressed');
-              onClose();
-            }} 
+            onPress={handleClose} 
             style={styles.headerButton}
             hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
             activeOpacity={0.6}
@@ -549,35 +555,39 @@ export default function LocationPickerModal({
           </View>
         )}
 
-        <Mapbox.MapView
-          ref={mapRef}
-          style={styles.map}
-          styleURL={Mapbox.StyleURL.Street}
-          onPress={handleMapPress}
-        >
-          <Mapbox.Camera
-            ref={cameraRef}
-            defaultSettings={camera}
-            animationMode="flyTo"
-            animationDuration={0}
-          />
+        <View style={styles.mapContainer}>
+          {/* Zone de protection pour le header - bloque les touches du MapView */}
+          <View style={styles.headerProtection} />
+          <Mapbox.MapView
+            ref={mapRef}
+            style={styles.map}
+            styleURL={Mapbox.StyleURL.Street}
+            onPress={handleMapPress}
+          >
+            <Mapbox.Camera
+              ref={cameraRef}
+              defaultSettings={camera}
+              animationMode="flyTo"
+              animationDuration={0}
+            />
 
-          {selectedLocation && (
-            <Mapbox.PointAnnotation
-              id="selected-location"
-              coordinate={[selectedLocation.longitude, selectedLocation.latitude]}
-            >
-              <View
-                style={[
-                  styles.selectedMarker,
-                  { backgroundColor: Colors.primary },
-                ]}
+            {selectedLocation && (
+              <Mapbox.PointAnnotation
+                id="selected-location"
+                coordinate={[selectedLocation.longitude, selectedLocation.latitude]}
               >
-                <Ionicons name="pin" size={20} color={Colors.white} />
-              </View>
-            </Mapbox.PointAnnotation>
-          )}
-        </Mapbox.MapView>
+                <View
+                  style={[
+                    styles.selectedMarker,
+                    { backgroundColor: Colors.primary },
+                  ]}
+                >
+                  <Ionicons name="pin" size={20} color={Colors.white} />
+                </View>
+              </Mapbox.PointAnnotation>
+            )}
+          </Mapbox.MapView>
+        </View>
 
         <View style={styles.locationDetails}>
           <Ionicons name="pin" size={20} color={Colors.primary} />
@@ -645,9 +655,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.xl,
-    paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.xxl + Spacing.lg,
+    paddingBottom: Spacing.lg,
     backgroundColor: Colors.white,
     zIndex: 1000,
     elevation: 5,
@@ -718,16 +728,18 @@ const styles = StyleSheet.create({
     flex: 1,
     position: 'relative',
   },
-  headerTouchBlocker: {
+  mapContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  headerProtection: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
+    height: 100, // Hauteur approximative du header
     zIndex: 1001,
     elevation: 6,
-  },
-  headerTouchArea: {
-    height: 100, // Hauteur approximative du header
     backgroundColor: 'transparent',
   },
   map: {
@@ -750,8 +762,9 @@ const styles = StyleSheet.create({
   locationDetails: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
     borderTopWidth: 1,
     borderColor: Colors.gray[100],
     gap: Spacing.md,
@@ -778,8 +791,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xxl + Spacing.lg,
   },
   actionButton: {
     flexDirection: 'row',
