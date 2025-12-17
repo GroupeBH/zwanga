@@ -97,6 +97,9 @@ export const baseApi = createApi({
     'TripRequest',
     'DriverOffer',
     'MyDriverOffers',
+    'EmergencyContact',
+    'SafetyAlert',
+    'UserReport',
   ],
   endpoints: () => ({}),
 });
