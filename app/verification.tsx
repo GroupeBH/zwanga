@@ -46,22 +46,55 @@ export default function VerificationScreen() {
         try {
             setKycSubmitting(true);
             const formData = buildKycFormData(payload);
-            await uploadKyc(formData).unwrap();
-            showDialog({
-                variant: 'success',
-                title: 'Vérification envoyée',
-                message: 'Vos documents sont en cours de vérification.',
-            });
-            router.replace('/(tabs)');
+            const result = await uploadKyc(formData).unwrap();
+            
+            // Vérifier le statut retourné par le backend
+            const kycStatusAfterUpload = result?.status;
+            
+            if (kycStatusAfterUpload === 'approved') {
+                // KYC approuvé immédiatement (validation automatique réussie)
+                showDialog({
+                    variant: 'success',
+                    title: 'KYC validé avec succès !',
+                    message: 'Votre identité a été vérifiée automatiquement. Vous pouvez maintenant utiliser toutes les fonctionnalités de l\'application.',
+                });
+                router.replace('/(tabs)');
+            } else if (kycStatusAfterUpload === 'rejected') {
+                // KYC rejeté (validation automatique échouée)
+                const rejectionReason = result?.rejectionReason || 'Votre demande KYC a été rejetée.';
+                showDialog({
+                    variant: 'danger',
+                    title: 'KYC rejeté',
+                    message: rejectionReason,
+                });
+                // Ne pas rediriger, laisser l'utilisateur réessayer
+            } else {
+                // KYC en attente (validation manuelle requise)
+                showDialog({
+                    variant: 'success',
+                    title: 'Vérification envoyée',
+                    message: 'Vos documents sont en cours de vérification. Nous vous informerons dès que la vérification sera terminée.',
+                });
+                router.replace('/(tabs)');
+            }
         } catch (error: any) {
+            // Gérer les erreurs détaillées du backend
+            let errorMessage = error?.data?.message ?? error?.error ?? 'Erreur lors de l\'envoi des documents.';
+            
+            // Si le message est une chaîne, la traiter directement
+            if (typeof errorMessage === 'string') {
+                // Le backend peut retourner des messages multi-lignes avec des détails
+                errorMessage = errorMessage;
+            } else if (Array.isArray(errorMessage)) {
+                errorMessage = errorMessage.join('\n');
+            }
+            
             showDialog({
                 variant: 'danger',
                 title: 'Erreur',
-                message: error?.data?.message || 'Erreur lors de l\'envoi des documents.',
+                message: errorMessage,
             });
-            // Allow user to proceed even if upload fails, or stay?
-            // Better to stay so they can retry, but for now we follow the flow.
-            setTimeout(() => router.replace('/(tabs)'), 2000);
+            // Ne pas rediriger en cas d'erreur, laisser l'utilisateur réessayer
         } finally {
             setKycSubmitting(false);
         }

@@ -76,12 +76,56 @@ export default function BookingsScreen() {
   const [cancelBooking, { isLoading: isCancelling }] = useCancelBookingMutation();
 
   const activeBookings = useMemo(
-    () => (bookings ?? []).filter((booking) => booking.status === 'pending' || booking.status === 'accepted'),
+    () => {
+      const now = new Date();
+      return (bookings ?? []).filter((booking) => {
+        // Les réservations rejetées, annulées ou complétées ne sont pas actives
+        if (booking.status === 'rejected' || booking.status === 'cancelled' || booking.status === 'completed') {
+          return false;
+        }
+        
+        // Les réservations pending ou accepted sont actives seulement si le trajet n'est pas expiré
+        if (booking.status === 'pending' || booking.status === 'accepted') {
+          // Vérifier si le trajet associé a une date de départ passée
+          if (booking.trip?.departureTime) {
+            const departureDate = new Date(booking.trip.departureTime);
+            // Si la date de départ est passée, la réservation est expirée
+            if (departureDate < now) {
+              return false;
+            }
+          }
+          return true;
+        }
+        
+        return false;
+      });
+    },
     [bookings],
   );
 
   const historyBookings = useMemo(
-    () => (bookings ?? []).filter((booking) => booking.status === 'rejected' || booking.status === 'cancelled' || booking.status === 'completed'),
+    () => {
+      const now = new Date();
+      return (bookings ?? []).filter((booking) => {
+        // Les réservations rejetées, annulées ou complétées sont dans l'historique
+        if (booking.status === 'rejected' || booking.status === 'cancelled' || booking.status === 'completed') {
+          return true;
+        }
+        
+        // Les réservations pending ou accepted dont le trajet est expiré sont dans l'historique
+        if (booking.status === 'pending' || booking.status === 'accepted') {
+          if (booking.trip?.departureTime) {
+            const departureDate = new Date(booking.trip.departureTime);
+            // Si la date de départ est passée, la réservation est expirée et va dans l'historique
+            if (departureDate < now) {
+              return true;
+            }
+          }
+        }
+        
+        return false;
+      });
+    },
     [bookings],
   );
 
@@ -124,8 +168,23 @@ export default function BookingsScreen() {
 
   const renderBookingCard = (bookingId: string, booking: typeof displayBookings[number], index: number) => {
     const BookingCardWithArrival = () => {
-      const statusConfig = STATUS_CONFIG[booking.status];
       const trip = booking.trip;
+      
+      // Vérifier si la réservation est expirée (trajet avec date de départ passée)
+      const isExpired = trip?.departureTime && new Date(trip.departureTime) < new Date();
+      
+      // Utiliser le statut "expiré" si applicable, sinon utiliser le statut normal
+      const statusConfig = isExpired && (booking.status === 'pending' || booking.status === 'accepted')
+        ? {
+            label: 'Expirée',
+            color: Colors.gray[600],
+            background: 'rgba(107, 114, 128, 0.18)',
+          }
+        : STATUS_CONFIG[booking.status] || {
+            label: booking.status || 'Inconnu',
+            color: Colors.gray[600],
+            background: 'rgba(156, 163, 175, 0.2)',
+          };
       const calculatedArrivalTime = useTripArrivalTime(trip || null);
       const arrivalTimeDisplay = calculatedArrivalTime && trip
         ? formatTime(calculatedArrivalTime.toISOString())
@@ -182,6 +241,7 @@ export default function BookingsScreen() {
         </View>
 
         <View style={styles.bookingFooter}>
+          {/* Bouton "Voir le trajet" - Toujours accessible, même pour les réservations expirées dans l'historique */}
           <TouchableOpacity
             style={styles.linkButton}
             onPress={() => router.push(`/trip/${booking.tripId}`)}
@@ -190,7 +250,8 @@ export default function BookingsScreen() {
             <Text style={styles.linkButtonText}>Voir le trajet</Text>
           </TouchableOpacity>
 
-          {activeTab === 'active' && booking.status === 'accepted' && trip?.driver?.phone && (
+          {/* Bouton "Appeler" - Seulement pour les réservations actives acceptées et non expirées */}
+          {activeTab === 'active' && !isExpired && booking.status === 'accepted' && trip?.driver?.phone && (
             <TouchableOpacity
               style={[styles.linkButton, styles.callButton]}
               onPress={() => {
@@ -204,7 +265,8 @@ export default function BookingsScreen() {
             </TouchableOpacity>
           )}
 
-          {activeTab === 'active' && (booking.status === 'pending' || booking.status === 'accepted') && (
+          {/* Bouton "Annuler" - Seulement pour les réservations actives et non expirées */}
+          {activeTab === 'active' && !isExpired && (booking.status === 'pending' || booking.status === 'accepted') && (
             <TouchableOpacity
               style={[styles.linkButton, styles.dangerButton]}
               onPress={() => handleCancel(booking.id)}

@@ -13,10 +13,16 @@ import { clearTokens, getTokens, storeTokens } from './tokenStorage';
 let isRefreshing = false;
 let refreshPromise: Promise<string | null> | null = null;
 
+// Normaliser l'URL de base pour éviter les doubles slashes
+const getNormalizedBaseUrl = () => {
+  if (!API_BASE_URL) return '';
+  return API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+};
+
 // Créer un baseQuery sans authentification pour le refresh token
 // Cela garantit la même configuration que Redux Query mais sans header Authorization
 const refreshBaseQuery = fetchBaseQuery({
-  baseUrl: API_BASE_URL,
+  baseUrl: getNormalizedBaseUrl(),
   // Pas de prepareHeaders - on ne veut pas de header Authorization pour le refresh
 });
 
@@ -99,9 +105,11 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
     return Promise.resolve(null);
   }
 
-  const refreshUrl = `${API_BASE_URL}/auth/refresh`;
+  const normalizedBaseUrl = getNormalizedBaseUrl();
+  const refreshUrl = `${normalizedBaseUrl}/auth/refresh`;
   console.log('Rafraîchissement de l\'access token');
   console.log('  - API_BASE_URL:', API_BASE_URL);
+  console.log('  - Normalized base URL:', normalizedBaseUrl);
   console.log('  - URL complète:', refreshUrl);
   console.log('  - Refresh token length:', refreshToken?.length || 0);
   
@@ -117,7 +125,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
       console.log('  - Début de la requête refresh');
       console.log('  - Body:', JSON.stringify({ refreshToken: refreshToken.substring(0, 20) + '...' }));
       
-      // Utiliser fetchBaseQuery pour garantir la même configuration que Redux Query
+      // Utiliser refreshBaseQuery qui utilise déjà l'URL normalisée
       const result = await refreshBaseQuery(
         {
           url: '/auth/refresh',
