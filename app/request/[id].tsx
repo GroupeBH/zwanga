@@ -27,11 +27,22 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Dimensions,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import type { DriverOffer, Vehicle } from '@/types';
+import Mapbox from '@rnmapbox/maps';
+import Constants from 'expo-constants';
+
+// Initialize Mapbox with access token from config
+const mapboxToken =
+  Constants.expoConfig?.extra?.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ||
+  process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
+if (mapboxToken) {
+  Mapbox.setAccessToken(mapboxToken);
+}
 
 export default function TripRequestDetailsScreen() {
   const router = useRouter();
@@ -539,6 +550,87 @@ export default function TripRequestDetailsScreen() {
             </View>
           </View>
         </View>
+
+        {/* Carte du trajet */}
+        {tripRequest.departure.lat && tripRequest.departure.lng && tripRequest.arrival.lat && tripRequest.arrival.lng && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Carte du trajet</Text>
+            <View style={styles.mapCard}>
+              <Mapbox.MapView
+                style={styles.mapView}
+                styleURL={Mapbox.StyleURL.Street}
+                scrollEnabled={false}
+                zoomEnabled={false}
+                pitchEnabled={false}
+                rotateEnabled={false}
+              >
+                <Mapbox.Camera
+                  defaultSettings={{
+                    centerCoordinate: [
+                      (tripRequest.departure.lng + tripRequest.arrival.lng) / 2,
+                      (tripRequest.departure.lat + tripRequest.arrival.lat) / 2,
+                    ],
+                    zoomLevel: 11,
+                  }}
+                  animationMode="none"
+                />
+
+                {/* Ligne directe entre départ et arrivée */}
+                <Mapbox.ShapeSource
+                  id="route-request"
+                  shape={{
+                    type: 'Feature',
+                    properties: {},
+                    geometry: {
+                      type: 'LineString',
+                      coordinates: [
+                        [tripRequest.departure.lng, tripRequest.departure.lat],
+                        [tripRequest.arrival.lng, tripRequest.arrival.lat],
+                      ],
+                    },
+                  }}
+                >
+                  <Mapbox.LineLayer
+                    id="route-request-line"
+                    style={{
+                      lineColor: Colors.primary,
+                      lineWidth: 4,
+                      lineCap: 'round',
+                      lineJoin: 'round',
+                      lineDasharray: [2, 2],
+                    }}
+                  />
+                </Mapbox.ShapeSource>
+
+                {/* Marqueur de départ */}
+                <Mapbox.PointAnnotation
+                  id="departure-request"
+                  coordinate={[tripRequest.departure.lng, tripRequest.departure.lat]}
+                >
+                  <View style={styles.markerStartCircle}>
+                    <Ionicons name="location" size={18} color={Colors.white} />
+                  </View>
+                  <Mapbox.Callout title="Départ">
+                    <Text>{tripRequest.departure.name}</Text>
+                  </Mapbox.Callout>
+                </Mapbox.PointAnnotation>
+
+                {/* Marqueur d'arrivée */}
+                <Mapbox.PointAnnotation
+                  id="arrival-request"
+                  coordinate={[tripRequest.arrival.lng, tripRequest.arrival.lat]}
+                >
+                  <View style={styles.markerEndCircle}>
+                    <Ionicons name="navigate" size={18} color={Colors.white} />
+                  </View>
+                  <Mapbox.Callout title="Destination">
+                    <Text>{tripRequest.arrival.name}</Text>
+                  </Mapbox.Callout>
+                </Mapbox.PointAnnotation>
+              </Mapbox.MapView>
+            </View>
+          </View>
+        )}
 
         {/* Détails */}
         <View style={styles.section}>
@@ -1507,6 +1599,36 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontWeight: FontWeights.bold,
     fontSize: FontSizes.base,
+  },
+  mapCard: {
+    height: 220,
+    borderRadius: BorderRadius.lg,
+    overflow: 'hidden',
+    backgroundColor: Colors.gray[200],
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  mapView: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  markerStartCircle: {
+    width: 32,
+    height: 32,
+    backgroundColor: Colors.success,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markerEndCircle: {
+    width: 32,
+    height: 32,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

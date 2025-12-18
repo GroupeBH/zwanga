@@ -88,9 +88,13 @@ export const authApi = baseApi.injectEndpoints({
     refreshToken: builder.mutation<{ accessToken: string; refreshToken: string }, { refreshToken: string }>({
       queryFn: async (data: { refreshToken: string }) => {
         try {
+          // Normaliser l'URL pour éviter les doubles slashes
+          const normalizedBaseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+          const refreshUrl = `${normalizedBaseUrl}/auth/refresh`;
+          
           // Utiliser fetch direct pour éviter de passer par baseQueryWithReauth
           // L'endpoint refresh ne nécessite pas d'authentification (pas de header Authorization)
-          const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          const response = await fetch(refreshUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
