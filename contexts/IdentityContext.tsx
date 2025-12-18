@@ -35,7 +35,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     refetch,
   } = useGetKycStatusQuery(undefined, {
     skip: !user,
-    pollingInterval: 60_000,
+    pollingInterval: 10_000, // Réduit à 10 secondes pour une mise à jour plus rapide
   });
 
   const normalizedUserStatus = user?.status?.toLowerCase?.();
