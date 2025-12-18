@@ -35,11 +35,23 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     if (isLoading) return;
 
     const enforceTokens = async () => {
-      // Aucun token disponible : forcer la déconnexion
-      if (!accessToken && !refreshToken) {
-        if (isAuthenticated) {
-          dispatch(logout());
-        }
+      // Si l'utilisateur est authentifié mais qu'on est dans le groupe auth, ne pas vérifier les tokens
+      // (permet de laisser l'utilisateur compléter le processus d'inscription/KYC)
+      if (isAuthenticated && inAuthGroup) {
+        return;
+      }
+
+      // Si l'utilisateur est authentifié mais qu'on n'a pas encore de tokens dans le store Redux,
+      // ne pas déconnecter immédiatement - les tokens sont peut-être en train d'être chargés
+      // ou viennent d'être sauvegardés dans SecureStore via onQueryStarted
+      // On attendra que les tokens soient chargés lors du prochain cycle de rendu
+      if (isAuthenticated && !accessToken && !refreshToken) {
+        console.log('[AuthGuard] Utilisateur authentifié mais tokens non encore dans le store - attente...');
+        return;
+      }
+
+      // Aucun token disponible ET utilisateur non authentifié : rediriger vers /auth
+      if (!accessToken && !refreshToken && !isAuthenticated) {
         if (!inAuthGroup) {
           router.replace('/auth');
         }
@@ -58,7 +70,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       // Access token manquant ou expiré mais refresh token valide -> tentative de refresh
       if (!accessToken || (accessToken && isTokenExpired(accessToken))) {
         const refreshed = refreshToken ? await refreshAccessToken(refreshToken) : null;
-        if (!refreshed && !inAuthGroup) {
+        if (!refreshed && !inAuthGroup && !isAuthenticated) {
           router.replace('/auth');
         }
       }
@@ -82,16 +94,22 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
 
     // Déterminer si on est dans une route protégée (tabs)
-    console.log(`[AuthGuard] Check: Auth=${isAuthenticated}, InAuthGroup=${inAuthGroup}, Segments=${JSON.stringify(segments)}`);
+    console.log(`[AuthGuard] Check: Auth=${isAuthenticated}, InAuthGroup=${inAuthGroup}, Segments=${JSON.stringify(segments)}, AccessToken=${!!accessToken}, RefreshToken=${!!refreshToken}`);
 
-    if (!isAuthenticated && !inAuthGroup) {
+    // Si l'utilisateur est authentifié mais qu'on est dans le groupe auth, ne pas rediriger
+    // (permet de laisser l'utilisateur compléter le processus d'inscription/KYC)
+    if (isAuthenticated && inAuthGroup) {
+      console.log('[AuthGuard] Authentifié dans le groupe auth. Pas de redirection automatique (pour permettre KYC).');
+      return;
+    }
+
+    // Si l'utilisateur n'est pas authentifié et qu'on n'est pas dans le groupe auth, rediriger vers /auth
+    // Mais seulement si on n'a vraiment pas de tokens (pour éviter les redirections pendant la connexion)
+    if (!isAuthenticated && !inAuthGroup && !accessToken && !refreshToken) {
       console.log('[AuthGuard] Non authentifié et hors du groupe auth - redirection vers /auth');
       router.replace('/auth');
-    } else if (isAuthenticated && inAuthGroup) {
-      console.log('[AuthGuard] Authentifié dans le groupe auth. Pas de redirection automatique (pour permettre KYC).');
     }
-    // Auto-redirection suppressed to allow post-registration flows (KYC)
-  }, [isAuthenticated, isLoading, segments, inAuthGroup, router]);
+  }, [isAuthenticated, isLoading, segments, inAuthGroup, router, accessToken, refreshToken]);
 
   useEffect(() => {
     let cancelled = false;

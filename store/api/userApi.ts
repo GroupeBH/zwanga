@@ -104,6 +104,9 @@ export const userApi = baseApi.injectEndpoints({
           // Wait for KYC upload to complete successfully
           await queryFulfilled;
 
+          // Invalider immédiatement le cache KYC pour forcer un refetch
+          dispatch(userApi.util.invalidateTags(['KycStatus']));
+
           // Get current refresh token from secure storage
           const refreshToken = await getRefreshToken();
 
@@ -115,20 +118,35 @@ export const userApi = baseApi.injectEndpoints({
             ).unwrap();
 
             console.log('Tokens refreshed successfully after KYC upload');
+            
+            // Invalider les tags User et KycStatus pour forcer un refetch immédiat
+            // Cela garantit que tous les composants utilisant ces données se mettent à jour
+            dispatch(userApi.util.invalidateTags(['User', 'KycStatus']));
+            
+            // Forcer un refetch immédiat du statut KYC et du profil utilisateur
+            dispatch(userApi.endpoints.getKycStatus.initiate(undefined, { forceRefetch: true }));
+            dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true }));
           } else {
             console.warn('No refresh token available after KYC upload');
+            // Même sans refresh token, forcer un refetch du statut KYC
+            dispatch(userApi.util.invalidateTags(['KycStatus']));
+            dispatch(userApi.endpoints.getKycStatus.initiate(undefined, { forceRefetch: true }));
           }
         } catch (error) {
           // Don't throw - KYC upload was successful, token refresh is optional
           // The user can still continue using the app with the old token
           console.error('Error refreshing tokens after KYC upload:', error);
+          // Même en cas d'erreur, invalider les tags et forcer un refetch du statut KYC
+          dispatch(userApi.util.invalidateTags(['KycStatus']));
+          dispatch(userApi.endpoints.getKycStatus.initiate(undefined, { forceRefetch: true }));
         }
       },
-      invalidatesTags: ['User'],
+      invalidatesTags: ['User', 'KycStatus'],
     }),
 
     getKycStatus: builder.query<KycDocument | null, void>({
       query: () => '/users/kyc/status',
+      providesTags: ['KycStatus'],
     }),
 
     updateFcmToken: builder.mutation<{ message: string }, { fcmToken: string }>({

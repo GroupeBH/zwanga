@@ -637,7 +637,13 @@ export default function ManageTripScreen() {
             </View>
           ) : (
             bookings?.map((booking, index) => {
-              const statusConfig = BOOKING_STATUS_CONFIG[booking.status];
+              // Protection contre les statuts manquants ou inattendus
+              const bookingStatus = booking.status as BookingStatus;
+              const statusConfig = (bookingStatus && BOOKING_STATUS_CONFIG[bookingStatus]) || {
+                label: bookingStatus || 'Inconnu',
+                color: Colors.gray[600],
+                background: 'rgba(156, 163, 175, 0.2)',
+              };
               const isProcessing =
                 processingBookingId === booking.id && (isAccepting || isRejecting);
               return (

@@ -73,14 +73,24 @@ export default function HomeScreen() {
 
   const baseTrips = remoteTrips ?? storedTrips ?? [];
   const latestTrips = useMemo(() => {
-    return [...baseTrips]
+    // Filtrer les trajets pour exclure ceux publiés par l'utilisateur actuel
+    const filteredTrips = baseTrips.filter((trip) => {
+      // Si l'utilisateur n'est pas connecté, afficher tous les trajets
+      if (!currentUser?.id) {
+        return true;
+      }
+      // Exclure les trajets dont l'utilisateur est le driver
+      return trip.driverId !== currentUser.id;
+    });
+    
+    return [...filteredTrips]
       .sort((a, b) => {
         const dateA = new Date(a.departureTime).getTime();
         const dateB = new Date(b.departureTime).getTime();
         return dateB - dateA;
       })
       .slice(0, RECENT_TRIPS_LIMIT);
-  }, [baseTrips]);
+  }, [baseTrips, currentUser?.id]);
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
   const [addMode, setAddMode] = useState(false);
@@ -563,7 +573,7 @@ export default function HomeScreen() {
             </View>
           )}
 
-          {!tripsLoading && !tripsError && baseTrips.length === 0 && (
+          {!tripsLoading && !tripsError && latestTrips.length === 0 && (
             <View style={styles.tripStateCard}>
               <Ionicons name="car-outline" size={24} color={Colors.gray[500]} />
               <Text style={styles.tripStateText}>Aucun trajet pour le moment.</Text>
