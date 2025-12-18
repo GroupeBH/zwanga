@@ -107,23 +107,54 @@ export default function PublishScreen() {
     try {
       setKycSubmitting(true);
       const formData = buildKycFormData({ front, back, selfie });
-      await uploadKyc(formData).unwrap();
+      const result = await uploadKyc(formData).unwrap();
       setKycModalVisible(false);
+      
+      // Refetch immédiatement pour obtenir le statut mis à jour
       await refetchKycStatus();
-      showDialog({
-        variant: 'success',
-        title: 'Documents envoyés',
-        message: 'Nous vous informerons dès que la vérification sera terminée.',
-      });
+      
+      // Vérifier le statut retourné par le backend
+      const kycStatusAfterUpload = result?.status;
+      
+      if (kycStatusAfterUpload === 'approved') {
+        // KYC approuvé immédiatement (validation automatique réussie)
+        showDialog({
+          variant: 'success',
+          title: 'KYC validé avec succès !',
+          message: 'Votre identité a été vérifiée automatiquement. Vous pouvez maintenant publier vos trajets.',
+        });
+      } else if (kycStatusAfterUpload === 'rejected') {
+        // KYC rejeté (validation automatique échouée)
+        const rejectionReason = result?.rejectionReason || 'Votre demande KYC a été rejetée.';
+        showDialog({
+          variant: 'danger',
+          title: 'KYC rejeté',
+          message: rejectionReason,
+        });
+      } else {
+        // KYC en attente (validation manuelle requise)
+        showDialog({
+          variant: 'success',
+          title: 'Documents envoyés',
+          message: 'Vos documents sont en cours de vérification. Nous vous informerons dès que la vérification sera terminée.',
+        });
+      }
     } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        'Impossible de soumettre les documents pour le moment.';
+      // Gérer les erreurs détaillées du backend
+      let errorMessage = error?.data?.message ?? error?.error ?? 'Impossible de soumettre les documents pour le moment.';
+      
+      // Si le message est une chaîne, la traiter directement
+      if (typeof errorMessage === 'string') {
+        // Le backend peut retourner des messages multi-lignes avec des détails
+        errorMessage = errorMessage;
+      } else if (Array.isArray(errorMessage)) {
+        errorMessage = errorMessage.join('\n');
+      }
+      
       showDialog({
         variant: 'danger',
         title: 'Erreur KYC',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message: errorMessage,
       });
     } finally {
       setKycSubmitting(false);
