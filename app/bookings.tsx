@@ -210,21 +210,21 @@ export default function BookingsScreen() {
                   <Ionicons name="person" size={20} color={Colors.gray[500]} />
                 </View>
               )}
-              <View>
-                <Text style={styles.bookingTitle}>
+              <View style={styles.bookingHeaderTextContainer}>
+                <Text style={styles.bookingTitle} numberOfLines={1} ellipsizeMode="tail">
                   {trip?.departure.name ?? 'Trajet'} → {trip?.arrival.name ?? ''}
                 </Text>
-                <Text style={styles.bookingSubtitle}>
+                <Text style={styles.bookingSubtitle} numberOfLines={1} ellipsizeMode="tail">
                   {trip ? `${formatDateWithRelativeLabel(trip.departureTime)} → ${arrivalTimeDisplay}` : ''}
                 </Text>
               </View>
             </View>
-          <View style={[styles.statusBadge, { backgroundColor: statusConfig.background }]}>
-            <Text style={[styles.statusText, { color: statusConfig.color }]}>
-              {statusConfig.label}
-            </Text>
+            <View style={[styles.statusBadge, { backgroundColor: statusConfig.background }]}>
+              <Text style={[styles.statusText, { color: statusConfig.color }]} numberOfLines={1}>
+                {statusConfig.label}
+              </Text>
+            </View>
           </View>
-        </View>
 
         <View style={styles.bookingMeta}>
           <View style={styles.metaItem}>
@@ -578,11 +578,14 @@ const styles = StyleSheet.create({
   bookingHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
   },
   bookingHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+    minWidth: 0,
   },
   bookingDriverAvatar: {
     width: 48,
@@ -593,6 +596,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
+  },
+  bookingHeaderTextContainer: {
+    flex: 1,
+    minWidth: 0,
   },
   bookingTitle: {
     fontSize: FontSizes.lg,
@@ -602,11 +610,14 @@ const styles = StyleSheet.create({
   bookingSubtitle: {
     color: Colors.gray[500],
     marginTop: Spacing.xs,
+    fontSize: FontSizes.sm,
   },
   statusBadge: {
     borderRadius: BorderRadius.full,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
+    flexShrink: 0,
+    alignSelf: 'flex-start',
   },
   statusText: {
     fontSize: FontSizes.xs,
