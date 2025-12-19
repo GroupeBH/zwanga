@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -12,14 +12,17 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
 import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
 import {
   useGetNotificationsQuery,
   useMarkNotificationsAsReadMutation,
   useMarkAllNotificationsAsReadMutation,
+  useDisableNotificationsMutation,
 } from '@/store/api/notificationApi';
 import type { Notification } from '@/types';
 import { formatDateTime, formatRelativeTime } from '@/utils/dateHelpers';
+import { useDialog } from '@/components/ui/DialogProvider';
 
 const notificationTypeConfig: Record<
   string,
@@ -49,6 +52,7 @@ const notificationTypeConfig: Record<
 
 export default function NotificationsScreen() {
   const router = useRouter();
+  const { showDialog } = useDialog();
   const {
     data: notificationsData,
     isLoading,
@@ -57,7 +61,9 @@ export default function NotificationsScreen() {
   } = useGetNotificationsQuery();
   const [markNotificationsAsRead] = useMarkNotificationsAsReadMutation();
   const [markAllAsRead] = useMarkAllNotificationsAsReadMutation();
+  const [disableNotifications] = useDisableNotificationsMutation();
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const swipeableRefs = useRef<Map<string, Swipeable | null>>(new Map());
 
   const notifications = notificationsData?.notifications ?? [];
   const unreadCount = notificationsData?.unreadCount ?? 0;
@@ -79,6 +85,52 @@ export default function NotificationsScreen() {
     } catch (error) {
       console.warn('Impossible de marquer toutes les notifications comme lues:', error);
     }
+  };
+
+  const handleDeleteNotification = async (notificationId: string) => {
+    try {
+      await disableNotifications({ notificationIds: [notificationId] }).unwrap();
+      // Fermer le swipeable après suppression
+      swipeableRefs.current.get(notificationId)?.close();
+    } catch (error: any) {
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: error?.data?.message || 'Impossible de supprimer la notification',
+      });
+    }
+  };
+
+  const renderRightActions = (notification: Notification) => {
+    return (
+      <View style={styles.rightActionContainer}>
+        <TouchableOpacity
+          style={styles.deleteAction}
+          onPress={() => {
+            handleDeleteNotification(notification.id);
+          }}
+        >
+          <Ionicons name="trash-outline" size={20} color={Colors.white} />
+          <Text style={styles.deleteActionText}>Supprimer</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderLeftActions = (notification: Notification) => {
+    return (
+      <View style={styles.leftActionContainer}>
+        <TouchableOpacity
+          style={styles.deleteAction}
+          onPress={() => {
+            handleDeleteNotification(notification.id);
+          }}
+        >
+          <Ionicons name="trash-outline" size={20} color={Colors.white} />
+          <Text style={styles.deleteActionText}>Supprimer</Text>
+        </TouchableOpacity>
+      </View>
+    );
   };
 
   const renderNotificationData = (data: Record<string, any>) => {
@@ -121,31 +173,55 @@ export default function NotificationsScreen() {
     const isUnread = !notification.isRead;
 
     return (
-      <TouchableOpacity
+      <Swipeable
         key={notification.id}
-        style={[styles.notificationCard, isUnread && styles.notificationCardUnread]}
-        onPress={() => handleSelectNotification(notification)}
-        activeOpacity={0.85}
+        ref={(ref) => {
+          if (ref) {
+            swipeableRefs.current.set(notification.id, ref);
+          } else {
+            swipeableRefs.current.delete(notification.id);
+          }
+        }}
+        renderRightActions={() => renderRightActions(notification)}
+        renderLeftActions={() => renderLeftActions(notification)}
+        onSwipeableWillOpen={() => {
+          // Fermer les autres swipeables ouverts
+          swipeableRefs.current.forEach((ref, id) => {
+            if (id !== notification.id && ref) {
+              ref.close();
+            }
+          });
+        }}
+        friction={2}
+        overshootRight={false}
+        overshootLeft={false}
       >
-        <View style={[styles.notificationIcon, { backgroundColor: config.background }]}>
-          <Ionicons name={config.icon} size={20} color={config.color} />
-        </View>
-        <View style={styles.notificationContent}>
-          <View style={styles.notificationHeader}>
-            <Text style={styles.notificationTitle}>{notification.title}</Text>
-            <Text style={styles.notificationTime}>{formatRelativeTime(notification.createdAt)}</Text>
+        <TouchableOpacity
+          style={[styles.notificationCard, isUnread && styles.notificationCardUnread]}
+          onPress={() => handleSelectNotification(notification)}
+          activeOpacity={0.85}
+        >
+          <View style={[styles.notificationIcon, { backgroundColor: config.background }]}>
+            <Ionicons name={config.icon} size={20} color={config.color} />
           </View>
-          <Text style={styles.notificationMessage} numberOfLines={2}>
-            {notification.body}
-          </Text>
-        </View>
-        {isUnread && <View style={styles.unreadDot} />}
-      </TouchableOpacity>
+          <View style={styles.notificationContent}>
+            <View style={styles.notificationHeader}>
+              <Text style={styles.notificationTitle}>{notification.title}</Text>
+              <Text style={styles.notificationTime}>{formatRelativeTime(notification.createdAt)}</Text>
+            </View>
+            <Text style={styles.notificationMessage} numberOfLines={2}>
+              {notification.body}
+            </Text>
+          </View>
+          {isUnread && <View style={styles.unreadDot} />}
+        </TouchableOpacity>
+      </Swipeable>
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <GestureHandlerRootView style={styles.container}>
+      <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={22} color={Colors.gray[900]} />
@@ -228,7 +304,8 @@ export default function NotificationsScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+      </SafeAreaView>
+    </GestureHandlerRootView>
   );
 }
 
@@ -467,6 +544,34 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
+  },
+  rightActionContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginBottom: Spacing.md,
+  },
+  leftActionContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginBottom: Spacing.md,
+  },
+  deleteAction: {
+    backgroundColor: Colors.danger,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 100,
+    height: '100%',
+    borderRadius: BorderRadius.xl,
+    marginHorizontal: Spacing.xs,
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  },
+  deleteActionText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
   },
 });
 

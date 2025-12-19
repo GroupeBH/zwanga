@@ -5,7 +5,9 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -365,95 +367,114 @@ export default function SecurityScreen() {
         }}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {editingContact ? 'Modifier le contact' : 'Ajouter un contact'}
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setShowAddModal(false);
-                  resetForm();
-                }}
-              >
-                <Ionicons name="close" size={24} color={Colors.gray[600]} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Nom *</Text>
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="Ex: Jean Dupont"
-                  placeholderTextColor={Colors.gray[400]}
-                  value={formData.name}
-                  onChangeText={(text) => setFormData({ ...formData, name: text })}
-                />
+          <TouchableOpacity
+            style={styles.modalOverlayTouchable}
+            activeOpacity={1}
+            onPress={() => {
+              setShowAddModal(false);
+              resetForm();
+            }}
+          />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.keyboardAvoidingView}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+          >
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>
+                  {editingContact ? 'Modifier le contact' : 'Ajouter un contact'}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowAddModal(false);
+                    resetForm();
+                  }}
+                >
+                  <Ionicons name="close" size={24} color={Colors.gray[600]} />
+                </TouchableOpacity>
               </View>
 
-              <View style={styles.formGroup}>
-                <View style={styles.phoneInputRow}>
-                  <View style={styles.phoneInputContainer}>
-                    <Text style={styles.formLabel}>Numéro de téléphone *</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      placeholder="Ex: +243 900 000 000"
-                      placeholderTextColor={Colors.gray[400]}
-                      value={formData.phone}
-                      onChangeText={(text) => setFormData({ ...formData, phone: text })}
-                      keyboardType="phone-pad"
-                    />
-                  </View>
-                  <TouchableOpacity
-                    style={styles.contactPickerButton}
-                    onPress={pickFromContacts}
-                  >
-                    <Ionicons name="person-add-outline" size={20} color={Colors.primary} />
-                  </TouchableOpacity>
+              <ScrollView
+                style={styles.modalBody}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.modalBodyContent}
+              >
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Nom *</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="Ex: Jean Dupont"
+                    placeholderTextColor={Colors.gray[400]}
+                    value={formData.name}
+                    onChangeText={(text) => setFormData({ ...formData, name: text })}
+                  />
                 </View>
-              </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Relation (optionnel)</Text>
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="Ex: Mère, Père, Ami..."
-                  placeholderTextColor={Colors.gray[400]}
-                  value={formData.relationship}
-                  onChangeText={(text) => setFormData({ ...formData, relationship: text })}
-                />
-              </View>
-            </ScrollView>
+                <View style={styles.formGroup}>
+                  <View style={styles.phoneInputRow}>
+                    <View style={styles.phoneInputContainer}>
+                      <Text style={styles.formLabel}>Numéro de téléphone *</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="Ex: +243 900 000 000"
+                        placeholderTextColor={Colors.gray[400]}
+                        value={formData.phone}
+                        onChangeText={(text) => setFormData({ ...formData, phone: text })}
+                        keyboardType="phone-pad"
+                      />
+                    </View>
+                    <TouchableOpacity
+                      style={styles.contactPickerButton}
+                      onPress={pickFromContacts}
+                    >
+                      <Ionicons name="person-add-outline" size={20} color={Colors.primary} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
 
-            <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => {
-                  setShowAddModal(false);
-                  resetForm();
-                }}
-              >
-                <Text style={styles.cancelButtonText}>Annuler</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.saveButton,
-                  (!formData.name.trim() || !formData.phone.trim()) && styles.saveButtonDisabled,
-                ]}
-                onPress={editingContact ? handleEditContact : handleAddContact}
-                disabled={!formData.name.trim() || !formData.phone.trim() || loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <Text style={styles.saveButtonText}>
-                    {editingContact ? 'Enregistrer' : 'Ajouter'}
-                  </Text>
-                )}
-              </TouchableOpacity>
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Relation (optionnel)</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="Ex: Mère, Père, Ami..."
+                    placeholderTextColor={Colors.gray[400]}
+                    value={formData.relationship}
+                    onChangeText={(text) => setFormData({ ...formData, relationship: text })}
+                  />
+                </View>
+              </ScrollView>
+
+              <View style={styles.modalFooter}>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() => {
+                    setShowAddModal(false);
+                    resetForm();
+                  }}
+                >
+                  <Text style={styles.cancelButtonText}>Annuler</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.saveButton,
+                    (!formData.name.trim() || !formData.phone.trim()) && styles.saveButtonDisabled,
+                  ]}
+                  onPress={editingContact ? handleEditContact : handleAddContact}
+                  disabled={!formData.name.trim() || !formData.phone.trim() || loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color={Colors.white} />
+                  ) : (
+                    <Text style={styles.saveButtonText}>
+                      {editingContact ? 'Enregistrer' : 'Ajouter'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </SafeAreaView>
@@ -631,6 +652,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
+  modalOverlayTouchable: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  keyboardAvoidingView: {
+    justifyContent: 'flex-end',
+  },
   modalContent: {
     backgroundColor: Colors.white,
     borderTopLeftRadius: BorderRadius.xl,
@@ -651,6 +682,9 @@ const styles = StyleSheet.create({
     color: Colors.gray[900],
   },
   modalBody: {
+    maxHeight: 400,
+  },
+  modalBodyContent: {
     padding: Spacing.lg,
   },
   formGroup: {
@@ -691,6 +725,7 @@ const styles = StyleSheet.create({
   modalFooter: {
     flexDirection: 'row',
     padding: Spacing.lg,
+    paddingBottom: Spacing.xl,
     borderTopWidth: 1,
     borderTopColor: Colors.gray[200],
     gap: Spacing.md,

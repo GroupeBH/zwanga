@@ -107,6 +107,26 @@ export const notificationApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['Notification'],
     }),
+
+    // Désactiver des notifications (les retirer de la liste affichée)
+    disableNotifications: builder.mutation<MarkNotificationsResponse, MarkNotificationsAsReadPayload>({
+      query: (payload) => ({
+        url: '/notifications/disable',
+        method: 'PUT',
+        body: payload,
+      }),
+      invalidatesTags: ['Notification'],
+    }),
+
+    // Réactiver des notifications (les remettre dans la liste affichée)
+    enableNotifications: builder.mutation<MarkNotificationsResponse, MarkNotificationsAsReadPayload>({
+      query: (payload) => ({
+        url: '/notifications/enable',
+        method: 'PUT',
+        body: payload,
+      }),
+      invalidatesTags: ['Notification'],
+    }),
   }),
 });
 
@@ -115,6 +135,8 @@ export const {
   useMarkNotificationsAsReadMutation,
   useMarkAllNotificationsAsReadMutation,
   useMarkNotificationsAsUnreadMutation,
+  useDisableNotificationsMutation,
+  useEnableNotificationsMutation,
 } = notificationApi;
 
 
