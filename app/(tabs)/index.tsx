@@ -540,8 +540,8 @@ export default function HomeScreen() {
                 <View style={[styles.quickActionIcon, { backgroundColor: '#8B5CF6' }]}>
                   <Ionicons name="list" size={24} color={Colors.white} />
                 </View>
-                <Text style={styles.quickActionTitle}>Mes demandes</Text>
-                <Text style={styles.quickActionSubtitle}>Voir mes demandes</Text>
+                <Text style={styles.quickActionTitle}>les demandes</Text>
+                <Text style={styles.quickActionSubtitle}>Voir les demandes</Text>
               </TouchableOpacity>
             )}
           </View>
