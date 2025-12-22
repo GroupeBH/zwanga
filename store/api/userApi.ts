@@ -3,6 +3,7 @@ import type { KycDocument, ProfileStats, ProfileSummary, User, UserRole, Vehicle
 import { authApi } from './authApi';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
+import type { FetchBaseQueryError } from '@reduxjs/toolkit/query';
 
 type ServerUser = Record<string, any>;
 
@@ -157,6 +158,44 @@ export const userApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['User'],
     }),
+
+    // Envoyer un code OTP pour la vérification du numéro de téléphone
+    sendPhoneVerificationOtp: builder.mutation<{ message: string }, { phone: string; context: 'registration' | 'login' | 'update' }>({
+      queryFn: async (data: { phone: string; context: 'registration' | 'login' | 'update' }, _api, _extraOptions, baseQuery) => {
+        console.log('sendPhoneVerificationOtp queryFn called with:', data);
+        
+        // S'assurer que le contexte est bien défini
+        if (!data.context || (data.context !== 'login' && data.context !== 'registration' && data.context !== 'update')) {
+          return {
+            error: {
+              status: 'CUSTOM_ERROR',
+              data: `Invalid context: ${data.context}`,
+              error: `Invalid context: ${data.context}`,
+            },
+          };
+        }
+        
+        const result = await baseQuery({
+          url: '/users/phone/send-otp',
+          method: 'POST',
+          body: {
+            phone: data.phone,
+            context: data.context,
+          },
+        });
+        
+        return result;
+      },
+    }),
+
+    // Vérifier le code OTP pour la vérification du numéro de téléphone
+    verifyPhoneOtp: builder.mutation<{ message: string; valid: boolean }, { phone: string; otp: string }>({
+      query: ({ phone, otp }: { phone: string; otp: string }) => ({
+        url: '/users/phone/verify',
+        method: 'POST',
+        body: { phone, otp },
+      }),
+    }),
   }),
 });
 
@@ -168,4 +207,6 @@ export const {
   useUploadKycMutation,
   useGetKycStatusQuery,
   useUpdateFcmTokenMutation,
+  useSendPhoneVerificationOtpMutation,
+  useVerifyPhoneOtpMutation,
 } = userApi;

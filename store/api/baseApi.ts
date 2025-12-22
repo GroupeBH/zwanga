@@ -37,7 +37,7 @@ const baseQueryWithReauth: BaseQueryFn<
   // Première tentative
   let result = await baseQueryWithAuth(args, api, extraOptions);
 
-  // Si erreur 401 (Unauthorized)
+  // Si erreur 401 (Unauthorized) - mais pas si c'est une erreur réseau
   if (result.error && result.error.status === 401) {
     if (!mutex.isLocked()) {
       const release = await mutex.acquire();
@@ -56,7 +56,9 @@ const baseQueryWithReauth: BaseQueryFn<
             // Le baseQueryWithAuth va choper le nouveau token via getValidAccessToken/state
             result = await baseQueryWithAuth(args, api, extraOptions);
           } else {
-            // Refresh échoué - logout géré par refreshAccessToken
+            // Refresh échoué - peut-être une erreur réseau (offline)
+            // refreshAccessToken ne déconnecte plus en cas d'erreur réseau
+            // On retourne simplement l'erreur 401 originale
             // result reste 401
           }
         } else {
@@ -72,6 +74,13 @@ const baseQueryWithReauth: BaseQueryFn<
       await mutex.waitForUnlock();
       result = await baseQueryWithAuth(args, api, extraOptions);
     }
+  }
+  
+  // Si erreur réseau (FETCH_ERROR), ne pas déconnecter l'utilisateur
+  // L'utilisateur peut continuer à utiliser l'app en mode offline
+  if (result.error && result.error.status === 'FETCH_ERROR') {
+    console.warn('[baseApi] Erreur réseau détectée - utilisateur reste connecté');
+    // Retourner l'erreur mais ne pas déconnecter
   }
 
   return result;

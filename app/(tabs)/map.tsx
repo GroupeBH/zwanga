@@ -37,6 +37,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { searchMapboxPlaces, getMapboxPlaceDetails, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
+import { getCachedRouteCoordinates, type RouteCoordinates } from '@/utils/mapboxDirections';
 
 type LatLng = { latitude: number; longitude: number };
 
@@ -88,6 +89,92 @@ export default function MapScreen() {
   const [mapboxSuggestions, setMapboxSuggestions] = useState<MapboxSearchSuggestion[]>([]);
   const [mapboxLoading, setMapboxLoading] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [routeCoordinatesCache, setRouteCoordinatesCache] = useState<Map<string, RouteCoordinates[]>>(new Map());
+  const [loadingRoutes, setLoadingRoutes] = useState<Set<string>>(new Set());
+
+  // Charger les itinéraires pour tous les trajets
+  useEffect(() => {
+    const loadRoutes = async () => {
+      const tripsToLoad: Array<{
+        tripId: string;
+        start: RouteCoordinates;
+        end: RouteCoordinates;
+      }> = [];
+
+      // Identifier les trajets qui ont besoin d'un itinéraire
+      for (const trip of trips) {
+        const departureCoords =
+          trip.departure?.lat && trip.departure?.lng
+            ? { latitude: trip.departure.lat, longitude: trip.departure.lng }
+            : null;
+        const arrivalCoords =
+          trip.arrival?.lat && trip.arrival?.lng
+            ? { latitude: trip.arrival.lat, longitude: trip.arrival.lng }
+            : null;
+
+        if (!departureCoords || !arrivalCoords) continue;
+
+        const cacheKey = `${trip.id}-route`;
+        
+        // Ne pas recharger si déjà en cache ou en cours de chargement
+        if (routeCoordinatesCache.has(cacheKey) || loadingRoutes.has(cacheKey)) {
+          continue;
+        }
+
+        tripsToLoad.push({
+          tripId: trip.id,
+          start: departureCoords,
+          end: arrivalCoords,
+        });
+      }
+
+      // Charger les itinéraires en parallèle (mais avec un délai pour éviter trop de requêtes simultanées)
+      for (const { tripId, start, end } of tripsToLoad) {
+        const cacheKey = `${tripId}-route`;
+        
+        setLoadingRoutes(prev => new Set(prev).add(cacheKey));
+
+        try {
+          const route = await getCachedRouteCoordinates(start, end);
+          
+          if (route && route.length > 0) {
+            setRouteCoordinatesCache(prev => {
+              const newCache = new Map(prev);
+              newCache.set(cacheKey, route);
+              return newCache;
+            });
+          } else {
+            // Fallback sur ligne droite si l'API échoue
+            setRouteCoordinatesCache(prev => {
+              const newCache = new Map(prev);
+              newCache.set(cacheKey, [start, end]);
+              return newCache;
+            });
+          }
+        } catch (error) {
+          console.warn(`Error loading route for trip ${tripId}:`, error);
+          // Fallback sur ligne droite
+          setRouteCoordinatesCache(prev => {
+            const newCache = new Map(prev);
+            newCache.set(cacheKey, [start, end]);
+            return newCache;
+          });
+        } finally {
+          setLoadingRoutes(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(cacheKey);
+            return newSet;
+          });
+        }
+
+        // Petit délai entre les requêtes pour éviter de surcharger l'API
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    };
+
+    loadRoutes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trips.map(t => t.id).join(',')]); // Seulement recharger si les IDs des trajets changent
 
   const toggleMapExpansion = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -145,10 +232,22 @@ export default function MapScreen() {
     };
   }, [userCoords, trips]);
 
-  const renderPolyline = (tripId: string, color: string, coordinates: { latitude: number; longitude: number }[]) => {
-    if (coordinates.length < 2) return null;
+  const renderPolyline = (
+    tripId: string,
+    color: string,
+    start: { latitude: number; longitude: number },
+    end: { latitude: number; longitude: number },
+  ) => {
+    const cacheKey = `${tripId}-route`;
+    const cachedRoute = routeCoordinatesCache.get(cacheKey);
+    const isLoading = loadingRoutes.has(cacheKey);
 
-    const lineCoordinates = coordinates.map(coord => [coord.longitude, coord.latitude] as [number, number]);
+    // Utiliser l'itinéraire depuis le cache s'il est disponible
+    const coordinatesToUse = cachedRoute && cachedRoute.length > 0 
+      ? cachedRoute 
+      : [start, end]; // Fallback sur ligne droite
+
+    const lineCoordinates = coordinatesToUse.map(coord => [coord.longitude, coord.latitude] as [number, number]);
 
     return (
       <Mapbox.ShapeSource
@@ -170,6 +269,11 @@ export default function MapScreen() {
             lineWidth: 3,
             lineCap: 'round',
             lineJoin: 'round',
+            // Ligne pointillée si c'est une ligne droite temporaire (pas encore chargé ou échec)
+            ...(isLoading || !cachedRoute || cachedRoute.length === 2 ? { 
+              lineDasharray: [2, 2],
+              lineOpacity: 0.6 
+            } : {}),
           }}
         />
       </Mapbox.ShapeSource>
@@ -521,7 +625,7 @@ export default function MapScreen() {
               )}
               {departureCoords &&
                 arrivalCoords &&
-                renderPolyline(trip.id, Colors.primary, [departureCoords, arrivalCoords])}
+                renderPolyline(trip.id, Colors.primary, departureCoords, arrivalCoords)}
             </React.Fragment>
           );
         })}
