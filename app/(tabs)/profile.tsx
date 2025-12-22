@@ -192,7 +192,7 @@ export default function ProfileScreen() {
       await Promise.all([refetchVehicles(), refetchProfile()]);
     } catch (error: any) {
       const message =
-        error?.data?.message ?? error?.error ?? 'Impossible d’ajouter le véhicule pour le moment.';
+        error?.data?.message ?? error?.error ?? 'Impossible d\’ajouter le véhicule pour le moment.';
       showDialog({
         variant: 'danger',
         title: 'Erreur',
@@ -261,30 +261,61 @@ export default function ProfileScreen() {
       showDialog({
         variant: 'warning',
         title: 'Documents requis',
-        message: 'Merci de fournir les deux faces de votre pièce ainsi qu’un selfie.',
+        message: 'Merci de fournir les deux faces de votre pièce ainsi qu\'un selfie.',
       });
       return;
     }
     try {
       setKycSubmitting(true);
       const formData = buildKycFormData({ front, back, selfie });
-      await uploadKyc(formData).unwrap();
+      const result = await uploadKyc(formData).unwrap();
       setKycModalVisible(false);
+      
+      // Refetch immédiatement pour obtenir le statut mis à jour
       await Promise.all([refetchKycStatus(), refetchProfile()]);
-      showDialog({
-        variant: 'success',
-        title: 'Documents envoyés',
-        message: 'Nous vous informerons dès que la vérification sera terminée.',
-      });
+      
+      // Vérifier le statut retourné par le backend
+      const kycStatusAfterUpload = result?.status;
+      
+      if (kycStatusAfterUpload === 'approved') {
+        // KYC approuvé immédiatement (validation automatique réussie)
+        showDialog({
+          variant: 'success',
+          title: 'KYC validé avec succès !',
+          message: 'Votre identité a été vérifiée automatiquement. Vous pouvez maintenant accéder à toutes les fonctionnalités de l\'application.',
+        });
+      } else if (kycStatusAfterUpload === 'rejected') {
+        // KYC rejeté (validation automatique échouée)
+        const rejectionReason = result?.rejectionReason || 'Votre demande KYC a été rejetée.';
+        showDialog({
+          variant: 'danger',
+          title: 'KYC rejeté',
+          message: rejectionReason,
+        });
+      } else {
+        // KYC en attente (validation manuelle requise)
+        showDialog({
+          variant: 'success',
+          title: 'Documents envoyés',
+          message: 'Vos documents sont en cours de vérification. Nous vous informerons dès que la vérification sera terminée.',
+        });
+      }
     } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        'Impossible de soumettre les documents pour le moment.';
+      // Gérer les erreurs détaillées du backend
+      let errorMessage = error?.data?.message ?? error?.error ?? 'Impossible de soumettre les documents pour le moment.';
+      
+      // Si le message est une chaîne, la traiter directement
+      if (typeof errorMessage === 'string') {
+        // Le backend peut retourner des messages multi-lignes avec des détails
+        errorMessage = errorMessage;
+      } else if (Array.isArray(errorMessage)) {
+        errorMessage = errorMessage.join('\n');
+      }
+      
       showDialog({
         variant: 'danger',
         title: 'Erreur KYC',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message: errorMessage,
       });
     } finally {
       setKycSubmitting(false);
@@ -315,6 +346,13 @@ export default function ProfileScreen() {
 
   const menuItems = [
     { icon: 'person-outline', label: 'Modifier le profil', route: '/edit-profile' },
+    { icon: 'document-text-outline', label: 'Mes demandes de trajet', route: '/my-requests' },
+    ...(currentUser?.isDriver
+      ? [
+          { icon: 'list-outline', label: 'Demandes disponibles', route: '/requests' },
+          { icon: 'briefcase-outline', label: 'Mes offres', route: '/my-offers' },
+        ]
+      : []),
     { icon: 'notifications-outline', label: 'Notifications', route: '/notifications' },
     { icon: 'settings-outline', label: 'Paramètres', route: '/settings' },
     { icon: 'help-circle-outline', label: 'Aide & Support', route: '/support' },
@@ -557,9 +595,12 @@ export default function ProfileScreen() {
                     : 'Non vérifié'}
             </Text>
             {isKycRejected && kycStatus?.rejectionReason ? (
-              <Text style={styles.kycRejectionText}>
-                Motif: {kycStatus.rejectionReason}
-              </Text>
+              <View style={styles.kycRejectionContainer}>
+                <Text style={styles.kycRejectionTitle}>Motif du rejet :</Text>
+                <Text style={styles.kycRejectionText}>
+                  {kycStatus.rejectionReason}
+                </Text>
+              </View>
             ) : null}
             <Text style={styles.kycHelperText}>
               {isKycApproved
@@ -1245,10 +1286,23 @@ const styles = StyleSheet.create({
   kycStatusPending: {
     color: Colors.secondary,
   },
+  kycRejectionContainer: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  kycRejectionTitle: {
+    color: Colors.danger,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    marginBottom: Spacing.xs,
+  },
   kycRejectionText: {
     color: Colors.danger,
     fontSize: FontSizes.sm,
-    marginBottom: Spacing.xs,
+    lineHeight: 20,
   },
   kycHelperText: {
     color: Colors.gray[600],

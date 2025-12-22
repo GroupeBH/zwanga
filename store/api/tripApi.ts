@@ -34,6 +34,7 @@ export type ServerTrip = {
   departureDate: string;
   availableSeats: number;
   pricePerSeat: number | string;
+  isFree?: boolean;
   description?: string;
   status?: string;
   vehicleType?: VehicleType;
@@ -106,6 +107,15 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     driverName: formatFullName(trip.driver),
     driverAvatar: trip.driver?.profilePicture ?? undefined,
     driverRating: trip.driver?.rating ?? 4.9,
+    driver: trip.driver
+      ? {
+          id: trip.driver.id,
+          name: formatFullName(trip.driver),
+          avatar: trip.driver.profilePicture ?? undefined,
+          rating: trip.driver.rating ?? 4.9,
+          phone: trip.driver.phone ?? '',
+        }
+      : null,
     vehicleType: trip.vehicleType ?? 'car',
     vehicleInfo: trip.description?.trim() || 'Informations véhicule fournies par le conducteur',
     departure: {
@@ -123,6 +133,7 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     departureTime: trip.departureDate,
     arrivalTime: trip.departureDate,
     price: Number(trip.pricePerSeat),
+    isFree: trip.isFree ?? Number(trip.pricePerSeat) === 0,
     availableSeats: trip.availableSeats,
     totalSeats: Math.max(trip.availableSeats + bookedSeats, trip.availableSeats),
     status: mapTripStatus(trip.status),
@@ -164,6 +175,7 @@ type CreateTripPayload = {
   departureDate: string;
   availableSeats: number;
   pricePerSeat: number;
+  isFree?: boolean;
   description?: string;
   vehicleId?: string;
 };

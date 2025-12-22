@@ -142,3 +142,129 @@ export function isFuture(isoString: string): boolean {
   return date.getTime() > Date.now();
 }
 
+/**
+ * Formate une date avec des labels relatifs (Aujourd'hui, Demain, Hier)
+ * @param isoString - Date au format ISO string
+ * @param showTime - Si true, affiche aussi l'heure (par défaut: true)
+ * @returns String formaté "Aujourd'hui HH:MM", "Demain HH:MM", "Hier HH:MM" ou "JJ/MM/AAAA HH:MM"
+ */
+export function formatDateWithRelativeLabel(isoString: string, showTime: boolean = true): string {
+  const date = new Date(isoString);
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  // Normaliser les dates pour comparer seulement les jours (sans heures)
+  const normalizeDate = (d: Date) => {
+    const normalized = new Date(d);
+    normalized.setHours(0, 0, 0, 0);
+    return normalized;
+  };
+
+  const normalizedDate = normalizeDate(date);
+  const normalizedToday = normalizeDate(today);
+  const normalizedTomorrow = normalizeDate(tomorrow);
+  const normalizedYesterday = normalizeDate(yesterday);
+
+  let dateLabel: string;
+
+  if (normalizedDate.getTime() === normalizedToday.getTime()) {
+    dateLabel = 'Aujourd\'hui';
+  } else if (normalizedDate.getTime() === normalizedTomorrow.getTime()) {
+    dateLabel = 'Demain';
+  } else if (normalizedDate.getTime() === normalizedYesterday.getTime()) {
+    dateLabel = 'Hier';
+  } else {
+    // Format date normale
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    dateLabel = `${day}/${month}/${year}`;
+  }
+
+  if (showTime) {
+    const time = formatTime(isoString);
+    return `${dateLabel} ${time}`;
+  }
+
+  return dateLabel;
+}
+
+/**
+ * Retourne uniquement le label relatif de la date (Aujourd'hui, Demain, Hier, ou null)
+ * @param isoString - Date au format ISO string
+ * @returns "Aujourd'hui", "Demain", "Hier" ou null si c'est une autre date
+ */
+export function getRelativeDateLabel(isoString: string): string | null {
+  const date = new Date(isoString);
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const normalizeDate = (d: Date) => {
+    const normalized = new Date(d);
+    normalized.setHours(0, 0, 0, 0);
+    return normalized;
+  };
+
+  const normalizedDate = normalizeDate(date);
+  const normalizedToday = normalizeDate(today);
+  const normalizedTomorrow = normalizeDate(tomorrow);
+  const normalizedYesterday = normalizeDate(yesterday);
+
+  if (normalizedDate.getTime() === normalizedToday.getTime()) {
+    return 'Aujourd\'hui';
+  } else if (normalizedDate.getTime() === normalizedTomorrow.getTime()) {
+    return 'Demain';
+  } else if (normalizedDate.getTime() === normalizedYesterday.getTime()) {
+    return 'Hier';
+  }
+
+  return null;
+}
+
+/**
+ * Vérifie si une date correspond à un filtre de date relatif
+ * @param isoString - Date au format ISO string
+ * @param filter - Filtre à appliquer ('today', 'tomorrow', 'yesterday', 'all')
+ * @returns true si la date correspond au filtre
+ */
+export function matchesDateFilter(isoString: string, filter: 'today' | 'tomorrow' | 'yesterday' | 'all'): boolean {
+  if (filter === 'all') {
+    return true;
+  }
+
+  const date = new Date(isoString);
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const normalizeDate = (d: Date) => {
+    const normalized = new Date(d);
+    normalized.setHours(0, 0, 0, 0);
+    return normalized;
+  };
+
+  const normalizedDate = normalizeDate(date);
+  const normalizedToday = normalizeDate(today);
+  const normalizedTomorrow = normalizeDate(tomorrow);
+  const normalizedYesterday = normalizeDate(yesterday);
+
+  switch (filter) {
+    case 'today':
+      return normalizedDate.getTime() === normalizedToday.getTime();
+    case 'tomorrow':
+      return normalizedDate.getTime() === normalizedTomorrow.getTime();
+    case 'yesterday':
+      return normalizedDate.getTime() === normalizedYesterday.getTime();
+    default:
+      return true;
+  }
+}
+

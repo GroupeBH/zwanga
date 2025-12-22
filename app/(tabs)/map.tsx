@@ -15,14 +15,16 @@ import {
 } from '@/store/selectors';
 import { setRadiusKm, setSearchQuery, TripSearchMode } from '@/store/slices/locationSlice';
 import { setTrips } from '@/store/slices/tripsSlice';
-import { formatTime } from '@/utils/dateHelpers';
+import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
+import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { Ionicons } from '@expo/vector-icons';
 import Mapbox from '@rnmapbox/maps';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Image,
   LayoutAnimation,
   Platform,
@@ -34,6 +36,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { searchMapboxPlaces, getMapboxPlaceDetails, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
+import { getCachedRouteCoordinates, type RouteCoordinates } from '@/utils/mapboxDirections';
 
 type LatLng = { latitude: number; longitude: number };
 
@@ -82,6 +86,95 @@ export default function MapScreen() {
   const [isMapExpanded, setIsMapExpanded] = useState(false);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
   const [isMapMoving, setIsMapMoving] = useState(false);
+  const [mapboxSuggestions, setMapboxSuggestions] = useState<MapboxSearchSuggestion[]>([]);
+  const [mapboxLoading, setMapboxLoading] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [routeCoordinatesCache, setRouteCoordinatesCache] = useState<Map<string, RouteCoordinates[]>>(new Map());
+  const [loadingRoutes, setLoadingRoutes] = useState<Set<string>>(new Set());
+
+  // Charger les itinéraires pour tous les trajets
+  useEffect(() => {
+    const loadRoutes = async () => {
+      const tripsToLoad: Array<{
+        tripId: string;
+        start: RouteCoordinates;
+        end: RouteCoordinates;
+      }> = [];
+
+      // Identifier les trajets qui ont besoin d'un itinéraire
+      for (const trip of trips) {
+        const departureCoords =
+          trip.departure?.lat && trip.departure?.lng
+            ? { latitude: trip.departure.lat, longitude: trip.departure.lng }
+            : null;
+        const arrivalCoords =
+          trip.arrival?.lat && trip.arrival?.lng
+            ? { latitude: trip.arrival.lat, longitude: trip.arrival.lng }
+            : null;
+
+        if (!departureCoords || !arrivalCoords) continue;
+
+        const cacheKey = `${trip.id}-route`;
+        
+        // Ne pas recharger si déjà en cache ou en cours de chargement
+        if (routeCoordinatesCache.has(cacheKey) || loadingRoutes.has(cacheKey)) {
+          continue;
+        }
+
+        tripsToLoad.push({
+          tripId: trip.id,
+          start: departureCoords,
+          end: arrivalCoords,
+        });
+      }
+
+      // Charger les itinéraires en parallèle (mais avec un délai pour éviter trop de requêtes simultanées)
+      for (const { tripId, start, end } of tripsToLoad) {
+        const cacheKey = `${tripId}-route`;
+        
+        setLoadingRoutes(prev => new Set(prev).add(cacheKey));
+
+        try {
+          const route = await getCachedRouteCoordinates(start, end);
+          
+          if (route && route.length > 0) {
+            setRouteCoordinatesCache(prev => {
+              const newCache = new Map(prev);
+              newCache.set(cacheKey, route);
+              return newCache;
+            });
+          } else {
+            // Fallback sur ligne droite si l'API échoue
+            setRouteCoordinatesCache(prev => {
+              const newCache = new Map(prev);
+              newCache.set(cacheKey, [start, end]);
+              return newCache;
+            });
+          }
+        } catch (error) {
+          console.warn(`Error loading route for trip ${tripId}:`, error);
+          // Fallback sur ligne droite
+          setRouteCoordinatesCache(prev => {
+            const newCache = new Map(prev);
+            newCache.set(cacheKey, [start, end]);
+            return newCache;
+          });
+        } finally {
+          setLoadingRoutes(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(cacheKey);
+            return newSet;
+          });
+        }
+
+        // Petit délai entre les requêtes pour éviter de surcharger l'API
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    };
+
+    loadRoutes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trips.map(t => t.id).join(',')]); // Seulement recharger si les IDs des trajets changent
 
   const toggleMapExpansion = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -139,10 +232,22 @@ export default function MapScreen() {
     };
   }, [userCoords, trips]);
 
-  const renderPolyline = (tripId: string, color: string, coordinates: { latitude: number; longitude: number }[]) => {
-    if (coordinates.length < 2) return null;
+  const renderPolyline = (
+    tripId: string,
+    color: string,
+    start: { latitude: number; longitude: number },
+    end: { latitude: number; longitude: number },
+  ) => {
+    const cacheKey = `${tripId}-route`;
+    const cachedRoute = routeCoordinatesCache.get(cacheKey);
+    const isLoading = loadingRoutes.has(cacheKey);
 
-    const lineCoordinates = coordinates.map(coord => [coord.longitude, coord.latitude] as [number, number]);
+    // Utiliser l'itinéraire depuis le cache s'il est disponible
+    const coordinatesToUse = cachedRoute && cachedRoute.length > 0 
+      ? cachedRoute 
+      : [start, end]; // Fallback sur ligne droite
+
+    const lineCoordinates = coordinatesToUse.map(coord => [coord.longitude, coord.latitude] as [number, number]);
 
     return (
       <Mapbox.ShapeSource
@@ -164,14 +269,138 @@ export default function MapScreen() {
             lineWidth: 3,
             lineCap: 'round',
             lineJoin: 'round',
+            // Ligne pointillée si c'est une ligne droite temporaire (pas encore chargé ou échec)
+            ...(isLoading || !cachedRoute || cachedRoute.length === 2 ? { 
+              lineDasharray: [2, 2],
+              lineOpacity: 0.6 
+            } : {}),
           }}
         />
       </Mapbox.ShapeSource>
     );
   };
 
+  // Recherche avec suggestions Mapbox en temps réel
+  const searchMapboxSuggestions = useCallback(async (query: string) => {
+    if (!query.trim() || query.trim().length < 2) {
+      setMapboxSuggestions([]);
+      return;
+    }
+
+    try {
+      setMapboxLoading(true);
+      // Valider les coordonnées de proximité avant de les utiliser
+      let proximity: { longitude: number; latitude: number } | undefined = undefined;
+      
+      if (userCoords && 
+          typeof userCoords.longitude === 'number' && 
+          typeof userCoords.latitude === 'number' &&
+          !isNaN(userCoords.longitude) && 
+          !isNaN(userCoords.latitude) &&
+          isFinite(userCoords.longitude) && 
+          isFinite(userCoords.latitude)) {
+        proximity = { longitude: userCoords.longitude, latitude: userCoords.latitude };
+      } else if (mapCenter && 
+                 Array.isArray(mapCenter) && 
+                 mapCenter.length === 2 &&
+                 typeof mapCenter[0] === 'number' && 
+                 typeof mapCenter[1] === 'number' &&
+                 !isNaN(mapCenter[0]) && 
+                 !isNaN(mapCenter[1]) &&
+                 isFinite(mapCenter[0]) && 
+                 isFinite(mapCenter[1])) {
+        proximity = { longitude: mapCenter[0], latitude: mapCenter[1] };
+      }
+      
+      const suggestions = await searchMapboxPlaces(query, proximity, 5);
+      setMapboxSuggestions(suggestions);
+    } catch (error) {
+      // Les erreurs sont déjà gérées dans searchMapboxPlaces
+      setMapboxSuggestions([]);
+    } finally {
+      setMapboxLoading(false);
+    }
+  }, [userCoords, mapCenter]);
+
+  // Debounce pour les suggestions Mapbox
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (search && search.trim().length >= 2) {
+      searchTimeoutRef.current = setTimeout(() => {
+        searchMapboxSuggestions(search);
+      }, 300);
+    } else {
+      setMapboxSuggestions([]);
+    }
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [search, searchMapboxSuggestions]);
+
   const handleSearchChange = (value: string) => {
     setSearch(value);
+  };
+
+  const handleMapboxSuggestionPress = async (suggestion: MapboxSearchSuggestion) => {
+    try {
+      setMapboxLoading(true);
+      
+      // Récupérer les détails complets du lieu pour obtenir l'adresse complète
+      const placeDetails = await getMapboxPlaceDetails(suggestion.id);
+      
+      // Utiliser l'adresse complète si disponible, sinon utiliser le nom
+      const addressToUse = placeDetails?.fullAddress || suggestion.fullAddress || suggestion.name;
+      const displayName = placeDetails?.name || suggestion.name;
+      
+      setSearch(displayName);
+      setMapboxSuggestions([]);
+      
+      // Appliquer la recherche avec l'adresse complète pour une meilleure précision
+      dispatch(setSearchQuery(addressToUse));
+      const params = buildSearchParams(addressToUse);
+      triggerTripSearch(params).then((result) => {
+        if (result.data) {
+          dispatch(setTrips(result.data));
+        }
+      }).catch((error: any) => {
+        const message =
+          error?.data?.message ?? error?.error ?? "Impossible d'appliquer le filtre pour le moment.";
+        showDialog({
+          variant: 'danger',
+          title: 'Erreur de recherche',
+          message: Array.isArray(message) ? message.join('\n') : message,
+        });
+      });
+    } catch (error) {
+      console.warn('Failed to retrieve place details, using suggestion data:', error);
+      // Fallback: utiliser les données de la suggestion directement
+      const addressToUse = suggestion.fullAddress || suggestion.name;
+      setSearch(suggestion.name);
+      setMapboxSuggestions([]);
+      dispatch(setSearchQuery(addressToUse));
+      const params = buildSearchParams(addressToUse);
+      triggerTripSearch(params).then((result) => {
+        if (result.data) {
+          dispatch(setTrips(result.data));
+        }
+      }).catch((error: any) => {
+        const message =
+          error?.data?.message ?? error?.error ?? "Impossible d'appliquer le filtre pour le moment.";
+        showDialog({
+          variant: 'danger',
+          title: 'Erreur de recherche',
+          message: Array.isArray(message) ? message.join('\n') : message,
+        });
+      });
+    } finally {
+      setMapboxLoading(false);
+    }
   };
 
   const buildSearchParams = (query: string): TripSearchParams => {
@@ -396,7 +625,7 @@ export default function MapScreen() {
               )}
               {departureCoords &&
                 arrivalCoords &&
-                renderPolyline(trip.id, Colors.primary, [departureCoords, arrivalCoords])}
+                renderPolyline(trip.id, Colors.primary, departureCoords, arrivalCoords)}
             </React.Fragment>
           );
         })}
@@ -423,7 +652,37 @@ export default function MapScreen() {
                 returnKeyType="search"
                 onSubmitEditing={applySearchQuery}
               />
+              {mapboxLoading && (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              )}
             </View>
+
+            {/* Suggestions Mapbox */}
+            {mapboxSuggestions.length > 0 && (
+              <View style={styles.suggestionsContainer}>
+                <FlatList
+                  data={mapboxSuggestions}
+                  keyExtractor={(item) => item.id}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.suggestionRow}
+                      onPress={() => handleMapboxSuggestionPress(item)}
+                    >
+                      <Ionicons name="location" size={16} color={Colors.primary} />
+                      <View style={styles.suggestionContent}>
+                        <Text style={styles.suggestionTitle}>{item.name}</Text>
+                        {item.fullAddress && (
+                          <Text style={styles.suggestionSubtitle} numberOfLines={1}>
+                            {item.fullAddress}
+                          </Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                  scrollEnabled={false}
+                />
+              </View>
+            )}
             <View style={styles.searchActions}>
               <TouchableOpacity
                 style={[styles.applyButton, isApplyDisabled && styles.applyButtonDisabled]}
@@ -613,45 +872,93 @@ export default function MapScreen() {
                 <Ionicons name="map-outline" size={36} color={Colors.gray[400]} />
                 <Text style={styles.emptyTitle}>Aucun trajet autour de vous</Text>
                 <Text style={styles.emptyText}>
-                  Ajustez le rayon ou la recherche pour découvrir davantage d’options.
+                  Ajustez le rayon ou la recherche pour découvrir davantage d'options.
                 </Text>
+                <TouchableOpacity
+                  style={styles.createRequestButton}
+                  onPress={() => router.push('/request')}
+                >
+                  <Ionicons name="add-circle" size={20} color={Colors.white} />
+                  <Text style={styles.createRequestButtonText}>Créer une demande de trajet</Text>
+                </TouchableOpacity>
               </View>
             ) : (
-              trips.map((trip) => (
-                <TouchableOpacity
-                  key={trip.id}
-                  style={styles.tripCard}
-                  onPress={() => router.push(`/trip/${trip.id}`)}
-                >
-                  <View style={styles.tripCardHeader}>
-                    <View>
-                      <Text style={styles.tripDriverName}>{trip.driverName}</Text>
-                      <Text style={styles.tripVehicle}>{trip.vehicleInfo}</Text>
-                    </View>
-                    <Text style={styles.tripPrice}>{trip.price} FC</Text>
-                  </View>
-                  <View style={styles.tripRouteRow}>
-                    <Ionicons name="location" size={16} color={Colors.success} />
-                    <Text style={styles.tripRouteText}>{trip.departure.name}</Text>
-                    <Text style={styles.tripTime}>{formatTime(trip.departureTime)}</Text>
-                  </View>
-                  <View style={styles.tripRouteRow}>
-                    <Ionicons name="navigate" size={16} color={Colors.primary} />
-                    <Text style={styles.tripRouteText}>{trip.arrival.name}</Text>
-                    <Text style={styles.tripTime}>{formatTime(trip.arrivalTime)}</Text>
-                  </View>
-                  <View style={styles.tripFooter}>
-                    <View style={styles.tripFooterLeft}>
-                      <Ionicons name="people" size={15} color={Colors.gray[600]} />
-                      <Text style={styles.tripSeats}>{trip.availableSeats} places</Text>
-                    </View>
-                    <View style={styles.tripFooterRight}>
-                      <Text style={styles.tripDetailsText}>Voir détails</Text>
-                      <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))
+              trips.map((trip) => {
+                const TripCardWithArrival = () => {
+                  const calculatedArrivalTime = useTripArrivalTime(trip);
+                  const arrivalTimeDisplay = calculatedArrivalTime 
+                    ? formatTime(calculatedArrivalTime.toISOString())
+                    : formatTime(trip.arrivalTime);
+
+                  return (
+                    <TouchableOpacity
+                      key={trip.id}
+                      style={styles.tripCard}
+                      onPress={() => router.push(`/trip/${trip.id}`)}
+                    >
+                      <View style={styles.tripCardHeader}>
+                        <View style={styles.tripCardHeaderLeft}>
+                          {trip.driverAvatar ? (
+                            <Image
+                              source={{ uri: trip.driverAvatar }}
+                              style={styles.tripDriverAvatar}
+                            />
+                          ) : (
+                            <View style={styles.tripDriverAvatar}>
+                              <Ionicons name="person" size={16} color={Colors.gray[500]} />
+                            </View>
+                          )}
+                          <View>
+                            <Text style={styles.tripDriverName}>{trip.driverName}</Text>
+                            <Text style={styles.tripVehicle}>{trip.vehicleInfo}</Text>
+                          </View>
+                        </View>
+                        {trip.price === 0 ? (
+                          <View style={styles.freeBadge}>
+                            <Text style={styles.freeBadgeText}>Gratuit</Text>
+                          </View>
+                        ) : (
+                          <Text style={styles.tripPrice}>{trip.price} FC</Text>
+                        )}
+                      </View>
+                      <View style={styles.tripRouteRow}>
+                        <Ionicons name="location" size={16} color={Colors.success} />
+                        <Text style={styles.tripRouteText}>{trip.departure.name}</Text>
+                        <View style={styles.timeContainer}>
+                          <Text style={styles.routeDateLabel}>
+                            {formatDateWithRelativeLabel(trip.departureTime, false)}
+                          </Text>
+                          <Text style={styles.tripTime}>{formatTime(trip.departureTime)}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.tripRouteRow}>
+                        <Ionicons name="navigate" size={16} color={Colors.primary} />
+                        <Text style={styles.tripRouteText}>{trip.arrival.name}</Text>
+                        <View style={styles.timeContainer}>
+                          {calculatedArrivalTime && (
+                            <Text style={styles.routeDateLabel}>
+                              {formatDateWithRelativeLabel(calculatedArrivalTime.toISOString(), false)}
+                            </Text>
+                          )}
+                          <Text style={styles.tripTime}>{arrivalTimeDisplay}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.tripFooter}>
+                        <View style={styles.tripFooterLeft}>
+                          <Ionicons name="people" size={15} color={Colors.gray[600]} />
+                          <Text style={styles.tripSeats}>{trip.availableSeats} places</Text>
+                        </View>
+                        <View style={styles.tripFooterRight}>
+                          <Text style={styles.tripDetailsText}>Voir détails</Text>
+                          <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                };
+
+                return <TripCardWithArrival key={trip.id} />;
+              })
             )}
           </ScrollView>
         </View>
@@ -726,6 +1033,37 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
     color: Colors.gray[800],
     paddingVertical: Spacing.sm,
+  },
+  suggestionsContainer: {
+    maxHeight: 200,
+    marginTop: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
+    overflow: 'hidden',
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+  },
+  suggestionContent: {
+    marginLeft: Spacing.sm,
+    flex: 1,
+  },
+  suggestionTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[900],
+  },
+  suggestionSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginTop: 2,
   },
   searchActions: {
     flexDirection: 'row',
@@ -1105,6 +1443,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
+  tripCardHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  tripDriverAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[300],
+    marginRight: Spacing.sm,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   tripDriverName: {
     fontSize: FontSizes.base,
     fontWeight: FontWeights.semibold,
@@ -1119,6 +1472,17 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     color: Colors.primary,
   },
+  freeBadge: {
+    backgroundColor: Colors.success + '15',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  freeBadgeText: {
+    color: Colors.success,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.base,
+  },
   tripRouteRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1128,6 +1492,15 @@ const styles = StyleSheet.create({
     flex: 1,
     color: Colors.gray[700],
     fontSize: FontSizes.base,
+  },
+  timeContainer: {
+    alignItems: 'flex-end',
+  },
+  routeDateLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.primary,
+    fontWeight: FontWeights.medium,
+    marginBottom: 2,
   },
   tripTime: {
     fontSize: FontSizes.sm,
@@ -1174,6 +1547,23 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
     textAlign: 'center',
     fontSize: FontSizes.sm,
+    marginBottom: Spacing.sm,
+  },
+  createRequestButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+  },
+  createRequestButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    marginLeft: Spacing.sm,
   },
   permissionBanner: {
     position: 'absolute',

@@ -11,7 +11,7 @@ import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
-import { getRouteCoordinates } from '@/utils/routeHelpers';
+import { getRouteInfo, type RouteInfo } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import Mapbox from '@rnmapbox/maps';
 import Constants from 'expo-constants';
@@ -106,6 +106,9 @@ export default function ManageTripScreen() {
   const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }> | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const [mapModalVisible, setMapModalVisible] = useState(false);
+  const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
+  const [estimatedArrivalTime, setEstimatedArrivalTime] = useState<Date | null>(null);
+  const [calculatedArrivalTime, setCalculatedArrivalTime] = useState<Date | null>(null);
 
   const refreshAll = () => {
     refetchTrip();
@@ -129,23 +132,106 @@ export default function ManageTripScreen() {
     [trip?.arrival.lat, trip?.arrival.lng],
   );
 
-  // Load route coordinates when trip changes
+  // Load route coordinates and info when trip changes
   useEffect(() => {
     if (!trip || !departureCoordinate || !arrivalCoordinate) {
       return;
     }
     setIsLoadingRoute(true);
-    getRouteCoordinates(departureCoordinate, arrivalCoordinate)
-      .then((coords) => {
-        setRouteCoordinates(coords);
+    getRouteInfo(departureCoordinate, arrivalCoordinate)
+      .then((info) => {
+        setRouteCoordinates(info.coordinates);
+        setRouteInfo(info);
+        
+        // Calculate arrival time based on departure time + route duration
+        if (info.duration > 0 && trip.departureTime) {
+          const departureDate = new Date(trip.departureTime);
+          const arrivalDate = new Date(departureDate.getTime() + info.duration * 1000);
+          setCalculatedArrivalTime(arrivalDate);
+        } else {
+          setCalculatedArrivalTime(null);
+        }
+        
         setIsLoadingRoute(false);
       })
       .catch(() => {
         // Fallback to straight line if route API fails
         setRouteCoordinates([departureCoordinate, arrivalCoordinate]);
+        setCalculatedArrivalTime(null);
         setIsLoadingRoute(false);
       });
-  }, [departureCoordinate, arrivalCoordinate, trip?.id]);
+  }, [departureCoordinate, arrivalCoordinate, trip?.id, trip?.departureTime]);
+
+  // Calculate estimated arrival time based on current position or trip progress
+  useEffect(() => {
+    if (!trip || !routeInfo || trip.status !== 'ongoing') {
+      setEstimatedArrivalTime(null);
+      return;
+    }
+
+    // Get current position from trip (if available)
+    const currentCoordinate = trip.currentLocation?.coordinates
+      ? {
+          latitude: trip.currentLocation.coordinates[1],
+          longitude: trip.currentLocation.coordinates[0],
+        }
+      : null;
+
+    if (!currentCoordinate) {
+      // Fallback: use progress to estimate remaining time
+      const progress = trip.progress || 0;
+      if (routeInfo.duration > 0 && typeof progress === 'number') {
+        const remainingProgress = (100 - Math.min(Math.max(progress, 0), 100)) / 100;
+        const remainingDurationSeconds = routeInfo.duration * remainingProgress;
+        const estimatedArrival = new Date(Date.now() + remainingDurationSeconds * 1000);
+        setEstimatedArrivalTime(estimatedArrival);
+      } else {
+        setEstimatedArrivalTime(null);
+      }
+      return;
+    }
+
+    let timeoutId: NodeJS.Timeout;
+    let isMounted = true;
+
+    const calculateETA = () => {
+      // Calculate remaining route from current position to destination
+      if (!currentCoordinate || !arrivalCoordinate) {
+        return;
+      }
+      getRouteInfo(currentCoordinate, arrivalCoordinate)
+        .then((remainingRouteInfo) => {
+          if (!isMounted) return;
+          const remainingDurationSeconds = remainingRouteInfo.duration;
+          const estimatedArrival = new Date(Date.now() + remainingDurationSeconds * 1000);
+          setEstimatedArrivalTime(estimatedArrival);
+        })
+        .catch(() => {
+          if (!isMounted) return;
+          // Fallback: use progress to estimate remaining time
+          const progress = trip.progress || 0;
+          if (routeInfo.duration > 0 && typeof progress === 'number') {
+            const remainingProgress = (100 - Math.min(Math.max(progress, 0), 100)) / 100;
+            const remainingDurationSeconds = routeInfo.duration * remainingProgress;
+            const estimatedArrival = new Date(Date.now() + remainingDurationSeconds * 1000);
+            setEstimatedArrivalTime(estimatedArrival);
+          } else {
+            setEstimatedArrivalTime(null);
+          }
+        });
+    };
+
+    // Debounce: wait 5 seconds after position change before calculating
+    timeoutId = setTimeout(calculateETA, 5000);
+
+    // Also calculate immediately if this is the first time
+    calculateETA();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
+  }, [trip?.status, trip?.currentLocation, trip?.progress, routeInfo, arrivalCoordinate]);
 
   const mapCamera = useMemo(() => {
     if (!departureCoordinate || !arrivalCoordinate) {
@@ -496,6 +582,20 @@ export default function ManageTripScreen() {
             <Ionicons name="navigate" size={18} color={Colors.primary} />
             <Text style={styles.summaryRouteText}>{trip.arrival.name}</Text>
           </View>
+          {trip.status === 'ongoing' && estimatedArrivalTime && (
+            <View style={styles.summaryMeta}>
+              <Text style={styles.summaryMetaText}>
+                Arrivée estimée: {formatTime(estimatedArrivalTime.toISOString())}
+              </Text>
+            </View>
+          )}
+          {calculatedArrivalTime && (
+            <View style={styles.summaryMeta}>
+              <Text style={styles.summaryMetaText}>
+                Arrivée prévue: {formatTime(calculatedArrivalTime.toISOString())}
+              </Text>
+            </View>
+          )}
           <View style={styles.summaryMeta}>
             <Text style={styles.summaryMetaText}>
               {trip.availableSeats} places • {trip.price} FC / place
@@ -537,7 +637,13 @@ export default function ManageTripScreen() {
             </View>
           ) : (
             bookings?.map((booking, index) => {
-              const statusConfig = BOOKING_STATUS_CONFIG[booking.status];
+              // Protection contre les statuts manquants ou inattendus
+              const bookingStatus = booking.status as BookingStatus;
+              const statusConfig = (bookingStatus && BOOKING_STATUS_CONFIG[bookingStatus]) || {
+                label: bookingStatus || 'Inconnu',
+                color: Colors.gray[600],
+                background: 'rgba(156, 163, 175, 0.2)',
+              };
               const isProcessing =
                 processingBookingId === booking.id && (isAccepting || isRejecting);
               return (

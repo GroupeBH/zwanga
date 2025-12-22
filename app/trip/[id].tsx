@@ -10,6 +10,7 @@ import {
   useCancelBookingMutation,
   useCreateBookingMutation,
   useGetMyBookingsQuery,
+  useGetTripBookingsQuery,
 } from '@/store/api/bookingApi';
 import { useCreateConversationMutation } from '@/store/api/messageApi';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
@@ -18,7 +19,8 @@ import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
 import type { BookingStatus, GeoPoint } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
-import { getRouteCoordinates } from '@/utils/routeHelpers';
+import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
+import { getRouteInfo, type RouteInfo } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import Mapbox from '@rnmapbox/maps';
 import Constants from 'expo-constants';
@@ -26,14 +28,14 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Linking,
+  Image,
   Modal,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import Animated, {
   FadeInDown,
@@ -120,6 +122,7 @@ export default function TripDetailsScreen() {
   const { checkIdentity, isIdentityVerified } = useIdentityCheck();
   const { showDialog } = useDialog();
   const driverPhone = trip?.driver?.phone ?? null;
+  // console.log('driverPhone', driverPhone);
   const isTripDriver = Boolean(trip && user && trip.driverId === user.id);
   const {
     data: myBookings,
@@ -127,6 +130,10 @@ export default function TripDetailsScreen() {
     isFetching: myBookingsFetching,
     refetch: refetchMyBookings,
   } = useGetMyBookingsQuery();
+  const {
+    data: tripBookings,
+    isLoading: tripBookingsLoading,
+  } = useGetTripBookingsQuery(tripId, { skip: !tripId });
   const {
     lastKnownLocation,
     requestPermission: requestDriverLocationPermission,
@@ -165,7 +172,13 @@ export default function TripDetailsScreen() {
   const [tripGuideVisible, setTripGuideVisible] = useState(false);
   const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }> | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
+  const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
+  const [estimatedArrivalTime, setEstimatedArrivalTime] = useState<Date | null>(null);
+  const [calculatedArrivalTime, setCalculatedArrivalTime] = useState<Date | null>(null);
   const [kycWizardVisible, setKycWizardVisible] = useState(false);
+  const [imageModalVisible, setImageModalVisible] = useState(false);
+  const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
+  const [contactModalVisible, setContactModalVisible] = useState(false);
   const [kycFrontImage, setKycFrontImage] = useState<string | null>(null);
   const [kycBackImage, setKycBackImage] = useState<string | null>(null);
   const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
@@ -364,11 +377,7 @@ export default function TripDetailsScreen() {
     ? BOOKING_STATUS_CONFIG[activeBooking.status as keyof typeof BOOKING_STATUS_CONFIG]
     : null;
   const openBookingModal = () => {
-    if (!isIdentityVerified) {
-      // Ouvrir directement le modal KYC si l'utilisateur n'est pas vérifié
-      setKycWizardVisible(true);
-      return;
-    }
+    // KYC désactivé pour la réservation - permettre la réservation sans vérification
     setBookingSeats('1');
     setBookingModalError('');
     setBookingModalVisible(true);
@@ -606,23 +615,54 @@ export default function TripDetailsScreen() {
     try {
       setKycSubmitting(true);
       const formData = buildKycFormData({ front, back, selfie });
-      await uploadKyc(formData).unwrap();
+      const result = await uploadKyc(formData).unwrap();
       setKycWizardVisible(false);
+      
+      // Refetch immédiatement pour obtenir le statut mis à jour
       await refetchKycStatus();
-      showDialog({
-        variant: 'success',
-        title: 'Documents envoyés',
-        message: 'Nous vous informerons dès que la vérification sera terminée.',
-      });
+      
+      // Vérifier le statut retourné par le backend
+      const kycStatusAfterUpload = result?.status;
+      
+      if (kycStatusAfterUpload === 'approved') {
+        // KYC approuvé immédiatement (validation automatique réussie)
+        showDialog({
+          variant: 'success',
+          title: 'KYC validé avec succès !',
+          message: 'Votre identité a été vérifiée automatiquement. Vous pouvez maintenant réserver ce trajet.',
+        });
+      } else if (kycStatusAfterUpload === 'rejected') {
+        // KYC rejeté (validation automatique échouée)
+        const rejectionReason = result?.rejectionReason || 'Votre demande KYC a été rejetée.';
+        showDialog({
+          variant: 'danger',
+          title: 'KYC rejeté',
+          message: rejectionReason,
+        });
+      } else {
+        // KYC en attente (validation manuelle requise)
+        showDialog({
+          variant: 'success',
+          title: 'Documents envoyés',
+          message: 'Vos documents sont en cours de vérification. Nous vous informerons dès que la vérification sera terminée.',
+        });
+      }
     } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        'Impossible de soumettre les documents pour le moment.';
+      // Gérer les erreurs détaillées du backend
+      let errorMessage = error?.data?.message ?? error?.error ?? 'Impossible de soumettre les documents pour le moment.';
+      
+      // Si le message est une chaîne, la traiter directement
+      if (typeof errorMessage === 'string') {
+        // Le backend peut retourner des messages multi-lignes avec des détails
+        errorMessage = errorMessage;
+      } else if (Array.isArray(errorMessage)) {
+        errorMessage = errorMessage.join('\n');
+      }
+      
       showDialog({
         variant: 'danger',
         title: 'Erreur KYC',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message: errorMessage,
       });
     } finally {
       setKycSubmitting(false);
@@ -643,7 +683,7 @@ export default function TripDetailsScreen() {
     if (Number.isNaN(seatsValue) || seatsValue <= 0) {
       return 0;
     }
-    return seatsValue * trip.price;
+    return trip.price === 0 ? 0 : seatsValue * trip.price;
   }, [bookingSeats, trip.price]);
 
   const statusConfig = {
@@ -671,23 +711,96 @@ export default function TripDetailsScreen() {
     [trip.arrival.lat, trip.arrival.lng],
   );
 
-  // Load route coordinates when trip changes
+  // Load route coordinates and info when trip changes
   useEffect(() => {
     if (!trip) {
       return;
     }
     setIsLoadingRoute(true);
-    getRouteCoordinates(departureCoordinate, arrivalCoordinate)
-      .then((coords) => {
-        setRouteCoordinates(coords);
+    getRouteInfo(departureCoordinate, arrivalCoordinate)
+      .then((info) => {
+        setRouteCoordinates(info.coordinates);
+        setRouteInfo(info);
+        
+        // Calculate arrival time based on departure time + route duration
+        if (info.duration > 0 && trip.departureTime) {
+          const departureDate = new Date(trip.departureTime);
+          const arrivalDate = new Date(departureDate.getTime() + info.duration * 1000);
+          setCalculatedArrivalTime(arrivalDate);
+        } else {
+          setCalculatedArrivalTime(null);
+        }
+        
         setIsLoadingRoute(false);
       })
       .catch(() => {
         // Fallback to straight line if route API fails
         setRouteCoordinates([departureCoordinate, arrivalCoordinate]);
+        setCalculatedArrivalTime(null);
         setIsLoadingRoute(false);
       });
-  }, [departureCoordinate, arrivalCoordinate, trip?.id]);
+  }, [departureCoordinate, arrivalCoordinate, trip?.id, trip?.departureTime]);
+
+  // Calculate estimated coordinate based on progress
+  const estimatedCoordinate = useMemo(() => {
+    if (!trip || trip.status !== 'ongoing' || typeof progress !== 'number') {
+      return null;
+    }
+    const ratio = Math.min(Math.max(progress, 0), 100) / 100;
+    return {
+      latitude: departureCoordinate.latitude + (arrivalCoordinate.latitude - departureCoordinate.latitude) * ratio,
+      longitude:
+        departureCoordinate.longitude + (arrivalCoordinate.longitude - departureCoordinate.longitude) * ratio,
+    };
+  }, [arrivalCoordinate, departureCoordinate, progress, trip?.status]);
+
+  // Calculate current coordinate for ETA calculation
+  const currentCoordinate = liveDriverCoordinate ?? estimatedCoordinate;
+
+  // Calculate estimated arrival time based on current position
+  useEffect(() => {
+    if (!trip || !routeInfo || trip.status !== 'ongoing' || !currentCoordinate) {
+      setEstimatedArrivalTime(null);
+      return;
+    }
+
+    let timeoutId: NodeJS.Timeout;
+    let isMounted = true;
+
+    const calculateETA = () => {
+      // Calculate remaining route from current position to destination
+      getRouteInfo(currentCoordinate, arrivalCoordinate)
+        .then((remainingRouteInfo) => {
+          if (!isMounted) return;
+          const remainingDurationSeconds = remainingRouteInfo.duration;
+          const estimatedArrival = new Date(Date.now() + remainingDurationSeconds * 1000);
+          setEstimatedArrivalTime(estimatedArrival);
+        })
+        .catch(() => {
+          if (!isMounted) return;
+          // Fallback: use progress to estimate remaining time
+          if (routeInfo.duration > 0 && typeof progress === 'number') {
+            const remainingProgress = (100 - Math.min(Math.max(progress, 0), 100)) / 100;
+            const remainingDurationSeconds = routeInfo.duration * remainingProgress;
+            const estimatedArrival = new Date(Date.now() + remainingDurationSeconds * 1000);
+            setEstimatedArrivalTime(estimatedArrival);
+          } else {
+            setEstimatedArrivalTime(null);
+          }
+        });
+    };
+
+    // Debounce: wait 5 seconds after position change before calculating
+    timeoutId = setTimeout(calculateETA, 5000);
+
+    // Also calculate immediately if this is the first time
+    calculateETA();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
+  }, [trip?.status, routeInfo, currentCoordinate, arrivalCoordinate, progress]);
 
   const mapCamera = useMemo(() => {
     const latitudeCenter = (departureCoordinate.latitude + arrivalCoordinate.latitude) / 2;
@@ -706,19 +819,6 @@ export default function TripDetailsScreen() {
       zoomLevel: Math.min(Math.max(zoomLevel, 9), 15),
     };
   }, [arrivalCoordinate, departureCoordinate]);
-
-  const estimatedCoordinate = useMemo(() => {
-    if (trip.status !== 'ongoing' || typeof progress !== 'number') {
-      return null;
-    }
-    const ratio = Math.min(Math.max(progress, 0), 100) / 100;
-    return {
-      latitude: departureCoordinate.latitude + (arrivalCoordinate.latitude - departureCoordinate.latitude) * ratio,
-      longitude:
-        departureCoordinate.longitude + (arrivalCoordinate.longitude - departureCoordinate.longitude) * ratio,
-    };
-  }, [arrivalCoordinate, departureCoordinate, progress, trip.status]);
-  const currentCoordinate = liveDriverCoordinate ?? estimatedCoordinate;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1016,7 +1116,7 @@ export default function TripDetailsScreen() {
                   <View style={[styles.progressFill, { width: `${progress}%` }]} />
                 </View>
                 <Text style={styles.etaText}>
-                  Arrivée estimée: {formatTime(trip.arrivalTime)}
+                  Arrivée estimée: {estimatedArrivalTime ? formatTime(estimatedArrivalTime.toISOString()) : calculatedArrivalTime ? formatTime(calculatedArrivalTime.toISOString()) : formatTime(trip.arrivalTime)}
                 </Text>
               </>
             )}
@@ -1054,7 +1154,7 @@ export default function TripDetailsScreen() {
                 <Text style={styles.routeName}>{trip.arrival.name}</Text>
                 <Text style={styles.routeAddress}>{trip.arrival.address}</Text>
                 <Text style={styles.routeTime}>
-                  Arrivée: {formatTime(trip.arrivalTime)}
+                  Arrivée: {calculatedArrivalTime ? formatTime(calculatedArrivalTime.toISOString()) : formatTime(trip.arrivalTime)}
                 </Text>
               </View>
             </View>
@@ -1067,7 +1167,23 @@ export default function TripDetailsScreen() {
             <Text style={styles.sectionTitle}>CONDUCTEUR</Text>
 
             <View style={styles.driverInfo}>
-              <View style={styles.driverAvatar} />
+              {trip.driverAvatar ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSelectedImageUri(trip.driverAvatar!);
+                    setImageModalVisible(true);
+                  }}
+                >
+                  <Image
+                    source={{ uri: trip.driverAvatar }}
+                    style={styles.driverAvatar}
+                  />
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.driverAvatar}>
+                  <Ionicons name="person" size={32} color={Colors.gray[500]} />
+                </View>
+              )}
               <View style={styles.driverDetails}>
                 <Text style={styles.driverName}>{trip.driverName}</Text>
                 <View style={styles.driverMeta}>
@@ -1089,7 +1205,7 @@ export default function TripDetailsScreen() {
                   >
                     {driverReviewCount > 0
                       ? `${driverReviewCount} avis`
-                      : 'Pas encore d’avis'}
+                      : 'Pas encore d\’avis'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1115,12 +1231,12 @@ export default function TripDetailsScreen() {
                 disabled={!driverPhone}
                 onPress={() => {
                   if (driverPhone) {
-                    Linking.openURL(`tel:${driverPhone}`);
+                    setContactModalVisible(true);
                   } else {
                     showDialog({
                       variant: 'info',
                       title: 'Numéro manquant',
-                      message: 'Le numéro de téléphone du conducteur n’est pas disponible.',
+                      message: 'Le numéro de téléphone du conducteur n\'est pas disponible.',
                     });
                   }
                 }}
@@ -1165,7 +1281,7 @@ export default function TripDetailsScreen() {
                   <Text style={styles.detailLabel}>Prix</Text>
                 </View>
                 <Text style={[styles.detailValue, { color: Colors.success }]}>
-                  {trip.price} FC
+                  {trip.price === 0 ? 'Gratuit' : `${trip.price} FC`}
                 </Text>
               </View>
 
@@ -1180,6 +1296,51 @@ export default function TripDetailsScreen() {
           </View>
         </View>
 
+        {/* Passagers */}
+        {tripBookings && tripBookings.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionTitle}>PASSAGERS</Text>
+              <View style={styles.passengersContainer}>
+                {tripBookings
+                  .filter((booking) => booking.status === 'accepted')
+                  .map((booking) => (
+                    <View key={booking.id} style={styles.passengerItem}>
+                      {booking.passengerAvatar ? (
+                        <TouchableOpacity
+                          onPress={() => {
+                            setSelectedImageUri(booking.passengerAvatar!);
+                            setImageModalVisible(true);
+                          }}
+                        >
+                          <Image
+                            source={{ uri: booking.passengerAvatar }}
+                            style={styles.passengerAvatar}
+                          />
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={styles.passengerAvatar}>
+                          <Ionicons name="person" size={20} color={Colors.gray[500]} />
+                        </View>
+                      )}
+                      <View style={styles.passengerInfo}>
+                        <Text style={styles.passengerName}>
+                          {booking.passengerName || 'Passager'}
+                        </Text>
+                        <Text style={styles.passengerSeats}>
+                          {booking.numberOfSeats} place{booking.numberOfSeats > 1 ? 's' : ''}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                {tripBookings.filter((booking) => booking.status === 'accepted').length === 0 && (
+                  <Text style={styles.noPassengersText}>Aucun passager confirmé</Text>
+                )}
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* Actions */}
         {trip.status === 'upcoming' && (
           <View style={styles.actionsContainer}>
@@ -1190,7 +1351,7 @@ export default function TripDetailsScreen() {
                     <Text style={styles.bookingCardTitle}>Ma réservation</Text>
                     <Text style={styles.bookingCardSubtitle}>
                       {activeBooking.numberOfSeats} place{activeBooking.numberOfSeats > 1 ? 's' : ''}{' '}
-                      • {trip.price} FC / place
+                      • {trip.price === 0 ? 'Gratuit' : `${trip.price} FC / place`}
                     </Text>
                   </View>
                   <View
@@ -1209,7 +1370,7 @@ export default function TripDetailsScreen() {
                   <View style={styles.bookingInfoItem}>
                     <Text style={styles.bookingInfoLabel}>Montant estimé</Text>
                     <Text style={styles.bookingInfoValue}>
-                      {activeBooking.numberOfSeats * trip.price} FC
+                      {trip.price === 0 ? 'Gratuit' : `${activeBooking.numberOfSeats * trip.price} FC`}
                     </Text>
                   </View>
                   <View style={styles.bookingInfoItem}>
@@ -1219,6 +1380,17 @@ export default function TripDetailsScreen() {
                 </View>
 
                 <View style={styles.bookingActionsRow}>
+                  {activeBooking.status === 'accepted' && driverPhone && (
+                    <TouchableOpacity
+                      style={[styles.bookingActionButton, styles.bookingActionCall]}
+                      onPress={() => setContactModalVisible(true)}
+                    >
+                      <Ionicons name="call" size={18} color={Colors.success} />
+                      <Text style={[styles.bookingActionText, styles.bookingActionCallText]}>
+                        Appeler
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     style={[styles.bookingActionButton, styles.bookingActionDanger]}
                     onPress={confirmCancelBooking}
@@ -1257,9 +1429,7 @@ export default function TripDetailsScreen() {
                         : 'Ce trajet est complet'}
                     </Text>
                     <Text style={styles.bookingHintSubtitle}>
-                      {isIdentityVerified
-                        ? `Prix par place : ${trip.price} FC`
-                        : 'Vérifiez votre identité pour envoyer une demande de réservation.'}
+                      {trip.price === 0 ? 'Prix par place : Gratuit' : `Prix par place : ${trip.price} FC`}
                     </Text>
                   </View>
                 </View>
@@ -1276,7 +1446,7 @@ export default function TripDetailsScreen() {
                     <ActivityIndicator color={Colors.white} />
                   ) : (
                     <Text style={styles.actionButtonText}>
-                      {isIdentityVerified ? 'Réserver ce trajet' : 'KYC requis'}
+                      Réserver ce trajet
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -1337,7 +1507,9 @@ export default function TripDetailsScreen() {
             </Text>
             <Text style={styles.bookingModalPrice}>
               Total estimé :{' '}
-              <Text style={styles.bookingModalPriceValue}>{estimatedTotal} FC</Text>
+              <Text style={styles.bookingModalPriceValue}>
+                {estimatedTotal === 0 ? 'Gratuit' : `${estimatedTotal} FC`}
+              </Text>
             </Text>
 
             {bookingModalError ? (
@@ -1464,6 +1636,115 @@ export default function TripDetailsScreen() {
         }}
         onComplete={handleKycWizardComplete}
       />
+
+      {/* Image Modal */}
+      <Modal
+        visible={imageModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setImageModalVisible(false)}
+      >
+        <View style={styles.imageModalOverlay}>
+          <TouchableOpacity
+            style={styles.imageModalCloseButton}
+            onPress={() => setImageModalVisible(false)}
+          >
+            <Ionicons name="close" size={32} color={Colors.white} />
+          </TouchableOpacity>
+          {selectedImageUri && (
+            <Image
+              source={{ uri: selectedImageUri }}
+              style={styles.imageModalImage}
+              resizeMode="contain"
+            />
+          )}
+        </View>
+      </Modal>
+
+      {/* Contact Modal */}
+      <Modal
+        visible={contactModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setContactModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.contactModalOverlay}
+          activeOpacity={1}
+          onPress={() => setContactModalVisible(false)}
+        >
+          <Animated.View entering={FadeInDown} style={styles.contactModalCard} onStartShouldSetResponder={() => true}>
+            <View style={styles.contactModalHeader}>
+              <View style={styles.contactModalIconWrapper}>
+                <View style={styles.contactModalIconBadge}>
+                  <Ionicons name="call" size={32} color={Colors.primary} />
+                </View>
+              </View>
+              <Text style={styles.contactModalTitle}>
+                Contacter {trip?.driverName || 'le conducteur'}
+              </Text>
+              <Text style={styles.contactModalSubtitle}>
+                Choisissez comment contacter le conducteur
+              </Text>
+            </View>
+
+            <View style={styles.contactModalActions}>
+              <TouchableOpacity
+                style={[styles.contactModalButton, styles.contactModalButtonCall]}
+                onPress={async () => {
+                  setContactModalVisible(false);
+                  await openPhoneCall(driverPhone!, (errorMsg) => {
+                    showDialog({
+                      variant: 'danger',
+                      title: 'Erreur',
+                      message: errorMsg,
+                    });
+                  });
+                }}
+              >
+                <View style={styles.contactModalButtonIcon}>
+                  <Ionicons name="call" size={24} color={Colors.success} />
+                </View>
+                <View style={styles.contactModalButtonContent}>
+                  <Text style={styles.contactModalButtonTitle}>Appeler</Text>
+                  <Text style={styles.contactModalButtonSubtitle}>Ouvrir l'application d'appel</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.contactModalButton, styles.contactModalButtonWhatsApp]}
+                onPress={async () => {
+                  setContactModalVisible(false);
+                  await openWhatsApp(driverPhone!, (errorMsg) => {
+                    showDialog({
+                      variant: 'danger',
+                      title: 'Erreur',
+                      message: errorMsg,
+                    });
+                  });
+                }}
+              >
+                <View style={styles.contactModalButtonIcon}>
+                  <Ionicons name="logo-whatsapp" size={24} color="#25D366" />
+                </View>
+                <View style={styles.contactModalButtonContent}>
+                  <Text style={styles.contactModalButtonTitle}>WhatsApp</Text>
+                  <Text style={styles.contactModalButtonSubtitle}>Envoyer un message WhatsApp</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.contactModalCancelButton}
+              onPress={() => setContactModalVisible(false)}
+            >
+              <Text style={styles.contactModalCancelText}>Annuler</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1834,6 +2115,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[300],
     borderRadius: BorderRadius.full,
     marginRight: Spacing.lg,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   driverDetails: {
     flex: 1,
@@ -2025,6 +2309,13 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.sm,
     color: Colors.gray[800],
     fontWeight: FontWeights.semibold,
+  },
+  bookingActionCall: {
+    borderColor: 'rgba(46, 204, 113, 0.3)',
+    backgroundColor: 'rgba(46, 204, 113, 0.08)',
+  },
+  bookingActionCallText: {
+    color: Colors.success,
   },
   bookingActionDanger: {
     borderColor: 'rgba(239, 68, 68, 0.3)',
@@ -2425,5 +2716,162 @@ const styles = StyleSheet.create({
   feedbackModalPrimaryText: {
     color: Colors.white,
     fontWeight: FontWeights.bold,
+  },
+  passengersContainer: {
+    marginTop: Spacing.md,
+  },
+  passengerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  passengerAvatar: {
+    width: 48,
+    height: 48,
+    backgroundColor: Colors.gray[200],
+    borderRadius: BorderRadius.full,
+    marginRight: Spacing.md,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  passengerInfo: {
+    flex: 1,
+  },
+  passengerName: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
+    marginBottom: Spacing.xs,
+  },
+  passengerSeats: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  noPassengersText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: Spacing.md,
+  },
+  imageModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalCloseButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 1,
+    padding: Spacing.sm,
+  },
+  imageModalImage: {
+    width: '100%',
+    height: '100%',
+  },
+  contactModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  contactModalCard: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xxl,
+    padding: Spacing.xl,
+  },
+  contactModalHeader: {
+    alignItems: 'center',
+    marginBottom: Spacing.xl,
+  },
+  contactModalIconWrapper: {
+    width: 80,
+    height: 80,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(46, 204, 113, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  contactModalIconBadge: {
+    width: 56,
+    height: 56,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...CommonStyles.shadowSm,
+  },
+  contactModalTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    textAlign: 'center',
+    marginBottom: Spacing.xs,
+  },
+  contactModalSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    textAlign: 'center',
+  },
+  contactModalActions: {
+    gap: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  contactModalButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+  },
+  contactModalButtonCall: {
+    borderColor: 'rgba(46, 204, 113, 0.3)',
+    backgroundColor: 'rgba(46, 204, 113, 0.05)',
+  },
+  contactModalButtonWhatsApp: {
+    borderColor: 'rgba(37, 211, 102, 0.3)',
+    backgroundColor: 'rgba(37, 211, 102, 0.05)',
+  },
+  contactModalButtonIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+    ...CommonStyles.shadowSm,
+  },
+  contactModalButtonContent: {
+    flex: 1,
+  },
+  contactModalButtonTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: 2,
+  },
+  contactModalButtonSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  contactModalCancelButton: {
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+    borderRadius: BorderRadius.md,
+  },
+  contactModalCancelText: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[600],
   },
 });
