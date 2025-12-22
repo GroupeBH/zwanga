@@ -377,11 +377,7 @@ export default function TripDetailsScreen() {
     ? BOOKING_STATUS_CONFIG[activeBooking.status as keyof typeof BOOKING_STATUS_CONFIG]
     : null;
   const openBookingModal = () => {
-    if (!isIdentityVerified) {
-      // Ouvrir directement le modal KYC si l'utilisateur n'est pas vérifié
-      setKycWizardVisible(true);
-      return;
-    }
+    // KYC désactivé pour la réservation - permettre la réservation sans vérification
     setBookingSeats('1');
     setBookingModalError('');
     setBookingModalVisible(true);
@@ -1433,9 +1429,7 @@ export default function TripDetailsScreen() {
                         : 'Ce trajet est complet'}
                     </Text>
                     <Text style={styles.bookingHintSubtitle}>
-                      {isIdentityVerified
-                        ? trip.price === 0 ? 'Prix par place : Gratuit' : `Prix par place : ${trip.price} FC`
-                        : 'Vérifiez votre identité pour envoyer une demande de réservation.'}
+                      {trip.price === 0 ? 'Prix par place : Gratuit' : `Prix par place : ${trip.price} FC`}
                     </Text>
                   </View>
                 </View>
@@ -1452,7 +1446,7 @@ export default function TripDetailsScreen() {
                     <ActivityIndicator color={Colors.white} />
                   ) : (
                     <Text style={styles.actionButtonText}>
-                      {isIdentityVerified ? 'Réserver ce trajet' : 'KYC requis'}
+                      Réserver ce trajet
                     </Text>
                   )}
                 </TouchableOpacity>
