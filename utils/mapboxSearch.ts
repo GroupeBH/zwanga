@@ -21,6 +21,81 @@ const RDC_BBOX = '12.0,-13.5,31.3,5.4';
 // Code ISO du pays pour la RDC
 const RDC_COUNTRY_CODE = 'cd';
 
+// Configuration des villes principales de la RDC pour améliorer la précision
+const MAJOR_CITIES = {
+  kinshasa: {
+    name: 'Kinshasa',
+    center: { latitude: -4.325, longitude: 15.322 },
+    bbox: { minLng: 15.0, maxLng: 15.5, minLat: -4.6, maxLat: -4.2 },
+    aliases: ['kinshasa', 'kin', 'kinsasa'],
+  },
+  lubumbashi: {
+    name: 'Lubumbashi',
+    center: { latitude: -11.664, longitude: 27.482 },
+    bbox: { minLng: 27.3, maxLng: 27.7, minLat: -11.8, maxLat: -11.5 },
+    aliases: ['lubumbashi', 'lubum', 'elizabethville'],
+  },
+  goma: {
+    name: 'Goma',
+    center: { latitude: -1.679, longitude: 29.228 },
+    bbox: { minLng: 29.1, maxLng: 29.3, minLat: -1.75, maxLat: -1.6 },
+    aliases: ['goma'],
+  },
+  bukavu: {
+    name: 'Bukavu',
+    center: { latitude: -2.490, longitude: 28.860 },
+    bbox: { minLng: 28.8, maxLng: 28.95, minLat: -2.55, maxLat: -2.45 },
+    aliases: ['bukavu', 'costermansville'],
+  },
+  matadi: {
+    name: 'Matadi',
+    center: { latitude: -5.817, longitude: 13.450 },
+    bbox: { minLng: 13.3, maxLng: 13.6, minLat: -5.9, maxLat: -5.7 },
+    aliases: ['matadi'],
+  },
+  kolwezi: {
+    name: 'Kolwezi',
+    center: { latitude: -10.716, longitude: 25.467 },
+    bbox: { minLng: 25.3, maxLng: 25.6, minLat: -10.8, maxLat: -10.6 },
+    aliases: ['kolwezi', 'kolwesi'],
+  },
+} as const;
+
+// Fonction pour détecter si une suggestion appartient à une ville majeure
+function detectCity(suggestion: MapboxSearchSuggestion): string | null {
+  const locality = suggestion.context?.locality?.toLowerCase() || '';
+  const region = suggestion.context?.region?.toLowerCase() || '';
+  const name = suggestion.name?.toLowerCase() || '';
+  const fullAddress = suggestion.fullAddress?.toLowerCase() || '';
+  
+  const searchText = `${locality} ${region} ${name} ${fullAddress}`;
+  
+  for (const [cityKey, cityConfig] of Object.entries(MAJOR_CITIES)) {
+    // Vérifier les alias et le nom de la ville
+    if (cityConfig.aliases.some(alias => searchText.includes(alias))) {
+      return cityKey;
+    }
+    
+    // Vérifier les coordonnées dans la bounding box de la ville
+    if (suggestion.coordinates.latitude !== null && suggestion.coordinates.longitude !== null) {
+      const lat = suggestion.coordinates.latitude;
+      const lng = suggestion.coordinates.longitude;
+      const bbox = cityConfig.bbox;
+      
+      if (
+        lng >= bbox.minLng &&
+        lng <= bbox.maxLng &&
+        lat >= bbox.minLat &&
+        lat <= bbox.maxLat
+      ) {
+        return cityKey;
+      }
+    }
+  }
+  
+  return null;
+}
+
 /* =====================================================
    SESSION TOKEN (obligatoire Mapbox Search Box)
 ===================================================== */
@@ -79,8 +154,24 @@ export async function searchMapboxPlaces(
   if (!mapboxToken || !query?.trim()) return [];
 
   const trimmedQuery = query.trim().substring(0, 256);
-  const effectiveProximity = proximity ?? DEFAULT_PROXIMITY;
   const validLimit = Math.min(Math.max(limit, 1), 10);
+
+  // Détecter si la requête mentionne une ville majeure
+  const queryLower = trimmedQuery.toLowerCase();
+  let detectedCityConfig: typeof MAJOR_CITIES[keyof typeof MAJOR_CITIES] | null = null;
+  
+  for (const cityConfig of Object.values(MAJOR_CITIES)) {
+    if (cityConfig.aliases.some(alias => queryLower.includes(alias))) {
+      detectedCityConfig = cityConfig;
+      break;
+    }
+  }
+
+  // Utiliser la proximité de la ville détectée, ou celle fournie, ou la valeur par défaut
+  const effectiveProximity = 
+    detectedCityConfig?.center ?? 
+    proximity ?? 
+    DEFAULT_PROXIMITY;
 
   try {
     const params = new URLSearchParams();
@@ -95,7 +186,7 @@ export async function searchMapboxPlaces(
     params.append('bbox', RDC_BBOX);
 
     // Types de lieux détaillés : adresses, rues/avenues, quartiers, districts, localités, POI
-    // Inclut tous les types pertinents pour obtenir des résultats précis à Kinshasa
+    // Inclut tous les types pertinents pour obtenir des résultats précis dans les villes majeures
     params.append(
       'types',
       'address,street,neighborhood,district,locality,place,poi',
@@ -194,7 +285,7 @@ export async function searchMapboxPlaces(
       })
 
       /* =============================
-         PRIORISATION (UX) - Favoriser les résultats détaillés et Kinshasa
+         PRIORISATION (UX) - Favoriser les résultats détaillés et les villes majeures
       ============================== */
       .sort((a: any, b: any) => {
         const weight = (s: MapboxSearchSuggestion) => {
@@ -209,22 +300,28 @@ export async function searchMapboxPlaces(
           else if (s.placeType.includes('place')) score += 1; // Lieux génériques
           // locality n'ajoute pas de score (moins prioritaire)
           
-          // Bonus pour les résultats à Kinshasa (vérifier dans le contexte)
-          const locality = s.context?.locality?.toLowerCase() || '';
-          const region = s.context?.region?.toLowerCase() || '';
-          if (locality.includes('kinshasa') || region.includes('kinshasa')) {
-            score += 2; // Bonus pour Kinshasa
+          // Bonus pour les villes majeures de la RDC
+          const detectedCity = detectCity(s);
+          if (detectedCity) {
+            score += 3; // Bonus significatif pour les villes majeures
           }
           
-          // Bonus pour les résultats proches de Kinshasa (si coordonnées disponibles)
-          if (s.coordinates.latitude !== null && s.coordinates.longitude !== null) {
-            const lat = s.coordinates.latitude;
-            const lng = s.coordinates.longitude;
-            // Vérifier si dans la zone de Kinshasa (approximative)
-            // Kinshasa bbox approximative: [15.0, -4.6, 15.5, -4.2]
-            if (lng >= 15.0 && lng <= 15.5 && lat >= -4.6 && lat <= -4.2) {
-              score += 1; // Bonus pour proximité géographique
-            }
+          // Bonus supplémentaire pour Kinshasa (ville principale)
+          if (detectedCity === 'kinshasa') {
+            score += 1; // Bonus supplémentaire pour Kinshasa
+          }
+          
+          // Bonus pour les résultats avec contexte complet (locality, neighborhood, etc.)
+          const hasCompleteContext = 
+            s.context?.locality && 
+            (s.context?.neighborhood || s.context?.district);
+          if (hasCompleteContext) {
+            score += 2; // Bonus pour contexte détaillé
+          }
+          
+          // Bonus pour les résultats avec nom complet et adresse détaillée
+          if (s.fullAddress && s.fullAddress.length > s.name.length + 10) {
+            score += 1; // Bonus pour adresse complète
           }
           
           return score;
@@ -262,7 +359,27 @@ export async function getMapboxPlaceDetails(
     const feature = data?.features?.[0];
     if (!feature?.geometry?.coordinates) return null;
 
-    const [longitude, latitude] = feature.geometry.coordinates;
+    const coords = feature.geometry.coordinates;
+    if (!Array.isArray(coords) || coords.length < 2) return null;
+    
+    const [longitude, latitude] = coords;
+    
+    // Valider les coordonnées
+    if (
+      typeof longitude !== 'number' ||
+      typeof latitude !== 'number' ||
+      isNaN(longitude) ||
+      isNaN(latitude) ||
+      !isFinite(longitude) ||
+      !isFinite(latitude) ||
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      console.warn('Invalid coordinates from Mapbox retrieve:', { longitude, latitude });
+      return null;
+    }
 
     const context = feature.properties?.context ?? {};
     const addressParts = [

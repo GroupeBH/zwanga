@@ -264,9 +264,28 @@ export default function LocationPickerModal({
         ? { longitude: selectedLocation.longitude, latitude: selectedLocation.latitude }
         : undefined;
       const suggestions = await searchMapboxPlaces(query, proximity, 5);
-      setMapboxSuggestions(suggestions);
+      // Filtrer les suggestions invalides
+      const validSuggestions = (suggestions || []).filter(
+        (s) =>
+          s &&
+          s.id &&
+          s.name &&
+          (s.coordinates.latitude === null ||
+            (typeof s.coordinates.latitude === 'number' &&
+              !isNaN(s.coordinates.latitude) &&
+              isFinite(s.coordinates.latitude) &&
+              s.coordinates.latitude >= -90 &&
+              s.coordinates.latitude <= 90)) &&
+          (s.coordinates.longitude === null ||
+            (typeof s.coordinates.longitude === 'number' &&
+              !isNaN(s.coordinates.longitude) &&
+              isFinite(s.coordinates.longitude) &&
+              s.coordinates.longitude >= -180 &&
+              s.coordinates.longitude <= 180))
+      );
+      setMapboxSuggestions(validSuggestions);
     } catch (error) {
-      console.warn('Mapbox search failed', error);
+      console.error('Mapbox search failed', error);
       setMapboxSuggestions([]);
     } finally {
       setMapboxLoading(false);
@@ -301,44 +320,88 @@ export default function LocationPickerModal({
       return;
     }
 
-    // Si on a des suggestions Mapbox, utiliser la première et récupérer les détails complets
-    if (mapboxSuggestions.length > 0) {
+    // Vérifier si la requête correspond exactement à une suggestion Mapbox
+    const exactMatch = mapboxSuggestions.find(
+      (s) => s.name.toLowerCase() === searchQuery.trim().toLowerCase() ||
+             s.fullAddress?.toLowerCase() === searchQuery.trim().toLowerCase()
+    );
+
+    // Si on a des suggestions Mapbox et qu'il y a une correspondance exacte, utiliser la suggestion correspondante
+    if (mapboxSuggestions.length > 0 && exactMatch) {
       try {
         setSearchLoading(true);
-        const firstSuggestion = mapboxSuggestions[0];
+        const firstSuggestion = exactMatch; // Utiliser la suggestion qui correspond exactement
+        
+        if (!firstSuggestion || !firstSuggestion.id) {
+          console.warn('Invalid suggestion:', firstSuggestion);
+          setSearchLoading(false);
+          return;
+        }
         
         // Utiliser getMapboxPlaceDetails pour obtenir les coordonnées complètes
         const placeDetails = await getMapboxPlaceDetails(firstSuggestion.id);
         
         if (placeDetails && placeDetails.coordinates.latitude && placeDetails.coordinates.longitude) {
-          const result: SearchResult = {
-            title: placeDetails.name || firstSuggestion.name,
-            address: placeDetails.fullAddress || firstSuggestion.fullAddress || firstSuggestion.name,
-            latitude: placeDetails.coordinates.latitude,
-            longitude: placeDetails.coordinates.longitude,
-          };
-          setSelectedLocation(result);
-          animateToCoordinate(result.latitude, result.longitude);
-          setMapboxSuggestions([]);
-          setSearchQuery(placeDetails.name || firstSuggestion.name);
-          return;
-        } else {
-          // Fallback si retrieve échoue mais qu'on a des coordonnées dans la suggestion
-          if (firstSuggestion.coordinates.latitude && firstSuggestion.coordinates.longitude) {
+          const lat = placeDetails.coordinates.latitude;
+          const lng = placeDetails.coordinates.longitude;
+          
+          // Valider les coordonnées avant de les utiliser
+          if (
+            typeof lat === 'number' &&
+            typeof lng === 'number' &&
+            !isNaN(lat) &&
+            !isNaN(lng) &&
+            isFinite(lat) &&
+            isFinite(lng) &&
+            lat >= -90 &&
+            lat <= 90 &&
+            lng >= -180 &&
+            lng <= 180
+          ) {
             const result: SearchResult = {
-              title: firstSuggestion.name,
-              address: firstSuggestion.fullAddress || firstSuggestion.name,
-              latitude: firstSuggestion.coordinates.latitude,
-              longitude: firstSuggestion.coordinates.longitude,
+              title: placeDetails.name || firstSuggestion.name || 'Lieu sélectionné',
+              address: placeDetails.fullAddress || firstSuggestion.fullAddress || firstSuggestion.name || 'Adresse non disponible',
+              latitude: lat,
+              longitude: lng,
             };
             setSelectedLocation(result);
             animateToCoordinate(result.latitude, result.longitude);
             setMapboxSuggestions([]);
+            setSearchQuery(placeDetails.name || firstSuggestion.name || '');
+            setSearchLoading(false);
             return;
           }
         }
+        
+        // Fallback si retrieve échoue mais qu'on a des coordonnées dans la suggestion
+        if (
+          firstSuggestion.coordinates.latitude &&
+          firstSuggestion.coordinates.longitude &&
+          typeof firstSuggestion.coordinates.latitude === 'number' &&
+          typeof firstSuggestion.coordinates.longitude === 'number' &&
+          !isNaN(firstSuggestion.coordinates.latitude) &&
+          !isNaN(firstSuggestion.coordinates.longitude) &&
+          isFinite(firstSuggestion.coordinates.latitude) &&
+          isFinite(firstSuggestion.coordinates.longitude) &&
+          firstSuggestion.coordinates.latitude >= -90 &&
+          firstSuggestion.coordinates.latitude <= 90 &&
+          firstSuggestion.coordinates.longitude >= -180 &&
+          firstSuggestion.coordinates.longitude <= 180
+        ) {
+          const result: SearchResult = {
+            title: firstSuggestion.name || 'Lieu sélectionné',
+            address: firstSuggestion.fullAddress || firstSuggestion.name || 'Adresse non disponible',
+            latitude: firstSuggestion.coordinates.latitude,
+            longitude: firstSuggestion.coordinates.longitude,
+          };
+          setSelectedLocation(result);
+          animateToCoordinate(result.latitude, result.longitude);
+          setMapboxSuggestions([]);
+          setSearchLoading(false);
+          return;
+        }
       } catch (error) {
-        console.warn('Failed to retrieve place details, falling back to expo-location', error);
+        console.error('Failed to retrieve place details, falling back to expo-location', error);
         // Continue avec expo-location comme fallback
       } finally {
         setSearchLoading(false);
@@ -350,25 +413,60 @@ export default function LocationPickerModal({
       setSearchLoading(true);
       const query = searchQuery.trim();
       const results = await Location.geocodeAsync(query);
-      if (!results || results.length === 0) {
+      if (!results || !Array.isArray(results) || results.length === 0) {
         setSearchResults([]);
+        setSearchLoading(false);
         return;
       }
-      const mappedResults: SearchResult[] = results.slice(0, 5).map((result, index) => {
-        const fallbackTitle = query || `Résultat ${index + 1}`;
-        const title =
-          (typeof result === 'object' && result !== null && 'name' in result && typeof (result as any).name === 'string' && (result as any).name) ||
-          (typeof result === 'object' && result !== null && 'street' in result && typeof (result as any).street === 'string' && (result as any).street) ||
-          (typeof result === 'object' && result !== null && 'city' in result && typeof (result as any).city === 'string' && (result as any).city) ||
-          fallbackTitle;
-        const address = formatAddressFromGeocode(result) || fallbackTitle;
-        return {
-          title,
-          address,
-          latitude: result.latitude,
-          longitude: result.longitude,
-        };
-      });
+      const mappedResults: SearchResult[] = results.slice(0, 5)
+        .map((result, index) => {
+          try {
+            // Valider que le résultat a les propriétés nécessaires
+            if (!result || typeof result !== 'object' || !('latitude' in result) || !('longitude' in result)) {
+              console.warn('Invalid geocode result:', result);
+              return null;
+            }
+            
+            const lat = result.latitude;
+            const lng = result.longitude;
+            
+            // Valider les coordonnées
+            if (
+              typeof lat !== 'number' ||
+              typeof lng !== 'number' ||
+              isNaN(lat) ||
+              isNaN(lng) ||
+              !isFinite(lat) ||
+              !isFinite(lng) ||
+              lat < -90 ||
+              lat > 90 ||
+              lng < -180 ||
+              lng > 180
+            ) {
+              console.warn('Invalid coordinates in geocode result:', { lat, lng });
+              return null;
+            }
+            
+            const fallbackTitle = query || `Résultat ${index + 1}`;
+            const title =
+              (typeof result === 'object' && result !== null && 'name' in result && typeof (result as any).name === 'string' && (result as any).name) ||
+              (typeof result === 'object' && result !== null && 'street' in result && typeof (result as any).street === 'string' && (result as any).street) ||
+              (typeof result === 'object' && result !== null && 'city' in result && typeof (result as any).city === 'string' && (result as any).city) ||
+              fallbackTitle;
+            const address = formatAddressFromGeocode(result) || fallbackTitle;
+            return {
+              title,
+              address,
+              latitude: lat,
+              longitude: lng,
+            };
+          } catch (error) {
+            console.warn('Error mapping geocode result:', error);
+            return null;
+          }
+        })
+        .filter((result): result is SearchResult => result !== null);
+        
       setSearchResults(mappedResults);
       const first = mappedResults[0];
       if (first) {
@@ -376,7 +474,8 @@ export default function LocationPickerModal({
         animateToCoordinate(first.latitude, first.longitude);
       }
     } catch (error) {
-      console.warn('Geocoding failed', error);
+      console.error('Geocoding failed', error);
+      setSearchResults([]);
     } finally {
       setSearchLoading(false);
     }
@@ -390,6 +489,11 @@ export default function LocationPickerModal({
   };
 
   const handleMapboxSuggestionPress = async (suggestion: MapboxSearchSuggestion) => {
+    if (!suggestion || !suggestion.id) {
+      console.warn('Invalid suggestion:', suggestion);
+      return;
+    }
+    
     try {
       setMapboxLoading(true);
       
@@ -402,14 +506,18 @@ export default function LocationPickerModal({
       // Vérifier si les coordonnées de la suggestion sont valides
       if (
         suggestion?.coordinates &&
-        suggestion.coordinates.latitude &&
-        suggestion.coordinates.longitude &&
+        suggestion.coordinates.latitude !== null &&
+        suggestion.coordinates.longitude !== null &&
         typeof suggestion.coordinates.latitude === 'number' &&
         typeof suggestion.coordinates.longitude === 'number' &&
         !isNaN(suggestion.coordinates.latitude) &&
         !isNaN(suggestion.coordinates.longitude) &&
         isFinite(suggestion.coordinates.latitude) &&
-        isFinite(suggestion.coordinates.longitude)
+        isFinite(suggestion.coordinates.longitude) &&
+        suggestion.coordinates.latitude >= -90 &&
+        suggestion.coordinates.latitude <= 90 &&
+        suggestion.coordinates.longitude >= -180 &&
+        suggestion.coordinates.longitude <= 180
       ) {
         finalLatitude = suggestion.coordinates.latitude;
         finalLongitude = suggestion.coordinates.longitude;
@@ -422,14 +530,18 @@ export default function LocationPickerModal({
         if (placeDetails) {
           // Utiliser les coordonnées des détails si disponibles et valides
           if (
-            placeDetails.coordinates.latitude &&
-            placeDetails.coordinates.longitude &&
+            placeDetails.coordinates.latitude !== null &&
+            placeDetails.coordinates.longitude !== null &&
             typeof placeDetails.coordinates.latitude === 'number' &&
             typeof placeDetails.coordinates.longitude === 'number' &&
             !isNaN(placeDetails.coordinates.latitude) &&
             !isNaN(placeDetails.coordinates.longitude) &&
             isFinite(placeDetails.coordinates.latitude) &&
-            isFinite(placeDetails.coordinates.longitude)
+            isFinite(placeDetails.coordinates.longitude) &&
+            placeDetails.coordinates.latitude >= -90 &&
+            placeDetails.coordinates.latitude <= 90 &&
+            placeDetails.coordinates.longitude >= -180 &&
+            placeDetails.coordinates.longitude <= 180
           ) {
             finalLatitude = placeDetails.coordinates.latitude;
             finalLongitude = placeDetails.coordinates.longitude;
@@ -461,13 +573,41 @@ export default function LocationPickerModal({
         animateToCoordinate(result.latitude, result.longitude);
         setMapboxSuggestions([]);
         setSearchQuery(finalName);
-      } else {
-        // Si aucune coordonnée valide n'est disponible, essayer de géocoder le nom
-        console.warn('No valid coordinates found for suggestion, attempting geocoding:', suggestion);
-        try {
-          const geocodeResults = await Location.geocodeAsync(suggestion.name);
-          if (geocodeResults && geocodeResults.length > 0) {
-            const firstResult = geocodeResults[0];
+        setMapboxLoading(false);
+        return;
+      }
+      
+      // Si aucune coordonnée valide n'est disponible, essayer de géocoder le nom
+      console.warn('No valid coordinates found for suggestion, attempting geocoding:', suggestion);
+      try {
+        const geocodeQuery = suggestion.name || suggestion.fullAddress || '';
+        if (!geocodeQuery.trim()) {
+          console.error('No query available for geocoding');
+          setMapboxLoading(false);
+          return;
+        }
+        
+        const geocodeResults = await Location.geocodeAsync(geocodeQuery);
+        if (geocodeResults && Array.isArray(geocodeResults) && geocodeResults.length > 0) {
+          const firstResult = geocodeResults[0];
+          
+          // Valider le résultat du géocodage
+          if (
+            firstResult &&
+            typeof firstResult === 'object' &&
+            'latitude' in firstResult &&
+            'longitude' in firstResult &&
+            typeof firstResult.latitude === 'number' &&
+            typeof firstResult.longitude === 'number' &&
+            !isNaN(firstResult.latitude) &&
+            !isNaN(firstResult.longitude) &&
+            isFinite(firstResult.latitude) &&
+            isFinite(firstResult.longitude) &&
+            firstResult.latitude >= -90 &&
+            firstResult.latitude <= 90 &&
+            firstResult.longitude >= -180 &&
+            firstResult.longitude <= 180
+          ) {
             const result: SearchResult = {
               title: suggestion.name || 'Lieu sélectionné',
               address: formatAddressFromGeocode(firstResult) || suggestion.fullAddress || suggestion.name || 'Adresse non disponible',
@@ -479,11 +619,13 @@ export default function LocationPickerModal({
             setMapboxSuggestions([]);
             setSearchQuery(suggestion.name || '');
           } else {
-            console.error('Geocoding failed for suggestion:', suggestion);
+            console.error('Invalid geocode result:', firstResult);
           }
-        } catch (geocodeError) {
-          console.error('Error geocoding suggestion:', geocodeError);
+        } else {
+          console.error('Geocoding returned no results for suggestion:', suggestion);
         }
+      } catch (geocodeError) {
+        console.error('Error geocoding suggestion:', geocodeError);
       }
     } catch (error) {
       console.error('Error handling Mapbox suggestion press:', error);
@@ -547,6 +689,10 @@ export default function LocationPickerModal({
             onChangeText={setSearchQuery}
             returnKeyType="search"
             onSubmitEditing={handleSearchSubmit}
+            autoComplete="off"
+            autoCorrect={false}
+            autoCapitalize="none"
+            spellCheck={false}
           />
           {(mapboxLoading || searchLoading) ? (
             <ActivityIndicator size="small" color={Colors.primary} />
