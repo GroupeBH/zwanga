@@ -72,7 +72,6 @@ export default function SettingsScreen() {
       onPress: changeProfilePhoto,
     },
     { icon: 'lock-closed-outline', label: 'Sécurité', route: '/security' },
-    { icon: 'card-outline', label: 'Abonnement', route: '/subscription' },
   ];
 
   return (

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -12,19 +12,17 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
 import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
-import { useGetNotificationsQuery, useMarkNotificationAsReadMutation } from '@/store/api/notificationApi';
+import {
+  useGetNotificationsQuery,
+  useMarkNotificationsAsReadMutation,
+  useMarkAllNotificationsAsReadMutation,
+  useDisableNotificationsMutation,
+} from '@/store/api/notificationApi';
+import type { Notification } from '@/types';
 import { formatDateTime, formatRelativeTime } from '@/utils/dateHelpers';
-
-type NotificationItem = {
-  id: string;
-  title: string;
-  message: string;
-  type?: string;
-  createdAt: string;
-  read?: boolean;
-  readAt?: string | null;
-};
+import { useDialog } from '@/components/ui/DialogProvider';
 
 const notificationTypeConfig: Record<
   string,
@@ -54,62 +52,176 @@ const notificationTypeConfig: Record<
 
 export default function NotificationsScreen() {
   const router = useRouter();
+  const { showDialog } = useDialog();
   const {
-    data: notifications,
+    data: notificationsData,
     isLoading,
     isFetching,
     refetch,
   } = useGetNotificationsQuery();
-  const [markNotificationAsRead] = useMarkNotificationAsReadMutation();
-  const [selectedNotification, setSelectedNotification] = useState<NotificationItem | null>(null);
+  const [markNotificationsAsRead] = useMarkNotificationsAsReadMutation();
+  const [markAllAsRead] = useMarkAllNotificationsAsReadMutation();
+  const [disableNotifications] = useDisableNotificationsMutation();
+  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const swipeableRefs = useRef<Map<string, Swipeable | null>>(new Map());
 
-  const unreadCount = useMemo(
-    () =>
-      (notifications ?? []).filter((notification) => !notification.read && !notification.readAt).length,
-    [notifications],
-  );
+  const notifications = notificationsData?.notifications ?? [];
+  const unreadCount = notificationsData?.unreadCount ?? 0;
 
-  const handleSelectNotification = async (notification: NotificationItem) => {
+  const handleSelectNotification = async (notification: Notification) => {
     setSelectedNotification(notification);
-    if (!notification.read && !notification.readAt) {
+    if (!notification.isRead) {
       try {
-        await markNotificationAsRead(notification.id).unwrap();
+        await markNotificationsAsRead({ notificationIds: [notification.id] }).unwrap();
       } catch (error) {
         console.warn('Impossible de marquer la notification comme lue:', error);
       }
     }
   };
 
-  const renderNotificationCard = (notification: NotificationItem) => {
-    const config = notificationTypeConfig[notification.type ?? 'default'] ?? notificationTypeConfig.default;
-    const isUnread = !notification.read && !notification.readAt;
+  const handleMarkAllAsRead = async () => {
+    try {
+      await markAllAsRead().unwrap();
+    } catch (error) {
+      console.warn('Impossible de marquer toutes les notifications comme lues:', error);
+    }
+  };
+
+  const handleDeleteNotification = async (notificationId: string) => {
+    try {
+      await disableNotifications({ notificationIds: [notificationId] }).unwrap();
+      // Fermer le swipeable après suppression
+      swipeableRefs.current.get(notificationId)?.close();
+    } catch (error: any) {
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: error?.data?.message || 'Impossible de supprimer la notification',
+      });
+    }
+  };
+
+  const renderRightActions = (notification: Notification) => {
+    return (
+      <View style={styles.rightActionContainer}>
+        <TouchableOpacity
+          style={styles.deleteAction}
+          onPress={() => {
+            handleDeleteNotification(notification.id);
+          }}
+        >
+          <Ionicons name="trash-outline" size={20} color={Colors.white} />
+          <Text style={styles.deleteActionText}>Supprimer</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderLeftActions = (notification: Notification) => {
+    return (
+      <View style={styles.leftActionContainer}>
+        <TouchableOpacity
+          style={styles.deleteAction}
+          onPress={() => {
+            handleDeleteNotification(notification.id);
+          }}
+        >
+          <Ionicons name="trash-outline" size={20} color={Colors.white} />
+          <Text style={styles.deleteActionText}>Supprimer</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderNotificationData = (data: Record<string, any>) => {
+    const dataEntries = Object.entries(data);
+    
+    // Mapper les clés communes à des labels lisibles
+    const keyLabels: Record<string, string> = {
+      type: 'Type',
+      tripId: 'ID Trajet',
+      bookingId: 'ID Réservation',
+      conversationId: 'ID Conversation',
+      userId: 'ID Utilisateur',
+      message: 'Message',
+      status: 'Statut',
+    };
 
     return (
-      <TouchableOpacity
+      <View style={styles.dataList}>
+        {dataEntries.map(([key, value]) => {
+          const label = keyLabels[key] || key.charAt(0).toUpperCase() + key.slice(1);
+          const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+          
+          return (
+            <View key={key} style={styles.dataRow}>
+              <Text style={styles.dataLabel}>{label}:</Text>
+              <Text style={styles.dataValue} numberOfLines={3}>
+                {displayValue}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    );
+  };
+
+  const renderNotificationCard = (notification: Notification) => {
+    // Déterminer le type de notification depuis les données
+    const notificationType = notification.data?.type || 'default';
+    const config = notificationTypeConfig[notificationType] ?? notificationTypeConfig.default;
+    const isUnread = !notification.isRead;
+
+    return (
+      <Swipeable
         key={notification.id}
-        style={[styles.notificationCard, isUnread && styles.notificationCardUnread]}
-        onPress={() => handleSelectNotification(notification)}
-        activeOpacity={0.85}
+        ref={(ref) => {
+          if (ref) {
+            swipeableRefs.current.set(notification.id, ref);
+          } else {
+            swipeableRefs.current.delete(notification.id);
+          }
+        }}
+        renderRightActions={() => renderRightActions(notification)}
+        renderLeftActions={() => renderLeftActions(notification)}
+        onSwipeableWillOpen={() => {
+          // Fermer les autres swipeables ouverts
+          swipeableRefs.current.forEach((ref, id) => {
+            if (id !== notification.id && ref) {
+              ref.close();
+            }
+          });
+        }}
+        friction={2}
+        overshootRight={false}
+        overshootLeft={false}
       >
-        <View style={[styles.notificationIcon, { backgroundColor: config.background }]}>
-          <Ionicons name={config.icon} size={20} color={config.color} />
-        </View>
-        <View style={styles.notificationContent}>
-          <View style={styles.notificationHeader}>
-            <Text style={styles.notificationTitle}>{notification.title ?? 'Notification'}</Text>
-            <Text style={styles.notificationTime}>{formatRelativeTime(notification.createdAt)}</Text>
+        <TouchableOpacity
+          style={[styles.notificationCard, isUnread && styles.notificationCardUnread]}
+          onPress={() => handleSelectNotification(notification)}
+          activeOpacity={0.85}
+        >
+          <View style={[styles.notificationIcon, { backgroundColor: config.background }]}>
+            <Ionicons name={config.icon} size={20} color={config.color} />
           </View>
-          <Text style={styles.notificationMessage} numberOfLines={2}>
-            {notification.message}
-          </Text>
-        </View>
-        {isUnread && <View style={styles.unreadDot} />}
-      </TouchableOpacity>
+          <View style={styles.notificationContent}>
+            <View style={styles.notificationHeader}>
+              <Text style={styles.notificationTitle}>{notification.title}</Text>
+              <Text style={styles.notificationTime}>{formatRelativeTime(notification.createdAt)}</Text>
+            </View>
+            <Text style={styles.notificationMessage} numberOfLines={2}>
+              {notification.body}
+            </Text>
+          </View>
+          {isUnread && <View style={styles.unreadDot} />}
+        </TouchableOpacity>
+      </Swipeable>
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <GestureHandlerRootView style={styles.container}>
+      <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={22} color={Colors.gray[900]} />
@@ -120,13 +232,20 @@ export default function NotificationsScreen() {
             <Text style={styles.headerSubtitle}>{unreadCount} non lue{unreadCount > 1 ? 's' : ''}</Text>
           )}
         </View>
-        <TouchableOpacity style={styles.refreshButton} onPress={() => refetch()}>
-          {isFetching ? (
-            <ActivityIndicator size="small" color={Colors.primary} />
-          ) : (
-            <Ionicons name="refresh" size={20} color={Colors.primary} />
+        <View style={styles.headerActions}>
+          {unreadCount > 0 && (
+            <TouchableOpacity style={styles.markAllButton} onPress={handleMarkAllAsRead}>
+              <Ionicons name="checkmark-done" size={18} color={Colors.primary} />
+            </TouchableOpacity>
           )}
-        </TouchableOpacity>
+          <TouchableOpacity style={styles.refreshButton} onPress={() => refetch()}>
+            {isFetching ? (
+              <ActivityIndicator size="small" color={Colors.primary} />
+            ) : (
+              <Ionicons name="refresh" size={20} color={Colors.primary} />
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -173,7 +292,7 @@ export default function NotificationsScreen() {
             <Text style={styles.modalTime}>
               Reçu {selectedNotification ? formatDateTime(selectedNotification.createdAt) : ''}
             </Text>
-            <Text style={styles.modalMessage}>{selectedNotification?.message}</Text>
+            <Text style={styles.modalMessage}>{selectedNotification?.body}</Text>
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalPrimaryButton]}
@@ -185,7 +304,8 @@ export default function NotificationsScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+      </SafeAreaView>
+    </GestureHandlerRootView>
   );
 }
 
@@ -227,6 +347,19 @@ const styles = StyleSheet.create({
     color: Colors.gray[500],
     fontSize: FontSizes.sm,
     marginTop: 2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  markAllButton: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   refreshButton: {
     width: 40,
@@ -376,6 +509,68 @@ const styles = StyleSheet.create({
   },
   modalPrimaryText: {
     color: Colors.white,
+    fontWeight: FontWeights.semibold,
+  },
+  modalData: {
+    marginTop: Spacing.md,
+    padding: Spacing.md,
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.md,
+  },
+  modalDataTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+    marginBottom: Spacing.sm,
+  },
+  dataList: {
+    gap: Spacing.xs,
+  },
+  dataRow: {
+    flexDirection: 'row',
+    marginBottom: Spacing.xs,
+    paddingBottom: Spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[200],
+  },
+  dataLabel: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[700],
+    minWidth: 120,
+    marginRight: Spacing.sm,
+  },
+  dataValue: {
+    flex: 1,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  rightActionContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginBottom: Spacing.md,
+  },
+  leftActionContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginBottom: Spacing.md,
+  },
+  deleteAction: {
+    backgroundColor: Colors.danger,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 100,
+    height: '100%',
+    borderRadius: BorderRadius.xl,
+    marginHorizontal: Spacing.xs,
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  },
+  deleteActionText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
     fontWeight: FontWeights.semibold,
   },
 });

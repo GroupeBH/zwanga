@@ -107,23 +107,54 @@ export default function PublishScreen() {
     try {
       setKycSubmitting(true);
       const formData = buildKycFormData({ front, back, selfie });
-      await uploadKyc(formData).unwrap();
+      const result = await uploadKyc(formData).unwrap();
       setKycModalVisible(false);
+      
+      // Refetch immédiatement pour obtenir le statut mis à jour
       await refetchKycStatus();
-      showDialog({
-        variant: 'success',
-        title: 'Documents envoyés',
-        message: 'Nous vous informerons dès que la vérification sera terminée.',
-      });
+      
+      // Vérifier le statut retourné par le backend
+      const kycStatusAfterUpload = result?.status;
+      
+      if (kycStatusAfterUpload === 'approved') {
+        // KYC approuvé immédiatement (validation automatique réussie)
+        showDialog({
+          variant: 'success',
+          title: 'KYC validé avec succès !',
+          message: 'Votre identité a été vérifiée automatiquement. Vous pouvez maintenant publier vos trajets.',
+        });
+      } else if (kycStatusAfterUpload === 'rejected') {
+        // KYC rejeté (validation automatique échouée)
+        const rejectionReason = result?.rejectionReason || 'Votre demande KYC a été rejetée.';
+        showDialog({
+          variant: 'danger',
+          title: 'KYC rejeté',
+          message: rejectionReason,
+        });
+      } else {
+        // KYC en attente (validation manuelle requise)
+        showDialog({
+          variant: 'success',
+          title: 'Documents envoyés',
+          message: 'Vos documents sont en cours de vérification. Nous vous informerons dès que la vérification sera terminée.',
+        });
+      }
     } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        'Impossible de soumettre les documents pour le moment.';
+      // Gérer les erreurs détaillées du backend
+      let errorMessage = error?.data?.message ?? error?.error ?? 'Impossible de soumettre les documents pour le moment.';
+      
+      // Si le message est une chaîne, la traiter directement
+      if (typeof errorMessage === 'string') {
+        // Le backend peut retourner des messages multi-lignes avec des détails
+        errorMessage = errorMessage;
+      } else if (Array.isArray(errorMessage)) {
+        errorMessage = errorMessage.join('\n');
+      }
+      
       showDialog({
         variant: 'danger',
         title: 'Erreur KYC',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message: errorMessage,
       });
     } finally {
       setKycSubmitting(false);
@@ -172,6 +203,7 @@ export default function PublishScreen() {
     setDepartureDateTime(null);
     setIosPickerMode(null);
     setSeats('4');
+    setIsFreeTrip(false);
     setPrice('');
     setDescription('');
     setSelectedVehicleId(null);
@@ -189,6 +221,7 @@ export default function PublishScreen() {
   const [departureDateTime, setDepartureDateTime] = useState<Date | null>(null);
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
   const [seats, setSeats] = useState('4');
+  const [isFreeTrip, setIsFreeTrip] = useState(false);
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
 
@@ -431,11 +464,19 @@ export default function PublishScreen() {
       }
       setStep('details');
     } else if (step === 'details') {
-      if (!departureDateTime || !price) {
+      if (!departureDateTime) {
         showDialog({
           variant: 'warning',
           title: 'Informations manquantes',
-          message: 'Merci de renseigner la date de départ et le prix.',
+          message: 'Merci de renseigner la date de départ.',
+        });
+        return;
+      }
+      if (!isFreeTrip && !price) {
+        showDialog({
+          variant: 'warning',
+          title: 'Informations manquantes',
+          message: 'Merci de renseigner le prix ou de sélectionner "Gratuit".',
         });
         return;
       }
@@ -464,12 +505,12 @@ export default function PublishScreen() {
     }
 
     const seatsValue = parseInt(seats, 10);
-    const priceValue = parseFloat(price);
+    const priceValue = isFreeTrip ? 0 : parseFloat(price);
     const departureDate = departureDateTime;
 
     if (
       Number.isNaN(seatsValue) ||
-      Number.isNaN(priceValue) ||
+      (!isFreeTrip && (Number.isNaN(priceValue) || priceValue <= 0)) ||
       !departureDate ||
       Number.isNaN(departureDate.getTime())
     ) {
@@ -509,6 +550,7 @@ export default function PublishScreen() {
         departureDate: departureDate.toISOString(),
         availableSeats: seatsValue,
         pricePerSeat: priceValue,
+        isFree: isFreeTrip,
         description: description.trim() || undefined,
         vehicleId: selectedVehicleId,
       } as any).unwrap();
@@ -597,11 +639,45 @@ export default function PublishScreen() {
               </Text>
             </View>
 
+            {/* Message KYC visible dans l'étape route */}
+            {!isIdentityVerified && (
+              <View style={styles.routeKycWarningCard}>
+                <View style={styles.routeKycWarningHeader}>
+                  <View style={styles.routeKycWarningIconContainer}>
+                    <Ionicons name="shield-checkmark" size={24} color={Colors.primary} />
+                  </View>
+                  <View style={styles.routeKycWarningTextContainer}>
+                    <Text style={styles.routeKycWarningTitle}>KYC requis pour publier</Text>
+                    <Text style={styles.routeKycWarningSubtitle}>
+                      Vous devez vérifier votre identité avant de pouvoir publier des trajets
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={styles.routeKycWarningButton}
+                  onPress={handleStartKyc}
+                >
+                  <Ionicons name="shield" size={18} color={Colors.white} />
+                  <Text style={styles.routeKycWarningButtonText}>Compléter ma vérification</Text>
+                  <Ionicons name="arrow-forward" size={16} color={Colors.white} />
+                </TouchableOpacity>
+              </View>
+            )}
+
             {renderLocationCard('departure', departureSummary)}
             {renderLocationCard('arrival', arrivalSummary)}
 
-            <TouchableOpacity style={styles.button} onPress={handleNextStep}>
-              <Text style={styles.buttonText}>Continuer</Text>
+            <TouchableOpacity 
+              style={[
+                styles.button,
+                !isIdentityVerified && styles.buttonDisabled
+              ]} 
+              onPress={handleNextStep}
+              disabled={!isIdentityVerified}
+            >
+              <Text style={styles.buttonText}>
+                {isIdentityVerified ? 'Continuer' : 'KYC requis pour continuer'}
+              </Text>
             </TouchableOpacity>
           </Animated.View>
         )}
@@ -826,15 +902,34 @@ export default function PublishScreen() {
             </View>
 
             <View style={[styles.inputGroup, { marginBottom: Spacing.xl }]}>
-              <Text style={styles.label}>Prix par personne (FC) *</Text>
+              <View style={styles.labelRow}>
+                <Text style={styles.label}>Prix par personne (FC) *</Text>
+                <TouchableOpacity
+                  style={styles.freeToggle}
+                  onPress={() => {
+                    setIsFreeTrip(!isFreeTrip);
+                    if (!isFreeTrip) {
+                      setPrice('');
+                    }
+                  }}
+                >
+                  <View style={[styles.toggleSwitch, isFreeTrip && styles.toggleSwitchActive]}>
+                    <View style={[styles.toggleThumb, isFreeTrip && styles.toggleThumbActive]} />
+                  </View>
+                  <Text style={[styles.freeToggleText, isFreeTrip && styles.freeToggleTextActive]}>
+                    Gratuit
+                  </Text>
+                </TouchableOpacity>
+              </View>
               <View style={styles.inputWithIcon}>
                 <Ionicons name="cash" size={20} color={Colors.gray[600]} />
                 <TextInput
-                  style={styles.input}
-                  placeholder="Ex: 2000"
+                  style={[styles.input, isFreeTrip && styles.inputDisabled]}
+                  placeholder={isFreeTrip ? "Gratuit" : "Ex: 2000"}
                   keyboardType="number-pad"
                   value={price}
                   onChangeText={setPrice}
+                  editable={!isFreeTrip}
                 />
               </View>
             </View>
@@ -941,7 +1036,9 @@ export default function PublishScreen() {
                       <Ionicons name="cash" size={18} color={Colors.gray[600]} />
                       <Text style={styles.confirmDetailLabel}>Prix</Text>
                     </View>
-                    <Text style={[styles.confirmDetailValue, { color: Colors.success }]}>{price} FC/pers</Text>
+                    <Text style={[styles.confirmDetailValue, { color: Colors.success }]}>
+                      {isFreeTrip ? 'Gratuit' : `${price} FC/pers`}
+                    </Text>
                   </View>
                   {description ? (
                     <View style={styles.confirmDetailRow}>
@@ -1197,6 +1294,59 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.semibold,
   },
+  routeKycWarningCard: {
+    backgroundColor: Colors.primary + '08',
+    borderRadius: BorderRadius.xl,
+    borderWidth: 2,
+    borderColor: Colors.primary + '30',
+    padding: Spacing.lg,
+    marginBottom: Spacing.xl,
+    gap: Spacing.md,
+  },
+  routeKycWarningHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.md,
+  },
+  routeKycWarningIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  routeKycWarningTextContainer: {
+    flex: 1,
+  },
+  routeKycWarningTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+    marginBottom: Spacing.xs,
+  },
+  routeKycWarningSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+    lineHeight: 20,
+  },
+  routeKycWarningButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.lg,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    marginTop: Spacing.xs,
+  },
+  routeKycWarningButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+  },
   scrollView: {
     flex: 1,
   },
@@ -1241,6 +1391,51 @@ const styles = StyleSheet.create({
   },
   inputGroup: {
     marginBottom: Spacing.lg,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  freeToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  toggleSwitch: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.gray[300],
+    padding: 2,
+    justifyContent: 'center',
+  },
+  toggleSwitchActive: {
+    backgroundColor: Colors.success,
+  },
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.white,
+    alignSelf: 'flex-start',
+  },
+  toggleThumbActive: {
+    alignSelf: 'flex-end',
+  },
+  freeToggleText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    fontWeight: FontWeights.medium,
+  },
+  freeToggleTextActive: {
+    color: Colors.success,
+    fontWeight: FontWeights.semibold,
+  },
+  inputDisabled: {
+    backgroundColor: Colors.gray[100],
+    color: Colors.gray[500],
   },
   label: {
     fontSize: FontSizes.sm,

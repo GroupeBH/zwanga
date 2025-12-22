@@ -7,7 +7,8 @@ import {
   useUpdateTripMutation,
 } from '@/store/api/tripApi';
 import type { Trip } from '@/types';
-import { formatTime } from '@/utils/dateHelpers';
+import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
+import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -17,6 +18,7 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Modal,
   Platform,
   RefreshControl,
@@ -70,12 +72,57 @@ export default function TripsScreen() {
   };
 
   const trips = myTrips ?? [];
+  
   const upcomingTrips = useMemo(
-    () => trips.filter((trip) => trip.status === 'upcoming' || trip.status === 'ongoing'),
+    () => {
+      const now = new Date();
+      return trips.filter((trip) => {
+        // Si le trajet est déjà complété, il n'est pas à venir
+        if (trip.status === 'completed') {
+          return false;
+        }
+        
+        // Si le trajet est 'upcoming' ou 'ongoing', vérifier si la date de départ est passée
+        if (trip.status === 'upcoming' || trip.status === 'ongoing') {
+          if (trip.departureTime) {
+            const departureDate = new Date(trip.departureTime);
+            // Si la date de départ est passée, le trajet est expiré
+            if (departureDate < now) {
+              return false;
+            }
+          }
+          return true;
+        }
+        
+        return false;
+      });
+    },
     [trips],
   );
+  
   const completedTrips = useMemo(
-    () => trips.filter((trip) => trip.status === 'completed'),
+    () => {
+      const now = new Date();
+      return trips.filter((trip) => {
+        // Les trajets avec status 'completed' sont dans l'historique
+        if (trip.status === 'completed') {
+          return true;
+        }
+        
+        // Les trajets 'upcoming' ou 'ongoing' dont la date de départ est passée sont expirés
+        if (trip.status === 'upcoming' || trip.status === 'ongoing') {
+          if (trip.departureTime) {
+            const departureDate = new Date(trip.departureTime);
+            // Si la date de départ est passée, le trajet est expiré et va dans l'historique
+            if (departureDate < now) {
+              return true;
+            }
+          }
+        }
+        
+        return false;
+      });
+    },
     [trips],
   );
 
@@ -241,10 +288,34 @@ export default function TripsScreen() {
     }
   };
 
-  const canManageTrip = (trip: Trip) => trip.status === 'upcoming' || trip.status === 'ongoing';
+  const canManageTrip = (trip: Trip) => {
+    // Ne peut pas gérer les trajets complétés
+    if (trip.status === 'completed') {
+      return false;
+    }
+    
+    // Vérifier si la date de départ est passée
+    if (trip.departureTime) {
+      const departureDate = new Date(trip.departureTime);
+      const now = new Date();
+      if (departureDate < now) {
+        return false; // Trajet expiré, ne peut plus être modifié
+      }
+    }
+    
+    return trip.status === 'upcoming' || trip.status === 'ongoing';
+  };
 
-  const getStatusConfig = (status: string) => {
-    switch (status) {
+  const getStatusConfig = (trip: Trip) => {
+    // Vérifier si le trajet est expiré (date de départ passée)
+    const isExpired = trip.departureTime && new Date(trip.departureTime) < new Date();
+    
+    // Si le trajet est expiré mais n'a pas le status 'completed', afficher "Expiré"
+    if (isExpired && trip.status !== 'completed') {
+      return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: 'Expiré' };
+    }
+    
+    switch (trip.status) {
       case 'upcoming':
         return { bgColor: 'rgba(247, 184, 1, 0.1)', textColor: Colors.secondary, label: 'À venir' };
       case 'ongoing':
@@ -252,7 +323,7 @@ export default function TripsScreen() {
       case 'completed':
         return { bgColor: 'rgba(46, 204, 113, 0.1)', textColor: Colors.success, label: 'Terminé' };
       default:
-        return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: status };
+        return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: trip.status };
     }
   };
 
@@ -352,50 +423,76 @@ export default function TripsScreen() {
           </View>
         ) : (
           displayTrips.map((trip, index) => {
-            const statusConfig = getStatusConfig(trip.status);
-            return (
-              <Animated.View
-                key={trip.id}
-                entering={FadeInDown.delay(index * 100)}
-                style={styles.tripCard}
-              >
-                {/* Header */}
-                <View style={styles.tripHeader}>
-                  <View style={styles.tripDriverInfo}>
-                    <View style={styles.avatar} />
-                    <View style={styles.tripDriverDetails}>
-                      <Text style={styles.driverName}>{trip.driverName}</Text>
-                      <View style={styles.driverMeta}>
-                        <Ionicons name="star" size={14} color={Colors.secondary} />
-                        <Text style={styles.driverRating}>{trip.driverRating}</Text>
+            const TripCardWithArrival = () => {
+              const calculatedArrivalTime = useTripArrivalTime(trip);
+              const arrivalTimeDisplay = calculatedArrivalTime 
+                ? formatTime(calculatedArrivalTime.toISOString())
+                : formatTime(trip.arrivalTime);
+              
+              const statusConfig = getStatusConfig(trip);
+              
+              return (
+                <Animated.View
+                  key={trip.id}
+                  entering={FadeInDown.delay(index * 100)}
+                  style={styles.tripCard}
+                >
+                  {/* Header */}
+                  <View style={styles.tripHeader}>
+                    <View style={styles.tripDriverInfo}>
+                      {trip.driverAvatar ? (
+                        <Image
+                          source={{ uri: trip.driverAvatar }}
+                          style={styles.avatar}
+                        />
+                      ) : (
+                        <View style={styles.avatar} />
+                      )}
+                      <View style={styles.tripDriverDetails}>
+                        <Text style={styles.driverName}>{trip.driverName}</Text>
+                        <View style={styles.driverMeta}>
+                          <Ionicons name="star" size={14} color={Colors.secondary} />
+                          <Text style={styles.driverRating}>{trip.driverRating}</Text>
+                        </View>
+                      </View>
+                    </View>
+                    <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
+                      <Text style={[styles.statusText, { color: statusConfig.textColor }]}>
+                        {statusConfig.label}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Route */}
+                  <View style={styles.routeContainer}>
+                    <View style={styles.routeRow}>
+                      <Ionicons name="location" size={16} color={Colors.success} />
+                      <Text style={styles.routeText}>{trip.departure.name}</Text>
+                      <View style={styles.timeContainer}>
+                        <Text style={styles.routeDateLabel}>
+                          {formatDateWithRelativeLabel(trip.departureTime, false)}
+                        </Text>
+                        <Text style={styles.routeTime}>
+                          {formatTime(trip.departureTime)}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.routeDivider} />
+                    <View style={styles.routeRow}>
+                      <Ionicons name="navigate" size={16} color={Colors.primary} />
+                      <Text style={styles.routeText}>{trip.arrival.name}</Text>
+                      <View style={styles.timeContainer}>
+                        {calculatedArrivalTime && (
+                          <Text style={styles.routeDateLabel}>
+                            {formatDateWithRelativeLabel(calculatedArrivalTime.toISOString(), false)}
+                          </Text>
+                        )}
+                        <Text style={styles.routeTime}>
+                          {arrivalTimeDisplay}
+                        </Text>
                       </View>
                     </View>
                   </View>
-                  <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
-                    <Text style={[styles.statusText, { color: statusConfig.textColor }]}>
-                      {statusConfig.label}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Route */}
-                <View style={styles.routeContainer}>
-                  <View style={styles.routeRow}>
-                    <Ionicons name="location" size={16} color={Colors.success} />
-                    <Text style={styles.routeText}>{trip.departure.name}</Text>
-                    <Text style={styles.routeTime}>
-                      {formatTime(trip.departureTime)}
-                    </Text>
-                  </View>
-                  <View style={styles.routeDivider} />
-                  <View style={styles.routeRow}>
-                    <Ionicons name="navigate" size={16} color={Colors.primary} />
-                    <Text style={styles.routeText}>{trip.arrival.name}</Text>
-                    <Text style={styles.routeTime}>
-                      {formatTime(trip.arrivalTime)}
-                    </Text>
-                  </View>
-                </View>
 
                 {/* Info */}
                 <View style={styles.tripFooter}>
@@ -406,9 +503,14 @@ export default function TripsScreen() {
                     </View>
                     <View style={[styles.infoItem, { marginLeft: Spacing.lg }]}>
                       <Ionicons name="cash" size={16} color={Colors.gray[600]} />
-                      <Text style={styles.infoText}>{trip.price} FC</Text>
+                      {trip.price === 0 ? (
+                        <Text style={[styles.infoText, { color: Colors.success, fontWeight: FontWeights.bold }]}>Gratuit</Text>
+                      ) : (
+                        <Text style={styles.infoText}>{trip.price} FC</Text>
+                      )}
                     </View>
                   </View>
+                  {/* Bouton Détails - Toujours accessible, même pour les trajets expirés/complétés */}
                   <TouchableOpacity
                     style={styles.detailsButton}
                     onPress={() => router.push(`/trip/manage/${trip.id}`)}
@@ -418,36 +520,40 @@ export default function TripsScreen() {
                   </TouchableOpacity>
                 </View>
 
-                <View style={styles.ownerActionsRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.ownerActionButton,
-                      !canManageTrip(trip) && styles.ownerActionDisabled,
-                    ]}
-                    onPress={() => openEditModal(trip)}
-                    disabled={!canManageTrip(trip)}
-                  >
-                    <Ionicons name="create-outline" size={16} color={Colors.primary} />
-                    <Text style={styles.ownerActionText}>Modifier</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.ownerActionButton,
-                      styles.ownerActionDanger,
-                      { marginRight: 0 },
-                      !canManageTrip(trip) && styles.ownerActionDisabled,
-                    ]}
-                    onPress={() => openDeleteModal(trip)}
-                    disabled={!canManageTrip(trip)}
-                  >
-                    <Ionicons name="trash-outline" size={16} color={Colors.danger} />
-                    <Text style={[styles.ownerActionText, styles.ownerActionDangerText]}>
-                      Supprimer
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </Animated.View>
-            );
+                  {/* Actions de gestion - Désactivées pour les trajets expirés/complétés mais toujours visibles */}
+                  <View style={styles.ownerActionsRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.ownerActionButton,
+                        !canManageTrip(trip) && styles.ownerActionDisabled,
+                      ]}
+                      onPress={() => openEditModal(trip)}
+                      disabled={!canManageTrip(trip)}
+                    >
+                      <Ionicons name="create-outline" size={16} color={Colors.primary} />
+                      <Text style={styles.ownerActionText}>Modifier</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.ownerActionButton,
+                        styles.ownerActionDanger,
+                        { marginRight: 0 },
+                        !canManageTrip(trip) && styles.ownerActionDisabled,
+                      ]}
+                      onPress={() => openDeleteModal(trip)}
+                      disabled={!canManageTrip(trip)}
+                    >
+                      <Ionicons name="trash-outline" size={16} color={Colors.danger} />
+                      <Text style={[styles.ownerActionText, styles.ownerActionDangerText]}>
+                        Supprimer
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </Animated.View>
+              );
+            };
+
+            return <TripCardWithArrival key={trip.id} />;
           })
         )}
       </ScrollView>
@@ -816,6 +922,15 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.sm,
     flex: 1,
     fontSize: FontSizes.base,
+  },
+  timeContainer: {
+    alignItems: 'flex-end',
+  },
+  routeDateLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.primary,
+    fontWeight: FontWeights.medium,
+    marginBottom: 2,
   },
   routeTime: {
     fontSize: FontSizes.sm,

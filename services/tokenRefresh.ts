@@ -13,10 +13,16 @@ import { clearTokens, getTokens, storeTokens } from './tokenStorage';
 let isRefreshing = false;
 let refreshPromise: Promise<string | null> | null = null;
 
+// Normaliser l'URL de base pour éviter les doubles slashes
+const getNormalizedBaseUrl = () => {
+  if (!API_BASE_URL) return '';
+  return API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+};
+
 // Créer un baseQuery sans authentification pour le refresh token
 // Cela garantit la même configuration que Redux Query mais sans header Authorization
 const refreshBaseQuery = fetchBaseQuery({
-  baseUrl: API_BASE_URL,
+  baseUrl: getNormalizedBaseUrl(),
   // Pas de prepareHeaders - on ne veut pas de header Authorization pour le refresh
 });
 
@@ -64,14 +70,29 @@ export async function validateAndRefreshTokens(): Promise<boolean> {
       console.log('Access token rafraîchi avec succès');
       return true;
     } else {
-      console.log('Échec du rafraîchissement - déconnexion');
-      await clearTokens();
-      getStoreDispatch()(logout());
-      return false;
+      // Si refreshAccessToken retourne null, cela peut être dû à une erreur réseau
+      // Dans ce cas, on ne déconnecte pas l'utilisateur - il peut utiliser l'app en mode offline
+      // On retourne true pour indiquer que l'utilisateur reste authentifié avec ses tokens existants
+      console.log('Échec du rafraîchissement - peut-être offline, utilisateur reste connecté');
+      // Ne pas déconnecter - l'utilisateur peut continuer avec son access token actuel (même s'il est expiré)
+      // Les requêtes échoueront mais l'utilisateur ne sera pas déconnecté
+      return true; // Retourner true pour indiquer que l'utilisateur reste authentifié
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Erreur lors de la validation des tokens:', error);
-    // En cas d'erreur, déconnecter par sécurité
+    
+    // Vérifier si c'est une erreur réseau
+    const isNetworkError = 
+      error?.name === 'TypeError' ||
+      error?.message?.toLowerCase().includes('network') ||
+      error?.message?.toLowerCase().includes('fetch');
+    
+    if (isNetworkError) {
+      console.warn('Erreur réseau détectée - utilisateur reste connecté en mode offline');
+      return true; // L'utilisateur reste authentifié
+    }
+    
+    // Pour les autres erreurs, déconnecter par sécurité
     await clearTokens();
     getStoreDispatch()(logout());
     return false;
@@ -99,9 +120,11 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
     return Promise.resolve(null);
   }
 
-  const refreshUrl = `${API_BASE_URL}/auth/refresh`;
+  const normalizedBaseUrl = getNormalizedBaseUrl();
+  const refreshUrl = `${normalizedBaseUrl}/auth/refresh`;
   console.log('Rafraîchissement de l\'access token');
   console.log('  - API_BASE_URL:', API_BASE_URL);
+  console.log('  - Normalized base URL:', normalizedBaseUrl);
   console.log('  - URL complète:', refreshUrl);
   console.log('  - Refresh token length:', refreshToken?.length || 0);
   
@@ -113,12 +136,13 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
   }
 
   refreshPromise = (async () => {
+    let result: any = null;
     try {
       console.log('  - Début de la requête refresh');
       console.log('  - Body:', JSON.stringify({ refreshToken: refreshToken.substring(0, 20) + '...' }));
       
-      // Utiliser fetchBaseQuery pour garantir la même configuration que Redux Query
-      const result = await refreshBaseQuery(
+      // Utiliser refreshBaseQuery qui utilise déjà l'URL normalisée
+      result = await refreshBaseQuery(
         {
           url: '/auth/refresh',
           method: 'POST',
@@ -136,7 +160,23 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
         console.error('  - Error:', result.error);
         console.error('  - Error status:', result.error.status);
         console.error('  - Error data:', result.error.data);
-        throw new Error(`HTTP ${result.error.status}: ${JSON.stringify(result.error.data)}`);
+        
+        // Conserver l'erreur pour la détection réseau plus tard
+        const errorStatus = result.error.status;
+        const errorData = result.error.data;
+        
+        // Si c'est une erreur FETCH_ERROR, c'est une erreur réseau
+        if (errorStatus === 'FETCH_ERROR') {
+          throw { name: 'TypeError', message: 'Network request failed', isNetworkError: true, originalError: result.error };
+        }
+        
+        throw { 
+          name: 'HTTPError', 
+          message: `HTTP ${errorStatus}: ${JSON.stringify(errorData)}`,
+          status: errorStatus,
+          data: errorData,
+          isNetworkError: false
+        };
       }
 
       const data = result.data as { accessToken: string; refreshToken: string };
@@ -166,12 +206,28 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
       console.error('  - Message:', error?.message);
       console.error('  - Stack:', error?.stack);
       
-      // Vérifier si c'est une erreur réseau
-      if (error?.name === 'AbortError' || error?.message?.includes('network') || error?.message?.includes('fetch')) {
-        console.error('  - Erreur réseau détectée - la requête n\'a pas atteint le serveur');
+      // Vérifier si c'est une erreur réseau (offline, pas de connexion, etc.)
+      const isNetworkError = 
+        error?.isNetworkError === true ||
+        error?.name === 'TypeError' ||
+        error?.name === 'AbortError' ||
+        error?.message?.toLowerCase().includes('network') ||
+        error?.message?.toLowerCase().includes('fetch') ||
+        error?.message?.toLowerCase().includes('failed to fetch') ||
+        error?.message?.toLowerCase().includes('network request failed') ||
+        (result?.error && 'status' in result.error && result.error.status === 'FETCH_ERROR');
+      
+      if (isNetworkError) {
+        console.warn('  - Erreur réseau détectée - pas de déconnexion en mode offline');
+        // Ne pas déconnecter l'utilisateur en cas d'erreur réseau
+        // L'utilisateur reste connecté et peut continuer à utiliser l'app en mode offline
+        isRefreshing = false;
+        refreshPromise = null;
+        return null; // Retourner null mais sans déconnecter
       }
       
-      // En cas d'erreur, nettoyer et déconnecter
+      // Pour les autres erreurs (401, 403, etc.), c'est une vraie erreur d'authentification
+      console.error('  - Erreur d\'authentification détectée - déconnexion');
       await clearTokens();
       getStoreDispatch()(logout());
       return null;

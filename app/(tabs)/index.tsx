@@ -1,23 +1,26 @@
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { useGetNotificationsQuery } from '@/store/api/notificationApi';
 import {
   TripSearchParams,
   useGetTripsQuery,
   useSearchTripsByCoordinatesMutation,
 } from '@/store/api/tripApi';
+import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectAvailableTrips, selectSavedLocations } from '@/store/selectors';
 import { addSavedLocation } from '@/store/slices/locationSlice';
 import { setTrips } from '@/store/slices/tripsSlice';
-import { formatTime } from '@/utils/dateHelpers';
+import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -33,6 +36,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { showDialog } = useDialog();
+  const { data: currentUser } = useGetCurrentUserQuery();
   const storedTrips = useAppSelector(selectAvailableTrips);
   const savedLocations = useAppSelector(selectSavedLocations);
   const [queryParams, setQueryParams] = useState<TripSearchParams>({});
@@ -50,14 +54,14 @@ export default function HomeScreen() {
   const [minSeatsFilter, setMinSeatsFilter] = useState('');
   const [maxPriceFilter, setMaxPriceFilter] = useState('');
   const [showQuickFields, setShowQuickFields] = useState(false);
-  const [isHeaderExpanded, setIsHeaderExpanded] = useState(true);
+  const [isHeaderExpanded, setIsHeaderExpanded] = useState(false);
   const {
     data: remoteTrips,
     isLoading: tripsLoading,
     isError: tripsError,
     refetch: refetchTrips,
   } = useGetTripsQuery(queryParams);
-  const { data: notifications } = useGetNotificationsQuery(undefined, {
+  const { data: notificationsData } = useGetNotificationsQuery(undefined, {
     refetchOnMountOrArgChange: true,
   });
 
@@ -69,14 +73,24 @@ export default function HomeScreen() {
 
   const baseTrips = remoteTrips ?? storedTrips ?? [];
   const latestTrips = useMemo(() => {
-    return [...baseTrips]
+    // Filtrer les trajets pour exclure ceux publiés par l'utilisateur actuel
+    const filteredTrips = baseTrips.filter((trip) => {
+      // Si l'utilisateur n'est pas connecté, afficher tous les trajets
+      if (!currentUser?.id) {
+        return true;
+      }
+      // Exclure les trajets dont l'utilisateur est le driver
+      return trip.driverId !== currentUser.id;
+    });
+    
+    return [...filteredTrips]
       .sort((a, b) => {
         const dateA = new Date(a.departureTime).getTime();
         const dateB = new Date(b.departureTime).getTime();
         return dateB - dateA;
       })
       .slice(0, RECENT_TRIPS_LIMIT);
-  }, [baseTrips]);
+  }, [baseTrips, currentUser?.id]);
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
   const [addMode, setAddMode] = useState(false);
@@ -207,15 +221,6 @@ export default function HomeScreen() {
     setMaxPriceFilter('');
   };
 
-  const popularLocations = [
-    { id: 'gombe', label: 'Gombe', address: 'Gombe, Kinshasa', coords: { latitude: -4.3206, longitude: 15.3115 } },
-    { id: 'lemba', label: 'Lemba', address: 'Lemba, Kinshasa', coords: { latitude: -4.419, longitude: 15.317 } },
-    { id: 'kintambo', label: 'Kintambo', address: 'Kintambo, Kinshasa', coords: { latitude: -4.334, longitude: 15.263 } },
-    { id: 'ngaliema', label: 'Ngaliema', address: 'Ngaliema, Kinshasa', coords: { latitude: -4.347, longitude: 15.244 } },
-    { id: 'bandal', label: 'Bandalungwa', address: 'Bandalungwa, Kinshasa', coords: { latitude: -4.375, longitude: 15.298 } },
-    { id: 'kalamu', label: 'Kalamu', address: 'Kalamu, Kinshasa', coords: { latitude: -4.360, longitude: 15.305 } },
-  ];
-
   const handleLocationPress = (location: { coords: { latitude: number; longitude: number }; label: string }) => {
     router.push({
       pathname: '/search',
@@ -252,8 +257,7 @@ export default function HomeScreen() {
     setAddMode(false);
   };
 
-  const unreadNotifications =
-    notifications?.filter((notification) => !notification.read && !notification.readAt).length ?? 0;
+  const unreadNotifications = notificationsData?.unreadCount ?? 0;
   const hasLocationSelections = Boolean(filterDepartureLocation && filterArrivalLocation);
 
   const openNotifications = () => {
@@ -503,6 +507,44 @@ export default function HomeScreen() {
               </LinearGradient>
             </TouchableOpacity>
           </View>
+          
+          {/* Deuxième ligne d'actions rapides */}
+          <View style={[styles.quickActions, { marginTop: Spacing.md }]}>
+            <TouchableOpacity
+              style={[styles.quickActionCard, { marginRight: Spacing.md, backgroundColor: 'rgba(34, 197, 94, 0.1)', borderColor: 'rgba(34, 197, 94, 0.2)' }]}
+              onPress={() => router.push('/request')}
+            >
+              <View style={[styles.quickActionIcon, { backgroundColor: Colors.success }]}>
+                <Ionicons name="document-text" size={24} color={Colors.white} />
+              </View>
+              <Text style={styles.quickActionTitle}>Créer une demande</Text>
+              <Text style={styles.quickActionSubtitle}>Les propriétaires vous ferons des offres</Text>
+            </TouchableOpacity>
+
+            {currentUser?.isDriver ? (
+              <TouchableOpacity
+                style={[styles.quickActionCard, { backgroundColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.2)' }]}
+                onPress={() => router.push('/requests')}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: '#3B82F6' }]}>
+                  <Ionicons name="list-circle" size={24} color={Colors.white} />
+                </View>
+                <Text style={styles.quickActionTitle}>Demandes disponibles</Text>
+                <Text style={styles.quickActionSubtitle}>Faire des offres</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.quickActionCard, { backgroundColor: 'rgba(139, 92, 246, 0.1)', borderColor: 'rgba(139, 92, 246, 0.2)' }]}
+                onPress={() => router.push('/my-requests')}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: '#8B5CF6' }]}>
+                  <Ionicons name="list" size={24} color={Colors.white} />
+                </View>
+                <Text style={styles.quickActionTitle}>les demandes</Text>
+                <Text style={styles.quickActionSubtitle}>Voir les demandes</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* Trajets disponibles */}
@@ -531,7 +573,7 @@ export default function HomeScreen() {
             </View>
           )}
 
-          {!tripsLoading && !tripsError && baseTrips.length === 0 && (
+          {!tripsLoading && !tripsError && latestTrips.length === 0 && (
             <View style={styles.tripStateCard}>
               <Ionicons name="car-outline" size={24} color={Colors.gray[500]} />
               <Text style={styles.tripStateText}>Aucun trajet pour le moment.</Text>
@@ -540,68 +582,103 @@ export default function HomeScreen() {
           )}
 
           {latestTrips.map((trip, index) => {
-            const ratingValue =
-              typeof trip.driverRating === 'number'
-                ? trip.driverRating
-                : Number(trip.driverRating) || 4.9;
-            return (
-              <Animated.View
-                key={trip.id}
-                entering={FadeInDown.delay(index * 100)}
-                style={styles.tripCard}
-              >
-                <View style={styles.tripHeader}>
-                  <View style={styles.tripDriverInfo}>
-                    <View style={styles.avatar} />
-                    <View style={styles.tripDriverDetails}>
-                      <Text style={styles.driverName}>{trip?.driverName ?? ''}</Text>
-                      <View style={styles.driverMeta}>
-                        <Ionicons name="star" size={14} color={Colors.secondary} />
-                        <Text style={styles.driverRating}>{ratingValue.toFixed(1)}</Text>
-                        <View style={styles.dot} />
-                        <Text style={styles.vehicleInfo}>{trip?.vehicleInfo ?? ''}</Text>
+            const TripCardWithArrival = () => {
+              const calculatedArrivalTime = useTripArrivalTime(trip);
+              const arrivalTimeDisplay = calculatedArrivalTime 
+                ? formatTime(calculatedArrivalTime.toISOString())
+                : formatTime(trip.arrivalTime);
+              
+              const ratingValue =
+                typeof trip.driverRating === 'number'
+                  ? trip.driverRating
+                  : Number(trip.driverRating) || 4.9;
+              
+              return (
+                <Animated.View
+                  key={trip.id}
+                  entering={FadeInDown.delay(index * 100)}
+                  style={styles.tripCard}
+                >
+                  <View style={styles.tripHeader}>
+                    <View style={styles.tripDriverInfo}>
+                      {trip.driverAvatar ? (
+                        <Image
+                          source={{ uri: trip.driverAvatar }}
+                          style={styles.avatar}
+                        />
+                      ) : (
+                        <View style={styles.avatar} />
+                      )}
+                      <View style={styles.tripDriverDetails}>
+                        <Text style={styles.driverName}>{trip?.driverName ?? ''}</Text>
+                        <View style={styles.driverMeta}>
+                          <Ionicons name="star" size={14} color={Colors.secondary} />
+                          <Text style={styles.driverRating}>{ratingValue.toFixed(1)}</Text>
+                          <View style={styles.dot} />
+                          <Text style={styles.vehicleInfo}>{trip?.vehicleInfo ?? ''}</Text>
+                        </View>
+                      </View>
+                    </View>
+                    {trip?.price === 0 ? (
+                      <View style={styles.freeBadge}>
+                        <Text style={styles.freeBadgeText}>Gratuit</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.priceBadge}>
+                        <Text style={styles.priceText}>{trip?.price ?? 0} FC</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={styles.tripRoute}>
+                    <View style={styles.routeRow}>
+                      <Ionicons name="location" size={16} color={Colors.success} />
+                      <Text style={styles.routeText}>{trip?.departure?.name ?? ''}</Text>
+                      <View style={styles.timeContainer}>
+                        <Text style={styles.routeDateLabel}>
+                          {formatDateWithRelativeLabel(trip.departureTime, false)}
+                        </Text>
+                        <Text style={styles.routeTime}>
+                          {formatTime(trip.departureTime)}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.routeRow}>
+                      <Ionicons name="navigate" size={16} color={Colors.primary} />
+                      <Text style={styles.routeText}>{trip?.arrival?.name ?? ''}</Text>
+                      <View style={styles.timeContainer}>
+                        {calculatedArrivalTime && (
+                          <Text style={styles.routeDateLabel}>
+                            {formatDateWithRelativeLabel(calculatedArrivalTime.toISOString(), false)}
+                          </Text>
+                        )}
+                        <Text style={styles.routeTime}>
+                          {arrivalTimeDisplay}
+                        </Text>
                       </View>
                     </View>
                   </View>
-                  <View style={styles.priceBadge}>
-                    <Text style={styles.priceText}>{trip?.price ?? 0} FC</Text>
-                  </View>
-                </View>
 
-                <View style={styles.tripRoute}>
-                  <View style={styles.routeRow}>
-                    <Ionicons name="location" size={16} color={Colors.success} />
-                    <Text style={styles.routeText}>{trip?.departure?.name ?? ''}</Text>
-                    <Text style={styles.routeTime}>
-                      {formatTime(trip.departureTime)}
-                    </Text>
+                  <View style={styles.tripFooter}>
+                    <View style={styles.tripFooterLeft}>
+                      <Ionicons name="people" size={16} color={Colors.gray[600]} />
+                      <Text style={styles.seatsText}>
+                        {trip.availableSeats} places disponibles
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.reserveButton}
+                      onPress={() => router.push(`/trip/${trip.id}`)}
+                    >
+                      <Text style={styles.reserveButtonText}>Réserver</Text>
+                    </TouchableOpacity>
                   </View>
+                </Animated.View>
+              );
+            };
 
-                  <View style={styles.routeRow}>
-                    <Ionicons name="navigate" size={16} color={Colors.primary} />
-                    <Text style={styles.routeText}>{trip?.arrival?.name ?? ''}</Text>
-                    <Text style={styles.routeTime}>
-                      {formatTime(trip.arrivalTime)}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.tripFooter}>
-                  <View style={styles.tripFooterLeft}>
-                    <Ionicons name="people" size={16} color={Colors.gray[600]} />
-                    <Text style={styles.seatsText}>
-                      {trip.availableSeats} places disponibles
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.reserveButton}
-                    onPress={() => router.push(`/trip/${trip.id}`)}
-                  >
-                    <Text style={styles.reserveButtonText}>Réserver</Text>
-                  </TouchableOpacity>
-                </View>
-              </Animated.View>
-            );
+            return <TripCardWithArrival key={trip.id} />;
           })}
         </View>
       </ScrollView>
@@ -1153,6 +1230,17 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     fontSize: FontSizes.sm,
   },
+  freeBadge: {
+    backgroundColor: Colors.success + '15',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  freeBadgeText: {
+    color: Colors.success,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.base,
+  },
   tripRoute: {
     marginBottom: Spacing.md,
   },
@@ -1166,6 +1254,15 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.sm,
     flex: 1,
     fontSize: FontSizes.base,
+  },
+  timeContainer: {
+    alignItems: 'flex-end',
+  },
+  routeDateLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.primary,
+    fontWeight: FontWeights.medium,
+    marginBottom: 2,
   },
   routeTime: {
     fontSize: FontSizes.sm,
