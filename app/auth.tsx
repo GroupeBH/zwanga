@@ -48,7 +48,8 @@ type AuthStep = 'phone' | 'sms' | 'profile' | 'kyc';
 type VehicleType = 'sedan' | 'suv' | 'van' | 'moto';
 
 const LOGIN_STEPS: AuthStep[] = ['phone', 'sms'];
-const SIGNUP_STEPS: AuthStep[] = ['phone', 'sms', 'profile', 'kyc'];
+// KYC n'est plus dans les étapes par défaut - il sera ajouté conditionnellement pour les conducteurs
+const SIGNUP_STEPS: AuthStep[] = ['phone', 'sms', 'profile'];
 
 type VehicleOption = {
   id: VehicleType;
@@ -118,7 +119,19 @@ export default function AuthScreen() {
   const [kycSubmitting, setKycSubmitting] = useState(false);
   const [kycFiles, setKycFiles] = useState<KycCaptureResult | null>(null);
 
-  const stepSequence = mode === 'login' ? LOGIN_STEPS : SIGNUP_STEPS;
+  // Calculer la séquence d'étapes dynamiquement selon le rôle
+  const getStepSequence = () => {
+    if (mode === 'login') {
+      return LOGIN_STEPS;
+    }
+    // Pour l'inscription, ajouter KYC seulement si l'utilisateur est conducteur
+    if (role === 'driver') {
+      return ['phone', 'sms', 'profile', 'kyc'];
+    }
+    return SIGNUP_STEPS; // Pas de KYC pour les passagers
+  };
+
+  const stepSequence = getStepSequence();
   const currentStepIndex = stepSequence.indexOf(step);
   const canGoBack = currentStepIndex > 0;
 
@@ -332,9 +345,12 @@ export default function AuthScreen() {
         showDialog({ variant: 'warning', title: 'Véhicule', message: 'Veuillez compléter les informations du véhicule.' });
         return;
       }
+      // Si c'est un conducteur, passer à l'étape KYC
+      setStep('kyc');
+    } else {
+      // Si c'est un passager, s'inscrire directement sans KYC
+      handleFinalRegister();
     }
-
-    setStep('kyc');
   };
 
   const handleFinalRegister = async () => {
@@ -369,8 +385,8 @@ export default function AuthScreen() {
       dispatch(setTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken }));
       dispatch(setUser(result.user));
 
-      // 2. Upload KYC if files exist
-      if (kycFiles) {
+      // 2. Upload KYC seulement si l'utilisateur est conducteur et a fourni des fichiers KYC
+      if (requiresVehicleSelection && kycFiles) {
         setKycSubmitting(true);
         const kycData = buildKycFormData(kycFiles);
         await uploadKyc(kycData).unwrap();
@@ -655,15 +671,15 @@ export default function AuthScreen() {
           </Animated.View>
         )}
 
-        {/* Step: KYC */}
-        {step === 'kyc' && (
+        {/* Step: KYC - Seulement pour les conducteurs */}
+        {step === 'kyc' && role === 'driver' && (
           <Animated.View entering={FadeInDown.springify()} exiting={FadeOutUp} style={styles.stepContainer}>
             <View style={styles.heroSection}>
               <View style={[styles.logoContainer, { backgroundColor: Colors.info + '15' }]}>
                 <Ionicons name="shield-checkmark" size={48} color={Colors.info} />
               </View>
-              <Text style={styles.heroTitle}>Identité vérifiée</Text>
-              <Text style={styles.heroSubtitle}>Augmentez la confiance de votre profil.</Text>
+              <Text style={styles.heroTitle}>Vérification d'identité requise</Text>
+              <Text style={styles.heroSubtitle}>Pour devenir conducteur, vous devez vérifier votre identité.</Text>
             </View>
 
             <View style={styles.kycBenefitsContainer}>
@@ -692,14 +708,16 @@ export default function AuthScreen() {
               <TouchableOpacity
                 style={[styles.mainButton, styles.mainButtonActive, { backgroundColor: kycFiles ? Colors.success : Colors.primary }]}
                 onPress={handleFinalRegister}
-                disabled={isRegistering || kycSubmitting}
+                disabled={isRegistering || kycSubmitting || !kycFiles}
               >
                 {isRegistering || kycSubmitting ? (
                   <ActivityIndicator color="white" />
                 ) : (
                   <>
-                    <Text style={styles.mainButtonText}>{kycFiles ? "Terminer l'inscription" : "S'inscrire sans vérification"}</Text>
-                    <Ionicons name="arrow-forward" size={20} color="white" />
+                    <Text style={styles.mainButtonText}>
+                      {kycFiles ? "Terminer l'inscription" : "KYC requis pour les conducteurs"}
+                    </Text>
+                    {kycFiles && <Ionicons name="arrow-forward" size={20} color="white" />}
                   </>
                 )}
               </TouchableOpacity>

@@ -11,6 +11,7 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
@@ -267,10 +268,20 @@ export default function RequestTripScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-        {/* Étape 1: Itinéraire */}
-        {step === 'route' && (
-          <View style={styles.stepContainer}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.keyboardAvoidingView}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={styles.contentContainer}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Étape 1: Itinéraire */}
+          {step === 'route' && (
+            <View style={styles.stepContainer}>
             <Text style={styles.stepTitle}>Où souhaitez-vous aller ?</Text>
             <Text style={styles.stepSubtitle}>Sélectionnez votre point de départ et d'arrivée</Text>
 
@@ -305,12 +316,12 @@ export default function RequestTripScreen() {
               </View>
               <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
             </TouchableOpacity>
-          </View>
-        )}
+            </View>
+          )}
 
-        {/* Étape 2: Détails */}
-        {step === 'details' && (
-          <View style={styles.stepContainer}>
+          {/* Étape 2: Détails */}
+          {step === 'details' && (
+            <View style={styles.stepContainer}>
             <Text style={styles.stepTitle}>Détails de votre demande</Text>
             <Text style={styles.stepSubtitle}>Remplissez les informations nécessaires</Text>
 
@@ -491,12 +502,12 @@ export default function RequestTripScreen() {
                 textAlignVertical="top"
               />
             </View>
-          </View>
-        )}
+            </View>
+          )}
 
-        {/* Étape 3: Confirmation */}
-        {step === 'confirm' && (
-          <View style={styles.stepContainer}>
+          {/* Étape 3: Confirmation */}
+          {step === 'confirm' && (
+            <View style={styles.stepContainer}>
             <Text style={styles.stepTitle}>Confirmer votre demande</Text>
             <Text style={styles.stepSubtitle}>Vérifiez les informations avant de publier</Text>
 
@@ -534,11 +545,11 @@ export default function RequestTripScreen() {
                 </View>
               )}
             </View>
-          </View>
-        )}
+            </View>
+          )}
 
-        {/* Boutons d'action */}
-        <View style={styles.actions}>
+          {/* Boutons d'action */}
+          <View style={styles.actions}>
           {step !== 'confirm' ? (
             <TouchableOpacity
               style={[styles.button, styles.primaryButton]}
@@ -559,8 +570,9 @@ export default function RequestTripScreen() {
               )}
             </TouchableOpacity>
           )}
-        </View>
-      </ScrollView>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Location Picker Modal */}
       <LocationPickerModal
@@ -606,11 +618,15 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 32,
   },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
   content: {
     flex: 1,
   },
   contentContainer: {
     padding: Spacing.lg,
+    paddingBottom: Spacing.xl * 2, // Extra padding pour éviter que le contenu soit caché par le clavier
   },
   stepContainer: {
     marginBottom: Spacing.xl,

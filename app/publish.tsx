@@ -639,11 +639,45 @@ export default function PublishScreen() {
               </Text>
             </View>
 
+            {/* Message KYC visible dans l'étape route */}
+            {!isIdentityVerified && (
+              <View style={styles.routeKycWarningCard}>
+                <View style={styles.routeKycWarningHeader}>
+                  <View style={styles.routeKycWarningIconContainer}>
+                    <Ionicons name="shield-checkmark" size={24} color={Colors.primary} />
+                  </View>
+                  <View style={styles.routeKycWarningTextContainer}>
+                    <Text style={styles.routeKycWarningTitle}>KYC requis pour publier</Text>
+                    <Text style={styles.routeKycWarningSubtitle}>
+                      Vous devez vérifier votre identité avant de pouvoir publier des trajets
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={styles.routeKycWarningButton}
+                  onPress={handleStartKyc}
+                >
+                  <Ionicons name="shield" size={18} color={Colors.white} />
+                  <Text style={styles.routeKycWarningButtonText}>Compléter ma vérification</Text>
+                  <Ionicons name="arrow-forward" size={16} color={Colors.white} />
+                </TouchableOpacity>
+              </View>
+            )}
+
             {renderLocationCard('departure', departureSummary)}
             {renderLocationCard('arrival', arrivalSummary)}
 
-            <TouchableOpacity style={styles.button} onPress={handleNextStep}>
-              <Text style={styles.buttonText}>Continuer</Text>
+            <TouchableOpacity 
+              style={[
+                styles.button,
+                !isIdentityVerified && styles.buttonDisabled
+              ]} 
+              onPress={handleNextStep}
+              disabled={!isIdentityVerified}
+            >
+              <Text style={styles.buttonText}>
+                {isIdentityVerified ? 'Continuer' : 'KYC requis pour continuer'}
+              </Text>
             </TouchableOpacity>
           </Animated.View>
         )}
@@ -1259,6 +1293,59 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.semibold,
+  },
+  routeKycWarningCard: {
+    backgroundColor: Colors.primary + '08',
+    borderRadius: BorderRadius.xl,
+    borderWidth: 2,
+    borderColor: Colors.primary + '30',
+    padding: Spacing.lg,
+    marginBottom: Spacing.xl,
+    gap: Spacing.md,
+  },
+  routeKycWarningHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.md,
+  },
+  routeKycWarningIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  routeKycWarningTextContainer: {
+    flex: 1,
+  },
+  routeKycWarningTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+    marginBottom: Spacing.xs,
+  },
+  routeKycWarningSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+    lineHeight: 20,
+  },
+  routeKycWarningButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.lg,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    marginTop: Spacing.xs,
+  },
+  routeKycWarningButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
   },
   scrollView: {
     flex: 1,
