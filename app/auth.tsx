@@ -1,7 +1,7 @@
 import { KycCaptureResult, KycWizardModal } from '@/components/KycWizardModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, Spacing } from '@/constants/styles';
-import { useUploadKycMutation } from '@/store/api/userApi';
+import { useSendPhoneVerificationOtpMutation, useUploadKycMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
 import { useLoginMutation, useRegisterMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated } from '@/store/selectors';
@@ -95,8 +95,9 @@ export default function AuthScreen() {
 
   // Form State
   const [phone, setPhone] = useState('');
-  const [smsCode, setSmsCode] = useState(['', '', '', '', '', '']);
+  const [smsCode, setSmsCode] = useState(['', '', '', '', '']); // 5 chiffres au lieu de 6
   const smsInputRefs = useRef<Array<TextInput | null>>([]);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -115,6 +116,8 @@ export default function AuthScreen() {
   const [login, { isLoading: isLoggingIn }] = useLoginMutation();
   const [register, { isLoading: isRegistering }] = useRegisterMutation();
   const [uploadKyc] = useUploadKycMutation();
+  const [sendPhoneVerificationOtp, { isLoading: isSendingOtpMutation }] = useSendPhoneVerificationOtpMutation();
+  const [verifyPhoneOtp, { isLoading: isVerifyingOtp }] = useVerifyPhoneOtpMutation();
   const [kycModalVisible, setKycModalVisible] = useState(false);
   const [kycSubmitting, setKycSubmitting] = useState(false);
   const [kycFiles, setKycFiles] = useState<KycCaptureResult | null>(null);
@@ -182,7 +185,7 @@ export default function AuthScreen() {
   const resetForm = () => {
     setStep('phone');
     setPhone('');
-    setSmsCode(['', '', '', '', '', '']);
+    setSmsCode(['', '', '', '', '']); // 5 chiffres
     setFirstName('');
     setLastName('');
     setEmail('');
@@ -195,6 +198,7 @@ export default function AuthScreen() {
     setVehiclePlate('');
     setVehicleModalVisible(false);
     setKycFiles(null);
+    setIsSendingOtp(false);
   };
 
   const triggerSignupSuccessNotification = async (userName?: string) => {
@@ -222,11 +226,43 @@ export default function AuthScreen() {
   };
 
   // SMS & Phone Handlers
-  const handlePhoneSubmit = () => {
-    if (phone.length >= 10) {
-      setStep('sms');
-    } else {
+  const handlePhoneSubmit = async () => {
+    if (phone.length < 10) {
       showDialog({ variant: 'danger', title: 'Numéro invalide', message: 'Veuillez entrer un numéro valide' });
+      return;
+    }
+
+    try {
+      setIsSendingOtp(true);
+      // Envoyer le contexte approprié selon le mode (login ou signup)
+      const context: 'registration' | 'login' | 'update' = (mode === 'login' ? 'login' : 'registration') as 'registration' | 'login' | 'update';
+      console.log('Sending OTP with context:', { phone, context, mode });
+      
+      // S'assurer que le contexte est bien défini et non vide
+      if (!context || (context !== 'login' && context !== 'registration' && context !== 'update')) {
+        throw new Error(`Invalid context: ${context}`);
+      }
+      
+      const payload: { phone: string; context: 'registration' | 'login' | 'update' } = { phone, context };
+      console.log('Payload:', JSON.stringify(payload));
+      
+      await sendPhoneVerificationOtp(payload).unwrap();
+      setStep('sms');
+      showDialog({
+        variant: 'success',
+        title: 'Code envoyé',
+        message: 'Un code de vérification a été envoyé à votre numéro de téléphone.',
+      });
+    } catch (error: any) {
+      console.error('Error sending OTP:', error);
+      const errorMessage = error?.data?.message || error?.data || 'Erreur lors de l\'envoi du code';
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: errorMessage,
+      });
+    } finally {
+      setIsSendingOtp(false);
     }
   };
 
@@ -268,7 +304,16 @@ export default function AuthScreen() {
 
   const handleSmsSubmit = async () => {
     const code = smsCode.join('');
-    if (code.length === 6) {
+    if (code.length !== 5) {
+      showDialog({ variant: 'danger', title: 'Code incomplet', message: 'Veuillez entrer le code complet (5 chiffres)' });
+      return;
+    }
+
+    try {
+      // D'abord vérifier le code OTP
+      await verifyPhoneOtp({ phone, otp: code }).unwrap();
+
+      // Si la vérification réussit, continuer selon le mode
       if (mode === 'login') {
         try {
           const result = await login({ phone }).unwrap();
@@ -279,10 +324,27 @@ export default function AuthScreen() {
           showDialog({ variant: 'danger', title: 'Erreur', message: error?.data?.message || 'Erreur lors de la connexion' });
         }
       } else {
+        // Mode signup : passer à l'étape profile
         setStep('profile');
       }
-    } else {
-      showDialog({ variant: 'danger', title: 'Code incomplet', message: 'Veuillez entrer le code complet' });
+    } catch (error: any) {
+      // Si la vérification échoue, retourner à l'étape phone
+      const errorMessage = error?.data?.message || error?.data || 'Code OTP invalide ou expiré';
+      showDialog({
+        variant: 'danger',
+        title: 'Code invalide',
+        message: errorMessage,
+        actions: [
+          {
+            label: 'Réessayer',
+            variant: 'primary',
+            onPress: () => {
+              setStep('phone');
+              setSmsCode(['', '', '', '', '']);
+            },
+          },
+        ],
+      });
     }
   };
 
@@ -502,12 +564,18 @@ export default function AuthScreen() {
               </View>
 
               <TouchableOpacity
-                style={[styles.mainButton, phone.length >= 10 ? styles.mainButtonActive : styles.mainButtonDisabled]}
+                style={[styles.mainButton, phone.length >= 10 && !isSendingOtpMutation ? styles.mainButtonActive : styles.mainButtonDisabled]}
                 onPress={handlePhoneSubmit}
-                disabled={phone.length < 10}
+                disabled={phone.length < 10 || isSendingOtpMutation}
               >
-                <Text style={styles.mainButtonText}>Continuer</Text>
-                <Ionicons name="arrow-forward" size={20} color="white" />
+                {isSendingOtpMutation ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <>
+                    <Text style={styles.mainButtonText}>Continuer</Text>
+                    <Ionicons name="arrow-forward" size={20} color="white" />
+                  </>
+                )}
               </TouchableOpacity>
             </View>
           </Animated.View>
@@ -540,22 +608,30 @@ export default function AuthScreen() {
             </View>
 
             <TouchableOpacity
-              style={[styles.mainButton, smsCode.join('').length === 6 ? styles.mainButtonActive : styles.mainButtonDisabled]}
+              style={[styles.mainButton, smsCode.join('').length === 5 ? styles.mainButtonActive : styles.mainButtonDisabled]}
               onPress={handleSmsSubmit}
-              disabled={smsCode.join('').length !== 6 || isLoggingIn}
+              disabled={smsCode.join('').length !== 5 || isVerifyingOtp || isLoggingIn}
             >
-              {isLoggingIn ? (
+              {isVerifyingOtp || isLoggingIn ? (
                 <ActivityIndicator color="white" />
               ) : (
                 <>
                   <Text style={styles.mainButtonText}>{mode === 'login' ? 'Se connecter' : 'Vérifier'}</Text>
-                  {!isLoggingIn && <Ionicons name="checkmark-circle-outline" size={24} color="white" />}
+                  {!isVerifyingOtp && !isLoggingIn && <Ionicons name="checkmark-circle-outline" size={24} color="white" />}
                 </>
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.resendButton}>
-              <Text style={styles.resendButtonText}>Renvoyer le code</Text>
+            <TouchableOpacity 
+              style={styles.resendButton}
+              onPress={handlePhoneSubmit}
+              disabled={isSendingOtpMutation}
+            >
+              {isSendingOtpMutation ? (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              ) : (
+                <Text style={styles.resendButtonText}>Renvoyer le code</Text>
+              )}
             </TouchableOpacity>
           </Animated.View>
         )}

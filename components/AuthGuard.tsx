@@ -70,7 +70,17 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       // Access token manquant ou expiré mais refresh token valide -> tentative de refresh
       if (!accessToken || (accessToken && isTokenExpired(accessToken))) {
         const refreshed = refreshToken ? await refreshAccessToken(refreshToken) : null;
-        if (!refreshed && !inAuthGroup && !isAuthenticated) {
+        // Ne pas rediriger vers /auth si le refresh a échoué à cause d'une erreur réseau
+        // L'utilisateur reste connecté et peut utiliser l'app en mode offline
+        // On redirige seulement si l'utilisateur n'est vraiment pas authentifié ET qu'on n'est pas en erreur réseau
+        if (!refreshed && !inAuthGroup && !isAuthenticated && accessToken && refreshToken) {
+          // Si on a des tokens mais que le refresh a échoué, c'est peut-être une erreur réseau
+          // Ne pas rediriger immédiatement - laisser l'utilisateur utiliser l'app en mode offline
+          console.log('[AuthGuard] Refresh échoué mais tokens présents - peut-être offline, pas de redirection');
+          return;
+        }
+        if (!refreshed && !inAuthGroup && !isAuthenticated && !accessToken && !refreshToken) {
+          // Pas de tokens du tout - rediriger vers /auth
           router.replace('/auth');
         }
       }
