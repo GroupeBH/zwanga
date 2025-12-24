@@ -1,6 +1,8 @@
-import type { TripRequest, DriverOffer, DriverOfferWithTripRequest, DriverOfferStatus, TripRequestStatus } from '@/types';
+import type { TripRequest, DriverOffer, DriverOfferWithTripRequest, DriverOfferStatus, TripRequestStatus, Trip } from '@/types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
+import type { ServerTrip } from './tripApi';
+import { mapServerTripToClient } from './tripApi';
 
 type ServerTripRequest = {
   id: string;
@@ -38,6 +40,7 @@ type ServerTripRequest = {
   } | null;
   selectedPricePerSeat: number | null;
   selectedAt: string | null;
+  tripId: string | null;
   driverOffers?: ServerDriverOffer[];
   createdAt: string;
   updatedAt: string;
@@ -174,6 +177,7 @@ const mapServerTripRequestToClient = (request: ServerTripRequest): TripRequest =
     selectedVehicleId: request.selectedVehicle?.id ?? undefined,
     selectedPricePerSeat: request.selectedPricePerSeat ?? undefined,
     selectedAt: request.selectedAt ?? undefined,
+    tripId: request.tripId ?? undefined,
     offers: request.driverOffers?.map(mapServerDriverOfferToClient),
     createdAt: request.createdAt,
     updatedAt: request.updatedAt,
@@ -437,6 +441,29 @@ export const tripRequestApi = baseApi.injectEndpoints({
         'MyDriverOffers',
       ],
     }),
+
+    // Démarrer un trajet à partir d'une demande acceptée
+    startTripFromRequest: builder.mutation<
+      { trip: Trip; tripRequest: TripRequest },
+      string
+    >({
+      query: (tripRequestId: string) => ({
+        url: `/trip-requests/${tripRequestId}/start-trip`,
+        method: 'PUT',
+      }),
+      transformResponse: (response: { trip: ServerTrip; tripRequest: ServerTripRequest }) => ({
+        trip: mapServerTripToClient(response.trip),
+        tripRequest: mapServerTripRequestToClient(response.tripRequest),
+      }),
+      invalidatesTags: (_result, _error, tripRequestId: string) => [
+        { type: 'TripRequest', id: tripRequestId },
+        'TripRequest',
+        'MyTripRequests',
+        'Trip',
+        'MyTrips',
+        'Booking',
+      ],
+    }),
   }),
 });
 
@@ -450,5 +477,6 @@ export const {
   useGetMyDriverOffersQuery,
   useAcceptDriverOfferMutation,
   useRejectDriverOfferMutation,
+  useStartTripFromRequestMutation,
 } = tripRequestApi;
 

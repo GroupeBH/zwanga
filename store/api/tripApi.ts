@@ -1,4 +1,4 @@
-import type { Trip, TripStatus, VehicleType } from '../../types';
+import type { Trip, TripStatus, VehicleType, GeoPoint } from '../../types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 
@@ -38,7 +38,11 @@ export type ServerTrip = {
   description?: string;
   status?: string;
   vehicleType?: VehicleType;
+  vehicleId?: string | null;
   bookings?: ServerBooking[];
+  currentLocation?: GeoPoint | null;
+  lastLocationUpdateAt?: string | null;
+  completedAt?: string | null;
 };
 
 const fallbackCoordinate = (coords?: CoordinatesTuple): { lat: number; lng: number } | null => {
@@ -138,6 +142,11 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     totalSeats: Math.max(trip.availableSeats + bookedSeats, trip.availableSeats),
     status: mapTripStatus(trip.status),
     passengers: mapPassengers(trip.bookings),
+    currentLocation: trip.currentLocation ?? null,
+    lastLocationUpdateAt: trip.lastLocationUpdateAt ?? null,
+    completedAt: trip.completedAt ?? null,
+    vehicleId: trip.vehicleId ?? null,
+    description: trip.description ?? null,
   };
 };
 
@@ -267,6 +276,46 @@ export const tripApi = baseApi.injectEndpoints({
       ],
     }),
 
+    // Démarrer un trajet
+    startTrip: builder.mutation<Trip, string>({
+      query: (id: string) => ({
+        url: `/trips/${id}/start`,
+        method: 'PUT',
+      }),
+      transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
+      invalidatesTags: (_result, _error, id: string) => [
+        { type: 'Trip', id },
+        { type: 'MyTrips', id },
+        'Trip',
+        'MyTrips',
+      ],
+    }),
+
+    // Mettre à jour la position du conducteur
+    updateDriverLocation: builder.mutation<
+      { tripId: string; coordinates: [number, number]; updatedAt: string },
+      { tripId: string; coordinates: [number, number] }
+    >({
+      query: ({ tripId, coordinates }: { tripId: string; coordinates: [number, number] }) => ({
+        url: `/trips/${tripId}/driver-location`,
+        method: 'PUT',
+        body: { coordinates },
+      }),
+      invalidatesTags: (_result, _error, { tripId }: { tripId: string }) => [
+        { type: 'Trip', id: tripId },
+        'Trip',
+      ],
+    }),
+
+    // Obtenir la position du conducteur pour un utilisateur
+    getDriverLocation: builder.query<
+      { tripId: string; coordinates: [number, number] | null; updatedAt: string | null },
+      string
+    >({
+      query: (tripId: string) => `/trips/${tripId}/driver-location`,
+      providesTags: (_result, _error, tripId: string) => [{ type: 'Trip', id: tripId }],
+    }),
+
     // Réserver des places sur un trajet
     bookTrip: builder.mutation<void, { tripId: string; seats: number }>({
       query: ({ tripId, seats }: { tripId: string; seats: number }) => ({
@@ -292,6 +341,9 @@ export const {
   useDeleteTripMutation,
   useBookTripMutation,
   useSearchTripsByCoordinatesMutation,
+  useStartTripMutation,
+  useUpdateDriverLocationMutation,
+  useGetDriverLocationQuery,
 } = tripApi;
 
 
