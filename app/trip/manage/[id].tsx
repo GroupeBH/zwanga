@@ -3,10 +3,12 @@ import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } f
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import {
   useAcceptBookingMutation,
+  useConfirmDropoffMutation,
+  useConfirmPickupMutation,
   useGetTripBookingsQuery,
   useRejectBookingMutation,
 } from '@/store/api/bookingApi';
-import { useGetTripByIdQuery, useUpdateTripMutation } from '@/store/api/tripApi';
+import { useGetTripByIdQuery, useStartTripMutation, useUpdateTripMutation } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus } from '@/types';
@@ -69,6 +71,11 @@ const BOOKING_STATUS_CONFIG: Record<
     color: Colors.gray[600],
     background: 'rgba(107, 114, 128, 0.18)',
   },
+  expired: {
+    label: 'Expirée',
+    color: Colors.gray[600],
+    background: 'rgba(156, 163, 175, 0.2)',
+  },
 };
 
 export default function ManageTripScreen() {
@@ -94,6 +101,9 @@ export default function ManageTripScreen() {
   const [acceptBooking, { isLoading: isAccepting }] = useAcceptBookingMutation();
   const [rejectBooking, { isLoading: isRejecting }] = useRejectBookingMutation();
   const [updateTrip, { isLoading: isCancellingTrip }] = useUpdateTripMutation();
+  const [startTrip, { isLoading: isStartingTrip }] = useStartTripMutation();
+  const [confirmPickup, { isLoading: isConfirmingPickup }] = useConfirmPickupMutation();
+  const [confirmDropoff, { isLoading: isConfirmingDropoff }] = useConfirmDropoffMutation();
 
   // console.log("this bookings", bookings);
 
@@ -317,6 +327,57 @@ export default function ManageTripScreen() {
 
   const { showDialog } = useDialog();
 
+  const handleStartTrip = async () => {
+    if (!trip) return;
+    showDialog({
+      variant: 'info',
+      title: 'Démarrer le trajet',
+      message: 'Voulez-vous démarrer ce trajet maintenant ? Les passagers seront notifiés.',
+      actions: [
+        { label: 'Annuler', variant: 'ghost' },
+        {
+          label: 'Démarrer',
+          variant: 'primary',
+          onPress: async () => {
+            try {
+              await startTrip(trip.id).unwrap();
+              showFeedback('success', 'Le trajet a été démarré avec succès.');
+              refreshAll();
+            } catch (error: any) {
+              const message =
+                error?.data?.message ?? error?.error ?? 'Impossible de démarrer ce trajet.';
+              showFeedback('error', message);
+            }
+          },
+        },
+      ],
+    });
+  };
+
+  const handleConfirmPickup = async (bookingId: string) => {
+    try {
+      await confirmPickup(bookingId).unwrap();
+      showFeedback('success', 'Récupération du passager confirmée.');
+      refreshAll();
+    } catch (error: any) {
+      const message =
+        error?.data?.message ?? error?.error ?? 'Impossible de confirmer la récupération.';
+      showFeedback('error', message);
+    }
+  };
+
+  const handleConfirmDropoff = async (bookingId: string) => {
+    try {
+      await confirmDropoff(bookingId).unwrap();
+      showFeedback('success', 'Dépose du passager confirmée.');
+      refreshAll();
+    } catch (error: any) {
+      const message =
+        error?.data?.message ?? error?.error ?? 'Impossible de confirmer la dépose.';
+      showFeedback('error', message);
+    }
+  };
+
   const handleCancelTrip = () => {
     if (!trip) return;
     showDialog({
@@ -335,7 +396,7 @@ export default function ManageTripScreen() {
               router.back();
             } catch (error: any) {
               const message =
-                error?.data?.message ?? error?.error ?? 'Impossible d’annuler ce trajet.';
+                error?.data?.message ?? error?.error ?? "Impossible d'annuler ce trajet.";
               showFeedback('error', message);
             }
           },
@@ -553,6 +614,30 @@ export default function ManageTripScreen() {
                     <Ionicons name="navigate" size={18} color={Colors.white} />
                   </View>
                 </Mapbox.PointAnnotation>
+
+                {/* Destinations des passagers */}
+                {bookings
+                  ?.filter(
+                    (booking) =>
+                      booking.status === 'accepted' &&
+                      booking.passengerDestinationCoordinates &&
+                      booking.passengerDestinationCoordinates.latitude &&
+                      booking.passengerDestinationCoordinates.longitude,
+                  )
+                  .map((booking) => {
+                    const destCoords = booking.passengerDestinationCoordinates!;
+                    return (
+                      <Mapbox.PointAnnotation
+                        key={`passenger-dest-${booking.id}`}
+                        id={`passenger-dest-preview-${booking.id}`}
+                        coordinate={[destCoords.longitude, destCoords.latitude]}
+                      >
+                        <View style={styles.markerPassengerDestCircle}>
+                          <Ionicons name="person" size={14} color={Colors.white} />
+                        </View>
+                      </Mapbox.PointAnnotation>
+                    );
+                  })}
               </Mapbox.MapView>
 
               <View style={styles.mapOverlay}>
@@ -601,17 +686,39 @@ export default function ManageTripScreen() {
               {trip.availableSeats} places • {trip.price} FC / place
             </Text>
           </View>
-          <TouchableOpacity
-            style={[styles.primaryButton, { marginTop: Spacing.lg }]}
-            onPress={handleCancelTrip}
-            disabled={isCancellingTrip}
-          >
-            {isCancellingTrip ? (
-              <ActivityIndicator color={Colors.white} />
-            ) : (
-              <Text style={styles.primaryButtonText}>Annuler le trajet</Text>
-            )}
-          </TouchableOpacity>
+          
+          {/* Bouton pour démarrer le trajet */}
+          {trip.status === 'upcoming' && (
+            <TouchableOpacity
+              style={[styles.primaryButton, styles.startTripButton, { marginTop: Spacing.lg }]}
+              onPress={handleStartTrip}
+              disabled={isStartingTrip}
+            >
+              {isStartingTrip ? (
+                <ActivityIndicator color={Colors.white} />
+              ) : (
+                <>
+                  <Ionicons name="play-circle" size={20} color={Colors.white} />
+                  <Text style={styles.primaryButtonText}>Démarrer le trajet</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {/* Bouton pour annuler le trajet (seulement si pas encore démarré) */}
+          {trip.status === 'upcoming' && (
+            <TouchableOpacity
+              style={[styles.secondaryButton, { marginTop: Spacing.md }]}
+              onPress={handleCancelTrip}
+              disabled={isCancellingTrip}
+            >
+              {isCancellingTrip ? (
+                <ActivityIndicator color={Colors.danger} />
+              ) : (
+                <Text style={styles.secondaryButtonText}>Annuler le trajet</Text>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.sectionCard}>
@@ -682,6 +789,16 @@ export default function ManageTripScreen() {
                     </View>
                   ) : null}
 
+                  {/* Destination personnalisée si disponible */}
+                  {booking.passengerDestination && booking.passengerDestination !== trip.arrival.name && (
+                    <View style={styles.passengerDestinationInfo}>
+                      <Ionicons name="location" size={14} color={Colors.secondary} />
+                      <Text style={styles.passengerDestinationText}>
+                        Destination: {booking.passengerDestination}
+                      </Text>
+                    </View>
+                  )}
+
                   <View style={styles.bookingFooter}>
                     <View>
                       <Text style={styles.metaLabel}>Montant estimé</Text>
@@ -716,6 +833,48 @@ export default function ManageTripScreen() {
                       </View>
                     ) : null}
                   </View>
+
+                  {/* Actions pour les réservations acceptées pendant le trajet */}
+                  {trip.status === 'ongoing' && booking.status === 'accepted' && (
+                    <View style={styles.tripActionsContainer}>
+                      {!booking.pickedUp ? (
+                        <TouchableOpacity
+                          style={[styles.tripActionButton, styles.pickupButton]}
+                          onPress={() => handleConfirmPickup(booking.id)}
+                          disabled={isConfirmingPickup}
+                        >
+                          {isConfirmingPickup ? (
+                            <ActivityIndicator color={Colors.white} />
+                          ) : (
+                            <>
+                              <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
+                              <Text style={styles.tripActionText}>Confirmer la récupération</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      ) : !booking.droppedOff ? (
+                        <TouchableOpacity
+                          style={[styles.tripActionButton, styles.dropoffButton]}
+                          onPress={() => handleConfirmDropoff(booking.id)}
+                          disabled={isConfirmingDropoff}
+                        >
+                          {isConfirmingDropoff ? (
+                            <ActivityIndicator color={Colors.white} />
+                          ) : (
+                            <>
+                              <Ionicons name="location" size={18} color={Colors.white} />
+                              <Text style={styles.tripActionText}>Confirmer la dépose</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={styles.completedStatus}>
+                          <Ionicons name="checkmark-done-circle" size={18} color={Colors.success} />
+                          <Text style={styles.completedStatusText}>Trajet complété pour ce passager</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
                 </Animated.View>
               );
             })
@@ -872,6 +1031,33 @@ export default function ManageTripScreen() {
                     <Text>{trip.arrival.address}</Text>
                   </Mapbox.Callout>
                 </Mapbox.PointAnnotation>
+
+                {/* Destinations des passagers */}
+                {bookings
+                  ?.filter(
+                    (booking) =>
+                      booking.status === 'accepted' &&
+                      booking.passengerDestinationCoordinates &&
+                      booking.passengerDestinationCoordinates.latitude &&
+                      booking.passengerDestinationCoordinates.longitude,
+                  )
+                  .map((booking) => {
+                    const destCoords = booking.passengerDestinationCoordinates!;
+                    return (
+                      <Mapbox.PointAnnotation
+                        key={`passenger-dest-fullscreen-${booking.id}`}
+                        id={`passenger-dest-fullscreen-${booking.id}`}
+                        coordinate={[destCoords.longitude, destCoords.latitude]}
+                      >
+                        <View style={styles.markerPassengerDestCircle}>
+                          <Ionicons name="person" size={16} color={Colors.white} />
+                        </View>
+                        <Mapbox.Callout title={booking.passengerDestination || booking.passengerName || 'Destination passager'}>
+                          <Text>{booking.passengerName || 'Passager'}</Text>
+                        </Mapbox.Callout>
+                      </Mapbox.PointAnnotation>
+                    );
+                  })}
               </Mapbox.MapView>
 
               <TouchableOpacity style={styles.closeMapButton} onPress={() => setMapModalVisible(false)}>
@@ -1063,6 +1249,77 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: Colors.white,
     fontWeight: FontWeights.bold,
+  },
+  startTripButton: {
+    backgroundColor: Colors.success,
+  },
+  secondaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.danger,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.xs,
+  },
+  secondaryButtonText: {
+    color: Colors.danger,
+    fontWeight: FontWeights.bold,
+  },
+  passengerDestinationInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.secondary + '15',
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
+    gap: Spacing.xs,
+  },
+  passengerDestinationText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+    flex: 1,
+  },
+  tripActionsContainer: {
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[200],
+  },
+  tripActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.xs,
+    width: '100%',
+  },
+  pickupButton: {
+    backgroundColor: Colors.success,
+  },
+  dropoffButton: {
+    backgroundColor: Colors.primary,
+  },
+  tripActionText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.sm,
+  },
+  completedStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.sm,
+    gap: Spacing.xs,
+  },
+  completedStatusText: {
+    color: Colors.success,
+    fontWeight: FontWeights.semibold,
+    fontSize: FontSizes.sm,
   },
   sectionCard: {
     backgroundColor: Colors.white,
@@ -1313,6 +1570,15 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  markerPassengerDestCircle: {
+    width: 28,
+    height: 28,
+    backgroundColor: Colors.secondary,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...CommonStyles.shadowMd,
   },
   mapModalOverlay: {
     flex: 1,
