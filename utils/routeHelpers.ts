@@ -230,3 +230,71 @@ export function calculateDistance(point1: LatLng, point2: LatLng): number {
   return R * c;
 }
 
+/**
+ * Calculate distance between a point and a line segment in kilometers
+ * Uses the perpendicular distance formula
+ */
+function pointToLineDistance(point: LatLng, lineStart: LatLng, lineEnd: LatLng): number {
+  const A = point.latitude - lineStart.latitude;
+  const B = point.longitude - lineStart.longitude;
+  const C = lineEnd.latitude - lineStart.latitude;
+  const D = lineEnd.longitude - lineStart.longitude;
+
+  const dot = A * C + B * D;
+  const lenSq = C * C + D * D;
+  let param = -1;
+
+  if (lenSq !== 0) {
+    param = dot / lenSq;
+  }
+
+  let xx: number;
+  let yy: number;
+
+  if (param < 0) {
+    xx = lineStart.latitude;
+    yy = lineStart.longitude;
+  } else if (param > 1) {
+    xx = lineEnd.latitude;
+    yy = lineEnd.longitude;
+  } else {
+    xx = lineStart.latitude + param * C;
+    yy = lineStart.longitude + param * D;
+  }
+
+  const dx = point.latitude - xx;
+  const dy = point.longitude - yy;
+  return calculateDistance(point, { latitude: xx, longitude: yy });
+}
+
+/**
+ * Check if a point is on a route (within a certain distance threshold)
+ * @param point The point to check
+ * @param routeCoordinates Array of coordinates representing the route
+ * @param maxDistanceKm Maximum distance in kilometers from the route (default: 5km)
+ * @returns true if the point is on the route, false otherwise
+ */
+export function isPointOnRoute(
+  point: LatLng,
+  routeCoordinates: LatLng[],
+  maxDistanceKm: number = 5
+): boolean {
+  if (!routeCoordinates || routeCoordinates.length < 2) {
+    return false;
+  }
+
+  // Check distance to each segment of the route
+  for (let i = 0; i < routeCoordinates.length - 1; i++) {
+    const segmentStart = routeCoordinates[i];
+    const segmentEnd = routeCoordinates[i + 1];
+    
+    const distance = pointToLineDistance(point, segmentStart, segmentEnd);
+    
+    if (distance <= maxDistanceKm) {
+      return true;
+    }
+  }
+
+  return false;
+}
+

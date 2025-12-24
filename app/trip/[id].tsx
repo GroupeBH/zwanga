@@ -20,7 +20,8 @@ import { selectTripById, selectUser } from '@/store/selectors';
 import type { BookingStatus, GeoPoint } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
-import { getRouteInfo, type RouteInfo } from '@/utils/routeHelpers';
+import { getRouteInfo, type RouteInfo, isPointOnRoute } from '@/utils/routeHelpers';
+import LocationPickerModal, { type MapLocationSelection } from '@/components/LocationPickerModal';
 import { Ionicons } from '@expo/vector-icons';
 import Mapbox from '@rnmapbox/maps';
 import Constants from 'expo-constants';
@@ -161,6 +162,9 @@ export default function TripDetailsScreen() {
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
   const [bookingSeats, setBookingSeats] = useState('1');
   const [bookingModalError, setBookingModalError] = useState('');
+  const [passengerDestination, setPassengerDestination] = useState<MapLocationSelection | null>(null);
+  const [showDestinationPicker, setShowDestinationPicker] = useState(false);
+  const [isValidatingDestination, setIsValidatingDestination] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState<{ visible: boolean; seats: number }>({
     visible: false,
     seats: 0,
@@ -380,6 +384,7 @@ export default function TripDetailsScreen() {
     // KYC désactivé pour la réservation - permettre la réservation sans vérification
     setBookingSeats('1');
     setBookingModalError('');
+    setPassengerDestination(null);
     setBookingModalVisible(true);
   };
 
@@ -490,7 +495,7 @@ export default function TripDetailsScreen() {
   };
 
   const handleConfirmBooking = async () => {
-    if (isBooking || !trip) {
+    if (isBooking || !trip || isValidatingDestination) {
       return;
     }
     const seatsValue = parseInt(bookingSeats, 10);
@@ -509,10 +514,59 @@ export default function TripDetailsScreen() {
       );
       return;
     }
+
+    // Valider la destination si elle est fournie
+    if (passengerDestination) {
+      setIsValidatingDestination(true);
+      setBookingModalError('');
+
+      try {
+        // Vérifier que la destination est sur le trajet
+        if (!routeCoordinates || routeCoordinates.length < 2) {
+          setBookingModalError('Impossible de valider la destination. Veuillez réessayer.');
+          setIsValidatingDestination(false);
+          return;
+        }
+
+        const destinationPoint = {
+          latitude: passengerDestination.latitude,
+          longitude: passengerDestination.longitude,
+        };
+
+        const isOnRoute = isPointOnRoute(destinationPoint, routeCoordinates, 5); // 5km de tolérance
+
+        if (!isOnRoute) {
+          setBookingModalError(
+            'La destination sélectionnée n\'est pas sur le trajet. Veuillez choisir une destination située sur l\'itinéraire.',
+          );
+          setIsValidatingDestination(false);
+          return;
+        }
+      } catch (error) {
+        console.warn('Error validating destination:', error);
+        setBookingModalError('Erreur lors de la validation de la destination. Veuillez réessayer.');
+        setIsValidatingDestination(false);
+        return;
+      }
+
+      setIsValidatingDestination(false);
+    }
+
     try {
-      await createBooking({ tripId: trip.id, numberOfSeats: seatsValue }).unwrap();
+      await createBooking({
+        tripId: trip.id,
+        numberOfSeats: seatsValue,
+        passengerDestination: passengerDestination?.title || passengerDestination?.address,
+        passengerDestinationCoordinates: passengerDestination
+          ? {
+              latitude: passengerDestination.latitude,
+              longitude: passengerDestination.longitude,
+            }
+          : undefined,
+      }).unwrap();
       setBookingModalVisible(false);
       setBookingModalError('');
+      setPassengerDestination(null);
       openBookingSuccessModal(seatsValue);
       refreshBookingLists();
     } catch (error: any) {
@@ -943,6 +997,30 @@ export default function TripDetailsScreen() {
                   </Animated.View>
                 </Mapbox.PointAnnotation>
               )}
+
+              {/* Destinations des passagers */}
+              {tripBookings
+                ?.filter(
+                  (booking) =>
+                    booking.status === 'accepted' &&
+                    booking.passengerDestinationCoordinates &&
+                    booking.passengerDestinationCoordinates.latitude &&
+                    booking.passengerDestinationCoordinates.longitude,
+                )
+                .map((booking, index) => {
+                  const destCoords = booking.passengerDestinationCoordinates!;
+                  return (
+                    <Mapbox.PointAnnotation
+                      key={`passenger-dest-${booking.id}`}
+                      id={`passenger-dest-preview-${booking.id}`}
+                      coordinate={[destCoords.longitude, destCoords.latitude]}
+                    >
+                      <View style={styles.markerPassengerDestCircle}>
+                        <Ionicons name="person" size={14} color={Colors.white} />
+                      </View>
+                    </Mapbox.PointAnnotation>
+                  );
+                })}
             </Mapbox.MapView>
 
             <View style={styles.mapOverlay}>
@@ -1059,6 +1137,33 @@ export default function TripDetailsScreen() {
                     <Mapbox.Callout title="Position actuelle" />
                   </Mapbox.PointAnnotation>
                 )}
+
+                {/* Destinations des passagers */}
+                {tripBookings
+                  ?.filter(
+                    (booking) =>
+                      booking.status === 'accepted' &&
+                      booking.passengerDestinationCoordinates &&
+                      booking.passengerDestinationCoordinates.latitude &&
+                      booking.passengerDestinationCoordinates.longitude,
+                  )
+                  .map((booking) => {
+                    const destCoords = booking.passengerDestinationCoordinates!;
+                    return (
+                      <Mapbox.PointAnnotation
+                        key={`passenger-dest-fullscreen-${booking.id}`}
+                        id={`passenger-dest-fullscreen-${booking.id}`}
+                        coordinate={[destCoords.longitude, destCoords.latitude]}
+                      >
+                        <View style={styles.markerPassengerDestCircle}>
+                          <Ionicons name="person" size={16} color={Colors.white} />
+                        </View>
+                        <Mapbox.Callout title={booking.passengerDestination || booking.passengerName || 'Destination passager'}>
+                          <Text>{booking.passengerName || 'Passager'}</Text>
+                        </Mapbox.Callout>
+                      </Mapbox.PointAnnotation>
+                    );
+                  })}
               </Mapbox.MapView>
 
               <TouchableOpacity style={styles.closeMapButton} onPress={() => setMapModalVisible(false)}>
@@ -1505,6 +1610,51 @@ export default function TripDetailsScreen() {
             <Text style={styles.bookingModalHint}>
               Maximum 2 places par utilisateur{seatLimit < 2 ? ` (${seatLimit} disponible${seatLimit > 1 ? 's' : ''})` : ''}
             </Text>
+
+            {/* Destination du passager */}
+            <View style={styles.bookingDestinationSection}>
+              <Text style={styles.bookingDestinationLabel}>Ma destination (optionnel)</Text>
+              <TouchableOpacity
+                style={[
+                  styles.bookingDestinationButton,
+                  passengerDestination && styles.bookingDestinationButtonSelected,
+                ]}
+                onPress={() => setShowDestinationPicker(true)}
+                disabled={isBooking || isValidatingDestination || isValidatingDestination}
+              >
+                <Ionicons
+                  name={passengerDestination ? 'location' : 'location-outline'}
+                  size={18}
+                  color={passengerDestination ? Colors.primary : Colors.gray[600]}
+                />
+                <Text
+                  style={[
+                    styles.bookingDestinationButtonText,
+                    passengerDestination && styles.bookingDestinationButtonTextSelected,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {passengerDestination
+                    ? passengerDestination.title || passengerDestination.address
+                    : 'Sélectionner ma destination'}
+                </Text>
+                {passengerDestination && (
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      setPassengerDestination(null);
+                    }}
+                    style={styles.bookingDestinationRemoveButton}
+                  >
+                    <Ionicons name="close-circle" size={18} color={Colors.danger} />
+                  </TouchableOpacity>
+                )}
+              </TouchableOpacity>
+              <Text style={styles.bookingDestinationHint}>
+                Si votre destination diffère de l'arrivée du trajet, sélectionnez-la ici. Elle doit être située sur l'itinéraire.
+              </Text>
+            </View>
+
             <Text style={styles.bookingModalPrice}>
               Total estimé :{' '}
               <Text style={styles.bookingModalPriceValue}>
@@ -1527,9 +1677,9 @@ export default function TripDetailsScreen() {
               <TouchableOpacity
                 style={[styles.bookingModalButton, styles.bookingModalButtonPrimary]}
                 onPress={handleConfirmBooking}
-                disabled={isBooking}
+                disabled={isBooking || isValidatingDestination}
               >
-                {isBooking ? (
+                {isBooking || isValidatingDestination ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
                   <Text style={styles.bookingModalButtonPrimaryText}>Confirmer</Text>
@@ -1539,6 +1689,18 @@ export default function TripDetailsScreen() {
           </View>
         </View>
       </Modal>
+
+      <LocationPickerModal
+        visible={showDestinationPicker}
+        title="Sélectionner ma destination"
+        initialLocation={passengerDestination}
+        onClose={() => setShowDestinationPicker(false)}
+        onSelect={(location) => {
+          setPassengerDestination(location);
+          setShowDestinationPicker(false);
+          setBookingModalError('');
+        }}
+      />
 
       <Modal animationType="fade" transparent visible={bookingSuccess.visible}>
         <View style={styles.feedbackModalOverlay}>
@@ -1889,6 +2051,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...CommonStyles.shadowLg,
+  },
+  markerPassengerDestCircle: {
+    width: 28,
+    height: 28,
+    backgroundColor: Colors.secondary,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...CommonStyles.shadowMd,
   },
   expandButton: {
     position: 'absolute',
@@ -2459,6 +2630,50 @@ const styles = StyleSheet.create({
   bookingModalButtonPrimaryText: {
     color: Colors.white,
     fontWeight: FontWeights.bold,
+  },
+  bookingDestinationSection: {
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  bookingDestinationLabel: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+    marginBottom: Spacing.xs,
+  },
+  bookingDestinationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    backgroundColor: Colors.white,
+    minHeight: 48,
+  },
+  bookingDestinationButtonSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '08',
+  },
+  bookingDestinationButtonText: {
+    flex: 1,
+    marginLeft: Spacing.sm,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  bookingDestinationButtonTextSelected: {
+    color: Colors.gray[900],
+    fontWeight: FontWeights.medium,
+  },
+  bookingDestinationRemoveButton: {
+    marginLeft: Spacing.xs,
+    padding: Spacing.xs,
+  },
+  bookingDestinationHint: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    marginTop: Spacing.xs,
+    lineHeight: 16,
   },
   reviewsModalOverlay: {
     flex: 1,
