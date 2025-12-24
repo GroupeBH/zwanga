@@ -1,5 +1,6 @@
 import { KycCaptureResult, KycWizardModal } from '@/components/KycWizardModal';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { isDevelopment } from '@/config/env';
 import { BorderRadius, Colors, Spacing } from '@/constants/styles';
 import { useSendPhoneVerificationOtpMutation, useUploadKycMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
 import { useLoginMutation, useRegisterMutation } from '@/store/api/zwangaApi';
@@ -178,7 +179,7 @@ export default function AuthScreen() {
   // Methods
   const handlePreviousStep = () => {
     if (currentStepIndex > 0) {
-      setStep(stepSequence[currentStepIndex - 1]);
+      setStep(stepSequence[currentStepIndex - 1] as AuthStep);
     }
   };
 
@@ -232,6 +233,25 @@ export default function AuthScreen() {
       return;
     }
 
+    // En développement, sauter l'étape OTP et passer directement à l'étape suivante
+    if (isDevelopment) {
+      if (mode === 'login') {
+        try {
+          const result = await login({ phone }).unwrap();
+          dispatch(setTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken }));
+          dispatch(setUser(result.user));
+          // Navigation handled by useEffect
+        } catch (error: any) {
+          showDialog({ variant: 'danger', title: 'Erreur', message: error?.data?.message || 'Erreur lors de la connexion' });
+        }
+      } else {
+        // Mode signup : passer directement à l'étape profile
+        setStep('profile');
+      }
+      return;
+    }
+
+    // En production, envoyer le code OTP normalement
     try {
       setIsSendingOtp(true);
       // Envoyer le contexte approprié selon le mode (login ou signup)
@@ -309,6 +329,25 @@ export default function AuthScreen() {
       return;
     }
 
+    // En développement, sauter la vérification OTP et continuer directement
+    if (isDevelopment) {
+      if (mode === 'login') {
+        try {
+          const result = await login({ phone }).unwrap();
+          dispatch(setTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken }));
+          dispatch(setUser(result.user));
+          // Navigation handled by useEffect
+        } catch (error: any) {
+          showDialog({ variant: 'danger', title: 'Erreur', message: error?.data?.message || 'Erreur lors de la connexion' });
+        }
+      } else {
+        // Mode signup : passer à l'étape profile
+        setStep('profile');
+      }
+      return;
+    }
+
+    // En production, vérifier le code OTP normalement
     try {
       // D'abord vérifier le code OTP
       await verifyPhoneOtp({ phone, otp: code }).unwrap();
