@@ -619,15 +619,23 @@ export default function HomeScreen() {
                         </View>
                       </View>
                     </View>
-                    {trip?.price === 0 ? (
-                      <View style={styles.freeBadge}>
-                        <Text style={styles.freeBadgeText}>Gratuit</Text>
-                      </View>
-                    ) : (
-                      <View style={styles.priceBadge}>
-                        <Text style={styles.priceText}>{trip?.price ?? 0} FC</Text>
-                      </View>
-                    )}
+                    <View style={styles.headerBadges}>
+                      {trip?.status === 'ongoing' && (
+                        <View style={styles.ongoingBadge}>
+                          <Ionicons name="car-sport" size={12} color={Colors.success} />
+                          <Text style={styles.ongoingBadgeText}>En cours</Text>
+                        </View>
+                      )}
+                      {trip?.price === 0 ? (
+                        <View style={styles.freeBadge}>
+                          <Text style={styles.freeBadgeText}>Gratuit</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.priceBadge}>
+                          <Text style={styles.priceText}>{trip?.price ?? 0} FC</Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
 
                   <View style={styles.tripRoute}>
@@ -1218,6 +1226,25 @@ const styles = StyleSheet.create({
   vehicleInfo: {
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
+  },
+  headerBadges: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  ongoingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.success + '15',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    gap: 4,
+  },
+  ongoingBadgeText: {
+    color: Colors.success,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.xs,
   },
   priceBadge: {
     backgroundColor: 'rgba(46, 204, 113, 0.1)',

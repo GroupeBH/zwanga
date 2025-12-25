@@ -17,14 +17,14 @@ import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/review
 import { useGetKycStatusQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
+import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import type { BookingStatus, GeoPoint } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
-import { getRouteInfo, type RouteInfo, isPointOnRoute } from '@/utils/routeHelpers';
+import { getRouteInfo, type RouteInfo, isPointOnRoute, splitRouteByProgress } from '@/utils/routeHelpers';
 import LocationPickerModal, { type MapLocationSelection } from '@/components/LocationPickerModal';
 import { Ionicons } from '@expo/vector-icons';
-import Mapbox from '@rnmapbox/maps';
-import Constants from 'expo-constants';
+import MapView, { Marker, Polyline, Callout, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -75,13 +75,6 @@ const arrayToLatLng = (coordinates?: [number, number] | null) => {
   };
 };
 
-// Initialize Mapbox with access token from config
-const mapboxToken =
-  Constants.expoConfig?.extra?.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ||
-  process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
-if (mapboxToken) {
-  Mapbox.setAccessToken(mapboxToken);
-}
 
 const BOOKING_STATUS_CONFIG: Record<
   BookingStatus,
@@ -118,7 +111,19 @@ export default function TripDetailsScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const tripId = typeof id === 'string' ? (id as string) : '';
-  const trip = useAppSelector((state) => selectTripById(tripId)(state));
+  
+  // Récupérer le trajet depuis l'API si pas dans le store
+  const {
+    data: tripFromApi,
+    isLoading: tripLoading,
+    isFetching: tripFetching,
+    refetch: refetchTrip,
+  } = useGetTripByIdQuery(tripId, { skip: !tripId });
+  
+  // Utiliser le trajet de l'API en priorité, sinon celui du store
+  const tripFromStore = useAppSelector((state) => selectTripById(tripId)(state));
+  const trip = tripFromApi || tripFromStore;
+  
   const user = useAppSelector(selectUser);
   const { checkIdentity, isIdentityVerified } = useIdentityCheck();
   const { showDialog } = useDialog();
@@ -322,28 +327,7 @@ export default function TripDetailsScreen() {
 
   const availableSeats = trip ? Math.max(trip.availableSeats, 0) : 0;
   const seatLimit = Math.max(availableSeats, 1);
-
-  if (!trip) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: Colors.white }]}>
-        <View style={styles.emptyStateContainer}>
-          <View style={styles.emptyStateIcon}>
-            <Ionicons name="car-sport" size={32} color={Colors.primary} />
-          </View>
-          <Text style={styles.emptyStateTitle}>Trajet introuvable</Text>
-          <Text style={styles.emptyStateText}>
-            Ce trajet n’existe plus ou a été supprimé par son propriétaire.
-          </Text>
-          <TouchableOpacity style={styles.primaryButton} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={16} color={Colors.white} />
-            <Text style={styles.primaryButtonText}>Retour</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const progress = trip.progress || 0;
+  const progress = trip?.progress || 0;
   const trackingStatusTitle = liveDriverCoordinate ? 'Suivi en direct' : 'Position estimée';
   const trackingStatusSubtitle = useMemo(() => {
     if (trackingError) {
@@ -734,11 +718,11 @@ export default function TripDetailsScreen() {
 
   const estimatedTotal = useMemo(() => {
     const seatsValue = parseInt(bookingSeats, 10);
-    if (Number.isNaN(seatsValue) || seatsValue <= 0) {
+    if (Number.isNaN(seatsValue) || seatsValue <= 0 || !trip) {
       return 0;
     }
     return trip.price === 0 ? 0 : seatsValue * trip.price;
-  }, [bookingSeats, trip.price]);
+  }, [bookingSeats, trip?.price]);
 
   const statusConfig = {
     upcoming: { color: Colors.secondary, bgColor: 'rgba(247, 184, 1, 0.1)', label: 'À venir' },
@@ -747,22 +731,32 @@ export default function TripDetailsScreen() {
     cancelled: { color: Colors.gray[600], bgColor: Colors.gray[200], label: 'Annulé' },
   };
 
-  const config = statusConfig[trip.status as keyof typeof statusConfig];
+  const config = trip ? statusConfig[trip.status as keyof typeof statusConfig] : statusConfig.upcoming;
 
   const departureCoordinate = useMemo(
-    () => ({
-      latitude: trip.departure.lat,
-      longitude: trip.departure.lng,
-    }),
-    [trip.departure.lat, trip.departure.lng],
+    () => {
+      if (!trip?.departure?.lat || !trip?.departure?.lng) {
+        return { latitude: 0, longitude: 0 };
+      }
+      return {
+        latitude: trip.departure.lat,
+        longitude: trip.departure.lng,
+      };
+    },
+    [trip?.departure?.lat, trip?.departure?.lng],
   );
 
   const arrivalCoordinate = useMemo(
-    () => ({
-      latitude: trip.arrival.lat,
-      longitude: trip.arrival.lng,
-    }),
-    [trip.arrival.lat, trip.arrival.lng],
+    () => {
+      if (!trip?.arrival?.lat || !trip?.arrival?.lng) {
+        return { latitude: 0, longitude: 0 };
+      }
+      return {
+        latitude: trip.arrival.lat,
+        longitude: trip.arrival.lng,
+      };
+    },
+    [trip?.arrival?.lat, trip?.arrival?.lng],
   );
 
   // Load route coordinates and info when trip changes
@@ -811,6 +805,17 @@ export default function TripDetailsScreen() {
   // Calculate current coordinate for ETA calculation
   const currentCoordinate = liveDriverCoordinate ?? estimatedCoordinate;
 
+  // Split route into traveled and remaining portions when trip is ongoing
+  const routeSplit = useMemo(() => {
+    if (!routeCoordinates || routeCoordinates.length < 2 || trip?.status !== 'ongoing' || !currentCoordinate) {
+      return {
+        traveledCoordinates: [],
+        remainingCoordinates: routeCoordinates || [],
+      };
+    }
+    return splitRouteByProgress(currentCoordinate, routeCoordinates);
+  }, [routeCoordinates, trip?.status, currentCoordinate]);
+
   // Calculate estimated arrival time based on current position
   useEffect(() => {
     if (!trip || !routeInfo || trip.status !== 'ongoing' || !currentCoordinate) {
@@ -856,7 +861,7 @@ export default function TripDetailsScreen() {
     };
   }, [trip?.status, routeInfo, currentCoordinate, arrivalCoordinate, progress]);
 
-  const mapCamera = useMemo(() => {
+  const mapRegion = useMemo(() => {
     const latitudeCenter = (departureCoordinate.latitude + arrivalCoordinate.latitude) / 2;
     const longitudeCenter = (departureCoordinate.longitude + arrivalCoordinate.longitude) / 2;
     const latitudeDelta =
@@ -864,15 +869,45 @@ export default function TripDetailsScreen() {
     const longitudeDelta =
       Math.max(Math.abs(departureCoordinate.longitude - arrivalCoordinate.longitude), 0.05) * 1.6;
 
-    // Calculate zoom level from delta (approximate)
-    const maxDelta = Math.max(latitudeDelta, longitudeDelta);
-    const zoomLevel = Math.max(9, 15 - Math.log2(maxDelta * 111)); // Rough conversion
-
     return {
-      centerCoordinate: [longitudeCenter, latitudeCenter] as [number, number],
-      zoomLevel: Math.min(Math.max(zoomLevel, 9), 15),
+      latitude: latitudeCenter,
+      longitude: longitudeCenter,
+      latitudeDelta,
+      longitudeDelta,
     };
   }, [arrivalCoordinate, departureCoordinate]);
+
+  // Early return AFTER all hooks to avoid hook order violation
+  if (tripLoading && !trip) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: Colors.white }]}>
+        <View style={styles.emptyStateContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.emptyStateTitle}>Chargement du trajet...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!trip && !tripLoading) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: Colors.white }]}>
+        <View style={styles.emptyStateContainer}>
+          <View style={styles.emptyStateIcon}>
+            <Ionicons name="car-sport" size={32} color={Colors.primary} />
+          </View>
+          <Text style={styles.emptyStateTitle}>Trajet introuvable</Text>
+          <Text style={styles.emptyStateText}>
+            Ce trajet n'existe plus ou a été supprimé par son propriétaire.
+          </Text>
+          <TouchableOpacity style={styles.primaryButton} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={16} color={Colors.white} />
+            <Text style={styles.primaryButtonText}>Retour</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -901,101 +936,77 @@ export default function TripDetailsScreen() {
           activeOpacity={0.95}
         >
           <View style={styles.mapPreview}>
-            <Mapbox.MapView
+            <MapView
+              provider={PROVIDER_GOOGLE}
               style={styles.mapView}
-              styleURL={Mapbox.StyleURL.Street}
               scrollEnabled={false}
               zoomEnabled={false}
               pitchEnabled={false}
               rotateEnabled={false}
+              initialRegion={mapRegion}
             >
-              <Mapbox.Camera
-                defaultSettings={{
-                  centerCoordinate: mapCamera.centerCoordinate,
-                  zoomLevel: mapCamera.zoomLevel,
-                }}
-                animationMode="none"
-              />
-
               {/* Route polyline */}
               {routeCoordinates && routeCoordinates.length > 0 ? (
-                <Mapbox.ShapeSource
-                  id="route-preview"
-                  shape={{
-                    type: 'Feature',
-                    properties: {},
-                    geometry: {
-                      type: 'LineString',
-                      coordinates: routeCoordinates.map(coord => [coord.longitude, coord.latitude] as [number, number]),
-                    },
-                  }}
-                >
-                  <Mapbox.LineLayer
-                    id="route-preview-line"
-                    style={{
-                      lineColor: Colors.primary,
-                      lineWidth: 4,
-                      lineCap: 'round',
-                      lineJoin: 'round',
-                    }}
-                  />
-                </Mapbox.ShapeSource>
+                <>
+                  {/* Remaining route (gray) */}
+                  {trip?.status === 'ongoing' && routeSplit.remainingCoordinates.length > 1 && (
+                    <Polyline
+                      coordinates={routeSplit.remainingCoordinates}
+                      strokeColor={Colors.gray[400]}
+                      strokeWidth={4}
+                      lineDashPattern={[5, 5]}
+                    />
+                  )}
+                  {/* Traveled route (colored) */}
+                  {trip?.status === 'ongoing' && routeSplit.traveledCoordinates.length > 1 ? (
+                    <Polyline
+                      coordinates={routeSplit.traveledCoordinates}
+                      strokeColor={Colors.primary}
+                      strokeWidth={4}
+                    />
+                  ) : (
+                    <Polyline
+                      coordinates={routeCoordinates}
+                      strokeColor={Colors.primary}
+                      strokeWidth={4}
+                    />
+                  )}
+                </>
               ) : (
-                <Mapbox.ShapeSource
-                  id="route-preview-fallback"
-                  shape={{
-                    type: 'Feature',
-                    properties: {},
-                    geometry: {
-                      type: 'LineString',
-                      coordinates: [
-                        [departureCoordinate.longitude, departureCoordinate.latitude],
-                        [arrivalCoordinate.longitude, arrivalCoordinate.latitude],
-                      ],
-                    },
-                  }}
-                >
-                  <Mapbox.LineLayer
-                    id="route-preview-fallback-line"
-                    style={{
-                      lineColor: Colors.primary,
-                      lineWidth: 4,
-                      lineCap: 'round',
-                      lineDasharray: [1, 1],
-                    }}
-                  />
-                </Mapbox.ShapeSource>
+                <Polyline
+                  coordinates={[departureCoordinate, arrivalCoordinate]}
+                  strokeColor={Colors.primary}
+                  strokeWidth={4}
+                  lineDashPattern={[1, 1]}
+                />
               )}
 
-              <Mapbox.PointAnnotation
-                id="departure-preview"
-                coordinate={[departureCoordinate.longitude, departureCoordinate.latitude]}
+              <Marker
+                coordinate={departureCoordinate}
               >
                 <View style={styles.markerStartCircle}>
                   <Ionicons name="location" size={18} color={Colors.white} />
                 </View>
-              </Mapbox.PointAnnotation>
+              </Marker>
 
-              <Mapbox.PointAnnotation
-                id="arrival-preview"
-                coordinate={[arrivalCoordinate.longitude, arrivalCoordinate.latitude]}
+              <Marker
+                coordinate={arrivalCoordinate}
               >
                 <View style={styles.markerEndCircle}>
                   <Ionicons name="navigate" size={18} color={Colors.white} />
                 </View>
-              </Mapbox.PointAnnotation>
+              </Marker>
 
               {currentCoordinate && (
-                <Mapbox.PointAnnotation
-                  id="current-preview"
-                  coordinate={[currentCoordinate.longitude, currentCoordinate.latitude]}
+                <Marker
+                  coordinate={currentCoordinate}
                 >
                   <Animated.View style={pulseStyle}>
                     <View style={styles.markerCurrentCircle}>
                       <Ionicons name="car-sport" size={18} color={Colors.white} />
                     </View>
                   </Animated.View>
-                </Mapbox.PointAnnotation>
+                </Marker>
               )}
 
               {/* Destinations des passagers */}
@@ -1010,18 +1021,20 @@ export default function TripDetailsScreen() {
                 .map((booking, index) => {
                   const destCoords = booking.passengerDestinationCoordinates!;
                   return (
-                    <Mapbox.PointAnnotation
+                    <Marker
                       key={`passenger-dest-${booking.id}`}
-                      id={`passenger-dest-preview-${booking.id}`}
-                      coordinate={[destCoords.longitude, destCoords.latitude]}
+                      coordinate={{
+                        latitude: destCoords.latitude,
+                        longitude: destCoords.longitude,
+                      }}
                     >
                       <View style={styles.markerPassengerDestCircle}>
                         <Ionicons name="person" size={14} color={Colors.white} />
                       </View>
-                    </Mapbox.PointAnnotation>
+                    </Marker>
                   );
                 })}
-            </Mapbox.MapView>
+            </MapView>
 
             <View style={styles.mapOverlay}>
               <Text style={styles.mapOverlayText}>Touchez pour agrandir</Text>
@@ -1038,104 +1051,90 @@ export default function TripDetailsScreen() {
         <Modal visible={mapModalVisible} animationType="fade" transparent onRequestClose={() => setMapModalVisible(false)}>
           <View style={styles.mapModalOverlay}>
             <View style={styles.mapModalContent}>
-              <Mapbox.MapView
+              <MapView
+                provider={PROVIDER_GOOGLE}
                 style={styles.fullscreenMap}
-                styleURL={Mapbox.StyleURL.SatelliteStreet}
+                mapType="hybrid"
+                initialRegion={mapRegion}
               >
-                <Mapbox.Camera
-                  defaultSettings={{
-                    centerCoordinate: mapCamera.centerCoordinate,
-                    zoomLevel: mapCamera.zoomLevel,
-                  }}
-                  animationMode="flyTo"
-                  animationDuration={500}
-                />
-
                 {/* Route polyline */}
                 {routeCoordinates && routeCoordinates.length > 0 ? (
-                  <Mapbox.ShapeSource
-                    id="route-fullscreen"
-                    shape={{
-                      type: 'Feature',
-                      properties: {},
-                      geometry: {
-                        type: 'LineString',
-                        coordinates: routeCoordinates.map(coord => [coord.longitude, coord.latitude] as [number, number]),
-                      },
-                    }}
-                  >
-                    <Mapbox.LineLayer
-                      id="route-fullscreen-line"
-                      style={{
-                        lineColor: Colors.primary,
-                        lineWidth: 5,
-                        lineCap: 'round',
-                        lineJoin: 'round',
-                      }}
-                    />
-                  </Mapbox.ShapeSource>
+                  <>
+                    {/* Remaining route (gray) */}
+                    {trip?.status === 'ongoing' && routeSplit.remainingCoordinates.length > 1 && (
+                      <Polyline
+                        coordinates={routeSplit.remainingCoordinates}
+                        strokeColor={Colors.gray[400]}
+                        strokeWidth={5}
+                        lineDashPattern={[5, 5]}
+                      />
+                    )}
+                    {/* Traveled route (colored) */}
+                    {trip?.status === 'ongoing' && routeSplit.traveledCoordinates.length > 1 ? (
+                      <Polyline
+                        coordinates={routeSplit.traveledCoordinates}
+                        strokeColor={Colors.primary}
+                        strokeWidth={5}
+                      />
+                    ) : (
+                      <Polyline
+                        coordinates={routeCoordinates}
+                        strokeColor={Colors.primary}
+                        strokeWidth={5}
+                      />
+                    )}
+                  </>
                 ) : (
-                  <Mapbox.ShapeSource
-                    id="route-fullscreen-fallback"
-                    shape={{
-                      type: 'Feature',
-                      properties: {},
-                      geometry: {
-                        type: 'LineString',
-                        coordinates: [
-                          [departureCoordinate.longitude, departureCoordinate.latitude],
-                          [arrivalCoordinate.longitude, arrivalCoordinate.latitude],
-                        ],
-                      },
-                    }}
-                  >
-                    <Mapbox.LineLayer
-                      id="route-fullscreen-fallback-line"
-                      style={{
-                        lineColor: Colors.primary,
-                        lineWidth: 5,
-                        lineCap: 'round',
-                      }}
-                    />
-                  </Mapbox.ShapeSource>
+                  <Polyline
+                    coordinates={[departureCoordinate, arrivalCoordinate]}
+                    strokeColor={Colors.primary}
+                    strokeWidth={5}
+                  />
                 )}
 
-                <Mapbox.PointAnnotation
-                  id="departure-fullscreen"
-                  coordinate={[departureCoordinate.longitude, departureCoordinate.latitude]}
+                <Marker
+                  coordinate={departureCoordinate}
                 >
                   <View style={styles.markerStartCircle}>
                     <Ionicons name="location" size={20} color={Colors.white} />
                   </View>
-                  <Mapbox.Callout title="Départ">
-                    <Text>{trip.departure.address}</Text>
-                  </Mapbox.Callout>
-                </Mapbox.PointAnnotation>
+                  <Callout>
+                    <View>
+                      <Text style={{ fontWeight: 'bold' }}>Départ</Text>
+                      <Text>{trip.departure.address}</Text>
+                    </View>
+                  </Callout>
+                </Marker>
 
-                <Mapbox.PointAnnotation
-                  id="arrival-fullscreen"
-                  coordinate={[arrivalCoordinate.longitude, arrivalCoordinate.latitude]}
+                <Marker
+                  coordinate={arrivalCoordinate}
                 >
                   <View style={styles.markerEndCircle}>
                     <Ionicons name="navigate" size={20} color={Colors.white} />
                   </View>
-                  <Mapbox.Callout title="Arrivée">
-                    <Text>{trip.arrival.address}</Text>
-                  </Mapbox.Callout>
-                </Mapbox.PointAnnotation>
+                  <Callout>
+                    <View>
+                      <Text style={{ fontWeight: 'bold' }}>Arrivée</Text>
+                      <Text>{trip.arrival.address}</Text>
+                    </View>
+                  </Callout>
+                </Marker>
 
                 {currentCoordinate && (
-                  <Mapbox.PointAnnotation
-                    id="current-fullscreen"
-                    coordinate={[currentCoordinate.longitude, currentCoordinate.latitude]}
+                  <Marker
+                    coordinate={currentCoordinate}
                   >
                     <Animated.View style={pulseStyle}>
                       <View style={styles.markerCurrentCircle}>
                         <Ionicons name="car-sport" size={20} color={Colors.white} />
                       </View>
                     </Animated.View>
-                    <Mapbox.Callout title="Position actuelle" />
-                  </Mapbox.PointAnnotation>
+                    <Callout>
+                      <View>
+                        <Text style={{ fontWeight: 'bold' }}>Position actuelle</Text>
+                      </View>
+                    </Callout>
+                  </Marker>
                 )}
 
                 {/* Destinations des passagers */}
@@ -1150,21 +1149,26 @@ export default function TripDetailsScreen() {
                   .map((booking) => {
                     const destCoords = booking.passengerDestinationCoordinates!;
                     return (
-                      <Mapbox.PointAnnotation
+                      <Marker
                         key={`passenger-dest-fullscreen-${booking.id}`}
-                        id={`passenger-dest-fullscreen-${booking.id}`}
-                        coordinate={[destCoords.longitude, destCoords.latitude]}
+                        coordinate={{
+                          latitude: destCoords.latitude,
+                          longitude: destCoords.longitude,
+                        }}
                       >
                         <View style={styles.markerPassengerDestCircle}>
                           <Ionicons name="person" size={16} color={Colors.white} />
                         </View>
-                        <Mapbox.Callout title={booking.passengerDestination || booking.passengerName || 'Destination passager'}>
-                          <Text>{booking.passengerName || 'Passager'}</Text>
-                        </Mapbox.Callout>
-                      </Mapbox.PointAnnotation>
+                        <Callout>
+                          <View>
+                            <Text style={{ fontWeight: 'bold' }}>{booking.passengerDestination || booking.passengerName || 'Destination passager'}</Text>
+                            <Text>{booking.passengerName || 'Passager'}</Text>
+                          </View>
+                        </Callout>
+                      </Marker>
                     );
                   })}
-              </Mapbox.MapView>
+              </MapView>
 
               <TouchableOpacity style={styles.closeMapButton} onPress={() => setMapModalVisible(false)}>
                 <Ionicons name="close" size={24} color={Colors.white} />
@@ -1447,7 +1451,7 @@ export default function TripDetailsScreen() {
         )}
 
         {/* Actions */}
-        {trip.status === 'upcoming' && (
+        {(trip.status === 'upcoming' || (trip.status === 'ongoing' && availableSeats > 0)) && (
           <View style={styles.actionsContainer}>
             {activeBooking && activeBookingStatus ? (
               <View style={styles.bookingCard}>
@@ -1525,11 +1529,17 @@ export default function TripDetailsScreen() {
               <>
                 <View style={styles.bookingHintCard}>
                   <View style={styles.bookingHintIcon}>
-                    <Ionicons name="information-circle" size={20} color={Colors.primary} />
+                    <Ionicons 
+                      name={trip.status === 'ongoing' ? "car-sport" : "information-circle"} 
+                      size={20} 
+                      color={trip.status === 'ongoing' ? Colors.success : Colors.primary} 
+                    />
                   </View>
                   <View style={styles.bookingHintContent}>
                     <Text style={styles.bookingHintTitle}>
-                      {availableSeats > 0
+                      {trip.status === 'ongoing' 
+                        ? `Trajet en cours • Il reste ${availableSeats} place${availableSeats > 1 ? 's' : ''} disponibles`
+                        : availableSeats > 0
                         ? `Il reste ${availableSeats} place${availableSeats > 1 ? 's' : ''} disponibles`
                         : 'Ce trajet est complet'}
                     </Text>

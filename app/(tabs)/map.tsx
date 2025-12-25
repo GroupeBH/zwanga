@@ -18,7 +18,7 @@ import { setTrips } from '@/store/slices/tripsSlice';
 import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { Ionicons } from '@expo/vector-icons';
-import Mapbox from '@rnmapbox/maps';
+import MapView, { Marker, Polyline, Callout, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -36,18 +36,11 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { searchMapboxPlaces, getMapboxPlaceDetails, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
-import { getCachedRouteCoordinates, type RouteCoordinates } from '@/utils/mapboxDirections';
+import { searchGoogleMapsPlaces, getGoogleMapsPlaceDetails, type GoogleMapsSearchSuggestion } from '@/utils/googleMapsPlaces';
+import { getCachedRouteCoordinates, type RouteCoordinates } from '@/utils/googleMapsDirections';
 
 type LatLng = { latitude: number; longitude: number };
 
-// Initialize Mapbox with access token from config
-const mapboxToken =
-  Constants.expoConfig?.extra?.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ||
-  process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
-if (mapboxToken) {
-  Mapbox.setAccessToken(mapboxToken);
-}
 
 const toRadians = (value: number) => (value * Math.PI) / 180;
 
@@ -82,12 +75,13 @@ export default function MapScreen() {
   const { shouldShow: shouldShowMapGuide, complete: completeMapGuide } =
     useTutorialGuide('map_screen');
   const [mapGuideVisible, setMapGuideVisible] = useState(false);
-  const cameraRef = useRef<Mapbox.Camera>(null);
+  const mapRef = useRef<MapView>(null);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const [mapRegion, setMapRegion] = useState<Region | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
   const [isMapMoving, setIsMapMoving] = useState(false);
-  const [mapboxSuggestions, setMapboxSuggestions] = useState<MapboxSearchSuggestion[]>([]);
-  const [mapboxLoading, setMapboxLoading] = useState(false);
+  const [googleMapsSuggestions, setGoogleMapsSuggestions] = useState<GoogleMapsSearchSuggestion[]>([]);
+  const [googleMapsLoading, setGoogleMapsLoading] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [routeCoordinatesCache, setRouteCoordinatesCache] = useState<Map<string, RouteCoordinates[]>>(new Map());
   const [loadingRoutes, setLoadingRoutes] = useState<Set<string>>(new Set());
@@ -187,12 +181,13 @@ export default function MapScreen() {
       return;
     }
 
-    if (userCoords) {
-      cameraRef.current?.setCamera({
-        centerCoordinate: [userCoords.longitude, userCoords.latitude],
-        zoomLevel: 14,
-        animationDuration: 1000,
-      });
+    if (userCoords && mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: userCoords.latitude,
+        longitude: userCoords.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 1000);
     }
   };
 
@@ -206,29 +201,42 @@ export default function MapScreen() {
     }
   }, [shouldShowMapGuide]);
 
+  // Initialiser mapCenter avec initialRegion
+  useEffect(() => {
+    if (initialRegion && !mapCenter) {
+      setMapCenter([initialRegion.longitude, initialRegion.latitude]);
+    }
+  }, [initialRegion, mapCenter]);
+
   const dismissMapGuide = () => {
     setMapGuideVisible(false);
     completeMapGuide();
   };
 
-  const initialCamera = useMemo(() => {
+  const initialRegion = useMemo(() => {
     if (userCoords) {
       return {
-        centerCoordinate: [userCoords.longitude, userCoords.latitude] as [number, number],
-        zoomLevel: 12,
+        latitude: userCoords.latitude,
+        longitude: userCoords.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
       };
     }
 
     if (trips.length > 0 && trips[0].departure?.lat && trips[0].departure?.lng) {
       return {
-        centerCoordinate: [trips[0].departure.lng, trips[0].departure.lat] as [number, number],
-        zoomLevel: 10,
+        latitude: trips[0].departure.lat,
+        longitude: trips[0].departure.lng,
+        latitudeDelta: 0.1,
+        longitudeDelta: 0.1,
       };
     }
 
     return {
-      centerCoordinate: [15.266293, -4.441931] as [number, number],
-      zoomLevel: 9,
+      latitude: -4.441931,
+      longitude: 15.266293,
+      latitudeDelta: 0.2,
+      longitudeDelta: 0.2,
     };
   }, [userCoords, trips]);
 
@@ -250,45 +258,27 @@ export default function MapScreen() {
     const lineCoordinates = coordinatesToUse.map(coord => [coord.longitude, coord.latitude] as [number, number]);
 
     return (
-      <Mapbox.ShapeSource
+      <Polyline
         key={`${tripId}-polyline`}
-        id={`${tripId}-route`}
-        shape={{
-          type: 'Feature',
-          properties: {},
-          geometry: {
-            type: 'LineString',
-            coordinates: lineCoordinates,
-          },
-        }}
-      >
-        <Mapbox.LineLayer
-          id={`${tripId}-route-line`}
-          style={{
-            lineColor: color,
-            lineWidth: 3,
-            lineCap: 'round',
-            lineJoin: 'round',
-            // Ligne pointillée si c'est une ligne droite temporaire (pas encore chargé ou échec)
-            ...(isLoading || !cachedRoute || cachedRoute.length === 2 ? { 
-              lineDasharray: [2, 2],
-              lineOpacity: 0.6 
-            } : {}),
-          }}
-        />
-      </Mapbox.ShapeSource>
+        coordinates={coordinatesToUse}
+        strokeColor={color}
+        strokeWidth={3}
+        lineDashPattern={isLoading || !cachedRoute || cachedRoute.length === 2 ? [2, 2] : undefined}
+        lineCap="round"
+        lineJoin="round"
+      />
     );
   };
 
   // Recherche avec suggestions Mapbox en temps réel
   const searchMapboxSuggestions = useCallback(async (query: string) => {
     if (!query.trim() || query.trim().length < 2) {
-      setMapboxSuggestions([]);
+      setGoogleMapsSuggestions([]);
       return;
     }
 
     try {
-      setMapboxLoading(true);
+      setGoogleMapsLoading(true);
       // Valider les coordonnées de proximité avant de les utiliser
       let proximity: { longitude: number; latitude: number } | undefined = undefined;
       
@@ -312,13 +302,13 @@ export default function MapScreen() {
         proximity = { longitude: mapCenter[0], latitude: mapCenter[1] };
       }
       
-      const suggestions = await searchMapboxPlaces(query, proximity, 5);
-      setMapboxSuggestions(suggestions);
+      const suggestions = await searchGoogleMapsPlaces(query, proximity, 5);
+      setGoogleMapsSuggestions(suggestions);
     } catch (error) {
       // Les erreurs sont déjà gérées dans searchMapboxPlaces
-      setMapboxSuggestions([]);
+      setGoogleMapsSuggestions([]);
     } finally {
-      setMapboxLoading(false);
+      setGoogleMapsLoading(false);
     }
   }, [userCoords, mapCenter]);
 
@@ -333,7 +323,7 @@ export default function MapScreen() {
         searchMapboxSuggestions(search);
       }, 300);
     } else {
-      setMapboxSuggestions([]);
+      setGoogleMapsSuggestions([]);
     }
 
     return () => {
@@ -344,22 +334,26 @@ export default function MapScreen() {
   }, [search, searchMapboxSuggestions]);
 
   const handleSearchChange = (value: string) => {
-    setSearch(value);
+    try {
+      setSearch(value);
+    } catch (error) {
+      console.error('Error updating search:', error);
+    }
   };
 
-  const handleMapboxSuggestionPress = async (suggestion: MapboxSearchSuggestion) => {
+  const handleGoogleMapsSuggestionPress = async (suggestion: GoogleMapsSearchSuggestion) => {
     try {
-      setMapboxLoading(true);
+      setGoogleMapsLoading(true);
       
       // Récupérer les détails complets du lieu pour obtenir l'adresse complète
-      const placeDetails = await getMapboxPlaceDetails(suggestion.id);
+      const placeDetails = await getGoogleMapsPlaceDetails(suggestion.id);
       
       // Utiliser l'adresse complète si disponible, sinon utiliser le nom
       const addressToUse = placeDetails?.fullAddress || suggestion.fullAddress || suggestion.name;
       const displayName = placeDetails?.name || suggestion.name;
       
       setSearch(displayName);
-      setMapboxSuggestions([]);
+      setGoogleMapsSuggestions([]);
       
       // Appliquer la recherche avec l'adresse complète pour une meilleure précision
       dispatch(setSearchQuery(addressToUse));
@@ -382,7 +376,7 @@ export default function MapScreen() {
       // Fallback: utiliser les données de la suggestion directement
       const addressToUse = suggestion.fullAddress || suggestion.name;
       setSearch(suggestion.name);
-      setMapboxSuggestions([]);
+      setGoogleMapsSuggestions([]);
       dispatch(setSearchQuery(addressToUse));
       const params = buildSearchParams(addressToUse);
       triggerTripSearch(params).then((result) => {
@@ -399,7 +393,7 @@ export default function MapScreen() {
         });
       });
     } finally {
-      setMapboxLoading(false);
+      setGoogleMapsLoading(false);
     }
   };
 
@@ -497,32 +491,20 @@ export default function MapScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Mapbox.MapView
+      <MapView
+        ref={mapRef}
+        provider={PROVIDER_GOOGLE}
         style={styles.map}
-        styleURL={Mapbox.StyleURL.Street}
-        compassEnabled={false}
-        onCameraChanged={(state) => {
-          const coords = getCoordinates(state.properties.center);
-          if (coords) {
-            setMapCenter(coords);
-          }
+        initialRegion={initialRegion}
+        showsUserLocation={!!userCoords}
+        showsCompass={false}
+        onRegionChange={(region) => {
+          setMapRegion(region);
+          setMapCenter([region.longitude, region.latitude]);
           setIsMapMoving(true);
         }}
-        onMapIdle={() => setIsMapMoving(false)}
+        onRegionChangeComplete={() => setIsMapMoving(false)}
       >
-        <Mapbox.Camera
-          ref={cameraRef}
-          defaultSettings={{
-            centerCoordinate: initialCamera.centerCoordinate,
-            zoomLevel: initialCamera.zoomLevel,
-          }}
-          animationMode="flyTo"
-          animationDuration={0}
-        />
-
-        {userCoords && (
-          <Mapbox.UserLocation visible={true} />
-        )}
 
         {trips.map((trip) => {
           const departureCoords =
@@ -554,9 +536,8 @@ export default function MapScreen() {
           return (
             <React.Fragment key={trip.id}>
               {departureCoords && (
-                <Mapbox.PointAnnotation
-                  id={`departure-${trip.id}`}
-                  coordinate={[departureCoords.longitude, departureCoords.latitude]}
+                <Marker
+                  coordinate={departureCoords}
                   anchor={{ x: 0.5, y: 1 }}
                 >
                   <TouchableOpacity
@@ -574,7 +555,7 @@ export default function MapScreen() {
                       <View style={styles.driverMarkerHalo} />
                     </View>
                   </TouchableOpacity>
-                  <Mapbox.Callout title={trip.driverName}>
+                  <Callout>
                     <TouchableOpacity
                       style={styles.calloutCard}
                       onPress={() => router.push(`/trip/${trip.id}`)}
@@ -604,13 +585,12 @@ export default function MapScreen() {
                         </View>
                       </View>
                     </TouchableOpacity>
-                  </Mapbox.Callout>
-                </Mapbox.PointAnnotation>
+                  </Callout>
+                </Marker>
               )}
               {arrivalCoords && (
-                <Mapbox.PointAnnotation
-                  id={`arrival-${trip.id}`}
-                  coordinate={[arrivalCoords.longitude, arrivalCoords.latitude]}
+                <Marker
+                  coordinate={arrivalCoords}
                 >
                   <View
                     style={[
@@ -620,8 +600,12 @@ export default function MapScreen() {
                   >
                     <Ionicons name="navigate" size={16} color={Colors.white} />
                   </View>
-                  <Mapbox.Callout title={`Arrivée: ${trip.arrival.name}`} />
-                </Mapbox.PointAnnotation>
+                  <Callout>
+                    <View>
+                      <Text style={{ fontWeight: 'bold' }}>Arrivée: {trip.arrival.name}</Text>
+                    </View>
+                  </Callout>
+                </Marker>
               )}
               {departureCoords &&
                 arrivalCoords &&
@@ -629,7 +613,7 @@ export default function MapScreen() {
             </React.Fragment>
           );
         })}
-      </Mapbox.MapView>
+      </MapView>
 
       {/* Center Pin for Drag-to-Search */}
       <View style={styles.centerPinContainer} pointerEvents="none">
@@ -652,21 +636,21 @@ export default function MapScreen() {
                 returnKeyType="search"
                 onSubmitEditing={applySearchQuery}
               />
-              {mapboxLoading && (
+              {googleMapsLoading && (
                 <ActivityIndicator size="small" color={Colors.primary} />
               )}
             </View>
 
             {/* Suggestions Mapbox */}
-            {mapboxSuggestions.length > 0 && (
+            {googleMapsSuggestions.length > 0 && (
               <View style={styles.suggestionsContainer}>
                 <FlatList
-                  data={mapboxSuggestions}
+                  data={googleMapsSuggestions}
                   keyExtractor={(item) => item.id}
                   renderItem={({ item }) => (
                     <TouchableOpacity
                       style={styles.suggestionRow}
-                      onPress={() => handleMapboxSuggestionPress(item)}
+                      onPress={() => handleGoogleMapsSuggestionPress(item)}
                     >
                       <Ionicons name="location" size={16} color={Colors.primary} />
                       <View style={styles.suggestionContent}>
@@ -812,15 +796,15 @@ export default function MapScreen() {
           style={styles.searchHereButton}
           activeOpacity={0.8}
           onPress={async () => {
-            const sanitizedCoords = getCoordinates(mapCenter);
-            if (sanitizedCoords) {
+            if (mapCenter && mapRegion) {
               try {
-                // Uncommented to use radius from state
+                const sanitizedCoords = {
+                  latitude: mapRegion.latitude,
+                  longitude: mapRegion.longitude,
+                };
                 const results = await searchByCoordinates({
                   departureCoordinates: sanitizedCoords,
                   departureRadiusKm: radiusKm,
-                  // We need to provide required fields for the payload even if we don't use them?
-                  // The interface makes arrivalCoordinates optional now, so we should be good.
                 }).unwrap();
                 dispatch(setTrips(results));
 
