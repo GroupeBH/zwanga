@@ -69,13 +69,92 @@ export default function NotificationsScreen() {
   const unreadCount = notificationsData?.unreadCount ?? 0;
 
   const handleSelectNotification = async (notification: Notification) => {
-    setSelectedNotification(notification);
+    // Marquer comme lu d'abord
     if (!notification.isRead) {
       try {
         await markNotificationsAsRead({ notificationIds: [notification.id] }).unwrap();
       } catch (error) {
         console.warn('Impossible de marquer la notification comme lue:', error);
       }
+    }
+
+    // Naviguer vers l'écran approprié selon le type de notification
+    const data = notification.data || {};
+    const { type, tripId, bookingId, conversationId, requestId } = data;
+
+    try {
+      // Attendre un court délai pour que la navigation soit fluide
+      setTimeout(() => {
+        switch (type) {
+          case 'trip':
+          case 'trip_update':
+            if (tripId) {
+              router.push(`/trip/${tripId}`);
+              return;
+            }
+            break;
+
+          case 'booking':
+          case 'booking_accepted':
+          case 'booking_rejected':
+          case 'booking_cancelled':
+          case 'booking_pending':
+            if (tripId) {
+              router.push(`/trip/${tripId}`);
+              return;
+            } else if (bookingId) {
+              router.push('/bookings');
+              return;
+            }
+            break;
+
+          case 'message':
+          case 'chat':
+            if (conversationId) {
+              router.push({
+                pathname: '/chat/[id]',
+                params: { id: conversationId },
+              });
+              return;
+            }
+            break;
+
+          case 'trip_manage':
+            if (tripId) {
+              router.push(`/trip/manage/${tripId}`);
+              return;
+            }
+            break;
+
+          case 'trip_request':
+          case 'trip_request_accepted':
+            if (requestId) {
+              router.push(`/request/${requestId}`);
+              return;
+            }
+            break;
+
+          case 'rate':
+          case 'review':
+            if (tripId) {
+              router.push(`/rate/${tripId}`);
+              return;
+            }
+            break;
+
+          default:
+            // Si aucun type spécifique ou navigation impossible, ouvrir le modal
+            setSelectedNotification(notification);
+            return;
+        }
+        
+        // Si la navigation n'a pas été effectuée, ouvrir le modal par défaut
+        setSelectedNotification(notification);
+      }, 100);
+    } catch (error) {
+      console.warn('Erreur lors de la navigation depuis la notification:', error);
+      // En cas d'erreur, ouvrir le modal
+      setSelectedNotification(notification);
     }
   };
 
@@ -293,13 +372,84 @@ export default function NotificationsScreen() {
               Reçu {selectedNotification ? formatDateTime(selectedNotification.createdAt) : ''}
             </Text>
             <Text style={styles.modalMessage}>{selectedNotification?.body}</Text>
+            {selectedNotification?.data && renderNotificationData(selectedNotification.data)}
             <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalPrimaryButton]}
-                onPress={() => setSelectedNotification(null)}
-              >
-                <Text style={styles.modalPrimaryText}>Fermer</Text>
-              </TouchableOpacity>
+              {(() => {
+                const data = selectedNotification?.data || {};
+                const { type, tripId, bookingId, conversationId, requestId } = data;
+                
+                // Déterminer si on peut naviguer selon le type de notification
+                // Afficher le bouton si on a au moins un ID disponible
+                const canNavigate = Boolean(
+                  tripId || 
+                  bookingId || 
+                  conversationId || 
+                  requestId
+                );
+
+                if (canNavigate) {
+                  return (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.modalButton, styles.modalSecondaryButton]}
+                        onPress={() => {
+                          try {
+                            // Fermer le modal d'abord
+                            setSelectedNotification(null);
+                            
+                            // Naviguer selon le type et les IDs disponibles
+                            if (type === 'trip_manage' && tripId) {
+                              router.push(`/trip/manage/${tripId}`);
+                            } else if ((type === 'message' || type === 'chat') && conversationId) {
+                              router.push({
+                                pathname: '/chat/[id]',
+                                params: { id: conversationId },
+                              });
+                            } else if ((type === 'trip_request' || type === 'trip_request_accepted') && requestId) {
+                              router.push(`/request/${requestId}`);
+                            } else if ((type === 'rate' || type === 'review') && tripId) {
+                              router.push(`/rate/${tripId}`);
+                            } else if (tripId) {
+                              // Par défaut, naviguer vers le détail du trajet
+                              router.push(`/trip/${tripId}`);
+                            } else if (bookingId) {
+                              // Si on a seulement bookingId, naviguer vers les réservations
+                              router.push('/bookings');
+                            } else if (conversationId) {
+                              // Si on a seulement conversationId
+                              router.push({
+                                pathname: '/chat/[id]',
+                                params: { id: conversationId },
+                              });
+                            } else if (requestId) {
+                              // Si on a seulement requestId
+                              router.push(`/request/${requestId}`);
+                            }
+                          } catch (error) {
+                            console.warn('Erreur lors de la navigation:', error);
+                          }
+                        }}
+                      >
+                        <Text style={styles.modalSecondaryText}>Voir</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.modalButton, styles.modalPrimaryButton]}
+                        onPress={() => setSelectedNotification(null)}
+                      >
+                        <Text style={styles.modalPrimaryText}>Fermer</Text>
+                      </TouchableOpacity>
+                    </>
+                  );
+                }
+                return (
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalPrimaryButton]}
+                    onPress={() => setSelectedNotification(null)}
+                  >
+                    <Text style={styles.modalPrimaryText}>Fermer</Text>
+                  </TouchableOpacity>
+                );
+              })()}
             </View>
           </View>
         </View>
@@ -498,6 +648,8 @@ const styles = StyleSheet.create({
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    gap: Spacing.md,
+    marginTop: Spacing.md,
   },
   modalButton: {
     paddingHorizontal: Spacing.xl,
@@ -509,6 +661,15 @@ const styles = StyleSheet.create({
   },
   modalPrimaryText: {
     color: Colors.white,
+    fontWeight: FontWeights.semibold,
+  },
+  modalSecondaryButton: {
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  modalSecondaryText: {
+    color: Colors.primary,
     fontWeight: FontWeights.semibold,
   },
   modalData: {

@@ -15,8 +15,6 @@ import type { Booking, BookingStatus } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
 import { getRouteInfo, type RouteInfo } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
-import Mapbox from '@rnmapbox/maps';
-import Constants from 'expo-constants';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -29,16 +27,10 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-// Initialize Mapbox with access token from config
-const mapboxToken =
-  Constants.expoConfig?.extra?.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ||
-  process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
-if (mapboxToken) {
-  Mapbox.setAccessToken(mapboxToken);
-}
 
 type FeedbackState = { type: 'success' | 'error'; message: string } | null;
 
@@ -243,11 +235,13 @@ export default function ManageTripScreen() {
     };
   }, [trip?.status, trip?.currentLocation, trip?.progress, routeInfo, arrivalCoordinate]);
 
-  const mapCamera = useMemo(() => {
+  const mapRegion = useMemo(() => {
     if (!departureCoordinate || !arrivalCoordinate) {
       return {
-        centerCoordinate: [15.266293, -4.441931] as [number, number],
-        zoomLevel: 11,
+        latitude: -4.441931,
+        longitude: 15.266293,
+        latitudeDelta: 0.1,
+        longitudeDelta: 0.1,
       };
     }
     const latitudeCenter = (departureCoordinate.latitude + arrivalCoordinate.latitude) / 2;
@@ -257,13 +251,11 @@ export default function ManageTripScreen() {
     const longitudeDelta =
       Math.max(Math.abs(departureCoordinate.longitude - arrivalCoordinate.longitude), 0.05) * 1.6;
 
-    // Calculate zoom level from delta (approximate)
-    const maxDelta = Math.max(latitudeDelta, longitudeDelta);
-    const zoomLevel = Math.max(9, 15 - Math.log2(maxDelta * 111)); // Rough conversion
-
     return {
-      centerCoordinate: [longitudeCenter, latitudeCenter] as [number, number],
-      zoomLevel: Math.min(Math.max(zoomLevel, 9), 15),
+      latitude: latitudeCenter,
+      longitude: longitudeCenter,
+      latitudeDelta,
+      longitudeDelta,
     };
   }, [arrivalCoordinate, departureCoordinate]);
 
@@ -531,89 +523,46 @@ export default function ManageTripScreen() {
             activeOpacity={0.95}
           >
             <View style={styles.mapPreview}>
-              <Mapbox.MapView
+              <MapView
+                provider={PROVIDER_GOOGLE}
                 style={styles.mapView}
-                styleURL={Mapbox.StyleURL.Street}
                 scrollEnabled={false}
                 zoomEnabled={false}
                 pitchEnabled={false}
                 rotateEnabled={false}
+                initialRegion={mapRegion}
               >
-                <Mapbox.Camera
-                  defaultSettings={{
-                    centerCoordinate: mapCamera.centerCoordinate,
-                    zoomLevel: mapCamera.zoomLevel,
-                  }}
-                  animationMode="none"
-                />
-
                 {/* Route polyline */}
                 {routeCoordinates && routeCoordinates.length > 0 ? (
-                  <Mapbox.ShapeSource
-                    id="route-preview"
-                    shape={{
-                      type: 'Feature',
-                      properties: {},
-                      geometry: {
-                        type: 'LineString',
-                        coordinates: routeCoordinates.map(coord => [coord.longitude, coord.latitude] as [number, number]),
-                      },
-                    }}
-                  >
-                    <Mapbox.LineLayer
-                      id="route-preview-line"
-                      style={{
-                        lineColor: Colors.primary,
-                        lineWidth: 4,
-                        lineCap: 'round',
-                        lineJoin: 'round',
-                      }}
-                    />
-                  </Mapbox.ShapeSource>
+                  <Polyline
+                    coordinates={routeCoordinates}
+                    strokeColor={Colors.primary}
+                    strokeWidth={4}
+                  />
                 ) : (
-                  <Mapbox.ShapeSource
-                    id="route-preview-fallback"
-                    shape={{
-                      type: 'Feature',
-                      properties: {},
-                      geometry: {
-                        type: 'LineString',
-                        coordinates: [
-                          [departureCoordinate.longitude, departureCoordinate.latitude],
-                          [arrivalCoordinate.longitude, arrivalCoordinate.latitude],
-                        ],
-                      },
-                    }}
-                  >
-                    <Mapbox.LineLayer
-                      id="route-preview-fallback-line"
-                      style={{
-                        lineColor: Colors.primary,
-                        lineWidth: 4,
-                        lineCap: 'round',
-                        lineDasharray: [1, 1],
-                      }}
-                    />
-                  </Mapbox.ShapeSource>
+                  <Polyline
+                    coordinates={[departureCoordinate, arrivalCoordinate]}
+                    strokeColor={Colors.primary}
+                    strokeWidth={4}
+                    lineDashPattern={[1, 1]}
+                  />
                 )}
 
-                <Mapbox.PointAnnotation
-                  id="departure-preview"
-                  coordinate={[departureCoordinate.longitude, departureCoordinate.latitude]}
+                <Marker
+                  coordinate={departureCoordinate}
                 >
                   <View style={styles.markerStartCircle}>
                     <Ionicons name="location" size={18} color={Colors.white} />
                   </View>
-                </Mapbox.PointAnnotation>
+                </Marker>
 
-                <Mapbox.PointAnnotation
-                  id="arrival-preview"
-                  coordinate={[arrivalCoordinate.longitude, arrivalCoordinate.latitude]}
+                <Marker
+                  coordinate={arrivalCoordinate}
                 >
                   <View style={styles.markerEndCircle}>
                     <Ionicons name="navigate" size={18} color={Colors.white} />
                   </View>
-                </Mapbox.PointAnnotation>
+                </Marker>
 
                 {/* Destinations des passagers */}
                 {bookings
@@ -627,18 +576,20 @@ export default function ManageTripScreen() {
                   .map((booking) => {
                     const destCoords = booking.passengerDestinationCoordinates!;
                     return (
-                      <Mapbox.PointAnnotation
+                      <Marker
                         key={`passenger-dest-${booking.id}`}
-                        id={`passenger-dest-preview-${booking.id}`}
-                        coordinate={[destCoords.longitude, destCoords.latitude]}
+                        coordinate={{
+                          latitude: destCoords.latitude,
+                          longitude: destCoords.longitude,
+                        }}
                       >
                         <View style={styles.markerPassengerDestCircle}>
                           <Ionicons name="person" size={14} color={Colors.white} />
                         </View>
-                      </Mapbox.PointAnnotation>
+                      </Marker>
                     );
                   })}
-              </Mapbox.MapView>
+              </MapView>
 
               <View style={styles.mapOverlay}>
                 <Text style={styles.mapOverlayText}>Touchez pour agrandir</Text>
@@ -946,91 +897,53 @@ export default function ManageTripScreen() {
         <Modal visible={mapModalVisible} animationType="fade" transparent onRequestClose={() => setMapModalVisible(false)}>
           <View style={styles.mapModalOverlay}>
             <View style={styles.mapModalContent}>
-              <Mapbox.MapView
+              <MapView
+                provider={PROVIDER_GOOGLE}
                 style={styles.fullscreenMap}
-                styleURL={Mapbox.StyleURL.Street}
+                initialRegion={mapRegion}
               >
-                <Mapbox.Camera
-                  defaultSettings={{
-                    centerCoordinate: mapCamera.centerCoordinate,
-                    zoomLevel: mapCamera.zoomLevel,
-                  }}
-                  animationMode="flyTo"
-                  animationDuration={500}
-                />
-
                 {/* Route polyline */}
                 {routeCoordinates && routeCoordinates.length > 0 ? (
-                  <Mapbox.ShapeSource
-                    id="route-fullscreen"
-                    shape={{
-                      type: 'Feature',
-                      properties: {},
-                      geometry: {
-                        type: 'LineString',
-                        coordinates: routeCoordinates.map(coord => [coord.longitude, coord.latitude] as [number, number]),
-                      },
-                    }}
-                  >
-                    <Mapbox.LineLayer
-                      id="route-fullscreen-line"
-                      style={{
-                        lineColor: Colors.primary,
-                        lineWidth: 5,
-                        lineCap: 'round',
-                        lineJoin: 'round',
-                      }}
-                    />
-                  </Mapbox.ShapeSource>
+                  <Polyline
+                    coordinates={routeCoordinates}
+                    strokeColor={Colors.primary}
+                    strokeWidth={5}
+                  />
                 ) : (
-                  <Mapbox.ShapeSource
-                    id="route-fullscreen-fallback"
-                    shape={{
-                      type: 'Feature',
-                      properties: {},
-                      geometry: {
-                        type: 'LineString',
-                        coordinates: [
-                          [departureCoordinate.longitude, departureCoordinate.latitude],
-                          [arrivalCoordinate.longitude, arrivalCoordinate.latitude],
-                        ],
-                      },
-                    }}
-                  >
-                    <Mapbox.LineLayer
-                      id="route-fullscreen-fallback-line"
-                      style={{
-                        lineColor: Colors.primary,
-                        lineWidth: 5,
-                        lineCap: 'round',
-                      }}
-                    />
-                  </Mapbox.ShapeSource>
+                  <Polyline
+                    coordinates={[departureCoordinate, arrivalCoordinate]}
+                    strokeColor={Colors.primary}
+                    strokeWidth={5}
+                  />
                 )}
 
-                <Mapbox.PointAnnotation
-                  id="departure-fullscreen"
-                  coordinate={[departureCoordinate.longitude, departureCoordinate.latitude]}
+                <Marker
+                  coordinate={departureCoordinate}
                 >
                   <View style={styles.markerStartCircle}>
                     <Ionicons name="location" size={20} color={Colors.white} />
                   </View>
-                  <Mapbox.Callout title="Départ">
-                    <Text>{trip.departure.address}</Text>
-                  </Mapbox.Callout>
-                </Mapbox.PointAnnotation>
+                  <Callout>
+                    <View>
+                      <Text style={{ fontWeight: 'bold' }}>Départ</Text>
+                      <Text>{trip.departure.address}</Text>
+                    </View>
+                  </Callout>
+                </Marker>
 
-                <Mapbox.PointAnnotation
-                  id="arrival-fullscreen"
-                  coordinate={[arrivalCoordinate.longitude, arrivalCoordinate.latitude]}
+                <Marker
+                  coordinate={arrivalCoordinate}
                 >
                   <View style={styles.markerEndCircle}>
                     <Ionicons name="navigate" size={20} color={Colors.white} />
                   </View>
-                  <Mapbox.Callout title="Arrivée">
-                    <Text>{trip.arrival.address}</Text>
-                  </Mapbox.Callout>
-                </Mapbox.PointAnnotation>
+                  <Callout>
+                    <View>
+                      <Text style={{ fontWeight: 'bold' }}>Arrivée</Text>
+                      <Text>{trip.arrival.address}</Text>
+                    </View>
+                  </Callout>
+                </Marker>
 
                 {/* Destinations des passagers */}
                 {bookings
@@ -1044,21 +957,26 @@ export default function ManageTripScreen() {
                   .map((booking) => {
                     const destCoords = booking.passengerDestinationCoordinates!;
                     return (
-                      <Mapbox.PointAnnotation
+                      <Marker
                         key={`passenger-dest-fullscreen-${booking.id}`}
-                        id={`passenger-dest-fullscreen-${booking.id}`}
-                        coordinate={[destCoords.longitude, destCoords.latitude]}
+                        coordinate={{
+                          latitude: destCoords.latitude,
+                          longitude: destCoords.longitude,
+                        }}
                       >
                         <View style={styles.markerPassengerDestCircle}>
                           <Ionicons name="person" size={16} color={Colors.white} />
                         </View>
-                        <Mapbox.Callout title={booking.passengerDestination || booking.passengerName || 'Destination passager'}>
-                          <Text>{booking.passengerName || 'Passager'}</Text>
-                        </Mapbox.Callout>
-                      </Mapbox.PointAnnotation>
+                        <Callout>
+                          <View>
+                            <Text style={{ fontWeight: 'bold' }}>{booking.passengerDestination || booking.passengerName || 'Destination passager'}</Text>
+                            <Text>{booking.passengerName || 'Passager'}</Text>
+                          </View>
+                        </Callout>
+                      </Marker>
                     );
                   })}
-              </Mapbox.MapView>
+              </MapView>
 
               <TouchableOpacity style={styles.closeMapButton} onPress={() => setMapModalVisible(false)}>
                 <Ionicons name="close" size={24} color={Colors.white} />

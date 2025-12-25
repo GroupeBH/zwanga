@@ -1,6 +1,6 @@
-# Configuration Google Maps API pour le routage
+# Configuration Google Maps API
 
-> **Note** : Cette configuration est actuellement **en retrait**. Le projet utilise **Mapbox Directions API** pour le routage. Consultez `MAPBOX_DIRECTIONS_SETUP.md` pour la configuration actuelle.
+> **Note** : Ce projet utilise maintenant **Google Maps** au lieu de Mapbox. Cette configuration est **requise** pour que l'application fonctionne correctement.
 
 ## Problème
 
