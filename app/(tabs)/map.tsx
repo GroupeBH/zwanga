@@ -86,6 +86,19 @@ export default function MapScreen() {
   const [routeCoordinatesCache, setRouteCoordinatesCache] = useState<Map<string, RouteCoordinates[]>>(new Map());
   const [loadingRoutes, setLoadingRoutes] = useState<Set<string>>(new Set());
 
+  // Ajuster la carte automatiquement quand des trajets sont trouvés après une recherche
+  useEffect(() => {
+    // Ne s'ajuster que si on a une recherche active (pas au chargement initial)
+    if (activeSearchQuery && trips.length > 0 && mapRef.current) {
+      // Petit délai pour laisser le temps aux marqueurs de se charger
+      const timeoutId = setTimeout(() => {
+        fitMapToTrips(trips);
+      }, 500);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [trips.length, activeSearchQuery, fitMapToTrips]);
+
   // Charger les itinéraires pour tous les trajets
   useEffect(() => {
     const loadRoutes = async () => {
@@ -190,6 +203,71 @@ export default function MapScreen() {
       }, 1000);
     }
   };
+
+  // Fonction pour ajuster la carte pour afficher tous les trajets
+  const fitMapToTrips = useCallback((tripsToFit: typeof trips) => {
+    if (!mapRef.current || tripsToFit.length === 0) {
+      return;
+    }
+
+    // Collecter toutes les coordonnées (départ et arrivée)
+    const coordinates: LatLng[] = [];
+    
+    tripsToFit.forEach((trip) => {
+      if (trip.departure?.lat && trip.departure?.lng) {
+        coordinates.push({
+          latitude: trip.departure.lat,
+          longitude: trip.departure.lng,
+        });
+      }
+      if (trip.arrival?.lat && trip.arrival?.lng) {
+        coordinates.push({
+          latitude: trip.arrival.lat,
+          longitude: trip.arrival.lng,
+        });
+      }
+    });
+
+    if (coordinates.length === 0) {
+      return;
+    }
+
+    // Calculer les bounds
+    const latitudes = coordinates.map((coord) => coord.latitude);
+    const longitudes = coordinates.map((coord) => coord.longitude);
+    
+    const minLat = Math.min(...latitudes);
+    const maxLat = Math.max(...latitudes);
+    const minLng = Math.min(...longitudes);
+    const maxLng = Math.max(...longitudes);
+
+    // Calculer le centre et les deltas avec padding
+    const latDelta = maxLat - minLat;
+    const lngDelta = maxLng - minLng;
+    
+    // Ajouter un padding de 20% autour des bounds
+    const padding = 0.2;
+    const paddedLatDelta = latDelta * (1 + padding * 2) || 0.01;
+    const paddedLngDelta = lngDelta * (1 + padding * 2) || 0.01;
+
+    // S'assurer que les deltas ne sont pas trop petits
+    const finalLatDelta = Math.max(paddedLatDelta, 0.01);
+    const finalLngDelta = Math.max(paddedLngDelta, 0.01);
+
+    const centerLat = (minLat + maxLat) / 2;
+    const centerLng = (minLng + maxLng) / 2;
+
+    // Animer vers la nouvelle région
+    mapRef.current.animateToRegion(
+      {
+        latitude: centerLat,
+        longitude: centerLng,
+        latitudeDelta: finalLatDelta,
+        longitudeDelta: finalLngDelta,
+      },
+      1000
+    );
+  }, []);
 
   useEffect(() => {
     setSearch(activeSearchQuery);
@@ -361,6 +439,12 @@ export default function MapScreen() {
       triggerTripSearch(params).then((result) => {
         if (result.data) {
           dispatch(setTrips(result.data));
+          // Ajuster la carte pour afficher tous les trajets trouvés
+          if (result.data.length > 0) {
+            setTimeout(() => {
+              fitMapToTrips(result.data);
+            }, 300);
+          }
         }
       }).catch((error: any) => {
         const message =
@@ -382,6 +466,12 @@ export default function MapScreen() {
       triggerTripSearch(params).then((result) => {
         if (result.data) {
           dispatch(setTrips(result.data));
+          // Ajuster la carte pour afficher tous les trajets trouvés
+          if (result.data.length > 0) {
+            setTimeout(() => {
+              fitMapToTrips(result.data);
+            }, 300);
+          }
         }
       }).catch((error: any) => {
         const message =
@@ -422,6 +512,13 @@ export default function MapScreen() {
       const params = buildSearchParams(trimmedQuery);
       const results = await triggerTripSearch(params).unwrap();
       dispatch(setTrips(results));
+      
+      // Ajuster la carte pour afficher tous les trajets trouvés
+      if (results.length > 0) {
+        setTimeout(() => {
+          fitMapToTrips(results);
+        }, 300);
+      }
     } catch (error: any) {
       const message =
         error?.data?.message ?? error?.error ?? "Impossible d'appliquer le filtre pour le moment.";
@@ -798,15 +895,24 @@ export default function MapScreen() {
           onPress={async () => {
             if (mapCenter && mapRegion) {
               try {
-                const sanitizedCoords = {
-                  latitude: mapRegion.latitude,
-                  longitude: mapRegion.longitude,
-                };
+                // Convertir les coordonnées en format attendu par l'API: [longitude, latitude]
+                const departureCoordinates: [number, number] = [
+                  mapRegion.longitude,
+                  mapRegion.latitude,
+                ];
+                
                 const results = await searchByCoordinates({
-                  departureCoordinates: sanitizedCoords,
+                  departureCoordinates,
                   departureRadiusKm: radiusKm,
                 }).unwrap();
                 dispatch(setTrips(results));
+
+                // Ajuster la carte pour afficher tous les trajets trouvés
+                if (results.length > 0) {
+                  setTimeout(() => {
+                    fitMapToTrips(results);
+                  }, 300);
+                }
 
                 showDialog({
                   variant: 'success',

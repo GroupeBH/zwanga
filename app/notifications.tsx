@@ -85,70 +85,98 @@ export default function NotificationsScreen() {
     try {
       // Attendre un court délai pour que la navigation soit fluide
       setTimeout(() => {
-        switch (type) {
-          case 'trip':
-          case 'trip_update':
-            if (tripId) {
-              router.push(`/trip/${tripId}`);
-              return;
-            }
-            break;
-
-          case 'booking':
-          case 'booking_accepted':
-          case 'booking_rejected':
-          case 'booking_cancelled':
-          case 'booking_pending':
-            if (tripId) {
-              router.push(`/trip/${tripId}`);
-              return;
-            } else if (bookingId) {
-              router.push('/bookings');
-              return;
-            }
-            break;
-
-          case 'message':
-          case 'chat':
-            if (conversationId) {
-              router.push({
-                pathname: '/chat/[id]',
-                params: { id: conversationId },
-              });
-              return;
-            }
-            break;
-
-          case 'trip_manage':
-            if (tripId) {
-              router.push(`/trip/manage/${tripId}`);
-              return;
-            }
-            break;
-
-          case 'trip_request':
-          case 'trip_request_accepted':
-            if (requestId) {
-              router.push(`/request/${requestId}`);
-              return;
-            }
-            break;
-
-          case 'rate':
-          case 'review':
-            if (tripId) {
-              router.push(`/rate/${tripId}`);
-              return;
-            }
-            break;
-
-          default:
-            // Si aucun type spécifique ou navigation impossible, ouvrir le modal
-            setSelectedNotification(notification);
+        // Gérer les notifications de trajets
+        if (type === 'trip' || type === 'trip_update') {
+          if (tripId) {
+            router.push(`/trip/${tripId}`);
             return;
+          }
         }
-        
-        // Si la navigation n'a pas été effectuée, ouvrir le modal par défaut
+
+        // Gérer les notifications de réservations
+        if (
+          type === 'booking' ||
+          type === 'booking_accepted' ||
+          type === 'booking_rejected' ||
+          type === 'booking_cancelled' ||
+          type === 'booking_pending'
+        ) {
+          if (tripId) {
+            router.push(`/trip/${tripId}`);
+            return;
+          } else if (bookingId) {
+            router.push('/bookings');
+            return;
+          }
+        }
+
+        // Gérer les notifications de messages
+        if (type === 'message' || type === 'chat') {
+          if (conversationId) {
+            router.push({
+              pathname: '/chat/[id]',
+              params: { id: conversationId },
+            });
+            return;
+          }
+        }
+
+        // Gérer les notifications de gestion de trajet
+        if (type === 'trip_manage') {
+          if (tripId) {
+            router.push(`/trip/manage/${tripId}`);
+            return;
+          }
+        }
+
+        // Gérer les notifications de demandes de trajet
+        if (
+          type === 'trip_request' ||
+          type === 'trip_request_accepted' ||
+          type === 'trip_request_rejected' ||
+          type === 'trip_request_cancelled' ||
+          type === 'trip_request_pending'
+        ) {
+          if (requestId) {
+            router.push(`/request/${requestId}`);
+            return;
+          } else if (tripId) {
+            // Si une demande a créé un trajet, naviguer vers le trajet
+            router.push(`/trip/${tripId}`);
+            return;
+          }
+        }
+
+        // Gérer les notifications d'avis
+        if (type === 'rate' || type === 'review') {
+          if (tripId) {
+            router.push(`/rate/${tripId}`);
+            return;
+          }
+        }
+
+        // Fallback : naviguer selon les IDs disponibles même sans type spécifique
+        if (tripId) {
+          router.push(`/trip/${tripId}`);
+          return;
+        }
+        if (requestId) {
+          router.push(`/request/${requestId}`);
+          return;
+        }
+        if (conversationId) {
+          router.push({
+            pathname: '/chat/[id]',
+            params: { id: conversationId },
+          });
+          return;
+        }
+        if (bookingId) {
+          router.push('/bookings');
+          return;
+        }
+
+        // Si aucun type spécifique ou navigation impossible, ouvrir le modal
         setSelectedNotification(notification);
       }, 100);
     } catch (error) {
@@ -398,6 +426,7 @@ export default function NotificationsScreen() {
                             setSelectedNotification(null);
                             
                             // Naviguer selon le type et les IDs disponibles
+                            // Priorité 1 : Types spécifiques
                             if (type === 'trip_manage' && tripId) {
                               router.push(`/trip/manage/${tripId}`);
                             } else if ((type === 'message' || type === 'chat') && conversationId) {
@@ -405,25 +434,41 @@ export default function NotificationsScreen() {
                                 pathname: '/chat/[id]',
                                 params: { id: conversationId },
                               });
-                            } else if ((type === 'trip_request' || type === 'trip_request_accepted') && requestId) {
+                            } else if (
+                              (type === 'trip_request' ||
+                                type === 'trip_request_accepted' ||
+                                type === 'trip_request_rejected' ||
+                                type === 'trip_request_cancelled' ||
+                                type === 'trip_request_pending') &&
+                              requestId
+                            ) {
                               router.push(`/request/${requestId}`);
                             } else if ((type === 'rate' || type === 'review') && tripId) {
                               router.push(`/rate/${tripId}`);
-                            } else if (tripId) {
-                              // Par défaut, naviguer vers le détail du trajet
+                            } else if (
+                              (type === 'booking' ||
+                                type === 'booking_accepted' ||
+                                type === 'booking_rejected' ||
+                                type === 'booking_cancelled' ||
+                                type === 'booking_pending') &&
+                              tripId
+                            ) {
                               router.push(`/trip/${tripId}`);
-                            } else if (bookingId) {
-                              // Si on a seulement bookingId, naviguer vers les réservations
-                              router.push('/bookings');
+                            } else if ((type === 'trip' || type === 'trip_update') && tripId) {
+                              router.push(`/trip/${tripId}`);
+                            }
+                            // Priorité 2 : Fallback selon les IDs disponibles
+                            else if (tripId) {
+                              router.push(`/trip/${tripId}`);
+                            } else if (requestId) {
+                              router.push(`/request/${requestId}`);
                             } else if (conversationId) {
-                              // Si on a seulement conversationId
                               router.push({
                                 pathname: '/chat/[id]',
                                 params: { id: conversationId },
                               });
-                            } else if (requestId) {
-                              // Si on a seulement requestId
-                              router.push(`/request/${requestId}`);
+                            } else if (bookingId) {
+                              router.push('/bookings');
                             }
                           } catch (error) {
                             console.warn('Erreur lors de la navigation:', error);

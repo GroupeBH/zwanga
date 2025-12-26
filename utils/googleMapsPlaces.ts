@@ -1,12 +1,9 @@
-import Constants from 'expo-constants';
+import { store } from '@/store';
+import { googleMapsApi } from '@/store/api/googleMapsApi';
 
 /* =====================================================
    CONFIG
 ===================================================== */
-
-const googleMapsApiKey =
-  Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
-  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
 
 // Proximité par défaut : Kinshasa
 const DEFAULT_PROXIMITY = {
@@ -121,7 +118,7 @@ export async function searchGoogleMapsPlaces(
   proximity?: { longitude: number; latitude: number },
   limit: number = 5,
 ): Promise<GoogleMapsSearchSuggestion[]> {
-  if (!googleMapsApiKey || !query?.trim()) return [];
+  if (!query?.trim()) return [];
 
   const trimmedQuery = query.trim().substring(0, 256);
   const validLimit = Math.min(Math.max(limit, 1), 10);
@@ -144,50 +141,39 @@ export async function searchGoogleMapsPlaces(
     DEFAULT_PROXIMITY;
 
   try {
-    // Google Places API Autocomplete
-    const params = new URLSearchParams();
-    params.append('input', trimmedQuery);
-    params.append('key', googleMapsApiKey);
-    params.append('language', 'fr');
-    params.append('components', 'country:cd'); // Restreindre à la RDC
-    params.append('location', `${effectiveProximity.latitude},${effectiveProximity.longitude}`);
-    params.append('radius', '50000'); // 50km radius
+    // Utiliser le backend pour obtenir les suggestions
+    const result = await store.dispatch(
+      googleMapsApi.endpoints.placesAutocomplete.initiate({
+        input: trimmedQuery,
+        locationLat: effectiveProximity.latitude,
+        locationLng: effectiveProximity.longitude,
+        radius: 50000, // 50km radius
+        region: 'cd', // RDC
+        language: 'fr',
+      })
+    );
 
-    const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params.toString()}`;
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      console.warn('Google Places Autocomplete error:', response.status);
+    if (result.error || !result.data) {
+      console.warn('Places autocomplete error:', result.error);
       return [];
     }
 
-    const data = await response.json();
-
-    if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-      console.warn('Google Places Autocomplete status:', data.status);
+    if (!Array.isArray(result.data) || result.data.length === 0) {
       return [];
     }
-
-    if (!Array.isArray(data?.predictions)) return [];
 
     // Convertir les prédictions en format unifié
-    const suggestions: GoogleMapsSearchSuggestion[] = data.predictions.map((prediction: any) => {
-      // Extraire les composants de l'adresse depuis structured_formatting
-      const mainText = prediction.structured_formatting?.main_text || prediction.description || '';
-      const secondaryText = prediction.structured_formatting?.secondary_text || '';
-      const fullAddress = secondaryText ? `${mainText}, ${secondaryText}` : mainText;
-
-      // Extraire les types de lieu
-      const types = Array.isArray(prediction.types) ? prediction.types : [];
-      const placeType = types.filter((t: string) => 
-        !['geocode', 'establishment', 'point_of_interest'].includes(t)
-      );
+    const suggestions: GoogleMapsSearchSuggestion[] = result.data.map((prediction) => {
+      // Extraire les composants de l'adresse
+      const mainText = prediction.mainText || prediction.description || '';
+      const secondaryText = prediction.secondaryText || '';
+      const fullAddress = secondaryText ? `${mainText}, ${secondaryText}` : prediction.description || mainText;
 
       return {
-        id: prediction.place_id,
+        id: prediction.placeId,
         name: mainText,
         fullAddress: fullAddress,
-        placeType: placeType.length > 0 ? placeType : ['geocode'],
+        placeType: ['geocode'], // Le backend ne retourne pas les types, on utilise geocode par défaut
         coordinates: {
           latitude: null, // Sera rempli lors de getPlaceDetails
           longitude: null,
@@ -198,15 +184,8 @@ export async function searchGoogleMapsPlaces(
       };
     });
 
-    // Filtrer pour ne garder que les résultats dans la RDC
-    const filteredSuggestions = suggestions.filter((s) => {
-      // Pour l'instant, on fait confiance au filtre 'country:cd' de l'API
-      // On pourrait ajouter une validation supplémentaire ici si nécessaire
-      return true;
-    });
-
     // Prioriser les résultats
-    return filteredSuggestions
+    return suggestions
       .sort((a, b) => {
         const weight = (s: GoogleMapsSearchSuggestion) => {
           let score = 0;
@@ -240,7 +219,7 @@ export async function searchGoogleMapsPlaces(
       })
       .slice(0, validLimit);
   } catch (error) {
-    console.warn('Google Places search error:', error);
+    console.warn('Places search error:', error);
     return [];
   }
 }
@@ -252,90 +231,61 @@ export async function searchGoogleMapsPlaces(
 export async function getGoogleMapsPlaceDetails(
   placeId: string,
 ): Promise<GoogleMapsSearchSuggestion | null> {
-  if (!googleMapsApiKey) return null;
+  if (!placeId) return null;
 
   try {
-    const params = new URLSearchParams({
-      place_id: placeId,
-      key: googleMapsApiKey,
-      language: 'fr',
-      fields: 'place_id,name,formatted_address,geometry,address_components,types',
-    });
+    // Utiliser le backend pour obtenir les détails du lieu
+    const result = await store.dispatch(
+      googleMapsApi.endpoints.getPlaceDetails.initiate({
+        placeId,
+        language: 'fr',
+      })
+    );
 
-    const url = `https://maps.googleapis.com/maps/api/place/details/json?${params.toString()}`;
-    const response = await fetch(url);
-
-    if (!response.ok) return null;
-
-    const data = await response.json();
-
-    if (data.status !== 'OK' || !data.result) return null;
-
-    const result = data.result;
-    const location = result.geometry?.location;
-    
-    if (!location || typeof location.lat !== 'number' || typeof location.lng !== 'number') {
+    if (result.error || !result.data) {
+      console.warn('Place details error:', result.error);
       return null;
     }
 
-    const latitude = location.lat;
-    const longitude = location.lng;
+    const place = result.data;
 
     // Valider les coordonnées
     if (
-      isNaN(latitude) ||
-      isNaN(longitude) ||
-      !isFinite(latitude) ||
-      !isFinite(longitude) ||
-      latitude < -90 ||
-      latitude > 90 ||
-      longitude < -180 ||
-      longitude > 180
+      isNaN(place.lat) ||
+      isNaN(place.lng) ||
+      !isFinite(place.lat) ||
+      !isFinite(place.lng) ||
+      place.lat < -90 ||
+      place.lat > 90 ||
+      place.lng < -180 ||
+      place.lng > 180
     ) {
-      console.warn('Invalid coordinates from Google Places:', { latitude, longitude });
+      console.warn('Invalid coordinates from backend:', { lat: place.lat, lng: place.lng });
       return null;
     }
 
-    // Extraire les composants d'adresse
-    const addressComponents = result.address_components || [];
-    const context: GoogleMapsSearchSuggestion['context'] = {};
-    
-    addressComponents.forEach((component: any) => {
-      const types = component.types || [];
-      if (types.includes('country')) {
-        context.country = component.long_name;
-      } else if (types.includes('administrative_area_level_1')) {
-        context.region = component.long_name;
-      } else if (types.includes('administrative_area_level_2')) {
-        context.district = component.long_name;
-      } else if (types.includes('locality')) {
-        context.locality = component.long_name;
-      } else if (types.includes('sublocality') || types.includes('neighborhood')) {
-        context.neighborhood = component.long_name;
-      } else if (types.includes('postal_code')) {
-        context.postcode = component.long_name;
-      }
-    });
-
     // Extraire les types de lieu
-    const types = Array.isArray(result.types) ? result.types : [];
+    const types = Array.isArray(place.types) ? place.types : [];
     const placeType = types.filter((t: string) => 
       !['geocode', 'establishment', 'point_of_interest'].includes(t)
     );
 
     return {
       id: placeId,
-      name: result.name || '',
-      fullAddress: result.formatted_address || '',
+      name: place.name || '',
+      fullAddress: place.formattedAddress || '',
       placeType: placeType.length > 0 ? placeType : ['geocode'],
       coordinates: {
-        latitude,
-        longitude,
+        latitude: place.lat,
+        longitude: place.lng,
       },
-      context,
+      context: {
+        // Le backend ne retourne pas les composants d'adresse détaillés
+        // On peut les extraire du formattedAddress si nécessaire
+      },
     };
   } catch (error) {
-    console.warn('Google Places retrieve error:', error);
+    console.warn('Place details error:', error);
     return null;
   }
 }

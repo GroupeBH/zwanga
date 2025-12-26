@@ -23,6 +23,7 @@ import { formatTime } from '@/utils/dateHelpers';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
 import { getRouteInfo, type RouteInfo, isPointOnRoute, splitRouteByProgress } from '@/utils/routeHelpers';
 import LocationPickerModal, { type MapLocationSelection } from '@/components/LocationPickerModal';
+import { shareTrip, shareTripViaWhatsApp } from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, Polyline, Callout, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -109,8 +110,9 @@ const BOOKING_STATUS_CONFIG: Record<
 
 export default function TripDetailsScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams();
-  const tripId = typeof id === 'string' ? (id as string) : '';
+  const params = useLocalSearchParams();
+  const tripId = typeof params.id === 'string' ? (params.id as string) : '';
+  const trackParam = params.track === 'true' || params.track === true; // Permet le suivi via lien partagé
   
   // Récupérer le trajet depuis l'API si pas dans le store
   const {
@@ -188,6 +190,7 @@ export default function TripDetailsScreen() {
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [contactModalVisible, setContactModalVisible] = useState(false);
+  const [shareModalVisible, setShareModalVisible] = useState(false);
   const [kycFrontImage, setKycFrontImage] = useState<string | null>(null);
   const [kycBackImage, setKycBackImage] = useState<string | null>(null);
   const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
@@ -267,7 +270,8 @@ export default function TripDetailsScreen() {
     );
   }, [myBookings, trip]);
   const hasAcceptedBooking = activeBooking?.status === 'accepted';
-  const canTrackTrip = Boolean(trip && user && (isTripDriver || hasAcceptedBooking));
+  // Permettre le suivi si : conducteur, passager accepté, ou via lien partagé (track=true)
+  const canTrackTrip = Boolean(trip && user && (isTripDriver || hasAcceptedBooking || trackParam));
 
   useEffect(() => {
     if (!trip || !canTrackTrip) {
@@ -918,8 +922,11 @@ export default function TripDetailsScreen() {
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Détails du trajet</Text>
-          <TouchableOpacity>
-            <Ionicons name="ellipsis-vertical" size={24} color={Colors.gray[600]} />
+          <TouchableOpacity
+            onPress={() => setShareModalVisible(true)}
+            style={styles.shareButton}
+          >
+            <Ionicons name="share-outline" size={24} color={Colors.primary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -1917,6 +1924,102 @@ export default function TripDetailsScreen() {
           </Animated.View>
         </TouchableOpacity>
       </Modal>
+
+      {/* Share Modal */}
+      <Modal
+        visible={shareModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShareModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.contactModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShareModalVisible(false)}
+        >
+          <Animated.View entering={FadeInDown} style={styles.contactModalCard} onStartShouldSetResponder={() => true}>
+            <View style={styles.contactModalHeader}>
+              <View style={styles.contactModalIconWrapper}>
+                <View style={styles.contactModalIconBadge}>
+                  <Ionicons name="share-social" size={32} color={Colors.primary} />
+                </View>
+              </View>
+              <Text style={styles.contactModalTitle}>Partager le trajet</Text>
+              <Text style={styles.contactModalSubtitle}>
+                Partagez le lien pour permettre à vos contacts de suivre votre trajet en temps réel
+              </Text>
+            </View>
+
+            <View style={styles.contactModalActions}>
+              <TouchableOpacity
+                style={[styles.contactModalButton, styles.contactModalButtonCall]}
+                onPress={async () => {
+                  setShareModalVisible(false);
+                  try {
+                    await shareTrip(
+                      trip.id,
+                      trip.departure.name,
+                      trip.arrival.name
+                    );
+                  } catch (error: any) {
+                    showDialog({
+                      variant: 'danger',
+                      title: 'Erreur',
+                      message: error?.message || 'Impossible de partager le trajet',
+                    });
+                  }
+                }}
+              >
+                <View style={styles.contactModalButtonIcon}>
+                  <Ionicons name="share-outline" size={24} color={Colors.primary} />
+                </View>
+                <View style={styles.contactModalButtonContent}>
+                  <Text style={styles.contactModalButtonTitle}>Partager</Text>
+                  <Text style={styles.contactModalButtonSubtitle}>Partager via l'application de votre choix</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.contactModalButton, styles.contactModalButtonWhatsApp]}
+                onPress={async () => {
+                  setShareModalVisible(false);
+                  try {
+                    await shareTripViaWhatsApp(
+                      trip.id,
+                      undefined,
+                      trip.departure.name,
+                      trip.arrival.name
+                    );
+                  } catch (error: any) {
+                    showDialog({
+                      variant: 'danger',
+                      title: 'Erreur',
+                      message: error?.message || 'Impossible de partager via WhatsApp',
+                    });
+                  }
+                }}
+              >
+                <View style={styles.contactModalButtonIcon}>
+                  <Ionicons name="logo-whatsapp" size={24} color="#25D366" />
+                </View>
+                <View style={styles.contactModalButtonContent}>
+                  <Text style={styles.contactModalButtonTitle}>WhatsApp</Text>
+                  <Text style={styles.contactModalButtonSubtitle}>Partager directement sur WhatsApp</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.contactModalCancelButton}
+              onPress={() => setShareModalVisible(false)}
+            >
+              <Text style={styles.contactModalCancelText}>Annuler</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2001,6 +2104,9 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
     color: Colors.gray[800],
+  },
+  shareButton: {
+    padding: 4,
   },
   scrollView: {
     flex: 1,
