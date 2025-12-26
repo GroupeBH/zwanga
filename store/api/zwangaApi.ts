@@ -28,6 +28,7 @@ import './bookingApi';
 import './vehicleApi';
 import './tripRequestApi';
 import './safetyApi';
+import './googleMapsApi';
 
 // Ré-exporter tous les hooks pour faciliter l'utilisation
 export {
@@ -141,4 +142,17 @@ export {
   // Booking WhatsApp
   useGetWhatsAppNotificationDataMutation,
 } from './bookingApi';
+
+export {
+  // Google Maps
+  useGeocodeMutation,
+  useReverseGeocodeMutation,
+  usePlacesAutocompleteQuery,
+  useLazyPlacesAutocompleteQuery,
+  useGetPlaceDetailsQuery,
+  useLazyGetPlaceDetailsQuery,
+  usePlacesSearchQuery,
+  useLazyPlacesSearchQuery,
+  useGetDirectionsMutation,
+} from './googleMapsApi';
 

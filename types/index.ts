@@ -1,7 +1,7 @@
 export type UserRole = 'driver' | 'passenger' | 'both';
 export type VehicleType = 'car' | 'moto' | 'tricycle';
 export type TripStatus = 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
-export type BookingStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'completed';
+export type BookingStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'completed' | 'expired';
 export type PaymentMethod = 'orange_money' | 'm_pesa' | 'airtel_money' | 'cash';
 
 export interface User {
@@ -82,6 +82,10 @@ export interface Trip {
   progress?: number;
   currentLocation?: GeoPoint | null;
   lastLocationUpdateAt?: string | null;
+  completedAt?: string | null; // ISO string date - Date de complétion du trajet
+  vehicleId?: string | null; // ID du véhicule associé
+  description?: string | null; // Description du trajet
+  vehicle?: Vehicle; // Informations complètes du véhicule
 }
 
 export interface Passenger {
@@ -107,6 +111,19 @@ export interface Booking {
   createdAt: string;
   updatedAt: string;
   trip?: Trip;
+  // Destination personnalisée du passager
+  passengerDestination?: string | null;
+  passengerDestinationCoordinates?: { latitude: number; longitude: number } | null;
+  // Confirmation de récupération
+  pickedUp?: boolean;
+  pickedUpAt?: string | null;
+  pickedUpConfirmedByPassenger?: boolean;
+  pickedUpConfirmedAt?: string | null;
+  // Confirmation de dépose
+  droppedOff?: boolean;
+  droppedOffAt?: string | null;
+  droppedOffConfirmedByPassenger?: boolean;
+  droppedOffConfirmedAt?: string | null;
 }
 
 export interface BasicUserInfo {
@@ -209,6 +226,7 @@ export interface TripRequest {
   selectedVehicleId?: string | null; // Véhicule du driver sélectionné
   selectedPricePerSeat?: number | null; // Prix accepté pour le driver sélectionné
   selectedAt?: string | null; // Date de sélection du driver
+  tripId?: string | null; // ID du trip créé à partir de cette demande
   createdAt: string;
   updatedAt: string;
   offers?: DriverOffer[]; // Offres reçues des drivers

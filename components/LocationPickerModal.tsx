@@ -1,7 +1,7 @@
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { getMapboxPlaceDetails, searchMapboxPlaces, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
+import { getGoogleMapsPlaceDetails, searchGoogleMapsPlaces, type GoogleMapsSearchSuggestion } from '@/utils/googleMapsPlaces';
 import { Ionicons } from '@expo/vector-icons';
-import Mapbox from '@rnmapbox/maps';
+import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -16,13 +16,6 @@ import {
   View,
 } from 'react-native';
 
-// Initialize Mapbox with access token from config
-const mapboxToken =
-  Constants.expoConfig?.extra?.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ||
-  process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
-if (mapboxToken) {
-  Mapbox.setAccessToken(mapboxToken);
-}
 
 export type MapLocationSelection = {
   title: string;
@@ -41,9 +34,11 @@ type LocationPickerModalProps = {
 
 type SearchResult = MapLocationSelection;
 
-const DEFAULT_CAMERA = {
-  centerCoordinate: [15.266293, -4.441931] as [number, number],
-  zoomLevel: 11,
+const DEFAULT_REGION: Region = {
+  latitude: -4.441931,
+  longitude: 15.266293,
+  latitudeDelta: 0.1,
+  longitudeDelta: 0.1,
 };
 
 function formatAddressFromGeocode(
@@ -97,15 +92,14 @@ export default function LocationPickerModal({
   title = 'Choisir un lieu',
   initialLocation,
 }: LocationPickerModalProps) {
-  const mapRef = useRef<Mapbox.MapView | null>(null);
-  const cameraRef = useRef<Mapbox.Camera | null>(null);
+  const mapRef = useRef<MapView>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [mapboxSuggestions, setMapboxSuggestions] = useState<MapboxSearchSuggestion[]>([]);
-  const [mapboxLoading, setMapboxLoading] = useState(false);
+  const [googleMapsSuggestions, setGoogleMapsSuggestions] = useState<GoogleMapsSearchSuggestion[]>([]);
+  const [googleMapsLoading, setGoogleMapsLoading] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [camera, setCamera] = useState(DEFAULT_CAMERA);
+  const [region, setRegion] = useState<Region>(DEFAULT_REGION);
   const [selectedLocation, setSelectedLocation] = useState<MapLocationSelection | null>(
     initialLocation ?? null,
   );
@@ -171,11 +165,13 @@ export default function LocationPickerModal({
         return;
       }
 
-      const nextCamera = {
-        centerCoordinate: [longitude, latitude] as [number, number],
-        zoomLevel: 14,
+      const nextRegion: Region = {
+        latitude,
+        longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
       };
-      setCamera(nextCamera);
+      setRegion(nextRegion);
       
       // Marquer que c'est une mise à jour programmée pour éviter les boucles
       isUserInteractionRef.current = false;
@@ -201,11 +197,9 @@ export default function LocationPickerModal({
         });
       }
       
-      cameraRef.current?.setCamera({
-        centerCoordinate: nextCamera.centerCoordinate,
-        zoomLevel: nextCamera.zoomLevel,
-        animationDuration: 350,
-      });
+      if (mapRef.current) {
+        mapRef.current.animateToRegion(nextRegion, 350);
+      }
 
       // Réinitialiser après l'animation
       setTimeout(() => {
@@ -322,14 +316,14 @@ export default function LocationPickerModal({
     });
   };
 
-  const handleMarkerDrag = (feature: any) => {
+  const handleMarkerDrag = (event: any) => {
     try {
-      const coordinates = feature?.geometry?.coordinates;
-      if (!coordinates || !Array.isArray(coordinates) || coordinates.length < 2) {
+      const coordinate = event?.nativeEvent?.coordinate;
+      if (!coordinate || typeof coordinate.latitude !== 'number' || typeof coordinate.longitude !== 'number') {
         return;
       }
 
-      const [longitude, latitude] = coordinates;
+      const { latitude, longitude } = coordinate;
       
       // Valider les coordonnées
       if (
@@ -362,16 +356,16 @@ export default function LocationPickerModal({
     }
   };
 
-  const handleMarkerDragEnd = async (feature: any) => {
+  const handleMarkerDragEnd = async (event: any) => {
     setIsDragging(false);
     
     try {
-      const coordinates = feature?.geometry?.coordinates;
-      if (!coordinates || !Array.isArray(coordinates) || coordinates.length < 2) {
+      const coordinate = event?.nativeEvent?.coordinate;
+      if (!coordinate || typeof coordinate.latitude !== 'number' || typeof coordinate.longitude !== 'number') {
         return;
       }
 
-      const [longitude, latitude] = coordinates;
+      const { latitude, longitude } = coordinate;
       
       // Valider les coordonnées
       if (
@@ -395,12 +389,16 @@ export default function LocationPickerModal({
       isUpdatingMarkerRef.current = true;
       isUserInteractionRef.current = false;
 
-      // Mettre à jour la caméra pour suivre le marqueur
-      cameraRef.current?.setCamera({
-        centerCoordinate: [longitude, latitude],
-        zoomLevel: camera.zoomLevel,
-        animationDuration: 0,
-      });
+      // Mettre à jour la région pour suivre le marqueur
+      const nextRegion: Region = {
+        latitude,
+        longitude,
+        latitudeDelta: region.latitudeDelta,
+        longitudeDelta: region.longitudeDelta,
+      };
+      if (mapRef.current) {
+        mapRef.current.animateToRegion(nextRegion, 0);
+      }
 
       // Réinitialiser après un court délai
       setTimeout(() => {
@@ -417,7 +415,8 @@ export default function LocationPickerModal({
     }
   };
 
-  const getCoordinates = (center: any): [number, number] | null => {
+  // Removed getCoordinates - no longer needed with Google Maps
+  const _unused_getCoordinates = (center: any): [number, number] | null => {
     if (Array.isArray(center) && center.length >= 2) {
       const [lng, lat] = center;
       if (
@@ -438,7 +437,7 @@ export default function LocationPickerModal({
     return null;
   };
 
-  const handleCameraChanged = (state: any) => {
+  const handleCameraChanged = (region: Region) => {
     // Ignorer si on est en train de mettre à jour le marqueur programmatiquement
     if (isUpdatingMarkerRef.current) {
       return;
@@ -447,8 +446,11 @@ export default function LocationPickerModal({
     // Ignorer si c'est une animation programmée (pas une interaction utilisateur)
     if (!isUserInteractionRef.current) {
       isUserInteractionRef.current = true;
+      setRegion(region);
       return;
     }
+    
+    setRegion(region);
 
     // Ignorer si on est en train de glisser le marqueur
     if (isDragging) {
@@ -456,24 +458,21 @@ export default function LocationPickerModal({
     }
 
     try {
-      const coords = getCoordinates(state?.properties?.center);
-      if (coords) {
-        const [longitude, latitude] = coords;
-        
-        // Vérifier si les coordonnées sont significativement différentes de la dernière mise à jour
-        // pour éviter les mises à jour répétées pour la même position
-        if (lastMarkerUpdateRef.current) {
-          const latDiff = Math.abs(latitude - lastMarkerUpdateRef.current.latitude);
-          const lngDiff = Math.abs(longitude - lastMarkerUpdateRef.current.longitude);
-          // Seulement mettre à jour si la différence est significative (environ 10 mètres)
-          const threshold = 0.0001; // ~11 mètres
-          if (latDiff < threshold && lngDiff < threshold) {
-            return;
-          }
+      const { latitude, longitude } = region;
+      
+      // Vérifier si les coordonnées sont significativement différentes de la dernière mise à jour
+      // pour éviter les mises à jour répétées pour la même position
+      if (lastMarkerUpdateRef.current) {
+        const latDiff = Math.abs(latitude - lastMarkerUpdateRef.current.latitude);
+        const lngDiff = Math.abs(longitude - lastMarkerUpdateRef.current.longitude);
+        // Seulement mettre à jour si la différence est significative (environ 10 mètres)
+        const threshold = 0.0001; // ~11 mètres
+        if (latDiff < threshold && lngDiff < threshold) {
+          return;
         }
-        
-        updateMarkerFromMapCenter(latitude, longitude);
       }
+      
+      updateMarkerFromMapCenter(latitude, longitude);
     } catch (error) {
       console.error('Error handling camera change:', error);
     }
@@ -544,16 +543,20 @@ export default function LocationPickerModal({
   // Recherche avec suggestions Mapbox en temps réel
   const searchMapboxSuggestions = useCallback(async (query: string) => {
     if (!query.trim() || query.trim().length < 2) {
-      setMapboxSuggestions([]);
+      try {
+        setGoogleMapsSuggestions([]);
+      } catch (error) {
+        console.error('Error clearing suggestions:', error);
+      }
       return;
     }
 
     try {
-      setMapboxLoading(true);
+      setGoogleMapsLoading(true);
       const proximity = selectedLocation
         ? { longitude: selectedLocation.longitude, latitude: selectedLocation.latitude }
         : undefined;
-      const suggestions = await searchMapboxPlaces(query, proximity, 5);
+      const suggestions = await searchGoogleMapsPlaces(query, proximity, 5);
       // Filtrer les suggestions invalides
       const validSuggestions = (suggestions || []).filter(
         (s) =>
@@ -573,12 +576,24 @@ export default function LocationPickerModal({
               s.coordinates.longitude >= -180 &&
               s.coordinates.longitude <= 180))
       );
-      setMapboxSuggestions(validSuggestions);
+      try {
+        setGoogleMapsSuggestions(validSuggestions);
+      } catch (error) {
+        console.error('Error setting suggestions:', error);
+      }
     } catch (error) {
       console.error('Mapbox search failed', error);
-      setMapboxSuggestions([]);
+      try {
+        setGoogleMapsSuggestions([]);
+      } catch (setError) {
+        console.error('Error clearing suggestions after error:', setError);
+      }
     } finally {
-      setMapboxLoading(false);
+      try {
+        setGoogleMapsLoading(false);
+      } catch (error) {
+        console.error('Error setting loading state:', error);
+      }
     }
   }, [selectedLocation]);
 
@@ -593,7 +608,7 @@ export default function LocationPickerModal({
         searchMapboxSuggestions(searchQuery);
       }, 300);
     } else {
-      setMapboxSuggestions([]);
+      setGoogleMapsSuggestions([]);
     }
 
     return () => {
@@ -606,18 +621,18 @@ export default function LocationPickerModal({
   const handleSearchSubmit = async () => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
-      setMapboxSuggestions([]);
+      setGoogleMapsSuggestions([]);
       return;
     }
 
     // Vérifier si la requête correspond exactement à une suggestion Mapbox
-    const exactMatch = mapboxSuggestions.find(
+    const exactMatch = googleMapsSuggestions.find(
       (s) => s.name.toLowerCase() === searchQuery.trim().toLowerCase() ||
              s.fullAddress?.toLowerCase() === searchQuery.trim().toLowerCase()
     );
 
     // Si on a des suggestions Mapbox et qu'il y a une correspondance exacte, utiliser la suggestion correspondante
-    if (mapboxSuggestions.length > 0 && exactMatch) {
+    if (googleMapsSuggestions.length > 0 && exactMatch) {
       try {
         setSearchLoading(true);
         const firstSuggestion = exactMatch; // Utiliser la suggestion qui correspond exactement
@@ -629,7 +644,7 @@ export default function LocationPickerModal({
         }
         
         // Utiliser getMapboxPlaceDetails pour obtenir les coordonnées complètes
-        const placeDetails = await getMapboxPlaceDetails(firstSuggestion.id);
+        const placeDetails = await getGoogleMapsPlaceDetails(firstSuggestion.id);
         
         if (placeDetails && placeDetails.coordinates.latitude && placeDetails.coordinates.longitude) {
           const lat = placeDetails.coordinates.latitude;
@@ -656,7 +671,7 @@ export default function LocationPickerModal({
             };
             setSelectedLocation(result);
             animateToCoordinate(result.latitude, result.longitude);
-            setMapboxSuggestions([]);
+            setGoogleMapsSuggestions([]);
             setSearchQuery(placeDetails.name || firstSuggestion.name || '');
             setSearchLoading(false);
             return;
@@ -686,7 +701,7 @@ export default function LocationPickerModal({
           };
           setSelectedLocation(result);
           animateToCoordinate(result.latitude, result.longitude);
-          setMapboxSuggestions([]);
+          setGoogleMapsSuggestions([]);
           setSearchLoading(false);
           return;
         }
@@ -775,17 +790,17 @@ export default function LocationPickerModal({
     setSelectedLocation(result);
     animateToCoordinate(result.latitude, result.longitude);
     setSearchResults([]);
-    setMapboxSuggestions([]);
+    setGoogleMapsSuggestions([]);
   };
 
-  const handleMapboxSuggestionPress = async (suggestion: MapboxSearchSuggestion) => {
+  const handleGoogleMapsSuggestionPress = async (suggestion: GoogleMapsSearchSuggestion) => {
     if (!suggestion || !suggestion.id) {
       console.warn('Invalid suggestion:', suggestion);
       return;
     }
     
     try {
-      setMapboxLoading(true);
+      setGoogleMapsLoading(true);
       
       // Essayer d'abord d'utiliser les coordonnées de la suggestion si elles sont valides
       let finalLatitude: number | null = null;
@@ -815,7 +830,7 @@ export default function LocationPickerModal({
       
       // Essayer de récupérer les détails complets pour obtenir une adresse plus précise
       try {
-        const placeDetails = await getMapboxPlaceDetails(suggestion.id);
+        const placeDetails = await getGoogleMapsPlaceDetails(suggestion.id);
         
         if (placeDetails) {
           // Utiliser les coordonnées des détails si disponibles et valides
@@ -861,9 +876,9 @@ export default function LocationPickerModal({
         
         setSelectedLocation(result);
         animateToCoordinate(result.latitude, result.longitude);
-        setMapboxSuggestions([]);
+        setGoogleMapsSuggestions([]);
         setSearchQuery(finalName);
-        setMapboxLoading(false);
+        setGoogleMapsLoading(false);
         return;
       }
       
@@ -873,7 +888,7 @@ export default function LocationPickerModal({
         const geocodeQuery = suggestion.name || suggestion.fullAddress || '';
         if (!geocodeQuery.trim()) {
           console.error('No query available for geocoding');
-          setMapboxLoading(false);
+          setGoogleMapsLoading(false);
           return;
         }
         
@@ -906,7 +921,7 @@ export default function LocationPickerModal({
             };
             setSelectedLocation(result);
             animateToCoordinate(result.latitude, result.longitude);
-            setMapboxSuggestions([]);
+            setGoogleMapsSuggestions([]);
             setSearchQuery(suggestion.name || '');
           } else {
             console.error('Invalid geocode result:', firstResult);
@@ -920,7 +935,7 @@ export default function LocationPickerModal({
     } catch (error) {
       console.error('Error handling Mapbox suggestion press:', error);
     } finally {
-      setMapboxLoading(false);
+      setGoogleMapsLoading(false);
     }
   };
 
@@ -976,7 +991,13 @@ export default function LocationPickerModal({
             placeholder="Recherchez une adresse ou un lieu"
             placeholderTextColor={Colors.gray[500]}
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={(text) => {
+              try {
+                setSearchQuery(text);
+              } catch (error) {
+                console.error('Error updating search query:', error);
+              }
+            }}
             returnKeyType="search"
             onSubmitEditing={handleSearchSubmit}
             autoComplete="off"
@@ -984,7 +1005,7 @@ export default function LocationPickerModal({
             autoCapitalize="none"
             spellCheck={false}
           />
-          {(mapboxLoading || searchLoading) ? (
+          {(googleMapsLoading || searchLoading) ? (
             <ActivityIndicator size="small" color={Colors.primary} />
           ) : (
             <TouchableOpacity onPress={handleSearchSubmit} disabled={searchLoading}>
@@ -994,15 +1015,15 @@ export default function LocationPickerModal({
         </View>
 
         {/* Suggestions Mapbox en temps réel */}
-        {mapboxSuggestions.length > 0 && (
+        {googleMapsSuggestions.length > 0 && (
           <View style={styles.resultsContainer}>
             <FlatList
-              data={mapboxSuggestions}
+                  data={googleMapsSuggestions}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.resultRow}
-                  onPress={() => handleMapboxSuggestionPress(item)}
+                  onPress={() => handleGoogleMapsSuggestionPress(item)}
                 >
                   <Ionicons name="location" size={18} color={Colors.primary} />
                   <View style={styles.resultContent}>
@@ -1020,7 +1041,7 @@ export default function LocationPickerModal({
         )}
 
         {/* Résultats expo-location (fallback) */}
-        {mapboxSuggestions.length === 0 && searchResults.length > 0 && (
+        {googleMapsSuggestions.length === 0 && searchResults.length > 0 && (
           <View style={styles.resultsContainer}>
             <FlatList
               data={searchResults}
@@ -1046,25 +1067,21 @@ export default function LocationPickerModal({
         <View style={styles.mapContainer}>
           {/* Zone de protection pour le header - bloque les touches du MapView */}
           <View style={styles.headerProtection} />
-          <Mapbox.MapView
+          <MapView
             ref={mapRef}
+            provider={PROVIDER_GOOGLE}
             style={styles.map}
-            styleURL={Mapbox.StyleURL.Street}
+            initialRegion={region}
             onPress={handleMapPress}
-            onCameraChanged={handleCameraChanged}
-            onMapIdle={handleMapIdle}
+            onRegionChange={handleCameraChanged}
+            onRegionChangeComplete={handleMapIdle}
           >
-            <Mapbox.Camera
-              ref={cameraRef}
-              defaultSettings={camera}
-              animationMode="flyTo"
-              animationDuration={0}
-            />
-
             {selectedLocation && (
-              <Mapbox.PointAnnotation
-                id="selected-location"
-                coordinate={[selectedLocation.longitude, selectedLocation.latitude]}
+              <Marker
+                coordinate={{
+                  latitude: selectedLocation.latitude,
+                  longitude: selectedLocation.longitude,
+                }}
                 draggable={true}
                 onDragStart={handleMarkerDragStart}
                 onDrag={handleMarkerDrag}
@@ -1083,9 +1100,9 @@ export default function LocationPickerModal({
                     <Ionicons name="pin" size={20} color={Colors.white} />
                   )}
                 </View>
-              </Mapbox.PointAnnotation>
+              </Marker>
             )}
-          </Mapbox.MapView>
+          </MapView>
         </View>
 
         <View style={styles.locationDetails}>

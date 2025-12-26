@@ -15,12 +15,15 @@ module.exports = {
     icon: './assets/images/zwanga.png',
     scheme: 'zwanga',
     userInterfaceStyle: 'automatic',
-    newArchEnabled: false,
+    newArchEnabled: true,
 
     ios: {
       bundleIdentifier: "com.biso.zwanga",
       buildNumber: "3",
       supportsTablet: true,
+      config: {
+        googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
+      },
       infoPlist: {
         NSLocationWhenInUseUsageDescription: "Zwanga utilise votre position pour afficher les trajets à proximité.",
         NSLocationAlwaysAndWhenInUseUsageDescription: "Zwanga utilise votre position pour détecter votre emplacement même lorsque l'application est en arrière-plan.",
@@ -32,15 +35,17 @@ module.exports = {
         ITSAppUsesNonExemptEncryption: false,
         UIBackgroundModes: ['remote-notification', 'fetch'],
       },
-      // config: {
-      //   usesNonExemptEncryption: false,
-      // },
     },
 
     android: {
       googleServicesFile: './google-services.json',
       package: 'com.zwanga',
       versionCode: 3,
+      config: {
+        googleMaps: {
+          apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
+        },
+      },
       adaptiveIcon: {
         backgroundColor: '#E6F4FE',
         foregroundImage: './assets/images/zwanga-adaptative.png',
@@ -73,10 +78,8 @@ module.exports = {
       EXPO_PUBLIC_ENV:
         process.env.EXPO_PUBLIC_ENV ||
         (process.env.NODE_ENV === 'production' ? 'production' : 'development'),
-      // Mapbox access token for routing
-      EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN,
-      // Google Maps API key (désactivé pour le moment, en attente de configuration)
-      // EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
+      // Google Maps API key
+      EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
 
       secureStoreKeys: {
         access: process.env.EXPO_PUBLIC_SECURESTORE_ACCESS_KEY,
@@ -86,6 +89,7 @@ module.exports = {
 
     plugins: [
       'expo-router',
+      'expo-maps',
       [
         "expo-notifications",
         {
@@ -99,18 +103,6 @@ module.exports = {
         "expo-task-manager",
         {
           "backgroundNotificationTask": "background-notification-task"
-        }
-      ],
-      [
-        '@rnmapbox/maps',
-        {
-          RNMapboxMapsImpl: 'mapbox',
-          android: {
-            accessToken: process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN,
-          },
-          ios: {
-            accessToken: process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN,
-          }
         }
       ],
       [

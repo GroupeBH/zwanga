@@ -2,6 +2,7 @@ import LocationPickerModal, { MapLocationSelection } from '@/components/Location
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
+import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
 import { useGetNotificationsQuery } from '@/store/api/notificationApi';
 import {
   TripSearchParams,
@@ -64,12 +65,32 @@ export default function HomeScreen() {
   const { data: notificationsData } = useGetNotificationsQuery(undefined, {
     refetchOnMountOrArgChange: true,
   });
+  const { data: myBookings } = useGetMyBookingsQuery();
 
   useEffect(() => {
     if (remoteTrips) {
-      dispatch(setTrips(remoteTrips));
+      // Limiter le nombre de trajets stockés pour éviter les problèmes de mémoire
+      const limitedTrips = remoteTrips.slice(0, 50);
+      dispatch(setTrips(limitedTrips));
     }
   }, [remoteTrips, dispatch]);
+
+  // Créer un Set des IDs de trajets réservés par l'utilisateur
+  const bookedTripIds = useMemo(() => {
+    if (!myBookings || !currentUser?.id) {
+      return new Set<string>();
+    }
+    // Filtrer les réservations actives (pending ou accepted) et créer un Set des tripIds
+    return new Set(
+      myBookings
+        .filter(
+          (booking) =>
+            (booking.status === 'pending' || booking.status === 'accepted') &&
+            booking.tripId
+        )
+        .map((booking) => booking.tripId)
+    );
+  }, [myBookings, currentUser?.id]);
 
   const baseTrips = remoteTrips ?? storedTrips ?? [];
   const latestTrips = useMemo(() => {
@@ -605,6 +626,8 @@ export default function HomeScreen() {
                         <Image
                           source={{ uri: trip.driverAvatar }}
                           style={styles.avatar}
+                          resizeMode="cover"
+                          defaultSource={require('@/assets/images/zwanga-transparent.png')}
                         />
                       ) : (
                         <View style={styles.avatar} />
@@ -615,19 +638,37 @@ export default function HomeScreen() {
                           <Ionicons name="star" size={14} color={Colors.secondary} />
                           <Text style={styles.driverRating}>{ratingValue.toFixed(1)}</Text>
                           <View style={styles.dot} />
-                          <Text style={styles.vehicleInfo}>{trip?.vehicleInfo ?? ''}</Text>
+                          <Text style={styles.vehicleInfo}>
+                            {trip?.vehicle
+                              ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
+                              : trip?.vehicleInfo ?? ''}
+                          </Text>
                         </View>
                       </View>
                     </View>
-                    {trip?.price === 0 ? (
-                      <View style={styles.freeBadge}>
-                        <Text style={styles.freeBadgeText}>Gratuit</Text>
-                      </View>
-                    ) : (
-                      <View style={styles.priceBadge}>
-                        <Text style={styles.priceText}>{trip?.price ?? 0} FC</Text>
-                      </View>
-                    )}
+                    <View style={styles.headerBadges}>
+                      {bookedTripIds.has(trip.id) && (
+                        <View style={styles.bookedBadge}>
+                          <Ionicons name="checkmark-circle" size={12} color={Colors.primary} />
+                          <Text style={styles.bookedBadgeText}>Réservé</Text>
+                        </View>
+                      )}
+                      {trip?.status === 'ongoing' && (
+                        <View style={styles.ongoingBadge}>
+                          <Ionicons name="car-sport" size={12} color={Colors.success} />
+                          <Text style={styles.ongoingBadgeText}>En cours</Text>
+                        </View>
+                      )}
+                      {trip?.price === 0 ? (
+                        <View style={styles.freeBadge}>
+                          <Text style={styles.freeBadgeText}>Gratuit</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.priceBadge}>
+                          <Text style={styles.priceText}>{trip?.price ?? 0} FC</Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
 
                   <View style={styles.tripRoute}>
@@ -668,10 +709,15 @@ export default function HomeScreen() {
                       </Text>
                     </View>
                     <TouchableOpacity
-                      style={styles.reserveButton}
+                      style={[
+                        styles.reserveButton,
+                        bookedTripIds.has(trip.id) && styles.viewButton
+                      ]}
                       onPress={() => router.push(`/trip/${trip.id}`)}
                     >
-                      <Text style={styles.reserveButtonText}>Réserver</Text>
+                      <Text style={styles.reserveButtonText}>
+                        {bookedTripIds.has(trip.id) ? 'Voir' : 'Réserver'}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 </Animated.View>
@@ -1219,6 +1265,39 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
   },
+  headerBadges: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  bookedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary + '15',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    gap: 4,
+  },
+  bookedBadgeText: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.xs,
+  },
+  ongoingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.success + '15',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    gap: 4,
+  },
+  ongoingBadgeText: {
+    color: Colors.success,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.xs,
+  },
   priceBadge: {
     backgroundColor: 'rgba(46, 204, 113, 0.1)',
     paddingHorizontal: Spacing.md,
@@ -1290,6 +1369,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.md,
+  },
+  viewButton: {
+    backgroundColor: Colors.secondary,
   },
   reserveButtonText: {
     color: Colors.white,

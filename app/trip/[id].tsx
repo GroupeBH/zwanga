@@ -17,13 +17,15 @@ import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/review
 import { useGetKycStatusQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
+import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import type { BookingStatus, GeoPoint } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
-import { getRouteInfo, type RouteInfo } from '@/utils/routeHelpers';
+import { getRouteInfo, type RouteInfo, isPointOnRoute, splitRouteByProgress } from '@/utils/routeHelpers';
+import LocationPickerModal, { type MapLocationSelection } from '@/components/LocationPickerModal';
+import { shareTrip, shareTripViaWhatsApp } from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
-import Mapbox from '@rnmapbox/maps';
-import Constants from 'expo-constants';
+import MapView, { Marker, Polyline, Callout, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -74,13 +76,6 @@ const arrayToLatLng = (coordinates?: [number, number] | null) => {
   };
 };
 
-// Initialize Mapbox with access token from config
-const mapboxToken =
-  Constants.expoConfig?.extra?.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ||
-  process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
-if (mapboxToken) {
-  Mapbox.setAccessToken(mapboxToken);
-}
 
 const BOOKING_STATUS_CONFIG: Record<
   BookingStatus,
@@ -115,9 +110,22 @@ const BOOKING_STATUS_CONFIG: Record<
 
 export default function TripDetailsScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams();
-  const tripId = typeof id === 'string' ? (id as string) : '';
-  const trip = useAppSelector((state) => selectTripById(tripId)(state));
+  const params = useLocalSearchParams();
+  const tripId = typeof params.id === 'string' ? (params.id as string) : '';
+  const trackParam = params.track === 'true' || params.track === true; // Permet le suivi via lien partagé
+  
+  // Récupérer le trajet depuis l'API si pas dans le store
+  const {
+    data: tripFromApi,
+    isLoading: tripLoading,
+    isFetching: tripFetching,
+    refetch: refetchTrip,
+  } = useGetTripByIdQuery(tripId, { skip: !tripId });
+  
+  // Utiliser le trajet de l'API en priorité, sinon celui du store
+  const tripFromStore = useAppSelector((state) => selectTripById(tripId)(state));
+  const trip = tripFromApi || tripFromStore;
+  
   const user = useAppSelector(selectUser);
   const { checkIdentity, isIdentityVerified } = useIdentityCheck();
   const { showDialog } = useDialog();
@@ -161,6 +169,9 @@ export default function TripDetailsScreen() {
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
   const [bookingSeats, setBookingSeats] = useState('1');
   const [bookingModalError, setBookingModalError] = useState('');
+  const [passengerDestination, setPassengerDestination] = useState<MapLocationSelection | null>(null);
+  const [showDestinationPicker, setShowDestinationPicker] = useState(false);
+  const [isValidatingDestination, setIsValidatingDestination] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState<{ visible: boolean; seats: number }>({
     visible: false,
     seats: 0,
@@ -179,6 +190,7 @@ export default function TripDetailsScreen() {
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [contactModalVisible, setContactModalVisible] = useState(false);
+  const [shareModalVisible, setShareModalVisible] = useState(false);
   const [kycFrontImage, setKycFrontImage] = useState<string | null>(null);
   const [kycBackImage, setKycBackImage] = useState<string | null>(null);
   const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
@@ -258,7 +270,8 @@ export default function TripDetailsScreen() {
     );
   }, [myBookings, trip]);
   const hasAcceptedBooking = activeBooking?.status === 'accepted';
-  const canTrackTrip = Boolean(trip && user && (isTripDriver || hasAcceptedBooking));
+  // Permettre le suivi si : conducteur, passager accepté, ou via lien partagé (track=true)
+  const canTrackTrip = Boolean(trip && user && (isTripDriver || hasAcceptedBooking || trackParam));
 
   useEffect(() => {
     if (!trip || !canTrackTrip) {
@@ -318,28 +331,7 @@ export default function TripDetailsScreen() {
 
   const availableSeats = trip ? Math.max(trip.availableSeats, 0) : 0;
   const seatLimit = Math.max(availableSeats, 1);
-
-  if (!trip) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: Colors.white }]}>
-        <View style={styles.emptyStateContainer}>
-          <View style={styles.emptyStateIcon}>
-            <Ionicons name="car-sport" size={32} color={Colors.primary} />
-          </View>
-          <Text style={styles.emptyStateTitle}>Trajet introuvable</Text>
-          <Text style={styles.emptyStateText}>
-            Ce trajet n’existe plus ou a été supprimé par son propriétaire.
-          </Text>
-          <TouchableOpacity style={styles.primaryButton} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={16} color={Colors.white} />
-            <Text style={styles.primaryButtonText}>Retour</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const progress = trip.progress || 0;
+  const progress = trip?.progress || 0;
   const trackingStatusTitle = liveDriverCoordinate ? 'Suivi en direct' : 'Position estimée';
   const trackingStatusSubtitle = useMemo(() => {
     if (trackingError) {
@@ -380,6 +372,7 @@ export default function TripDetailsScreen() {
     // KYC désactivé pour la réservation - permettre la réservation sans vérification
     setBookingSeats('1');
     setBookingModalError('');
+    setPassengerDestination(null);
     setBookingModalVisible(true);
   };
 
@@ -490,7 +483,7 @@ export default function TripDetailsScreen() {
   };
 
   const handleConfirmBooking = async () => {
-    if (isBooking || !trip) {
+    if (isBooking || !trip || isValidatingDestination) {
       return;
     }
     const seatsValue = parseInt(bookingSeats, 10);
@@ -509,10 +502,59 @@ export default function TripDetailsScreen() {
       );
       return;
     }
+
+    // Valider la destination si elle est fournie
+    if (passengerDestination) {
+      setIsValidatingDestination(true);
+      setBookingModalError('');
+
+      try {
+        // Vérifier que la destination est sur le trajet
+        if (!routeCoordinates || routeCoordinates.length < 2) {
+          setBookingModalError('Impossible de valider la destination. Veuillez réessayer.');
+          setIsValidatingDestination(false);
+          return;
+        }
+
+        const destinationPoint = {
+          latitude: passengerDestination.latitude,
+          longitude: passengerDestination.longitude,
+        };
+
+        const isOnRoute = isPointOnRoute(destinationPoint, routeCoordinates, 5); // 5km de tolérance
+
+        if (!isOnRoute) {
+          setBookingModalError(
+            'La destination sélectionnée n\'est pas sur le trajet. Veuillez choisir une destination située sur l\'itinéraire.',
+          );
+          setIsValidatingDestination(false);
+          return;
+        }
+      } catch (error) {
+        console.warn('Error validating destination:', error);
+        setBookingModalError('Erreur lors de la validation de la destination. Veuillez réessayer.');
+        setIsValidatingDestination(false);
+        return;
+      }
+
+      setIsValidatingDestination(false);
+    }
+
     try {
-      await createBooking({ tripId: trip.id, numberOfSeats: seatsValue }).unwrap();
+      await createBooking({
+        tripId: trip.id,
+        numberOfSeats: seatsValue,
+        passengerDestination: passengerDestination?.title || passengerDestination?.address,
+        passengerDestinationCoordinates: passengerDestination
+          ? {
+              latitude: passengerDestination.latitude,
+              longitude: passengerDestination.longitude,
+            }
+          : undefined,
+      }).unwrap();
       setBookingModalVisible(false);
       setBookingModalError('');
+      setPassengerDestination(null);
       openBookingSuccessModal(seatsValue);
       refreshBookingLists();
     } catch (error: any) {
@@ -680,11 +722,11 @@ export default function TripDetailsScreen() {
 
   const estimatedTotal = useMemo(() => {
     const seatsValue = parseInt(bookingSeats, 10);
-    if (Number.isNaN(seatsValue) || seatsValue <= 0) {
+    if (Number.isNaN(seatsValue) || seatsValue <= 0 || !trip) {
       return 0;
     }
     return trip.price === 0 ? 0 : seatsValue * trip.price;
-  }, [bookingSeats, trip.price]);
+  }, [bookingSeats, trip?.price]);
 
   const statusConfig = {
     upcoming: { color: Colors.secondary, bgColor: 'rgba(247, 184, 1, 0.1)', label: 'À venir' },
@@ -693,22 +735,32 @@ export default function TripDetailsScreen() {
     cancelled: { color: Colors.gray[600], bgColor: Colors.gray[200], label: 'Annulé' },
   };
 
-  const config = statusConfig[trip.status as keyof typeof statusConfig];
+  const config = trip ? statusConfig[trip.status as keyof typeof statusConfig] : statusConfig.upcoming;
 
   const departureCoordinate = useMemo(
-    () => ({
-      latitude: trip.departure.lat,
-      longitude: trip.departure.lng,
-    }),
-    [trip.departure.lat, trip.departure.lng],
+    () => {
+      if (!trip?.departure?.lat || !trip?.departure?.lng) {
+        return { latitude: 0, longitude: 0 };
+      }
+      return {
+        latitude: trip.departure.lat,
+        longitude: trip.departure.lng,
+      };
+    },
+    [trip?.departure?.lat, trip?.departure?.lng],
   );
 
   const arrivalCoordinate = useMemo(
-    () => ({
-      latitude: trip.arrival.lat,
-      longitude: trip.arrival.lng,
-    }),
-    [trip.arrival.lat, trip.arrival.lng],
+    () => {
+      if (!trip?.arrival?.lat || !trip?.arrival?.lng) {
+        return { latitude: 0, longitude: 0 };
+      }
+      return {
+        latitude: trip.arrival.lat,
+        longitude: trip.arrival.lng,
+      };
+    },
+    [trip?.arrival?.lat, trip?.arrival?.lng],
   );
 
   // Load route coordinates and info when trip changes
@@ -757,6 +809,17 @@ export default function TripDetailsScreen() {
   // Calculate current coordinate for ETA calculation
   const currentCoordinate = liveDriverCoordinate ?? estimatedCoordinate;
 
+  // Split route into traveled and remaining portions when trip is ongoing
+  const routeSplit = useMemo(() => {
+    if (!routeCoordinates || routeCoordinates.length < 2 || trip?.status !== 'ongoing' || !currentCoordinate) {
+      return {
+        traveledCoordinates: [],
+        remainingCoordinates: routeCoordinates || [],
+      };
+    }
+    return splitRouteByProgress(currentCoordinate, routeCoordinates);
+  }, [routeCoordinates, trip?.status, currentCoordinate]);
+
   // Calculate estimated arrival time based on current position
   useEffect(() => {
     if (!trip || !routeInfo || trip.status !== 'ongoing' || !currentCoordinate) {
@@ -802,7 +865,7 @@ export default function TripDetailsScreen() {
     };
   }, [trip?.status, routeInfo, currentCoordinate, arrivalCoordinate, progress]);
 
-  const mapCamera = useMemo(() => {
+  const mapRegion = useMemo(() => {
     const latitudeCenter = (departureCoordinate.latitude + arrivalCoordinate.latitude) / 2;
     const longitudeCenter = (departureCoordinate.longitude + arrivalCoordinate.longitude) / 2;
     const latitudeDelta =
@@ -810,15 +873,45 @@ export default function TripDetailsScreen() {
     const longitudeDelta =
       Math.max(Math.abs(departureCoordinate.longitude - arrivalCoordinate.longitude), 0.05) * 1.6;
 
-    // Calculate zoom level from delta (approximate)
-    const maxDelta = Math.max(latitudeDelta, longitudeDelta);
-    const zoomLevel = Math.max(9, 15 - Math.log2(maxDelta * 111)); // Rough conversion
-
     return {
-      centerCoordinate: [longitudeCenter, latitudeCenter] as [number, number],
-      zoomLevel: Math.min(Math.max(zoomLevel, 9), 15),
+      latitude: latitudeCenter,
+      longitude: longitudeCenter,
+      latitudeDelta,
+      longitudeDelta,
     };
   }, [arrivalCoordinate, departureCoordinate]);
+
+  // Early return AFTER all hooks to avoid hook order violation
+  if (tripLoading && !trip) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: Colors.white }]}>
+        <View style={styles.emptyStateContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.emptyStateTitle}>Chargement du trajet...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!trip && !tripLoading) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: Colors.white }]}>
+        <View style={styles.emptyStateContainer}>
+          <View style={styles.emptyStateIcon}>
+            <Ionicons name="car-sport" size={32} color={Colors.primary} />
+          </View>
+          <Text style={styles.emptyStateTitle}>Trajet introuvable</Text>
+          <Text style={styles.emptyStateText}>
+            Ce trajet n'existe plus ou a été supprimé par son propriétaire.
+          </Text>
+          <TouchableOpacity style={styles.primaryButton} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={16} color={Colors.white} />
+            <Text style={styles.primaryButtonText}>Retour</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -829,8 +922,11 @@ export default function TripDetailsScreen() {
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Détails du trajet</Text>
-          <TouchableOpacity>
-            <Ionicons name="ellipsis-vertical" size={24} color={Colors.gray[600]} />
+          <TouchableOpacity
+            onPress={() => setShareModalVisible(true)}
+            style={styles.shareButton}
+          >
+            <Ionicons name="share-outline" size={24} color={Colors.primary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -847,103 +943,105 @@ export default function TripDetailsScreen() {
           activeOpacity={0.95}
         >
           <View style={styles.mapPreview}>
-            <Mapbox.MapView
+            <MapView
+              provider={PROVIDER_GOOGLE}
               style={styles.mapView}
-              styleURL={Mapbox.StyleURL.Street}
               scrollEnabled={false}
               zoomEnabled={false}
               pitchEnabled={false}
               rotateEnabled={false}
+              initialRegion={mapRegion}
             >
-              <Mapbox.Camera
-                defaultSettings={{
-                  centerCoordinate: mapCamera.centerCoordinate,
-                  zoomLevel: mapCamera.zoomLevel,
-                }}
-                animationMode="none"
-              />
-
               {/* Route polyline */}
               {routeCoordinates && routeCoordinates.length > 0 ? (
-                <Mapbox.ShapeSource
-                  id="route-preview"
-                  shape={{
-                    type: 'Feature',
-                    properties: {},
-                    geometry: {
-                      type: 'LineString',
-                      coordinates: routeCoordinates.map(coord => [coord.longitude, coord.latitude] as [number, number]),
-                    },
-                  }}
-                >
-                  <Mapbox.LineLayer
-                    id="route-preview-line"
-                    style={{
-                      lineColor: Colors.primary,
-                      lineWidth: 4,
-                      lineCap: 'round',
-                      lineJoin: 'round',
-                    }}
-                  />
-                </Mapbox.ShapeSource>
+                <>
+                  {/* Remaining route (gray) */}
+                  {trip?.status === 'ongoing' && routeSplit.remainingCoordinates.length > 1 && (
+                    <Polyline
+                      coordinates={routeSplit.remainingCoordinates}
+                      strokeColor={Colors.gray[400]}
+                      strokeWidth={4}
+                      lineDashPattern={[5, 5]}
+                    />
+                  )}
+                  {/* Traveled route (colored) */}
+                  {trip?.status === 'ongoing' && routeSplit.traveledCoordinates.length > 1 ? (
+                    <Polyline
+                      coordinates={routeSplit.traveledCoordinates}
+                      strokeColor={Colors.primary}
+                      strokeWidth={4}
+                    />
+                  ) : (
+                    <Polyline
+                      coordinates={routeCoordinates}
+                      strokeColor={Colors.primary}
+                      strokeWidth={4}
+                    />
+                  )}
+                </>
               ) : (
-                <Mapbox.ShapeSource
-                  id="route-preview-fallback"
-                  shape={{
-                    type: 'Feature',
-                    properties: {},
-                    geometry: {
-                      type: 'LineString',
-                      coordinates: [
-                        [departureCoordinate.longitude, departureCoordinate.latitude],
-                        [arrivalCoordinate.longitude, arrivalCoordinate.latitude],
-                      ],
-                    },
-                  }}
-                >
-                  <Mapbox.LineLayer
-                    id="route-preview-fallback-line"
-                    style={{
-                      lineColor: Colors.primary,
-                      lineWidth: 4,
-                      lineCap: 'round',
-                      lineDasharray: [1, 1],
-                    }}
-                  />
-                </Mapbox.ShapeSource>
+                <Polyline
+                  coordinates={[departureCoordinate, arrivalCoordinate]}
+                  strokeColor={Colors.primary}
+                  strokeWidth={4}
+                  lineDashPattern={[1, 1]}
+                />
               )}
 
-              <Mapbox.PointAnnotation
-                id="departure-preview"
-                coordinate={[departureCoordinate.longitude, departureCoordinate.latitude]}
+              <Marker
+                coordinate={departureCoordinate}
               >
                 <View style={styles.markerStartCircle}>
                   <Ionicons name="location" size={18} color={Colors.white} />
                 </View>
-              </Mapbox.PointAnnotation>
+              </Marker>
 
-              <Mapbox.PointAnnotation
-                id="arrival-preview"
-                coordinate={[arrivalCoordinate.longitude, arrivalCoordinate.latitude]}
+              <Marker
+                coordinate={arrivalCoordinate}
               >
                 <View style={styles.markerEndCircle}>
                   <Ionicons name="navigate" size={18} color={Colors.white} />
                 </View>
-              </Mapbox.PointAnnotation>
+              </Marker>
 
               {currentCoordinate && (
-                <Mapbox.PointAnnotation
-                  id="current-preview"
-                  coordinate={[currentCoordinate.longitude, currentCoordinate.latitude]}
+                <Marker
+                  coordinate={currentCoordinate}
                 >
                   <Animated.View style={pulseStyle}>
                     <View style={styles.markerCurrentCircle}>
                       <Ionicons name="car-sport" size={18} color={Colors.white} />
                     </View>
                   </Animated.View>
-                </Mapbox.PointAnnotation>
+                </Marker>
               )}
-            </Mapbox.MapView>
+
+              {/* Destinations des passagers */}
+              {tripBookings
+                ?.filter(
+                  (booking) =>
+                    booking.status === 'accepted' &&
+                    booking.passengerDestinationCoordinates &&
+                    booking.passengerDestinationCoordinates.latitude &&
+                    booking.passengerDestinationCoordinates.longitude,
+                )
+                .map((booking, index) => {
+                  const destCoords = booking.passengerDestinationCoordinates!;
+                  return (
+                    <Marker
+                      key={`passenger-dest-${booking.id}`}
+                      coordinate={{
+                        latitude: destCoords.latitude,
+                        longitude: destCoords.longitude,
+                      }}
+                    >
+                      <View style={styles.markerPassengerDestCircle}>
+                        <Ionicons name="person" size={14} color={Colors.white} />
+                      </View>
+                    </Marker>
+                  );
+                })}
+            </MapView>
 
             <View style={styles.mapOverlay}>
               <Text style={styles.mapOverlayText}>Touchez pour agrandir</Text>
@@ -960,106 +1058,124 @@ export default function TripDetailsScreen() {
         <Modal visible={mapModalVisible} animationType="fade" transparent onRequestClose={() => setMapModalVisible(false)}>
           <View style={styles.mapModalOverlay}>
             <View style={styles.mapModalContent}>
-              <Mapbox.MapView
+              <MapView
+                provider={PROVIDER_GOOGLE}
                 style={styles.fullscreenMap}
-                styleURL={Mapbox.StyleURL.SatelliteStreet}
+                mapType="hybrid"
+                initialRegion={mapRegion}
               >
-                <Mapbox.Camera
-                  defaultSettings={{
-                    centerCoordinate: mapCamera.centerCoordinate,
-                    zoomLevel: mapCamera.zoomLevel,
-                  }}
-                  animationMode="flyTo"
-                  animationDuration={500}
-                />
-
                 {/* Route polyline */}
                 {routeCoordinates && routeCoordinates.length > 0 ? (
-                  <Mapbox.ShapeSource
-                    id="route-fullscreen"
-                    shape={{
-                      type: 'Feature',
-                      properties: {},
-                      geometry: {
-                        type: 'LineString',
-                        coordinates: routeCoordinates.map(coord => [coord.longitude, coord.latitude] as [number, number]),
-                      },
-                    }}
-                  >
-                    <Mapbox.LineLayer
-                      id="route-fullscreen-line"
-                      style={{
-                        lineColor: Colors.primary,
-                        lineWidth: 5,
-                        lineCap: 'round',
-                        lineJoin: 'round',
-                      }}
-                    />
-                  </Mapbox.ShapeSource>
+                  <>
+                    {/* Remaining route (gray) */}
+                    {trip?.status === 'ongoing' && routeSplit.remainingCoordinates.length > 1 && (
+                      <Polyline
+                        coordinates={routeSplit.remainingCoordinates}
+                        strokeColor={Colors.gray[400]}
+                        strokeWidth={5}
+                        lineDashPattern={[5, 5]}
+                      />
+                    )}
+                    {/* Traveled route (colored) */}
+                    {trip?.status === 'ongoing' && routeSplit.traveledCoordinates.length > 1 ? (
+                      <Polyline
+                        coordinates={routeSplit.traveledCoordinates}
+                        strokeColor={Colors.primary}
+                        strokeWidth={5}
+                      />
+                    ) : (
+                      <Polyline
+                        coordinates={routeCoordinates}
+                        strokeColor={Colors.primary}
+                        strokeWidth={5}
+                      />
+                    )}
+                  </>
                 ) : (
-                  <Mapbox.ShapeSource
-                    id="route-fullscreen-fallback"
-                    shape={{
-                      type: 'Feature',
-                      properties: {},
-                      geometry: {
-                        type: 'LineString',
-                        coordinates: [
-                          [departureCoordinate.longitude, departureCoordinate.latitude],
-                          [arrivalCoordinate.longitude, arrivalCoordinate.latitude],
-                        ],
-                      },
-                    }}
-                  >
-                    <Mapbox.LineLayer
-                      id="route-fullscreen-fallback-line"
-                      style={{
-                        lineColor: Colors.primary,
-                        lineWidth: 5,
-                        lineCap: 'round',
-                      }}
-                    />
-                  </Mapbox.ShapeSource>
+                  <Polyline
+                    coordinates={[departureCoordinate, arrivalCoordinate]}
+                    strokeColor={Colors.primary}
+                    strokeWidth={5}
+                  />
                 )}
 
-                <Mapbox.PointAnnotation
-                  id="departure-fullscreen"
-                  coordinate={[departureCoordinate.longitude, departureCoordinate.latitude]}
+                <Marker
+                  coordinate={departureCoordinate}
                 >
                   <View style={styles.markerStartCircle}>
                     <Ionicons name="location" size={20} color={Colors.white} />
                   </View>
-                  <Mapbox.Callout title="Départ">
-                    <Text>{trip.departure.address}</Text>
-                  </Mapbox.Callout>
-                </Mapbox.PointAnnotation>
+                  <Callout>
+                    <View>
+                      <Text style={{ fontWeight: 'bold' }}>Départ</Text>
+                      <Text>{trip.departure.address}</Text>
+                    </View>
+                  </Callout>
+                </Marker>
 
-                <Mapbox.PointAnnotation
-                  id="arrival-fullscreen"
-                  coordinate={[arrivalCoordinate.longitude, arrivalCoordinate.latitude]}
+                <Marker
+                  coordinate={arrivalCoordinate}
                 >
                   <View style={styles.markerEndCircle}>
                     <Ionicons name="navigate" size={20} color={Colors.white} />
                   </View>
-                  <Mapbox.Callout title="Arrivée">
-                    <Text>{trip.arrival.address}</Text>
-                  </Mapbox.Callout>
-                </Mapbox.PointAnnotation>
+                  <Callout>
+                    <View>
+                      <Text style={{ fontWeight: 'bold' }}>Arrivée</Text>
+                      <Text>{trip.arrival.address}</Text>
+                    </View>
+                  </Callout>
+                </Marker>
 
                 {currentCoordinate && (
-                  <Mapbox.PointAnnotation
-                    id="current-fullscreen"
-                    coordinate={[currentCoordinate.longitude, currentCoordinate.latitude]}
+                  <Marker
+                    coordinate={currentCoordinate}
                   >
                     <Animated.View style={pulseStyle}>
                       <View style={styles.markerCurrentCircle}>
                         <Ionicons name="car-sport" size={20} color={Colors.white} />
                       </View>
                     </Animated.View>
-                    <Mapbox.Callout title="Position actuelle" />
-                  </Mapbox.PointAnnotation>
+                    <Callout>
+                      <View>
+                        <Text style={{ fontWeight: 'bold' }}>Position actuelle</Text>
+                      </View>
+                    </Callout>
+                  </Marker>
                 )}
-              </Mapbox.MapView>
+
+                {/* Destinations des passagers */}
+                {tripBookings
+                  ?.filter(
+                    (booking) =>
+                      booking.status === 'accepted' &&
+                      booking.passengerDestinationCoordinates &&
+                      booking.passengerDestinationCoordinates.latitude &&
+                      booking.passengerDestinationCoordinates.longitude,
+                  )
+                  .map((booking) => {
+                    const destCoords = booking.passengerDestinationCoordinates!;
+                    return (
+                      <Marker
+                        key={`passenger-dest-fullscreen-${booking.id}`}
+                        coordinate={{
+                          latitude: destCoords.latitude,
+                          longitude: destCoords.longitude,
+                        }}
+                      >
+                        <View style={styles.markerPassengerDestCircle}>
+                          <Ionicons name="person" size={16} color={Colors.white} />
+                        </View>
+                        <Callout>
+                          <View>
+                            <Text style={{ fontWeight: 'bold' }}>{booking.passengerDestination || booking.passengerName || 'Destination passager'}</Text>
+                            <Text>{booking.passengerName || 'Passager'}</Text>
+                          </View>
+                        </Callout>
+                      </Marker>
+                    );
+                  })}
+              </MapView>
 
               <TouchableOpacity style={styles.closeMapButton} onPress={() => setMapModalVisible(false)}>
                 <Ionicons name="close" size={24} color={Colors.white} />
@@ -1190,7 +1306,11 @@ export default function TripDetailsScreen() {
                   <Ionicons name="star" size={16} color={Colors.secondary} />
                   <Text style={styles.driverRating}>{driverReviewAverage.toFixed(1)}</Text>
                   <View style={styles.driverDot} />
-                  <Text style={styles.driverVehicle}>{trip.vehicleInfo}</Text>
+                  <Text style={styles.driverVehicle}>
+                    {trip.vehicle 
+                      ? `${trip.vehicle.brand} ${trip.vehicle.model}`
+                      : trip.vehicleInfo}
+                  </Text>
                 </View>
                 <TouchableOpacity
                   style={styles.driverReviewLink}
@@ -1287,10 +1407,44 @@ export default function TripDetailsScreen() {
 
               <View style={styles.detailRow}>
                 <View style={styles.detailLeft}>
-                  <Ionicons name="car" size={20} color={Colors.gray[600]} />
+                  <Ionicons 
+                    name={
+                      trip.vehicleType === 'moto' 
+                        ? 'bicycle' 
+                        : trip.vehicleType === 'tricycle'
+                        ? 'car-sport'
+                        : 'car'
+                    } 
+                    size={20} 
+                    color={Colors.gray[600]} 
+                  />
                   <Text style={styles.detailLabel}>Véhicule</Text>
                 </View>
-                <Text style={styles.detailValue}>{trip.vehicleInfo}</Text>
+                <View style={styles.vehicleInfoContainer}>
+                  {trip.vehicle ? (
+                    <>
+                      <Text style={styles.detailValue}>
+                        {trip.vehicle.brand} {trip.vehicle.model}
+                      </Text>
+                      <Text style={styles.vehicleDetails}>
+                        {trip.vehicle.color} • {trip.vehicle.licensePlate}
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.detailValue}>
+                        {trip.vehicleType === 'moto' 
+                          ? 'Moto' 
+                          : trip.vehicleType === 'tricycle'
+                          ? 'Tricycle'
+                          : 'Voiture'}
+                      </Text>
+                      {trip.vehicleInfo && trip.vehicleInfo !== 'Informations véhicule fournies par le conducteur' && (
+                        <Text style={styles.vehicleDetails}>{trip.vehicleInfo}</Text>
+                      )}
+                    </>
+                  )}
+                </View>
               </View>
             </View>
           </View>
@@ -1342,7 +1496,7 @@ export default function TripDetailsScreen() {
         )}
 
         {/* Actions */}
-        {trip.status === 'upcoming' && (
+        {(trip.status === 'upcoming' || (trip.status === 'ongoing' && availableSeats > 0)) && (
           <View style={styles.actionsContainer}>
             {activeBooking && activeBookingStatus ? (
               <View style={styles.bookingCard}>
@@ -1420,11 +1574,17 @@ export default function TripDetailsScreen() {
               <>
                 <View style={styles.bookingHintCard}>
                   <View style={styles.bookingHintIcon}>
-                    <Ionicons name="information-circle" size={20} color={Colors.primary} />
+                    <Ionicons 
+                      name={trip.status === 'ongoing' ? "car-sport" : "information-circle"} 
+                      size={20} 
+                      color={trip.status === 'ongoing' ? Colors.success : Colors.primary} 
+                    />
                   </View>
                   <View style={styles.bookingHintContent}>
                     <Text style={styles.bookingHintTitle}>
-                      {availableSeats > 0
+                      {trip.status === 'ongoing' 
+                        ? `Trajet en cours • Il reste ${availableSeats} place${availableSeats > 1 ? 's' : ''} disponibles`
+                        : availableSeats > 0
                         ? `Il reste ${availableSeats} place${availableSeats > 1 ? 's' : ''} disponibles`
                         : 'Ce trajet est complet'}
                     </Text>
@@ -1439,14 +1599,14 @@ export default function TripDetailsScreen() {
                     (availableSeats <= 0 || myBookingsLoading) &&
                     styles.actionButtonDisabled,
                   ]}
-                  onPress={openBookingModal}
-                  disabled={availableSeats <= 0 || myBookingsLoading}
+                  onPress={activeBooking ? () => {} : openBookingModal}
+                  disabled={(availableSeats <= 0 || myBookingsLoading) && !activeBooking}
                 >
                   {myBookingsLoading ? (
                     <ActivityIndicator color={Colors.white} />
                   ) : (
                     <Text style={styles.actionButtonText}>
-                      Réserver ce trajet
+                      {activeBooking ? 'Voir' : 'Réserver ce trajet'}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -1505,6 +1665,51 @@ export default function TripDetailsScreen() {
             <Text style={styles.bookingModalHint}>
               Maximum 2 places par utilisateur{seatLimit < 2 ? ` (${seatLimit} disponible${seatLimit > 1 ? 's' : ''})` : ''}
             </Text>
+
+            {/* Destination du passager */}
+            <View style={styles.bookingDestinationSection}>
+              <Text style={styles.bookingDestinationLabel}>Ma destination (optionnel)</Text>
+              <TouchableOpacity
+                style={[
+                  styles.bookingDestinationButton,
+                  passengerDestination && styles.bookingDestinationButtonSelected,
+                ]}
+                onPress={() => setShowDestinationPicker(true)}
+                disabled={isBooking || isValidatingDestination || isValidatingDestination}
+              >
+                <Ionicons
+                  name={passengerDestination ? 'location' : 'location-outline'}
+                  size={18}
+                  color={passengerDestination ? Colors.primary : Colors.gray[600]}
+                />
+                <Text
+                  style={[
+                    styles.bookingDestinationButtonText,
+                    passengerDestination && styles.bookingDestinationButtonTextSelected,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {passengerDestination
+                    ? passengerDestination.title || passengerDestination.address
+                    : 'Sélectionner ma destination'}
+                </Text>
+                {passengerDestination && (
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      setPassengerDestination(null);
+                    }}
+                    style={styles.bookingDestinationRemoveButton}
+                  >
+                    <Ionicons name="close-circle" size={18} color={Colors.danger} />
+                  </TouchableOpacity>
+                )}
+              </TouchableOpacity>
+              <Text style={styles.bookingDestinationHint}>
+                Si votre destination diffère de l'arrivée du trajet, sélectionnez-la ici. Elle doit être située sur l'itinéraire.
+              </Text>
+            </View>
+
             <Text style={styles.bookingModalPrice}>
               Total estimé :{' '}
               <Text style={styles.bookingModalPriceValue}>
@@ -1527,9 +1732,9 @@ export default function TripDetailsScreen() {
               <TouchableOpacity
                 style={[styles.bookingModalButton, styles.bookingModalButtonPrimary]}
                 onPress={handleConfirmBooking}
-                disabled={isBooking}
+                disabled={isBooking || isValidatingDestination}
               >
-                {isBooking ? (
+                {isBooking || isValidatingDestination ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
                   <Text style={styles.bookingModalButtonPrimaryText}>Confirmer</Text>
@@ -1539,6 +1744,18 @@ export default function TripDetailsScreen() {
           </View>
         </View>
       </Modal>
+
+      <LocationPickerModal
+        visible={showDestinationPicker}
+        title="Sélectionner ma destination"
+        initialLocation={passengerDestination}
+        onClose={() => setShowDestinationPicker(false)}
+        onSelect={(location) => {
+          setPassengerDestination(location);
+          setShowDestinationPicker(false);
+          setBookingModalError('');
+        }}
+      />
 
       <Modal animationType="fade" transparent visible={bookingSuccess.visible}>
         <View style={styles.feedbackModalOverlay}>
@@ -1745,6 +1962,102 @@ export default function TripDetailsScreen() {
           </Animated.View>
         </TouchableOpacity>
       </Modal>
+
+      {/* Share Modal */}
+      <Modal
+        visible={shareModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShareModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.contactModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShareModalVisible(false)}
+        >
+          <Animated.View entering={FadeInDown} style={styles.contactModalCard} onStartShouldSetResponder={() => true}>
+            <View style={styles.contactModalHeader}>
+              <View style={styles.contactModalIconWrapper}>
+                <View style={styles.contactModalIconBadge}>
+                  <Ionicons name="share-social" size={32} color={Colors.primary} />
+                </View>
+              </View>
+              <Text style={styles.contactModalTitle}>Partager le trajet</Text>
+              <Text style={styles.contactModalSubtitle}>
+                Partagez le lien pour permettre à vos contacts de suivre votre trajet en temps réel
+              </Text>
+            </View>
+
+            <View style={styles.contactModalActions}>
+              <TouchableOpacity
+                style={[styles.contactModalButton, styles.contactModalButtonCall]}
+                onPress={async () => {
+                  setShareModalVisible(false);
+                  try {
+                    await shareTrip(
+                      trip.id,
+                      trip.departure.name,
+                      trip.arrival.name
+                    );
+                  } catch (error: any) {
+                    showDialog({
+                      variant: 'danger',
+                      title: 'Erreur',
+                      message: error?.message || 'Impossible de partager le trajet',
+                    });
+                  }
+                }}
+              >
+                <View style={styles.contactModalButtonIcon}>
+                  <Ionicons name="share-outline" size={24} color={Colors.primary} />
+                </View>
+                <View style={styles.contactModalButtonContent}>
+                  <Text style={styles.contactModalButtonTitle}>Partager</Text>
+                  <Text style={styles.contactModalButtonSubtitle}>Partager via l'application de votre choix</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.contactModalButton, styles.contactModalButtonWhatsApp]}
+                onPress={async () => {
+                  setShareModalVisible(false);
+                  try {
+                    await shareTripViaWhatsApp(
+                      trip.id,
+                      undefined,
+                      trip.departure.name,
+                      trip.arrival.name
+                    );
+                  } catch (error: any) {
+                    showDialog({
+                      variant: 'danger',
+                      title: 'Erreur',
+                      message: error?.message || 'Impossible de partager via WhatsApp',
+                    });
+                  }
+                }}
+              >
+                <View style={styles.contactModalButtonIcon}>
+                  <Ionicons name="logo-whatsapp" size={24} color="#25D366" />
+                </View>
+                <View style={styles.contactModalButtonContent}>
+                  <Text style={styles.contactModalButtonTitle}>WhatsApp</Text>
+                  <Text style={styles.contactModalButtonSubtitle}>Partager directement sur WhatsApp</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.contactModalCancelButton}
+              onPress={() => setShareModalVisible(false)}
+            >
+              <Text style={styles.contactModalCancelText}>Annuler</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1830,6 +2143,9 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     color: Colors.gray[800],
   },
+  shareButton: {
+    padding: 4,
+  },
   scrollView: {
     flex: 1,
   },
@@ -1889,6 +2205,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...CommonStyles.shadowLg,
+  },
+  markerPassengerDestCircle: {
+    width: 28,
+    height: 28,
+    backgroundColor: Colors.secondary,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...CommonStyles.shadowMd,
   },
   expandButton: {
     position: 'absolute',
@@ -2206,6 +2531,21 @@ const styles = StyleSheet.create({
     color: Colors.gray[800],
     fontSize: FontSizes.base,
   },
+  vehicleInfoContainer: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  vehicleTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  vehicleDetails: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginTop: Spacing.xs,
+    textAlign: 'right',
+    maxWidth: '100%',
+  },
   actionsContainer: {
     paddingHorizontal: Spacing.xl,
     paddingBottom: Spacing.xxl,
@@ -2459,6 +2799,50 @@ const styles = StyleSheet.create({
   bookingModalButtonPrimaryText: {
     color: Colors.white,
     fontWeight: FontWeights.bold,
+  },
+  bookingDestinationSection: {
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  bookingDestinationLabel: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+    marginBottom: Spacing.xs,
+  },
+  bookingDestinationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    backgroundColor: Colors.white,
+    minHeight: 48,
+  },
+  bookingDestinationButtonSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '08',
+  },
+  bookingDestinationButtonText: {
+    flex: 1,
+    marginLeft: Spacing.sm,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  bookingDestinationButtonTextSelected: {
+    color: Colors.gray[900],
+    fontWeight: FontWeights.medium,
+  },
+  bookingDestinationRemoveButton: {
+    marginLeft: Spacing.xs,
+    padding: Spacing.xs,
+  },
+  bookingDestinationHint: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    marginTop: Spacing.xs,
+    lineHeight: 16,
   },
   reviewsModalOverlay: {
     flex: 1,
