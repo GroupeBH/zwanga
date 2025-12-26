@@ -39,58 +39,103 @@ export function NotificationHandler() {
     // Fonction pour naviguer selon le type de notification
     const handleNotificationPress = (data: Record<string, any>) => {
       try {
-        const { type, tripId, bookingId, conversationId, userId } = data;
+        const { type, tripId, bookingId, conversationId, requestId } = data;
 
         // Attendre que l'app soit prête avant de naviguer
         setTimeout(() => {
-          switch (type) {
-            case 'trip':
-            case 'trip_update':
-              if (tripId) {
-                router.push(`/trip/${tripId}`);
-              }
-              break;
-
-            case 'booking':
-            case 'booking_accepted':
-            case 'booking_rejected':
-            case 'booking_cancelled':
-              if (tripId) {
-                router.push(`/trip/${tripId}`);
-              } else if (bookingId) {
-                // Si on a seulement le bookingId, on peut naviguer vers les bookings
-                router.push('/bookings');
-              }
-              break;
-
-            case 'message':
-            case 'chat':
-              if (conversationId) {
-                router.push({
-                  pathname: '/chat/[id]',
-                  params: { id: conversationId },
-                });
-              }
-              break;
-
-            case 'trip_manage':
-              if (tripId) {
-                router.push(`/trip/manage/${tripId}`);
-              }
-              break;
-
-            case 'rate':
-            case 'review':
-              if (tripId) {
-                router.push(`/rate/${tripId}`);
-              }
-              break;
-
-            default:
-              // Par défaut, ouvrir l'app sur l'écran principal
-              router.push('/(tabs)');
-              break;
+          // Gérer les notifications de trajets
+          if (type === 'trip' || type === 'trip_update') {
+            if (tripId) {
+              router.push(`/trip/${tripId}`);
+              return;
+            }
           }
+
+          // Gérer les notifications de réservations
+          if (
+            type === 'booking' ||
+            type === 'booking_accepted' ||
+            type === 'booking_rejected' ||
+            type === 'booking_cancelled' ||
+            type === 'booking_pending'
+          ) {
+            if (tripId) {
+              router.push(`/trip/${tripId}`);
+              return;
+            } else if (bookingId) {
+              router.push('/bookings');
+              return;
+            }
+          }
+
+          // Gérer les notifications de messages
+          if (type === 'message' || type === 'chat') {
+            if (conversationId) {
+              router.push({
+                pathname: '/chat/[id]',
+                params: { id: conversationId },
+              });
+              return;
+            }
+          }
+
+          // Gérer les notifications de gestion de trajet
+          if (type === 'trip_manage') {
+            if (tripId) {
+              router.push(`/trip/manage/${tripId}`);
+              return;
+            }
+          }
+
+          // Gérer les notifications de demandes de trajet
+          if (
+            type === 'trip_request' ||
+            type === 'trip_request_accepted' ||
+            type === 'trip_request_rejected' ||
+            type === 'trip_request_cancelled' ||
+            type === 'trip_request_pending'
+          ) {
+            if (requestId) {
+              router.push(`/request/${requestId}`);
+              return;
+            } else if (tripId) {
+              // Si une demande a créé un trajet, naviguer vers le trajet
+              router.push(`/trip/${tripId}`);
+              return;
+            }
+          }
+
+          // Gérer les notifications d'avis
+          if (type === 'rate' || type === 'review') {
+            if (tripId) {
+              router.push(`/rate/${tripId}`);
+              return;
+            }
+          }
+
+          // Fallback : naviguer selon les IDs disponibles même sans type spécifique
+          if (tripId) {
+            router.push(`/trip/${tripId}`);
+            return;
+          }
+          if (requestId) {
+            router.push(`/request/${requestId}`);
+            return;
+          }
+          if (conversationId) {
+            router.push({
+              pathname: '/chat/[id]',
+              params: { id: conversationId },
+            });
+            return;
+          }
+          if (bookingId) {
+            router.push('/bookings');
+            return;
+          }
+
+          // Par défaut, ouvrir l'app sur l'écran principal
+          router.push('/(tabs)');
         }, 300);
       } catch (error) {
         console.warn('Erreur lors de la navigation depuis la notification:', error);
@@ -125,17 +170,60 @@ export function NotificationHandler() {
     const linkingListener = Linking.addEventListener('url', (event) => {
       const { url } = event;
       // Parser l'URL et naviguer si nécessaire
-      // Format attendu: zwanga://trip/123, zwanga://chat/456, etc.
+      // Format attendu: zwanga://trip/123, zwanga://trip/123?track=true, zwanga://chat/456, zwanga://request/789, zwanga://bookings, etc.
       try {
         const route = url.replace('zwanga://', '');
+        
+        // Fonction helper pour parser les paramètres de requête
+        const parseQueryParams = (queryString: string): Record<string, string> => {
+          const params: Record<string, string> = {};
+          if (queryString) {
+            queryString.split('&').forEach((param) => {
+              const [key, value] = param.split('=');
+              if (key && value) {
+                params[key] = decodeURIComponent(value);
+              }
+            });
+          }
+          return params;
+        };
+
         if (route.startsWith('trip/')) {
-          const tripId = route.replace('trip/', '');
-          router.push(`/trip/${tripId}`);
+          // Extraire l'ID et les paramètres de requête
+          const parts = route.replace('trip/', '').split('?');
+          const tripId = parts[0];
+          const params = parseQueryParams(parts[1] || '');
+          
+          // Naviguer vers le trajet avec les paramètres
+          router.push({
+            pathname: '/trip/[id]',
+            params: { id: tripId, ...params },
+          });
         } else if (route.startsWith('chat/')) {
-          const conversationId = route.replace('chat/', '');
+          const conversationId = route.replace('chat/', '').split('?')[0];
           router.push({
             pathname: '/chat/[id]',
             params: { id: conversationId },
+          });
+        } else if (route.startsWith('request/')) {
+          const requestId = route.replace('request/', '').split('?')[0];
+          router.push({
+            pathname: '/request/[id]',
+            params: { id: requestId },
+          });
+        } else if (route.startsWith('bookings')) {
+          router.push('/bookings');
+        } else if (route.startsWith('trip/manage/')) {
+          const tripId = route.replace('trip/manage/', '').split('?')[0];
+          router.push({
+            pathname: '/trip/manage/[id]',
+            params: { id: tripId },
+          });
+        } else if (route.startsWith('rate/')) {
+          const tripId = route.replace('rate/', '').split('?')[0];
+          router.push({
+            pathname: '/rate/[id]',
+            params: { id: tripId },
           });
         }
       } catch (error) {

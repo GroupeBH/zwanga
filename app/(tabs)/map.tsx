@@ -18,7 +18,7 @@ import { setTrips } from '@/store/slices/tripsSlice';
 import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { Ionicons } from '@expo/vector-icons';
-import Mapbox from '@rnmapbox/maps';
+import MapView, { Marker, Polyline, Callout, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -36,18 +36,11 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { searchMapboxPlaces, getMapboxPlaceDetails, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
-import { getCachedRouteCoordinates, type RouteCoordinates } from '@/utils/mapboxDirections';
+import { searchGoogleMapsPlaces, getGoogleMapsPlaceDetails, type GoogleMapsSearchSuggestion } from '@/utils/googleMapsPlaces';
+import { getCachedRouteCoordinates, type RouteCoordinates } from '@/utils/googleMapsDirections';
 
 type LatLng = { latitude: number; longitude: number };
 
-// Initialize Mapbox with access token from config
-const mapboxToken =
-  Constants.expoConfig?.extra?.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ||
-  process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
-if (mapboxToken) {
-  Mapbox.setAccessToken(mapboxToken);
-}
 
 const toRadians = (value: number) => (value * Math.PI) / 180;
 
@@ -82,19 +75,38 @@ export default function MapScreen() {
   const { shouldShow: shouldShowMapGuide, complete: completeMapGuide } =
     useTutorialGuide('map_screen');
   const [mapGuideVisible, setMapGuideVisible] = useState(false);
-  const cameraRef = useRef<Mapbox.Camera>(null);
+  const mapRef = useRef<MapView>(null);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const [mapRegion, setMapRegion] = useState<Region | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
   const [isMapMoving, setIsMapMoving] = useState(false);
-  const [mapboxSuggestions, setMapboxSuggestions] = useState<MapboxSearchSuggestion[]>([]);
-  const [mapboxLoading, setMapboxLoading] = useState(false);
+  const [googleMapsSuggestions, setGoogleMapsSuggestions] = useState<GoogleMapsSearchSuggestion[]>([]);
+  const [googleMapsLoading, setGoogleMapsLoading] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [routeCoordinatesCache, setRouteCoordinatesCache] = useState<Map<string, RouteCoordinates[]>>(new Map());
   const [loadingRoutes, setLoadingRoutes] = useState<Set<string>>(new Set());
+  
+  // Limiter la taille du cache pour éviter les problèmes de mémoire (max 30 routes)
+  const MAX_CACHE_SIZE = 30;
 
-  // Charger les itinéraires pour tous les trajets
+  // Ajuster la carte automatiquement quand des trajets sont trouvés après une recherche
+  useEffect(() => {
+    // Ne s'ajuster que si on a une recherche active (pas au chargement initial)
+    if (activeSearchQuery && trips.length > 0 && mapRef.current) {
+      // Petit délai pour laisser le temps aux marqueurs de se charger
+      const timeoutId = setTimeout(() => {
+        fitMapToTrips(trips);
+      }, 500);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [trips.length, activeSearchQuery, fitMapToTrips]);
+
+  // Charger les itinéraires pour tous les trajets (limité pour éviter les problèmes de mémoire)
   useEffect(() => {
     const loadRoutes = async () => {
+      // Limiter le nombre de trajets pour lesquels on charge les routes (max 20)
+      const tripsToProcess = trips.slice(0, 20);
       const tripsToLoad: Array<{
         tripId: string;
         start: RouteCoordinates;
@@ -102,7 +114,7 @@ export default function MapScreen() {
       }> = [];
 
       // Identifier les trajets qui ont besoin d'un itinéraire
-      for (const trip of trips) {
+      for (const trip of tripsToProcess) {
         const departureCoords =
           trip.departure?.lat && trip.departure?.lng
             ? { latitude: trip.departure.lat, longitude: trip.departure.lng }
@@ -128,47 +140,78 @@ export default function MapScreen() {
         });
       }
 
-      // Charger les itinéraires en parallèle (mais avec un délai pour éviter trop de requêtes simultanées)
-      for (const { tripId, start, end } of tripsToLoad) {
-        const cacheKey = `${tripId}-route`;
+      // Limiter le nombre de requêtes simultanées (max 5 à la fois)
+      const maxConcurrent = 5;
+      for (let i = 0; i < tripsToLoad.length; i += maxConcurrent) {
+        const batch = tripsToLoad.slice(i, i + maxConcurrent);
         
-        setLoadingRoutes(prev => new Set(prev).add(cacheKey));
+        await Promise.all(
+          batch.map(async ({ tripId, start, end }) => {
+            const cacheKey = `${tripId}-route`;
+            
+            setLoadingRoutes(prev => new Set(prev).add(cacheKey));
 
-        try {
-          const route = await getCachedRouteCoordinates(start, end);
-          
-          if (route && route.length > 0) {
-            setRouteCoordinatesCache(prev => {
-              const newCache = new Map(prev);
-              newCache.set(cacheKey, route);
-              return newCache;
-            });
-          } else {
-            // Fallback sur ligne droite si l'API échoue
-            setRouteCoordinatesCache(prev => {
-              const newCache = new Map(prev);
-              newCache.set(cacheKey, [start, end]);
-              return newCache;
-            });
-          }
-        } catch (error) {
-          console.warn(`Error loading route for trip ${tripId}:`, error);
-          // Fallback sur ligne droite
-          setRouteCoordinatesCache(prev => {
-            const newCache = new Map(prev);
-            newCache.set(cacheKey, [start, end]);
-            return newCache;
-          });
-        } finally {
-          setLoadingRoutes(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(cacheKey);
-            return newSet;
-          });
+            try {
+              const route = await getCachedRouteCoordinates(start, end);
+              
+              if (route && route.length > 0) {
+                setRouteCoordinatesCache(prev => {
+                  const newCache = new Map(prev);
+                  // Limiter la taille du cache
+                  if (newCache.size >= MAX_CACHE_SIZE) {
+                    // Supprimer le premier élément (FIFO)
+                    const firstKey = newCache.keys().next().value;
+                    if (firstKey) {
+                      newCache.delete(firstKey);
+                    }
+                  }
+                  newCache.set(cacheKey, route);
+                  return newCache;
+                });
+              } else {
+                // Fallback sur ligne droite si l'API échoue
+                setRouteCoordinatesCache(prev => {
+                  const newCache = new Map(prev);
+                  // Limiter la taille du cache
+                  if (newCache.size >= MAX_CACHE_SIZE) {
+                    const firstKey = newCache.keys().next().value;
+                    if (firstKey) {
+                      newCache.delete(firstKey);
+                    }
+                  }
+                  newCache.set(cacheKey, [start, end]);
+                  return newCache;
+                });
+              }
+            } catch (error) {
+              console.warn(`Error loading route for trip ${tripId}:`, error);
+              // Fallback sur ligne droite
+              setRouteCoordinatesCache(prev => {
+                const newCache = new Map(prev);
+                // Limiter la taille du cache
+                if (newCache.size >= MAX_CACHE_SIZE) {
+                  const firstKey = newCache.keys().next().value;
+                  if (firstKey) {
+                    newCache.delete(firstKey);
+                  }
+                }
+                newCache.set(cacheKey, [start, end]);
+                return newCache;
+              });
+            } finally {
+              setLoadingRoutes(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(cacheKey);
+                return newSet;
+              });
+            }
+          })
+        );
+
+        // Délai entre les batches pour éviter de surcharger l'API et la mémoire
+        if (i + maxConcurrent < tripsToLoad.length) {
+          await new Promise(resolve => setTimeout(resolve, 200));
         }
-
-        // Petit délai entre les requêtes pour éviter de surcharger l'API
-        await new Promise(resolve => setTimeout(resolve, 100));
       }
     };
 
@@ -187,14 +230,80 @@ export default function MapScreen() {
       return;
     }
 
-    if (userCoords) {
-      cameraRef.current?.setCamera({
-        centerCoordinate: [userCoords.longitude, userCoords.latitude],
-        zoomLevel: 14,
-        animationDuration: 1000,
-      });
+    if (userCoords && mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: userCoords.latitude,
+        longitude: userCoords.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 1000);
     }
   };
+
+  // Fonction pour ajuster la carte pour afficher tous les trajets
+  const fitMapToTrips = useCallback((tripsToFit: typeof trips) => {
+    if (!mapRef.current || tripsToFit.length === 0) {
+      return;
+    }
+
+    // Collecter toutes les coordonnées (départ et arrivée)
+    const coordinates: LatLng[] = [];
+    
+    tripsToFit.forEach((trip) => {
+      if (trip.departure?.lat && trip.departure?.lng) {
+        coordinates.push({
+          latitude: trip.departure.lat,
+          longitude: trip.departure.lng,
+        });
+      }
+      if (trip.arrival?.lat && trip.arrival?.lng) {
+        coordinates.push({
+          latitude: trip.arrival.lat,
+          longitude: trip.arrival.lng,
+        });
+      }
+    });
+
+    if (coordinates.length === 0) {
+      return;
+    }
+
+    // Calculer les bounds
+    const latitudes = coordinates.map((coord) => coord.latitude);
+    const longitudes = coordinates.map((coord) => coord.longitude);
+    
+    const minLat = Math.min(...latitudes);
+    const maxLat = Math.max(...latitudes);
+    const minLng = Math.min(...longitudes);
+    const maxLng = Math.max(...longitudes);
+
+    // Calculer le centre et les deltas avec padding
+    const latDelta = maxLat - minLat;
+    const lngDelta = maxLng - minLng;
+    
+    // Ajouter un padding de 20% autour des bounds
+    const padding = 0.2;
+    const paddedLatDelta = latDelta * (1 + padding * 2) || 0.01;
+    const paddedLngDelta = lngDelta * (1 + padding * 2) || 0.01;
+
+    // S'assurer que les deltas ne sont pas trop petits
+    const finalLatDelta = Math.max(paddedLatDelta, 0.01);
+    const finalLngDelta = Math.max(paddedLngDelta, 0.01);
+
+    const centerLat = (minLat + maxLat) / 2;
+    const centerLng = (minLng + maxLng) / 2;
+
+    // Animer vers la nouvelle région
+    mapRef.current.animateToRegion(
+      {
+        latitude: centerLat,
+        longitude: centerLng,
+        latitudeDelta: finalLatDelta,
+        longitudeDelta: finalLngDelta,
+      },
+      1000
+    );
+  }, []);
 
   useEffect(() => {
     setSearch(activeSearchQuery);
@@ -206,29 +315,42 @@ export default function MapScreen() {
     }
   }, [shouldShowMapGuide]);
 
+  // Initialiser mapCenter avec initialRegion
+  useEffect(() => {
+    if (initialRegion && !mapCenter) {
+      setMapCenter([initialRegion.longitude, initialRegion.latitude]);
+    }
+  }, [initialRegion, mapCenter]);
+
   const dismissMapGuide = () => {
     setMapGuideVisible(false);
     completeMapGuide();
   };
 
-  const initialCamera = useMemo(() => {
+  const initialRegion = useMemo(() => {
     if (userCoords) {
       return {
-        centerCoordinate: [userCoords.longitude, userCoords.latitude] as [number, number],
-        zoomLevel: 12,
+        latitude: userCoords.latitude,
+        longitude: userCoords.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
       };
     }
 
     if (trips.length > 0 && trips[0].departure?.lat && trips[0].departure?.lng) {
       return {
-        centerCoordinate: [trips[0].departure.lng, trips[0].departure.lat] as [number, number],
-        zoomLevel: 10,
+        latitude: trips[0].departure.lat,
+        longitude: trips[0].departure.lng,
+        latitudeDelta: 0.1,
+        longitudeDelta: 0.1,
       };
     }
 
     return {
-      centerCoordinate: [15.266293, -4.441931] as [number, number],
-      zoomLevel: 9,
+      latitude: -4.441931,
+      longitude: 15.266293,
+      latitudeDelta: 0.2,
+      longitudeDelta: 0.2,
     };
   }, [userCoords, trips]);
 
@@ -250,45 +372,27 @@ export default function MapScreen() {
     const lineCoordinates = coordinatesToUse.map(coord => [coord.longitude, coord.latitude] as [number, number]);
 
     return (
-      <Mapbox.ShapeSource
+      <Polyline
         key={`${tripId}-polyline`}
-        id={`${tripId}-route`}
-        shape={{
-          type: 'Feature',
-          properties: {},
-          geometry: {
-            type: 'LineString',
-            coordinates: lineCoordinates,
-          },
-        }}
-      >
-        <Mapbox.LineLayer
-          id={`${tripId}-route-line`}
-          style={{
-            lineColor: color,
-            lineWidth: 3,
-            lineCap: 'round',
-            lineJoin: 'round',
-            // Ligne pointillée si c'est une ligne droite temporaire (pas encore chargé ou échec)
-            ...(isLoading || !cachedRoute || cachedRoute.length === 2 ? { 
-              lineDasharray: [2, 2],
-              lineOpacity: 0.6 
-            } : {}),
-          }}
-        />
-      </Mapbox.ShapeSource>
+        coordinates={coordinatesToUse}
+        strokeColor={color}
+        strokeWidth={3}
+        lineDashPattern={isLoading || !cachedRoute || cachedRoute.length === 2 ? [2, 2] : undefined}
+        lineCap="round"
+        lineJoin="round"
+      />
     );
   };
 
   // Recherche avec suggestions Mapbox en temps réel
   const searchMapboxSuggestions = useCallback(async (query: string) => {
     if (!query.trim() || query.trim().length < 2) {
-      setMapboxSuggestions([]);
+      setGoogleMapsSuggestions([]);
       return;
     }
 
     try {
-      setMapboxLoading(true);
+      setGoogleMapsLoading(true);
       // Valider les coordonnées de proximité avant de les utiliser
       let proximity: { longitude: number; latitude: number } | undefined = undefined;
       
@@ -312,13 +416,13 @@ export default function MapScreen() {
         proximity = { longitude: mapCenter[0], latitude: mapCenter[1] };
       }
       
-      const suggestions = await searchMapboxPlaces(query, proximity, 5);
-      setMapboxSuggestions(suggestions);
+      const suggestions = await searchGoogleMapsPlaces(query, proximity, 5);
+      setGoogleMapsSuggestions(suggestions);
     } catch (error) {
       // Les erreurs sont déjà gérées dans searchMapboxPlaces
-      setMapboxSuggestions([]);
+      setGoogleMapsSuggestions([]);
     } finally {
-      setMapboxLoading(false);
+      setGoogleMapsLoading(false);
     }
   }, [userCoords, mapCenter]);
 
@@ -333,7 +437,7 @@ export default function MapScreen() {
         searchMapboxSuggestions(search);
       }, 300);
     } else {
-      setMapboxSuggestions([]);
+      setGoogleMapsSuggestions([]);
     }
 
     return () => {
@@ -344,22 +448,26 @@ export default function MapScreen() {
   }, [search, searchMapboxSuggestions]);
 
   const handleSearchChange = (value: string) => {
-    setSearch(value);
+    try {
+      setSearch(value);
+    } catch (error) {
+      console.error('Error updating search:', error);
+    }
   };
 
-  const handleMapboxSuggestionPress = async (suggestion: MapboxSearchSuggestion) => {
+  const handleGoogleMapsSuggestionPress = async (suggestion: GoogleMapsSearchSuggestion) => {
     try {
-      setMapboxLoading(true);
+      setGoogleMapsLoading(true);
       
       // Récupérer les détails complets du lieu pour obtenir l'adresse complète
-      const placeDetails = await getMapboxPlaceDetails(suggestion.id);
+      const placeDetails = await getGoogleMapsPlaceDetails(suggestion.id);
       
       // Utiliser l'adresse complète si disponible, sinon utiliser le nom
       const addressToUse = placeDetails?.fullAddress || suggestion.fullAddress || suggestion.name;
       const displayName = placeDetails?.name || suggestion.name;
       
       setSearch(displayName);
-      setMapboxSuggestions([]);
+      setGoogleMapsSuggestions([]);
       
       // Appliquer la recherche avec l'adresse complète pour une meilleure précision
       dispatch(setSearchQuery(addressToUse));
@@ -367,6 +475,12 @@ export default function MapScreen() {
       triggerTripSearch(params).then((result) => {
         if (result.data) {
           dispatch(setTrips(result.data));
+          // Ajuster la carte pour afficher tous les trajets trouvés
+          if (result.data.length > 0) {
+            setTimeout(() => {
+              fitMapToTrips(result.data);
+            }, 300);
+          }
         }
       }).catch((error: any) => {
         const message =
@@ -382,12 +496,18 @@ export default function MapScreen() {
       // Fallback: utiliser les données de la suggestion directement
       const addressToUse = suggestion.fullAddress || suggestion.name;
       setSearch(suggestion.name);
-      setMapboxSuggestions([]);
+      setGoogleMapsSuggestions([]);
       dispatch(setSearchQuery(addressToUse));
       const params = buildSearchParams(addressToUse);
       triggerTripSearch(params).then((result) => {
         if (result.data) {
           dispatch(setTrips(result.data));
+          // Ajuster la carte pour afficher tous les trajets trouvés
+          if (result.data.length > 0) {
+            setTimeout(() => {
+              fitMapToTrips(result.data);
+            }, 300);
+          }
         }
       }).catch((error: any) => {
         const message =
@@ -399,7 +519,7 @@ export default function MapScreen() {
         });
       });
     } finally {
-      setMapboxLoading(false);
+      setGoogleMapsLoading(false);
     }
   };
 
@@ -428,6 +548,13 @@ export default function MapScreen() {
       const params = buildSearchParams(trimmedQuery);
       const results = await triggerTripSearch(params).unwrap();
       dispatch(setTrips(results));
+      
+      // Ajuster la carte pour afficher tous les trajets trouvés
+      if (results.length > 0) {
+        setTimeout(() => {
+          fitMapToTrips(results);
+        }, 300);
+      }
     } catch (error: any) {
       const message =
         error?.data?.message ?? error?.error ?? "Impossible d'appliquer le filtre pour le moment.";
@@ -497,32 +624,20 @@ export default function MapScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Mapbox.MapView
+      <MapView
+        ref={mapRef}
+        provider={PROVIDER_GOOGLE}
         style={styles.map}
-        styleURL={Mapbox.StyleURL.Street}
-        compassEnabled={false}
-        onCameraChanged={(state) => {
-          const coords = getCoordinates(state.properties.center);
-          if (coords) {
-            setMapCenter(coords);
-          }
+        initialRegion={initialRegion}
+        showsUserLocation={!!userCoords}
+        showsCompass={false}
+        onRegionChange={(region) => {
+          setMapRegion(region);
+          setMapCenter([region.longitude, region.latitude]);
           setIsMapMoving(true);
         }}
-        onMapIdle={() => setIsMapMoving(false)}
+        onRegionChangeComplete={() => setIsMapMoving(false)}
       >
-        <Mapbox.Camera
-          ref={cameraRef}
-          defaultSettings={{
-            centerCoordinate: initialCamera.centerCoordinate,
-            zoomLevel: initialCamera.zoomLevel,
-          }}
-          animationMode="flyTo"
-          animationDuration={0}
-        />
-
-        {userCoords && (
-          <Mapbox.UserLocation visible={true} />
-        )}
 
         {trips.map((trip) => {
           const departureCoords =
@@ -554,9 +669,8 @@ export default function MapScreen() {
           return (
             <React.Fragment key={trip.id}>
               {departureCoords && (
-                <Mapbox.PointAnnotation
-                  id={`departure-${trip.id}`}
-                  coordinate={[departureCoords.longitude, departureCoords.latitude]}
+                <Marker
+                  coordinate={departureCoords}
                   anchor={{ x: 0.5, y: 1 }}
                 >
                   <TouchableOpacity
@@ -566,7 +680,11 @@ export default function MapScreen() {
                     <View style={styles.driverMarkerWrapper}>
                       <View style={styles.driverMarker}>
                         {trip.driverAvatar ? (
-                          <Image source={{ uri: trip.driverAvatar }} style={styles.driverMarkerImage} />
+                          <Image 
+                            source={{ uri: trip.driverAvatar }} 
+                            style={styles.driverMarkerImage}
+                            resizeMode="cover"
+                          />
                         ) : (
                           <Text style={styles.driverMarkerInitials}>{driverInitials}</Text>
                         )}
@@ -574,7 +692,7 @@ export default function MapScreen() {
                       <View style={styles.driverMarkerHalo} />
                     </View>
                   </TouchableOpacity>
-                  <Mapbox.Callout title={trip.driverName}>
+                  <Callout>
                     <TouchableOpacity
                       style={styles.calloutCard}
                       onPress={() => router.push(`/trip/${trip.id}`)}
@@ -604,13 +722,12 @@ export default function MapScreen() {
                         </View>
                       </View>
                     </TouchableOpacity>
-                  </Mapbox.Callout>
-                </Mapbox.PointAnnotation>
+                  </Callout>
+                </Marker>
               )}
               {arrivalCoords && (
-                <Mapbox.PointAnnotation
-                  id={`arrival-${trip.id}`}
-                  coordinate={[arrivalCoords.longitude, arrivalCoords.latitude]}
+                <Marker
+                  coordinate={arrivalCoords}
                 >
                   <View
                     style={[
@@ -620,8 +737,12 @@ export default function MapScreen() {
                   >
                     <Ionicons name="navigate" size={16} color={Colors.white} />
                   </View>
-                  <Mapbox.Callout title={`Arrivée: ${trip.arrival.name}`} />
-                </Mapbox.PointAnnotation>
+                  <Callout>
+                    <View>
+                      <Text style={{ fontWeight: 'bold' }}>Arrivée: {trip.arrival.name}</Text>
+                    </View>
+                  </Callout>
+                </Marker>
               )}
               {departureCoords &&
                 arrivalCoords &&
@@ -629,7 +750,7 @@ export default function MapScreen() {
             </React.Fragment>
           );
         })}
-      </Mapbox.MapView>
+      </MapView>
 
       {/* Center Pin for Drag-to-Search */}
       <View style={styles.centerPinContainer} pointerEvents="none">
@@ -652,21 +773,21 @@ export default function MapScreen() {
                 returnKeyType="search"
                 onSubmitEditing={applySearchQuery}
               />
-              {mapboxLoading && (
+              {googleMapsLoading && (
                 <ActivityIndicator size="small" color={Colors.primary} />
               )}
             </View>
 
             {/* Suggestions Mapbox */}
-            {mapboxSuggestions.length > 0 && (
+            {googleMapsSuggestions.length > 0 && (
               <View style={styles.suggestionsContainer}>
                 <FlatList
-                  data={mapboxSuggestions}
+                  data={googleMapsSuggestions}
                   keyExtractor={(item) => item.id}
                   renderItem={({ item }) => (
                     <TouchableOpacity
                       style={styles.suggestionRow}
-                      onPress={() => handleMapboxSuggestionPress(item)}
+                      onPress={() => handleGoogleMapsSuggestionPress(item)}
                     >
                       <Ionicons name="location" size={16} color={Colors.primary} />
                       <View style={styles.suggestionContent}>
@@ -812,17 +933,26 @@ export default function MapScreen() {
           style={styles.searchHereButton}
           activeOpacity={0.8}
           onPress={async () => {
-            const sanitizedCoords = getCoordinates(mapCenter);
-            if (sanitizedCoords) {
+            if (mapCenter && mapRegion) {
               try {
-                // Uncommented to use radius from state
+                // Convertir les coordonnées en format attendu par l'API: [longitude, latitude]
+                const departureCoordinates: [number, number] = [
+                  mapRegion.longitude,
+                  mapRegion.latitude,
+                ];
+                
                 const results = await searchByCoordinates({
-                  departureCoordinates: sanitizedCoords,
+                  departureCoordinates,
                   departureRadiusKm: radiusKm,
-                  // We need to provide required fields for the payload even if we don't use them?
-                  // The interface makes arrivalCoordinates optional now, so we should be good.
                 }).unwrap();
                 dispatch(setTrips(results));
+
+                // Ajuster la carte pour afficher tous les trajets trouvés
+                if (results.length > 0) {
+                  setTimeout(() => {
+                    fitMapToTrips(results);
+                  }, 300);
+                }
 
                 showDialog({
                   variant: 'success',
@@ -910,7 +1040,11 @@ export default function MapScreen() {
                           )}
                           <View>
                             <Text style={styles.tripDriverName}>{trip.driverName}</Text>
-                            <Text style={styles.tripVehicle}>{trip.vehicleInfo}</Text>
+                            <Text style={styles.tripVehicle}>
+                              {trip.vehicle
+                                ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
+                                : trip.vehicleInfo}
+                            </Text>
                           </View>
                         </View>
                         {trip.price === 0 ? (

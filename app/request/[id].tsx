@@ -33,16 +33,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import type { DriverOffer, Vehicle } from '@/types';
-import Mapbox from '@rnmapbox/maps';
-import Constants from 'expo-constants';
-
-// Initialize Mapbox with access token from config
-const mapboxToken =
-  Constants.expoConfig?.extra?.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ||
-  process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
-if (mapboxToken) {
-  Mapbox.setAccessToken(mapboxToken);
-}
+import MapView, { Marker, Polyline, Callout, PROVIDER_GOOGLE } from 'react-native-maps';
 
 export default function TripRequestDetailsScreen() {
   const router = useRouter();
@@ -556,78 +547,67 @@ export default function TripRequestDetailsScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Carte du trajet</Text>
             <View style={styles.mapCard}>
-              <Mapbox.MapView
+              <MapView
+                provider={PROVIDER_GOOGLE}
                 style={styles.mapView}
-                styleURL={Mapbox.StyleURL.Street}
                 scrollEnabled={false}
                 zoomEnabled={false}
                 pitchEnabled={false}
                 rotateEnabled={false}
+                initialRegion={{
+                  latitude: (tripRequest.departure.lat + tripRequest.arrival.lat) / 2,
+                  longitude: (tripRequest.departure.lng + tripRequest.arrival.lng) / 2,
+                  latitudeDelta: Math.abs(tripRequest.departure.lat - tripRequest.arrival.lat) * 2.5 || 0.1,
+                  longitudeDelta: Math.abs(tripRequest.departure.lng - tripRequest.arrival.lng) * 2.5 || 0.1,
+                }}
               >
-                <Mapbox.Camera
-                  defaultSettings={{
-                    centerCoordinate: [
-                      (tripRequest.departure.lng + tripRequest.arrival.lng) / 2,
-                      (tripRequest.departure.lat + tripRequest.arrival.lat) / 2,
-                    ],
-                    zoomLevel: 11,
-                  }}
-                  animationMode="none"
+                {/* Ligne directe entre départ et arrivée */}
+                <Polyline
+                  coordinates={[
+                    { latitude: tripRequest.departure.lat, longitude: tripRequest.departure.lng },
+                    { latitude: tripRequest.arrival.lat, longitude: tripRequest.arrival.lng },
+                  ]}
+                  strokeColor={Colors.primary}
+                  strokeWidth={4}
+                  lineDashPattern={[2, 2]}
                 />
 
-                {/* Ligne directe entre départ et arrivée */}
-                <Mapbox.ShapeSource
-                  id="route-request"
-                  shape={{
-                    type: 'Feature',
-                    properties: {},
-                    geometry: {
-                      type: 'LineString',
-                      coordinates: [
-                        [tripRequest.departure.lng, tripRequest.departure.lat],
-                        [tripRequest.arrival.lng, tripRequest.arrival.lat],
-                      ],
-                    },
-                  }}
-                >
-                  <Mapbox.LineLayer
-                    id="route-request-line"
-                    style={{
-                      lineColor: Colors.primary,
-                      lineWidth: 4,
-                      lineCap: 'round',
-                      lineJoin: 'round',
-                      lineDasharray: [2, 2],
-                    }}
-                  />
-                </Mapbox.ShapeSource>
-
                 {/* Marqueur de départ */}
-                <Mapbox.PointAnnotation
-                  id="departure-request"
-                  coordinate={[tripRequest.departure.lng, tripRequest.departure.lat]}
+                <Marker
+                  coordinate={{
+                    latitude: tripRequest.departure.lat,
+                    longitude: tripRequest.departure.lng,
+                  }}
                 >
                   <View style={styles.markerStartCircle}>
                     <Ionicons name="location" size={18} color={Colors.white} />
                   </View>
-                  <Mapbox.Callout title="Départ">
-                    <Text>{tripRequest.departure.name}</Text>
-                  </Mapbox.Callout>
-                </Mapbox.PointAnnotation>
+                  <Callout>
+                    <View>
+                      <Text style={{ fontWeight: 'bold' }}>Départ</Text>
+                      <Text>{tripRequest.departure.name}</Text>
+                    </View>
+                  </Callout>
+                </Marker>
 
                 {/* Marqueur d'arrivée */}
-                <Mapbox.PointAnnotation
-                  id="arrival-request"
-                  coordinate={[tripRequest.arrival.lng, tripRequest.arrival.lat]}
+                <Marker
+                  coordinate={{
+                    latitude: tripRequest.arrival.lat,
+                    longitude: tripRequest.arrival.lng,
+                  }}
                 >
                   <View style={styles.markerEndCircle}>
                     <Ionicons name="navigate" size={18} color={Colors.white} />
                   </View>
-                  <Mapbox.Callout title="Destination">
-                    <Text>{tripRequest.arrival.name}</Text>
-                  </Mapbox.Callout>
-                </Mapbox.PointAnnotation>
-              </Mapbox.MapView>
+                  <Callout>
+                    <View>
+                      <Text style={{ fontWeight: 'bold' }}>Destination</Text>
+                      <Text>{tripRequest.arrival.name}</Text>
+                    </View>
+                  </Callout>
+                </Marker>
+              </MapView>
             </View>
           </View>
         )}

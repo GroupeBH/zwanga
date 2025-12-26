@@ -453,6 +453,16 @@ export default function TripsScreen() {
                         <View style={styles.driverMeta}>
                           <Ionicons name="star" size={14} color={Colors.secondary} />
                           <Text style={styles.driverRating}>{trip.driverRating}</Text>
+                          {trip.vehicle || trip.vehicleInfo ? (
+                            <>
+                              <View style={styles.dot} />
+                              <Text style={styles.vehicleInfo}>
+                                {trip.vehicle
+                                  ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
+                                  : trip.vehicleInfo}
+                              </Text>
+                            </>
+                          ) : null}
                         </View>
                       </View>
                     </View>

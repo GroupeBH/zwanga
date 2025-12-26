@@ -2,7 +2,8 @@
  * Utility functions for route calculation and display
  */
 
-import Constants from 'expo-constants';
+import { store } from '@/store';
+import { googleMapsApi, TravelMode } from '@/store/api/googleMapsApi';
 
 type LatLng = { latitude: number; longitude: number };
 
@@ -13,8 +14,46 @@ export interface RouteInfo {
 }
 
 /**
- * Get route coordinates between two points using Mapbox Directions API
- * Falls back to straight line if API fails or token is not configured
+ * Décode une polyline encodée de Google Maps
+ */
+function decodePolyline(encoded: string): [number, number][] {
+  const poly: [number, number][] = [];
+  let index = 0;
+  const len = encoded.length;
+  let lat = 0;
+  let lng = 0;
+
+  while (index < len) {
+    let b: number;
+    let shift = 0;
+    let result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    const dlat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+    lat += dlat;
+
+    shift = 0;
+    result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    const dlng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
+    lng += dlng;
+
+    poly.push([lat * 1e-5, lng * 1e-5]);
+  }
+
+  return poly;
+}
+
+/**
+ * Get route coordinates between two points using Google Maps Directions API
+ * Falls back to straight line if API fails or key is not configured
  */
 export async function getRouteCoordinates(
   origin: LatLng,
@@ -25,8 +64,8 @@ export async function getRouteCoordinates(
 }
 
 /**
- * Get complete route information (coordinates, duration, distance) using Mapbox Directions API
- * Falls back to straight line if API fails or token is not configured
+ * Get complete route information (coordinates, duration, distance) using Google Maps Directions API
+ * Falls back to straight line if API fails or key is not configured
  */
 export async function getRouteInfo(
   origin: LatLng,
@@ -97,92 +136,26 @@ export async function getRouteInfo(
   }
 
   try {
-    // Get Mapbox access token from environment variables
-    const extra = Constants.expoConfig?.extra || {};
-    const accessToken = 
-      extra.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || 
-      process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
+    // Utiliser le backend pour obtenir les directions
+    const result = await store.dispatch(
+      googleMapsApi.endpoints.getDirections.initiate({
+        origin: {
+          lat: origin.latitude,
+          lng: origin.longitude,
+        },
+        destination: {
+          lat: destination.latitude,
+          lng: destination.longitude,
+        },
+        mode: TravelMode.DRIVING,
+        alternatives: false,
+      })
+    );
 
-    if (!accessToken) {
-      console.warn('Mapbox access token not configured. Using straight line.');
+    if (result.error || !result.data || !result.data.routes || result.data.routes.length === 0) {
+      console.warn('No route found from backend, using straight line:', result.error || result.data?.status);
       // Fallback: calculate approximate distance and duration
-      const distance = approximateDistanceKm * 1000; // Convert to meters
-      const estimatedDuration = (distance / 1000) * 60; // Rough estimate: 1km = 1 minute
-      return {
-        coordinates: [origin, destination],
-        duration: estimatedDuration,
-        distance: distance,
-      };
-    }
-
-    // Mapbox Directions API v5
-    // Format: [longitude, latitude] for coordinates
-    // Assurer que les coordonnées sont bien formatées
-    const originLng = Number(origin.longitude.toFixed(6));
-    const originLat = Number(origin.latitude.toFixed(6));
-    const destLng = Number(destination.longitude.toFixed(6));
-    const destLat = Number(destination.latitude.toFixed(6));
-
-    const coordinates = `${originLng},${originLat};${destLng},${destLat}`;
-    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordinates}?geometries=geojson&overview=full&access_token=${accessToken}`;
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error');
-      let errorMessage = '';
-      try {
-        const errorJson = JSON.parse(errorText);
-        errorMessage = errorJson.message || errorText;
-      } catch {
-        errorMessage = errorText;
-      }
-      
-      // Si l'erreur est due à la limite de distance, utiliser le calcul direct sans logger
-      if (errorMessage.includes('maximum distance limitation') || errorMessage.includes('exceeds maximum distance')) {
-        const distance = approximateDistanceKm * 1000;
-        const estimatedDuration = (distance / 1000) * 60;
-        return {
-          coordinates: [origin, destination],
-          duration: estimatedDuration,
-          distance: distance,
-        };
-      }
-      
-      // Pour les autres erreurs, logger uniquement si ce n'est pas une erreur 422
-      if (response.status !== 422) {
-        console.warn(`Mapbox Directions API failed: ${response.status} - ${errorMessage}`);
-      }
-      throw new Error(`Mapbox Directions API failed: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    if (data.code === 'Ok' && data.routes?.[0]) {
-      const route = data.routes[0];
-      // Mapbox returns coordinates as [longitude, latitude] arrays
-      const coordinates = route.geometry?.coordinates as [number, number][] || [];
-      const routeCoordinates = coordinates.map(([lng, lat]) => ({
-        latitude: lat,
-        longitude: lng,
-      }));
-
-      return {
-        coordinates: routeCoordinates.length > 0 ? routeCoordinates : [origin, destination],
-        duration: route.duration || 0, // Duration in seconds
-        distance: route.distance || 0, // Distance in meters
-      };
-    }
-
-    if (data.code === 'NoRoute') {
-      console.warn('No route found between points. Using straight line.');
-      // Fallback: calculate approximate distance and duration
-      const distance = calculateDistance(origin, destination) * 1000;
+      const distance = approximateDistanceKm * 1000;
       const estimatedDuration = (distance / 1000) * 60;
       return {
         coordinates: [origin, destination],
@@ -191,16 +164,28 @@ export async function getRouteInfo(
       };
     }
 
-    throw new Error(`Mapbox Directions API error: ${data.code} - ${data.message || 'Unknown error'}`);
+    const route = result.data.routes[0];
+    const leg = route.legs?.[0];
+    
+    // Décoder la polyline encodée de Google Maps
+    let routeCoordinates: LatLng[] = [];
+    if (route.overviewPolyline) {
+      const decoded = decodePolyline(route.overviewPolyline);
+      routeCoordinates = decoded.map(([lat, lng]) => ({
+        latitude: lat,
+        longitude: lng,
+      }));
+    }
+
+    return {
+      coordinates: routeCoordinates.length > 0 ? routeCoordinates : [origin, destination],
+      duration: leg?.duration || 0, // Duration in seconds
+      distance: leg?.distance || 0, // Distance in meters
+    };
   } catch (error: any) {
-    // Ne logger que les erreurs non-422 (unprocessable entity) et non liées à la distance pour éviter le spam
-    // Les erreurs 422 sont généralement dues à des coordonnées invalides ou distance trop longue, ce qui est déjà géré
     const errorMessage = error?.message || '';
-    if (errorMessage && 
-        !errorMessage.includes('422') && 
-        !errorMessage.includes('maximum distance limitation') &&
-        !errorMessage.includes('exceeds maximum distance')) {
-      console.warn('Failed to fetch route, using straight line:', errorMessage);
+    if (errorMessage) {
+      console.warn('Failed to fetch route from backend, using straight line:', errorMessage);
     }
     // Fallback: calculate approximate distance and duration
     const distance = approximateDistanceKm * 1000;
@@ -228,5 +213,199 @@ export function calculateDistance(point1: LatLng, point2: LatLng): number {
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+}
+
+/**
+ * Calculate distance between a point and a line segment in kilometers
+ * Uses the perpendicular distance formula
+ */
+function pointToLineDistance(point: LatLng, lineStart: LatLng, lineEnd: LatLng): number {
+  const A = point.latitude - lineStart.latitude;
+  const B = point.longitude - lineStart.longitude;
+  const C = lineEnd.latitude - lineStart.latitude;
+  const D = lineEnd.longitude - lineStart.longitude;
+
+  const dot = A * C + B * D;
+  const lenSq = C * C + D * D;
+  let param = -1;
+
+  if (lenSq !== 0) {
+    param = dot / lenSq;
+  }
+
+  let xx: number;
+  let yy: number;
+
+  if (param < 0) {
+    xx = lineStart.latitude;
+    yy = lineStart.longitude;
+  } else if (param > 1) {
+    xx = lineEnd.latitude;
+    yy = lineEnd.longitude;
+  } else {
+    xx = lineStart.latitude + param * C;
+    yy = lineStart.longitude + param * D;
+  }
+
+  const dx = point.latitude - xx;
+  const dy = point.longitude - yy;
+  return calculateDistance(point, { latitude: xx, longitude: yy });
+}
+
+/**
+ * Check if a point is on a route (within a certain distance threshold)
+ * @param point The point to check
+ * @param routeCoordinates Array of coordinates representing the route
+ * @param maxDistanceKm Maximum distance in kilometers from the route (default: 5km)
+ * @returns true if the point is on the route, false otherwise
+ */
+export function isPointOnRoute(
+  point: LatLng,
+  routeCoordinates: LatLng[],
+  maxDistanceKm: number = 5
+): boolean {
+  if (!routeCoordinates || routeCoordinates.length < 2) {
+    return false;
+  }
+
+  // Check distance to each segment of the route
+  for (let i = 0; i < routeCoordinates.length - 1; i++) {
+    const segmentStart = routeCoordinates[i];
+    const segmentEnd = routeCoordinates[i + 1];
+    
+    const distance = pointToLineDistance(point, segmentStart, segmentEnd);
+    
+    if (distance <= maxDistanceKm) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Find the closest point on a route to a given point
+ * @param point The point to find the closest route point for
+ * @param routeCoordinates Array of coordinates representing the route
+ * @returns The index of the closest segment and the closest point on that segment, or null if route is invalid
+ */
+function findClosestPointOnRoute(
+  point: LatLng,
+  routeCoordinates: LatLng[]
+): { segmentIndex: number; closestPoint: LatLng; distance: number } | null {
+  if (!routeCoordinates || routeCoordinates.length < 2) {
+    return null;
+  }
+
+  let minDistance = Infinity;
+  let closestSegmentIndex = 0;
+  let closestPoint: LatLng = routeCoordinates[0];
+
+  for (let i = 0; i < routeCoordinates.length - 1; i++) {
+    const segmentStart = routeCoordinates[i];
+    const segmentEnd = routeCoordinates[i + 1];
+    
+    const distance = pointToLineDistance(point, segmentStart, segmentEnd);
+    
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestSegmentIndex = i;
+      
+      // Calculate the closest point on the segment
+      const A = point.latitude - segmentStart.latitude;
+      const B = point.longitude - segmentStart.longitude;
+      const C = segmentEnd.latitude - segmentStart.latitude;
+      const D = segmentEnd.longitude - segmentStart.longitude;
+      
+      const dot = A * C + B * D;
+      const lenSq = C * C + D * D;
+      let param = lenSq !== 0 ? dot / lenSq : 0;
+      
+      // Clamp param to [0, 1]
+      param = Math.max(0, Math.min(1, param));
+      
+      closestPoint = {
+        latitude: segmentStart.latitude + param * C,
+        longitude: segmentStart.longitude + param * D,
+      };
+    }
+  }
+
+  return {
+    segmentIndex: closestSegmentIndex,
+    closestPoint,
+    distance: minDistance,
+  };
+}
+
+/**
+ * Split route coordinates into traveled and remaining portions based on current position
+ * @param currentPosition Current position of the driver
+ * @param routeCoordinates Full route coordinates
+ * @returns Object with traveledCoordinates and remainingCoordinates arrays
+ */
+export function splitRouteByProgress(
+  currentPosition: LatLng | null,
+  routeCoordinates: LatLng[]
+): { traveledCoordinates: LatLng[]; remainingCoordinates: LatLng[] } {
+  if (!routeCoordinates || routeCoordinates.length < 2) {
+    return {
+      traveledCoordinates: [],
+      remainingCoordinates: routeCoordinates || [],
+    };
+  }
+
+  // If no current position, return empty traveled and full remaining
+  if (!currentPosition) {
+    return {
+      traveledCoordinates: [],
+      remainingCoordinates: routeCoordinates,
+    };
+  }
+
+  const closest = findClosestPointOnRoute(currentPosition, routeCoordinates);
+  
+  if (!closest) {
+    return {
+      traveledCoordinates: [],
+      remainingCoordinates: routeCoordinates,
+    };
+  }
+
+  // If the closest point is at the start, return empty traveled
+  if (closest.segmentIndex === 0 && closest.distance > 0.1) {
+    // Check if we're actually before the start
+    const startDistance = calculateDistance(currentPosition, routeCoordinates[0]);
+    if (startDistance > 0.1) {
+      return {
+        traveledCoordinates: [],
+        remainingCoordinates: routeCoordinates,
+      };
+    }
+  }
+
+  // Build traveled coordinates: from start to closest point
+  const traveledCoordinates: LatLng[] = [];
+  
+  // Add all coordinates up to the segment
+  for (let i = 0; i <= closest.segmentIndex; i++) {
+    traveledCoordinates.push(routeCoordinates[i]);
+  }
+  
+  // Add the closest point on the current segment
+  traveledCoordinates.push(closest.closestPoint);
+
+  // Build remaining coordinates: from closest point to end
+  const remainingCoordinates: LatLng[] = [closest.closestPoint];
+  
+  // Add all coordinates after the segment
+  for (let i = closest.segmentIndex + 1; i < routeCoordinates.length; i++) {
+    remainingCoordinates.push(routeCoordinates[i]);
+  }
+
+  return {
+    traveledCoordinates,
+    remainingCoordinates,
+  };
 }
 

@@ -159,10 +159,13 @@ export const selectCompletedTrips = createSelector(
   (trips) => trips.filter(trip => trip.status === 'completed')
 );
 
-// Trips disponibles (avec places disponibles)
+// Trips disponibles (avec places disponibles) - inclut les trajets upcoming et ongoing
 export const selectAvailableTrips = createSelector(
   [selectTrips],
-  (trips) => trips.filter(trip => trip.availableSeats > 0 && trip.status === 'upcoming')
+  (trips) => trips.filter(trip => 
+    trip.availableSeats > 0 && 
+    (trip.status === 'upcoming' || trip.status === 'ongoing')
+  )
 );
 
 // Trip par ID

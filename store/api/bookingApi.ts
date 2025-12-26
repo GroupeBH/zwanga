@@ -25,6 +25,16 @@ type ServerBooking = {
   updatedAt: string;
   passenger?: ServerUser | null;
   trip?: ServerTrip | null;
+  passengerDestination?: string | null;
+  passengerDestinationCoordinates?: { latitude: number; longitude: number } | null;
+  pickedUp?: boolean;
+  pickedUpAt?: string | null;
+  pickedUpConfirmedByPassenger?: boolean;
+  pickedUpConfirmedAt?: string | null;
+  droppedOff?: boolean;
+  droppedOffAt?: string | null;
+  droppedOffConfirmedByPassenger?: boolean;
+  droppedOffConfirmedAt?: string | null;
 };
 
 const formatPassengerName = (passenger?: ServerUser | null) => {
@@ -50,13 +60,31 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
   createdAt: booking.createdAt,
   updatedAt: booking.updatedAt,
   trip: booking.trip ? mapServerTripToClient(booking.trip) : undefined,
+  passengerDestination: booking.passengerDestination ?? undefined,
+  passengerDestinationCoordinates: booking.passengerDestinationCoordinates ?? undefined,
+  pickedUp: booking.pickedUp ?? false,
+  pickedUpAt: booking.pickedUpAt ?? undefined,
+  pickedUpConfirmedByPassenger: booking.pickedUpConfirmedByPassenger ?? false,
+  pickedUpConfirmedAt: booking.pickedUpConfirmedAt ?? undefined,
+  droppedOff: booking.droppedOff ?? false,
+  droppedOffAt: booking.droppedOffAt ?? undefined,
+  droppedOffConfirmedByPassenger: booking.droppedOffConfirmedByPassenger ?? false,
+  droppedOffConfirmedAt: booking.droppedOffConfirmedAt ?? undefined,
 });
 
 export const bookingApi = baseApi.injectEndpoints({
   overrideExisting: true,
   endpoints: (builder: BaseEndpointBuilder) => ({
-    createBooking: builder.mutation<Booking, { tripId: string; numberOfSeats: number }>({
-      query: (body: { tripId: string; numberOfSeats: number }) => ({
+    createBooking: builder.mutation<
+      Booking,
+      {
+        tripId: string;
+        numberOfSeats: number;
+        passengerDestination?: string;
+        passengerDestinationCoordinates?: { latitude: number; longitude: number };
+      }
+    >({
+      query: (body) => ({
         url: '/bookings',
         method: 'POST',
         body,
@@ -163,6 +191,82 @@ export const bookingApi = baseApi.injectEndpoints({
         body: { emergencyContactIds },
       }),
     }),
+
+    // Confirmer la récupération du passager (par le driver)
+    confirmPickup: builder.mutation<Booking, string>({
+      query: (id: string) => ({
+        url: `/bookings/${id}/confirm-pickup`,
+        method: 'PUT',
+        body: {},
+      }),
+      transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
+      invalidatesTags: (result) =>
+        result
+          ? [
+              { type: 'Booking', id: result.id },
+              { type: 'Trip', id: result.tripId },
+              'Booking',
+              'Trip',
+            ]
+          : ['Booking', 'Trip'],
+    }),
+
+    // Confirmer la récupération du passager (par le passager)
+    confirmPickupByPassenger: builder.mutation<Booking, string>({
+      query: (id: string) => ({
+        url: `/bookings/${id}/confirm-pickup-passenger`,
+        method: 'PUT',
+        body: {},
+      }),
+      transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
+      invalidatesTags: (result) =>
+        result
+          ? [
+              { type: 'Booking', id: result.id },
+              { type: 'Trip', id: result.tripId },
+              'Booking',
+              'Trip',
+            ]
+          : ['Booking', 'Trip'],
+    }),
+
+    // Confirmer la dépose du passager (par le driver)
+    confirmDropoff: builder.mutation<Booking, string>({
+      query: (id: string) => ({
+        url: `/bookings/${id}/confirm-dropoff`,
+        method: 'PUT',
+        body: {},
+      }),
+      transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
+      invalidatesTags: (result) =>
+        result
+          ? [
+              { type: 'Booking', id: result.id },
+              { type: 'Trip', id: result.tripId },
+              'Booking',
+              'Trip',
+            ]
+          : ['Booking', 'Trip'],
+    }),
+
+    // Confirmer la dépose du passager (par le passager)
+    confirmDropoffByPassenger: builder.mutation<Booking, string>({
+      query: (id: string) => ({
+        url: `/bookings/${id}/confirm-dropoff-passenger`,
+        method: 'PUT',
+        body: {},
+      }),
+      transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
+      invalidatesTags: (result) =>
+        result
+          ? [
+              { type: 'Booking', id: result.id },
+              { type: 'Trip', id: result.tripId },
+              'Booking',
+              'Trip',
+            ]
+          : ['Booking', 'Trip'],
+    }),
   }),
 });
 
@@ -176,5 +280,9 @@ export const {
   useAcceptBookingMutation,
   useRejectBookingMutation,
   useGetWhatsAppNotificationDataMutation,
+  useConfirmPickupMutation,
+  useConfirmPickupByPassengerMutation,
+  useConfirmDropoffMutation,
+  useConfirmDropoffByPassengerMutation,
 } = bookingApi;
 
