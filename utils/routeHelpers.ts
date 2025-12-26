@@ -2,7 +2,8 @@
  * Utility functions for route calculation and display
  */
 
-import Constants from 'expo-constants';
+import { store } from '@/store';
+import { googleMapsApi, TravelMode } from '@/store/api/googleMapsApi';
 
 type LatLng = { latitude: number; longitude: number };
 
@@ -135,46 +136,24 @@ export async function getRouteInfo(
   }
 
   try {
-    // Get Google Maps API key from environment variables
-    const extra = Constants.expoConfig?.extra || {};
-    const apiKey = 
-      extra.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || 
-      process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+    // Utiliser le backend pour obtenir les directions
+    const result = await store.dispatch(
+      googleMapsApi.endpoints.getDirections.initiate({
+        origin: {
+          lat: origin.latitude,
+          lng: origin.longitude,
+        },
+        destination: {
+          lat: destination.latitude,
+          lng: destination.longitude,
+        },
+        mode: TravelMode.DRIVING,
+        alternatives: false,
+      })
+    );
 
-    if (!apiKey) {
-      console.warn('Google Maps API key not configured. Using straight line.');
-      // Fallback: calculate approximate distance and duration
-      const distance = approximateDistanceKm * 1000; // Convert to meters
-      const estimatedDuration = (distance / 1000) * 60; // Rough estimate: 1km = 1 minute
-      return {
-        coordinates: [origin, destination],
-        duration: estimatedDuration,
-        distance: distance,
-      };
-    }
-
-    // Google Maps Directions API
-    // Format: latitude,longitude for coordinates
-    const originStr = `${origin.latitude},${origin.longitude}`;
-    const destinationStr = `${destination.latitude},${destination.longitude}`;
-    
-    const url = `https://maps.googleapis.com/maps/api/directions/json?` +
-      `origin=${originStr}&` +
-      `destination=${destinationStr}&` +
-      `key=${apiKey}&` +
-      `mode=driving&` +
-      `alternatives=false`;
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error');
-      console.warn(`Google Maps Directions API failed: ${response.status} - ${errorText}`);
+    if (result.error || !result.data || !result.data.routes || result.data.routes.length === 0) {
+      console.warn('No route found from backend, using straight line:', result.error || result.data?.status);
       // Fallback: calculate approximate distance and duration
       const distance = approximateDistanceKm * 1000;
       const estimatedDuration = (distance / 1000) * 60;
@@ -185,54 +164,28 @@ export async function getRouteInfo(
       };
     }
 
-    const data = await response.json();
-
-    if (data.status === 'OK' && data.routes?.[0]) {
-      const route = data.routes[0];
-      const leg = route.legs?.[0];
-      
-      // Décoder la polyline encodée de Google Maps
-      let routeCoordinates: LatLng[] = [];
-      if (route.overview_polyline?.points) {
-        const decoded = decodePolyline(route.overview_polyline.points);
-        routeCoordinates = decoded.map(([lat, lng]) => ({
-          latitude: lat,
-          longitude: lng,
-        }));
-      }
-
-      return {
-        coordinates: routeCoordinates.length > 0 ? routeCoordinates : [origin, destination],
-        duration: leg?.duration?.value || 0, // Duration in seconds
-        distance: leg?.distance?.value || 0, // Distance in meters
-      };
+    const route = result.data.routes[0];
+    const leg = route.legs?.[0];
+    
+    // Décoder la polyline encodée de Google Maps
+    let routeCoordinates: LatLng[] = [];
+    if (route.overviewPolyline) {
+      const decoded = decodePolyline(route.overviewPolyline);
+      routeCoordinates = decoded.map(([lat, lng]) => ({
+        latitude: lat,
+        longitude: lng,
+      }));
     }
 
-    if (data.status === 'ZERO_RESULTS' || data.status === 'NOT_FOUND') {
-      console.warn('No route found between points. Using straight line.');
-      // Fallback: calculate approximate distance and duration
-      const distance = calculateDistance(origin, destination) * 1000;
-      const estimatedDuration = (distance / 1000) * 60;
-      return {
-        coordinates: [origin, destination],
-        duration: estimatedDuration,
-        distance: distance,
-      };
-    }
-
-    console.warn(`Google Maps Directions API error: ${data.status} - ${data.error_message || 'Unknown error'}`);
-    // Fallback: calculate approximate distance and duration
-    const distance = approximateDistanceKm * 1000;
-    const estimatedDuration = (distance / 1000) * 60;
     return {
-      coordinates: [origin, destination],
-      duration: estimatedDuration,
-      distance: distance,
+      coordinates: routeCoordinates.length > 0 ? routeCoordinates : [origin, destination],
+      duration: leg?.duration || 0, // Duration in seconds
+      distance: leg?.distance || 0, // Distance in meters
     };
   } catch (error: any) {
     const errorMessage = error?.message || '';
     if (errorMessage) {
-      console.warn('Failed to fetch route, using straight line:', errorMessage);
+      console.warn('Failed to fetch route from backend, using straight line:', errorMessage);
     }
     // Fallback: calculate approximate distance and duration
     const distance = approximateDistanceKm * 1000;
