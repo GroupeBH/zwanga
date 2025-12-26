@@ -75,9 +75,13 @@ module.exports = {
 
       // variables publiques
       EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
+      // En production (build EAS), forcer 'production' si NODE_ENV n'est pas défini
+      // Cela garantit que l'OTP sera toujours requis en production
       EXPO_PUBLIC_ENV:
         process.env.EXPO_PUBLIC_ENV ||
-        (process.env.NODE_ENV === 'production' ? 'production' : 'development'),
+        (process.env.NODE_ENV === 'production' ? 'production' : 
+         process.env.NODE_ENV === 'development' ? 'development' : 
+         'production'), // Par défaut, considérer comme production pour les builds
       // Google Maps API key
       EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
 
