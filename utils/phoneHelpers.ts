@@ -61,19 +61,44 @@ export async function openPhoneCall(
   phone: string,
   onError?: (message: string) => void
 ): Promise<void> {
+  if (!phone || phone.trim() === '') {
+    const errorMsg = 'Numéro de téléphone invalide.';
+    if (onError) {
+      onError(errorMsg);
+    }
+    return;
+  }
+
+  // Formater le numéro pour l'appel
   const phoneNumber = formatPhoneForCall(phone);
-  const url = `tel:${phoneNumber}`;
+  
+  // Pour tel:, on peut garder le + ou le retirer selon la plateforme
+  // Sur iOS et Android, tel: fonctionne avec ou sans +
+  // Mais pour être sûr, on retire les caractères spéciaux sauf les chiffres et le +
+  const cleanedNumber = phoneNumber.replace(/[^\d+]/g, '');
+  
+  // Construire l'URL tel: avec le numéro nettoyé
+  const url = `tel:${cleanedNumber}`;
   
   try {
+    // Vérifier si l'URL peut être ouverte
     const canOpen = await Linking.canOpenURL(url);
     if (canOpen) {
       await Linking.openURL(url);
     } else {
-      const errorMsg = 'Impossible d\'ouvrir l\'application d\'appel.';
-      if (onError) {
-        onError(errorMsg);
+      // Essayer avec le format sans +
+      const urlWithoutPlus = `tel:${cleanedNumber.replace(/^\+/, '')}`;
+      const canOpenWithoutPlus = await Linking.canOpenURL(urlWithoutPlus);
+      
+      if (canOpenWithoutPlus) {
+        await Linking.openURL(urlWithoutPlus);
       } else {
-        console.error(errorMsg);
+        const errorMsg = 'Impossible d\'ouvrir l\'application d\'appel. Vérifiez que votre appareil peut passer des appels.';
+        if (onError) {
+          onError(errorMsg);
+        } else {
+          console.error(errorMsg);
+        }
       }
     }
   } catch (error) {

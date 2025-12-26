@@ -13,6 +13,7 @@ import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
+import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
 import { getRouteInfo, type RouteInfo } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -99,6 +100,7 @@ export default function ManageTripScreen() {
 
   // console.log("this bookings", bookings);
 
+  const { showDialog } = useDialog();
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
@@ -111,6 +113,9 @@ export default function ManageTripScreen() {
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
   const [estimatedArrivalTime, setEstimatedArrivalTime] = useState<Date | null>(null);
   const [calculatedArrivalTime, setCalculatedArrivalTime] = useState<Date | null>(null);
+  const [contactModalVisible, setContactModalVisible] = useState(false);
+  const [selectedPassengerPhone, setSelectedPassengerPhone] = useState<string | null>(null);
+  const [selectedPassengerName, setSelectedPassengerName] = useState<string | null>(null);
 
   const refreshAll = () => {
     refetchTrip();
@@ -316,8 +321,6 @@ export default function ManageTripScreen() {
       setProcessingBookingId(null);
     }
   };
-
-  const { showDialog } = useDialog();
 
   const handleStartTrip = async () => {
     if (!trip) return;
@@ -785,6 +788,25 @@ export default function ManageTripScreen() {
                     ) : null}
                   </View>
 
+                  {/* Bouton d'appel pour les réservations acceptées */}
+                  {booking.status === 'accepted' && booking.passengerPhone && (
+                    <View style={styles.bookingActionsRow}>
+                      <TouchableOpacity
+                        style={[styles.bookingActionButton, styles.bookingActionCall]}
+                        onPress={() => {
+                          setSelectedPassengerPhone(booking.passengerPhone!);
+                          setSelectedPassengerName(booking.passengerName || 'le passager');
+                          setContactModalVisible(true);
+                        }}
+                      >
+                        <Ionicons name="call" size={18} color={Colors.success} />
+                        <Text style={[styles.bookingActionText, styles.bookingActionCallText]}>
+                          Appeler
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
                   {/* Actions pour les réservations acceptées pendant le trajet */}
                   {trip.status === 'ongoing' && booking.status === 'accepted' && (
                     <View style={styles.tripActionsContainer}>
@@ -985,6 +1007,95 @@ export default function ManageTripScreen() {
           </View>
         </Modal>
       )}
+
+      {/* Contact Modal pour les passagers */}
+      <Modal
+        visible={contactModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setContactModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.contactModalOverlay}
+          activeOpacity={1}
+          onPress={() => setContactModalVisible(false)}
+        >
+          <Animated.View entering={FadeInDown} style={styles.contactModalCard} onStartShouldSetResponder={() => true}>
+            <View style={styles.contactModalHeader}>
+              <View style={styles.contactModalIconWrapper}>
+                <View style={styles.contactModalIconBadge}>
+                  <Ionicons name="call" size={32} color={Colors.primary} />
+                </View>
+              </View>
+              <Text style={styles.contactModalTitle}>
+                Contacter {selectedPassengerName || 'le passager'}
+              </Text>
+              <Text style={styles.contactModalSubtitle}>
+                Choisissez comment contacter le passager
+              </Text>
+            </View>
+
+            <View style={styles.contactModalActions}>
+              <TouchableOpacity
+                style={[styles.contactModalButton, styles.contactModalButtonCall]}
+                onPress={async () => {
+                  setContactModalVisible(false);
+                  if (selectedPassengerPhone) {
+                    await openPhoneCall(selectedPassengerPhone, (errorMsg) => {
+                      showDialog({
+                        variant: 'danger',
+                        title: 'Erreur',
+                        message: errorMsg,
+                      });
+                    });
+                  }
+                }}
+              >
+                <View style={styles.contactModalButtonIcon}>
+                  <Ionicons name="call" size={24} color={Colors.success} />
+                </View>
+                <View style={styles.contactModalButtonContent}>
+                  <Text style={styles.contactModalButtonTitle}>Appeler</Text>
+                  <Text style={styles.contactModalButtonSubtitle}>Ouvrir l'application d'appel</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.contactModalButton, styles.contactModalButtonWhatsApp]}
+                onPress={async () => {
+                  setContactModalVisible(false);
+                  if (selectedPassengerPhone) {
+                    await openWhatsApp(selectedPassengerPhone, (errorMsg) => {
+                      showDialog({
+                        variant: 'danger',
+                        title: 'Erreur',
+                        message: errorMsg,
+                      });
+                    });
+                  }
+                }}
+              >
+                <View style={styles.contactModalButtonIcon}>
+                  <Ionicons name="logo-whatsapp" size={24} color="#25D366" />
+                </View>
+                <View style={styles.contactModalButtonContent}>
+                  <Text style={styles.contactModalButtonTitle}>WhatsApp</Text>
+                  <Text style={styles.contactModalButtonSubtitle}>Envoyer un message WhatsApp</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.contactModalCancelButton}
+              onPress={() => setContactModalVisible(false)}
+            >
+              <Text style={styles.contactModalCancelText}>Annuler</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1523,6 +1634,139 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  bookingActionsRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[200],
+  },
+  bookingActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    gap: Spacing.xs,
+    flex: 1,
+  },
+  bookingActionCall: {
+    backgroundColor: 'rgba(46, 204, 113, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(46, 204, 113, 0.3)',
+  },
+  bookingActionText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
+  bookingActionCallText: {
+    color: Colors.success,
+  },
+  contactModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  contactModalCard: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xxl,
+    padding: Spacing.xl,
+  },
+  contactModalHeader: {
+    alignItems: 'center',
+    marginBottom: Spacing.xl,
+  },
+  contactModalIconWrapper: {
+    width: 80,
+    height: 80,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(46, 204, 113, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  contactModalIconBadge: {
+    width: 56,
+    height: 56,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...CommonStyles.shadowSm,
+  },
+  contactModalTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    textAlign: 'center',
+    marginBottom: Spacing.xs,
+  },
+  contactModalSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    textAlign: 'center',
+  },
+  contactModalActions: {
+    gap: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  contactModalButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+  },
+  contactModalButtonCall: {
+    borderColor: 'rgba(46, 204, 113, 0.3)',
+    backgroundColor: 'rgba(46, 204, 113, 0.05)',
+  },
+  contactModalButtonWhatsApp: {
+    borderColor: 'rgba(37, 211, 102, 0.3)',
+    backgroundColor: 'rgba(37, 211, 102, 0.05)',
+  },
+  contactModalButtonIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+    ...CommonStyles.shadowSm,
+  },
+  contactModalButtonContent: {
+    flex: 1,
+  },
+  contactModalButtonTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: 2,
+  },
+  contactModalButtonSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  contactModalCancelButton: {
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    backgroundColor: Colors.gray[100],
+  },
+  contactModalCancelText: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
   },
 });
 

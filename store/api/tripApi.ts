@@ -1,4 +1,4 @@
-import type { Trip, TripStatus, VehicleType, GeoPoint } from '../../types';
+import type { Trip, TripStatus, VehicleType, GeoPoint, Vehicle } from '../../types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 
@@ -23,6 +23,19 @@ type ServerBooking = {
   passenger: ServerUser | null;
 };
 
+type ServerVehicle = {
+  id: string;
+  ownerId: string;
+  brand: string;
+  model: string;
+  color: string;
+  licensePlate: string;
+  photoUrl?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ServerTrip = {
   id: string;
   driverId: string;
@@ -39,6 +52,7 @@ export type ServerTrip = {
   status?: string;
   vehicleType?: VehicleType;
   vehicleId?: string | null;
+  vehicle?: ServerVehicle | null;
   bookings?: ServerBooking[];
   currentLocation?: GeoPoint | null;
   lastLocationUpdateAt?: string | null;
@@ -99,11 +113,40 @@ const mapPassengers = (bookings?: ServerBooking[]): Trip['passengers'] => {
     }));
 };
 
+const mapServerVehicleToClient = (vehicle: ServerVehicle | null | undefined): Vehicle | undefined => {
+  if (!vehicle) {
+    return undefined;
+  }
+  return {
+    id: vehicle.id,
+    ownerId: vehicle.ownerId,
+    brand: vehicle.brand ?? '',
+    model: vehicle.model ?? '',
+    color: vehicle.color ?? '',
+    licensePlate: vehicle.licensePlate ?? '',
+    photoUrl: vehicle.photoUrl ?? null,
+    isActive: vehicle.isActive ?? true,
+    createdAt: vehicle.createdAt ?? new Date().toISOString(),
+    updatedAt: vehicle.updatedAt ?? new Date().toISOString(),
+  };
+};
+
 export const mapServerTripToClient = (trip: ServerTrip): Trip => {
   const departureCoords = fallbackCoordinate(trip.departureCoordinates);
   const arrivalCoords = fallbackCoordinate(trip.arrivalCoordinates);
-  const bookedSeats =
-    trip.bookings?.reduce((total, booking) => total + (booking.seats ?? 0), 0) ?? 0;
+  
+  // Compter uniquement les réservations acceptées pour calculer le nombre initial de places
+  const acceptedBookedSeats =
+    trip.bookings
+      ?.filter((booking) => {
+        const status = (booking.status ?? '').toLowerCase();
+        return status === 'accepted' || status === 'completed';
+      })
+      .reduce((total, booking) => total + (booking.seats ?? 0), 0) ?? 0;
+
+  // Le nombre initial de places disponibles lors de la publication
+  // = places disponibles actuellement + places réservées et acceptées
+  const initialAvailableSeats = trip.availableSeats + acceptedBookedSeats;
 
   return {
     id: trip.id,
@@ -139,7 +182,8 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     price: Number(trip.pricePerSeat),
     isFree: trip.isFree ?? Number(trip.pricePerSeat) === 0,
     availableSeats: trip.availableSeats,
-    totalSeats: Math.max(trip.availableSeats + bookedSeats, trip.availableSeats),
+    // totalSeats représente le nombre initial de places disponibles lors de la publication
+    totalSeats: Math.max(initialAvailableSeats, trip.availableSeats),
     status: mapTripStatus(trip.status),
     passengers: mapPassengers(trip.bookings),
     currentLocation: trip.currentLocation ?? null,
@@ -147,6 +191,7 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     completedAt: trip.completedAt ?? null,
     vehicleId: trip.vehicleId ?? null,
     description: trip.description ?? null,
+    vehicle: mapServerVehicleToClient(trip.vehicle),
   };
 };
 

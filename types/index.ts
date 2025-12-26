@@ -85,6 +85,7 @@ export interface Trip {
   completedAt?: string | null; // ISO string date - Date de complétion du trajet
   vehicleId?: string | null; // ID du véhicule associé
   description?: string | null; // Description du trajet
+  vehicle?: Vehicle; // Informations complètes du véhicule
 }
 
 export interface Passenger {
