@@ -1306,7 +1306,11 @@ export default function TripDetailsScreen() {
                   <Ionicons name="star" size={16} color={Colors.secondary} />
                   <Text style={styles.driverRating}>{driverReviewAverage.toFixed(1)}</Text>
                   <View style={styles.driverDot} />
-                  <Text style={styles.driverVehicle}>{trip.vehicleInfo}</Text>
+                  <Text style={styles.driverVehicle}>
+                    {trip.vehicle 
+                      ? `${trip.vehicle.brand} ${trip.vehicle.model}`
+                      : trip.vehicleInfo}
+                  </Text>
                 </View>
                 <TouchableOpacity
                   style={styles.driverReviewLink}
@@ -1403,10 +1407,44 @@ export default function TripDetailsScreen() {
 
               <View style={styles.detailRow}>
                 <View style={styles.detailLeft}>
-                  <Ionicons name="car" size={20} color={Colors.gray[600]} />
+                  <Ionicons 
+                    name={
+                      trip.vehicleType === 'moto' 
+                        ? 'bicycle' 
+                        : trip.vehicleType === 'tricycle'
+                        ? 'car-sport'
+                        : 'car'
+                    } 
+                    size={20} 
+                    color={Colors.gray[600]} 
+                  />
                   <Text style={styles.detailLabel}>Véhicule</Text>
                 </View>
-                <Text style={styles.detailValue}>{trip.vehicleInfo}</Text>
+                <View style={styles.vehicleInfoContainer}>
+                  {trip.vehicle ? (
+                    <>
+                      <Text style={styles.detailValue}>
+                        {trip.vehicle.brand} {trip.vehicle.model}
+                      </Text>
+                      <Text style={styles.vehicleDetails}>
+                        {trip.vehicle.color} • {trip.vehicle.licensePlate}
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.detailValue}>
+                        {trip.vehicleType === 'moto' 
+                          ? 'Moto' 
+                          : trip.vehicleType === 'tricycle'
+                          ? 'Tricycle'
+                          : 'Voiture'}
+                      </Text>
+                      {trip.vehicleInfo && trip.vehicleInfo !== 'Informations véhicule fournies par le conducteur' && (
+                        <Text style={styles.vehicleDetails}>{trip.vehicleInfo}</Text>
+                      )}
+                    </>
+                  )}
+                </View>
               </View>
             </View>
           </View>
@@ -1561,14 +1599,14 @@ export default function TripDetailsScreen() {
                     (availableSeats <= 0 || myBookingsLoading) &&
                     styles.actionButtonDisabled,
                   ]}
-                  onPress={openBookingModal}
-                  disabled={availableSeats <= 0 || myBookingsLoading}
+                  onPress={activeBooking ? () => {} : openBookingModal}
+                  disabled={(availableSeats <= 0 || myBookingsLoading) && !activeBooking}
                 >
                   {myBookingsLoading ? (
                     <ActivityIndicator color={Colors.white} />
                   ) : (
                     <Text style={styles.actionButtonText}>
-                      Réserver ce trajet
+                      {activeBooking ? 'Voir' : 'Réserver ce trajet'}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -2492,6 +2530,21 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     color: Colors.gray[800],
     fontSize: FontSizes.base,
+  },
+  vehicleInfoContainer: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  vehicleTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  vehicleDetails: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginTop: Spacing.xs,
+    textAlign: 'right',
+    maxWidth: '100%',
   },
   actionsContainer: {
     paddingHorizontal: Spacing.xl,

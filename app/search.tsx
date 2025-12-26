@@ -681,7 +681,11 @@ export default function SearchScreen() {
                           <Ionicons name="star" size={14} color={Colors.secondary} />
                           <Text style={styles.driverRating}>{trip.driverRating}</Text>
                           <View style={styles.dot} />
-                          <Text style={styles.vehicleInfo}>{trip.vehicleInfo}</Text>
+                          <Text style={styles.vehicleInfo}>
+                            {trip.vehicle
+                              ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
+                              : trip.vehicleInfo}
+                          </Text>
                         </View>
                       </View>
                     </View>

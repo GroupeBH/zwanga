@@ -85,6 +85,9 @@ export default function MapScreen() {
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [routeCoordinatesCache, setRouteCoordinatesCache] = useState<Map<string, RouteCoordinates[]>>(new Map());
   const [loadingRoutes, setLoadingRoutes] = useState<Set<string>>(new Set());
+  
+  // Limiter la taille du cache pour éviter les problèmes de mémoire (max 30 routes)
+  const MAX_CACHE_SIZE = 30;
 
   // Ajuster la carte automatiquement quand des trajets sont trouvés après une recherche
   useEffect(() => {
@@ -99,9 +102,11 @@ export default function MapScreen() {
     }
   }, [trips.length, activeSearchQuery, fitMapToTrips]);
 
-  // Charger les itinéraires pour tous les trajets
+  // Charger les itinéraires pour tous les trajets (limité pour éviter les problèmes de mémoire)
   useEffect(() => {
     const loadRoutes = async () => {
+      // Limiter le nombre de trajets pour lesquels on charge les routes (max 20)
+      const tripsToProcess = trips.slice(0, 20);
       const tripsToLoad: Array<{
         tripId: string;
         start: RouteCoordinates;
@@ -109,7 +114,7 @@ export default function MapScreen() {
       }> = [];
 
       // Identifier les trajets qui ont besoin d'un itinéraire
-      for (const trip of trips) {
+      for (const trip of tripsToProcess) {
         const departureCoords =
           trip.departure?.lat && trip.departure?.lng
             ? { latitude: trip.departure.lat, longitude: trip.departure.lng }
@@ -135,47 +140,78 @@ export default function MapScreen() {
         });
       }
 
-      // Charger les itinéraires en parallèle (mais avec un délai pour éviter trop de requêtes simultanées)
-      for (const { tripId, start, end } of tripsToLoad) {
-        const cacheKey = `${tripId}-route`;
+      // Limiter le nombre de requêtes simultanées (max 5 à la fois)
+      const maxConcurrent = 5;
+      for (let i = 0; i < tripsToLoad.length; i += maxConcurrent) {
+        const batch = tripsToLoad.slice(i, i + maxConcurrent);
         
-        setLoadingRoutes(prev => new Set(prev).add(cacheKey));
+        await Promise.all(
+          batch.map(async ({ tripId, start, end }) => {
+            const cacheKey = `${tripId}-route`;
+            
+            setLoadingRoutes(prev => new Set(prev).add(cacheKey));
 
-        try {
-          const route = await getCachedRouteCoordinates(start, end);
-          
-          if (route && route.length > 0) {
-            setRouteCoordinatesCache(prev => {
-              const newCache = new Map(prev);
-              newCache.set(cacheKey, route);
-              return newCache;
-            });
-          } else {
-            // Fallback sur ligne droite si l'API échoue
-            setRouteCoordinatesCache(prev => {
-              const newCache = new Map(prev);
-              newCache.set(cacheKey, [start, end]);
-              return newCache;
-            });
-          }
-        } catch (error) {
-          console.warn(`Error loading route for trip ${tripId}:`, error);
-          // Fallback sur ligne droite
-          setRouteCoordinatesCache(prev => {
-            const newCache = new Map(prev);
-            newCache.set(cacheKey, [start, end]);
-            return newCache;
-          });
-        } finally {
-          setLoadingRoutes(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(cacheKey);
-            return newSet;
-          });
+            try {
+              const route = await getCachedRouteCoordinates(start, end);
+              
+              if (route && route.length > 0) {
+                setRouteCoordinatesCache(prev => {
+                  const newCache = new Map(prev);
+                  // Limiter la taille du cache
+                  if (newCache.size >= MAX_CACHE_SIZE) {
+                    // Supprimer le premier élément (FIFO)
+                    const firstKey = newCache.keys().next().value;
+                    if (firstKey) {
+                      newCache.delete(firstKey);
+                    }
+                  }
+                  newCache.set(cacheKey, route);
+                  return newCache;
+                });
+              } else {
+                // Fallback sur ligne droite si l'API échoue
+                setRouteCoordinatesCache(prev => {
+                  const newCache = new Map(prev);
+                  // Limiter la taille du cache
+                  if (newCache.size >= MAX_CACHE_SIZE) {
+                    const firstKey = newCache.keys().next().value;
+                    if (firstKey) {
+                      newCache.delete(firstKey);
+                    }
+                  }
+                  newCache.set(cacheKey, [start, end]);
+                  return newCache;
+                });
+              }
+            } catch (error) {
+              console.warn(`Error loading route for trip ${tripId}:`, error);
+              // Fallback sur ligne droite
+              setRouteCoordinatesCache(prev => {
+                const newCache = new Map(prev);
+                // Limiter la taille du cache
+                if (newCache.size >= MAX_CACHE_SIZE) {
+                  const firstKey = newCache.keys().next().value;
+                  if (firstKey) {
+                    newCache.delete(firstKey);
+                  }
+                }
+                newCache.set(cacheKey, [start, end]);
+                return newCache;
+              });
+            } finally {
+              setLoadingRoutes(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(cacheKey);
+                return newSet;
+              });
+            }
+          })
+        );
+
+        // Délai entre les batches pour éviter de surcharger l'API et la mémoire
+        if (i + maxConcurrent < tripsToLoad.length) {
+          await new Promise(resolve => setTimeout(resolve, 200));
         }
-
-        // Petit délai entre les requêtes pour éviter de surcharger l'API
-        await new Promise(resolve => setTimeout(resolve, 100));
       }
     };
 
@@ -644,7 +680,11 @@ export default function MapScreen() {
                     <View style={styles.driverMarkerWrapper}>
                       <View style={styles.driverMarker}>
                         {trip.driverAvatar ? (
-                          <Image source={{ uri: trip.driverAvatar }} style={styles.driverMarkerImage} />
+                          <Image 
+                            source={{ uri: trip.driverAvatar }} 
+                            style={styles.driverMarkerImage}
+                            resizeMode="cover"
+                          />
                         ) : (
                           <Text style={styles.driverMarkerInitials}>{driverInitials}</Text>
                         )}
@@ -1000,7 +1040,11 @@ export default function MapScreen() {
                           )}
                           <View>
                             <Text style={styles.tripDriverName}>{trip.driverName}</Text>
-                            <Text style={styles.tripVehicle}>{trip.vehicleInfo}</Text>
+                            <Text style={styles.tripVehicle}>
+                              {trip.vehicle
+                                ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
+                                : trip.vehicleInfo}
+                            </Text>
                           </View>
                         </View>
                         {trip.price === 0 ? (
