@@ -34,6 +34,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import type { DriverOffer, Vehicle } from '@/types';
 import MapView, { Marker, Polyline, Callout, PROVIDER_GOOGLE } from 'react-native-maps';
+import { getRouteCoordinates } from '@/utils/routeHelpers';
 
 export default function TripRequestDetailsScreen() {
   const router = useRouter();
@@ -98,6 +99,8 @@ export default function TripRequestDetailsScreen() {
   const [availableSeats, setAvailableSeats] = useState('');
   const [message, setMessage] = useState('');
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
+  const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }> | null>(null);
+  const [isLoadingRoute, setIsLoadingRoute] = useState(false);
 
   // Mettre à jour la date proposée quand la demande change
   useEffect(() => {
@@ -109,6 +112,53 @@ export default function TripRequestDetailsScreen() {
       setProposedDepartureDate(newDate);
     }
   }, [tripRequest?.departureDateMin]);
+
+  // Charger les coordonnées de la route réelle
+  useEffect(() => {
+    const loadRoute = async () => {
+      if (!tripRequest?.departure?.lat || !tripRequest?.departure?.lng || 
+          !tripRequest?.arrival?.lat || !tripRequest?.arrival?.lng) {
+        return;
+      }
+
+      setIsLoadingRoute(true);
+      try {
+        const departureCoordinate = {
+          latitude: tripRequest.departure.lat,
+          longitude: tripRequest.departure.lng,
+        };
+        const arrivalCoordinate = {
+          latitude: tripRequest.arrival.lat,
+          longitude: tripRequest.arrival.lng,
+        };
+
+        const coordinates = await getRouteCoordinates(departureCoordinate, arrivalCoordinate);
+        if (coordinates && coordinates.length > 0) {
+          setRouteCoordinates(coordinates);
+        } else {
+          // Fallback sur ligne droite si l'API échoue
+          setRouteCoordinates([
+            departureCoordinate,
+            arrivalCoordinate,
+          ]);
+        }
+      } catch (error) {
+        console.warn('Error loading route for trip request:', error);
+        // Fallback sur ligne droite en cas d'erreur
+        if (tripRequest?.departure?.lat && tripRequest?.departure?.lng && 
+            tripRequest?.arrival?.lat && tripRequest?.arrival?.lng) {
+          setRouteCoordinates([
+            { latitude: tripRequest.departure.lat, longitude: tripRequest.departure.lng },
+            { latitude: tripRequest.arrival.lat, longitude: tripRequest.arrival.lng },
+          ]);
+        }
+      } finally {
+        setIsLoadingRoute(false);
+      }
+    };
+
+    loadRoute();
+  }, [tripRequest?.departure?.lat, tripRequest?.departure?.lng, tripRequest?.arrival?.lat, tripRequest?.arrival?.lng]);
 
   const isOwner = useMemo(
     () => tripRequest && currentUser && tripRequest.passengerId === currentUser.id,
@@ -561,16 +611,25 @@ export default function TripRequestDetailsScreen() {
                   longitudeDelta: Math.abs(tripRequest.departure.lng - tripRequest.arrival.lng) * 2.5 || 0.1,
                 }}
               >
-                {/* Ligne directe entre départ et arrivée */}
-                <Polyline
-                  coordinates={[
-                    { latitude: tripRequest.departure.lat, longitude: tripRequest.departure.lng },
-                    { latitude: tripRequest.arrival.lat, longitude: tripRequest.arrival.lng },
-                  ]}
-                  strokeColor={Colors.primary}
-                  strokeWidth={4}
-                  lineDashPattern={[2, 2]}
-                />
+                {/* Trajectoire réelle de circulation */}
+                {routeCoordinates && routeCoordinates.length > 0 ? (
+                  <Polyline
+                    coordinates={routeCoordinates}
+                    strokeColor={Colors.primary}
+                    strokeWidth={4}
+                  />
+                ) : (
+                  // Fallback sur ligne droite pendant le chargement ou en cas d'erreur
+                  <Polyline
+                    coordinates={[
+                      { latitude: tripRequest.departure.lat, longitude: tripRequest.departure.lng },
+                      { latitude: tripRequest.arrival.lat, longitude: tripRequest.arrival.lng },
+                    ]}
+                    strokeColor={Colors.gray[400]}
+                    strokeWidth={3}
+                    lineDashPattern={[2, 2]}
+                  />
+                )}
 
                 {/* Marqueur de départ */}
                 <Marker
