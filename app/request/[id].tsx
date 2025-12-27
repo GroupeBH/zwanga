@@ -9,6 +9,7 @@ import {
 } from '@/store/api/tripRequestApi';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
+import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -34,6 +35,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import type { DriverOffer, Vehicle } from '@/types';
 import MapView, { Marker, Polyline, Callout, PROVIDER_GOOGLE } from 'react-native-maps';
+import { getRouteCoordinates } from '@/utils/routeHelpers';
 
 export default function TripRequestDetailsScreen() {
   const router = useRouter();
@@ -44,6 +46,7 @@ export default function TripRequestDetailsScreen() {
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   
   const { data: currentUser } = useGetCurrentUserQuery();
+  const { isIdentityVerified, checkIdentity } = useIdentityCheck();
   const { data: tripRequest, isLoading, error, refetch, isError } = useGetTripRequestByIdQuery(id || '', {
     skip: !id,
   });
@@ -98,6 +101,9 @@ export default function TripRequestDetailsScreen() {
   const [availableSeats, setAvailableSeats] = useState('');
   const [message, setMessage] = useState('');
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
+  const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }> | null>(null);
+  const [isLoadingRoute, setIsLoadingRoute] = useState(false);
+  const [mapModalVisible, setMapModalVisible] = useState(false);
 
   // Mettre à jour la date proposée quand la demande change
   useEffect(() => {
@@ -109,6 +115,53 @@ export default function TripRequestDetailsScreen() {
       setProposedDepartureDate(newDate);
     }
   }, [tripRequest?.departureDateMin]);
+
+  // Charger les coordonnées de la route réelle
+  useEffect(() => {
+    const loadRoute = async () => {
+      if (!tripRequest?.departure?.lat || !tripRequest?.departure?.lng || 
+          !tripRequest?.arrival?.lat || !tripRequest?.arrival?.lng) {
+        return;
+      }
+
+      setIsLoadingRoute(true);
+      try {
+        const departureCoordinate = {
+          latitude: tripRequest.departure.lat,
+          longitude: tripRequest.departure.lng,
+        };
+        const arrivalCoordinate = {
+          latitude: tripRequest.arrival.lat,
+          longitude: tripRequest.arrival.lng,
+        };
+
+        const coordinates = await getRouteCoordinates(departureCoordinate, arrivalCoordinate);
+        if (coordinates && coordinates.length > 0) {
+          setRouteCoordinates(coordinates);
+        } else {
+          // Fallback sur ligne droite si l'API échoue
+          setRouteCoordinates([
+            departureCoordinate,
+            arrivalCoordinate,
+          ]);
+        }
+      } catch (error) {
+        console.warn('Error loading route for trip request:', error);
+        // Fallback sur ligne droite en cas d'erreur
+        if (tripRequest?.departure?.lat && tripRequest?.departure?.lng && 
+            tripRequest?.arrival?.lat && tripRequest?.arrival?.lng) {
+          setRouteCoordinates([
+            { latitude: tripRequest.departure.lat, longitude: tripRequest.departure.lng },
+            { latitude: tripRequest.arrival.lat, longitude: tripRequest.arrival.lng },
+          ]);
+        }
+      } finally {
+        setIsLoadingRoute(false);
+      }
+    };
+
+    loadRoute();
+  }, [tripRequest?.departure?.lat, tripRequest?.departure?.lng, tripRequest?.arrival?.lat, tripRequest?.arrival?.lng]);
 
   const isOwner = useMemo(
     () => tripRequest && currentUser && tripRequest.passengerId === currentUser.id,
@@ -125,11 +178,12 @@ export default function TripRequestDetailsScreen() {
   const canMakeOffer = useMemo(() => {
     return (
       currentUser?.isDriver &&
+      isIdentityVerified &&
       !isOwner &&
       tripRequest?.status === 'pending' &&
       !hasExistingOffer
     );
-  }, [currentUser, isOwner, tripRequest, hasExistingOffer]);
+  }, [currentUser, isIdentityVerified, isOwner, tripRequest, hasExistingOffer]);
 
   const myOffer = useMemo(() => {
     if (!tripRequest?.driverOffers || !currentUser) return null;
@@ -194,6 +248,32 @@ export default function TripRequestDetailsScreen() {
 
   const handleCreateOffer = async () => {
     if (!tripRequest || !id) return;
+
+    // Vérifier que l'utilisateur est driver
+    if (!currentUser?.isDriver) {
+      showDialog({
+        title: 'Devenir conducteur requis',
+        message: 'Pour faire une offre sur une demande de trajet, vous devez être conducteur. Voulez-vous devenir conducteur ?',
+        variant: 'warning',
+        actions: [
+          { label: 'Annuler', variant: 'ghost' },
+          { 
+            label: 'Devenir conducteur', 
+            variant: 'primary', 
+            onPress: () => router.push('/publish') 
+          },
+        ],
+      });
+      return;
+    }
+
+    // Vérifier que le KYC est approuvé
+    if (!isIdentityVerified) {
+      const canProceed = checkIdentity('publish');
+      if (!canProceed) {
+        return;
+      }
+    }
 
     // Valider la date proposée
     const proposedDate = new Date(proposedDepartureDate);
@@ -547,67 +627,90 @@ export default function TripRequestDetailsScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Carte du trajet</Text>
             <View style={styles.mapCard}>
-              <MapView
-                provider={PROVIDER_GOOGLE}
-                style={styles.mapView}
-                scrollEnabled={false}
-                zoomEnabled={false}
-                pitchEnabled={false}
-                rotateEnabled={false}
-                initialRegion={{
-                  latitude: (tripRequest.departure.lat + tripRequest.arrival.lat) / 2,
-                  longitude: (tripRequest.departure.lng + tripRequest.arrival.lng) / 2,
-                  latitudeDelta: Math.abs(tripRequest.departure.lat - tripRequest.arrival.lat) * 2.5 || 0.1,
-                  longitudeDelta: Math.abs(tripRequest.departure.lng - tripRequest.arrival.lng) * 2.5 || 0.1,
-                }}
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => setMapModalVisible(true)}
+                style={styles.mapTouchable}
               >
-                {/* Ligne directe entre départ et arrivée */}
-                <Polyline
-                  coordinates={[
-                    { latitude: tripRequest.departure.lat, longitude: tripRequest.departure.lng },
-                    { latitude: tripRequest.arrival.lat, longitude: tripRequest.arrival.lng },
-                  ]}
-                  strokeColor={Colors.primary}
-                  strokeWidth={4}
-                  lineDashPattern={[2, 2]}
-                />
-
-                {/* Marqueur de départ */}
-                <Marker
-                  coordinate={{
-                    latitude: tripRequest.departure.lat,
-                    longitude: tripRequest.departure.lng,
+                <MapView
+                  provider={PROVIDER_GOOGLE}
+                  style={styles.mapView}
+                  scrollEnabled={false}
+                  zoomEnabled={false}
+                  pitchEnabled={false}
+                  rotateEnabled={false}
+                  initialRegion={{
+                    latitude: (tripRequest.departure.lat + tripRequest.arrival.lat) / 2,
+                    longitude: (tripRequest.departure.lng + tripRequest.arrival.lng) / 2,
+                    latitudeDelta: Math.abs(tripRequest.departure.lat - tripRequest.arrival.lat) * 2.5 || 0.1,
+                    longitudeDelta: Math.abs(tripRequest.departure.lng - tripRequest.arrival.lng) * 2.5 || 0.1,
                   }}
                 >
-                  <View style={styles.markerStartCircle}>
-                    <Ionicons name="location" size={18} color={Colors.white} />
-                  </View>
-                  <Callout>
-                    <View>
-                      <Text style={{ fontWeight: 'bold' }}>Départ</Text>
-                      <Text>{tripRequest.departure.name}</Text>
-                    </View>
-                  </Callout>
-                </Marker>
+                  {/* Trajectoire réelle de circulation */}
+                  {routeCoordinates && routeCoordinates.length > 0 ? (
+                    <Polyline
+                      coordinates={routeCoordinates}
+                      strokeColor={Colors.primary}
+                      strokeWidth={4}
+                    />
+                  ) : (
+                    // Fallback sur ligne droite pendant le chargement ou en cas d'erreur
+                    <Polyline
+                      coordinates={[
+                        { latitude: tripRequest.departure.lat, longitude: tripRequest.departure.lng },
+                        { latitude: tripRequest.arrival.lat, longitude: tripRequest.arrival.lng },
+                      ]}
+                      strokeColor={Colors.gray[400]}
+                      strokeWidth={3}
+                      lineDashPattern={[2, 2]}
+                    />
+                  )}
 
-                {/* Marqueur d'arrivée */}
-                <Marker
-                  coordinate={{
-                    latitude: tripRequest.arrival.lat,
-                    longitude: tripRequest.arrival.lng,
-                  }}
-                >
-                  <View style={styles.markerEndCircle}>
-                    <Ionicons name="navigate" size={18} color={Colors.white} />
-                  </View>
-                  <Callout>
-                    <View>
-                      <Text style={{ fontWeight: 'bold' }}>Destination</Text>
-                      <Text>{tripRequest.arrival.name}</Text>
+                  {/* Marqueur de départ */}
+                  <Marker
+                    coordinate={{
+                      latitude: tripRequest.departure.lat,
+                      longitude: tripRequest.departure.lng,
+                    }}
+                  >
+                    <View style={styles.markerStartCircle}>
+                      <Ionicons name="location" size={18} color={Colors.white} />
                     </View>
-                  </Callout>
-                </Marker>
-              </MapView>
+                    <Callout>
+                      <View>
+                        <Text style={{ fontWeight: 'bold' }}>Départ</Text>
+                        <Text>{tripRequest.departure.name}</Text>
+                      </View>
+                    </Callout>
+                  </Marker>
+
+                  {/* Marqueur d'arrivée */}
+                  <Marker
+                    coordinate={{
+                      latitude: tripRequest.arrival.lat,
+                      longitude: tripRequest.arrival.lng,
+                    }}
+                  >
+                    <View style={styles.markerEndCircle}>
+                      <Ionicons name="navigate" size={18} color={Colors.white} />
+                    </View>
+                    <Callout>
+                      <View>
+                        <Text style={{ fontWeight: 'bold' }}>Destination</Text>
+                        <Text>{tripRequest.arrival.name}</Text>
+                      </View>
+                    </Callout>
+                  </Marker>
+                </MapView>
+                <View style={styles.mapOverlay}>
+                  <Text style={styles.mapOverlayText}>Touchez pour agrandir</Text>
+                </View>
+                <View style={styles.expandButton}>
+                  <View style={styles.expandButtonInner}>
+                    <Ionicons name="expand" size={20} color={Colors.gray[700]} />
+                  </View>
+                </View>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -840,7 +943,30 @@ export default function TripRequestDetailsScreen() {
           <View style={styles.section}>
             <TouchableOpacity
               style={styles.makeOfferButton}
-              onPress={() => setShowOfferForm(true)}
+              onPress={() => {
+                // Vérifier à nouveau avant d'ouvrir le formulaire
+                if (!currentUser?.isDriver) {
+                  showDialog({
+                    title: 'Devenir conducteur requis',
+                    message: 'Pour faire une offre sur une demande de trajet, vous devez être conducteur. Voulez-vous devenir conducteur ?',
+                    variant: 'warning',
+                    actions: [
+                      { label: 'Annuler', variant: 'ghost' },
+                      { 
+                        label: 'Devenir conducteur', 
+                        variant: 'primary', 
+                        onPress: () => router.push('/publish') 
+                      },
+                    ],
+                  });
+                  return;
+                }
+                if (!isIdentityVerified) {
+                  checkIdentity('publish');
+                  return;
+                }
+                setShowOfferForm(true);
+              }}
             >
               <Ionicons name="add-circle-outline" size={24} color={Colors.white} />
               <Text style={styles.makeOfferButtonText}>Faire une offre</Text>
@@ -1058,6 +1184,86 @@ export default function TripRequestDetailsScreen() {
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
+        )}
+
+        {/* Modal de la carte en plein écran */}
+        {tripRequest.departure.lat && tripRequest.departure.lng && tripRequest.arrival.lat && tripRequest.arrival.lng && (
+          <Modal visible={mapModalVisible} animationType="fade" transparent onRequestClose={() => setMapModalVisible(false)}>
+            <View style={styles.mapModalOverlay}>
+              <View style={styles.mapModalContent}>
+                <MapView
+                  provider={PROVIDER_GOOGLE}
+                  style={styles.fullscreenMap}
+                  mapType="standard"
+                  initialRegion={{
+                    latitude: (tripRequest.departure.lat + tripRequest.arrival.lat) / 2,
+                    longitude: (tripRequest.departure.lng + tripRequest.arrival.lng) / 2,
+                    latitudeDelta: Math.abs(tripRequest.departure.lat - tripRequest.arrival.lat) * 2.5 || 0.1,
+                    longitudeDelta: Math.abs(tripRequest.departure.lng - tripRequest.arrival.lng) * 2.5 || 0.1,
+                  }}
+                >
+                  {/* Trajectoire réelle de circulation */}
+                  {routeCoordinates && routeCoordinates.length > 0 ? (
+                    <Polyline
+                      coordinates={routeCoordinates}
+                      strokeColor={Colors.primary}
+                      strokeWidth={5}
+                    />
+                  ) : (
+                    // Fallback sur ligne droite pendant le chargement ou en cas d'erreur
+                    <Polyline
+                      coordinates={[
+                        { latitude: tripRequest.departure.lat, longitude: tripRequest.departure.lng },
+                        { latitude: tripRequest.arrival.lat, longitude: tripRequest.arrival.lng },
+                      ]}
+                      strokeColor={Colors.gray[400]}
+                      strokeWidth={4}
+                      lineDashPattern={[2, 2]}
+                    />
+                  )}
+
+                  {/* Marqueur de départ */}
+                  <Marker
+                    coordinate={{
+                      latitude: tripRequest.departure.lat,
+                      longitude: tripRequest.departure.lng,
+                    }}
+                  >
+                    <View style={styles.markerStartCircle}>
+                      <Ionicons name="location" size={18} color={Colors.white} />
+                    </View>
+                    <Callout>
+                      <View>
+                        <Text style={{ fontWeight: 'bold' }}>Départ</Text>
+                        <Text>{tripRequest.departure.name}</Text>
+                      </View>
+                    </Callout>
+                  </Marker>
+
+                  {/* Marqueur d'arrivée */}
+                  <Marker
+                    coordinate={{
+                      latitude: tripRequest.arrival.lat,
+                      longitude: tripRequest.arrival.lng,
+                    }}
+                  >
+                    <View style={styles.markerEndCircle}>
+                      <Ionicons name="navigate" size={18} color={Colors.white} />
+                    </View>
+                    <Callout>
+                      <View>
+                        <Text style={{ fontWeight: 'bold' }}>Destination</Text>
+                        <Text>{tripRequest.arrival.name}</Text>
+                      </View>
+                    </Callout>
+                  </Marker>
+                </MapView>
+                <TouchableOpacity style={styles.closeMapButton} onPress={() => setMapModalVisible(false)}>
+                  <Ionicons name="close" size={24} color={Colors.white} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -1590,9 +1796,74 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    position: 'relative',
+  },
+  mapTouchable: {
+    flex: 1,
   },
   mapView: {
     ...StyleSheet.absoluteFillObject,
+  },
+  mapOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    alignItems: 'center',
+  },
+  mapOverlayText: {
+    color: Colors.white,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.medium,
+  },
+  expandButton: {
+    position: 'absolute',
+    top: Spacing.sm,
+    right: Spacing.sm,
+    zIndex: 1,
+  },
+  expandButtonInner: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  mapModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    padding: Spacing.md,
+    justifyContent: 'center',
+  },
+  mapModalContent: {
+    flex: 1,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+  },
+  fullscreenMap: {
+    width: '100%',
+    height: '100%',
+  },
+  closeMapButton: {
+    position: 'absolute',
+    top: Spacing.xl,
+    right: Spacing.xl,
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
   },
   markerStartCircle: {
     width: 32,

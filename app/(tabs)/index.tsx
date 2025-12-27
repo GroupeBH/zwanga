@@ -62,6 +62,8 @@ export default function HomeScreen() {
     isError: tripsError,
     refetch: refetchTrips,
   } = useGetTripsQuery(queryParams);
+
+  console.log('remoteTrips', remoteTrips);
   const { data: notificationsData } = useGetNotificationsQuery(undefined, {
     refetchOnMountOrArgChange: true,
   });
@@ -72,6 +74,7 @@ export default function HomeScreen() {
       // Limiter le nombre de trajets stockés pour éviter les problèmes de mémoire
       const limitedTrips = remoteTrips.slice(0, 50);
       dispatch(setTrips(limitedTrips));
+      // console.log('limitedTrips', limitedTrips);
     }
   }, [remoteTrips, dispatch]);
 
