@@ -36,10 +36,32 @@ export function NotificationHandler() {
       console.warn('Erreur lors de l\'enregistrement de la tâche de fond:', error);
     });
 
+    // Fonction helper pour extraire l'ID du trip-request depuis différentes structures de données
+    const extractTripRequestId = (data: Record<string, any>): string | null => {
+      // Chercher dans différentes variantes possibles
+      if (data.requestId) return String(data.requestId);
+      if (data.tripRequestId) return String(data.tripRequestId);
+      if (data.trip_request_id) return String(data.trip_request_id);
+      if (data.tripRequest?.id) return String(data.tripRequest.id);
+      if (data.trip_request?.id) return String(data.trip_request.id);
+      if (data.data?.requestId) return String(data.data.requestId);
+      if (data.data?.tripRequestId) return String(data.data.tripRequestId);
+      if (data.data?.trip_request_id) return String(data.data.trip_request_id);
+      if (data.data?.tripRequest?.id) return String(data.data.tripRequest.id);
+      if (data.data?.trip_request?.id) return String(data.data.trip_request.id);
+      
+      // Log pour déboguer si aucun ID trouvé
+      console.log('[NotificationHandler] Aucun ID de trip-request trouvé dans:', data);
+      return null;
+    };
+
     // Fonction pour naviguer selon le type de notification
     const handleNotificationPress = (data: Record<string, any>) => {
       try {
-        const { type, tripId, bookingId, conversationId, requestId } = data;
+        const { type, tripId, bookingId, conversationId } = data;
+        
+        // Extraire l'ID du trip-request de manière robuste
+        const requestId = extractTripRequestId(data);
         
         // Log pour déboguer
         console.log('[NotificationHandler] Notification pressée:', { type, tripId, bookingId, conversationId, requestId, data });
@@ -145,17 +167,19 @@ export function NotificationHandler() {
 
           // Fallback : naviguer selon les IDs disponibles même sans type spécifique
           // Vérifier requestId AVANT tripId pour éviter de naviguer vers un trajet au lieu d'une demande
-          if (requestId) {
-            console.log('[NotificationHandler] Fallback: Navigation vers /request/' + requestId);
+          // Ré-extraire l'ID au cas où il n'aurait pas été trouvé précédemment
+          const fallbackRequestId = requestId || extractTripRequestId(data);
+          if (fallbackRequestId) {
+            console.log('[NotificationHandler] Fallback: Navigation vers /request/' + fallbackRequestId);
             try {
               router.push({
                 pathname: '/request/[id]',
-                params: { id: requestId },
+                params: { id: fallbackRequestId },
               });
             } catch (error) {
               console.error('[NotificationHandler] Erreur lors de la navigation (fallback):', error);
               // Fallback avec le format direct
-              router.push(`/request/${requestId}`);
+              router.push(`/request/${fallbackRequestId}`);
             }
             return;
           }
