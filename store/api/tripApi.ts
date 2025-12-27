@@ -1,4 +1,4 @@
-import type { Trip, TripStatus, VehicleType, GeoPoint, Vehicle } from '../../types';
+import type { GeoPoint, Trip, TripStatus, Vehicle, VehicleType } from '../../types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 
@@ -157,10 +157,13 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     driver: trip.driver
       ? {
           id: trip.driver.id,
-          name: formatFullName(trip.driver),
-          avatar: trip.driver.profilePicture ?? undefined,
-          rating: trip.driver.rating ?? 4.9,
-          phone: trip.driver.phone ?? '',
+          firstName: trip.driver.firstName,
+          lastName: trip.driver.lastName,
+          phone: trip.driver.phone,
+          profilePicture: trip.driver.profilePicture ?? null,
+          role: trip.driver.role as any,
+          status: trip.driver.status,
+          isDriver: trip.driver.isDriver ?? false,
         }
       : null,
     vehicleType: trip.vehicleType ?? 'car',

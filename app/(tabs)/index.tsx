@@ -62,6 +62,8 @@ export default function HomeScreen() {
     isError: tripsError,
     refetch: refetchTrips,
   } = useGetTripsQuery(queryParams);
+
+  console.log('remoteTrips', remoteTrips);
   const { data: notificationsData } = useGetNotificationsQuery(undefined, {
     refetchOnMountOrArgChange: true,
   });

@@ -275,14 +275,16 @@ export default function LocationPickerModal({
     }
 
     try {
+      // react-native-maps fournit les coordonnées dans event.nativeEvent.coordinate
+      const coordinate = event?.nativeEvent?.coordinate;
+      
       // Vérifier que l'événement contient les coordonnées
-      if (!event?.geometry?.coordinates || !Array.isArray(event.geometry.coordinates)) {
+      if (!coordinate || typeof coordinate.latitude !== 'number' || typeof coordinate.longitude !== 'number') {
         console.warn('Invalid map press event:', event);
         return;
       }
 
-      // Mapbox returns coordinates as [longitude, latitude]
-      const [longitude, latitude] = event.geometry.coordinates;
+      const { latitude, longitude } = coordinate;
       
       // Valider les coordonnées
       if (
@@ -291,23 +293,51 @@ export default function LocationPickerModal({
         isNaN(longitude) ||
         isNaN(latitude) ||
         !isFinite(longitude) ||
-        !isFinite(latitude)
+        !isFinite(latitude) ||
+        latitude < -90 ||
+        latitude > 90 ||
+        longitude < -180 ||
+        longitude > 180
       ) {
         console.warn('Invalid coordinates:', { longitude, latitude });
         return;
       }
 
-      const coordinate = { latitude, longitude };
+      // Mettre à jour la référence pour éviter les boucles
+      lastMarkerUpdateRef.current = { latitude, longitude };
+      isUpdatingMarkerRef.current = true;
+      isUserInteractionRef.current = false;
+
+      // Mettre à jour le marqueur immédiatement
       setSelectedLocation({
         title: 'Point sélectionné',
         address: 'Détermination de l\'adresse…',
         latitude,
         longitude,
       });
-      
-      await updateLocationFromCoordinates(coordinate);
+
+      // Animer la carte vers le nouveau point
+      const nextRegion: Region = {
+        latitude,
+        longitude,
+        latitudeDelta: region.latitudeDelta || 0.01,
+        longitudeDelta: region.longitudeDelta || 0.01,
+      };
+      if (mapRef.current) {
+        mapRef.current.animateToRegion(nextRegion, 300);
+      }
+
+      // Réinitialiser après l'animation
+      setTimeout(() => {
+        isUpdatingMarkerRef.current = false;
+        isUserInteractionRef.current = true;
+      }, 350);
+
+      // Faire le reverse geocoding pour obtenir l'adresse
+      await updateLocationFromCoordinates({ latitude, longitude });
     } catch (error) {
       console.error('Error handling map press:', error);
+      isUpdatingMarkerRef.current = false;
     }
   };
 
@@ -1143,6 +1173,8 @@ export default function LocationPickerModal({
                 onDragStart={handleMarkerDragStart}
                 onDrag={handleMarkerDrag}
                 onDragEnd={handleMarkerDragEnd}
+                title="Lieu sélectionné"
+                description={selectedLocation.address || 'Glissez pour déplacer'}
               >
                 <View
                   style={[
@@ -1174,7 +1206,9 @@ export default function LocationPickerModal({
                 ? 'Glissez le marqueur pour sélectionner un lieu'
                 : isPanning
                 ? 'Déplacement de la carte…'
-                : selectedLocation?.title ?? 'Touchez la carte, glissez le marqueur ou déplacez la carte pour définir un point'}
+                : isGeocoding
+                ? 'Détermination de l\'adresse…'
+                : selectedLocation?.title ?? 'Touchez la carte ou glissez le marqueur pour sélectionner un lieu'}
             </Text>
             {selectedLocation?.address ? (
               <Text style={styles.locationDetailsSubtitle} numberOfLines={2}>
