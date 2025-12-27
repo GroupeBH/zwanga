@@ -81,6 +81,9 @@ export default function NotificationsScreen() {
     // Naviguer vers l'écran approprié selon le type de notification
     const data = notification.data || {};
     const { type, tripId, bookingId, conversationId, requestId } = data;
+    
+    // Log pour déboguer
+    console.log('[NotificationsScreen] Notification sélectionnée:', { type, tripId, bookingId, conversationId, requestId, data });
 
     try {
       // Attendre un court délai pour que la navigation soit fluide
@@ -130,21 +133,51 @@ export default function NotificationsScreen() {
         }
 
         // Gérer les notifications de demandes de trajet
-        if (
+        // Vérifier d'abord si c'est une notification de demande de trajet (par type ou par présence de requestId)
+        // Gérer les variantes avec underscore et tiret
+        const isTripRequestNotification = 
           type === 'trip_request' ||
+          type === 'trip-request' ||
           type === 'trip_request_accepted' ||
+          type === 'trip-request-accepted' ||
           type === 'trip_request_rejected' ||
+          type === 'trip-request-rejected' ||
           type === 'trip_request_cancelled' ||
-          type === 'trip_request_pending'
-        ) {
+          type === 'trip-request-cancelled' ||
+          type === 'trip_request_pending' ||
+          type === 'trip-request-pending' ||
+          type === 'new_trip_request' ||
+          type === 'new-trip-request' ||
+          type === 'trip_request_new' ||
+          type === 'trip-request-new' ||
+          (typeof type === 'string' && type.toLowerCase().includes('trip') && type.toLowerCase().includes('request')) ||
+          (requestId && !tripId && !bookingId && !conversationId); // Si seul requestId est présent, c'est probablement une demande
+        
+        if (isTripRequestNotification) {
+          console.log('[NotificationsScreen] Notification de demande de trajet détectée, requestId:', requestId);
           if (requestId) {
-            router.push(`/request/${requestId}`);
+            console.log('[NotificationsScreen] Navigation vers /request/' + requestId);
+            try {
+              router.push({
+                pathname: '/request/[id]',
+                params: { id: requestId },
+              });
+            } catch (error) {
+              console.error('[NotificationsScreen] Erreur lors de la navigation:', error);
+              // Fallback avec le format direct
+              router.push(`/request/${requestId}`);
+            }
             return;
           } else if (tripId) {
             // Si une demande a créé un trajet, naviguer vers le trajet
+            console.log('[NotificationsScreen] Navigation vers /trip/' + tripId);
             router.push(`/trip/${tripId}`);
             return;
           }
+          console.warn('[NotificationsScreen] Notification de demande de trajet sans requestId ni tripId');
+          // Si c'est une notification de demande de trajet mais sans ID, ne pas ouvrir le modal
+          // Retourner directement pour éviter d'afficher le modal
+          return;
         }
 
         // Gérer les notifications d'avis
@@ -156,12 +189,23 @@ export default function NotificationsScreen() {
         }
 
         // Fallback : naviguer selon les IDs disponibles même sans type spécifique
-        if (tripId) {
-          router.push(`/trip/${tripId}`);
+        // Vérifier requestId AVANT tripId pour éviter de naviguer vers un trajet au lieu d'une demande
+        if (requestId) {
+          console.log('[NotificationsScreen] Fallback: Navigation vers /request/' + requestId);
+          try {
+            router.push({
+              pathname: '/request/[id]',
+              params: { id: requestId },
+            });
+          } catch (error) {
+            console.error('[NotificationsScreen] Erreur lors de la navigation (fallback):', error);
+            // Fallback avec le format direct
+            router.push(`/request/${requestId}`);
+          }
           return;
         }
-        if (requestId) {
-          router.push(`/request/${requestId}`);
+        if (tripId) {
+          router.push(`/trip/${tripId}`);
           return;
         }
         if (conversationId) {
@@ -436,10 +480,19 @@ export default function NotificationsScreen() {
                               });
                             } else if (
                               (type === 'trip_request' ||
+                                type === 'trip-request' ||
                                 type === 'trip_request_accepted' ||
+                                type === 'trip-request-accepted' ||
                                 type === 'trip_request_rejected' ||
+                                type === 'trip-request-rejected' ||
                                 type === 'trip_request_cancelled' ||
-                                type === 'trip_request_pending') &&
+                                type === 'trip-request-cancelled' ||
+                                type === 'trip_request_pending' ||
+                                type === 'trip-request-pending' ||
+                                type === 'new_trip_request' ||
+                                type === 'new-trip-request' ||
+                                type === 'trip_request_new' ||
+                                type === 'trip-request-new') &&
                               requestId
                             ) {
                               router.push(`/request/${requestId}`);
@@ -458,10 +511,11 @@ export default function NotificationsScreen() {
                               router.push(`/trip/${tripId}`);
                             }
                             // Priorité 2 : Fallback selon les IDs disponibles
-                            else if (tripId) {
-                              router.push(`/trip/${tripId}`);
-                            } else if (requestId) {
+                            // Vérifier requestId AVANT tripId pour éviter de naviguer vers un trajet au lieu d'une demande
+                            else if (requestId) {
                               router.push(`/request/${requestId}`);
+                            } else if (tripId) {
+                              router.push(`/trip/${tripId}`);
                             } else if (conversationId) {
                               router.push({
                                 pathname: '/chat/[id]',

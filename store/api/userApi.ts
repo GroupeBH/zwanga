@@ -3,7 +3,6 @@ import type { KycDocument, ProfileStats, ProfileSummary, User, UserRole, Vehicle
 import { authApi } from './authApi';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
-import type { FetchBaseQueryError } from '@reduxjs/toolkit/query';
 
 type ServerUser = Record<string, any>;
 
@@ -172,7 +171,7 @@ export const userApi = baseApi.injectEndpoints({
               data: `Invalid context: ${data.context}`,
               error: `Invalid context: ${data.context}`,
             },
-          };
+          } as any;
         }
         
         const result = await baseQuery({
@@ -184,7 +183,11 @@ export const userApi = baseApi.injectEndpoints({
           },
         });
         
-        return result;
+        // Typage explicite pour correspondre au type attendu
+        if (result.error) {
+          return { error: result.error } as any;
+        }
+        return { data: result.data as { message: string } } as any;
       },
     }),
 
@@ -195,6 +198,26 @@ export const userApi = baseApi.injectEndpoints({
         method: 'POST',
         body: { phone, otp },
       }),
+    }),
+
+    // Modifier le PIN (nécessite l'ancien PIN pour validation)
+    updatePin: builder.mutation<{ message: string }, { newPin: string }>({
+      query: ({ newPin }: { newPin: string }) => ({
+        url: '/users/pin/change',
+        method: 'PUT',
+        body: { newPin },
+      }),
+      invalidatesTags: ['User'],
+    }),
+
+    // Modifier le PIN avec OTP (quand l'utilisateur a oublié son PIN)
+    updatePinWithOtp: builder.mutation<{ message: string }, { newPin: string }>({
+      query: ({ newPin }: { newPin: string }) => ({
+        url: '/users/pin/change',
+        method: 'PUT',
+        body: { newPin },
+      }),
+      invalidatesTags: ['User'],
     }),
   }),
 });
@@ -209,4 +232,6 @@ export const {
   useUpdateFcmTokenMutation,
   useSendPhoneVerificationOtpMutation,
   useVerifyPhoneOtpMutation,
+  useUpdatePinMutation,
+  useUpdatePinWithOtpMutation,
 } = userApi;
