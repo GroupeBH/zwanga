@@ -72,6 +72,7 @@ export default function HomeScreen() {
       // Limiter le nombre de trajets stockés pour éviter les problèmes de mémoire
       const limitedTrips = remoteTrips.slice(0, 50);
       dispatch(setTrips(limitedTrips));
+      // console.log('limitedTrips', limitedTrips);
     }
   }, [remoteTrips, dispatch]);
 

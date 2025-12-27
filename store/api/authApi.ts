@@ -1,17 +1,21 @@
 import type { FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import { API_BASE_URL } from '../../config/env';
 import { storeTokens } from '../../services/tokenStorage';
+import { setUser } from '../../store/slices/authSlice';
 import type { User } from '../../types';
 import { baseApi } from './baseApi';
+import { userApi } from './userApi';
 import type { BaseEndpointBuilder } from './types';
 
 /**
  * Interface de réponse d'authentification avec tokens JWT
+ * Note: Le backend ne retourne plus l'utilisateur dans la réponse (commenté)
+ * L'utilisateur doit être récupéré séparément avec getCurrentUser après l'authentification
  */
 export interface AuthResponse {
-  user: User;
   accessToken: string;
   refreshToken: string;
+  user?: User; // Optionnel car le backend peut ne pas le retourner
 }
 
 /**
@@ -20,21 +24,31 @@ export interface AuthResponse {
  */
 export const authApi = baseApi.injectEndpoints({
   endpoints: (builder: BaseEndpointBuilder) => ({
-    // Connexion avec téléphone et mot de passe
-    login: builder.mutation<AuthResponse, { phone: string }>({
-      query: (credentials: { phone: string }) => ({
+    // Connexion avec téléphone et PIN (ou newPin pour réinitialisation)
+    login: builder.mutation<AuthResponse, { phone: string; pin?: string; newPin?: string }>({
+      query: (credentials: { phone: string; pin?: string; newPin?: string }) => ({
         url: '/auth/login',
         method: 'POST',
         body: credentials,
       }),
       async onQueryStarted(
-        _arg: { phone: string },
-        { queryFulfilled }: { queryFulfilled: Promise<{ data: AuthResponse }> },
+        _arg: { phone: string; pin?: string; newPin?: string },
+        { dispatch, queryFulfilled }: { dispatch: any; queryFulfilled: Promise<{ data: AuthResponse }> },
       ) {
         try {
           const { data } = await queryFulfilled;
           // Stocker les tokens dans SecureStore
           await storeTokens(data.accessToken, data.refreshToken);
+          // Si l'utilisateur n'est pas dans la réponse, le récupérer séparément
+          if (!data.user) {
+            // Récupérer l'utilisateur après la connexion
+            const userResult = await dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true }));
+            if (userResult.data) {
+              dispatch(setUser(userResult.data));
+            }
+          } else {
+            dispatch(setUser(data.user));
+          }
         } catch (error) {
           console.error('Erreur lors du stockage des tokens après login:', error);
         }
@@ -51,12 +65,22 @@ export const authApi = baseApi.injectEndpoints({
       }),
       async onQueryStarted(
         _arg: FormData,
-        { queryFulfilled }: { queryFulfilled: Promise<{ data: AuthResponse }> },
+        { dispatch, queryFulfilled }: { dispatch: any; queryFulfilled: Promise<{ data: AuthResponse }> },
       ) {
         try {
           const { data } = await queryFulfilled;
           // Stocker les tokens dans SecureStore
           await storeTokens(data.accessToken, data.refreshToken);
+          // Si l'utilisateur n'est pas dans la réponse, le récupérer séparément
+          if (!data.user) {
+            // Récupérer l'utilisateur après l'inscription
+            const userResult = await dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true }));
+            if (userResult.data) {
+              dispatch(setUser(userResult.data));
+            }
+          } else {
+            dispatch(setUser(data.user));
+          }
         } catch (error) {
           console.error('Erreur lors du stockage des tokens après inscription:', error);
         }

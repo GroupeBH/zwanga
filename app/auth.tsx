@@ -44,12 +44,12 @@ try {
 }
 
 type AuthMode = 'login' | 'signup';
-type AuthStep = 'phone' | 'sms' | 'profile' | 'kyc';
+type AuthStep = 'phone' | 'sms' | 'pin' | 'profile' | 'kyc' | 'resetPin';
 type VehicleType = 'sedan' | 'suv' | 'van' | 'moto';
 
-const LOGIN_STEPS: AuthStep[] = ['phone', 'sms'];
+const LOGIN_STEPS: AuthStep[] = ['phone', 'pin'];
 // KYC n'est plus dans les étapes par défaut - il sera ajouté conditionnellement pour les conducteurs
-const SIGNUP_STEPS: AuthStep[] = ['phone', 'sms', 'profile'];
+const SIGNUP_STEPS: AuthStep[] = ['phone', 'sms', 'pin', 'profile'];
 
 type VehicleOption = {
   id: VehicleType;
@@ -95,9 +95,24 @@ export default function AuthScreen() {
 
   // Form State
   const [phone, setPhone] = useState('');
-  const [smsCode, setSmsCode] = useState(['', '', '', '', '']); // 5 chiffres au lieu de 6
+  const [smsCode, setSmsCode] = useState(['', '', '', '', '']); // 5 chiffres pour OTP
   const smsInputRefs = useRef<Array<TextInput | null>>([]);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [pin, setPin] = useState(['', '', '', '']); // 4 chiffres pour PIN
+  const [pinConfirm, setPinConfirm] = useState(['', '', '', '']); // 4 chiffres pour confirmation PIN
+  const pinInputRefs = useRef<Array<TextInput | null>>([]);
+  const pinConfirmInputRefs = useRef<Array<TextInput | null>>([]);
+  
+  // Reset PIN State (pour PIN oublié)
+  const [resetPinStep, setResetPinStep] = useState<'otp' | 'newPin'>('otp');
+  const [resetOtpCode, setResetOtpCode] = useState(['', '', '', '', '']); // 5 chiffres pour OTP de réinitialisation
+  const [resetNewPin, setResetNewPin] = useState(['', '', '', '']); // 4 chiffres pour nouveau PIN
+  const [resetNewPinConfirm, setResetNewPinConfirm] = useState(['', '', '', '']); // 4 chiffres pour confirmation nouveau PIN
+  const resetOtpInputRefs = useRef<Array<TextInput | null>>([]);
+  const resetPinInputRefs = useRef<Array<TextInput | null>>([]);
+  const resetPinConfirmInputRefs = useRef<Array<TextInput | null>>([]);
+  const [isSendingResetOtp, setIsSendingResetOtp] = useState(false);
+  
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -125,13 +140,13 @@ export default function AuthScreen() {
   // Calculer la séquence d'étapes dynamiquement selon le rôle
   const getStepSequence = () => {
     if (mode === 'login') {
-      return LOGIN_STEPS;
+      return LOGIN_STEPS; // ['phone', 'pin']
     }
     // Pour l'inscription, ajouter KYC seulement si l'utilisateur est conducteur
     if (role === 'driver') {
-      return ['phone', 'sms', 'profile', 'kyc'];
+      return ['phone', 'sms', 'pin', 'profile', 'kyc'];
     }
-    return SIGNUP_STEPS; // Pas de KYC pour les passagers
+    return SIGNUP_STEPS; // ['phone', 'sms', 'pin', 'profile'] - Pas de KYC pour les passagers
   };
 
   const stepSequence = getStepSequence();
@@ -143,7 +158,8 @@ export default function AuthScreen() {
 
   const motivationalMessage = {
     phone: '',
-    sms: mode === 'login' ? '🎉 Authentification réussie !' : '🚀 Vérification en cours...',
+    sms: '🚀 Vérification en cours...',
+    pin: mode === 'login' ? '🔐 Entrez votre code PIN' : '🔐 Créez votre code PIN',
     profile: '✨ Créez votre identité unique !',
     kyc: '🔒 Vérification d\'identité',
   }[step];
@@ -153,6 +169,12 @@ export default function AuthScreen() {
     if (step === 'sms') {
       const timer = setTimeout(() => {
         smsInputRefs.current[0]?.focus();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+    if (step === 'pin') {
+      const timer = setTimeout(() => {
+        pinInputRefs.current[0]?.focus();
       }, 500);
       return () => clearTimeout(timer);
     }
@@ -177,6 +199,15 @@ export default function AuthScreen() {
 
   // Methods
   const handlePreviousStep = () => {
+    // Si on est dans l'étape resetPin, revenir à l'étape pin
+    if (step === 'resetPin') {
+      setStep('pin');
+      setResetPinStep('otp');
+      setResetOtpCode(['', '', '', '', '']);
+      setResetNewPin(['', '', '', '']);
+      setResetNewPinConfirm(['', '', '', '']);
+      return;
+    }
     if (currentStepIndex > 0) {
       setStep(stepSequence[currentStepIndex - 1] as AuthStep);
     }
@@ -186,6 +217,8 @@ export default function AuthScreen() {
     setStep('phone');
     setPhone('');
     setSmsCode(['', '', '', '', '']); // 5 chiffres
+    setPin(['', '', '', '']); // 4 chiffres
+    setPinConfirm(['', '', '', '']); // 4 chiffres
     setFirstName('');
     setLastName('');
     setEmail('');
@@ -232,17 +265,17 @@ export default function AuthScreen() {
       return;
     }
 
-    // Envoyer le code OTP (identique en développement et production)
+    // En mode login, passer directement à l'étape PIN (pas besoin d'OTP)
+    if (mode === 'login') {
+      setStep('pin');
+      return;
+    }
+
+    // En mode signup, envoyer le code OTP pour vérifier le numéro
     try {
       setIsSendingOtp(true);
-      // Envoyer le contexte approprié selon le mode (login ou signup)
-      const context: 'registration' | 'login' | 'update' = (mode === 'login' ? 'login' : 'registration') as 'registration' | 'login' | 'update';
+      const context: 'registration' | 'login' | 'update' = 'registration';
       console.log('Sending OTP with context:', { phone, context, mode });
-      
-      // S'assurer que le contexte est bien défini et non vide
-      if (!context || (context !== 'login' && context !== 'registration' && context !== 'update')) {
-        throw new Error(`Invalid context: ${context}`);
-      }
       
       const payload: { phone: string; context: 'registration' | 'login' | 'update' } = { phone, context };
       console.log('Payload:', JSON.stringify(payload));
@@ -310,27 +343,12 @@ export default function AuthScreen() {
       return;
     }
 
-    // Vérifier le code OTP (identique en développement et production)
+    // Vérifier le code OTP (uniquement en mode signup)
     try {
-      // D'abord vérifier le code OTP
       await verifyPhoneOtp({ phone, otp: code }).unwrap();
-
-      // Si la vérification réussit, continuer selon le mode
-      if (mode === 'login') {
-        try {
-          const result = await login({ phone }).unwrap();
-          dispatch(setTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken }));
-          dispatch(setUser(result.user));
-          // Navigation handled by useEffect
-        } catch (error: any) {
-          showDialog({ variant: 'danger', title: 'Erreur', message: error?.data?.message || 'Erreur lors de la connexion' });
-        }
-      } else {
-        // Mode signup : passer à l'étape profile
-        setStep('profile');
-      }
+      // Si la vérification réussit, passer à l'étape PIN
+      setStep('pin');
     } catch (error: any) {
-      // Si la vérification échoue, retourner à l'étape phone
       const errorMessage = error?.data?.message || error?.data || 'Code OTP invalide ou expiré';
       showDialog({
         variant: 'danger',
@@ -346,6 +364,333 @@ export default function AuthScreen() {
             },
           },
         ],
+      });
+    }
+  };
+
+  // PIN Handlers
+  const handlePinInputChange = (value: string, index: number, isConfirm: boolean = false) => {
+    const sanitized = value.replace(/\D/g, '');
+    if (sanitized.length > 1) {
+      const digits = sanitized.split('');
+      const updated = isConfirm ? [...pinConfirm] : [...pin];
+      let cursor = index;
+      digits.forEach((digit) => {
+        if (cursor <= updated.length - 1) updated[cursor] = digit;
+        cursor += 1;
+      });
+      if (isConfirm) {
+        setPinConfirm(updated);
+        if (cursor <= updated.length - 1) pinConfirmInputRefs.current[cursor]?.focus();
+        else pinConfirmInputRefs.current[updated.length - 1]?.blur();
+      } else {
+        setPin(updated);
+        if (cursor <= updated.length - 1) pinInputRefs.current[cursor]?.focus();
+        else pinInputRefs.current[updated.length - 1]?.blur();
+      }
+      return;
+    }
+    const nextCode = isConfirm ? [...pinConfirm] : [...pin];
+    nextCode[index] = sanitized;
+    if (isConfirm) {
+      setPinConfirm(nextCode);
+      if (sanitized && index < nextCode.length - 1) pinConfirmInputRefs.current[index + 1]?.focus();
+    } else {
+      setPin(nextCode);
+      if (sanitized && index < nextCode.length - 1) pinInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handlePinKeyPress = (event: NativeSyntheticEvent<TextInputKeyPressEventData>, index: number, isConfirm: boolean = false) => {
+    if (event.nativeEvent.key === 'Backspace') {
+      const currentCode = isConfirm ? pinConfirm : pin;
+      if (currentCode[index]) {
+        const updated = [...currentCode];
+        updated[index] = '';
+        if (isConfirm) {
+          setPinConfirm(updated);
+        } else {
+          setPin(updated);
+        }
+      } else if (index > 0) {
+        if (isConfirm) {
+          pinConfirmInputRefs.current[index - 1]?.focus();
+        } else {
+          pinInputRefs.current[index - 1]?.focus();
+        }
+        const updated = [...currentCode];
+        updated[index - 1] = '';
+        if (isConfirm) {
+          setPinConfirm(updated);
+        } else {
+          setPin(updated);
+        }
+      }
+    }
+  };
+
+  const handlePinSubmit = async () => {
+    const pinValue = pin.join('');
+    if (pinValue.length !== 4) {
+      showDialog({ variant: 'danger', title: 'PIN incomplet', message: 'Veuillez entrer un PIN à 4 chiffres' });
+      return;
+    }
+
+    if (mode === 'login') {
+      // Connexion avec PIN
+      try {
+        const result = await login({ phone, pin: pinValue }).unwrap();
+        dispatch(setTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken }));
+        // L'utilisateur sera récupéré automatiquement par onQueryStarted dans authApi
+        // Navigation handled by useEffect
+      } catch (error: any) {
+        showDialog({ 
+          variant: 'danger', 
+          title: 'Erreur', 
+          message: error?.data?.message || 'Numéro de téléphone ou PIN incorrect' 
+        });
+        // Réinitialiser le PIN en cas d'erreur
+        setPin(['', '', '', '']);
+        pinInputRefs.current[0]?.focus();
+      }
+    } else {
+      // Enregistrement : vérifier que les deux PIN correspondent
+      const pinConfirmValue = pinConfirm.join('');
+      if (pinConfirmValue.length !== 4) {
+        showDialog({ variant: 'danger', title: 'Confirmation incomplète', message: 'Veuillez confirmer votre PIN' });
+        return;
+      }
+      if (pinValue !== pinConfirmValue) {
+        showDialog({ variant: 'danger', title: 'PIN non correspondant', message: 'Les deux codes PIN ne correspondent pas' });
+        setPinConfirm(['', '', '', '']);
+        pinConfirmInputRefs.current[0]?.focus();
+        return;
+      }
+      // PIN confirmé, passer à l'étape profile
+      setStep('profile');
+    }
+  };
+
+  // Reset PIN Handlers (pour PIN oublié)
+  const handleForgotPin = async () => {
+    setStep('resetPin');
+    setResetPinStep('otp');
+    setResetOtpCode(['', '', '', '', '']);
+    setResetNewPin(['', '', '', '']);
+    setResetNewPinConfirm(['', '', '', '']);
+    
+    // Envoyer automatiquement l'OTP
+    try {
+      setIsSendingResetOtp(true);
+      await sendPhoneVerificationOtp({ phone, context: 'update' }).unwrap();
+      showDialog({
+        variant: 'success',
+        title: 'Code envoyé',
+        message: 'Un code de vérification a été envoyé à votre numéro de téléphone.',
+      });
+      setTimeout(() => {
+        resetOtpInputRefs.current[0]?.focus();
+      }, 100);
+    } catch (error: any) {
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: error?.data?.message || 'Erreur lors de l\'envoi du code',
+      });
+    } finally {
+      setIsSendingResetOtp(false);
+    }
+  };
+
+  const handleResetOtpInputChange = (value: string, index: number) => {
+    const sanitized = value.replace(/\D/g, '');
+    if (sanitized.length > 1) {
+      const digits = sanitized.split('');
+      const updated = [...resetOtpCode];
+      let cursor = index;
+      digits.forEach((digit) => {
+        if (cursor <= updated.length - 1) updated[cursor] = digit;
+        cursor += 1;
+      });
+      setResetOtpCode(updated);
+      if (cursor <= updated.length - 1) resetOtpInputRefs.current[cursor]?.focus();
+      else resetOtpInputRefs.current[updated.length - 1]?.blur();
+      return;
+    }
+    const nextCode = [...resetOtpCode];
+    nextCode[index] = sanitized;
+    setResetOtpCode(nextCode);
+    if (sanitized && index < nextCode.length - 1) resetOtpInputRefs.current[index + 1]?.focus();
+  };
+
+  const handleResetOtpKeyPress = (event: NativeSyntheticEvent<TextInputKeyPressEventData>, index: number) => {
+    if (event.nativeEvent.key === 'Backspace') {
+      if (resetOtpCode[index]) {
+        const updated = [...resetOtpCode];
+        updated[index] = '';
+        setResetOtpCode(updated);
+      } else if (index > 0) {
+        resetOtpInputRefs.current[index - 1]?.focus();
+        const updated = [...resetOtpCode];
+        updated[index - 1] = '';
+        setResetOtpCode(updated);
+      }
+    }
+  };
+
+  const handleVerifyResetOtp = async () => {
+    const code = resetOtpCode.join('');
+    if (code.length !== 5) {
+      showDialog({ variant: 'danger', title: 'Code incomplet', message: 'Veuillez entrer le code complet (5 chiffres)' });
+      return;
+    }
+
+    try {
+      await verifyPhoneOtp({ phone, otp: code }).unwrap();
+      setResetPinStep('newPin');
+      setTimeout(() => {
+        resetPinInputRefs.current[0]?.focus();
+      }, 100);
+    } catch (error: any) {
+      showDialog({
+        variant: 'danger',
+        title: 'Code invalide',
+        message: error?.data?.message || 'Code OTP invalide ou expiré',
+      });
+    }
+  };
+
+  const handleResetPinInputChange = (value: string, index: number, isConfirm: boolean = false) => {
+    const sanitized = value.replace(/\D/g, '');
+    if (sanitized.length > 1) {
+      const digits = sanitized.split('');
+      const updated = isConfirm ? [...resetNewPinConfirm] : [...resetNewPin];
+      let cursor = index;
+      digits.forEach((digit) => {
+        if (cursor <= updated.length - 1) updated[cursor] = digit;
+        cursor += 1;
+      });
+      if (isConfirm) {
+        setResetNewPinConfirm(updated);
+        if (cursor <= updated.length - 1) resetPinConfirmInputRefs.current[cursor]?.focus();
+        else resetPinConfirmInputRefs.current[updated.length - 1]?.blur();
+      } else {
+        setResetNewPin(updated);
+        if (cursor <= updated.length - 1) resetPinInputRefs.current[cursor]?.focus();
+        else resetPinInputRefs.current[updated.length - 1]?.blur();
+      }
+      return;
+    }
+    const nextCode = isConfirm ? [...resetNewPinConfirm] : [...resetNewPin];
+    nextCode[index] = sanitized;
+    if (isConfirm) {
+      setResetNewPinConfirm(nextCode);
+      if (sanitized && index < nextCode.length - 1) resetPinConfirmInputRefs.current[index + 1]?.focus();
+    } else {
+      setResetNewPin(nextCode);
+      if (sanitized && index < nextCode.length - 1) resetPinInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleResetPinKeyPress = (event: NativeSyntheticEvent<TextInputKeyPressEventData>, index: number, isConfirm: boolean = false) => {
+    if (event.nativeEvent.key === 'Backspace') {
+      const currentCode = isConfirm ? resetNewPinConfirm : resetNewPin;
+      if (currentCode[index]) {
+        const updated = [...currentCode];
+        updated[index] = '';
+        if (isConfirm) {
+          setResetNewPinConfirm(updated);
+        } else {
+          setResetNewPin(updated);
+        }
+      } else if (index > 0) {
+        if (isConfirm) {
+          resetPinConfirmInputRefs.current[index - 1]?.focus();
+        } else {
+          resetPinInputRefs.current[index - 1]?.focus();
+        }
+        const updated = [...currentCode];
+        updated[index - 1] = '';
+        if (isConfirm) {
+          setResetNewPinConfirm(updated);
+        } else {
+          setResetNewPin(updated);
+        }
+      }
+    }
+  };
+
+  const handleResetPinSubmit = async () => {
+    const otpValue = resetOtpCode.join('');
+    const pinValue = resetNewPin.join('');
+    const pinConfirmValue = resetNewPinConfirm.join('');
+    
+    if (resetPinStep === 'otp') {
+      // Vérifier l'OTP d'abord
+      if (otpValue.length !== 5) {
+        showDialog({ variant: 'danger', title: 'Code incomplet', message: 'Veuillez entrer le code complet (5 chiffres)' });
+        return;
+      }
+
+      try {
+        await verifyPhoneOtp({ phone, otp: otpValue }).unwrap();
+        setResetPinStep('newPin');
+        setTimeout(() => {
+          resetPinInputRefs.current[0]?.focus();
+        }, 100);
+      } catch (error: any) {
+        showDialog({
+          variant: 'danger',
+          title: 'Code invalide',
+          message: error?.data?.message || 'Code OTP invalide ou expiré',
+        });
+      }
+      return;
+    }
+    
+    // Étape de nouveau PIN
+    if (pinValue.length !== 4) {
+      showDialog({ variant: 'danger', title: 'PIN incomplet', message: 'Veuillez entrer un PIN à 4 chiffres' });
+      return;
+    }
+    
+    if (pinConfirmValue.length !== 4) {
+      showDialog({ variant: 'danger', title: 'Confirmation incomplète', message: 'Veuillez confirmer votre PIN' });
+      return;
+    }
+    
+    if (pinValue !== pinConfirmValue) {
+      showDialog({ variant: 'danger', title: 'PIN non correspondant', message: 'Les deux codes PIN ne correspondent pas' });
+      setResetNewPinConfirm(['', '', '', '']);
+      resetPinConfirmInputRefs.current[0]?.focus();
+      return;
+    }
+
+    // Utiliser login avec newPin pour réinitialiser le PIN et se connecter directement
+    try {
+      const result = await login({ phone, newPin: pinValue }).unwrap();
+      dispatch(setTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken }));
+      
+      showDialog({
+        variant: 'success',
+        title: 'PIN réinitialisé',
+        message: 'Votre code PIN a été réinitialisé avec succès. Vous êtes maintenant connecté.',
+      });
+      
+      // Réinitialiser les états
+      setStep('pin');
+      setResetPinStep('otp');
+      setResetOtpCode(['', '', '', '', '']);
+      setResetNewPin(['', '', '', '']);
+      setResetNewPinConfirm(['', '', '', '']);
+      setPin(['', '', '', '']);
+      
+      // La navigation sera gérée automatiquement par le useEffect qui surveille isAuthenticated
+    } catch (error: any) {
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: error?.data?.message || 'Erreur lors de la réinitialisation du PIN',
       });
     }
   };
@@ -422,6 +767,7 @@ export default function AuthScreen() {
       const requiresVehicleSelection = role === 'driver';
       const formData = new FormData();
       formData.append('phone', phone);
+      formData.append('pin', pin.join('')); // Ajouter le PIN
       formData.append('firstName', firstName);
       formData.append('lastName', lastName);
       formData.append('role', role);
@@ -447,7 +793,7 @@ export default function AuthScreen() {
       // 1. Register User
       const result = await register(formData).unwrap();
       dispatch(setTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken }));
-      dispatch(setUser(result.user));
+      // L'utilisateur sera récupéré automatiquement par onQueryStarted dans authApi
 
       // 2. Upload KYC seulement si l'utilisateur est conducteur et a fourni des fichiers KYC
       if (requiresVehicleSelection && kycFiles) {
@@ -456,7 +802,8 @@ export default function AuthScreen() {
         await uploadKyc(kycData).unwrap();
       }
 
-      await triggerSignupSuccessNotification(result.user?.name || firstName);
+      // Récupérer le nom de l'utilisateur depuis le store après l'inscription
+      await triggerSignupSuccessNotification(firstName);
 
       // 3. Navigate (AuthGuard or Effect will handle, but we can force it too if needed)
       // The useEffect on `isAuthenticated` handles redirection to tabs.
@@ -591,22 +938,26 @@ export default function AuthScreen() {
                 <Ionicons name="chatbubble-ellipses" size={40} color={Colors.secondary} />
               </View>
               <Text style={styles.heroTitle}>Vérification</Text>
-              <Text style={styles.heroSubtitle}>Code envoyé au <Text style={{ fontWeight: 'bold', color: Colors.gray[900] }}>{phone}</Text></Text>
+              <Text style={styles.heroSubtitle}>Code de vérification (OTP) envoyé au <Text style={{ fontWeight: 'bold', color: Colors.gray[900] }}>{phone}</Text></Text>
             </View>
 
-            <View style={styles.smsCodeContainer}>
-              {smsCode.map((digit, index) => (
-                <TextInput
-                  key={`sms-${index}`}
-                  ref={(ref) => { smsInputRefs.current[index] = ref; }}
-                  style={[styles.smsInput, digit ? styles.smsInputFilled : null]}
-                  keyboardType="number-pad"
-                  maxLength={1}
-                  value={digit}
-                  onChangeText={(text) => handleSmsInputChange(text, index)}
-                  onKeyPress={(e) => handleSmsKeyPress(e, index)}
-                />
-              ))}
+            <View style={styles.formSection}>
+              <Text style={styles.inputLabel}>Code de vérification (OTP)</Text>
+              <Text style={styles.inputLabelSmall}>5 chiffres reçus par SMS</Text>
+              <View style={styles.smsCodeContainer}>
+                {smsCode.map((digit, index) => (
+                  <TextInput
+                    key={`sms-${index}`}
+                    ref={(ref) => { smsInputRefs.current[index] = ref; }}
+                    style={[styles.smsInput, digit ? styles.smsInputFilled : null]}
+                    keyboardType="number-pad"
+                    maxLength={1}
+                    value={digit}
+                    onChangeText={(text) => handleSmsInputChange(text, index)}
+                    onKeyPress={(e) => handleSmsKeyPress(e, index)}
+                  />
+                ))}
+              </View>
             </View>
 
             <TouchableOpacity
@@ -635,6 +986,230 @@ export default function AuthScreen() {
                 <Text style={styles.resendButtonText}>Renvoyer le code</Text>
               )}
             </TouchableOpacity>
+          </Animated.View>
+        )}
+
+        {/* Step: PIN */}
+        {step === 'pin' && (
+          <Animated.View entering={FadeInDown.springify()} exiting={FadeOutUp} style={styles.stepContainer}>
+            <View style={styles.heroSection}>
+              <View style={[styles.logoContainer, { backgroundColor: Colors.primary + '20' }]}>
+                <Ionicons name="lock-closed" size={40} color={Colors.primary} />
+              </View>
+              <Text style={styles.heroTitle}>{mode === 'login' ? 'Entrez votre mot de passe PIN' : 'Créez votre mot de passe PIN'}</Text>
+              <Text style={styles.heroSubtitle}>
+                {mode === 'login' 
+                  ? 'Mot de passe PIN à 4 chiffres' 
+                  : 'Choisissez un mot de passe PIN à 4 chiffres pour sécuriser votre compte'}
+              </Text>
+            </View>
+
+            {mode === 'login' ? (
+              // Mode login : un seul champ PIN
+              <>
+                <View style={styles.smsCodeContainer}>
+                  {pin.map((digit, index) => (
+                    <TextInput
+                      key={`pin-${index}`}
+                      ref={(ref) => { pinInputRefs.current[index] = ref; }}
+                      style={[styles.smsInput, digit ? styles.smsInputFilled : null]}
+                      keyboardType="number-pad"
+                      maxLength={1}
+                      secureTextEntry
+                      value={digit}
+                      onChangeText={(text) => handlePinInputChange(text, index, false)}
+                      onKeyPress={(e) => handlePinKeyPress(e, index, false)}
+                    />
+                  ))}
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.mainButton, pin.join('').length === 4 ? styles.mainButtonActive : styles.mainButtonDisabled]}
+                  onPress={handlePinSubmit}
+                  disabled={pin.join('').length !== 4 || isLoggingIn}
+                >
+                  {isLoggingIn ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <>
+                      <Text style={styles.mainButtonText}>Se connecter</Text>
+                      <Ionicons name="checkmark-circle-outline" size={24} color="white" />
+                    </>
+                  )}
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={styles.forgotPinButton}
+                  onPress={handleForgotPin}
+                >
+                  <Text style={styles.forgotPinText}>J'ai oublié mon PIN</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              // Mode signup : deux champs PIN (création et confirmation)
+              <>
+                <View style={styles.formSection}>
+                  <Text style={styles.inputLabel}>Mot de passe PIN</Text>
+                  <View style={styles.pinCodeContainer}>
+                    {pin.map((digit, index) => (
+                      <TextInput
+                        key={`pin-${index}`}
+                        ref={(ref) => { pinInputRefs.current[index] = ref; }}
+                        style={[styles.pinInput, digit ? styles.pinInputFilled : null]}
+                        keyboardType="number-pad"
+                        maxLength={1}
+                        secureTextEntry
+                        value={digit}
+                        onChangeText={(text) => handlePinInputChange(text, index, false)}
+                        onKeyPress={(e) => handlePinKeyPress(e, index, false)}
+                      />
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.formSection}>
+                  <Text style={styles.inputLabel}>Confirmer le mot de passe PIN</Text>
+                  <View style={styles.pinCodeContainer}>
+                    {pinConfirm.map((digit, index) => (
+                      <TextInput
+                        key={`pin-confirm-${index}`}
+                        ref={(ref) => { pinConfirmInputRefs.current[index] = ref; }}
+                        style={[styles.pinInput, digit ? styles.pinInputFilled : null]}
+                        keyboardType="number-pad"
+                        maxLength={1}
+                        secureTextEntry
+                        value={digit}
+                        onChangeText={(text) => handlePinInputChange(text, index, true)}
+                        onKeyPress={(e) => handlePinKeyPress(e, index, true)}
+                      />
+                    ))}
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.mainButton, pin.join('').length === 4 && pinConfirm.join('').length === 4 ? styles.mainButtonActive : styles.mainButtonDisabled]}
+                  onPress={handlePinSubmit}
+                  disabled={pin.join('').length !== 4 || pinConfirm.join('').length !== 4}
+                >
+                  <Text style={styles.mainButtonText}>Continuer</Text>
+                  <Ionicons name="arrow-forward" size={20} color="white" />
+                </TouchableOpacity>
+              </>
+            )}
+          </Animated.View>
+        )}
+
+        {/* Step: Reset PIN (PIN oublié) */}
+        {step === 'resetPin' && (
+          <Animated.View entering={FadeInDown.springify()} exiting={FadeOutUp} style={styles.stepContainer}>
+            <View style={styles.heroSection}>
+              <View style={[styles.logoContainer, { backgroundColor: Colors.secondary + '20' }]}>
+                <Ionicons name="key" size={40} color={Colors.secondary} />
+              </View>
+              <Text style={styles.heroTitle}>Réinitialiser votre mot de passe PIN</Text>
+              <Text style={styles.heroSubtitle}>
+                {resetPinStep === 'otp' 
+                  ? 'Un code de vérification sera envoyé à votre numéro de téléphone'
+                  : 'Créez un nouveau mot de passe PIN à 4 chiffres'}
+              </Text>
+            </View>
+
+            {resetPinStep === 'otp' ? (
+              <>
+                <View style={styles.formSection}>
+                  <Text style={styles.inputLabel}>Code de vérification (OTP)</Text>
+                  <Text style={styles.inputLabelSmall}>5 chiffres reçus par SMS</Text>
+                  <View style={styles.smsCodeContainer}>
+                    {resetOtpCode.map((digit, index) => (
+                      <TextInput
+                        key={`reset-otp-${index}`}
+                        ref={(ref) => { resetOtpInputRefs.current[index] = ref; }}
+                        style={[styles.smsInput, digit ? styles.smsInputFilled : null]}
+                        keyboardType="number-pad"
+                        maxLength={1}
+                        value={digit}
+                        onChangeText={(text) => handleResetOtpInputChange(text, index)}
+                        onKeyPress={(e) => handleResetOtpKeyPress(e, index)}
+                      />
+                    ))}
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={[styles.mainButton, resetOtpCode.join('').length === 5 ? styles.mainButtonActive : styles.mainButtonDisabled]}
+                  onPress={handleVerifyResetOtp}
+                  disabled={resetOtpCode.join('').length !== 5}
+                >
+                  <Text style={styles.mainButtonText}>Vérifier</Text>
+                  <Ionicons name="arrow-forward" size={20} color="white" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.resendButton}
+                  onPress={handleForgotPin}
+                  disabled={isSendingResetOtp}
+                >
+                  {isSendingResetOtp ? (
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                  ) : (
+                    <Text style={styles.resendButtonText}>Renvoyer le code</Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <View style={styles.formSection}>
+                  <Text style={styles.inputLabel}>Nouveau mot de passe PIN</Text>
+                  <Text style={styles.inputLabelSmall}>4 chiffres</Text>
+                  <View style={styles.pinCodeContainer}>
+                    {resetNewPin.map((digit, index) => (
+                      <TextInput
+                        key={`reset-pin-${index}`}
+                        ref={(ref) => { resetPinInputRefs.current[index] = ref; }}
+                        style={[styles.pinInput, digit ? styles.pinInputFilled : null]}
+                        keyboardType="number-pad"
+                        maxLength={1}
+                        secureTextEntry
+                        value={digit}
+                        onChangeText={(text) => handleResetPinInputChange(text, index, false)}
+                        onKeyPress={(e) => handleResetPinKeyPress(e, index, false)}
+                      />
+                    ))}
+                  </View>
+                </View>
+                <View style={styles.formSection}>
+                  <Text style={styles.inputLabel}>Confirmer le nouveau mot de passe PIN</Text>
+                  <Text style={styles.inputLabelSmall}>4 chiffres</Text>
+                  <View style={styles.pinCodeContainer}>
+                    {resetNewPinConfirm.map((digit, index) => (
+                      <TextInput
+                        key={`reset-pin-confirm-${index}`}
+                        ref={(ref) => { resetPinConfirmInputRefs.current[index] = ref; }}
+                        style={[styles.pinInput, digit ? styles.pinInputFilled : null]}
+                        keyboardType="number-pad"
+                        maxLength={1}
+                        secureTextEntry
+                        value={digit}
+                        onChangeText={(text) => handleResetPinInputChange(text, index, true)}
+                        onKeyPress={(e) => handleResetPinKeyPress(e, index, true)}
+                      />
+                    ))}
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={[styles.mainButton, resetNewPin.join('').length === 4 && resetNewPinConfirm.join('').length === 4 ? styles.mainButtonActive : styles.mainButtonDisabled]}
+                  onPress={handleResetPinSubmit}
+                  disabled={resetNewPin.join('').length !== 4 || resetNewPinConfirm.join('').length !== 4 || isLoggingIn}
+                >
+                  {isLoggingIn ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <>
+                      <Text style={styles.mainButtonText}>Réinitialiser le PIN</Text>
+                      <Ionicons name="checkmark-circle-outline" size={24} color="white" />
+                    </>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
           </Animated.View>
         )}
 
@@ -937,11 +1512,19 @@ const styles = StyleSheet.create({
   mainButtonText: { fontSize: 18, fontWeight: '700', color: 'white' },
   resendButton: { alignSelf: 'center', marginTop: 16 },
   resendButtonText: { color: Colors.primary, fontWeight: '600' },
+  forgotPinButton: { alignSelf: 'center', marginTop: 16 },
+  forgotPinText: { color: Colors.gray[600], fontWeight: '600', fontSize: 14, textDecorationLine: 'underline' },
 
   // SMS
+  // Styles pour OTP (5 chiffres)
   smsCodeContainer: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 32 },
   smsInput: { width: 48, height: 60, borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12, textAlign: 'center', fontSize: 24, fontWeight: 'bold', color: Colors.gray[900], backgroundColor: '#F9FAFB' },
   smsInputFilled: { borderColor: Colors.primary, backgroundColor: 'white' },
+  
+  // Styles pour PIN (4 chiffres) - Design différent pour éviter la confusion
+  pinCodeContainer: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginVertical: 24 },
+  pinInput: { width: 56, height: 64, borderWidth: 2, borderColor: '#D1D5DB', borderRadius: 16, textAlign: 'center', fontSize: 28, fontWeight: 'bold', color: Colors.gray[900], backgroundColor: '#F3F4F6' },
+  pinInputFilled: { borderColor: Colors.secondary, backgroundColor: '#F0F9FF', borderWidth: 2.5 },
 
   // Profile
   profileHeader: { alignItems: 'center', marginBottom: 24 },

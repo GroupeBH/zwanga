@@ -38,11 +38,10 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     pollingInterval: 10_000, // Réduit à 10 secondes pour une mise à jour plus rapide
   });
 
-  const normalizedUserStatus = user?.status?.toLowerCase?.();
+  // Utiliser uniquement le statut KYC de l'API comme source de vérité
+  // Ne pas se baser sur user?.status car cela peut être obsolète
   const isKycApproved = kycStatusData?.status === 'approved';
-  const isIdentityVerified = Boolean(
-    isKycApproved || user?.status === 'active' || normalizedUserStatus === 'active',
-  );
+  const isIdentityVerified = Boolean(isKycApproved);
 
   const checkIdentity = useCallback(
     (action: IdentityAction = 'book') => {
@@ -75,7 +74,8 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
   const value = useMemo<IdentityContextValue>(
     () => ({
       isIdentityVerified,
-      kycStatus: kycStatusData?.status ?? (normalizedUserStatus as KycDocument['status'] | undefined),
+      // Utiliser uniquement le statut KYC de l'API, pas user?.status
+      kycStatus: kycStatusData?.status,
       kycDocument: kycStatusData,
       isChecking: isFetching,
       refreshKycStatus: refetch,
@@ -86,7 +86,6 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       isFetching,
       isIdentityVerified,
       kycStatusData,
-      normalizedUserStatus,
       refetch,
     ],
   );
