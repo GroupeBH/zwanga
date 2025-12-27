@@ -110,6 +110,7 @@ export const baseApi = createApi({
     'SafetyAlert',
     'UserReport',
     'KycStatus',
+    'FavoriteLocations',
   ],
   endpoints: () => ({}),
 });

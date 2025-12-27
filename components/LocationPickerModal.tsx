@@ -1,5 +1,6 @@
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { getGoogleMapsPlaceDetails, searchGoogleMapsPlaces, type GoogleMapsSearchSuggestion } from '@/utils/googleMapsPlaces';
+import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import Constants from 'expo-constants';
@@ -112,6 +113,30 @@ export default function LocationPickerModal({
   const isUserInteractionRef = useRef(false);
   const lastMarkerUpdateRef = useRef<{ latitude: number; longitude: number } | null>(null);
   const isUpdatingMarkerRef = useRef(false);
+
+  // Récupérer les lieux favoris
+  const { data: favoriteLocations = [], isLoading: favoritesLoading } = useGetFavoriteLocationsQuery(undefined, {
+    skip: !visible, // Ne charger que quand le modal est visible
+  });
+
+  // Convertir les lieux favoris en SearchResult
+  const favoriteLocationsAsResults = useMemo<SearchResult[]>(() => {
+    return favoriteLocations.map((fav) => ({
+      title: fav.name,
+      address: fav.address,
+      latitude: fav.coordinates.latitude,
+      longitude: fav.coordinates.longitude,
+    }));
+  }, [favoriteLocations]);
+
+  // Handler pour sélectionner un lieu favori
+  const handleFavoritePress = (favorite: SearchResult) => {
+    setSelectedLocation(favorite);
+    animateToCoordinate(favorite.latitude, favorite.longitude);
+    setSearchQuery('');
+    setSearchResults([]);
+    setGoogleMapsSuggestions([]);
+  };
 
   useEffect(() => {
     if (!visible) {
@@ -250,14 +275,16 @@ export default function LocationPickerModal({
     }
 
     try {
+      // react-native-maps fournit les coordonnées dans event.nativeEvent.coordinate
+      const coordinate = event?.nativeEvent?.coordinate;
+      
       // Vérifier que l'événement contient les coordonnées
-      if (!event?.geometry?.coordinates || !Array.isArray(event.geometry.coordinates)) {
+      if (!coordinate || typeof coordinate.latitude !== 'number' || typeof coordinate.longitude !== 'number') {
         console.warn('Invalid map press event:', event);
         return;
       }
 
-      // Mapbox returns coordinates as [longitude, latitude]
-      const [longitude, latitude] = event.geometry.coordinates;
+      const { latitude, longitude } = coordinate;
       
       // Valider les coordonnées
       if (
@@ -266,23 +293,51 @@ export default function LocationPickerModal({
         isNaN(longitude) ||
         isNaN(latitude) ||
         !isFinite(longitude) ||
-        !isFinite(latitude)
+        !isFinite(latitude) ||
+        latitude < -90 ||
+        latitude > 90 ||
+        longitude < -180 ||
+        longitude > 180
       ) {
         console.warn('Invalid coordinates:', { longitude, latitude });
         return;
       }
 
-      const coordinate = { latitude, longitude };
+      // Mettre à jour la référence pour éviter les boucles
+      lastMarkerUpdateRef.current = { latitude, longitude };
+      isUpdatingMarkerRef.current = true;
+      isUserInteractionRef.current = false;
+
+      // Mettre à jour le marqueur immédiatement
       setSelectedLocation({
         title: 'Point sélectionné',
         address: 'Détermination de l\'adresse…',
         latitude,
         longitude,
       });
-      
-      await updateLocationFromCoordinates(coordinate);
+
+      // Animer la carte vers le nouveau point
+      const nextRegion: Region = {
+        latitude,
+        longitude,
+        latitudeDelta: region.latitudeDelta || 0.01,
+        longitudeDelta: region.longitudeDelta || 0.01,
+      };
+      if (mapRef.current) {
+        mapRef.current.animateToRegion(nextRegion, 300);
+      }
+
+      // Réinitialiser après l'animation
+      setTimeout(() => {
+        isUpdatingMarkerRef.current = false;
+        isUserInteractionRef.current = true;
+      }, 350);
+
+      // Faire le reverse geocoding pour obtenir l'adresse
+      await updateLocationFromCoordinates({ latitude, longitude });
     } catch (error) {
       console.error('Error handling map press:', error);
+      isUpdatingMarkerRef.current = false;
     }
   };
 
@@ -1014,6 +1069,38 @@ export default function LocationPickerModal({
           )}
         </View>
 
+        {/* Lieux favoris - affichés quand il n'y a pas de recherche active */}
+        {!searchQuery.trim() && favoriteLocationsAsResults.length > 0 && (
+          <View style={styles.resultsContainer}>
+            <View style={styles.favoritesHeader}>
+              <Ionicons name="star" size={16} color={Colors.secondary} />
+              <Text style={styles.favoritesHeaderText}>Lieux favoris</Text>
+            </View>
+            <FlatList
+              data={favoriteLocationsAsResults}
+              keyExtractor={(_, index) => `favorite-${index}`}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.resultRow}
+                  onPress={() => handleFavoritePress(item)}
+                >
+                  <Ionicons 
+                    name="star" 
+                    size={18} 
+                    color={Colors.secondary} 
+                  />
+                  <View style={styles.resultContent}>
+                    <Text style={styles.resultTitle}>{item.title}</Text>
+                    <Text style={styles.resultSubtitle} numberOfLines={1}>
+                      {item.address}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        )}
+
         {/* Suggestions Mapbox en temps réel */}
         {googleMapsSuggestions.length > 0 && (
           <View style={styles.resultsContainer}>
@@ -1086,6 +1173,8 @@ export default function LocationPickerModal({
                 onDragStart={handleMarkerDragStart}
                 onDrag={handleMarkerDrag}
                 onDragEnd={handleMarkerDragEnd}
+                title="Lieu sélectionné"
+                description={selectedLocation.address || 'Glissez pour déplacer'}
               >
                 <View
                   style={[
@@ -1117,7 +1206,9 @@ export default function LocationPickerModal({
                 ? 'Glissez le marqueur pour sélectionner un lieu'
                 : isPanning
                 ? 'Déplacement de la carte…'
-                : selectedLocation?.title ?? 'Touchez la carte, glissez le marqueur ou déplacez la carte pour définir un point'}
+                : isGeocoding
+                ? 'Détermination de l\'adresse…'
+                : selectedLocation?.title ?? 'Touchez la carte ou glissez le marqueur pour sélectionner un lieu'}
             </Text>
             {selectedLocation?.address ? (
               <Text style={styles.locationDetailsSubtitle} numberOfLines={2}>
@@ -1247,6 +1338,21 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
     marginTop: 2,
+  },
+  favoritesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+    gap: Spacing.xs,
+  },
+  favoritesHeaderText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
   },
   mapWrapper: {
     flex: 1,

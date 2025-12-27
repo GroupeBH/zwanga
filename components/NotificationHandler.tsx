@@ -36,12 +36,37 @@ export function NotificationHandler() {
       console.warn('Erreur lors de l\'enregistrement de la tâche de fond:', error);
     });
 
+    // Fonction helper pour extraire l'ID du trip-request depuis différentes structures de données
+    const extractTripRequestId = (data: Record<string, any>): string | null => {
+      // Chercher dans différentes variantes possibles
+      if (data.requestId) return String(data.requestId);
+      if (data.tripRequestId) return String(data.tripRequestId);
+      if (data.trip_request_id) return String(data.trip_request_id);
+      if (data.tripRequest?.id) return String(data.tripRequest.id);
+      if (data.trip_request?.id) return String(data.trip_request.id);
+      if (data.data?.requestId) return String(data.data.requestId);
+      if (data.data?.tripRequestId) return String(data.data.tripRequestId);
+      if (data.data?.trip_request_id) return String(data.data.trip_request_id);
+      if (data.data?.tripRequest?.id) return String(data.data.tripRequest.id);
+      if (data.data?.trip_request?.id) return String(data.data.trip_request.id);
+      
+      // Log pour déboguer si aucun ID trouvé
+      console.log('[NotificationHandler] Aucun ID de trip-request trouvé dans:', data);
+      return null;
+    };
+
     // Fonction pour naviguer selon le type de notification
     const handleNotificationPress = (data: Record<string, any>) => {
       try {
-        const { type, tripId, bookingId, conversationId, requestId } = data;
+        const { type, tripId, bookingId, conversationId } = data;
+        
+        // Extraire l'ID du trip-request de manière robuste
+        const requestId = extractTripRequestId(data);
+        
+        // Log pour déboguer
+        console.log('[NotificationHandler] Notification pressée:', { type, tripId, bookingId, conversationId, requestId, data });
 
-        // Attendre que l'app soit prête avant de naviguer
+        // Attendre que l'app soit prête avant de naviguer (réduit à 100ms pour une réponse plus rapide)
         setTimeout(() => {
           // Gérer les notifications de trajets
           if (type === 'trip' || type === 'trip_update') {
@@ -88,21 +113,48 @@ export function NotificationHandler() {
           }
 
           // Gérer les notifications de demandes de trajet
-          if (
+          // Gérer les variantes avec underscore et tiret
+          const isTripRequestType = 
             type === 'trip_request' ||
+            type === 'trip-request' ||
             type === 'trip_request_accepted' ||
+            type === 'trip-request-accepted' ||
             type === 'trip_request_rejected' ||
+            type === 'trip-request-rejected' ||
             type === 'trip_request_cancelled' ||
-            type === 'trip_request_pending'
-          ) {
+            type === 'trip-request-cancelled' ||
+            type === 'trip_request_pending' ||
+            type === 'trip-request-pending' ||
+            type === 'new_trip_request' ||
+            type === 'new-trip-request' ||
+            type === 'trip_request_new' ||
+            type === 'trip-request-new' ||
+            (typeof type === 'string' && type.toLowerCase().includes('trip') && type.toLowerCase().includes('request'));
+          
+          if (isTripRequestType) {
+            console.log('[NotificationHandler] Notification de demande de trajet détectée, requestId:', requestId);
             if (requestId) {
-              router.push(`/request/${requestId}`);
+              console.log('[NotificationHandler] Navigation vers /request/' + requestId);
+              try {
+                router.push({
+                  pathname: '/request/[id]',
+                  params: { id: requestId },
+                });
+              } catch (error) {
+                console.error('[NotificationHandler] Erreur lors de la navigation:', error);
+                // Fallback avec le format direct
+                router.push(`/request/${requestId}`);
+              }
               return;
             } else if (tripId) {
               // Si une demande a créé un trajet, naviguer vers le trajet
+              console.log('[NotificationHandler] Navigation vers /trip/' + tripId);
               router.push(`/trip/${tripId}`);
               return;
             }
+            console.warn('[NotificationHandler] Notification de demande de trajet sans requestId ni tripId');
+            // Si c'est une notification de demande de trajet mais sans ID, ne rien faire
+            return;
           }
 
           // Gérer les notifications d'avis
@@ -114,12 +166,25 @@ export function NotificationHandler() {
           }
 
           // Fallback : naviguer selon les IDs disponibles même sans type spécifique
-          if (tripId) {
-            router.push(`/trip/${tripId}`);
+          // Vérifier requestId AVANT tripId pour éviter de naviguer vers un trajet au lieu d'une demande
+          // Ré-extraire l'ID au cas où il n'aurait pas été trouvé précédemment
+          const fallbackRequestId = requestId || extractTripRequestId(data);
+          if (fallbackRequestId) {
+            console.log('[NotificationHandler] Fallback: Navigation vers /request/' + fallbackRequestId);
+            try {
+              router.push({
+                pathname: '/request/[id]',
+                params: { id: fallbackRequestId },
+              });
+            } catch (error) {
+              console.error('[NotificationHandler] Erreur lors de la navigation (fallback):', error);
+              // Fallback avec le format direct
+              router.push(`/request/${fallbackRequestId}`);
+            }
             return;
           }
-          if (requestId) {
-            router.push(`/request/${requestId}`);
+          if (tripId) {
+            router.push(`/trip/${tripId}`);
             return;
           }
           if (conversationId) {
@@ -136,7 +201,7 @@ export function NotificationHandler() {
 
           // Par défaut, ouvrir l'app sur l'écran principal
           router.push('/(tabs)');
-        }, 300);
+        }, 100);
       } catch (error) {
         console.warn('Erreur lors de la navigation depuis la notification:', error);
       }

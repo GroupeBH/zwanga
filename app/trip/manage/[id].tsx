@@ -567,6 +567,44 @@ export default function ManageTripScreen() {
                   </View>
                 </Marker>
 
+                {/* Localisations des passagers non récupérés (trajet lancé) */}
+                {trip.status === 'ongoing' &&
+                  bookings
+                    ?.filter(
+                      (booking) =>
+                        booking.status === 'accepted' &&
+                        !booking.pickedUp &&
+                        (booking as any).passengerCurrentLocation &&
+                        (booking as any).passengerCurrentLocation.latitude &&
+                        (booking as any).passengerCurrentLocation.longitude,
+                    )
+                    .map((booking) => {
+                      const currentLoc = (booking as any).passengerCurrentLocation;
+                      return (
+                        <Marker
+                          key={`passenger-location-${booking.id}`}
+                          coordinate={{
+                            latitude: currentLoc.latitude,
+                            longitude: currentLoc.longitude,
+                          }}
+                        >
+                          <Callout>
+                            <View style={styles.passengerLocationCallout}>
+                              <Text style={styles.passengerLocationCalloutName}>
+                                {booking.passengerName || 'Passager'}
+                              </Text>
+                              <Text style={styles.passengerLocationCalloutText}>
+                                En attente de récupération
+                              </Text>
+                            </View>
+                          </Callout>
+                          <View style={styles.markerPassengerLocationCircle}>
+                            <Ionicons name="person-circle" size={18} color={Colors.secondary} />
+                          </View>
+                        </Marker>
+                      );
+                    })}
+
                 {/* Destinations des passagers */}
                 {bookings
                   ?.filter(
@@ -966,6 +1004,44 @@ export default function ManageTripScreen() {
                     </View>
                   </Callout>
                 </Marker>
+
+                {/* Localisations des passagers non récupérés (trajet lancé) */}
+                {trip.status === 'ongoing' &&
+                  bookings
+                    ?.filter(
+                      (booking) =>
+                        booking.status === 'accepted' &&
+                        !booking.pickedUp &&
+                        (booking as any).passengerCurrentLocation &&
+                        (booking as any).passengerCurrentLocation.latitude &&
+                        (booking as any).passengerCurrentLocation.longitude,
+                    )
+                    .map((booking) => {
+                      const currentLoc = (booking as any).passengerCurrentLocation;
+                      return (
+                        <Marker
+                          key={`passenger-location-fullscreen-${booking.id}`}
+                          coordinate={{
+                            latitude: currentLoc.latitude,
+                            longitude: currentLoc.longitude,
+                          }}
+                        >
+                          <Callout>
+                            <View style={styles.passengerLocationCallout}>
+                              <Text style={styles.passengerLocationCalloutName}>
+                                {booking.passengerName || 'Passager'}
+                              </Text>
+                              <Text style={styles.passengerLocationCalloutText}>
+                                En attente de récupération
+                              </Text>
+                            </View>
+                          </Callout>
+                          <View style={styles.markerPassengerLocationCircle}>
+                            <Ionicons name="person-circle" size={20} color={Colors.secondary} />
+                          </View>
+                        </Marker>
+                      );
+                    })}
 
                 {/* Destinations des passagers */}
                 {bookings
@@ -1608,6 +1684,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...CommonStyles.shadowMd,
+  },
+  markerPassengerLocationCircle: {
+    width: 36,
+    height: 36,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: Colors.secondary,
+    ...CommonStyles.shadowLg,
+  },
+  passengerLocationCallout: {
+    padding: Spacing.xs,
+    minWidth: 150,
+  },
+  passengerLocationCalloutName: {
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[900],
+    marginBottom: 2,
+  },
+  passengerLocationCalloutText: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
   },
   mapModalOverlay: {
     flex: 1,

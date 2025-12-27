@@ -1061,7 +1061,7 @@ export default function TripDetailsScreen() {
               <MapView
                 provider={PROVIDER_GOOGLE}
                 style={styles.fullscreenMap}
-                mapType="hybrid"
+                mapType="standard"
                 initialRegion={mapRegion}
               >
                 {/* Route polyline */}
