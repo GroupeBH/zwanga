@@ -636,6 +636,7 @@ export default function ProfileScreen() {
   const menuItems = [
     { icon: 'person-outline', label: 'Modifier le profil', route: '/edit-profile' },
     { icon: 'lock-closed-outline', label: 'Modifier le code PIN', route: null, onPress: handleOpenPinModal },
+    { icon: 'star-outline', label: 'Lieux favoris', route: '/favorite-locations' },
     { icon: 'document-text-outline', label: 'Mes demandes de trajet', route: '/my-requests' },
     ...(currentUser?.isDriver
       ? [

@@ -9,6 +9,7 @@ import {
 } from '@/store/api/tripRequestApi';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
+import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -45,6 +46,7 @@ export default function TripRequestDetailsScreen() {
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   
   const { data: currentUser } = useGetCurrentUserQuery();
+  const { isIdentityVerified, checkIdentity } = useIdentityCheck();
   const { data: tripRequest, isLoading, error, refetch, isError } = useGetTripRequestByIdQuery(id || '', {
     skip: !id,
   });
@@ -176,11 +178,12 @@ export default function TripRequestDetailsScreen() {
   const canMakeOffer = useMemo(() => {
     return (
       currentUser?.isDriver &&
+      isIdentityVerified &&
       !isOwner &&
       tripRequest?.status === 'pending' &&
       !hasExistingOffer
     );
-  }, [currentUser, isOwner, tripRequest, hasExistingOffer]);
+  }, [currentUser, isIdentityVerified, isOwner, tripRequest, hasExistingOffer]);
 
   const myOffer = useMemo(() => {
     if (!tripRequest?.driverOffers || !currentUser) return null;
@@ -245,6 +248,32 @@ export default function TripRequestDetailsScreen() {
 
   const handleCreateOffer = async () => {
     if (!tripRequest || !id) return;
+
+    // Vérifier que l'utilisateur est driver
+    if (!currentUser?.isDriver) {
+      showDialog({
+        title: 'Devenir conducteur requis',
+        message: 'Pour faire une offre sur une demande de trajet, vous devez être conducteur. Voulez-vous devenir conducteur ?',
+        variant: 'warning',
+        actions: [
+          { label: 'Annuler', variant: 'ghost' },
+          { 
+            label: 'Devenir conducteur', 
+            variant: 'primary', 
+            onPress: () => router.push('/publish') 
+          },
+        ],
+      });
+      return;
+    }
+
+    // Vérifier que le KYC est approuvé
+    if (!isIdentityVerified) {
+      const canProceed = checkIdentity('publish');
+      if (!canProceed) {
+        return;
+      }
+    }
 
     // Valider la date proposée
     const proposedDate = new Date(proposedDepartureDate);
@@ -914,7 +943,30 @@ export default function TripRequestDetailsScreen() {
           <View style={styles.section}>
             <TouchableOpacity
               style={styles.makeOfferButton}
-              onPress={() => setShowOfferForm(true)}
+              onPress={() => {
+                // Vérifier à nouveau avant d'ouvrir le formulaire
+                if (!currentUser?.isDriver) {
+                  showDialog({
+                    title: 'Devenir conducteur requis',
+                    message: 'Pour faire une offre sur une demande de trajet, vous devez être conducteur. Voulez-vous devenir conducteur ?',
+                    variant: 'warning',
+                    actions: [
+                      { label: 'Annuler', variant: 'ghost' },
+                      { 
+                        label: 'Devenir conducteur', 
+                        variant: 'primary', 
+                        onPress: () => router.push('/publish') 
+                      },
+                    ],
+                  });
+                  return;
+                }
+                if (!isIdentityVerified) {
+                  checkIdentity('publish');
+                  return;
+                }
+                setShowOfferForm(true);
+              }}
             >
               <Ionicons name="add-circle-outline" size={24} color={Colors.white} />
               <Text style={styles.makeOfferButtonText}>Faire une offre</Text>

@@ -1,5 +1,6 @@
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { getGoogleMapsPlaceDetails, searchGoogleMapsPlaces, type GoogleMapsSearchSuggestion } from '@/utils/googleMapsPlaces';
+import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import Constants from 'expo-constants';
@@ -112,6 +113,30 @@ export default function LocationPickerModal({
   const isUserInteractionRef = useRef(false);
   const lastMarkerUpdateRef = useRef<{ latitude: number; longitude: number } | null>(null);
   const isUpdatingMarkerRef = useRef(false);
+
+  // Récupérer les lieux favoris
+  const { data: favoriteLocations = [], isLoading: favoritesLoading } = useGetFavoriteLocationsQuery(undefined, {
+    skip: !visible, // Ne charger que quand le modal est visible
+  });
+
+  // Convertir les lieux favoris en SearchResult
+  const favoriteLocationsAsResults = useMemo<SearchResult[]>(() => {
+    return favoriteLocations.map((fav) => ({
+      title: fav.name,
+      address: fav.address,
+      latitude: fav.coordinates.latitude,
+      longitude: fav.coordinates.longitude,
+    }));
+  }, [favoriteLocations]);
+
+  // Handler pour sélectionner un lieu favori
+  const handleFavoritePress = (favorite: SearchResult) => {
+    setSelectedLocation(favorite);
+    animateToCoordinate(favorite.latitude, favorite.longitude);
+    setSearchQuery('');
+    setSearchResults([]);
+    setGoogleMapsSuggestions([]);
+  };
 
   useEffect(() => {
     if (!visible) {
@@ -1014,6 +1039,38 @@ export default function LocationPickerModal({
           )}
         </View>
 
+        {/* Lieux favoris - affichés quand il n'y a pas de recherche active */}
+        {!searchQuery.trim() && favoriteLocationsAsResults.length > 0 && (
+          <View style={styles.resultsContainer}>
+            <View style={styles.favoritesHeader}>
+              <Ionicons name="star" size={16} color={Colors.secondary} />
+              <Text style={styles.favoritesHeaderText}>Lieux favoris</Text>
+            </View>
+            <FlatList
+              data={favoriteLocationsAsResults}
+              keyExtractor={(_, index) => `favorite-${index}`}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.resultRow}
+                  onPress={() => handleFavoritePress(item)}
+                >
+                  <Ionicons 
+                    name="star" 
+                    size={18} 
+                    color={Colors.secondary} 
+                  />
+                  <View style={styles.resultContent}>
+                    <Text style={styles.resultTitle}>{item.title}</Text>
+                    <Text style={styles.resultSubtitle} numberOfLines={1}>
+                      {item.address}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        )}
+
         {/* Suggestions Mapbox en temps réel */}
         {googleMapsSuggestions.length > 0 && (
           <View style={styles.resultsContainer}>
@@ -1247,6 +1304,21 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
     marginTop: 2,
+  },
+  favoritesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+    gap: Spacing.xs,
+  },
+  favoritesHeaderText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
   },
   mapWrapper: {
     flex: 1,
