@@ -1,5 +1,5 @@
 import { getRefreshToken } from '../../services/tokenStorage';
-import type { KycDocument, ProfileStats, ProfileSummary, User, UserRole, Vehicle } from '../../types';
+import type { FavoriteLocation, KycDocument, ProfileStats, ProfileSummary, User, UserRole, Vehicle } from '../../types';
 import { authApi } from './authApi';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
@@ -219,6 +219,73 @@ export const userApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['User'],
     }),
+
+    // ==================== Favorite Locations Endpoints ====================
+    
+    // Récupérer tous les lieux favoris de l'utilisateur
+    getFavoriteLocations: builder.query<FavoriteLocation[], void>({
+      query: () => '/users/favorite-locations',
+      providesTags: ['FavoriteLocations'],
+    }),
+
+    // Récupérer le lieu favori par défaut (optionnellement filtré par type)
+    getDefaultFavoriteLocation: builder.query<FavoriteLocation | null, { type?: 'home' | 'work' | 'other' } | void>({
+      query: (params) => {
+        const queryParams = params && params.type ? `?type=${params.type}` : '';
+        return `/users/favorite-locations/default${queryParams}`;
+      },
+      providesTags: ['FavoriteLocations'],
+    }),
+
+    // Récupérer un lieu favori par ID
+    getFavoriteLocationById: builder.query<FavoriteLocation, string>({
+      query: (id: string) => `/users/favorite-locations/${id}`,
+      providesTags: (_result, _error, id) => [{ type: 'FavoriteLocations', id }],
+    }),
+
+    // Créer un lieu favori
+    createFavoriteLocation: builder.mutation<FavoriteLocation, {
+      name: string;
+      address: string;
+      coordinates: { latitude: number; longitude: number };
+      type?: 'home' | 'work' | 'other';
+      isDefault?: boolean;
+      notes?: string;
+    }>({
+      query: (data) => ({
+        url: '/users/favorite-locations',
+        method: 'POST',
+        body: data,
+      }),
+      invalidatesTags: ['FavoriteLocations'],
+    }),
+
+    // Mettre à jour un lieu favori
+    updateFavoriteLocation: builder.mutation<FavoriteLocation, {
+      id: string;
+      name?: string;
+      address?: string;
+      coordinates?: { latitude: number; longitude: number };
+      type?: 'home' | 'work' | 'other';
+      isDefault?: boolean;
+      notes?: string;
+    }>({
+      query: ({ id, ...data }) => ({
+        url: `/users/favorite-locations/${id}`,
+        method: 'PUT',
+        body: data,
+      }),
+      invalidatesTags: (_result, _error, { id }) => [{ type: 'FavoriteLocations', id }, 'FavoriteLocations'],
+    }),
+
+    // Supprimer un lieu favori
+    deleteFavoriteLocation: builder.mutation<{ message: string }, string>({
+      query: (id: string) => ({
+        url: `/users/favorite-locations/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: (_result, _error, id) => [{ type: 'FavoriteLocations', id }, 'FavoriteLocations'],
+    }),
   }),
 });
 
@@ -234,4 +301,11 @@ export const {
   useVerifyPhoneOtpMutation,
   useUpdatePinMutation,
   useUpdatePinWithOtpMutation,
+  // Favorite Locations
+  useGetFavoriteLocationsQuery,
+  useGetDefaultFavoriteLocationQuery,
+  useGetFavoriteLocationByIdQuery,
+  useCreateFavoriteLocationMutation,
+  useUpdateFavoriteLocationMutation,
+  useDeleteFavoriteLocationMutation,
 } = userApi;
