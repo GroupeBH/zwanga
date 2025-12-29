@@ -1,4 +1,5 @@
 import { DialogProvider } from '@/components/ui/DialogProvider';
+import { OngoingTripBanner } from '@/components/OngoingTripBanner';
 import { Colors } from '@/constants/styles';
 import { IdentityProvider } from '@/contexts/IdentityContext';
 import { TutorialProvider } from '@/contexts/TutorialContext';
@@ -48,7 +49,12 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
       <AuthGuard>
         <DialogProvider>
           <TutorialProvider>
-            <IdentityProvider>{children}</IdentityProvider>
+            <IdentityProvider>
+              <View style={styles.appContainer}>
+                <OngoingTripBanner />
+                {children}
+              </View>
+            </IdentityProvider>
           </TutorialProvider>
         </DialogProvider>
       </AuthGuard>
@@ -62,6 +68,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.primary,
+  },
+  appContainer: {
+    flex: 1,
   },
 });
 
