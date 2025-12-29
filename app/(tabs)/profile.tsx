@@ -6,6 +6,7 @@ import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useSendPhoneVerificationOtpMutation, useUpdatePinMutation, useUpdatePinWithOtpMutation, useUploadKycMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
+import { useGetMyTripRequestsQuery, useGetMyDriverOffersQuery } from '@/store/api/tripRequestApi';
 import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
@@ -84,6 +85,8 @@ export default function ProfileScreen() {
   const [updatePinWithOtp, { isLoading: isUpdatingPinWithOtp }] = useUpdatePinWithOtpMutation();
   const [sendPhoneVerificationOtp] = useSendPhoneVerificationOtpMutation();
   const [verifyPhoneOtp] = useVerifyPhoneOtpMutation();
+  const { data: myTripRequests = [] } = useGetMyTripRequestsQuery();
+  const { data: myDriverOffers = [] } = useGetMyDriverOffersQuery();
 
   const currentUser = profileSummary?.user ?? user;
   const stats = profileSummary?.stats;
@@ -130,6 +133,30 @@ export default function ProfileScreen() {
     completeProfileGuide();
   };
 
+  // Calculer les statistiques détaillées pour les demandes
+  const tripRequestsStats = useMemo(() => {
+    const totalRequests = myTripRequests.length;
+    const activeRequests = myTripRequests.filter(
+      (req) => req.status === 'pending' || req.status === 'offers_received'
+    ).length;
+    const requestsWithOffers = myTripRequests.filter(
+      (req) => req.status === 'offers_received' && (req.offers?.length || 0) > 0
+    ).length;
+    const completedRequests = myTripRequests.filter(
+      (req) => req.status === 'driver_selected'
+    ).length;
+    return { totalRequests, activeRequests, requestsWithOffers, completedRequests };
+  }, [myTripRequests]);
+
+  // Calculer les statistiques détaillées pour les offres
+  const offersStats = useMemo(() => {
+    const totalOffers = myDriverOffers.length;
+    const pendingOffers = myDriverOffers.filter((offer) => offer.status === 'pending').length;
+    const acceptedOffers = myDriverOffers.filter((offer) => offer.status === 'accepted').length;
+    const rejectedOffers = myDriverOffers.filter((offer) => offer.status === 'rejected').length;
+    return { totalOffers, pendingOffers, acceptedOffers, rejectedOffers };
+  }, [myDriverOffers]);
+
   const derivedStats = useMemo(
     () => [
       {
@@ -146,11 +173,6 @@ export default function ProfileScreen() {
         label: 'Réservations (conducteur)',
         value: stats?.bookingsAsDriver ?? 0,
         color: Colors.info,
-      },
-      {
-        label: 'Messages envoyés',
-        value: stats?.messagesSent ?? 0,
-        color: Colors.success,
       },
       {
         label: 'Avis reçus',
@@ -564,15 +586,50 @@ export default function ProfileScreen() {
     }
   };
 
+  // Calculer les compteurs pour les demandes de trajet
+  const tripRequestsCount = useMemo(() => {
+    const activeRequests = myTripRequests.filter(
+      (req) => req.status === 'pending' || req.status === 'offers_received'
+    );
+    return activeRequests.length;
+  }, [myTripRequests]);
+
+  const tripRequestsWithOffersCount = useMemo(() => {
+    return myTripRequests.filter(
+      (req) => req.status === 'offers_received' && (req.offers?.length || 0) > 0
+    ).length;
+  }, [myTripRequests]);
+
+  // Calculer les compteurs pour les offres
+  const pendingOffersCount = useMemo(() => {
+    return myDriverOffers.filter((offer) => offer.status === 'pending').length;
+  }, [myDriverOffers]);
+
+  const acceptedOffersCount = useMemo(() => {
+    return myDriverOffers.filter((offer) => offer.status === 'accepted').length;
+  }, [myDriverOffers]);
+
   const menuItems = [
     { icon: 'person-outline', label: 'Modifier le profil', route: '/edit-profile' },
     { icon: 'lock-closed-outline', label: 'Modifier le code PIN', route: null, onPress: handleOpenPinModal },
     { icon: 'star-outline', label: 'Lieux favoris', route: '/favorite-locations' },
-    { icon: 'document-text-outline', label: 'Mes demandes de trajet', route: '/my-requests' },
+    {
+      icon: 'document-text-outline',
+      label: 'Mes demandes de trajet',
+      route: '/my-requests',
+      badge: tripRequestsCount > 0 ? tripRequestsCount : undefined,
+      badgeColor: tripRequestsWithOffersCount > 0 ? Colors.info : Colors.warning,
+    },
     ...(currentUser?.isDriver
       ? [
           { icon: 'list-outline', label: 'Demandes disponibles', route: '/requests' },
-          { icon: 'briefcase-outline', label: 'Mes offres', route: '/my-offers' },
+          {
+            icon: 'briefcase-outline',
+            label: 'Mes offres',
+            route: '/my-offers',
+            badge: pendingOffersCount > 0 ? pendingOffersCount : acceptedOffersCount > 0 ? acceptedOffersCount : undefined,
+            badgeColor: pendingOffersCount > 0 ? Colors.warning : acceptedOffersCount > 0 ? Colors.success : undefined,
+          },
         ]
       : []),
     { icon: 'notifications-outline', label: 'Notifications', route: '/notifications' },
@@ -685,31 +742,82 @@ export default function ProfileScreen() {
             <View style={styles.bookingsContent}>
               <Text style={styles.bookingsTitle}>Mes réservations</Text>
               <Text style={styles.bookingsSubtitle}>
-                Gérez vos trajets en tant que passager ou conducteur
+                {stats?.bookingsAsPassenger ?? 0} en tant que passager · {stats?.bookingsAsDriver ?? 0} en tant que conducteur
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={24} color={Colors.primary} />
           </TouchableOpacity>
         </View>
 
+        {/* Demandes de trajet - Mise en avant */}
+        <View style={styles.bookingsContainer}>
+          <TouchableOpacity
+            style={styles.bookingsCard}
+            onPress={() => router.push('/my-requests')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.bookingsIconContainer}>
+              <Ionicons name="document-text" size={28} color={Colors.warning} />
+            </View>
+            <View style={styles.bookingsContent}>
+              <Text style={styles.bookingsTitle}>Mes demandes de trajet</Text>
+              <Text style={styles.bookingsSubtitle}>
+                {tripRequestsStats.activeRequests} active{tripRequestsStats.activeRequests > 1 ? 's' : ''} · {tripRequestsStats.requestsWithOffers} avec offre{tripRequestsStats.requestsWithOffers > 1 ? 's' : ''}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color={Colors.warning} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Offres - Mise en avant (uniquement pour les drivers) */}
+        {currentUser?.isDriver && (
+          <View style={styles.bookingsContainer}>
+            <TouchableOpacity
+              style={styles.bookingsCard}
+              onPress={() => router.push('/my-offers')}
+              activeOpacity={0.7}
+            >
+              <View style={styles.bookingsIconContainer}>
+                <Ionicons name="briefcase" size={28} color={Colors.info} />
+              </View>
+              <View style={styles.bookingsContent}>
+                <Text style={styles.bookingsTitle}>Mes offres</Text>
+                <Text style={styles.bookingsSubtitle}>
+                  {offersStats.pendingOffers} en attente · {offersStats.acceptedOffers} acceptée{offersStats.acceptedOffers > 1 ? 's' : ''}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={24} color={Colors.info} />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Statistiques */}
         <View style={styles.statsContainer}>
           <View style={styles.statsCard}>
             <Text style={styles.statsTitle}>Statistiques</Text>
             <View style={styles.statsGrid}>
-              {derivedStats.map((stat, index) => (
-                <View
-                  key={stat.label}
-                  style={[
-                    styles.statItem,
-                    index % 2 === 0 && styles.statItemBorderRight,
-                    index < 2 && styles.statItemBorderBottom,
-                  ]}
-                >
-                  <Text style={[styles.statValue, { color: stat.color }]}>{stat.value}</Text>
-                  <Text style={styles.statLabel}>{stat.label}</Text>
-                </View>
-              ))}
+              {derivedStats.map((stat, index) => {
+                const totalStats = derivedStats.length;
+                const itemsPerRow = 2;
+                const rowIndex = Math.floor(index / itemsPerRow);
+                const totalRows = Math.ceil(totalStats / itemsPerRow);
+                const isLastRow = rowIndex === totalRows - 1;
+                const isRightColumn = index % itemsPerRow === 0;
+                
+                return (
+                  <View
+                    key={stat.label}
+                    style={[
+                      styles.statItem,
+                      isRightColumn && styles.statItemBorderRight,
+                      !isLastRow && styles.statItemBorderBottom,
+                    ]}
+                  >
+                    <Text style={[styles.statValue, { color: stat.color }]}>{stat.value}</Text>
+                    <Text style={styles.statLabel}>{stat.label}</Text>
+                  </View>
+                );
+              })}
             </View>
           </View>
         </View>
@@ -930,7 +1038,19 @@ export default function ProfileScreen() {
                   <Ionicons name={item.icon as any} size={20} color={Colors.gray[600]} />
                 </View>
                 <Text style={styles.menuText}>{item.label}</Text>
-                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                <View style={styles.menuRight}>
+                  {(item as any).badge !== undefined && (item as any).badge > 0 && (
+                    <View
+                      style={[
+                        styles.menuBadge,
+                        { backgroundColor: (item as any).badgeColor || Colors.primary },
+                      ]}
+                    >
+                      <Text style={styles.menuBadgeText}>{(item as any).badge}</Text>
+                    </View>
+                  )}
+                  <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                </View>
               </TouchableOpacity>
             ))}
           </View>
@@ -1880,6 +2000,25 @@ const styles = StyleSheet.create({
     color: Colors.gray[800],
     fontWeight: FontWeights.medium,
     fontSize: FontSizes.base,
+  },
+  menuRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  menuBadge: {
+    minWidth: 24,
+    height: 24,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xs,
+  },
+  menuBadgeText: {
+    color: Colors.white,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
   },
   logoutContainer: {
     paddingHorizontal: Spacing.xl,

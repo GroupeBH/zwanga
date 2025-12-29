@@ -223,7 +223,17 @@ export interface TripRequest {
   description?: string | null;
   status: TripRequestStatus;
   selectedDriverId?: string | null; // Driver sélectionné par le passager
+  selectedDriverName?: string; // Nom du driver sélectionné
+  selectedDriverAvatar?: string; // Avatar du driver sélectionné
   selectedVehicleId?: string | null; // Véhicule du driver sélectionné
+  selectedVehicle?: { // Informations du véhicule sélectionné
+    id: string;
+    brand: string;
+    model: string;
+    color: string;
+    licensePlate: string;
+    photoUrl?: string;
+  } | null;
   selectedPricePerSeat?: number | null; // Prix accepté pour le driver sélectionné
   selectedAt?: string | null; // Date de sélection du driver
   tripId?: string | null; // ID du trip créé à partir de cette demande

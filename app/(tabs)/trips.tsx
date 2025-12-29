@@ -76,7 +76,7 @@ export default function TripsScreen() {
   const upcomingTrips = useMemo(
     () => {
       const now = new Date();
-      return trips.filter((trip) => {
+      const filtered = trips.filter((trip) => {
         // Si le trajet est déjà complété, il n'est pas à venir
         if (trip.status === 'completed') {
           return false;
@@ -96,6 +96,13 @@ export default function TripsScreen() {
         
         return false;
       });
+      
+      // Trier par date de création (les plus récents en premier)
+      return filtered.sort((a, b) => {
+        const dateA = new Date(a.createdAt).getTime();
+        const dateB = new Date(b.createdAt).getTime();
+        return dateB - dateA; // dateB - dateA = du plus récent au plus ancien
+      });
     },
     [trips],
   );
@@ -103,7 +110,7 @@ export default function TripsScreen() {
   const completedTrips = useMemo(
     () => {
       const now = new Date();
-      return trips.filter((trip) => {
+      const filtered = trips.filter((trip) => {
         // Les trajets avec status 'completed' sont dans l'historique
         if (trip.status === 'completed') {
           return true;
@@ -121,6 +128,13 @@ export default function TripsScreen() {
         }
         
         return false;
+      });
+      
+      // Trier par date de création (les plus récents en premier)
+      return filtered.sort((a, b) => {
+        const dateA = new Date(a.createdAt).getTime();
+        const dateB = new Date(b.createdAt).getTime();
+        return dateB - dateA; // dateB - dateA = du plus récent au plus ancien
       });
     },
     [trips],

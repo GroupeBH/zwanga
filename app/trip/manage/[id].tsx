@@ -8,7 +8,7 @@ import {
   useGetTripBookingsQuery,
   useRejectBookingMutation,
 } from '@/store/api/bookingApi';
-import { useGetTripByIdQuery, useStartTripMutation, useUpdateTripMutation } from '@/store/api/tripApi';
+import { useGetTripByIdQuery, usePauseTripMutation, useStartTripMutation, useUpdateTripMutation } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus } from '@/types';
@@ -95,6 +95,7 @@ export default function ManageTripScreen() {
   const [rejectBooking, { isLoading: isRejecting }] = useRejectBookingMutation();
   const [updateTrip, { isLoading: isCancellingTrip }] = useUpdateTripMutation();
   const [startTrip, { isLoading: isStartingTrip }] = useStartTripMutation();
+  const [pauseTrip, { isLoading: isPausingTrip }] = usePauseTripMutation();
   const [confirmPickup, { isLoading: isConfirmingPickup }] = useConfirmPickupMutation();
   const [confirmDropoff, { isLoading: isConfirmingDropoff }] = useConfirmDropoffMutation();
 
@@ -341,6 +342,33 @@ export default function ManageTripScreen() {
             } catch (error: any) {
               const message =
                 error?.data?.message ?? error?.error ?? 'Impossible de démarrer ce trajet.';
+              showFeedback('error', message);
+            }
+          },
+        },
+      ],
+    });
+  };
+
+  const handlePauseTrip = async () => {
+    if (!trip) return;
+    showDialog({
+      variant: 'warning',
+      title: 'Interrompre le trajet',
+      message: 'Voulez-vous interrompre ce trajet ? Les passagers seront notifiés et le trajet repassera en attente.',
+      actions: [
+        { label: 'Annuler', variant: 'ghost' },
+        {
+          label: 'Interrompre',
+          variant: 'secondary',
+          onPress: async () => {
+            try {
+              await pauseTrip(trip.id).unwrap();
+              showFeedback('success', 'Le trajet a été interrompu avec succès.');
+              refreshAll();
+            } catch (error: any) {
+              const message =
+                error?.data?.message ?? error?.error ?? 'Impossible d\'interrompre ce trajet.';
               showFeedback('error', message);
             }
           },
@@ -692,6 +720,24 @@ export default function ManageTripScreen() {
                 <>
                   <Ionicons name="play-circle" size={20} color={Colors.white} />
                   <Text style={styles.primaryButtonText}>Démarrer le trajet</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {/* Bouton pour interrompre le trajet (si en cours) */}
+          {trip.status === 'ongoing' && (
+            <TouchableOpacity
+              style={[styles.secondaryButton, { marginTop: Spacing.md, borderColor: Colors.warning, borderWidth: 1 }]}
+              onPress={handlePauseTrip}
+              disabled={isPausingTrip}
+            >
+              {isPausingTrip ? (
+                <ActivityIndicator color={Colors.warning} />
+              ) : (
+                <>
+                  <Ionicons name="pause-circle" size={20} color={Colors.warning} />
+                  <Text style={[styles.secondaryButtonText, { color: Colors.warning }]}>Interrompre le trajet</Text>
                 </>
               )}
             </TouchableOpacity>

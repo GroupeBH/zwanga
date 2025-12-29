@@ -109,9 +109,10 @@ export default function HomeScreen() {
     
     return [...filteredTrips]
       .sort((a, b) => {
+        // Trier par date de départ (les plus récents en premier)
         const dateA = new Date(a.departureTime).getTime();
         const dateB = new Date(b.departureTime).getTime();
-        return dateB - dateA;
+        return dateB - dateA; // dateB - dateA = du plus récent au plus ancien
       })
       .slice(0, RECENT_TRIPS_LIMIT);
   }, [baseTrips, currentUser?.id]);
