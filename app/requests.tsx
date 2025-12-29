@@ -3,6 +3,7 @@ import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constan
 import {
   useGetAvailableTripRequestsQuery,
 } from '@/store/api/tripRequestApi';
+import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import type { TripRequest } from '@/types';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +25,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 export default function TripRequestsScreen() {
   const router = useRouter();
   const { showDialog } = useDialog();
+  const { data: currentUser } = useGetCurrentUserQuery();
   const {
     data: tripRequests = [],
     isLoading,
@@ -44,11 +46,12 @@ export default function TripRequestsScreen() {
       expired: { label: 'Expirée', color: Colors.gray[500], bg: Colors.gray[200] },
     };
     const statusConfig = statusConfigMap[item.status] || statusConfigMap.pending;
+    const hasOffers = item.offers && item.offers.length > 0;
 
     return (
       <Animated.View entering={FadeInDown.delay(index * 100)}>
         <TouchableOpacity
-          style={styles.requestCard}
+          style={[styles.requestCard, hasOffers && styles.requestCardWithOffers]}
           onPress={() => handleRequestPress(item.id)}
         >
           <View style={styles.requestHeader}>
@@ -107,11 +110,13 @@ export default function TripRequestsScreen() {
               </View>
             )}
             {item.offers && item.offers.length > 0 && (
-              <View style={styles.detailRow}>
-                <Ionicons name="checkmark-circle-outline" size={16} color={Colors.info} />
-                <Text style={[styles.detailText, { color: Colors.info }]}>
-                  {item.offers.length} offre{item.offers.length > 1 ? 's' : ''} reçue{item.offers.length > 1 ? 's' : ''}
-                </Text>
+              <View style={styles.offersBadgeContainer}>
+                <View style={styles.offersBadge}>
+                  <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
+                  <Text style={styles.offersBadgeText}>
+                    {item.offers.length} offre{item.offers.length > 1 ? 's' : ''} reçue{item.offers.length > 1 ? 's' : ''}
+                  </Text>
+                </View>
               </View>
             )}
           </View>
@@ -132,6 +137,15 @@ export default function TripRequestsScreen() {
               <Text style={styles.viewButtonText}>Voir détails</Text>
               <Ionicons name="arrow-forward" size={16} color={Colors.primary} />
             </TouchableOpacity>
+            {currentUser?.isDriver && (
+              <TouchableOpacity
+                style={styles.makeOfferButton}
+                onPress={() => handleRequestPress(item.id)}
+              >
+                <Ionicons name="add-circle" size={18} color={Colors.white} />
+                <Text style={styles.makeOfferButtonText}>Faire une offre</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </TouchableOpacity>
       </Animated.View>
@@ -240,11 +254,22 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
     marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
     shadowColor: Colors.black,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  requestCardWithOffers: {
+    borderColor: Colors.info,
+    borderWidth: 2,
+    backgroundColor: Colors.info + '05',
+    shadowColor: Colors.info,
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 5,
   },
   requestHeader: {
     flexDirection: 'row',
@@ -316,6 +341,24 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     color: Colors.gray[700],
   },
+  offersBadgeContainer: {
+    marginTop: Spacing.xs,
+  },
+  offersBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.info,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    gap: Spacing.xs,
+    alignSelf: 'flex-start',
+  },
+  offersBadgeText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
+  },
   descriptionContainer: {
     marginTop: Spacing.sm,
     paddingTop: Spacing.md,
@@ -332,8 +375,11 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.md,
     borderTopWidth: 1,
     borderTopColor: Colors.gray[200],
+    flexDirection: 'row',
+    gap: Spacing.sm,
   },
   viewButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -343,6 +389,21 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
     fontWeight: FontWeights.semibold,
     color: Colors.primary,
+  },
+  makeOfferButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.sm,
+    gap: Spacing.xs,
+  },
+  makeOfferButtonText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
   },
   emptyContainer: {
     flex: 1,
