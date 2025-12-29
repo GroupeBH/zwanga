@@ -1,22 +1,26 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import {
-  useGetTripRequestByIdQuery,
-  useCreateDriverOfferMutation,
   useAcceptDriverOfferMutation,
-  useRejectDriverOfferMutation,
   useCancelTripRequestMutation,
+  useCreateDriverOfferMutation,
+  useGetTripRequestByIdQuery,
+  useRejectDriverOfferMutation,
+  useStartTripFromRequestMutation,
 } from '@/store/api/tripRequestApi';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
-import { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import type { Vehicle } from '@/types';
+import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
+import { getRouteCoordinates } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -28,15 +32,11 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
-  Dimensions,
+  View
 } from 'react-native';
+import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
-import type { DriverOffer, Vehicle } from '@/types';
-import MapView, { Marker, Polyline, Callout, PROVIDER_GOOGLE } from 'react-native-maps';
-import { getRouteCoordinates } from '@/utils/routeHelpers';
 
 export default function TripRequestDetailsScreen() {
   const router = useRouter();
@@ -86,6 +86,7 @@ export default function TripRequestDetailsScreen() {
   const [acceptOffer, { isLoading: isAcceptingOffer }] = useAcceptDriverOfferMutation();
   const [rejectOffer, { isLoading: isRejectingOffer }] = useRejectDriverOfferMutation();
   const [cancelRequest, { isLoading: isCancelling }] = useCancelTripRequestMutation();
+  const [startTripFromRequest, { isLoading: isStartingTripFromRequest }] = useStartTripFromRequestMutation();
 
   // États pour le formulaire d'offre
   const [showOfferForm, setShowOfferForm] = useState(false);
@@ -170,8 +171,8 @@ export default function TripRequestDetailsScreen() {
   );
 
   const hasExistingOffer = useMemo(() => {
-    if (!tripRequest?.driverOffers || !currentUser) return false;
-    return tripRequest.driverOffers.some(
+    if (!tripRequest?.offers || !currentUser) return false;
+    return tripRequest.offers.some(
       (offer) => offer.driverId === currentUser.id && offer.status === 'pending'
     );
   }, [tripRequest, currentUser]);
@@ -187,9 +188,21 @@ export default function TripRequestDetailsScreen() {
   }, [currentUser, isIdentityVerified, isOwner, tripRequest, hasExistingOffer]);
 
   const myOffer = useMemo(() => {
-    if (!tripRequest?.driverOffers || !currentUser) return null;
-    return tripRequest.driverOffers.find((offer) => offer.driverId === currentUser.id);
+    if (!tripRequest?.offers || !currentUser) return null;
+    return tripRequest.offers.find((offer) => offer.driverId === currentUser.id);
   }, [tripRequest, currentUser]);
+
+  const isSelectedDriver = useMemo(() => {
+    return tripRequest && currentUser && tripRequest.selectedDriverId === currentUser.id;
+  }, [tripRequest, currentUser]);
+
+  const canStartTrip = useMemo(() => {
+    return (
+      isSelectedDriver &&
+      tripRequest?.status === 'driver_selected' &&
+      !tripRequest.tripId
+    );
+  }, [isSelectedDriver, tripRequest]);
 
   // Fonctions pour appliquer uniquement la date ou l'heure
   const applyDatePart = (date: Date, currentDate: Date) => {
@@ -421,7 +434,7 @@ export default function TripRequestDetailsScreen() {
         },
         {
           label: 'Rejeter',
-          variant: 'danger',
+          variant: 'secondary',
           onPress: async () => {
             try {
               await rejectOffer({
@@ -448,6 +461,50 @@ export default function TripRequestDetailsScreen() {
     });
   };
 
+  const handleStartTripFromRequest = async () => {
+    if (!tripRequest || !id) return;
+
+    showDialog({
+      title: 'Démarrer le trajet',
+      message: 'Vous allez créer un trajet et une réservation automatique pour le passager. Le trajet démarrera immédiatement. Continuer ?',
+      variant: 'info',
+      actions: [
+        { label: 'Annuler', variant: 'ghost' },
+        {
+          label: 'Démarrer',
+          variant: 'primary',
+          onPress: async () => {
+            try {
+              const result = await startTripFromRequest(id).unwrap();
+              showDialog({
+                title: 'Trajet démarré',
+                message: 'Le trajet a été créé et démarré avec succès. Le passager a été automatiquement réservé.',
+                variant: 'success',
+                actions: [
+                  {
+                    label: 'Voir le trajet',
+                    variant: 'primary',
+                    onPress: () => {
+                      refetch();
+                      router.push(`/trip/${result.trip.id}`);
+                    },
+                  },
+                  { label: 'OK', variant: 'ghost', onPress: () => refetch() },
+                ],
+              });
+            } catch (error: any) {
+              showDialog({
+                title: 'Erreur',
+                message: error?.data?.message || 'Impossible de démarrer le trajet',
+                variant: 'danger',
+              });
+            }
+          },
+        },
+      ],
+    });
+  };
+
   const handleCancelRequest = async () => {
     if (!id) return;
 
@@ -459,7 +516,7 @@ export default function TripRequestDetailsScreen() {
         { label: 'Non', variant: 'secondary' },
         {
           label: 'Oui, annuler',
-          variant: 'danger',
+          variant: 'secondary',
           onPress: async () => {
             try {
               await cancelRequest(id).unwrap();
@@ -781,6 +838,67 @@ export default function TripRequestDetailsScreen() {
           </View>
         </View>
 
+        {/* Driver sélectionné et trajet créé (pour le propriétaire) */}
+        {isOwner && tripRequest.status === 'driver_selected' && tripRequest.selectedDriverId && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderWithBadge}>
+              <View style={styles.sectionTitleContainer}>
+                <Ionicons name="checkmark-circle" size={24} color={Colors.success} />
+                <Text style={styles.sectionTitle}>Driver sélectionné</Text>
+              </View>
+            </View>
+            <View style={[styles.offerCard, styles.offerCardAccepted]}>
+              <View style={styles.offerHeader}>
+                <View style={styles.driverInfo}>
+                  {tripRequest.selectedDriverAvatar ? (
+                    <Image
+                      source={{ uri: tripRequest.selectedDriverAvatar }}
+                      style={styles.offerAvatar}
+                    />
+                  ) : (
+                    <View style={styles.offerAvatar}>
+                      <Ionicons name="person" size={20} color={Colors.gray[500]} />
+                    </View>
+                  )}
+                  <View>
+                    <Text style={styles.driverName}>{tripRequest.selectedDriverName}</Text>
+                    {tripRequest.selectedVehicle && (
+                      <Text style={styles.ratingText}>
+                        {tripRequest.selectedVehicle.brand} {tripRequest.selectedVehicle.model}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              </View>
+              {tripRequest.selectedPricePerSeat && (
+                <View style={styles.offerDetail}>
+                  <Ionicons name="cash-outline" size={16} color={Colors.gray[600]} />
+                  <Text style={styles.offerDetailText}>
+                    {tripRequest.selectedPricePerSeat} FC/place
+                  </Text>
+                </View>
+              )}
+              {tripRequest.tripId && (
+                <View style={styles.tripCreatedContainer}>
+                  <View style={styles.tripCreatedInfo}>
+                    <Ionicons name="car" size={20} color={Colors.primary} />
+                    <Text style={styles.tripCreatedText}>
+                      Le trajet a été créé et démarré. Vous pouvez suivre votre trajet en temps réel.
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.viewTripButton}
+                    onPress={() => router.push(`/trip/${tripRequest.tripId}`)}
+                  >
+                    <Ionicons name="arrow-forward" size={18} color={Colors.primary} />
+                    <Text style={styles.viewTripButtonText}>Voir le trajet</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
         {/* Offres reçues (pour le propriétaire) */}
         {isOwner && (
           <View style={styles.section}>
@@ -791,14 +909,14 @@ export default function TripRequestDetailsScreen() {
                   Offres reçues
                 </Text>
               </View>
-              {tripRequest.driverOffers && tripRequest.driverOffers.length > 0 && (
+              {tripRequest.offers && tripRequest.offers.length > 0 && (
                 <View style={styles.offersCountBadge}>
-                  <Text style={styles.offersCountText}>{tripRequest.driverOffers.length}</Text>
+                  <Text style={styles.offersCountText}>{tripRequest.offers.length}</Text>
                 </View>
               )}
             </View>
             
-            {(!tripRequest.driverOffers || tripRequest.driverOffers.length === 0) ? (
+            {(!tripRequest.offers || tripRequest.offers.length === 0) ? (
               <View style={styles.noOffersContainer}>
                 <View style={styles.noOffersIconContainer}>
                   <Ionicons name="hourglass-outline" size={48} color={Colors.gray[400]} />
@@ -810,8 +928,9 @@ export default function TripRequestDetailsScreen() {
               </View>
             ) : (
               <>
-            {tripRequest.driverOffers.map((offer, index) => {
+            {tripRequest.offers?.map((offer, index) => {
               const isPending = offer.status === 'pending';
+              const driverRating = offer.driverRating;
               return (
               <Animated.View
                 key={offer.id}
@@ -836,10 +955,10 @@ export default function TripRequestDetailsScreen() {
                     )}
                     <View>
                       <Text style={styles.driverName}>{offer.driverName}</Text>
-                      {offer.driverRating > 0 && (
+                      {driverRating !== undefined && driverRating > 0 && (
                         <View style={styles.ratingRow}>
                           <Ionicons name="star" size={14} color={Colors.secondary} />
-                          <Text style={styles.ratingText}>{offer.driverRating.toFixed(1)}</Text>
+                          <Text style={styles.ratingText}>{driverRating.toFixed(1)}</Text>
                         </View>
                       )}
                     </View>
@@ -984,8 +1103,33 @@ export default function TripRequestDetailsScreen() {
                 <View style={styles.successMessage}>
                   <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
                   <Text style={styles.successMessageText}>
-                    Félicitations ! Votre offre a été acceptée. Le passager vous contactera bientôt.
+                    Félicitations ! Votre offre a été acceptée. {tripRequest.tripId ? 'Le trajet a déjà été créé.' : 'Vous pouvez maintenant démarrer le trajet.'}
                   </Text>
+                  {!tripRequest.tripId && (
+                    <TouchableOpacity
+                      style={styles.startTripButton}
+                      onPress={handleStartTripFromRequest}
+                      disabled={isStartingTripFromRequest}
+                    >
+                      {isStartingTripFromRequest ? (
+                        <ActivityIndicator size="small" color={Colors.white} />
+                      ) : (
+                        <>
+                          <Ionicons name="play-circle" size={18} color={Colors.white} />
+                          <Text style={styles.startTripButtonText}>Démarrer le trajet</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  {tripRequest.tripId && (
+                    <TouchableOpacity
+                      style={styles.viewTripButton}
+                      onPress={() => router.push(`/trip/${tripRequest.tripId}`)}
+                    >
+                      <Ionicons name="car" size={18} color={Colors.primary} />
+                      <Text style={styles.viewTripButtonText}>Voir le trajet</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
             </View>
@@ -1224,8 +1368,9 @@ export default function TripRequestDetailsScreen() {
                           styles.input,
                           pricePerSeat &&
                             tripRequest.maxPricePerSeat &&
-                            parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat &&
-                            styles.inputError,
+                            parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat
+                            ? styles.inputError
+                            : undefined,
                         ]}
                         keyboardType="numeric"
                         placeholder={tripRequest.maxPricePerSeat ? `Ex: ${Math.round(tripRequest.maxPricePerSeat * 0.9)}` : 'Ex: 5000'}
@@ -1350,7 +1495,7 @@ export default function TripRequestDetailsScreen() {
                         <View style={styles.offerSummaryRow}>
                           <Ionicons name="calendar" size={20} color={Colors.primary} />
                           <Text style={styles.offerSummaryText}>
-                            {formatDateWithRelativeLabel(proposedDepartureDate, true)}
+                            {formatDateWithRelativeLabel(proposedDepartureDate.toISOString(), true)}
                           </Text>
                         </View>
                       </View>
@@ -1378,11 +1523,12 @@ export default function TripRequestDetailsScreen() {
                               (parseFloat(pricePerSeat) <= 0 ||
                                 parseInt(availableSeats) < tripRequest.numberOfSeats ||
                                 (tripRequest.maxPricePerSeat &&
-                                  parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat)))) &&
-                            styles.submitButtonDisabled,
+                                  parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat))))
+                            ? styles.submitButtonDisabled
+                            : undefined,
                         ]}
                         onPress={handleCreateOffer}
-                        disabled={
+                        disabled={Boolean(
                           isCreatingOffer ||
                           !pricePerSeat ||
                           !availableSeats ||
@@ -1391,7 +1537,7 @@ export default function TripRequestDetailsScreen() {
                               parseInt(availableSeats) < tripRequest.numberOfSeats ||
                               (tripRequest.maxPricePerSeat &&
                                 parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat)))
-                        }
+                        )}
                       >
                         {isCreatingOffer ? (
                           <ActivityIndicator size="small" color={Colors.white} />
@@ -1817,8 +1963,6 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
   },
   successMessage: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: Colors.success + '15',
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
@@ -1826,10 +1970,62 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   successMessageText: {
-    flex: 1,
     fontSize: FontSizes.sm,
     color: Colors.success,
     fontWeight: FontWeights.medium,
+    marginBottom: Spacing.sm,
+  },
+  startTripButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.success,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    marginTop: Spacing.sm,
+    gap: Spacing.xs,
+  },
+  startTripButtonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.sm,
+  },
+  viewTripButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    gap: Spacing.xs,
+  },
+  viewTripButtonText: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.sm,
+  },
+  tripCreatedContainer: {
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[200],
+  },
+  tripCreatedInfo: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  tripCreatedText: {
+    flex: 1,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+    lineHeight: 20,
   },
   makeOfferButton: {
     flexDirection: 'row',
