@@ -17,8 +17,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
   Modal,
   NativeSyntheticEvent,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -52,15 +54,15 @@ export default function ProfileScreen() {
   const [pinModalVisible, setPinModalVisible] = useState(false);
   const [pinStep, setPinStep] = useState<'oldPin' | 'otp' | 'newPin'>('oldPin');
   const [forgotPinMode, setForgotPinMode] = useState(false); // true si l'utilisateur a oublié son PIN
-  const [oldPin, setOldPin] = useState(['', '', '', '']);
+  const [oldPin, setOldPin] = useState('');
   const [otpCode, setOtpCode] = useState(['', '', '', '', '']);
-  const [newPin, setNewPin] = useState(['', '', '', '']);
-  const [newPinConfirm, setNewPinConfirm] = useState(['', '', '', '']);
+  const [newPin, setNewPin] = useState('');
+  const [newPinConfirm, setNewPinConfirm] = useState('');
   const [isSendingOtp, setIsSendingOtp] = useState(false);
-  const oldPinInputRefs = useRef<Array<TextInput | null>>([]);
+  const oldPinInputRef = useRef<TextInput | null>(null);
   const otpInputRefs = useRef<Array<TextInput | null>>([]);
-  const pinInputRefs = useRef<Array<TextInput | null>>([]);
-  const pinConfirmInputRefs = useRef<Array<TextInput | null>>([]);
+  const pinInputRef = useRef<TextInput | null>(null);
+  const pinConfirmInputRef = useRef<TextInput | null>(null);
   const {
     data: profileSummary,
     isLoading: profileLoading,
@@ -367,20 +369,20 @@ export default function ProfileScreen() {
     setPinModalVisible(true);
     setPinStep('oldPin');
     setForgotPinMode(false);
-    setOldPin(['', '', '', '']);
+    setOldPin('');
     setOtpCode(['', '', '', '', '']);
-    setNewPin(['', '', '', '']);
-    setNewPinConfirm(['', '', '', '']);
-    // Focus sur le premier champ de l'ancien PIN
+    setNewPin('');
+    setNewPinConfirm('');
+    // Focus sur le champ de l'ancien PIN
     setTimeout(() => {
-      oldPinInputRefs.current[0]?.focus();
+      oldPinInputRef.current?.focus();
     }, 100);
   };
 
   const handleForgotPin = async () => {
     setForgotPinMode(true);
     setPinStep('otp');
-    setOldPin(['', '', '', '']);
+    setOldPin('');
     setOtpCode(['', '', '', '', '']);
     
     // Envoyer automatiquement l'OTP
@@ -453,7 +455,7 @@ export default function ProfileScreen() {
       await verifyPhoneOtp({ phone: currentUser?.phone || '', otp: code }).unwrap();
       setPinStep('newPin');
       setTimeout(() => {
-        pinInputRefs.current[0]?.focus();
+        pinInputRef.current?.focus();
       }, 100);
     } catch (error: any) {
       showDialog({
@@ -464,152 +466,81 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleOldPinInputChange = (value: string, index: number) => {
-    const sanitized = value.replace(/\D/g, '');
-    if (sanitized.length > 1) {
-      const digits = sanitized.split('');
-      const updated = [...oldPin];
-      let cursor = index;
-      digits.forEach((digit) => {
-        if (cursor <= updated.length - 1) updated[cursor] = digit;
-        cursor += 1;
-      });
-      setOldPin(updated);
-      if (cursor <= updated.length - 1) oldPinInputRefs.current[cursor]?.focus();
-      else oldPinInputRefs.current[updated.length - 1]?.blur();
-      return;
-    }
-    const nextCode = [...oldPin];
-    nextCode[index] = sanitized;
-    setOldPin(nextCode);
-    if (sanitized && index < nextCode.length - 1) oldPinInputRefs.current[index + 1]?.focus();
-  };
-
-  const handleOldPinKeyPress = (event: NativeSyntheticEvent<TextInputKeyPressEventData>, index: number) => {
-    if (event.nativeEvent.key === 'Backspace') {
-      if (oldPin[index]) {
-        const updated = [...oldPin];
-        updated[index] = '';
-        setOldPin(updated);
-      } else if (index > 0) {
-        oldPinInputRefs.current[index - 1]?.focus();
-        const updated = [...oldPin];
-        updated[index - 1] = '';
-        setOldPin(updated);
-      }
-    }
+  // Handler pour ancien PIN - champ texte normal
+  const handleOldPinChange = (value: string) => {
+    const sanitized = value.replace(/\D/g, '').slice(0, 4); // Max 4 chiffres
+    setOldPin(sanitized);
   };
 
   const handleVerifyOldPin = () => {
-    const oldPinValue = oldPin.join('');
-    if (oldPinValue.length !== 4) {
+    if (oldPin.length !== 4) {
       showDialog({ variant: 'danger', title: 'PIN incomplet', message: 'Veuillez entrer votre code PIN actuel (4 chiffres)' });
       return;
     }
     // Passer à l'étape de saisie du nouveau PIN
     setPinStep('newPin');
     setTimeout(() => {
-      pinInputRefs.current[0]?.focus();
+      pinInputRef.current?.focus();
     }, 100);
   };
 
-  const handlePinInputChange = (value: string, index: number, isConfirm: boolean = false) => {
-    const sanitized = value.replace(/\D/g, '');
-    if (sanitized.length > 1) {
-      const digits = sanitized.split('');
-      const updated = isConfirm ? [...newPinConfirm] : [...newPin];
-      let cursor = index;
-      digits.forEach((digit) => {
-        if (cursor <= updated.length - 1) updated[cursor] = digit;
-        cursor += 1;
-      });
-      if (isConfirm) {
-        setNewPinConfirm(updated);
-        if (cursor <= updated.length - 1) pinConfirmInputRefs.current[cursor]?.focus();
-        else pinConfirmInputRefs.current[updated.length - 1]?.blur();
-      } else {
-        setNewPin(updated);
-        if (cursor <= updated.length - 1) pinInputRefs.current[cursor]?.focus();
-        else pinInputRefs.current[updated.length - 1]?.blur();
-      }
-      return;
-    }
-    const nextCode = isConfirm ? [...newPinConfirm] : [...newPin];
-    nextCode[index] = sanitized;
-    if (isConfirm) {
-      setNewPinConfirm(nextCode);
-      if (sanitized && index < nextCode.length - 1) pinConfirmInputRefs.current[index + 1]?.focus();
-    } else {
-      setNewPin(nextCode);
-      if (sanitized && index < nextCode.length - 1) pinInputRefs.current[index + 1]?.focus();
-    }
+  // Handlers pour nouveau PIN - champs texte normaux
+  const handleNewPinChange = (value: string) => {
+    const sanitized = value.replace(/\D/g, '').slice(0, 4); // Max 4 chiffres
+    setNewPin(sanitized);
   };
 
-  const handlePinKeyPress = (event: NativeSyntheticEvent<TextInputKeyPressEventData>, index: number, isConfirm: boolean = false) => {
-    if (event.nativeEvent.key === 'Backspace') {
-      const currentCode = isConfirm ? newPinConfirm : newPin;
-      if (currentCode[index]) {
-        const updated = [...currentCode];
-        updated[index] = '';
-        if (isConfirm) {
-          setNewPinConfirm(updated);
-        } else {
-          setNewPin(updated);
-        }
-      } else if (index > 0) {
-        if (isConfirm) {
-          pinConfirmInputRefs.current[index - 1]?.focus();
-        } else {
-          pinInputRefs.current[index - 1]?.focus();
-        }
-        const updated = [...currentCode];
-        updated[index - 1] = '';
-        if (isConfirm) {
-          setNewPinConfirm(updated);
-        } else {
-          setNewPin(updated);
-        }
-      }
-    }
+  const handleNewPinConfirmChange = (value: string) => {
+    const sanitized = value.replace(/\D/g, '').slice(0, 4); // Max 4 chiffres
+    setNewPinConfirm(sanitized);
   };
 
   const handleUpdatePin = async () => {
-    const oldPinValue = oldPin.join('');
-    const pinValue = newPin.join('');
-    const pinConfirmValue = newPinConfirm.join('');
-    
-    if (pinValue.length !== 4) {
+    if (newPin.length !== 4) {
       showDialog({ variant: 'danger', title: 'PIN incomplet', message: 'Veuillez entrer un PIN à 4 chiffres' });
       return;
     }
     
-    if (pinConfirmValue.length !== 4) {
+    if (newPinConfirm.length !== 4) {
       showDialog({ variant: 'danger', title: 'Confirmation incomplète', message: 'Veuillez confirmer votre PIN' });
       return;
     }
     
-    if (pinValue !== pinConfirmValue) {
+    if (newPin !== newPinConfirm) {
       showDialog({ variant: 'danger', title: 'PIN non correspondant', message: 'Les deux codes PIN ne correspondent pas' });
-      setNewPinConfirm(['', '', '', '']);
-      pinConfirmInputRefs.current[0]?.focus();
+      setNewPinConfirm('');
+      pinConfirmInputRef.current?.focus();
       return;
     }
 
-    if (oldPinValue === pinValue) {
+    if (!forgotPinMode && oldPin === newPin) {
       showDialog({ variant: 'danger', title: 'PIN identique', message: 'Le nouveau PIN doit être différent de l\'ancien PIN' });
       return;
     }
 
     try {
-      await updatePin({
-        newPin: pinValue 
-      }).unwrap();
+      if (forgotPinMode) {
+        // Utiliser updatePinWithOtp si l'utilisateur a oublié son PIN
+        await updatePinWithOtp({
+          phone: currentUser?.phone || '',
+          otp: otpCode.join(''),
+          newPin: newPin,
+        }).unwrap();
+      } else {
+        // Utiliser updatePin avec l'ancien PIN
+        await updatePin({
+          oldPin: oldPin,
+          newPin: newPin,
+        }).unwrap();
+      }
       
       setPinModalVisible(false);
       setPinStep('oldPin');
-      setOldPin(['', '', '', '']);
-      setNewPin(['', '', '', '']);
-      setNewPinConfirm(['', '', '', '']);
+      setForgotPinMode(false);
+      setOldPin('');
+      setNewPin('');
+      setNewPinConfirm('');
+      setOtpCode(['', '', '', '', '']);
       
       showDialog({
         variant: 'success',
@@ -623,12 +554,12 @@ export default function ProfileScreen() {
         message: error?.data?.message || 'Erreur lors de la modification du PIN',
       });
       // En cas d'erreur, réinitialiser et revenir à l'étape de l'ancien PIN
-      setOldPin(['', '', '', '']);
-      setNewPin(['', '', '', '']);
-      setNewPinConfirm(['', '', '', '']);
+      setOldPin('');
+      setNewPin('');
+      setNewPinConfirm('');
       setPinStep('oldPin');
       setTimeout(() => {
-        oldPinInputRefs.current[0]?.focus();
+        oldPinInputRef.current?.focus();
       }, 100);
     }
   };
@@ -1020,7 +951,10 @@ export default function ProfileScreen() {
       </ScrollView>
 
       <Modal visible={vehicleModalVisible} transparent animationType="fade">
-        <View style={styles.vehicleModalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.vehicleModalOverlay}
+        >
           <Animated.View entering={FadeInDown} style={styles.vehicleModalCard}>
             <View style={styles.vehicleModalHeader}>
               <TouchableOpacity onPress={() => setVehicleModalVisible(false)}>
@@ -1039,6 +973,7 @@ export default function ProfileScreen() {
             <ScrollView
               contentContainerStyle={styles.vehicleModalContent}
               showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
             >
               <View style={styles.vehicleInputGroup}>
                 <Text style={styles.vehicleInputLabel}>Marque</Text>
@@ -1093,7 +1028,7 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </ScrollView>
           </Animated.View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <KycWizardModal
@@ -1159,7 +1094,10 @@ export default function ProfileScreen() {
 
       {/* Modal de modification du PIN */}
       <Modal visible={pinModalVisible} transparent animationType="fade" onRequestClose={() => setPinModalVisible(false)}>
-        <View style={styles.pinModalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.pinModalOverlay}
+        >
           <Animated.View entering={FadeInDown} style={styles.pinModalCard}>
             <View style={styles.pinModalHeader}>
               <Text style={styles.pinModalTitle}>Modifier le code PIN</Text>
@@ -1168,6 +1106,11 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
 
+            <ScrollView
+              contentContainerStyle={{ paddingBottom: Spacing.lg }}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
             {pinStep === 'oldPin' ? (
               <>
                 <Text style={styles.pinModalSubtitle}>
@@ -1175,27 +1118,25 @@ export default function ProfileScreen() {
                 </Text>
                 <View style={styles.formSection}>
                   <Text style={styles.inputLabel}>Mot de passe PIN actuel</Text>
-                  <Text style={styles.inputLabelSmall}>4 chiffres</Text>
-                  <View style={styles.pinCodeContainer}>
-                    {oldPin.map((digit, index) => (
-                      <TextInput
-                        key={`old-pin-${index}`}
-                        ref={(ref) => { oldPinInputRefs.current[index] = ref; }}
-                        style={[styles.pinInput, digit ? styles.pinInputFilled : null]}
-                        keyboardType="number-pad"
-                        maxLength={1}
-                        secureTextEntry
-                        value={digit}
-                        onChangeText={(text) => handleOldPinInputChange(text, index)}
-                        onKeyPress={(e) => handleOldPinKeyPress(e, index)}
-                      />
-                    ))}
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+                    <TextInput
+                      ref={oldPinInputRef}
+                      style={styles.input}
+                      keyboardType="number-pad"
+                      maxLength={4}
+                      secureTextEntry
+                      value={oldPin}
+                      onChangeText={handleOldPinChange}
+                      placeholder="Entrez votre PIN actuel (4 chiffres)"
+                      placeholderTextColor={Colors.gray[400]}
+                    />
                   </View>
                 </View>
                 <TouchableOpacity
-                  style={[styles.pinModalButton, oldPin.join('').length === 4 ? styles.pinModalButtonActive : styles.pinModalButtonDisabled]}
+                  style={[styles.pinModalButton, oldPin.length === 4 ? styles.pinModalButtonActive : styles.pinModalButtonDisabled]}
                   onPress={handleVerifyOldPin}
-                  disabled={oldPin.join('').length !== 4}
+                  disabled={oldPin.length !== 4}
                 >
                   <Text style={styles.pinModalButtonText}>Continuer</Text>
                 </TouchableOpacity>
@@ -1253,46 +1194,42 @@ export default function ProfileScreen() {
                 <Text style={styles.pinModalSubtitle}>Créez un nouveau mot de passe PIN à 4 chiffres</Text>
                 <View style={styles.formSection}>
                   <Text style={styles.inputLabel}>Nouveau mot de passe PIN</Text>
-                  <Text style={styles.inputLabelSmall}>4 chiffres</Text>
-                  <View style={styles.pinCodeContainer}>
-                    {newPin.map((digit, index) => (
-                      <TextInput
-                        key={`pin-${index}`}
-                        ref={(ref) => { pinInputRefs.current[index] = ref; }}
-                        style={[styles.pinInput, digit ? styles.pinInputFilled : null]}
-                        keyboardType="number-pad"
-                        maxLength={1}
-                        secureTextEntry
-                        value={digit}
-                        onChangeText={(text) => handlePinInputChange(text, index, false)}
-                        onKeyPress={(e) => handlePinKeyPress(e, index, false)}
-                      />
-                    ))}
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+                    <TextInput
+                      ref={pinInputRef}
+                      style={styles.input}
+                      keyboardType="number-pad"
+                      maxLength={4}
+                      secureTextEntry
+                      value={newPin}
+                      onChangeText={handleNewPinChange}
+                      placeholder="Créez un nouveau PIN (4 chiffres)"
+                      placeholderTextColor={Colors.gray[400]}
+                    />
                   </View>
                 </View>
                 <View style={styles.formSection}>
                   <Text style={styles.inputLabel}>Confirmer le nouveau mot de passe PIN</Text>
-                  <Text style={styles.inputLabelSmall}>4 chiffres</Text>
-                  <View style={styles.pinCodeContainer}>
-                    {newPinConfirm.map((digit, index) => (
-                      <TextInput
-                        key={`pin-confirm-${index}`}
-                        ref={(ref) => { pinConfirmInputRefs.current[index] = ref; }}
-                        style={[styles.pinInput, digit ? styles.pinInputFilled : null]}
-                        keyboardType="number-pad"
-                        maxLength={1}
-                        secureTextEntry
-                        value={digit}
-                        onChangeText={(text) => handlePinInputChange(text, index, true)}
-                        onKeyPress={(e) => handlePinKeyPress(e, index, true)}
-                      />
-                    ))}
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+                    <TextInput
+                      ref={pinConfirmInputRef}
+                      style={styles.input}
+                      keyboardType="number-pad"
+                      maxLength={4}
+                      secureTextEntry
+                      value={newPinConfirm}
+                      onChangeText={handleNewPinConfirmChange}
+                      placeholder="Confirmez votre nouveau PIN (4 chiffres)"
+                      placeholderTextColor={Colors.gray[400]}
+                    />
                   </View>
                 </View>
                 <TouchableOpacity
-                  style={[styles.pinModalButton, newPin.join('').length === 4 && newPinConfirm.join('').length === 4 ? styles.pinModalButtonActive : styles.pinModalButtonDisabled]}
+                  style={[styles.pinModalButton, newPin.length === 4 && newPinConfirm.length === 4 ? styles.pinModalButtonActive : styles.pinModalButtonDisabled]}
                   onPress={handleUpdatePin}
-                  disabled={newPin.join('').length !== 4 || newPinConfirm.join('').length !== 4 || isUpdatingPin}
+                  disabled={newPin.length !== 4 || newPinConfirm.length !== 4 || isUpdatingPin || isUpdatingPinWithOtp}
                 >
                   {isUpdatingPin ? (
                     <ActivityIndicator color={Colors.white} />
@@ -1302,8 +1239,9 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               </>
             )}
+            </ScrollView>
           </Animated.View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <TutorialOverlay
@@ -2058,6 +1996,25 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.semibold,
     color: Colors.gray[700],
     marginBottom: Spacing.sm,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: Colors.gray[300],
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: Colors.gray[50],
+    height: 56,
+  },
+  inputIcon: {
+    marginRight: Spacing.sm,
+  },
+  input: {
+    flex: 1,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+    height: '100%',
   },
   pinModalButton: {
     backgroundColor: Colors.gray[300],
