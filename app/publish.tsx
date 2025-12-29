@@ -548,12 +548,12 @@ export default function PublishScreen() {
         departureCoordinates: [departureLocation.longitude, departureLocation.latitude],
         arrivalCoordinates: [arrivalLocation.longitude, arrivalLocation.latitude],
         departureDate: departureDate.toISOString(),
-        availableSeats: seatsValue,
+        totalSeats: parseInt(seatsValue),
         pricePerSeat: priceValue,
         isFree: isFreeTrip,
         description: description.trim() || undefined,
         vehicleId: selectedVehicleId,
-      } as any).unwrap();
+      }).unwrap();
 
       resetForm();
       showDialog({

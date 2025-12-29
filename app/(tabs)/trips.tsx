@@ -273,7 +273,7 @@ export default function TripsScreen() {
       await updateTripMutation({
         id: editingTrip.id,
         updates: {
-          availableSeats: seatsValue,
+          totalSeats: parseInt(seatsValue),
           pricePerSeat: priceValue,
           departureDate: editDateTime.toISOString(),
         },

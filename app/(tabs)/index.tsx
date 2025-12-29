@@ -31,7 +31,7 @@ import {
 import Animated, { FadeInDown, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const RECENT_TRIPS_LIMIT = 5;
+const RECENT_TRIPS_LIMIT = 15;
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -637,12 +637,14 @@ export default function HomeScreen() {
                         <View style={styles.avatar} />
                       )}
                       <View style={styles.tripDriverDetails}>
-                        <Text style={styles.driverName}>{trip?.driverName ?? ''}</Text>
+                        <Text style={styles.driverName} numberOfLines={1} ellipsizeMode="tail">
+                          {trip?.driverName ?? ''}
+                        </Text>
                         <View style={styles.driverMeta}>
                           <Ionicons name="star" size={14} color={Colors.secondary} />
                           <Text style={styles.driverRating}>{ratingValue.toFixed(1)}</Text>
                           <View style={styles.dot} />
-                          <Text style={styles.vehicleInfo}>
+                          <Text style={styles.vehicleInfo} numberOfLines={1} ellipsizeMode="tail">
                             {trip?.vehicle
                               ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
                               : trip?.vehicleInfo ?? ''}
@@ -653,13 +655,13 @@ export default function HomeScreen() {
                     <View style={styles.headerBadges}>
                       {bookedTripIds.has(trip.id) && (
                         <View style={styles.bookedBadge}>
-                          <Ionicons name="checkmark-circle" size={12} color={Colors.primary} />
+                          <Ionicons name="checkmark-circle" size={10} color={Colors.primary} />
                           <Text style={styles.bookedBadgeText}>Réservé</Text>
                         </View>
                       )}
                       {trip?.status === 'ongoing' && (
                         <View style={styles.ongoingBadge}>
-                          <Ionicons name="car-sport" size={12} color={Colors.success} />
+                          <Ionicons name="car-sport" size={10} color={Colors.success} />
                           <Text style={styles.ongoingBadgeText}>En cours</Text>
                         </View>
                       )}
@@ -1232,6 +1234,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+    minWidth: 0, // Permet au flex de fonctionner correctement avec ellipsize
   },
   avatar: {
     width: 48,
@@ -1242,12 +1245,14 @@ const styles = StyleSheet.create({
   },
   tripDriverDetails: {
     flex: 1,
+    minWidth: 0, // Permet au flex de fonctionner correctement avec ellipsize
   },
   driverName: {
     fontWeight: FontWeights.bold,
     color: Colors.gray[800],
     fontSize: FontSizes.base,
     marginBottom: Spacing.xs,
+    flexShrink: 1,
   },
   driverMeta: {
     flexDirection: 'row',
@@ -1268,61 +1273,65 @@ const styles = StyleSheet.create({
   vehicleInfo: {
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
+    flexShrink: 1,
   },
   headerBadges: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: Spacing.xs,
+    flexWrap: 'wrap',
+    flexShrink: 0,
+    maxWidth: '45%',
   },
   bookedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.primary + '15',
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    gap: 4,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+    gap: 3,
   },
   bookedBadgeText: {
     color: Colors.primary,
-    fontWeight: FontWeights.bold,
+    fontWeight: FontWeights.semibold,
     fontSize: FontSizes.xs,
   },
   ongoingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.success + '15',
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    gap: 4,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+    gap: 3,
   },
   ongoingBadgeText: {
     color: Colors.success,
-    fontWeight: FontWeights.bold,
+    fontWeight: FontWeights.semibold,
     fontSize: FontSizes.xs,
   },
   priceBadge: {
     backgroundColor: 'rgba(46, 204, 113, 0.1)',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.sm,
   },
   priceText: {
     color: Colors.success,
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    fontSize: FontSizes.xs,
   },
   freeBadge: {
     backgroundColor: Colors.success + '15',
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
   },
   freeBadgeText: {
     color: Colors.success,
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    fontSize: FontSizes.xs,
   },
   tripRoute: {
     marginBottom: Spacing.md,
