@@ -879,7 +879,11 @@ export default function ManageTripScreen() {
                   entering={FadeInDown.delay(index * 80)}
                   style={styles.bookingCard}
                 >
-                  <View style={styles.bookingHeader}>
+                  <TouchableOpacity
+                    style={styles.bookingHeader}
+                    onPress={() => router.push(`/passenger/${booking.passengerId}`)}
+                    activeOpacity={0.7}
+                  >
                     <View style={styles.avatar}>
                       <Ionicons name="person" size={22} color={Colors.white} />
                     </View>
@@ -900,7 +904,8 @@ export default function ManageTripScreen() {
                         {statusConfig.label}
                       </Text>
                     </View>
-                  </View>
+                    <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} style={{ marginLeft: Spacing.sm }} />
+                  </TouchableOpacity>
 
                   {booking.rejectionReason ? (
                     <View style={styles.reasonBanner}>
