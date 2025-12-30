@@ -230,6 +230,7 @@ type CreateTripPayload = {
   arrivalLocation: string;
   arrivalCoordinates: [number, number];
   departureDate: string;
+  totalSeats: number;
   availableSeats: number;
   pricePerSeat: number;
   isFree?: boolean;
@@ -339,6 +340,21 @@ export const tripApi = baseApi.injectEndpoints({
       ],
     }),
 
+    // Mettre en pause/interrompre un trajet actif
+    pauseTrip: builder.mutation<Trip, string>({
+      query: (id: string) => ({
+        url: `/trips/${id}/pause`,
+        method: 'PUT',
+      }),
+      transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
+      invalidatesTags: (_result, _error, id: string) => [
+        { type: 'Trip', id },
+        { type: 'MyTrips', id },
+        'Trip',
+        'MyTrips',
+      ],
+    }),
+
     // Mettre à jour la position du conducteur
     updateDriverLocation: builder.mutation<
       { tripId: string; coordinates: [number, number]; updatedAt: string },
@@ -390,6 +406,7 @@ export const {
   useBookTripMutation,
   useSearchTripsByCoordinatesMutation,
   useStartTripMutation,
+  usePauseTripMutation,
   useUpdateDriverLocationMutation,
   useGetDriverLocationQuery,
 } = tripApi;

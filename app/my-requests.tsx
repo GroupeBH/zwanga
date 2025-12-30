@@ -42,13 +42,20 @@ export default function MyTripRequestsScreen() {
       expired: { label: 'Expirée', color: Colors.gray[500], bg: Colors.gray[200] },
     }[item.status] || statusConfig.pending;
 
-    const offersCount = item.driverOffers?.length || 0;
-    const pendingOffersCount = item.driverOffers?.filter((o) => o.status === 'pending').length || 0;
+    const offersCount = item.offers?.length || 0;
+    const pendingOffersCount = item.offers?.filter((o) => o.status === 'pending').length || 0;
+
+    const hasOffers = offersCount > 0;
+    const hasPendingOffers = pendingOffersCount > 0;
 
     return (
       <Animated.View entering={FadeInDown.delay(index * 100)}>
         <TouchableOpacity
-          style={styles.requestCard}
+          style={[
+            styles.requestCard,
+            hasOffers && styles.requestCardWithOffers,
+            hasPendingOffers && styles.requestCardWithPendingOffers,
+          ]}
           onPress={() => handleRequestPress(item.id)}
         >
           <View style={styles.requestHeader}>
@@ -263,6 +270,20 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  requestCardWithOffers: {
+    borderWidth: 2,
+    borderColor: Colors.info,
+    backgroundColor: Colors.info + '08',
+    shadowColor: Colors.info,
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  requestCardWithPendingOffers: {
+    borderColor: Colors.warning,
+    backgroundColor: Colors.warning + '08',
+    shadowColor: Colors.warning,
   },
   requestHeader: {
     flexDirection: 'row',

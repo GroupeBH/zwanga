@@ -1,14 +1,14 @@
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
+import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import {
   useDeleteTripMutation,
   useGetMyTripsQuery,
   useUpdateTripMutation,
 } from '@/store/api/tripApi';
 import type { Trip } from '@/types';
-import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
-import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
+import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -76,7 +76,7 @@ export default function TripsScreen() {
   const upcomingTrips = useMemo(
     () => {
       const now = new Date();
-      return trips.filter((trip) => {
+      const filtered = trips.filter((trip) => {
         // Si le trajet est déjà complété, il n'est pas à venir
         if (trip.status === 'completed') {
           return false;
@@ -96,6 +96,13 @@ export default function TripsScreen() {
         
         return false;
       });
+      
+      // Trier par date de départ (les plus récents en premier)
+      return filtered.sort((a, b) => {
+        const dateA = new Date(a.departureTime).getTime();
+        const dateB = new Date(b.departureTime).getTime();
+        return dateB - dateA; // dateB - dateA = du plus récent au plus ancien
+      });
     },
     [trips],
   );
@@ -103,7 +110,7 @@ export default function TripsScreen() {
   const completedTrips = useMemo(
     () => {
       const now = new Date();
-      return trips.filter((trip) => {
+      const filtered = trips.filter((trip) => {
         // Les trajets avec status 'completed' sont dans l'historique
         if (trip.status === 'completed') {
           return true;
@@ -121,6 +128,13 @@ export default function TripsScreen() {
         }
         
         return false;
+      });
+      
+      // Trier par date de départ (les plus récents en premier)
+      return filtered.sort((a, b) => {
+        const dateA = new Date(a.departureTime).getTime();
+        const dateB = new Date(b.departureTime).getTime();
+        return dateB - dateA; // dateB - dateA = du plus récent au plus ancien
       });
     },
     [trips],
@@ -909,6 +923,17 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
     marginLeft: Spacing.xs,
+  },
+  dot: {
+    width: 4,
+    height: 4,
+    backgroundColor: Colors.gray[400],
+    borderRadius: BorderRadius.full,
+    marginHorizontal: Spacing.sm,
+  },
+  vehicleInfo: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
   },
   statusBadge: {
     paddingHorizontal: Spacing.md,

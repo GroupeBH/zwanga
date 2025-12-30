@@ -317,13 +317,22 @@ export default function SearchScreen() {
     return storedTrips;
   }, [advancedTrips, remoteTrips, storedTrips]);
 
-  const filteredTrips = baseTrips.filter((trip) => {
-    const matchesFilter = filter === 'all' || trip.vehicleType === filter;
-    const matchesDate = matchesDateFilter(trip.departureTime, dateFilter);
-    const matchesDeparture = !departure || trip.departure.name.toLowerCase().includes(departure.toLowerCase());
-    const matchesArrival = !arrival || trip.arrival.name.toLowerCase().includes(arrival.toLowerCase());
-    return matchesFilter && matchesDate && matchesDeparture && matchesArrival;
-  });
+  const filteredTrips = useMemo(() => {
+    const filtered = baseTrips.filter((trip) => {
+      const matchesFilter = filter === 'all' || trip.vehicleType === filter;
+      const matchesDate = matchesDateFilter(trip.departureTime, dateFilter);
+      const matchesDeparture = !departure || trip.departure.name.toLowerCase().includes(departure.toLowerCase());
+      const matchesArrival = !arrival || trip.arrival.name.toLowerCase().includes(arrival.toLowerCase());
+      return matchesFilter && matchesDate && matchesDeparture && matchesArrival;
+    });
+    
+    // Trier par date de création (les plus récents en premier)
+    return filtered.sort((a, b) => {
+      const dateA = new Date(a.createdAt).getTime();
+      const dateB = new Date(b.createdAt).getTime();
+      return dateB - dateA; // dateB - dateA = du plus récent au plus ancien
+    });
+  }, [baseTrips, filter, dateFilter, departure, arrival]);
 
   return (
     <SafeAreaView style={styles.container}>

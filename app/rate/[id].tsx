@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,9 +16,10 @@ type TabType = 'rate' | 'report';
 
 export default function RateScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams();
+  const params = useLocalSearchParams();
   const user = useAppSelector(selectUser);
-  const tripId = typeof id === 'string' ? id : '';
+  const tripId = typeof params.id === 'string' ? params.id : '';
+  const passengerIdParam = typeof params.passengerId === 'string' ? params.passengerId : null;
   const { data: trip } = useGetTripByIdQuery(tripId, { skip: !tripId });
   const isTripDriver = trip?.driverId === user?.id;
   const { data: tripBookings } = useGetTripBookingsQuery(tripId, {
@@ -29,7 +30,7 @@ export default function RateScreen() {
   const [comment, setComment] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [reportReason, setReportReason] = useState('');
-  const [selectedPassenger, setSelectedPassenger] = useState<string | null>(null);
+  const [selectedPassenger, setSelectedPassenger] = useState<string | null>(passengerIdParam);
   const { showDialog } = useDialog();
   const [createReview, { isLoading: isSubmittingReview }] = useCreateReviewMutation();
 
@@ -43,6 +44,16 @@ export default function RateScreen() {
         seats: booking.numberOfSeats,
       }));
   }, [tripBookings]);
+
+  // Pré-sélectionner le passager si un passengerId est fourni dans l'URL
+  useEffect(() => {
+    if (passengerIdParam && passengers.length > 0) {
+      const passengerExists = passengers.some(p => p.id === passengerIdParam);
+      if (passengerExists && selectedPassenger !== passengerIdParam) {
+        setSelectedPassenger(passengerIdParam);
+      }
+    }
+  }, [passengerIdParam, passengers, selectedPassenger]);
 
   const rateTags = [
     { id: 'punctual', label: 'Ponctuel', icon: 'time' },

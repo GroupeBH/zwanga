@@ -13,6 +13,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
   Modal,
   NativeSyntheticEvent,
   Platform,
@@ -98,19 +99,19 @@ export default function AuthScreen() {
   const [smsCode, setSmsCode] = useState(['', '', '', '', '']); // 5 chiffres pour OTP
   const smsInputRefs = useRef<Array<TextInput | null>>([]);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
-  const [pin, setPin] = useState(['', '', '', '']); // 4 chiffres pour PIN
-  const [pinConfirm, setPinConfirm] = useState(['', '', '', '']); // 4 chiffres pour confirmation PIN
-  const pinInputRefs = useRef<Array<TextInput | null>>([]);
-  const pinConfirmInputRefs = useRef<Array<TextInput | null>>([]);
+  const [pin, setPin] = useState(''); // PIN comme string normale
+  const [pinConfirm, setPinConfirm] = useState(''); // Confirmation PIN comme string normale
+  const pinInputRef = useRef<TextInput | null>(null);
+  const pinConfirmInputRef = useRef<TextInput | null>(null);
   
   // Reset PIN State (pour PIN oublié)
   const [resetPinStep, setResetPinStep] = useState<'otp' | 'newPin'>('otp');
   const [resetOtpCode, setResetOtpCode] = useState(['', '', '', '', '']); // 5 chiffres pour OTP de réinitialisation
-  const [resetNewPin, setResetNewPin] = useState(['', '', '', '']); // 4 chiffres pour nouveau PIN
-  const [resetNewPinConfirm, setResetNewPinConfirm] = useState(['', '', '', '']); // 4 chiffres pour confirmation nouveau PIN
+  const [resetNewPin, setResetNewPin] = useState(''); // Nouveau PIN comme string normale
+  const [resetNewPinConfirm, setResetNewPinConfirm] = useState(''); // Confirmation nouveau PIN comme string normale
   const resetOtpInputRefs = useRef<Array<TextInput | null>>([]);
-  const resetPinInputRefs = useRef<Array<TextInput | null>>([]);
-  const resetPinConfirmInputRefs = useRef<Array<TextInput | null>>([]);
+  const resetPinInputRef = useRef<TextInput | null>(null);
+  const resetPinConfirmInputRef = useRef<TextInput | null>(null);
   const [isSendingResetOtp, setIsSendingResetOtp] = useState(false);
   
   const [firstName, setFirstName] = useState('');
@@ -174,7 +175,7 @@ export default function AuthScreen() {
     }
     if (step === 'pin') {
       const timer = setTimeout(() => {
-        pinInputRefs.current[0]?.focus();
+        pinInputRef.current?.focus();
       }, 500);
       return () => clearTimeout(timer);
     }
@@ -368,70 +369,19 @@ export default function AuthScreen() {
     }
   };
 
-  // PIN Handlers
-  const handlePinInputChange = (value: string, index: number, isConfirm: boolean = false) => {
-    const sanitized = value.replace(/\D/g, '');
-    if (sanitized.length > 1) {
-      const digits = sanitized.split('');
-      const updated = isConfirm ? [...pinConfirm] : [...pin];
-      let cursor = index;
-      digits.forEach((digit) => {
-        if (cursor <= updated.length - 1) updated[cursor] = digit;
-        cursor += 1;
-      });
-      if (isConfirm) {
-        setPinConfirm(updated);
-        if (cursor <= updated.length - 1) pinConfirmInputRefs.current[cursor]?.focus();
-        else pinConfirmInputRefs.current[updated.length - 1]?.blur();
-      } else {
-        setPin(updated);
-        if (cursor <= updated.length - 1) pinInputRefs.current[cursor]?.focus();
-        else pinInputRefs.current[updated.length - 1]?.blur();
-      }
-      return;
-    }
-    const nextCode = isConfirm ? [...pinConfirm] : [...pin];
-    nextCode[index] = sanitized;
-    if (isConfirm) {
-      setPinConfirm(nextCode);
-      if (sanitized && index < nextCode.length - 1) pinConfirmInputRefs.current[index + 1]?.focus();
-    } else {
-      setPin(nextCode);
-      if (sanitized && index < nextCode.length - 1) pinInputRefs.current[index + 1]?.focus();
-    }
+  // PIN Handlers - Champs texte normaux
+  const handlePinChange = (value: string) => {
+    const sanitized = value.replace(/\D/g, '').slice(0, 4); // Max 4 chiffres
+    setPin(sanitized);
   };
 
-  const handlePinKeyPress = (event: NativeSyntheticEvent<TextInputKeyPressEventData>, index: number, isConfirm: boolean = false) => {
-    if (event.nativeEvent.key === 'Backspace') {
-      const currentCode = isConfirm ? pinConfirm : pin;
-      if (currentCode[index]) {
-        const updated = [...currentCode];
-        updated[index] = '';
-        if (isConfirm) {
-          setPinConfirm(updated);
-        } else {
-          setPin(updated);
-        }
-      } else if (index > 0) {
-        if (isConfirm) {
-          pinConfirmInputRefs.current[index - 1]?.focus();
-        } else {
-          pinInputRefs.current[index - 1]?.focus();
-        }
-        const updated = [...currentCode];
-        updated[index - 1] = '';
-        if (isConfirm) {
-          setPinConfirm(updated);
-        } else {
-          setPin(updated);
-        }
-      }
-    }
+  const handlePinConfirmChange = (value: string) => {
+    const sanitized = value.replace(/\D/g, '').slice(0, 4); // Max 4 chiffres
+    setPinConfirm(sanitized);
   };
 
   const handlePinSubmit = async () => {
-    const pinValue = pin.join('');
-    if (pinValue.length !== 4) {
+    if (pin.length !== 4) {
       showDialog({ variant: 'danger', title: 'PIN incomplet', message: 'Veuillez entrer un PIN à 4 chiffres' });
       return;
     }
@@ -439,7 +389,7 @@ export default function AuthScreen() {
     if (mode === 'login') {
       // Connexion avec PIN
       try {
-        const result = await login({ phone, pin: pinValue }).unwrap();
+        const result = await login({ phone, pin }).unwrap();
         dispatch(setTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken }));
         // L'utilisateur sera récupéré automatiquement par onQueryStarted dans authApi
         // Navigation handled by useEffect
@@ -450,20 +400,19 @@ export default function AuthScreen() {
           message: error?.data?.message || 'Numéro de téléphone ou PIN incorrect' 
         });
         // Réinitialiser le PIN en cas d'erreur
-        setPin(['', '', '', '']);
-        pinInputRefs.current[0]?.focus();
+        setPin('');
+        pinInputRef.current?.focus();
       }
     } else {
       // Enregistrement : vérifier que les deux PIN correspondent
-      const pinConfirmValue = pinConfirm.join('');
-      if (pinConfirmValue.length !== 4) {
+      if (pinConfirm.length !== 4) {
         showDialog({ variant: 'danger', title: 'Confirmation incomplète', message: 'Veuillez confirmer votre PIN' });
         return;
       }
-      if (pinValue !== pinConfirmValue) {
+      if (pin !== pinConfirm) {
         showDialog({ variant: 'danger', title: 'PIN non correspondant', message: 'Les deux codes PIN ne correspondent pas' });
-        setPinConfirm(['', '', '', '']);
-        pinConfirmInputRefs.current[0]?.focus();
+        setPinConfirm('');
+        pinConfirmInputRef.current?.focus();
         return;
       }
       // PIN confirmé, passer à l'étape profile
@@ -549,7 +498,7 @@ export default function AuthScreen() {
       await verifyPhoneOtp({ phone, otp: code }).unwrap();
       setResetPinStep('newPin');
       setTimeout(() => {
-        resetPinInputRefs.current[0]?.focus();
+        resetPinInputRef.current?.focus();
       }, 100);
     } catch (error: any) {
       showDialog({
@@ -560,70 +509,19 @@ export default function AuthScreen() {
     }
   };
 
-  const handleResetPinInputChange = (value: string, index: number, isConfirm: boolean = false) => {
-    const sanitized = value.replace(/\D/g, '');
-    if (sanitized.length > 1) {
-      const digits = sanitized.split('');
-      const updated = isConfirm ? [...resetNewPinConfirm] : [...resetNewPin];
-      let cursor = index;
-      digits.forEach((digit) => {
-        if (cursor <= updated.length - 1) updated[cursor] = digit;
-        cursor += 1;
-      });
-      if (isConfirm) {
-        setResetNewPinConfirm(updated);
-        if (cursor <= updated.length - 1) resetPinConfirmInputRefs.current[cursor]?.focus();
-        else resetPinConfirmInputRefs.current[updated.length - 1]?.blur();
-      } else {
-        setResetNewPin(updated);
-        if (cursor <= updated.length - 1) resetPinInputRefs.current[cursor]?.focus();
-        else resetPinInputRefs.current[updated.length - 1]?.blur();
-      }
-      return;
-    }
-    const nextCode = isConfirm ? [...resetNewPinConfirm] : [...resetNewPin];
-    nextCode[index] = sanitized;
-    if (isConfirm) {
-      setResetNewPinConfirm(nextCode);
-      if (sanitized && index < nextCode.length - 1) resetPinConfirmInputRefs.current[index + 1]?.focus();
-    } else {
-      setResetNewPin(nextCode);
-      if (sanitized && index < nextCode.length - 1) resetPinInputRefs.current[index + 1]?.focus();
-    }
+  // Reset PIN Handlers - Champs texte normaux
+  const handleResetPinChange = (value: string) => {
+    const sanitized = value.replace(/\D/g, '').slice(0, 4); // Max 4 chiffres
+    setResetNewPin(sanitized);
   };
 
-  const handleResetPinKeyPress = (event: NativeSyntheticEvent<TextInputKeyPressEventData>, index: number, isConfirm: boolean = false) => {
-    if (event.nativeEvent.key === 'Backspace') {
-      const currentCode = isConfirm ? resetNewPinConfirm : resetNewPin;
-      if (currentCode[index]) {
-        const updated = [...currentCode];
-        updated[index] = '';
-        if (isConfirm) {
-          setResetNewPinConfirm(updated);
-        } else {
-          setResetNewPin(updated);
-        }
-      } else if (index > 0) {
-        if (isConfirm) {
-          resetPinConfirmInputRefs.current[index - 1]?.focus();
-        } else {
-          resetPinInputRefs.current[index - 1]?.focus();
-        }
-        const updated = [...currentCode];
-        updated[index - 1] = '';
-        if (isConfirm) {
-          setResetNewPinConfirm(updated);
-        } else {
-          setResetNewPin(updated);
-        }
-      }
-    }
+  const handleResetPinConfirmChange = (value: string) => {
+    const sanitized = value.replace(/\D/g, '').slice(0, 4); // Max 4 chiffres
+    setResetNewPinConfirm(sanitized);
   };
 
   const handleResetPinSubmit = async () => {
     const otpValue = resetOtpCode.join('');
-    const pinValue = resetNewPin.join('');
-    const pinConfirmValue = resetNewPinConfirm.join('');
     
     if (resetPinStep === 'otp') {
       // Vérifier l'OTP d'abord
@@ -636,7 +534,7 @@ export default function AuthScreen() {
         await verifyPhoneOtp({ phone, otp: otpValue }).unwrap();
         setResetPinStep('newPin');
         setTimeout(() => {
-          resetPinInputRefs.current[0]?.focus();
+          resetPinInputRef.current?.focus();
         }, 100);
       } catch (error: any) {
         showDialog({
@@ -649,26 +547,26 @@ export default function AuthScreen() {
     }
     
     // Étape de nouveau PIN
-    if (pinValue.length !== 4) {
+    if (resetNewPin.length !== 4) {
       showDialog({ variant: 'danger', title: 'PIN incomplet', message: 'Veuillez entrer un PIN à 4 chiffres' });
       return;
     }
     
-    if (pinConfirmValue.length !== 4) {
+    if (resetNewPinConfirm.length !== 4) {
       showDialog({ variant: 'danger', title: 'Confirmation incomplète', message: 'Veuillez confirmer votre PIN' });
       return;
     }
     
-    if (pinValue !== pinConfirmValue) {
+    if (resetNewPin !== resetNewPinConfirm) {
       showDialog({ variant: 'danger', title: 'PIN non correspondant', message: 'Les deux codes PIN ne correspondent pas' });
-      setResetNewPinConfirm(['', '', '', '']);
-      resetPinConfirmInputRefs.current[0]?.focus();
+      setResetNewPinConfirm('');
+      resetPinConfirmInputRef.current?.focus();
       return;
     }
 
     // Utiliser login avec newPin pour réinitialiser le PIN et se connecter directement
     try {
-      const result = await login({ phone, newPin: pinValue }).unwrap();
+      const result = await login({ phone, newPin: resetNewPin }).unwrap();
       dispatch(setTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken }));
       
       showDialog({
@@ -681,9 +579,9 @@ export default function AuthScreen() {
       setStep('pin');
       setResetPinStep('otp');
       setResetOtpCode(['', '', '', '', '']);
-      setResetNewPin(['', '', '', '']);
-      setResetNewPinConfirm(['', '', '', '']);
-      setPin(['', '', '', '']);
+      setResetNewPin('');
+      setResetNewPinConfirm('');
+      setPin('');
       
       // La navigation sera gérée automatiquement par le useEffect qui surveille isAuthenticated
     } catch (error: any) {
@@ -767,7 +665,7 @@ export default function AuthScreen() {
       const requiresVehicleSelection = role === 'driver';
       const formData = new FormData();
       formData.append('phone', phone);
-      formData.append('pin', pin.join('')); // Ajouter le PIN
+      formData.append('pin', pin); // Ajouter le PIN
       formData.append('firstName', firstName);
       formData.append('lastName', lastName);
       formData.append('role', role);
@@ -885,9 +783,18 @@ export default function AuthScreen() {
         {motivationalMessage && <Text style={styles.motivationalText}>{motivationalMessage}</Text>}
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent} showsVerticalScrollIndicator={false}>
-
-        {/* Step: Phone */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollViewContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Step: Phone */}
         {step === 'phone' && (
           <Animated.View entering={FadeInDown.springify()} exiting={FadeOutUp} style={styles.stepContainer}>
             <View style={styles.heroSection}>
@@ -1007,26 +914,25 @@ export default function AuthScreen() {
             {mode === 'login' ? (
               // Mode login : un seul champ PIN
               <>
-                <View style={styles.smsCodeContainer}>
-                  {pin.map((digit, index) => (
-                    <TextInput
-                      key={`pin-${index}`}
-                      ref={(ref) => { pinInputRefs.current[index] = ref; }}
-                      style={[styles.smsInput, digit ? styles.smsInputFilled : null]}
-                      keyboardType="number-pad"
-                      maxLength={1}
-                      secureTextEntry
-                      value={digit}
-                      onChangeText={(text) => handlePinInputChange(text, index, false)}
-                      onKeyPress={(e) => handlePinKeyPress(e, index, false)}
-                    />
-                  ))}
+                <View style={styles.inputWrapper}>
+                  <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+                  <TextInput
+                    ref={pinInputRef}
+                    style={styles.input}
+                    keyboardType="number-pad"
+                    maxLength={4}
+                    secureTextEntry
+                    value={pin}
+                    onChangeText={handlePinChange}
+                    placeholder="Entrez votre PIN (4 chiffres)"
+                    placeholderTextColor={Colors.gray[400]}
+                  />
                 </View>
 
                 <TouchableOpacity
-                  style={[styles.mainButton, pin.join('').length === 4 ? styles.mainButtonActive : styles.mainButtonDisabled]}
+                  style={[styles.mainButton, pin.length === 4 ? styles.mainButtonActive : styles.mainButtonDisabled]}
                   onPress={handlePinSubmit}
-                  disabled={pin.join('').length !== 4 || isLoggingIn}
+                  disabled={pin.length !== 4 || isLoggingIn}
                 >
                   {isLoggingIn ? (
                     <ActivityIndicator color="white" />
@@ -1050,46 +956,44 @@ export default function AuthScreen() {
               <>
                 <View style={styles.formSection}>
                   <Text style={styles.inputLabel}>Mot de passe PIN</Text>
-                  <View style={styles.pinCodeContainer}>
-                    {pin.map((digit, index) => (
-                      <TextInput
-                        key={`pin-${index}`}
-                        ref={(ref) => { pinInputRefs.current[index] = ref; }}
-                        style={[styles.pinInput, digit ? styles.pinInputFilled : null]}
-                        keyboardType="number-pad"
-                        maxLength={1}
-                        secureTextEntry
-                        value={digit}
-                        onChangeText={(text) => handlePinInputChange(text, index, false)}
-                        onKeyPress={(e) => handlePinKeyPress(e, index, false)}
-                      />
-                    ))}
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+                    <TextInput
+                      ref={pinInputRef}
+                      style={styles.input}
+                      keyboardType="number-pad"
+                      maxLength={4}
+                      secureTextEntry
+                      value={pin}
+                      onChangeText={handlePinChange}
+                      placeholder="Créez un PIN (4 chiffres)"
+                      placeholderTextColor={Colors.gray[400]}
+                    />
                   </View>
                 </View>
 
                 <View style={styles.formSection}>
                   <Text style={styles.inputLabel}>Confirmer le mot de passe PIN</Text>
-                  <View style={styles.pinCodeContainer}>
-                    {pinConfirm.map((digit, index) => (
-                      <TextInput
-                        key={`pin-confirm-${index}`}
-                        ref={(ref) => { pinConfirmInputRefs.current[index] = ref; }}
-                        style={[styles.pinInput, digit ? styles.pinInputFilled : null]}
-                        keyboardType="number-pad"
-                        maxLength={1}
-                        secureTextEntry
-                        value={digit}
-                        onChangeText={(text) => handlePinInputChange(text, index, true)}
-                        onKeyPress={(e) => handlePinKeyPress(e, index, true)}
-                      />
-                    ))}
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+                    <TextInput
+                      ref={pinConfirmInputRef}
+                      style={styles.input}
+                      keyboardType="number-pad"
+                      maxLength={4}
+                      secureTextEntry
+                      value={pinConfirm}
+                      onChangeText={handlePinConfirmChange}
+                      placeholder="Confirmez votre PIN (4 chiffres)"
+                      placeholderTextColor={Colors.gray[400]}
+                    />
                   </View>
                 </View>
 
                 <TouchableOpacity
-                  style={[styles.mainButton, pin.join('').length === 4 && pinConfirm.join('').length === 4 ? styles.mainButtonActive : styles.mainButtonDisabled]}
+                  style={[styles.mainButton, pin.length === 4 && pinConfirm.length === 4 ? styles.mainButtonActive : styles.mainButtonDisabled]}
                   onPress={handlePinSubmit}
-                  disabled={pin.join('').length !== 4 || pinConfirm.join('').length !== 4}
+                  disabled={pin.length !== 4 || pinConfirm.length !== 4}
                 >
                   <Text style={styles.mainButtonText}>Continuer</Text>
                   <Ionicons name="arrow-forward" size={20} color="white" />
@@ -1158,46 +1062,42 @@ export default function AuthScreen() {
               <>
                 <View style={styles.formSection}>
                   <Text style={styles.inputLabel}>Nouveau mot de passe PIN</Text>
-                  <Text style={styles.inputLabelSmall}>4 chiffres</Text>
-                  <View style={styles.pinCodeContainer}>
-                    {resetNewPin.map((digit, index) => (
-                      <TextInput
-                        key={`reset-pin-${index}`}
-                        ref={(ref) => { resetPinInputRefs.current[index] = ref; }}
-                        style={[styles.pinInput, digit ? styles.pinInputFilled : null]}
-                        keyboardType="number-pad"
-                        maxLength={1}
-                        secureTextEntry
-                        value={digit}
-                        onChangeText={(text) => handleResetPinInputChange(text, index, false)}
-                        onKeyPress={(e) => handleResetPinKeyPress(e, index, false)}
-                      />
-                    ))}
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+                    <TextInput
+                      ref={resetPinInputRef}
+                      style={styles.input}
+                      keyboardType="number-pad"
+                      maxLength={4}
+                      secureTextEntry
+                      value={resetNewPin}
+                      onChangeText={handleResetPinChange}
+                      placeholder="Créez un nouveau PIN (4 chiffres)"
+                      placeholderTextColor={Colors.gray[400]}
+                    />
                   </View>
                 </View>
                 <View style={styles.formSection}>
                   <Text style={styles.inputLabel}>Confirmer le nouveau mot de passe PIN</Text>
-                  <Text style={styles.inputLabelSmall}>4 chiffres</Text>
-                  <View style={styles.pinCodeContainer}>
-                    {resetNewPinConfirm.map((digit, index) => (
-                      <TextInput
-                        key={`reset-pin-confirm-${index}`}
-                        ref={(ref) => { resetPinConfirmInputRefs.current[index] = ref; }}
-                        style={[styles.pinInput, digit ? styles.pinInputFilled : null]}
-                        keyboardType="number-pad"
-                        maxLength={1}
-                        secureTextEntry
-                        value={digit}
-                        onChangeText={(text) => handleResetPinInputChange(text, index, true)}
-                        onKeyPress={(e) => handleResetPinKeyPress(e, index, true)}
-                      />
-                    ))}
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+                    <TextInput
+                      ref={resetPinConfirmInputRef}
+                      style={styles.input}
+                      keyboardType="number-pad"
+                      maxLength={4}
+                      secureTextEntry
+                      value={resetNewPinConfirm}
+                      onChangeText={handleResetPinConfirmChange}
+                      placeholder="Confirmez votre nouveau PIN (4 chiffres)"
+                      placeholderTextColor={Colors.gray[400]}
+                    />
                   </View>
                 </View>
                 <TouchableOpacity
-                  style={[styles.mainButton, resetNewPin.join('').length === 4 && resetNewPinConfirm.join('').length === 4 ? styles.mainButtonActive : styles.mainButtonDisabled]}
+                  style={[styles.mainButton, resetNewPin.length === 4 && resetNewPinConfirm.length === 4 ? styles.mainButtonActive : styles.mainButtonDisabled]}
                   onPress={handleResetPinSubmit}
-                  disabled={resetNewPin.join('').length !== 4 || resetNewPinConfirm.join('').length !== 4 || isLoggingIn}
+                  disabled={resetNewPin.length !== 4 || resetNewPinConfirm.length !== 4 || isLoggingIn}
                 >
                   {isLoggingIn ? (
                     <ActivityIndicator color="white" />
@@ -1377,8 +1277,8 @@ export default function AuthScreen() {
             </View>
           </Animated.View>
         )}
-
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Vehicle Details Modal */}
       <Modal
