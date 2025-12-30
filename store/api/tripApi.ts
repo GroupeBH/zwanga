@@ -230,7 +230,7 @@ type CreateTripPayload = {
   arrivalLocation: string;
   arrivalCoordinates: [number, number];
   departureDate: string;
-  availableSeats: number;
+  totalSeats: number;
   pricePerSeat: number;
   isFree?: boolean;
   description?: string;
