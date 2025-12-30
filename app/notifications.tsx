@@ -88,13 +88,16 @@ export default function NotificationsScreen() {
   };
 
   const handleSelectNotification = async (notification: Notification) => {
-    // Marquer comme lu d'abord
-    if (!notification.isRead) {
-      try {
+    // Marquer comme lu et désactiver (faire disparaître) la notification
+    try {
+      // Marquer comme lu d'abord
+      if (!notification.isRead) {
         await markNotificationsAsRead({ notificationIds: [notification.id] }).unwrap();
-      } catch (error) {
-        console.warn('Impossible de marquer la notification comme lue:', error);
       }
+      // Désactiver la notification pour qu'elle disparaisse de la liste
+      await disableNotifications({ notificationIds: [notification.id] }).unwrap();
+    } catch (error) {
+      console.warn('Impossible de marquer la notification comme lue ou de la désactiver:', error);
     }
 
     // Naviguer vers l'écran approprié selon le type de notification

@@ -49,10 +49,19 @@ export default function MyDriverOffersScreen() {
       cancelled: { label: 'Annulée', color: Colors.gray[500], bg: Colors.gray[200], icon: 'ban-outline' },
     }[item.status] || statusConfig.pending;
 
+    const isPending = item.status === 'pending';
+    const isAccepted = item.status === 'accepted';
+    const isRejected = item.status === 'rejected';
+
     return (
       <Animated.View entering={FadeInDown.delay(index * 100)}>
         <TouchableOpacity
-          style={styles.offerCard}
+          style={[
+            styles.offerCard,
+            isPending && styles.offerCardPending,
+            isAccepted && styles.offerCardAccepted,
+            isRejected && styles.offerCardRejected,
+          ]}
           onPress={() => handleOfferPress(tripRequestId)}
         >
           <View style={styles.offerHeader}>
@@ -307,6 +316,30 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  offerCardPending: {
+    borderWidth: 2,
+    borderColor: Colors.warning,
+    backgroundColor: Colors.warning + '08',
+    shadowColor: Colors.warning,
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  offerCardAccepted: {
+    borderWidth: 2,
+    borderColor: Colors.success,
+    backgroundColor: Colors.success + '08',
+    shadowColor: Colors.success,
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  offerCardRejected: {
+    borderWidth: 1,
+    borderColor: Colors.danger + '40',
+    backgroundColor: Colors.gray[50],
+    opacity: 0.7,
   },
   offerHeader: {
     flexDirection: 'row',

@@ -1,25 +1,30 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import {
-  useGetTripRequestByIdQuery,
-  useCreateDriverOfferMutation,
   useAcceptDriverOfferMutation,
-  useRejectDriverOfferMutation,
   useCancelTripRequestMutation,
+  useCreateDriverOfferMutation,
+  useGetTripRequestByIdQuery,
+  useRejectDriverOfferMutation,
+  useStartTripFromRequestMutation,
 } from '@/store/api/tripRequestApi';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
-import { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import type { Vehicle } from '@/types';
+import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
+import { getRouteCoordinates } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
@@ -27,15 +32,11 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
-  Dimensions,
+  View
 } from 'react-native';
+import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
-import type { DriverOffer, Vehicle } from '@/types';
-import MapView, { Marker, Polyline, Callout, PROVIDER_GOOGLE } from 'react-native-maps';
-import { getRouteCoordinates } from '@/utils/routeHelpers';
 
 export default function TripRequestDetailsScreen() {
   const router = useRouter();
@@ -85,6 +86,7 @@ export default function TripRequestDetailsScreen() {
   const [acceptOffer, { isLoading: isAcceptingOffer }] = useAcceptDriverOfferMutation();
   const [rejectOffer, { isLoading: isRejectingOffer }] = useRejectDriverOfferMutation();
   const [cancelRequest, { isLoading: isCancelling }] = useCancelTripRequestMutation();
+  const [startTripFromRequest, { isLoading: isStartingTripFromRequest }] = useStartTripFromRequestMutation();
 
   // États pour le formulaire d'offre
   const [showOfferForm, setShowOfferForm] = useState(false);
@@ -169,8 +171,8 @@ export default function TripRequestDetailsScreen() {
   );
 
   const hasExistingOffer = useMemo(() => {
-    if (!tripRequest?.driverOffers || !currentUser) return false;
-    return tripRequest.driverOffers.some(
+    if (!tripRequest?.offers || !currentUser) return false;
+    return tripRequest.offers.some(
       (offer) => offer.driverId === currentUser.id && offer.status === 'pending'
     );
   }, [tripRequest, currentUser]);
@@ -186,9 +188,21 @@ export default function TripRequestDetailsScreen() {
   }, [currentUser, isIdentityVerified, isOwner, tripRequest, hasExistingOffer]);
 
   const myOffer = useMemo(() => {
-    if (!tripRequest?.driverOffers || !currentUser) return null;
-    return tripRequest.driverOffers.find((offer) => offer.driverId === currentUser.id);
+    if (!tripRequest?.offers || !currentUser) return null;
+    return tripRequest.offers.find((offer) => offer.driverId === currentUser.id);
   }, [tripRequest, currentUser]);
+
+  const isSelectedDriver = useMemo(() => {
+    return tripRequest && currentUser && tripRequest.selectedDriverId === currentUser.id;
+  }, [tripRequest, currentUser]);
+
+  const canStartTrip = useMemo(() => {
+    return (
+      isSelectedDriver &&
+      tripRequest?.status === 'driver_selected' &&
+      !tripRequest.tripId
+    );
+  }, [isSelectedDriver, tripRequest]);
 
   // Fonctions pour appliquer uniquement la date ou l'heure
   const applyDatePart = (date: Date, currentDate: Date) => {
@@ -353,10 +367,24 @@ export default function TripRequestDetailsScreen() {
       setSelectedVehicleId('');
 
       showDialog({
-        title: 'Offre créée',
-        message: 'Votre offre a été envoyée avec succès. Le passager sera notifié et pourra l\'accepter.',
+        title: 'Offre envoyée avec succès !',
+        message: `Votre offre de ${parseFloat(pricePerSeat).toLocaleString('fr-FR')} FC/place pour ${availableSeats} place(s) a été envoyée. Le passager sera notifié et pourra l'accepter. Vous pouvez suivre le statut de votre offre dans "Mes offres".`,
         variant: 'success',
-        actions: [{ label: 'OK', onPress: () => refetch() }],
+        actions: [
+          { 
+            label: 'Voir mes offres', 
+            variant: 'primary',
+            onPress: () => {
+              refetch();
+              router.push('/my-offers');
+            }
+          },
+          { 
+            label: 'OK', 
+            variant: 'ghost',
+            onPress: () => refetch() 
+          },
+        ],
       });
     } catch (error: any) {
       showDialog({
@@ -406,7 +434,7 @@ export default function TripRequestDetailsScreen() {
         },
         {
           label: 'Rejeter',
-          variant: 'danger',
+          variant: 'secondary',
           onPress: async () => {
             try {
               await rejectOffer({
@@ -433,6 +461,50 @@ export default function TripRequestDetailsScreen() {
     });
   };
 
+  const handleStartTripFromRequest = async () => {
+    if (!tripRequest || !id) return;
+
+    showDialog({
+      title: 'Démarrer le trajet',
+      message: 'Vous allez créer un trajet et une réservation automatique pour le passager. Le trajet démarrera immédiatement. Continuer ?',
+      variant: 'info',
+      actions: [
+        { label: 'Annuler', variant: 'ghost' },
+        {
+          label: 'Démarrer',
+          variant: 'primary',
+          onPress: async () => {
+            try {
+              const result = await startTripFromRequest(id).unwrap();
+              showDialog({
+                title: 'Trajet démarré',
+                message: 'Le trajet a été créé et démarré avec succès. Le passager a été automatiquement réservé.',
+                variant: 'success',
+                actions: [
+                  {
+                    label: 'Voir le trajet',
+                    variant: 'primary',
+                    onPress: () => {
+                      refetch();
+                      router.push(`/trip/${result.trip.id}`);
+                    },
+                  },
+                  { label: 'OK', variant: 'ghost', onPress: () => refetch() },
+                ],
+              });
+            } catch (error: any) {
+              showDialog({
+                title: 'Erreur',
+                message: error?.data?.message || 'Impossible de démarrer le trajet',
+                variant: 'danger',
+              });
+            }
+          },
+        },
+      ],
+    });
+  };
+
   const handleCancelRequest = async () => {
     if (!id) return;
 
@@ -444,7 +516,7 @@ export default function TripRequestDetailsScreen() {
         { label: 'Non', variant: 'secondary' },
         {
           label: 'Oui, annuler',
-          variant: 'danger',
+          variant: 'secondary',
           onPress: async () => {
             try {
               await cancelRequest(id).unwrap();
@@ -766,17 +838,108 @@ export default function TripRequestDetailsScreen() {
           </View>
         </View>
 
-        {/* Offres reçues (pour le propriétaire) */}
-        {isOwner && tripRequest.driverOffers && tripRequest.driverOffers.length > 0 && (
+        {/* Driver sélectionné et trajet créé (pour le propriétaire) */}
+        {isOwner && tripRequest.status === 'driver_selected' && tripRequest.selectedDriverId && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              Offres reçues ({tripRequest.driverOffers.length})
-            </Text>
-            {tripRequest.driverOffers.map((offer, index) => (
+            <View style={styles.sectionHeaderWithBadge}>
+              <View style={styles.sectionTitleContainer}>
+                <Ionicons name="checkmark-circle" size={24} color={Colors.success} />
+                <Text style={styles.sectionTitle}>Driver sélectionné</Text>
+              </View>
+            </View>
+            <View style={[styles.offerCard, styles.offerCardAccepted]}>
+              <View style={styles.offerHeader}>
+                <View style={styles.driverInfo}>
+                  {tripRequest.selectedDriverAvatar ? (
+                    <Image
+                      source={{ uri: tripRequest.selectedDriverAvatar }}
+                      style={styles.offerAvatar}
+                    />
+                  ) : (
+                    <View style={styles.offerAvatar}>
+                      <Ionicons name="person" size={20} color={Colors.gray[500]} />
+                    </View>
+                  )}
+                  <View>
+                    <Text style={styles.driverName}>{tripRequest.selectedDriverName}</Text>
+                    {tripRequest.selectedVehicle && (
+                      <Text style={styles.ratingText}>
+                        {tripRequest.selectedVehicle.brand} {tripRequest.selectedVehicle.model}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              </View>
+              {tripRequest.selectedPricePerSeat && (
+                <View style={styles.offerDetail}>
+                  <Ionicons name="cash-outline" size={16} color={Colors.gray[600]} />
+                  <Text style={styles.offerDetailText}>
+                    {tripRequest.selectedPricePerSeat} FC/place
+                  </Text>
+                </View>
+              )}
+              {tripRequest.tripId && (
+                <View style={styles.tripCreatedContainer}>
+                  <View style={styles.tripCreatedInfo}>
+                    <Ionicons name="car" size={20} color={Colors.primary} />
+                    <Text style={styles.tripCreatedText}>
+                      Le trajet a été créé et démarré. Vous pouvez suivre votre trajet en temps réel.
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.viewTripButton}
+                    onPress={() => router.push(`/trip/${tripRequest.tripId}`)}
+                  >
+                    <Ionicons name="arrow-forward" size={18} color={Colors.primary} />
+                    <Text style={styles.viewTripButtonText}>Voir le trajet</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* Offres reçues (pour le propriétaire) */}
+        {isOwner && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderWithBadge}>
+              <View style={styles.sectionTitleContainer}>
+                <Ionicons name="checkmark-circle" size={24} color={Colors.info} />
+                <Text style={styles.sectionTitle}>
+                  Offres reçues
+                </Text>
+              </View>
+              {tripRequest.offers && tripRequest.offers.length > 0 && (
+                <View style={styles.offersCountBadge}>
+                  <Text style={styles.offersCountText}>{tripRequest.offers.length}</Text>
+                </View>
+              )}
+            </View>
+            
+            {(!tripRequest.offers || tripRequest.offers.length === 0) ? (
+              <View style={styles.noOffersContainer}>
+                <View style={styles.noOffersIconContainer}>
+                  <Ionicons name="hourglass-outline" size={48} color={Colors.gray[400]} />
+                </View>
+                <Text style={styles.noOffersTitle}>Aucune offre pour le moment</Text>
+                <Text style={styles.noOffersText}>
+                  Les drivers verront votre demande et pourront vous faire des offres. Elles apparaîtront ici dès qu'elles seront reçues.
+                </Text>
+              </View>
+            ) : (
+              <>
+            {tripRequest.offers?.map((offer, index) => {
+              const isPending = offer.status === 'pending';
+              const driverRating = offer.driverRating;
+              return (
               <Animated.View
                 key={offer.id}
                 entering={FadeInDown.delay(index * 50)}
-                style={styles.offerCard}
+                style={[
+                  styles.offerCard,
+                  isPending && styles.offerCardPending,
+                  offer.status === 'accepted' && styles.offerCardAccepted,
+                ]}
               >
                 <View style={styles.offerHeader}>
                   <View style={styles.driverInfo}>
@@ -792,10 +955,10 @@ export default function TripRequestDetailsScreen() {
                     )}
                     <View>
                       <Text style={styles.driverName}>{offer.driverName}</Text>
-                      {offer.driverRating > 0 && (
+                      {driverRating !== undefined && driverRating > 0 && (
                         <View style={styles.ratingRow}>
                           <Ionicons name="star" size={14} color={Colors.secondary} />
-                          <Text style={styles.ratingText}>{offer.driverRating.toFixed(1)}</Text>
+                          <Text style={styles.ratingText}>{driverRating.toFixed(1)}</Text>
                         </View>
                       )}
                     </View>
@@ -867,15 +1030,25 @@ export default function TripRequestDetailsScreen() {
                   </View>
                 )}
               </Animated.View>
-            ))}
+            );
+            })}
+              </>
+            )}
           </View>
         )}
 
         {/* Statut de l'offre du driver (si le driver a déjà fait une offre) */}
         {!isOwner && myOffer && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Votre offre</Text>
-            <View style={styles.offerCard}>
+            <View style={styles.sectionTitleContainer}>
+              <Ionicons name="star" size={24} color={Colors.secondary} />
+              <Text style={styles.sectionTitle}>Votre offre</Text>
+            </View>
+            <View style={[
+              styles.offerCard,
+              myOffer.status === 'accepted' && styles.offerCardAccepted,
+              myOffer.status === 'rejected' && styles.offerCardRejected,
+            ]}>
               <View style={styles.offerHeader}>
                 <View>
                   <Text style={styles.driverName}>Statut de votre offre</Text>
@@ -930,8 +1103,33 @@ export default function TripRequestDetailsScreen() {
                 <View style={styles.successMessage}>
                   <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
                   <Text style={styles.successMessageText}>
-                    Félicitations ! Votre offre a été acceptée. Le passager vous contactera bientôt.
+                    Félicitations ! Votre offre a été acceptée. {tripRequest.tripId ? 'Le trajet a déjà été créé.' : 'Vous pouvez maintenant démarrer le trajet.'}
                   </Text>
+                  {!tripRequest.tripId && (
+                    <TouchableOpacity
+                      style={styles.startTripButton}
+                      onPress={handleStartTripFromRequest}
+                      disabled={isStartingTripFromRequest}
+                    >
+                      {isStartingTripFromRequest ? (
+                        <ActivityIndicator size="small" color={Colors.white} />
+                      ) : (
+                        <>
+                          <Ionicons name="play-circle" size={18} color={Colors.white} />
+                          <Text style={styles.startTripButtonText}>Démarrer le trajet</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  {tripRequest.tripId && (
+                    <TouchableOpacity
+                      style={styles.viewTripButton}
+                      onPress={() => router.push(`/trip/${tripRequest.tripId}`)}
+                    >
+                      <Ionicons name="car" size={18} color={Colors.primary} />
+                      <Text style={styles.viewTripButtonText}>Voir le trajet</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
             </View>
@@ -999,32 +1197,37 @@ export default function TripRequestDetailsScreen() {
                 setSelectedVehicleId('');
               }}
             >
-              <TouchableOpacity
-                activeOpacity={1}
-                onPress={(e) => e.stopPropagation()}
-                style={styles.modalContent}
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ flex: 1 }}
               >
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Créer une offre</Text>
-                  <TouchableOpacity
-                    style={styles.modalCloseButton}
-                    onPress={() => {
-                      setShowOfferForm(false);
-                      setPricePerSeat('');
-                      setAvailableSeats('');
-                      setMessage('');
-                      setSelectedVehicleId('');
-                    }}
-                  >
-                    <Ionicons name="close" size={24} color={Colors.gray[600]} />
-                  </TouchableOpacity>
-                </View>
-
-                <ScrollView
-                  style={styles.modalScrollView}
-                  contentContainerStyle={styles.modalScrollContent}
-                  showsVerticalScrollIndicator={true}
+                <TouchableOpacity
+                  activeOpacity={1}
+                  onPress={(e) => e.stopPropagation()}
+                  style={styles.modalContent}
                 >
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Créer une offre</Text>
+                    <TouchableOpacity
+                      style={styles.modalCloseButton}
+                      onPress={() => {
+                        setShowOfferForm(false);
+                        setPricePerSeat('');
+                        setAvailableSeats('');
+                        setMessage('');
+                        setSelectedVehicleId('');
+                      }}
+                    >
+                      <Ionicons name="close" size={24} color={Colors.gray[600]} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <ScrollView
+                    style={styles.modalScrollView}
+                    contentContainerStyle={styles.modalScrollContent}
+                    showsVerticalScrollIndicator={true}
+                    keyboardShouldPersistTaps="handled"
+                  >
                   <View style={styles.offerFormCard}>
                     {vehicles.length > 0 && (
                       <View style={styles.formGroup}>
@@ -1119,27 +1322,149 @@ export default function TripRequestDetailsScreen() {
                     </View>
 
                     <View style={styles.formGroup}>
-                      <Text style={styles.formLabel}>Prix par place (FC) *</Text>
+                      <View style={styles.formLabelRow}>
+                        <Text style={styles.formLabel}>Prix par place (FC) *</Text>
+                        {tripRequest.maxPricePerSeat && (
+                          <View style={styles.priceHintContainer}>
+                            <Ionicons name="information-circle-outline" size={16} color={Colors.info} />
+                            <Text style={styles.priceHintText}>
+                              Max: {tripRequest.maxPricePerSeat} FC
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      {tripRequest.maxPricePerSeat && (
+                        <View style={styles.priceSuggestionsContainer}>
+                          <Text style={styles.priceSuggestionsLabel}>Suggestions :</Text>
+                          <View style={styles.priceSuggestions}>
+                            {[
+                              Math.round(tripRequest.maxPricePerSeat * 0.8),
+                              Math.round(tripRequest.maxPricePerSeat * 0.9),
+                              tripRequest.maxPricePerSeat,
+                            ].map((suggestedPrice) => (
+                              <TouchableOpacity
+                                key={suggestedPrice}
+                                style={[
+                                  styles.priceSuggestionButton,
+                                  pricePerSeat === suggestedPrice.toString() && styles.priceSuggestionButtonActive,
+                                ]}
+                                onPress={() => setPricePerSeat(suggestedPrice.toString())}
+                              >
+                                <Text
+                                  style={[
+                                    styles.priceSuggestionText,
+                                    pricePerSeat === suggestedPrice.toString() && styles.priceSuggestionTextActive,
+                                  ]}
+                                >
+                                  {suggestedPrice} FC
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        </View>
+                      )}
                       <TextInput
-                        style={styles.input}
+                        style={[
+                          styles.input,
+                          pricePerSeat &&
+                            tripRequest.maxPricePerSeat &&
+                            parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat
+                            ? styles.inputError
+                            : undefined,
+                        ]}
                         keyboardType="numeric"
-                        placeholder="Ex: 5000"
+                        placeholder={tripRequest.maxPricePerSeat ? `Ex: ${Math.round(tripRequest.maxPricePerSeat * 0.9)}` : 'Ex: 5000'}
                         value={pricePerSeat}
                         onChangeText={setPricePerSeat}
                       />
+                      {pricePerSeat &&
+                        tripRequest.maxPricePerSeat &&
+                        parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat && (
+                          <Text style={styles.errorText}>
+                            Le prix dépasse le maximum autorisé ({tripRequest.maxPricePerSeat} FC)
+                          </Text>
+                        )}
+                      {pricePerSeat && parseFloat(pricePerSeat) > 0 && tripRequest.maxPricePerSeat && (
+                        <View style={styles.priceComparisonContainer}>
+                          <View style={styles.priceComparisonBar}>
+                            <View
+                              style={[
+                                styles.priceComparisonFill,
+                                {
+                                  width: `${Math.min((parseFloat(pricePerSeat) / tripRequest.maxPricePerSeat) * 100, 100)}%`,
+                                  backgroundColor:
+                                    parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat
+                                      ? Colors.danger
+                                      : parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat * 0.9
+                                      ? Colors.warning
+                                      : Colors.success,
+                                },
+                              ]}
+                            />
+                          </View>
+                          <Text style={styles.priceComparisonText}>
+                            {Math.round((parseFloat(pricePerSeat) / tripRequest.maxPricePerSeat) * 100)}% du prix maximum
+                          </Text>
+                        </View>
+                      )}
                     </View>
 
                     <View style={styles.formGroup}>
                       <Text style={styles.formLabel}>
                         Nombre de places disponibles *{tripRequest ? ` (min: ${tripRequest.numberOfSeats})` : ''}
                       </Text>
+                      {tripRequest && (
+                        <View style={styles.seatsSuggestionsContainer}>
+                          {[tripRequest.numberOfSeats, tripRequest.numberOfSeats + 1, tripRequest.numberOfSeats + 2]
+                            .filter((s) => s <= 8)
+                            .map((suggestedSeats) => (
+                              <TouchableOpacity
+                                key={suggestedSeats}
+                                style={[
+                                  styles.seatsSuggestionButton,
+                                  availableSeats === suggestedSeats.toString() && styles.seatsSuggestionButtonActive,
+                                ]}
+                                onPress={() => setAvailableSeats(suggestedSeats.toString())}
+                              >
+                                <Ionicons
+                                  name="person"
+                                  size={16}
+                                  color={
+                                    availableSeats === suggestedSeats.toString() ? Colors.white : Colors.gray[600]
+                                  }
+                                />
+                                <Text
+                                  style={[
+                                    styles.seatsSuggestionText,
+                                    availableSeats === suggestedSeats.toString() && styles.seatsSuggestionTextActive,
+                                  ]}
+                                >
+                                  {suggestedSeats}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                        </View>
+                      )}
                       <TextInput
-                        style={styles.input}
+                        style={[
+                          styles.input,
+                          availableSeats &&
+                            tripRequest &&
+                            parseInt(availableSeats) < tripRequest.numberOfSeats &&
+                            styles.inputError,
+                        ]}
                         keyboardType="numeric"
                         placeholder={tripRequest ? `Ex: ${tripRequest.numberOfSeats}` : 'Ex: 1'}
                         value={availableSeats}
                         onChangeText={setAvailableSeats}
                       />
+                      {availableSeats &&
+                        tripRequest &&
+                        parseInt(availableSeats) < tripRequest.numberOfSeats && (
+                          <Text style={styles.errorText}>
+                            Vous devez proposer au moins {tripRequest.numberOfSeats} place(s)
+                          </Text>
+                        )}
                     </View>
 
                     <View style={styles.formGroup}>
@@ -1153,6 +1478,28 @@ export default function TripRequestDetailsScreen() {
                         onChangeText={setMessage}
                       />
                     </View>
+
+                    {/* Résumé de l'offre */}
+                    {pricePerSeat && availableSeats && parseFloat(pricePerSeat) > 0 && parseInt(availableSeats) > 0 && (
+                      <View style={styles.offerSummary}>
+                        <Text style={styles.offerSummaryTitle}>Résumé de votre offre</Text>
+                        <View style={styles.offerSummaryRow}>
+                          <Ionicons name="cash" size={20} color={Colors.primary} />
+                          <Text style={styles.offerSummaryText}>
+                            {parseFloat(pricePerSeat).toLocaleString('fr-FR')} FC × {availableSeats} place(s) ={' '}
+                            <Text style={styles.offerSummaryTotal}>
+                              {(parseFloat(pricePerSeat) * parseInt(availableSeats)).toLocaleString('fr-FR')} FC
+                            </Text>
+                          </Text>
+                        </View>
+                        <View style={styles.offerSummaryRow}>
+                          <Ionicons name="calendar" size={20} color={Colors.primary} />
+                          <Text style={styles.offerSummaryText}>
+                            {formatDateWithRelativeLabel(proposedDepartureDate.toISOString(), true)}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
 
                     <View style={styles.formActions}>
                       <TouchableOpacity
@@ -1168,22 +1515,46 @@ export default function TripRequestDetailsScreen() {
                         <Text style={styles.cancelFormButtonText}>Annuler</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={styles.submitButton}
+                        style={[
+                          styles.submitButton,
+                          (!pricePerSeat ||
+                            !availableSeats ||
+                            (tripRequest &&
+                              (parseFloat(pricePerSeat) <= 0 ||
+                                parseInt(availableSeats) < tripRequest.numberOfSeats ||
+                                (tripRequest.maxPricePerSeat &&
+                                  parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat))))
+                            ? styles.submitButtonDisabled
+                            : undefined,
+                        ]}
                         onPress={handleCreateOffer}
-                        disabled={isCreatingOffer}
+                        disabled={Boolean(
+                          isCreatingOffer ||
+                          !pricePerSeat ||
+                          !availableSeats ||
+                          (tripRequest &&
+                            (parseFloat(pricePerSeat) <= 0 ||
+                              parseInt(availableSeats) < tripRequest.numberOfSeats ||
+                              (tripRequest.maxPricePerSeat &&
+                                parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat)))
+                        )}
                       >
                         {isCreatingOffer ? (
                           <ActivityIndicator size="small" color={Colors.white} />
                         ) : (
-                          <Text style={styles.submitButtonText}>Envoyer l'offre</Text>
+                          <>
+                            <Ionicons name="send" size={18} color={Colors.white} />
+                            <Text style={styles.submitButtonText}>Envoyer l'offre</Text>
+                          </>
                         )}
                       </TouchableOpacity>
                     </View>
-                  </View>
-              </ScrollView>
+                    </View>
+                  </ScrollView>
+                </TouchableOpacity>
+              </KeyboardAvoidingView>
             </TouchableOpacity>
-          </TouchableOpacity>
-        </Modal>
+          </Modal>
         )}
 
         {/* Modal de la carte en plein écran */}
@@ -1336,11 +1707,24 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: Spacing.lg,
   },
+  sectionHeaderWithBadge: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+    paddingBottom: Spacing.sm,
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.info + '30',
+  },
+  sectionTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
   sectionTitle: {
-    fontSize: FontSizes.base,
+    fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    marginBottom: Spacing.md,
   },
   passengerCard: {
     flexDirection: 'row',
@@ -1440,6 +1824,54 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     padding: Spacing.md,
     marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  offerCardPending: {
+    borderColor: Colors.info,
+    borderWidth: 2,
+    backgroundColor: Colors.info + '08',
+    shadowColor: Colors.info,
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  offerCardAccepted: {
+    borderColor: Colors.success,
+    borderWidth: 2,
+    backgroundColor: Colors.success + '08',
+    shadowColor: Colors.success,
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  offerCardRejected: {
+    borderColor: Colors.danger,
+    borderWidth: 2,
+    backgroundColor: Colors.danger + '08',
+    shadowColor: Colors.danger,
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  offersCountBadge: {
+    backgroundColor: Colors.info,
+    borderRadius: BorderRadius.full,
+    minWidth: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.sm,
+  },
+  offersCountText: {
+    color: Colors.white,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
   },
   offerHeader: {
     flexDirection: 'row',
@@ -1531,8 +1963,6 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
   },
   successMessage: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: Colors.success + '15',
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
@@ -1540,10 +1970,62 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   successMessageText: {
-    flex: 1,
     fontSize: FontSizes.sm,
     color: Colors.success,
     fontWeight: FontWeights.medium,
+    marginBottom: Spacing.sm,
+  },
+  startTripButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.success,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    marginTop: Spacing.sm,
+    gap: Spacing.xs,
+  },
+  startTripButtonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.sm,
+  },
+  viewTripButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    gap: Spacing.xs,
+  },
+  viewTripButtonText: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.sm,
+  },
+  tripCreatedContainer: {
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[200],
+  },
+  tripCreatedInfo: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  tripCreatedText: {
+    flex: 1,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+    lineHeight: 20,
   },
   makeOfferButton: {
     flexDirection: 'row',
@@ -1674,6 +2156,144 @@ const styles = StyleSheet.create({
     minHeight: 100,
     textAlignVertical: 'top',
   },
+  formLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  priceHintContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: Colors.info + '15',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+  },
+  priceHintText: {
+    fontSize: FontSizes.xs,
+    color: Colors.info,
+    fontWeight: FontWeights.medium,
+  },
+  priceSuggestionsContainer: {
+    marginBottom: Spacing.sm,
+  },
+  priceSuggestionsLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+    marginBottom: Spacing.xs,
+  },
+  priceSuggestions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    flexWrap: 'wrap',
+  },
+  priceSuggestionButton: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    backgroundColor: Colors.white,
+  },
+  priceSuggestionButtonActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  priceSuggestionText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+    fontWeight: FontWeights.medium,
+  },
+  priceSuggestionTextActive: {
+    color: Colors.white,
+  },
+  inputError: {
+    borderColor: Colors.danger,
+    backgroundColor: Colors.danger + '05',
+  },
+  errorText: {
+    fontSize: FontSizes.xs,
+    color: Colors.danger,
+    marginTop: Spacing.xs,
+  },
+  priceComparisonContainer: {
+    marginTop: Spacing.sm,
+  },
+  priceComparisonBar: {
+    height: 6,
+    backgroundColor: Colors.gray[200],
+    borderRadius: BorderRadius.sm,
+    overflow: 'hidden',
+    marginBottom: Spacing.xs,
+  },
+  priceComparisonFill: {
+    height: '100%',
+    borderRadius: BorderRadius.sm,
+  },
+  priceComparisonText: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+  },
+  seatsSuggestionsContainer: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  seatsSuggestionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    backgroundColor: Colors.white,
+  },
+  seatsSuggestionButtonActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  seatsSuggestionText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+    fontWeight: FontWeights.medium,
+  },
+  seatsSuggestionTextActive: {
+    color: Colors.white,
+  },
+  offerSummary: {
+    backgroundColor: Colors.primary + '10',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+  },
+  offerSummaryTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: Spacing.sm,
+  },
+  offerSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  offerSummaryText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+  },
+  offerSummaryTotal: {
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+    fontSize: FontSizes.base,
+  },
   formActions: {
     flexDirection: 'row',
     gap: Spacing.md,
@@ -1698,6 +2318,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     borderRadius: BorderRadius.md,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  submitButtonDisabled: {
+    backgroundColor: Colors.gray[400],
+    opacity: 0.6,
   },
   submitButtonText: {
     fontSize: FontSizes.base,
@@ -1770,6 +2397,37 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: Spacing.sm,
     paddingHorizontal: Spacing.lg,
+  },
+  noOffersContainer: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.xl,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: Colors.gray[200],
+    borderStyle: 'dashed',
+  },
+  noOffersIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  noOffersTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: Spacing.sm,
+    textAlign: 'center',
+  },
+  noOffersText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    textAlign: 'center',
+    lineHeight: 20,
   },
   retryButton: {
     flexDirection: 'row',

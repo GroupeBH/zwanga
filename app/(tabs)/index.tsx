@@ -95,26 +95,52 @@ export default function HomeScreen() {
     );
   }, [myBookings, currentUser?.id]);
 
+  // Créer un Set des IDs de trajets avec réservation complétée (où le passager a été déposé)
+  const completedBookingTripIds = useMemo(() => {
+    if (!myBookings || !currentUser?.id) {
+      return new Set<string>();
+    }
+    // Filtrer les réservations complétées (où le passager a été déposé)
+    return new Set(
+      myBookings
+        .filter(
+          (booking) =>
+            booking.status === 'completed' &&
+            booking.droppedOffConfirmedByPassenger === true &&
+            booking.tripId
+        )
+        .map((booking) => booking.tripId)
+    );
+  }, [myBookings, currentUser?.id]);
+
   const baseTrips = remoteTrips ?? storedTrips ?? [];
   const latestTrips = useMemo(() => {
-    // Filtrer les trajets pour exclure ceux publiés par l'utilisateur actuel
+    // Filtrer les trajets pour exclure ceux publiés par l'utilisateur actuel et ceux avec réservation complétée
     const filteredTrips = baseTrips.filter((trip) => {
       // Si l'utilisateur n'est pas connecté, afficher tous les trajets
       if (!currentUser?.id) {
         return true;
       }
       // Exclure les trajets dont l'utilisateur est le driver
-      return trip.driverId !== currentUser.id;
+      if (trip.driverId === currentUser.id) {
+        return false;
+      }
+      // Exclure les trajets où l'utilisateur a une réservation complétée (déposé)
+      if (completedBookingTripIds.has(trip.id)) {
+        return false;
+      }
+      return true;
     });
     
     return [...filteredTrips]
       .sort((a, b) => {
+        // Trier par date de départ (les plus récents en premier)
         const dateA = new Date(a.departureTime).getTime();
         const dateB = new Date(b.departureTime).getTime();
-        return dateB - dateA;
+        return dateB - dateA; // dateB - dateA = du plus récent au plus ancien
       })
       .slice(0, RECENT_TRIPS_LIMIT);
-  }, [baseTrips, currentUser?.id]);
+  }, [baseTrips, currentUser?.id, completedBookingTripIds]);
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
   const [addMode, setAddMode] = useState(false);
@@ -400,104 +426,6 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Lieux populaires */}
-        {/* <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Lieux populaires</Text>
-            <TouchableOpacity onPress={() => setAddMode((prev) => !prev)}>
-              <Text style={styles.seeAllText}>{addMode ? 'Annuler' : 'Ajouter'}</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.popularLocations}>
-            {popularLocations.map((location) => (
-              <TouchableOpacity
-                key={location.id}
-                style={styles.locationChip}
-                onPress={() => handleLocationPress(location)}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="location" size={16} color={Colors.primary} />
-                <Text style={styles.locationChipText}>{location.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {savedLocations.length > 0 && (
-            <View style={styles.savedSection}>
-              <Text style={styles.savedTitle}>Vos lieux favoris</Text>
-              {savedLocations.map((location) => (
-                <TouchableOpacity
-                  key={location.id}
-                  style={styles.locationCard}
-                  onPress={() => handleLocationPress(location)}
-                >
-                  <View style={[styles.locationIcon, { backgroundColor: Colors.secondary + '15' }]}>
-                    <Ionicons name="star" size={18} color={Colors.secondary} />
-                  </View>
-                  <View style={styles.locationInfo}>
-                    <Text style={styles.locationName}>{location.label}</Text>
-                    <Text style={styles.locationAddress}>{location.address}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          {addMode && (
-            <View style={styles.addLocationCard}>
-              <Text style={styles.addLocationTitle}>Ajouter un lieu habituel</Text>
-              <View style={styles.addInputRow}>
-                <Ionicons name="bookmark" size={18} color={Colors.primary} />
-                <TextInput
-                  style={styles.addInput}
-                  placeholder="Nom (Maison, Bureau...)"
-                  placeholderTextColor={Colors.gray[500]}
-                  value={customLabel}
-                  onChangeText={setCustomLabel}
-                />
-              </View>
-              <View style={styles.addInputRow}>
-                <Ionicons name="location" size={18} color={Colors.primary} />
-                <TextInput
-                  style={styles.addInput}
-                  placeholder="Adresse"
-                  placeholderTextColor={Colors.gray[500]}
-                  value={customAddress}
-                  onChangeText={setCustomAddress}
-                />
-              </View>
-              <View style={styles.coordsRow}>
-                <View style={[styles.addInputRow, styles.coordInput]}>
-                  <Ionicons name="navigate" size={18} color={Colors.primary} />
-                  <TextInput
-                    style={styles.addInput}
-                    placeholder="Latitude"
-                    placeholderTextColor={Colors.gray[500]}
-                    keyboardType="numeric"
-                    value={customLat}
-                    onChangeText={setCustomLat}
-                  />
-                </View>
-                <View style={[styles.addInputRow, styles.coordInput]}>
-                  <Ionicons name="navigate" size={18} color={Colors.primary} />
-                  <TextInput
-                    style={styles.addInput}
-                    placeholder="Longitude"
-                    placeholderTextColor={Colors.gray[500]}
-                    keyboardType="numeric"
-                    value={customLng}
-                    onChangeText={setCustomLng}
-                  />
-                </View>
-              </View>
-              <TouchableOpacity style={styles.addButton} onPress={handleAddLocation}>
-                <Text style={styles.addButtonText}>Enregistrer</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View> */}
-
         {/* Actions rapides */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Actions rapides</Text>
@@ -636,12 +564,14 @@ export default function HomeScreen() {
                         <View style={styles.avatar} />
                       )}
                       <View style={styles.tripDriverDetails}>
-                        <Text style={styles.driverName}>{trip?.driverName ?? ''}</Text>
+                        <Text style={styles.driverName} numberOfLines={1} ellipsizeMode="tail">
+                          {trip?.driverName ?? ''}
+                        </Text>
                         <View style={styles.driverMeta}>
                           <Ionicons name="star" size={14} color={Colors.secondary} />
                           <Text style={styles.driverRating}>{ratingValue.toFixed(1)}</Text>
                           <View style={styles.dot} />
-                          <Text style={styles.vehicleInfo}>
+                          <Text style={styles.vehicleInfo} numberOfLines={1} ellipsizeMode="tail">
                             {trip?.vehicle
                               ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
                               : trip?.vehicleInfo ?? ''}
@@ -656,7 +586,7 @@ export default function HomeScreen() {
                           <Text style={styles.bookedBadgeText}>Réservé</Text>
                         </View>
                       )}
-                      {trip?.status === 'ongoing' && (
+                      {trip?.status === 'ongoing' && !bookedTripIds.has(trip.id) && (
                         <View style={styles.ongoingBadge}>
                           <Ionicons name="car-sport" size={12} color={Colors.success} />
                           <Text style={styles.ongoingBadgeText}>En cours</Text>
@@ -708,7 +638,7 @@ export default function HomeScreen() {
                     <View style={styles.tripFooterLeft}>
                       <Ionicons name="people" size={16} color={Colors.gray[600]} />
                       <Text style={styles.seatsText}>
-                        {trip.availableSeats} places disponibles
+                        {trip?.availableSeats} places disponibles
                       </Text>
                     </View>
                     <TouchableOpacity
@@ -1241,12 +1171,14 @@ const styles = StyleSheet.create({
   },
   tripDriverDetails: {
     flex: 1,
+    minWidth: 0, // Permet au flex de fonctionner correctement avec numberOfLines
   },
   driverName: {
     fontWeight: FontWeights.bold,
     color: Colors.gray[800],
     fontSize: FontSizes.base,
     marginBottom: Spacing.xs,
+    maxWidth: '100%',
   },
   driverMeta: {
     flexDirection: 'row',
@@ -1267,11 +1199,16 @@ const styles = StyleSheet.create({
   vehicleInfo: {
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
+    flex: 1,
+    minWidth: 0,
   },
   headerBadges: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
+    flexWrap: 'wrap',
+    maxWidth: 120,
+    justifyContent: 'flex-end',
   },
   bookedBadge: {
     flexDirection: 'row',
