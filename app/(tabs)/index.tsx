@@ -5,9 +5,9 @@ import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
 import { useGetNotificationsQuery } from '@/store/api/notificationApi';
 import {
-    TripSearchParams,
-    useGetTripsQuery,
-    useSearchTripsByCoordinatesMutation,
+  TripSearchParams,
+  useGetTripsQuery,
+  useSearchTripsByCoordinatesMutation,
 } from '@/store/api/tripApi';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -20,13 +20,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import Animated, { FadeInDown, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -401,104 +401,6 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Lieux populaires */}
-        {/* <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Lieux populaires</Text>
-            <TouchableOpacity onPress={() => setAddMode((prev) => !prev)}>
-              <Text style={styles.seeAllText}>{addMode ? 'Annuler' : 'Ajouter'}</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.popularLocations}>
-            {popularLocations.map((location) => (
-              <TouchableOpacity
-                key={location.id}
-                style={styles.locationChip}
-                onPress={() => handleLocationPress(location)}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="location" size={16} color={Colors.primary} />
-                <Text style={styles.locationChipText}>{location.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {savedLocations.length > 0 && (
-            <View style={styles.savedSection}>
-              <Text style={styles.savedTitle}>Vos lieux favoris</Text>
-              {savedLocations.map((location) => (
-                <TouchableOpacity
-                  key={location.id}
-                  style={styles.locationCard}
-                  onPress={() => handleLocationPress(location)}
-                >
-                  <View style={[styles.locationIcon, { backgroundColor: Colors.secondary + '15' }]}>
-                    <Ionicons name="star" size={18} color={Colors.secondary} />
-                  </View>
-                  <View style={styles.locationInfo}>
-                    <Text style={styles.locationName}>{location.label}</Text>
-                    <Text style={styles.locationAddress}>{location.address}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          {addMode && (
-            <View style={styles.addLocationCard}>
-              <Text style={styles.addLocationTitle}>Ajouter un lieu habituel</Text>
-              <View style={styles.addInputRow}>
-                <Ionicons name="bookmark" size={18} color={Colors.primary} />
-                <TextInput
-                  style={styles.addInput}
-                  placeholder="Nom (Maison, Bureau...)"
-                  placeholderTextColor={Colors.gray[500]}
-                  value={customLabel}
-                  onChangeText={setCustomLabel}
-                />
-              </View>
-              <View style={styles.addInputRow}>
-                <Ionicons name="location" size={18} color={Colors.primary} />
-                <TextInput
-                  style={styles.addInput}
-                  placeholder="Adresse"
-                  placeholderTextColor={Colors.gray[500]}
-                  value={customAddress}
-                  onChangeText={setCustomAddress}
-                />
-              </View>
-              <View style={styles.coordsRow}>
-                <View style={[styles.addInputRow, styles.coordInput]}>
-                  <Ionicons name="navigate" size={18} color={Colors.primary} />
-                  <TextInput
-                    style={styles.addInput}
-                    placeholder="Latitude"
-                    placeholderTextColor={Colors.gray[500]}
-                    keyboardType="numeric"
-                    value={customLat}
-                    onChangeText={setCustomLat}
-                  />
-                </View>
-                <View style={[styles.addInputRow, styles.coordInput]}>
-                  <Ionicons name="navigate" size={18} color={Colors.primary} />
-                  <TextInput
-                    style={styles.addInput}
-                    placeholder="Longitude"
-                    placeholderTextColor={Colors.gray[500]}
-                    keyboardType="numeric"
-                    value={customLng}
-                    onChangeText={setCustomLng}
-                  />
-                </View>
-              </View>
-              <TouchableOpacity style={styles.addButton} onPress={handleAddLocation}>
-                <Text style={styles.addButtonText}>Enregistrer</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View> */}
-
         {/* Actions rapides */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Actions rapides</Text>
@@ -711,7 +613,7 @@ export default function HomeScreen() {
                     <View style={styles.tripFooterLeft}>
                       <Ionicons name="people" size={16} color={Colors.gray[600]} />
                       <Text style={styles.seatsText}>
-                        {trip.availableSeats}/{trip.totalSeats ?? trip.availableSeats} places disponibles
+                        {trip?.availableSeats} places disponibles
                       </Text>
                     </View>
                     <TouchableOpacity
