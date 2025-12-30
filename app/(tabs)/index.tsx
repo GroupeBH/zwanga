@@ -5,9 +5,9 @@ import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
 import { useGetNotificationsQuery } from '@/store/api/notificationApi';
 import {
-  TripSearchParams,
-  useGetTripsQuery,
-  useSearchTripsByCoordinatesMutation,
+    TripSearchParams,
+    useGetTripsQuery,
+    useSearchTripsByCoordinatesMutation,
 } from '@/store/api/tripApi';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -20,13 +20,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import Animated, { FadeInDown, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -637,12 +637,14 @@ export default function HomeScreen() {
                         <View style={styles.avatar} />
                       )}
                       <View style={styles.tripDriverDetails}>
-                        <Text style={styles.driverName}>{trip?.driverName ?? ''}</Text>
+                        <Text style={styles.driverName} numberOfLines={1} ellipsizeMode="tail">
+                          {trip?.driverName ?? ''}
+                        </Text>
                         <View style={styles.driverMeta}>
                           <Ionicons name="star" size={14} color={Colors.secondary} />
                           <Text style={styles.driverRating}>{ratingValue.toFixed(1)}</Text>
                           <View style={styles.dot} />
-                          <Text style={styles.vehicleInfo}>
+                          <Text style={styles.vehicleInfo} numberOfLines={1} ellipsizeMode="tail">
                             {trip?.vehicle
                               ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
                               : trip?.vehicleInfo ?? ''}
@@ -657,7 +659,7 @@ export default function HomeScreen() {
                           <Text style={styles.bookedBadgeText}>Réservé</Text>
                         </View>
                       )}
-                      {trip?.status === 'ongoing' && (
+                      {trip?.status === 'ongoing' && !bookedTripIds.has(trip.id) && (
                         <View style={styles.ongoingBadge}>
                           <Ionicons name="car-sport" size={12} color={Colors.success} />
                           <Text style={styles.ongoingBadgeText}>En cours</Text>
@@ -709,7 +711,7 @@ export default function HomeScreen() {
                     <View style={styles.tripFooterLeft}>
                       <Ionicons name="people" size={16} color={Colors.gray[600]} />
                       <Text style={styles.seatsText}>
-                        {trip.availableSeats} places disponibles
+                        {trip.availableSeats}/{trip.totalSeats ?? trip.availableSeats} places disponibles
                       </Text>
                     </View>
                     <TouchableOpacity
@@ -1242,12 +1244,14 @@ const styles = StyleSheet.create({
   },
   tripDriverDetails: {
     flex: 1,
+    minWidth: 0, // Permet au flex de fonctionner correctement avec numberOfLines
   },
   driverName: {
     fontWeight: FontWeights.bold,
     color: Colors.gray[800],
     fontSize: FontSizes.base,
     marginBottom: Spacing.xs,
+    maxWidth: '100%',
   },
   driverMeta: {
     flexDirection: 'row',
@@ -1268,11 +1272,16 @@ const styles = StyleSheet.create({
   vehicleInfo: {
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
+    flex: 1,
+    minWidth: 0,
   },
   headerBadges: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
+    flexWrap: 'wrap',
+    maxWidth: 120,
+    justifyContent: 'flex-end',
   },
   bookedBadge: {
     flexDirection: 'row',
