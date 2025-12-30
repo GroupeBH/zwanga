@@ -95,16 +95,41 @@ export default function HomeScreen() {
     );
   }, [myBookings, currentUser?.id]);
 
+  // Créer un Set des IDs de trajets avec réservation complétée (où le passager a été déposé)
+  const completedBookingTripIds = useMemo(() => {
+    if (!myBookings || !currentUser?.id) {
+      return new Set<string>();
+    }
+    // Filtrer les réservations complétées (où le passager a été déposé)
+    return new Set(
+      myBookings
+        .filter(
+          (booking) =>
+            booking.status === 'completed' &&
+            booking.droppedOffConfirmedByPassenger === true &&
+            booking.tripId
+        )
+        .map((booking) => booking.tripId)
+    );
+  }, [myBookings, currentUser?.id]);
+
   const baseTrips = remoteTrips ?? storedTrips ?? [];
   const latestTrips = useMemo(() => {
-    // Filtrer les trajets pour exclure ceux publiés par l'utilisateur actuel
+    // Filtrer les trajets pour exclure ceux publiés par l'utilisateur actuel et ceux avec réservation complétée
     const filteredTrips = baseTrips.filter((trip) => {
       // Si l'utilisateur n'est pas connecté, afficher tous les trajets
       if (!currentUser?.id) {
         return true;
       }
       // Exclure les trajets dont l'utilisateur est le driver
-      return trip.driverId !== currentUser.id;
+      if (trip.driverId === currentUser.id) {
+        return false;
+      }
+      // Exclure les trajets où l'utilisateur a une réservation complétée (déposé)
+      if (completedBookingTripIds.has(trip.id)) {
+        return false;
+      }
+      return true;
     });
     
     return [...filteredTrips]
@@ -115,7 +140,7 @@ export default function HomeScreen() {
         return dateB - dateA; // dateB - dateA = du plus récent au plus ancien
       })
       .slice(0, RECENT_TRIPS_LIMIT);
-  }, [baseTrips, currentUser?.id]);
+  }, [baseTrips, currentUser?.id, completedBookingTripIds]);
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
   const [addMode, setAddMode] = useState(false);

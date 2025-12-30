@@ -1336,10 +1336,19 @@ export default function TripDetailsScreen() {
           <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>CONDUCTEUR</Text>
 
-            <View style={styles.driverInfo}>
+            <TouchableOpacity
+              style={styles.driverInfo}
+              onPress={() => {
+                if (trip.driverId) {
+                  router.push(`/driver/${trip.driverId}`);
+                }
+              }}
+              activeOpacity={0.7}
+            >
               {trip.driverAvatar ? (
                 <TouchableOpacity
-                  onPress={() => {
+                  onPress={(e) => {
+                    e.stopPropagation();
                     setSelectedImageUri(trip.driverAvatar!);
                     setImageModalVisible(true);
                   }}
@@ -1355,7 +1364,10 @@ export default function TripDetailsScreen() {
                 </View>
               )}
               <View style={styles.driverDetails}>
-                <Text style={styles.driverName}>{trip.driverName}</Text>
+                <View style={styles.driverNameRow}>
+                  <Text style={styles.driverName}>{trip.driverName}</Text>
+                  <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                </View>
                 <View style={styles.driverMeta}>
                   <Ionicons name="star" size={16} color={Colors.secondary} />
                   <Text style={styles.driverRating}>{driverReviewAverage.toFixed(1)}</Text>
@@ -1368,7 +1380,10 @@ export default function TripDetailsScreen() {
                 </View>
                 <TouchableOpacity
                   style={styles.driverReviewLink}
-                  onPress={() => setDriverReviewsModalVisible(true)}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    setDriverReviewsModalVisible(true);
+                  }}
                   disabled={driverReviewCount === 0}
                 >
                   <Text
@@ -1379,11 +1394,11 @@ export default function TripDetailsScreen() {
                   >
                     {driverReviewCount > 0
                       ? `${driverReviewCount} avis`
-                      : 'Pas encore d\’avis'}
+                      : 'Pas encore d\'avis'}
                   </Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </TouchableOpacity>
 
             <View style={styles.driverActions}>
               <TouchableOpacity
@@ -1513,10 +1528,16 @@ export default function TripDetailsScreen() {
                 {tripBookings
                   .filter((booking) => booking.status === 'accepted')
                   .map((booking) => (
-                    <View key={booking.id} style={styles.passengerItem}>
+                    <TouchableOpacity
+                      key={booking.id}
+                      style={styles.passengerItem}
+                      onPress={() => router.push(`/passenger/${booking.passengerId}`)}
+                      activeOpacity={0.7}
+                    >
                       {booking.passengerAvatar ? (
                         <TouchableOpacity
-                          onPress={() => {
+                          onPress={(e) => {
+                            e.stopPropagation();
                             setSelectedImageUri(booking.passengerAvatar!);
                             setImageModalVisible(true);
                           }}
@@ -1539,7 +1560,8 @@ export default function TripDetailsScreen() {
                           {booking.numberOfSeats} place{booking.numberOfSeats > 1 ? 's' : ''}
                         </Text>
                       </View>
-                    </View>
+                      <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                    </TouchableOpacity>
                   ))}
                 {tripBookings.filter((booking) => booking.status === 'accepted').length === 0 && (
                   <Text style={styles.noPassengersText}>Aucun passager confirmé</Text>
@@ -2639,11 +2661,17 @@ const styles = StyleSheet.create({
   driverDetails: {
     flex: 1,
   },
+  driverNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.xs,
+  },
   driverName: {
     fontWeight: FontWeights.bold,
     color: Colors.gray[800],
     fontSize: FontSizes.lg,
-    marginBottom: Spacing.xs,
+    flex: 1,
   },
   driverMeta: {
     flexDirection: 'row',
