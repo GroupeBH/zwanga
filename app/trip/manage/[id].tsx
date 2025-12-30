@@ -14,7 +14,7 @@ import { selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
-import { getRouteInfo, type RouteInfo } from '@/utils/routeHelpers';
+import { calculateDistance, getRouteInfo, type RouteInfo } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -428,6 +428,70 @@ export default function ManageTripScreen() {
     });
   };
 
+  const handleCompleteTrip = () => {
+    if (!trip) return;
+    showDialog({
+      variant: 'info',
+      title: 'Terminer le trajet',
+      message: 'Voulez-vous terminer ce trajet ? Le trajet sera marqué comme complété.',
+      actions: [
+        { label: 'Annuler', variant: 'ghost' },
+        {
+          label: 'Terminer',
+          variant: 'primary',
+          onPress: async () => {
+            try {
+              await updateTrip({ id: trip.id, updates: { status: 'completed' } }).unwrap();
+              showFeedback('success', 'Le trajet a été terminé avec succès.');
+              refreshAll();
+            } catch (error: any) {
+              const message =
+                error?.data?.message ?? error?.error ?? 'Impossible de terminer ce trajet.';
+              showFeedback('error', message);
+            }
+          },
+        },
+      ],
+    });
+  };
+
+  // Vérifier si tous les passagers sont déposés
+  const allPassengersDroppedOff = useMemo(() => {
+    if (!bookings || bookings.length === 0) return true;
+    const acceptedBookings = bookings.filter((booking) => booking.status === 'accepted');
+    if (acceptedBookings.length === 0) return true;
+    return acceptedBookings.every(
+      (booking) => booking.droppedOff && booking.droppedOffConfirmedByPassenger,
+    );
+  }, [bookings]);
+
+  // Vérifier si le conducteur est arrivé à destination (distance < 100m)
+  const isAtDestination = useMemo(() => {
+    if (!trip || !arrivalCoordinate || trip.status !== 'ongoing') return false;
+    
+    // Obtenir la position actuelle du conducteur
+    const currentCoordinate = trip.currentLocation?.coordinates
+      ? {
+          latitude: trip.currentLocation.coordinates[1],
+          longitude: trip.currentLocation.coordinates[0],
+        }
+      : null;
+
+    if (!currentCoordinate) return false;
+
+    // Calculer la distance en kilomètres
+    const distanceKm = calculateDistance(currentCoordinate, arrivalCoordinate);
+    // Convertir en mètres et vérifier si < 100m
+    const distanceMeters = distanceKm * 1000;
+    return distanceMeters < 100; // 100 mètres de tolérance
+  }, [trip?.currentLocation, trip?.status, arrivalCoordinate]);
+
+  // Le bouton "Terminer le trajet" doit apparaître si :
+  // - Le trajet est en cours
+  // - Tous les passagers sont déposés
+  // - Le conducteur est arrivé à destination
+  const canCompleteTrip = trip?.status === 'ongoing' && allPassengersDroppedOff && isAtDestination;
+
   // console.log("this user is owner", isOwner);
   // console.log("this user is", user);
 
@@ -725,8 +789,26 @@ export default function ManageTripScreen() {
             </TouchableOpacity>
           )}
 
-          {/* Bouton pour interrompre le trajet (si en cours) */}
-          {trip.status === 'ongoing' && (
+          {/* Bouton pour terminer le trajet (si tous les passagers sont déposés et arrivé à destination) */}
+          {canCompleteTrip && (
+            <TouchableOpacity
+              style={[styles.primaryButton, styles.completeTripButton, { marginTop: Spacing.lg }]}
+              onPress={handleCompleteTrip}
+              disabled={isCancellingTrip}
+            >
+              {isCancellingTrip ? (
+                <ActivityIndicator color={Colors.white} />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-done-circle" size={20} color={Colors.white} />
+                  <Text style={styles.primaryButtonText}>Terminer le trajet</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {/* Bouton pour interrompre le trajet (si en cours et pas encore terminable) */}
+          {trip.status === 'ongoing' && !canCompleteTrip && (
             <TouchableOpacity
               style={[styles.secondaryButton, { marginTop: Spacing.md, borderColor: Colors.warning, borderWidth: 1 }]}
               onPress={handlePauseTrip}
@@ -925,9 +1007,18 @@ export default function ManageTripScreen() {
                           )}
                         </TouchableOpacity>
                       ) : (
-                        <View style={styles.completedStatus}>
-                          <Ionicons name="checkmark-done-circle" size={18} color={Colors.success} />
-                          <Text style={styles.completedStatusText}>Trajet complété pour ce passager</Text>
+                        <View style={styles.tripActionsContainer}>
+                          <View style={styles.completedStatus}>
+                            <Ionicons name="checkmark-done-circle" size={18} color={Colors.success} />
+                            <Text style={styles.completedStatusText}>Trajet complété pour ce passager</Text>
+                          </View>
+                          <TouchableOpacity
+                            style={[styles.tripActionButton, styles.rateButton]}
+                            onPress={() => router.push(`/rate/${trip.id}?passengerId=${booking.passengerId}`)}
+                          >
+                            <Ionicons name="star" size={18} color={Colors.white} />
+                            <Text style={styles.tripActionText}>Noter ce passager</Text>
+                          </TouchableOpacity>
                         </View>
                       )}
                     </View>
@@ -1404,6 +1495,9 @@ const styles = StyleSheet.create({
   startTripButton: {
     backgroundColor: Colors.success,
   },
+  completeTripButton: {
+    backgroundColor: Colors.success,
+  },
   secondaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1454,6 +1548,10 @@ const styles = StyleSheet.create({
   },
   dropoffButton: {
     backgroundColor: Colors.primary,
+  },
+  rateButton: {
+    backgroundColor: Colors.secondary,
+    marginTop: Spacing.sm,
   },
   tripActionText: {
     color: Colors.white,
