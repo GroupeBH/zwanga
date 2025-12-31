@@ -536,7 +536,10 @@ export default function ManageTripScreen() {
           <Text style={[styles.emptyText, { marginTop: Spacing.sm }]}>
             Vous n’avez pas l’autorisation d’accéder à ce trajet.
           </Text>
-          <TouchableOpacity style={styles.primaryButton} onPress={() => router.back()}>
+          <TouchableOpacity
+            style={[styles.primaryButton, { marginTop: Spacing.lg, paddingHorizontal: Spacing.xl }]}
+            onPress={() => router.back()}
+          >
             <Text style={styles.primaryButtonText}>Retour</Text>
           </TouchableOpacity>
         </View>
@@ -614,6 +617,190 @@ export default function ManageTripScreen() {
             <Ionicons name="close" size={18} color={Colors.white} />
           </TouchableOpacity>
         </Animated.View>
+      )}
+
+      <ScrollView 
+        style={styles.scrollView} 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Résumé du trajet */}
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryHeader}>
+            <View style={styles.timeContainer}>
+              <Ionicons name="time-outline" size={20} color={Colors.gray[600]} />
+              <Text style={styles.timeText}>{formatTime(trip.departureTime)}</Text>
+            </View>
+            <View style={[styles.statusBadge, { backgroundColor: statusColor(trip.status).color + '20' }]}>
+              <Text style={[styles.statusBadgeText, { color: statusColor(trip.status).color }]}>
+                {labelStatus(trip.status).toUpperCase()}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.itineraryContainer}>
+            <View style={styles.itineraryTimeline}>
+              <View style={[styles.timelineDot, { backgroundColor: Colors.primary }]} />
+              <View style={styles.timelineLine} />
+              <View style={[styles.timelineDot, { backgroundColor: Colors.secondary }]} />
+            </View>
+            <View style={styles.itineraryDetails}>
+              <View style={styles.itineraryPoint}>
+                <Text style={styles.itineraryLabel}>Départ</Text>
+                <Text style={styles.itineraryValue} numberOfLines={2}>{trip.departure.address}</Text>
+              </View>
+              <View style={styles.itineraryPoint}>
+                <Text style={styles.itineraryLabel}>Arrivée</Text>
+                <Text style={styles.itineraryValue} numberOfLines={2}>{trip.arrival.address}</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.statsGrid}>
+            <View style={styles.statItem}>
+              <View style={styles.statIconContainer}>
+                <Ionicons name="people" size={18} color={Colors.primary} />
+              </View>
+              <View>
+                <Text style={styles.statLabel}>Places</Text>
+                <Text style={styles.statValue}>{trip.availableSeats} / {trip.totalSeats}</Text>
+              </View>
+            </View>
+            <View style={styles.statItem}>
+              <View style={styles.statIconContainer}>
+                <Ionicons name="cash" size={18} color={Colors.success} />
+              </View>
+              <View>
+                <Text style={styles.statLabel}>Prix</Text>
+                <Text style={styles.statValue}>{trip.price} FCFA</Text>
+              </View>
+            </View>
+          </View>
+
+          {trip.status === 'ongoing' && estimatedArrivalTime && (
+            <View style={styles.etaContainer}>
+              <Ionicons name="navigate" size={18} color={Colors.secondary} />
+              <Text style={styles.etaText}>
+                Arrivée estimée : <Text style={styles.etaHighlight}>{formatTime(estimatedArrivalTime.toISOString())}</Text>
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Liste des passagers */}
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View>
+              <Text style={styles.sectionTitle}>Passagers</Text>
+              <Text style={styles.sectionSubtitle}>
+                {bookings?.length || 0} réservation(s) au total
+              </Text>
+            </View>
+            <TouchableOpacity 
+              style={styles.actionIconButton}
+              onPress={() => setMapModalVisible(true)}
+            >
+              <Ionicons name="map" size={20} color={Colors.primary} />
+            </TouchableOpacity>
+          </View>
+
+          {bookings && bookings.length > 0 ? (
+            bookings.map((booking) => (
+              <View key={booking.id} style={styles.bookingCard}>
+                <View style={styles.bookingHeader}>
+                  <View style={styles.avatar}>
+                    <Text style={{ color: Colors.white, fontWeight: 'bold' }}>
+                      {(booking.passengerName || 'P').charAt(0)}
+                    </Text>
+                  </View>
+                  <View style={styles.bookingInfo}>
+                    <Text style={styles.bookingName}>{booking.passengerName}</Text>
+                    <Text style={styles.bookingMeta}>
+                      {booking.seats} place(s) • {booking.totalPrice} FCFA
+                    </Text>
+                    {booking.passengerDestination && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 4 }}>
+                        <Ionicons name="location-outline" size={12} color={Colors.gray[500]} />
+                        <Text style={{ fontSize: 11, color: Colors.gray[500] }} numberOfLines={1}>
+                          Vers: {booking.passengerDestination}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={[styles.statusBadge, { backgroundColor: BOOKING_STATUS_CONFIG[booking.status].background }]}>
+                    <Text style={[styles.statusBadgeText, { color: BOOKING_STATUS_CONFIG[booking.status].color }]}>
+                      {BOOKING_STATUS_CONFIG[booking.status].label}
+                    </Text>
+                  </View>
+                </View>
+
+                {booking.status === 'pending' && (
+                  <View style={styles.bookingFooter}>
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.rejectButton]}
+                      onPress={() => openRejectModal(booking)}
+                      disabled={isAccepting || isRejecting}
+                    >
+                      <Text style={[styles.actionText, { color: Colors.danger }]}>Refuser</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.acceptButton]}
+                      onPress={() => handleAcceptBooking(booking.id)}
+                      disabled={isAccepting || isRejecting}
+                    >
+                      {processingBookingId === booking.id ? (
+                        <ActivityIndicator size="small" color={Colors.white} />
+                      ) : (
+                        <Text style={styles.actionText}>Accepter</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {booking.status === 'accepted' && (
+                  <View style={styles.bookingFooter}>
+                    <TouchableOpacity
+                      style={[styles.actionButton, { backgroundColor: Colors.gray[100] }]}
+                      onPress={() => {
+                        setSelectedPassengerPhone(booking.passengerPhone || null);
+                        setSelectedPassengerName(booking.passengerName || null);
+                        setContactModalVisible(true);
+                      }}
+                    >
+                      <Ionicons name="chatbubble-ellipses" size={18} color={Colors.primary} />
+                      <Text style={[styles.actionText, { color: Colors.primary }]}>Contacter</Text>
+                    </TouchableOpacity>
+                    
+                    {trip.status === 'ongoing' && !booking.pickedUp && (
+                      <TouchableOpacity
+                        style={[styles.actionButton, { backgroundColor: Colors.info }]}
+                        onPress={() => handleConfirmPickup(booking.id)}
+                      >
+                        <Text style={styles.actionText}>Récupéré</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {trip.status === 'ongoing' && booking.pickedUp && !booking.droppedOff && (
+                      <TouchableOpacity
+                        style={[styles.actionButton, { backgroundColor: Colors.success }]}
+                        onPress={() => handleConfirmDropoff(booking.id)}
+                      >
+                        <Text style={styles.actionText}>Déposé</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </View>
+            ))
+          ) : (
+            <View style={{ alignItems: 'center', padding: Spacing.xl }}>
+              <Ionicons name="people-outline" size={48} color={Colors.gray[300]} />
+              <Text style={[styles.emptyText, { marginTop: Spacing.sm }]}>
+                Aucune réservation pour le moment.
+              </Text>
+            </View>
+          )}
+        </View>
       </ScrollView>
 
       {/* Sticky Footer pour les actions du trajet */}
@@ -741,21 +928,6 @@ export default function ManageTripScreen() {
             </View>
           </View>
         </View>
-
-        {trip.status === 'completed' && (
-          <TouchableOpacity
-            style={styles.reviewCta}
-            onPress={() => router.push(`/rate/${trip.id}`)}
-          >
-            <Ionicons name="star" size={20} color={Colors.white} />
-            <View style={{ marginLeft: Spacing.sm }}>
-              <Text style={styles.reviewCtaTitle}>Évaluer mes passagers</Text>
-              <Text style={styles.reviewCtaSubtitle}>
-                Partagez votre ressenti pour améliorer la communauté.
-              </Text>
-            </View>
-          </TouchableOpacity>
-        )}
       </Modal>
 
       {/* Map Modal */}
@@ -1392,170 +1564,25 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.md,
     fontWeight: FontWeights.bold,
   },
+  secondaryButton: {
+    flex: 0.5,
+    height: 54,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryButtonText: {
+    fontSize: FontSizes.md,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[700],
+  },
   startTripButton: {
     backgroundColor: Colors.success,
   },
   completeTripButton: {
     backgroundColor: Colors.success,
-  },
-  secondaryButton: {
-    flex: 1,
-    height: 54,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-  },
-  secondaryButtonText: {
-    color: Colors.gray[700],
-    fontSize: FontSizes.md,
-    fontWeight: FontWeights.bold,
-  },
-  loader: {
-    padding: Spacing.xl,
-    alignItems: 'center',
-  },
-  loaderText: {
-    marginTop: Spacing.sm,
-    color: Colors.gray[500],
-    fontSize: FontSizes.sm,
-  },
-  emptyCard: {
-    padding: Spacing.xl,
-    alignItems: 'center',
-    backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.lg,
-  },
-  emptyTitle: {
-    fontSize: FontSizes.md,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    marginTop: Spacing.sm,
-  },
-  emptySubtitle: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[500],
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  markerStartCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: Colors.success,
-    borderWidth: 2,
-    borderColor: Colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...CommonStyles.shadowSm,
-  },
-  markerEndCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: Colors.primary,
-    borderWidth: 2,
-    borderColor: Colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...CommonStyles.shadowSm,
-  },
-  tripActionsContainer: {
-    marginTop: Spacing.md,
-    paddingTop: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray[50],
-    gap: Spacing.sm,
-  },
-  tripActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 48,
-    borderRadius: BorderRadius.md,
-    gap: 8,
-  },
-  pickupButton: {
-    backgroundColor: Colors.success,
-  },
-  dropoffButton: {
-    backgroundColor: Colors.primary,
-  },
-  rateButton: {
-    backgroundColor: Colors.secondary,
-  },
-  tripActionText: {
-    color: Colors.white,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-  },
-  completedStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 4,
-  },
-  completedStatusText: {
-    color: Colors.success,
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-  },
-  bookingActionsRow: {
-    flexDirection: 'row',
-    marginTop: Spacing.md,
-    paddingTop: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray[50],
-  },
-  bookingActionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 44,
-    borderRadius: BorderRadius.md,
-    gap: 8,
-  },
-  bookingActionCall: {
-    backgroundColor: Colors.success + '10',
-  },
-  bookingActionCallText: {
-    color: Colors.success,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-  },
-  reasonBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.danger + '10',
-    padding: Spacing.sm,
-    borderRadius: BorderRadius.md,
-    marginTop: Spacing.sm,
-    gap: 8,
-  },
-  reasonText: {
-    fontSize: FontSizes.xs,
-    color: Colors.danger,
-    flex: 1,
-  },
-  passengerDestinationInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.gray[50],
-    padding: Spacing.sm,
-    borderRadius: BorderRadius.md,
-    marginTop: Spacing.sm,
-    gap: 8,
-  },
-  passengerDestinationText: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[600],
-    flex: 1,
   },
   bookingModalOverlay: {
     flex: 1,
@@ -1573,29 +1600,28 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    textAlign: 'center',
+    marginBottom: Spacing.xs,
   },
   bookingModalDescription: {
-    fontSize: FontSizes.sm,
+    fontSize: FontSizes.md,
     color: Colors.gray[500],
-    textAlign: 'center',
-    marginTop: Spacing.sm,
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.lg,
   },
   bookingSeatInput: {
     backgroundColor: Colors.gray[50],
     borderRadius: BorderRadius.lg,
     padding: Spacing.md,
-    height: 100,
     fontSize: FontSizes.md,
     color: Colors.gray[900],
     borderWidth: 1,
     borderColor: Colors.gray[200],
+    minHeight: 100,
+    textAlignVertical: 'top',
   },
   bookingModalError: {
     color: Colors.danger,
-    fontSize: FontSizes.xs,
-    marginTop: 4,
+    fontSize: FontSizes.sm,
+    marginTop: Spacing.xs,
   },
   bookingModalActions: {
     flexDirection: 'row',
@@ -1625,29 +1651,13 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.md,
     fontWeight: FontWeights.bold,
   },
-  reviewCta: {
-    backgroundColor: Colors.secondary,
-    padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: Spacing.md,
-  },
-  reviewCtaTitle: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
-  },
-  reviewCtaSubtitle: {
-    color: Colors.white,
-    fontSize: FontSizes.xs,
-    opacity: 0.9,
-  },
   mapModalOverlay: {
     flex: 1,
-    backgroundColor: Colors.white,
+    backgroundColor: 'rgba(0,0,0,0.8)',
   },
   mapModalContent: {
     flex: 1,
+    backgroundColor: Colors.white,
   },
   fullscreenMap: {
     flex: 1,
@@ -1662,6 +1672,64 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  markerStartCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: Colors.white,
+    ...CommonStyles.shadowMd,
+  },
+  markerEndCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: Colors.white,
+    ...CommonStyles.shadowMd,
+  },
+  markerPassengerLocationCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.secondary,
+    ...CommonStyles.shadowSm,
+  },
+  markerPassengerDestCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.white,
+    ...CommonStyles.shadowSm,
+  },
+  passengerLocationCallout: {
+    padding: Spacing.sm,
+    width: 150,
+  },
+  passengerLocationCalloutName: {
+    fontWeight: 'bold',
+    fontSize: FontSizes.sm,
+    color: Colors.gray[900],
+  },
+  passengerLocationCalloutText: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+    marginTop: 2,
   },
   contactModalOverlay: {
     flex: 1,
@@ -1683,10 +1751,10 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   contactModalIconBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: Colors.primary + '10',
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: Colors.primary + '15',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1695,12 +1763,12 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
     textAlign: 'center',
+    marginBottom: Spacing.xs,
   },
   contactModalSubtitle: {
-    fontSize: FontSizes.sm,
+    fontSize: FontSizes.md,
     color: Colors.gray[500],
     textAlign: 'center',
-    marginTop: 4,
   },
   contactModalActions: {
     gap: Spacing.md,
@@ -1708,22 +1776,24 @@ const styles = StyleSheet.create({
   contactModalButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.xl,
     padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
     borderWidth: 1,
     borderColor: Colors.gray[100],
   },
   contactModalButtonIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.gray[50],
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.white,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: Spacing.md,
+    ...CommonStyles.shadowSm,
   },
   contactModalButtonContent: {
     flex: 1,
+    marginLeft: Spacing.md,
   },
   contactModalButtonTitle: {
     fontSize: FontSizes.md,
@@ -1735,14 +1805,20 @@ const styles = StyleSheet.create({
     color: Colors.gray[500],
     marginTop: 2,
   },
+  contactModalButtonCall: {
+    borderColor: Colors.success + '20',
+  },
+  contactModalButtonWhatsApp: {
+    borderColor: '#25D36620',
+  },
   contactModalCancelButton: {
-    marginTop: Spacing.lg,
+    marginTop: Spacing.xl,
+    paddingVertical: Spacing.md,
     alignItems: 'center',
   },
   contactModalCancelText: {
     fontSize: FontSizes.md,
-    fontWeight: FontWeights.bold,
+    fontWeight: FontWeights.semibold,
     color: Colors.gray[500],
   },
 });
-
