@@ -9,14 +9,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { usePathname, useRouter } from 'expo-router';
 import React, { useEffect, useMemo } from 'react';
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Animated, { 
-  useAnimatedStyle, 
-  useSharedValue, 
-  withSpring,
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
   withRepeat,
   withSequence,
-  withTiming,
-  Easing
+  withSpring,
+  withTiming
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -37,13 +37,13 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
   const scale = useSharedValue(1);
 
   // Récupérer les trajets de l'utilisateur (comme conducteur)
-  const { data: myTrips } = useGetMyTripsQuery(undefined, { 
+  const { data: myTrips } = useGetMyTripsQuery(undefined, {
     skip: !user,
     pollingInterval: 10000,
   });
-  
+
   // Récupérer les réservations de l'utilisateur (comme passager)
-  const { data: myBookings } = useGetMyBookingsQuery(undefined, { 
+  const { data: myBookings } = useGetMyBookingsQuery(undefined, {
     skip: !user,
     pollingInterval: 10000,
   });
@@ -92,19 +92,19 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
   // Ne pas afficher sur certaines pages
   const shouldHide = useMemo(() => {
     if (!ongoingTrip) return true;
-    
+
     if (pathname?.startsWith('/auth') || pathname?.startsWith('/splash') || pathname?.startsWith('/onboarding')) {
       return true;
     }
-    
+
     if (pathname?.includes(`/trip/${ongoingTrip.trip.id}`)) {
       return true;
     }
-    
+
     if (pathname?.includes(`/trip/manage/${ongoingTrip.trip.id}`)) {
       return true;
     }
-    
+
     return false;
   }, [pathname, ongoingTrip]);
 
@@ -115,7 +115,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
         damping: 15,
         stiffness: 100,
       });
-      
+
       // Subtle pulse animation
       scale.value = withRepeat(
         withSequence(
@@ -156,9 +156,9 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
   };
 
   // Gradient colors based on role
-  const gradientColors = isDriver 
-    ? ['#6366F1', '#8B5CF6', '#A855F7'] // Purple gradient for driver
-    : ['#0EA5E9', '#06B6D4', '#14B8A6']; // Cyan/Teal gradient for passenger
+  const gradientColors = isDriver
+    ? ['#6366F1', '#8B5CF6', '#A855F7'] as const // Purple gradient for driver
+    : ['#0EA5E9', '#06B6D4', '#14B8A6'] as const; // Cyan/Teal gradient for passenger
 
   const iconName = isDriver ? 'car-sport' : 'navigate-circle';
   const statusBadgeColor = isDriver ? '#A855F7' : '#14B8A6';
@@ -168,9 +168,9 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
   const bottomPadding = tabBarHeight + Spacing.sm;
 
   return (
-    <Animated.View 
+    <Animated.View
       style={[
-        styles.container, 
+        styles.container,
         { bottom: bottomPadding + insets.bottom },
         animatedStyle
       ]}
@@ -188,7 +188,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
         >
           {/* Glassmorphism overlay */}
           <View style={styles.glassOverlay} />
-          
+
           <View style={styles.content}>
             {/* Icon with glow effect */}
             <View style={styles.iconWrapper}>
@@ -210,14 +210,14 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
                   </Text>
                 </View>
               </View>
-              
+
               <View style={styles.routeRow}>
                 <Ionicons name="location" size={14} color={Colors.white} style={styles.routeIcon} />
                 <Text style={styles.routeText} numberOfLines={1}>
                   {trip.departure.name}
                 </Text>
               </View>
-              
+
               <View style={styles.routeRow}>
                 <Ionicons name="navigate" size={14} color={Colors.white} style={styles.routeIcon} />
                 <Text style={styles.routeText} numberOfLines={1}>
