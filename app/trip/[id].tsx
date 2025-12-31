@@ -1,4 +1,5 @@
 import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardModal';
+import LocationPickerModal, { type MapLocationSelection } from '@/components/LocationPickerModal';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
@@ -16,18 +17,16 @@ import {
 } from '@/store/api/bookingApi';
 import { useCreateConversationMutation } from '@/store/api/messageApi';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
+import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { useGetKycStatusQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
-import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import type { BookingStatus, GeoPoint } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
-import { getRouteInfo, type RouteInfo, isPointOnRoute, splitRouteByProgress } from '@/utils/routeHelpers';
-import LocationPickerModal, { type MapLocationSelection } from '@/components/LocationPickerModal';
+import { getRouteInfo, isPointOnRoute, splitRouteByProgress, type RouteInfo } from '@/utils/routeHelpers';
 import { shareTrip, shareTripViaWhatsApp } from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
-import MapView, { Marker, Polyline, Callout, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -41,6 +40,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import Animated, {
   FadeInDown,
   useAnimatedStyle,
@@ -114,7 +114,7 @@ export default function TripDetailsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const tripId = typeof params.id === 'string' ? (params.id as string) : '';
-  const trackParam = params.track === 'true' || params.track === true; // Permet le suivi via lien partagé
+  const trackParam = Array.isArray(params.track) ? params.track.includes('true') : params.track === 'true'; // Permet le suivi via lien partagé
   
   // Récupérer le trajet depuis l'API si pas dans le store
   const {
@@ -1164,7 +1164,7 @@ export default function TripDetailsScreen() {
                   <Callout>
                     <View>
                       <Text style={{ fontWeight: 'bold' }}>Départ</Text>
-                      <Text>{trip.departure.address}</Text>
+                      <Text>{trip?.departure.address}</Text>
                     </View>
                   </Callout>
                 </Marker>
@@ -1178,7 +1178,7 @@ export default function TripDetailsScreen() {
                   <Callout>
                     <View>
                       <Text style={{ fontWeight: 'bold' }}>Arrivée</Text>
-                      <Text>{trip.arrival.address}</Text>
+                      <Text>{trip?.arrival?.address}</Text>
                     </View>
                   </Callout>
                 </Marker>
@@ -1277,7 +1277,7 @@ export default function TripDetailsScreen() {
                 <View style={[styles.statusDot, { backgroundColor: config.color }]} />
                 <Text style={styles.statusLabel}>{config.label}</Text>
               </View>
-              {trip.status === 'ongoing' && (
+              {trip?.status === 'ongoing' && (
                 <Text style={styles.progressText}>{progress}% complété</Text>
               )}
             </View>
@@ -1308,10 +1308,10 @@ export default function TripDetailsScreen() {
                 <View style={styles.routeDivider} />
               </View>
               <View style={styles.routeContent}>
-                <Text style={styles.routeName}>{trip.departure.name}</Text>
-                <Text style={styles.routeAddress} numberOfLines={2}>{trip.departure.address}</Text>
+                <Text style={styles.routeName}>{trip?.departure.name}</Text>
+                <Text style={styles.routeAddress} numberOfLines={2}>{trip?.departure.address}</Text>
                 <Text style={styles.routeTime}>
-                  Départ: {formatTime(trip.departureTime)}
+                  Départ: {formatTime(trip?.departureTime)}
                 </Text>
               </View>
             </View>
@@ -1323,10 +1323,10 @@ export default function TripDetailsScreen() {
                 </View>
               </View>
               <View style={styles.routeContent}>
-                <Text style={styles.routeName}>{trip.arrival.name}</Text>
-                <Text style={styles.routeAddress} numberOfLines={2}>{trip.arrival.address}</Text>
+                <Text style={styles.routeName}>{trip?.arrival.name}</Text>
+                <Text style={styles.routeAddress} numberOfLines={2}>{trip?.arrival.address}</Text>
                 <Text style={styles.routeTime}>
-                  Arrivée: {calculatedArrivalTime ? formatTime(calculatedArrivalTime.toISOString()) : formatTime(trip.arrivalTime)}
+                  Arrivée: {calculatedArrivalTime ? formatTime(calculatedArrivalTime.toISOString()) : formatTime(trip?.arrivalTime)}
                 </Text>
               </View>
             </View>
@@ -1341,22 +1341,22 @@ export default function TripDetailsScreen() {
             <TouchableOpacity
               style={styles.driverInfo}
               onPress={() => {
-                if (trip.driverId) {
-                  router.push(`/driver/${trip.driverId}`);
+                if (trip?.driverId) {
+                  router.push(`/driver/${trip?.driverId}`);
                 }
               }}
               activeOpacity={0.7}
             >
-              {trip.driverAvatar ? (
+              {trip?.driverAvatar ? (
                 <TouchableOpacity
                   onPress={(e) => {
                     e.stopPropagation();
-                    setSelectedImageUri(trip.driverAvatar!);
+                    setSelectedImageUri(trip?.driverAvatar!);
                     setImageModalVisible(true);
                   }}
                 >
                   <Image
-                    source={{ uri: trip.driverAvatar }}
+                    source={{ uri: trip?.driverAvatar }}
                     style={styles.driverAvatar}
                   />
                 </TouchableOpacity>
@@ -1367,7 +1367,7 @@ export default function TripDetailsScreen() {
               )}
               <View style={styles.driverDetails}>
                 <View style={styles.driverNameRow}>
-                  <Text style={styles.driverName} numberOfLines={1}>{trip.driverName}</Text>
+                  <Text style={styles.driverName} numberOfLines={1}>{trip?.driverName}</Text>
                   <Ionicons name="chevron-forward" size={18} color={Colors.gray[300]} />
                 </View>
                 <View style={styles.driverMeta}>
@@ -1375,16 +1375,16 @@ export default function TripDetailsScreen() {
                   <Text style={styles.driverRating}>{driverReviewAverage.toFixed(1)}</Text>
                   <View style={styles.driverDot} />
                   <Text style={styles.driverVehicle} numberOfLines={1}>
-                    {trip.vehicle 
+                    {trip?.vehicle 
                       ? `${trip.vehicle.brand} ${trip.vehicle.model}`
-                      : trip.vehicleInfo}
+                      : trip?.vehicleInfo}
                   </Text>
                 </View>
                 <TouchableOpacity
                   style={styles.driverReviewLink}
                   onPress={(e) => {
                     e.stopPropagation();
-                    setDriverReviewsModalVisible(true);
+                    setReviewsModalVisible(true);
                   }}
                   disabled={driverReviewCount === 0}
                 >
@@ -1456,7 +1456,7 @@ export default function TripDetailsScreen() {
                   <Text style={styles.detailLabel}>Places disponibles</Text>
                 </View>
                 <Text style={styles.detailValue}>
-                  {trip.availableSeats}/{trip.totalSeats}
+                  {trip?.availableSeats}/{trip?.totalSeats}
                 </Text>
               </View>
 
@@ -1466,7 +1466,7 @@ export default function TripDetailsScreen() {
                   <Text style={styles.detailLabel}>Prix</Text>
                 </View>
                 <Text style={[styles.detailValue, { color: Colors.success }]}>
-                  {trip.price === 0 ? 'Gratuit' : `${trip.price} FC`}
+                  {trip?.price === 0 ? 'Gratuit' : `${trip?.price} FC`}
                 </Text>
               </View>
 
@@ -1474,9 +1474,9 @@ export default function TripDetailsScreen() {
                 <View style={styles.detailLeft}>
                   <Ionicons 
                     name={
-                      trip.vehicleType === 'moto' 
+                      trip?.vehicleType === 'moto' 
                         ? 'bicycle' 
-                        : trip.vehicleType === 'tricycle'
+                        : trip?.vehicleType === 'tricycle'
                         ? 'car-sport'
                         : 'car'
                     } 
@@ -1486,26 +1486,26 @@ export default function TripDetailsScreen() {
                   <Text style={styles.detailLabel}>Véhicule</Text>
                 </View>
                 <View style={styles.vehicleInfoContainer}>
-                  {trip.vehicle ? (
+                  {trip?.vehicle ? (
                     <>
                       <Text style={styles.detailValue}>
-                        {trip.vehicle.brand} {trip.vehicle.model}
+                        {trip?.vehicle.brand} {trip?.vehicle.model}
                       </Text>
                       <Text style={styles.vehicleDetails}>
-                        {trip.vehicle.color} • {trip.vehicle.licensePlate}
+                        {trip?.vehicle.color} • {trip?.vehicle.licensePlate}
                       </Text>
                     </>
                   ) : (
                     <>
                       <Text style={styles.detailValue}>
-                        {trip.vehicleType === 'moto' 
+                        {trip?.vehicleType === 'moto' 
                           ? 'Moto' 
-                          : trip.vehicleType === 'tricycle'
+                          : trip?.vehicleType === 'tricycle'
                           ? 'Tricycle'
                           : 'Voiture'}
                       </Text>
-                      {trip.vehicleInfo && trip.vehicleInfo !== 'Informations véhicule fournies par le conducteur' && (
-                        <Text style={styles.vehicleDetails}>{trip.vehicleInfo}</Text>
+                      {trip?.vehicleInfo && trip?.vehicleInfo !== 'Informations véhicule fournies par le conducteur' && (
+                        <Text style={styles.vehicleDetails}>{trip?.vehicleInfo}</Text>
                       )}
                     </>
                   )}
@@ -1572,12 +1572,12 @@ export default function TripDetailsScreen() {
       <View style={styles.stickyFooter}>
         {(() => {
           // Vérifier si le trajet est expiré (date de départ passée)
-          const isExpired = trip.departureTime && new Date(trip.departureTime) < new Date();
+          const isExpired = trip?.departureTime && new Date(trip?.departureTime) < new Date();
           // Vérifier si le trajet peut être réservé (pas complété, pas annulé, pas expiré)
-          const canBook = trip.status !== 'completed' && 
-                         trip.status !== 'cancelled' && 
+          const canBook = trip?.status !== 'completed' && 
+                         trip?.status !== 'cancelled' && 
                          !isExpired &&
-                         (trip.status === 'upcoming' || (trip.status === 'ongoing' && availableSeats > 0));
+                         (trip?.status === 'upcoming' || (trip?.status === 'ongoing' && availableSeats > 0));
           
             if (canBook) {
               return (
@@ -1716,13 +1716,13 @@ export default function TripDetailsScreen() {
           }
           
           // Trajets terminés ou expirés
-          if (trip.status === 'completed' || trip.status === 'cancelled' || isExpired) {
+          if (trip?.status === 'completed' || trip?.status === 'cancelled' || isExpired) {
             return (
               <View style={styles.actionsContainer}>
                 {activeBooking && activeBooking.status === 'completed' && activeBooking.droppedOffConfirmedByPassenger ? (
                   <TouchableOpacity
                     style={[styles.actionButton, { backgroundColor: Colors.secondary }]}
-                    onPress={() => router.push(`/rate/${trip.id}`)}
+                    onPress={() => router.push(`/rate/${trip?.id}`)}
                   >
                     <Ionicons name="star" size={20} color={Colors.white} style={{ marginRight: 8 }} />
                     <Text style={styles.actionButtonText}>Évaluer le trajet</Text>
@@ -1910,14 +1910,14 @@ export default function TripDetailsScreen() {
       <Modal
         animationType="fade"
         transparent
-        visible={driverReviewsModalVisible}
-        onRequestClose={() => setDriverReviewsModalVisible(false)}
+        visible={reviewsModalVisible}
+        onRequestClose={() => setReviewsModalVisible(false)}
       >
         <View style={styles.reviewsModalOverlay}>
           <Animated.View entering={FadeInDown} style={styles.reviewsModalCard}>
             <View style={styles.reviewsModalHeader}>
               <Text style={styles.reviewsModalTitle}>Avis sur {trip?.driverName}</Text>
-              <TouchableOpacity onPress={() => setDriverReviewsModalVisible(false)}>
+              <TouchableOpacity onPress={() => setReviewsModalVisible(false)}>
                 <Ionicons name="close" size={20} color={Colors.gray[600]} />
               </TouchableOpacity>
             </View>
@@ -2110,11 +2110,19 @@ export default function TripDetailsScreen() {
                 style={[styles.contactModalButton, styles.contactModalButtonCall]}
                 onPress={async () => {
                   setShareModalVisible(false);
+                  if (!trip?.id) {
+                    showDialog({
+                      variant: 'danger',
+                      title: 'Erreur',
+                      message: 'Impossible de partager le trajet: identifiant manquant',
+                    });
+                    return;
+                  }
                   try {
                     await shareTrip(
                       trip.id,
-                      trip.departure.name,
-                      trip.arrival.name
+                      trip?.departure.name,
+                      trip?.arrival.name
                     );
                   } catch (error: any) {
                     showDialog({
@@ -2139,12 +2147,13 @@ export default function TripDetailsScreen() {
                 style={[styles.contactModalButton, styles.contactModalButtonWhatsApp]}
                 onPress={async () => {
                   setShareModalVisible(false);
+                  if (!trip?.id) return;
                   try {
                     await shareTripViaWhatsApp(
                       trip.id,
                       undefined,
-                      trip.departure.name,
-                      trip.arrival.name
+                      trip?.departure.name,
+                      trip?.arrival.name
                     );
                   } catch (error: any) {
                     showDialog({
@@ -3341,817 +3350,6 @@ const styles = StyleSheet.create({
     color: Colors.gray[400],
   },
 
-  headerTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  headerTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-  },
-  shareButton: {
-    padding: 4,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollViewContent: {
-    flexGrow: 1,
-    paddingBottom: Spacing.xxl,
-  },
-  mapContainer: {
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xl,
-  },
-  mapPreview: {
-    height: 220,
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
-    backgroundColor: Colors.gray[200],
-    ...CommonStyles.shadowSm,
-  },
-  mapView: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  mapOverlay: {
-    position: 'absolute',
-    bottom: Spacing.md,
-    left: Spacing.md,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.full,
-  },
-  mapOverlayText: {
-    color: Colors.white,
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.semibold,
-  },
-  markerStartCircle: {
-    width: 32,
-    height: 32,
-    backgroundColor: Colors.success,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  markerEndCircle: {
-    width: 32,
-    height: 32,
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  markerCurrentCircle: {
-    width: 40,
-    height: 40,
-    backgroundColor: Colors.info,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...CommonStyles.shadowLg,
-  },
-  markerPassengerDestCircle: {
-    width: 28,
-    height: 28,
-    backgroundColor: Colors.secondary,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...CommonStyles.shadowMd,
-  },
-  expandButton: {
-    position: 'absolute',
-    bottom: Spacing.md,
-    right: Spacing.md,
-  },
-  expandButtonInner: {
-    width: 40,
-    height: 40,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...CommonStyles.shadowLg,
-  },
-  mapModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    padding: Spacing.md,
-    justifyContent: 'center',
-  },
-  mapModalContent: {
-    flex: 1,
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
-  },
-  fullscreenMap: {
-    width: '100%',
-    height: '100%',
-  },
-  closeMapButton: {
-    position: 'absolute',
-    top: Spacing.xl,
-    right: Spacing.xl,
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  trackingBanner: {
-    marginHorizontal: Spacing.xl,
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.xl,
-    padding: Spacing.md,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    ...CommonStyles.shadowSm,
-  },
-  trackingBannerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: Spacing.md,
-  },
-  trackingStatusDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    marginRight: Spacing.md,
-  },
-  trackingStatusDotActive: {
-    backgroundColor: Colors.success,
-  },
-  trackingStatusDotIdle: {
-    backgroundColor: Colors.gray[400],
-  },
-  trackingTitle: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[900],
-  },
-  trackingSubtitle: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    marginTop: 2,
-  },
-  trackingRefreshButton: {
-    width: 36,
-    height: 36,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusContainer: {
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xl,
-    paddingBottom: Spacing.lg,
-  },
-  statusCard: {
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-  },
-  statusBadge: {
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    alignSelf: 'flex-start',
-  },
-  statusText: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.semibold,
-    textTransform: 'uppercase',
-  },
-  statusHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.md,
-  },
-  statusHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  statusDot: {
-    width: 12,
-    height: 12,
-    borderRadius: BorderRadius.full,
-    marginRight: Spacing.sm,
-  },
-  statusLabel: {
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    fontSize: FontSizes.base,
-  },
-  progressText: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.full,
-    overflow: 'hidden',
-    marginBottom: Spacing.sm,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: Colors.info,
-  },
-  etaText: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-  },
-  section: {
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.lg,
-  },
-  sectionCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    ...CommonStyles.shadowSm,
-  },
-  sectionTitle: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[500],
-    marginBottom: Spacing.md,
-  },
-  routeContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: Spacing.md,
-  },
-  routeIconContainer: {
-    alignItems: 'center',
-    marginRight: Spacing.md,
-  },
-  routeIconStart: {
-    width: 32,
-    height: 32,
-    backgroundColor: 'rgba(46, 204, 113, 0.2)',
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  routeIconEnd: {
-    width: 32,
-    height: 32,
-    backgroundColor: 'rgba(255, 107, 53, 0.2)',
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  routeDivider: {
-    width: 2,
-    height: 48,
-    backgroundColor: Colors.gray[300],
-  },
-  routeContent: {
-    flex: 1,
-  },
-  routeName: {
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    marginBottom: Spacing.xs,
-    fontSize: FontSizes.base,
-  },
-  routeAddress: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    marginBottom: Spacing.xs,
-  },
-  routeTime: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[500],
-    marginTop: Spacing.xs,
-  },
-  driverInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-  },
-  driverAvatar: {
-    width: 64,
-    height: 64,
-    backgroundColor: Colors.gray[300],
-    borderRadius: BorderRadius.full,
-    marginRight: Spacing.lg,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  driverDetails: {
-    flex: 1,
-  },
-  driverNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.xs,
-  },
-  driverName: {
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    fontSize: FontSizes.lg,
-    flex: 1,
-  },
-  driverMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  driverRating: {
-    color: Colors.gray[700],
-    fontWeight: FontWeights.medium,
-    marginLeft: Spacing.xs,
-    fontSize: FontSizes.base,
-  },
-  driverDot: {
-    width: 4,
-    height: 4,
-    backgroundColor: Colors.gray[400],
-    borderRadius: BorderRadius.full,
-    marginHorizontal: Spacing.sm,
-  },
-  driverVehicle: {
-    color: Colors.gray[600],
-    fontSize: FontSizes.base,
-  },
-  driverActions: {
-    flexDirection: 'row',
-  },
-  driverActionButton: {
-    flex: 1,
-    backgroundColor: 'rgba(255, 107, 53, 0.1)',
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.md,
-  },
-  driverActionButtonGreen: {
-    backgroundColor: 'rgba(46, 204, 113, 0.1)',
-    marginRight: 0,
-  },
-  driverActionText: {
-    color: Colors.primary,
-    fontWeight: FontWeights.semibold,
-    marginLeft: Spacing.sm,
-    fontSize: FontSizes.base,
-  },
-  driverReviewLink: {
-    marginTop: Spacing.xs,
-  },
-  driverReviewLinkText: {
-    color: Colors.primary,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-  },
-  driverReviewLinkTextDisabled: {
-    color: Colors.gray[400],
-  },
-  detailsList: {
-    marginTop: Spacing.md,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: Spacing.sm,
-  },
-  detailLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  detailLabel: {
-    color: Colors.gray[700],
-    marginLeft: Spacing.md,
-    fontSize: FontSizes.base,
-  },
-  detailValue: {
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    fontSize: FontSizes.base,
-  },
-  vehicleInfoContainer: {
-    flex: 1,
-    alignItems: 'flex-end',
-  },
-  vehicleTypeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  vehicleDetails: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    marginTop: Spacing.xs,
-    textAlign: 'right',
-    maxWidth: '100%',
-  },
-  actionsContainer: {
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.xxl,
-  },
-  actionButton: {
-    backgroundColor: Colors.primary,
-    paddingVertical: Spacing.lg,
-    borderRadius: BorderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.md,
-  },
-  actionButtonText: {
-    color: Colors.white,
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    textAlign: 'center',
-  },
-  actionButtonDisabled: {
-    opacity: 0.5,
-  },
-  cancelButton: {
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.2)',
-    paddingVertical: Spacing.lg,
-    borderRadius: BorderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelButtonText: {
-    color: Colors.danger,
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    textAlign: 'center',
-  },
-  bookingCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    marginBottom: Spacing.lg,
-    ...CommonStyles.shadowSm,
-  },
-  bookingCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.md,
-  },
-  bookingCardTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  bookingCardSubtitle: {
-    color: Colors.gray[600],
-    marginTop: Spacing.xs,
-  },
-  bookingStatusBadge: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.full,
-  },
-  bookingStatusText: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.semibold,
-    textTransform: 'uppercase',
-  },
-  bookingCardInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.md,
-  },
-  bookingInfoItem: {
-    flex: 1,
-  },
-  bookingInfoLabel: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
-    marginBottom: Spacing.xs,
-    textTransform: 'uppercase',
-  },
-  bookingInfoValue: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  bookingActionsRow: {
-    flexDirection: 'row',
-  },
-  bookingActionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.md,
-  },
-  bookingActionText: {
-    marginLeft: Spacing.sm,
-    color: Colors.gray[800],
-    fontWeight: FontWeights.semibold,
-  },
-  bookingActionCall: {
-    borderColor: 'rgba(46, 204, 113, 0.3)',
-    backgroundColor: 'rgba(46, 204, 113, 0.08)',
-  },
-  bookingActionCallText: {
-    color: Colors.success,
-  },
-  bookingActionDanger: {
-    borderColor: 'rgba(239, 68, 68, 0.3)',
-    backgroundColor: 'rgba(239, 68, 68, 0.08)',
-  },
-  bookingActionDangerText: {
-    color: Colors.danger,
-  },
-  confirmationBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(247, 184, 1, 0.15)',
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-    gap: Spacing.sm,
-  },
-  confirmationBannerText: {
-    flex: 1,
-    fontSize: FontSizes.sm,
-    color: Colors.gray[800],
-    fontWeight: FontWeights.medium,
-  },
-  bookingActionConfirm: {
-    backgroundColor: Colors.secondary,
-    borderColor: Colors.secondary,
-  },
-  bookingActionConfirmText: {
-    color: Colors.white,
-  },
-  bookingActionRate: {
-    backgroundColor: 'rgba(247, 184, 1, 0.1)',
-    borderColor: 'rgba(247, 184, 1, 0.3)',
-  },
-  bookingActionRateText: {
-    color: Colors.secondary,
-  },
-  bookingRefreshingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: Spacing.md,
-  },
-  bookingRefreshingText: {
-    color: Colors.gray[500],
-    fontSize: FontSizes.sm,
-    marginLeft: Spacing.sm,
-  },
-  bookingHintCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-    ...CommonStyles.shadowSm,
-  },
-  bookingHintIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary + '15',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.md,
-  },
-  bookingHintContent: {
-    flex: 1,
-  },
-  bookingHintTitle: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  bookingHintSubtitle: {
-    marginTop: Spacing.xs,
-    color: Colors.gray[600],
-  },
-  bookingModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center',
-    padding: Spacing.xl,
-  },
-  bookingModalCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.xl,
-    ...CommonStyles.shadowLg,
-  },
-  bookingModalTitle: {
-    fontSize: FontSizes.xl,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    marginBottom: Spacing.xs,
-  },
-  bookingModalDescription: {
-    color: Colors.gray[600],
-    marginBottom: Spacing.lg,
-  },
-  bookingSeatRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-  },
-  bookingSeatButton: {
-    width: 44,
-    height: 44,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.gray[300],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bookingSeatInput: {
-    flex: 1,
-    marginHorizontal: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    textAlign: 'center',
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  bookingModalHint: {
-    color: Colors.gray[500],
-    fontSize: FontSizes.sm,
-    marginBottom: Spacing.xs,
-  },
-  bookingModalPrice: {
-    fontSize: FontSizes.base,
-    color: Colors.gray[700],
-    marginBottom: Spacing.sm,
-  },
-  bookingModalPriceValue: {
-    fontWeight: FontWeights.bold,
-    color: Colors.primary,
-  },
-  bookingModalError: {
-    color: Colors.danger,
-    marginBottom: Spacing.sm,
-  },
-  bookingModalActions: {
-    flexDirection: 'row',
-    marginTop: Spacing.md,
-  },
-  bookingModalButton: {
-    flex: 1,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.sm,
-  },
-  bookingModalButtonSecondary: {
-    borderWidth: 1,
-    borderColor: Colors.gray[300],
-    backgroundColor: Colors.white,
-  },
-  bookingModalButtonSecondaryText: {
-    color: Colors.gray[800],
-    fontWeight: FontWeights.semibold,
-  },
-  bookingModalButtonPrimary: {
-    backgroundColor: Colors.primary,
-    marginRight: 0,
-  },
-  bookingModalButtonPrimaryText: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
-  },
-  bookingDestinationSection: {
-    marginTop: Spacing.md,
-    marginBottom: Spacing.sm,
-  },
-  bookingDestinationLabel: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[700],
-    marginBottom: Spacing.xs,
-  },
-  bookingDestinationButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.gray[300],
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    backgroundColor: Colors.white,
-    minHeight: 48,
-  },
-  bookingDestinationButtonSelected: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primary + '08',
-  },
-  bookingDestinationButtonText: {
-    flex: 1,
-    marginLeft: Spacing.sm,
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-  },
-  bookingDestinationButtonTextSelected: {
-    color: Colors.gray[900],
-    fontWeight: FontWeights.medium,
-  },
-  bookingDestinationRemoveButton: {
-    marginLeft: Spacing.xs,
-    padding: Spacing.xs,
-  },
-  bookingDestinationHint: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
-    marginTop: Spacing.xs,
-    lineHeight: 16,
-  },
-  reviewsModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'center',
-    padding: Spacing.xl,
-  },
-  reviewsModalCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    maxHeight: '85%',
-    padding: Spacing.lg,
-  },
-  reviewsModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  reviewsModalTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  reviewsModalContent: {
-    flex: 1,
-  },
-  reviewsEmptyText: {
-    color: Colors.gray[600],
-    fontSize: FontSizes.sm,
-  },
-  reviewItem: {
-    borderWidth: 1,
-    borderColor: Colors.gray[100],
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  reviewItemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  reviewAuthor: {
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[800],
-  },
-  reviewDate: {
-    color: Colors.gray[500],
-    fontSize: FontSizes.xs,
-    marginTop: Spacing.xs,
-  },
-  reviewRating: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  reviewRatingText: {
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-  },
-  reviewComment: {
-    color: Colors.gray[700],
-    marginTop: Spacing.sm,
-    fontSize: FontSizes.sm,
-  },
   driverManageHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -4280,225 +3478,5 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: FontWeights.semibold,
     marginLeft: Spacing.xs,
-  },
-  feedbackModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center',
-    padding: Spacing.xl,
-  },
-  feedbackModalCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.xl,
-    alignItems: 'center',
-    ...CommonStyles.shadowLg,
-  },
-  feedbackModalIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.success,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.lg,
-  },
-  feedbackModalTitle: {
-    fontSize: FontSizes.xl,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    marginBottom: Spacing.sm,
-    textAlign: 'center',
-  },
-  feedbackModalText: {
-    textAlign: 'center',
-    color: Colors.gray[600],
-    marginBottom: Spacing.lg,
-  },
-  feedbackModalActions: {
-    flexDirection: 'row',
-    width: '100%',
-  },
-  feedbackModalButton: {
-    flex: 1,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
-    alignItems: 'center',
-  },
-  feedbackModalButtonSpacing: {
-    marginRight: Spacing.sm,
-  },
-  feedbackModalSecondary: {
-    borderWidth: 1,
-    borderColor: Colors.gray[300],
-    backgroundColor: Colors.white,
-  },
-  feedbackModalPrimary: {
-    backgroundColor: Colors.primary,
-  },
-  feedbackModalSecondaryText: {
-    color: Colors.gray[800],
-    fontWeight: FontWeights.semibold,
-  },
-  feedbackModalPrimaryText: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
-  },
-  passengersContainer: {
-    marginTop: Spacing.md,
-  },
-  passengerItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  passengerAvatar: {
-    width: 48,
-    height: 48,
-    backgroundColor: Colors.gray[200],
-    borderRadius: BorderRadius.full,
-    marginRight: Spacing.md,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  passengerInfo: {
-    flex: 1,
-  },
-  passengerName: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[900],
-    marginBottom: Spacing.xs,
-  },
-  passengerSeats: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-  },
-  noPassengersText: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[500],
-    fontStyle: 'italic',
-    textAlign: 'center',
-    paddingVertical: Spacing.md,
-  },
-  imageModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  imageModalCloseButton: {
-    position: 'absolute',
-    top: 50,
-    right: 20,
-    zIndex: 1,
-    padding: Spacing.sm,
-  },
-  imageModalImage: {
-    width: '100%',
-    height: '100%',
-  },
-  contactModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: Spacing.xl,
-  },
-  contactModalCard: {
-    width: '100%',
-    maxWidth: 400,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xxl,
-    padding: Spacing.xl,
-  },
-  contactModalHeader: {
-    alignItems: 'center',
-    marginBottom: Spacing.xl,
-  },
-  contactModalIconWrapper: {
-    width: 80,
-    height: 80,
-    borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(46, 204, 113, 0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.md,
-  },
-  contactModalIconBadge: {
-    width: 56,
-    height: 56,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...CommonStyles.shadowSm,
-  },
-  contactModalTitle: {
-    fontSize: FontSizes.xl,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    textAlign: 'center',
-    marginBottom: Spacing.xs,
-  },
-  contactModalSubtitle: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    textAlign: 'center',
-  },
-  contactModalActions: {
-    gap: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  contactModalButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    backgroundColor: Colors.gray[50],
-  },
-  contactModalButtonCall: {
-    borderColor: 'rgba(46, 204, 113, 0.3)',
-    backgroundColor: 'rgba(46, 204, 113, 0.05)',
-  },
-  contactModalButtonWhatsApp: {
-    borderColor: 'rgba(37, 211, 102, 0.3)',
-    backgroundColor: 'rgba(37, 211, 102, 0.05)',
-  },
-  contactModalButtonIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.md,
-    ...CommonStyles.shadowSm,
-  },
-  contactModalButtonContent: {
-    flex: 1,
-  },
-  contactModalButtonTitle: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    marginBottom: 2,
-  },
-  contactModalButtonSubtitle: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-  },
-  contactModalCancelButton: {
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-    borderRadius: BorderRadius.md,
-  },
-  contactModalCancelText: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[600],
   },
 });

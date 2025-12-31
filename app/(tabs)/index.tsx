@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
   },
   advancedCard: {
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
+    borderRadius: BorderRadius.xxl,
     padding: Spacing.lg,
     ...CommonStyles.shadowLg,
   },
@@ -276,27 +276,23 @@ const styles = StyleSheet.create({
   quickActionCard: {
     flex: 1,
     padding: Spacing.lg,
-    borderRadius: BorderRadius.xl,
+    borderRadius: 10,
     backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: Colors.gray[100],
-    ...CommonStyles.shadowSm,
+    // borderWidth: 0.5,
+    // borderColor: Colors.gray[100],
+    // ...CommonStyles.shadowSm,
   },
   publishActionCard: {
-    backgroundColor: Colors.primary + '08',
-    borderColor: Colors.primary + '20',
+    backgroundColor: Colors.primary + '15',
   },
   searchActionCard: {
-    backgroundColor: '#3B82F608',
-    borderColor: '#3B82F620',
+    backgroundColor: '#3B82F615',
   },
   requestActionCard: {
-    backgroundColor: Colors.success + '08',
-    borderColor: Colors.success + '20',
+    backgroundColor: Colors.success + '15',
   },
   listActionCard: {
-    backgroundColor: '#8B5CF608',
-    borderColor: '#8B5CF620',
+    backgroundColor: '#8B5CF615',
   },
   quickActionIcon: {
     width: 48,
@@ -318,11 +314,9 @@ const styles = StyleSheet.create({
   },
   tripCard: {
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
+    borderRadius: BorderRadius.xxl,
     padding: Spacing.lg,
     marginBottom: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.gray[100],
     ...CommonStyles.shadowSm,
   },
   tripHeader: {
@@ -490,9 +484,7 @@ const styles = StyleSheet.create({
     padding: Spacing.xxl,
     alignItems: 'center',
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    borderColor: Colors.gray[100],
+    borderRadius: BorderRadius.xxl,
   },
   tripStateText: {
     fontSize: FontSizes.base,
@@ -617,7 +609,7 @@ export default function HomeScreen() {
       }
       return true;
     });
-    
+
     return [...filteredTrips]
       .sort((a, b) => {
         // Trier par date de départ (les plus récents en premier)
@@ -821,14 +813,14 @@ export default function HomeScreen() {
             <Text style={styles.headerTitle}>Où allez-vous ?</Text>
           </View>
           <View style={styles.headerTopRight}>
-            <TouchableOpacity 
-              style={styles.expandButton} 
+            <TouchableOpacity
+              style={styles.expandButton}
               onPress={() => setIsHeaderExpanded(!isHeaderExpanded)}
             >
-              <Ionicons 
-                name={isHeaderExpanded ? "search" : "options-outline"} 
-                size={20} 
-                color={Colors.white} 
+              <Ionicons
+                name={isHeaderExpanded ? "search" : "options-outline"}
+                size={20}
+                color={Colors.white}
               />
             </TouchableOpacity>
             <TouchableOpacity style={styles.notificationButton} onPress={openNotifications}>
@@ -845,7 +837,7 @@ export default function HomeScreen() {
         </View>
 
         {/* Recherche intelligente - Améliorée */}
-        <Animated.View 
+        <Animated.View
           style={[
             styles.searchCardContainer,
             animatedSearchCardStyle,
@@ -857,7 +849,7 @@ export default function HomeScreen() {
                 <Text style={styles.advancedTitle}>Recherche précise</Text>
                 <Ionicons name="map" size={20} color={Colors.primary} />
               </View>
-              
+
               <View style={styles.advancedLocations}>
                 <TouchableOpacity
                   style={styles.advancedLocationButton}
@@ -977,7 +969,7 @@ export default function HomeScreen() {
               <Text style={styles.quickActionSubtitle}>Je voyage</Text>
             </TouchableOpacity>
           </View>
-          
+
           <View style={[styles.quickActions, { marginTop: Spacing.md }]}>
             <TouchableOpacity
               style={[styles.quickActionCard, styles.requestActionCard]}
@@ -1006,186 +998,186 @@ export default function HomeScreen() {
         </View>
 
 
-      {/* Trajets disponibles */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Trajets disponibles</Text>
-          <TouchableOpacity onPress={() => router.push('/search')}>
-            <Text style={styles.seeAllText}>Voir tout</Text>
-          </TouchableOpacity>
-        </View>
-
-        {tripsLoading && (
-          <View style={styles.tripStateCard}>
-            <ActivityIndicator color={Colors.primary} />
-            <Text style={styles.tripStateText}>Chargement des trajets...</Text>
-          </View>
-        )}
-
-        {tripsError && !tripsLoading && (
-          <View style={styles.tripStateCard}>
-            <Ionicons name="alert-circle" size={24} color={Colors.danger} />
-            <Text style={styles.tripStateText}>Impossible de charger les trajets.</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={refetchTrips}>
-              <Text style={styles.retryButtonText}>Réessayer</Text>
+        {/* Trajets disponibles */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Trajets disponibles</Text>
+            <TouchableOpacity onPress={() => router.push('/search')}>
+              <Text style={styles.seeAllText}>Voir tout</Text>
             </TouchableOpacity>
           </View>
-        )}
 
-        {!tripsLoading && !tripsError && latestTrips.length === 0 && (
-          <View style={styles.tripStateCard}>
-            <Ionicons name="car-outline" size={24} color={Colors.gray[500]} />
-            <Text style={styles.tripStateText}>Aucun trajet pour le moment.</Text>
-            <Text style={styles.tripStateSubText}>Publiez le vôtre ou revenez plus tard.</Text>
-          </View>
-        )}
+          {tripsLoading && (
+            <View style={styles.tripStateCard}>
+              <ActivityIndicator color={Colors.primary} />
+              <Text style={styles.tripStateText}>Chargement des trajets...</Text>
+            </View>
+          )}
 
-        {latestTrips.map((trip, index) => {
-          const TripCardWithArrival = () => {
-            const calculatedArrivalTime = useTripArrivalTime(trip);
-            const arrivalTimeDisplay = calculatedArrivalTime 
-              ? formatTime(calculatedArrivalTime.toISOString())
-              : formatTime(trip.arrivalTime);
-            
-            const ratingValue =
-              typeof trip.driverRating === 'number'
-                ? trip.driverRating
-                : Number(trip.driverRating) || 4.9;
-            
-            return (
-              <Animated.View
-                key={trip.id}
-                entering={FadeInDown.delay(index * 100)}
-                style={styles.tripCard}
-              >
-                <View style={styles.tripHeader}>
-                  <View style={styles.tripDriverInfo}>
-                    {trip.driverAvatar ? (
-                      <Image
-                        source={{ uri: trip.driverAvatar }}
-                        style={styles.avatar}
-                        resizeMode="cover"
-                        defaultSource={require('@/assets/images/zwanga-transparent.png')}
-                      />
-                    ) : (
-                      <View style={styles.avatar} />
-                    )}
-                    <View style={styles.tripDriverDetails}>
-                      <Text style={styles.driverName} numberOfLines={1} ellipsizeMode="tail">
-                        {trip?.driverName ?? ''}
-                      </Text>
-                      <View style={styles.driverMeta}>
-                        <Ionicons name="star" size={14} color={Colors.secondary} />
-                        <Text style={styles.driverRating}>{ratingValue.toFixed(1)}</Text>
-                        <View style={styles.dot} />
-                        <Text style={styles.vehicleInfo} numberOfLines={1} ellipsizeMode="tail">
-                          {trip?.vehicle
-                            ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
-                            : trip?.vehicleInfo ?? ''}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                  <View style={styles.headerBadges}>
-                    {bookedTripIds.has(trip.id) && (
-                      <View style={styles.bookedBadge}>
-                        <Ionicons name="checkmark-circle" size={12} color={Colors.primary} />
-                        <Text style={styles.bookedBadgeText}>Réservé</Text>
-                      </View>
-                    )}
-                    {trip?.status === 'ongoing' && !bookedTripIds.has(trip.id) && (
-                      <View style={styles.ongoingBadge}>
-                        <Ionicons name="car-sport" size={12} color={Colors.success} />
-                        <Text style={styles.ongoingBadgeText}>En cours</Text>
-                      </View>
-                    )}
-                    {trip?.price === 0 ? (
-                      <View style={styles.freeBadge}>
-                        <Text style={styles.freeBadgeText}>Gratuit</Text>
-                      </View>
-                    ) : (
-                      <View style={styles.priceBadge}>
-                        <Text style={styles.priceText}>{trip?.price ?? 0} FC</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
+          {tripsError && !tripsLoading && (
+            <View style={styles.tripStateCard}>
+              <Ionicons name="alert-circle" size={24} color={Colors.danger} />
+              <Text style={styles.tripStateText}>Impossible de charger les trajets.</Text>
+              <TouchableOpacity style={styles.retryButton} onPress={refetchTrips}>
+                <Text style={styles.retryButtonText}>Réessayer</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
-                <View style={styles.tripRoute}>
-                  <View style={styles.routeRow}>
-                    <Ionicons name="location" size={16} color={Colors.success} />
-                    <Text style={styles.routeText}>{trip?.departure?.name ?? ''}</Text>
-                    <View style={styles.timeContainer}>
-                      <Text style={styles.routeDateLabel}>
-                        {formatDateWithRelativeLabel(trip.departureTime, false)}
-                      </Text>
-                      <Text style={styles.routeTime}>
-                        {formatTime(trip.departureTime)}
-                      </Text>
-                    </View>
-                  </View>
+          {!tripsLoading && !tripsError && latestTrips.length === 0 && (
+            <View style={styles.tripStateCard}>
+              <Ionicons name="car-outline" size={24} color={Colors.gray[500]} />
+              <Text style={styles.tripStateText}>Aucun trajet pour le moment.</Text>
+              <Text style={styles.tripStateSubText}>Publiez le vôtre ou revenez plus tard.</Text>
+            </View>
+          )}
 
-                  <View style={styles.routeRow}>
-                    <Ionicons name="navigate" size={16} color={Colors.primary} />
-                    <Text style={styles.routeText}>{trip?.arrival?.name ?? ''}</Text>
-                    <View style={styles.timeContainer}>
-                      {calculatedArrivalTime && (
-                        <Text style={styles.routeDateLabel}>
-                          {formatDateWithRelativeLabel(calculatedArrivalTime.toISOString(), false)}
-                        </Text>
+          {latestTrips.map((trip, index) => {
+            const TripCardWithArrival = () => {
+              const calculatedArrivalTime = useTripArrivalTime(trip);
+              const arrivalTimeDisplay = calculatedArrivalTime
+                ? formatTime(calculatedArrivalTime.toISOString())
+                : formatTime(trip.arrivalTime);
+
+              const ratingValue =
+                typeof trip.driverRating === 'number'
+                  ? trip.driverRating
+                  : Number(trip.driverRating) || 4.9;
+
+              return (
+                <Animated.View
+                  key={trip.id}
+                  entering={FadeInDown.delay(index * 100)}
+                  style={styles.tripCard}
+                >
+                  <View style={styles.tripHeader}>
+                    <View style={styles.tripDriverInfo}>
+                      {trip.driverAvatar ? (
+                        <Image
+                          source={{ uri: trip.driverAvatar }}
+                          style={styles.avatar}
+                          resizeMode="cover"
+                          defaultSource={require('@/assets/images/zwanga-transparent.png')}
+                        />
+                      ) : (
+                        <View style={styles.avatar} />
                       )}
-                      <Text style={styles.routeTime}>
-                        {arrivalTimeDisplay}
-                      </Text>
+                      <View style={styles.tripDriverDetails}>
+                        <Text style={styles.driverName} numberOfLines={1} ellipsizeMode="tail">
+                          {trip?.driverName ?? ''}
+                        </Text>
+                        <View style={styles.driverMeta}>
+                          <Ionicons name="star" size={14} color={Colors.secondary} />
+                          <Text style={styles.driverRating}>{ratingValue.toFixed(1)}</Text>
+                          <View style={styles.dot} />
+                          <Text style={styles.vehicleInfo} numberOfLines={1} ellipsizeMode="tail">
+                            {trip?.vehicle
+                              ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
+                              : trip?.vehicleInfo ?? ''}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    <View style={styles.headerBadges}>
+                      {bookedTripIds.has(trip.id) && (
+                        <View style={styles.bookedBadge}>
+                          <Ionicons name="checkmark-circle" size={12} color={Colors.primary} />
+                          <Text style={styles.bookedBadgeText}>Réservé</Text>
+                        </View>
+                      )}
+                      {trip?.status === 'ongoing' && !bookedTripIds.has(trip.id) && (
+                        <View style={styles.ongoingBadge}>
+                          <Ionicons name="car-sport" size={12} color={Colors.success} />
+                          <Text style={styles.ongoingBadgeText}>En cours</Text>
+                        </View>
+                      )}
+                      {trip?.price === 0 ? (
+                        <View style={styles.freeBadge}>
+                          <Text style={styles.freeBadgeText}>Gratuit</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.priceBadge}>
+                          <Text style={styles.priceText}>{trip?.price ?? 0} FC</Text>
+                        </View>
+                      )}
                     </View>
                   </View>
-                </View>
 
-                <View style={styles.tripFooter}>
-                  <View style={styles.tripFooterLeft}>
-                    <Ionicons name="people" size={16} color={Colors.gray[600]} />
-                    <Text style={styles.seatsText}>
-                      {trip?.availableSeats} places disponibles
-                    </Text>
+                  <View style={styles.tripRoute}>
+                    <View style={styles.routeRow}>
+                      <Ionicons name="location" size={16} color={Colors.success} />
+                      <Text style={styles.routeText}>{trip?.departure?.name ?? ''}</Text>
+                      <View style={styles.timeContainer}>
+                        <Text style={styles.routeDateLabel}>
+                          {formatDateWithRelativeLabel(trip.departureTime, false)}
+                        </Text>
+                        <Text style={styles.routeTime}>
+                          {formatTime(trip.departureTime)}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.routeRow}>
+                      <Ionicons name="navigate" size={16} color={Colors.primary} />
+                      <Text style={styles.routeText}>{trip?.arrival?.name ?? ''}</Text>
+                      <View style={styles.timeContainer}>
+                        {calculatedArrivalTime && (
+                          <Text style={styles.routeDateLabel}>
+                            {formatDateWithRelativeLabel(calculatedArrivalTime.toISOString(), false)}
+                          </Text>
+                        )}
+                        <Text style={styles.routeTime}>
+                          {arrivalTimeDisplay}
+                        </Text>
+                      </View>
+                    </View>
                   </View>
-                  <TouchableOpacity
-                    style={[
-                      styles.reserveButton,
-                      bookedTripIds.has(trip.id) && styles.viewButton
-                    ]}
-                    onPress={() => router.push(`/trip/${trip.id}`)}
-                  >
-                    <Text style={styles.reserveButtonText}>
-                      {bookedTripIds.has(trip.id) ? 'Voir' : 'Réserver'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </Animated.View>
-            );
-          };
 
-          return <TripCardWithArrival key={trip.id} />;
-        })}
-      </View>
-    </ScrollView>
+                  <View style={styles.tripFooter}>
+                    <View style={styles.tripFooterLeft}>
+                      <Ionicons name="people" size={16} color={Colors.gray[600]} />
+                      <Text style={styles.seatsText}>
+                        {trip?.availableSeats} places disponibles
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[
+                        styles.reserveButton,
+                        bookedTripIds.has(trip.id) && styles.viewButton
+                      ]}
+                      onPress={() => router.push(`/trip/${trip.id}`)}
+                    >
+                      <Text style={styles.reserveButtonText}>
+                        {bookedTripIds.has(trip.id) ? 'Voir' : 'Réserver'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </Animated.View>
+              );
+            };
 
-    <LocationPickerModal
-      visible={activePicker !== null}
-      title={
-        activePicker === 'departure'
-          ? 'Sélectionner le point de départ'
-          : 'Sélectionner la destination'
-      }
-      initialLocation={
-        activePicker === 'departure'
-          ? filterDepartureLocation
-          : activePicker === 'arrival'
-            ? filterArrivalLocation
-            : null
-      }
-      onClose={() => setActivePicker(null)}
-      onSelect={handleAdvancedLocationSelect}
-    />
-  </SafeAreaView>
+            return <TripCardWithArrival key={trip.id} />;
+          })}
+        </View>
+      </ScrollView>
+
+      <LocationPickerModal
+        visible={activePicker !== null}
+        title={
+          activePicker === 'departure'
+            ? 'Sélectionner le point de départ'
+            : 'Sélectionner la destination'
+        }
+        initialLocation={
+          activePicker === 'departure'
+            ? filterDepartureLocation
+            : activePicker === 'arrival'
+              ? filterArrivalLocation
+              : null
+        }
+        onClose={() => setActivePicker(null)}
+        onSelect={handleAdvancedLocationSelect}
+      />
+    </SafeAreaView>
   );
 }
