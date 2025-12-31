@@ -566,17 +566,27 @@ export default function ManageTripScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={22} color={Colors.primary} />
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => router.back()}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="chevron-back" size={24} color={Colors.gray[900]} />
         </TouchableOpacity>
-        <View>
+        <View style={styles.headerTextContainer}>
           <Text style={styles.headerTitle}>Gestion du trajet</Text>
-          <Text style={styles.headerSubtitle}>{formatTime(trip.departureTime)}</Text>
+          <View style={styles.headerBadge}>
+            <View style={[styles.statusDot, { backgroundColor: statusColor(trip.status).color }]} />
+            <Text style={[styles.headerSubtitle, { color: statusColor(trip.status).color }]}>
+              {labelStatus(trip.status)}
+            </Text>
+          </View>
         </View>
         <TouchableOpacity
           style={styles.refreshButton}
           onPress={refreshAll}
           disabled={tripFetching || bookingsFetching}
+          activeOpacity={0.7}
         >
           {tripFetching || bookingsFetching ? (
             <ActivityIndicator size="small" color={Colors.primary} />
@@ -587,7 +597,8 @@ export default function ManageTripScreen() {
       </View>
 
       {feedback && (
-        <View
+        <Animated.View
+          entering={FadeInDown}
           style={[
             styles.feedbackBanner,
             feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError,
@@ -595,445 +606,98 @@ export default function ManageTripScreen() {
         >
           <Ionicons
             name={feedback.type === 'success' ? 'checkmark-circle' : 'alert-circle'}
-            size={18}
+            size={20}
             color={Colors.white}
           />
           <Text style={styles.feedbackText}>{feedback.message}</Text>
           <TouchableOpacity onPress={() => setFeedback(null)}>
-            <Ionicons name="close" size={16} color={Colors.white} />
+            <Ionicons name="close" size={18} color={Colors.white} />
           </TouchableOpacity>
-        </View>
-      )}
+        </Animated.View>
+      </ScrollView>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Carte interactive */}
-        {departureCoordinate && arrivalCoordinate && (
-          <TouchableOpacity
-            style={styles.mapContainer}
-            onPress={() => setMapModalVisible(true)}
-            activeOpacity={0.95}
-          >
-            <View style={styles.mapPreview}>
-              <MapView
-                provider={PROVIDER_GOOGLE}
-                style={styles.mapView}
-                scrollEnabled={false}
-                zoomEnabled={false}
-                pitchEnabled={false}
-                rotateEnabled={false}
-                initialRegion={mapRegion}
-              >
-                {/* Route polyline */}
-                {routeCoordinates && routeCoordinates.length > 0 ? (
-                  <Polyline
-                    coordinates={routeCoordinates}
-                    strokeColor={Colors.primary}
-                    strokeWidth={4}
-                  />
-                ) : (
-                  <Polyline
-                    coordinates={[departureCoordinate, arrivalCoordinate]}
-                    strokeColor={Colors.primary}
-                    strokeWidth={4}
-                    lineDashPattern={[1, 1]}
-                  />
-                )}
-
-                <Marker
-                  coordinate={departureCoordinate}
-                >
-                  <View style={styles.markerStartCircle}>
-                    <Ionicons name="location" size={18} color={Colors.white} />
-                  </View>
-                </Marker>
-
-                <Marker
-                  coordinate={arrivalCoordinate}
-                >
-                  <View style={styles.markerEndCircle}>
-                    <Ionicons name="navigate" size={18} color={Colors.white} />
-                  </View>
-                </Marker>
-
-                {/* Localisations des passagers non récupérés (trajet lancé) */}
-                {trip.status === 'ongoing' &&
-                  bookings
-                    ?.filter(
-                      (booking) =>
-                        booking.status === 'accepted' &&
-                        !booking.pickedUp &&
-                        (booking as any).passengerCurrentLocation &&
-                        (booking as any).passengerCurrentLocation.latitude &&
-                        (booking as any).passengerCurrentLocation.longitude,
-                    )
-                    .map((booking) => {
-                      const currentLoc = (booking as any).passengerCurrentLocation;
-                      return (
-                        <Marker
-                          key={`passenger-location-${booking.id}`}
-                          coordinate={{
-                            latitude: currentLoc.latitude,
-                            longitude: currentLoc.longitude,
-                          }}
-                        >
-                          <Callout>
-                            <View style={styles.passengerLocationCallout}>
-                              <Text style={styles.passengerLocationCalloutName}>
-                                {booking.passengerName || 'Passager'}
-                              </Text>
-                              <Text style={styles.passengerLocationCalloutText}>
-                                En attente de récupération
-                              </Text>
-                            </View>
-                          </Callout>
-                          <View style={styles.markerPassengerLocationCircle}>
-                            <Ionicons name="person-circle" size={18} color={Colors.secondary} />
-                          </View>
-                        </Marker>
-                      );
-                    })}
-
-                {/* Destinations des passagers */}
-                {bookings
-                  ?.filter(
-                    (booking) =>
-                      booking.status === 'accepted' &&
-                      booking.passengerDestinationCoordinates &&
-                      booking.passengerDestinationCoordinates.latitude &&
-                      booking.passengerDestinationCoordinates.longitude,
-                  )
-                  .map((booking) => {
-                    const destCoords = booking.passengerDestinationCoordinates!;
-                    return (
-                      <Marker
-                        key={`passenger-dest-${booking.id}`}
-                        coordinate={{
-                          latitude: destCoords.latitude,
-                          longitude: destCoords.longitude,
-                        }}
-                      >
-                        <View style={styles.markerPassengerDestCircle}>
-                          <Ionicons name="person" size={14} color={Colors.white} />
-                        </View>
-                      </Marker>
-                    );
-                  })}
-              </MapView>
-
-              <View style={styles.mapOverlay}>
-                <Text style={styles.mapOverlayText}>Touchez pour agrandir</Text>
-              </View>
-
-              <View style={styles.expandButton}>
-                <View style={styles.expandButtonInner}>
-                  <Ionicons name="expand" size={20} color={Colors.gray[700]} />
-                </View>
-              </View>
-            </View>
-          </TouchableOpacity>
-        )}
-
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryStatus}>
-            <Text style={styles.summaryLabel}>Statut</Text>
-            <Text style={[styles.summaryValue, statusColor(trip.status)]}>{labelStatus(trip.status)}</Text>
-          </View>
-          <View style={styles.summaryRow}>
-            <Ionicons name="location" size={18} color={Colors.success} />
-            <Text style={styles.summaryRouteText}>{trip.departure.name}</Text>
-          </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryRow}>
-            <Ionicons name="navigate" size={18} color={Colors.primary} />
-            <Text style={styles.summaryRouteText}>{trip.arrival.name}</Text>
-          </View>
-          {trip.status === 'ongoing' && estimatedArrivalTime && (
-            <View style={styles.summaryMeta}>
-              <Text style={styles.summaryMetaText}>
-                Arrivée estimée: {formatTime(estimatedArrivalTime.toISOString())}
-              </Text>
-            </View>
-          )}
-          {calculatedArrivalTime && (
-            <View style={styles.summaryMeta}>
-              <Text style={styles.summaryMetaText}>
-                Arrivée prévue: {formatTime(calculatedArrivalTime.toISOString())}
-              </Text>
-            </View>
-          )}
-          <View style={styles.summaryMeta}>
-            <Text style={styles.summaryMetaText}>
-              {trip.availableSeats} places • {trip.price} FC / place
-            </Text>
-          </View>
-          
-          {/* Bouton pour démarrer le trajet */}
-          {trip.status === 'upcoming' && (
+      {/* Sticky Footer pour les actions du trajet */}
+      <View style={styles.stickyFooter}>
+        {trip.status === 'upcoming' && (
+          <>
             <TouchableOpacity
-              style={[styles.primaryButton, styles.startTripButton, { marginTop: Spacing.lg }]}
+              style={[styles.primaryButton, styles.startTripButton]}
               onPress={handleStartTrip}
               disabled={isStartingTrip}
+              activeOpacity={0.8}
             >
               {isStartingTrip ? (
                 <ActivityIndicator color={Colors.white} />
               ) : (
                 <>
-                  <Ionicons name="play-circle" size={20} color={Colors.white} />
-                  <Text style={styles.primaryButtonText}>Démarrer le trajet</Text>
+                  <Ionicons name="play" size={20} color={Colors.white} />
+                  <Text style={styles.primaryButtonText}>Démarrer</Text>
                 </>
               )}
             </TouchableOpacity>
-          )}
-
-          {/* Bouton pour terminer le trajet (si tous les passagers sont déposés et arrivé à destination) */}
-          {canCompleteTrip && (
             <TouchableOpacity
-              style={[styles.primaryButton, styles.completeTripButton, { marginTop: Spacing.lg }]}
-              onPress={handleCompleteTrip}
-              disabled={isCancellingTrip}
-            >
-              {isCancellingTrip ? (
-                <ActivityIndicator color={Colors.white} />
-              ) : (
-                <>
-                  <Ionicons name="checkmark-done-circle" size={20} color={Colors.white} />
-                  <Text style={styles.primaryButtonText}>Terminer le trajet</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-
-          {/* Bouton pour interrompre le trajet (si en cours et pas encore terminable) */}
-          {trip.status === 'ongoing' && !canCompleteTrip && (
-            <TouchableOpacity
-              style={[styles.secondaryButton, { marginTop: Spacing.md, borderColor: Colors.warning, borderWidth: 1 }]}
-              onPress={handlePauseTrip}
-              disabled={isPausingTrip}
-            >
-              {isPausingTrip ? (
-                <ActivityIndicator color={Colors.warning} />
-              ) : (
-                <>
-                  <Ionicons name="pause-circle" size={20} color={Colors.warning} />
-                  <Text style={[styles.secondaryButtonText, { color: Colors.warning }]}>Interrompre le trajet</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-
-          {/* Bouton pour annuler le trajet (seulement si pas encore démarré) */}
-          {trip.status === 'upcoming' && (
-            <TouchableOpacity
-              style={[styles.secondaryButton, { marginTop: Spacing.md }]}
+              style={styles.secondaryButton}
               onPress={handleCancelTrip}
               disabled={isCancellingTrip}
+              activeOpacity={0.8}
             >
               {isCancellingTrip ? (
                 <ActivityIndicator color={Colors.danger} />
               ) : (
-                <Text style={styles.secondaryButtonText}>Annuler le trajet</Text>
+                <Text style={[styles.secondaryButtonText, { color: Colors.danger }]}>Annuler</Text>
               )}
             </TouchableOpacity>
-          )}
-        </View>
+          </>
+        )}
 
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={styles.sectionTitle}>Réservations</Text>
-              <Text style={styles.sectionSubtitle}>
-                {pendingBookings.length} en attente • {(bookings ?? []).length} au total
-              </Text>
-            </View>
-          </View>
+        {canCompleteTrip && (
+          <TouchableOpacity
+            style={[styles.primaryButton, styles.completeTripButton]}
+            onPress={handleCompleteTrip}
+            disabled={isCancellingTrip}
+            activeOpacity={0.8}
+          >
+            {isCancellingTrip ? (
+              <ActivityIndicator color={Colors.white} />
+            ) : (
+              <>
+                <Ionicons name="checkmark-done" size={20} color={Colors.white} />
+                <Text style={styles.primaryButtonText}>Terminer le trajet</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
 
-          {bookingsLoading ? (
-            <View style={styles.loader}>
-              <ActivityIndicator size="small" color={Colors.primary} />
-              <Text style={styles.loaderText}>Chargement des réservations…</Text>
-            </View>
-          ) : (bookings ?? []).length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Ionicons name="people-circle" size={42} color={Colors.gray[400]} />
-              <Text style={styles.emptyTitle}>Aucune demande</Text>
-              <Text style={styles.emptySubtitle}>Les passagers verront votre trajet très vite.</Text>
-            </View>
-          ) : (
-            bookings?.map((booking, index) => {
-              // Protection contre les statuts manquants ou inattendus
-              const bookingStatus = booking.status as BookingStatus;
-              const statusConfig = (bookingStatus && BOOKING_STATUS_CONFIG[bookingStatus]) || {
-                label: bookingStatus || 'Inconnu',
-                color: Colors.gray[600],
-                background: 'rgba(156, 163, 175, 0.2)',
-              };
-              const isProcessing =
-                processingBookingId === booking.id && (isAccepting || isRejecting);
-              return (
-                <Animated.View
-                  key={booking.id}
-                  entering={FadeInDown.delay(index * 80)}
-                  style={styles.bookingCard}
-                >
-                  <TouchableOpacity
-                    style={styles.bookingHeader}
-                    onPress={() => router.push(`/passenger/${booking.passengerId}`)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.avatar}>
-                      <Ionicons name="person" size={22} color={Colors.white} />
-                    </View>
-                    <View style={styles.bookingInfo}>
-                      <Text style={styles.bookingName}>{booking.passengerName ?? 'Passager'}</Text>
-                      <Text style={styles.bookingMeta}>
-                        {booking.numberOfSeats} place{booking.numberOfSeats > 1 ? 's' : ''} •{' '}
-                        {formatTime(booking.createdAt)}
-                      </Text>
-                    </View>
-                    <View
-                      style={[
-                        styles.statusBadge,
-                        { backgroundColor: statusConfig.background },
-                      ]}
-                    >
-                      <Text style={[styles.statusText, { color: statusConfig.color }]}>
-                        {statusConfig.label}
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} style={{ marginLeft: Spacing.sm }} />
-                  </TouchableOpacity>
+        {trip.status === 'ongoing' && !canCompleteTrip && (
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={handlePauseTrip}
+            disabled={isPausingTrip}
+            activeOpacity={0.8}
+          >
+            {isPausingTrip ? (
+              <ActivityIndicator color={Colors.warning} />
+            ) : (
+              <>
+                <Ionicons name="pause" size={20} color={Colors.warning} />
+                <Text style={[styles.secondaryButtonText, { color: Colors.warning }]}>Interrompre</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
 
-                  {booking.rejectionReason ? (
-                    <View style={styles.reasonBanner}>
-                      <Ionicons name="alert" size={16} color={Colors.danger} />
-                      <Text style={styles.reasonText}>{booking.rejectionReason}</Text>
-                    </View>
-                  ) : null}
+        {trip.status === 'completed' && (
+          <TouchableOpacity
+            style={[styles.primaryButton, { backgroundColor: Colors.secondary }]}
+            onPress={() => router.push(`/rate/${trip.id}`)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="star" size={20} color={Colors.white} />
+            <Text style={styles.primaryButtonText}>Évaluer les passagers</Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
-                  {/* Destination personnalisée si disponible */}
-                  {booking.passengerDestination && booking.passengerDestination !== trip.arrival.name && (
-                    <View style={styles.passengerDestinationInfo}>
-                      <Ionicons name="location" size={14} color={Colors.secondary} />
-                      <Text style={styles.passengerDestinationText}>
-                        Destination: {booking.passengerDestination}
-                      </Text>
-                    </View>
-                  )}
-
-                  <View style={styles.bookingFooter}>
-                    <View>
-                      <Text style={styles.metaLabel}>Montant estimé</Text>
-                      <Text style={[styles.metaValue, { color: Colors.success }]}>
-                        {booking.trip ? booking.trip.price * booking.numberOfSeats : '--'} FC
-                      </Text>
-                    </View>
-                    {booking.status === 'pending' ? (
-                      <View style={styles.actionRow}>
-                        <TouchableOpacity
-                          style={[styles.actionButton, styles.acceptButton]}
-                          onPress={() => handleAcceptBooking(booking.id)}
-                          disabled={isProcessing}
-                        >
-                          {isProcessing && processingBookingId === booking.id ? (
-                            <ActivityIndicator color={Colors.white} />
-                          ) : (
-                            <>
-                              <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
-                              <Text style={styles.actionText}>Accepter</Text>
-                            </>
-                          )}
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.actionButton, styles.rejectButton]}
-                          onPress={() => openRejectModal(booking)}
-                          disabled={isProcessing}
-                        >
-                          <Ionicons name="close-circle" size={18} color={Colors.danger} />
-                          <Text style={[styles.actionText, { color: Colors.danger }]}>Refuser</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ) : null}
-                  </View>
-
-                  {/* Bouton d'appel pour les réservations acceptées */}
-                  {booking.status === 'accepted' && booking.passengerPhone && (
-                    <View style={styles.bookingActionsRow}>
-                      <TouchableOpacity
-                        style={[styles.bookingActionButton, styles.bookingActionCall]}
-                        onPress={() => {
-                          setSelectedPassengerPhone(booking.passengerPhone!);
-                          setSelectedPassengerName(booking.passengerName || 'le passager');
-                          setContactModalVisible(true);
-                        }}
-                      >
-                        <Ionicons name="call" size={18} color={Colors.success} />
-                        <Text style={[styles.bookingActionText, styles.bookingActionCallText]}>
-                          Appeler
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-
-                  {/* Actions pour les réservations acceptées pendant le trajet */}
-                  {trip.status === 'ongoing' && booking.status === 'accepted' && (
-                    <View style={styles.tripActionsContainer}>
-                      {!booking.pickedUp ? (
-                        <TouchableOpacity
-                          style={[styles.tripActionButton, styles.pickupButton]}
-                          onPress={() => handleConfirmPickup(booking.id)}
-                          disabled={isConfirmingPickup}
-                        >
-                          {isConfirmingPickup ? (
-                            <ActivityIndicator color={Colors.white} />
-                          ) : (
-                            <>
-                              <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
-                              <Text style={styles.tripActionText}>Confirmer la récupération</Text>
-                            </>
-                          )}
-                        </TouchableOpacity>
-                      ) : !booking.droppedOff ? (
-                        <TouchableOpacity
-                          style={[styles.tripActionButton, styles.dropoffButton]}
-                          onPress={() => handleConfirmDropoff(booking.id)}
-                          disabled={isConfirmingDropoff}
-                        >
-                          {isConfirmingDropoff ? (
-                            <ActivityIndicator color={Colors.white} />
-                          ) : (
-                            <>
-                              <Ionicons name="location" size={18} color={Colors.white} />
-                              <Text style={styles.tripActionText}>Confirmer la dépose</Text>
-                            </>
-                          )}
-                        </TouchableOpacity>
-                      ) : (
-                        <View style={styles.tripActionsContainer}>
-                          <View style={styles.completedStatus}>
-                            <Ionicons name="checkmark-done-circle" size={18} color={Colors.success} />
-                            <Text style={styles.completedStatusText}>Trajet complété pour ce passager</Text>
-                          </View>
-                          <TouchableOpacity
-                            style={[styles.tripActionButton, styles.rateButton]}
-                            onPress={() => router.push(`/rate/${trip.id}?passengerId=${booking.passengerId}`)}
-                          >
-                            <Ionicons name="star" size={18} color={Colors.white} />
-                            <Text style={styles.tripActionText}>Noter ce passager</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-                    </View>
-                  )}
-                </Animated.View>
-              );
-            })
-          )}
-        </View>
-      </ScrollView>
 
       <Modal animationType="slide" transparent visible={rejectModalVisible}>
         <View style={styles.bookingModalOverlay}>
@@ -1367,45 +1031,59 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
+    paddingTop: Spacing.md,
     paddingBottom: Spacing.md,
+    backgroundColor: Colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
   },
   backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.gray[50],
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerTextContainer: {
+    flex: 1,
+    marginLeft: Spacing.md,
+  },
   headerTitle: {
-    fontSize: FontSizes.xl,
+    fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
+  headerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 6,
+  },
   headerSubtitle: {
-    color: Colors.gray[500],
-    fontSize: FontSizes.sm,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
   },
   refreshButton: {
-    width: 44,
-    height: 44,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.white,
-    ...CommonStyles.shadowSm,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.gray[50],
     alignItems: 'center',
     justifyContent: 'center',
   },
   feedbackBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: Spacing.xl,
-    marginBottom: Spacing.sm,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    margin: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    gap: Spacing.sm,
   },
   feedbackSuccess: {
     backgroundColor: Colors.success,
@@ -1415,275 +1093,251 @@ const styles = StyleSheet.create({
   },
   feedbackText: {
     flex: 1,
-    marginHorizontal: Spacing.sm,
     color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.xxl,
-    gap: Spacing.lg,
+    padding: Spacing.md,
+    paddingBottom: 100, // Space for sticky footer
+  },
+  mapCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+    marginBottom: Spacing.md,
+    ...CommonStyles.shadowSm,
+  },
+  mapPreview: {
+    height: 180,
+    width: '100%',
+  },
+  mapView: {
+    flex: 1,
+  },
+  mapBadge: {
+    position: 'absolute',
+    bottom: Spacing.sm,
+    right: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+    gap: 4,
+  },
+  mapBadgeText: {
+    color: Colors.white,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.medium,
   },
   summaryCard: {
     backgroundColor: Colors.white,
     borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
+    marginBottom: Spacing.md,
     ...CommonStyles.shadowSm,
   },
-  summaryStatus: {
+  summaryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  timeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  timeText: {
+    fontSize: FontSizes.md,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  statusBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+  },
+  statusBadgeText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  itineraryContainer: {
+    flexDirection: 'row',
+    marginBottom: Spacing.xl,
+  },
+  itineraryTimeline: {
+    width: 20,
+    alignItems: 'center',
+    marginRight: Spacing.sm,
+  },
+  timelineDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: Colors.white,
+    ...CommonStyles.shadowSm,
+  },
+  timelineLine: {
+    flex: 1,
+    width: 2,
+    backgroundColor: Colors.gray[200],
+    marginVertical: 4,
+  },
+  itineraryDetails: {
+    flex: 1,
+    gap: Spacing.md,
+  },
+  itineraryPoint: {
+    flex: 1,
+  },
+  itineraryLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  itineraryValue: {
+    fontSize: FontSizes.md,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
     marginBottom: Spacing.md,
   },
-  summaryLabel: {
-    fontSize: FontSizes.sm,
+  statItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  statIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...CommonStyles.shadowSm,
+  },
+  statLabel: {
+    fontSize: FontSizes.xs,
     color: Colors.gray[500],
   },
-  summaryValue: {
-    fontSize: FontSizes.xl,
+  statValue: {
+    fontSize: FontSizes.md,
     fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
   },
-  summaryRow: {
+  etaContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: Spacing.sm,
-    gap: Spacing.sm,
-  },
-  summaryRouteText: {
-    fontSize: FontSizes.base,
-    color: Colors.gray[800],
-    flex: 1,
-  },
-  reviewCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: Spacing.md,
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    gap: Spacing.sm,
-    ...CommonStyles.shadowSm,
-    width: '100%',
-  },
-  reviewCtaTitle: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
-  },
-  reviewCtaSubtitle: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: FontSizes.sm,
-  },
-  summaryDivider: {
-    height: 1,
-    backgroundColor: Colors.gray[200],
-    marginVertical: Spacing.sm,
-  },
-  summaryMeta: {
-    marginTop: Spacing.sm,
-  },
-  summaryMetaText: {
-    color: Colors.gray[600],
-  },
-  primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.primary,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
-    gap: Spacing.xs,
-  },
-  primaryButtonText: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
-  },
-  startTripButton: {
-    backgroundColor: Colors.success,
-  },
-  completeTripButton: {
-    backgroundColor: Colors.success,
-  },
-  secondaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: Colors.danger,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
-    gap: Spacing.xs,
-  },
-  secondaryButtonText: {
-    color: Colors.danger,
-    fontWeight: FontWeights.bold,
-  },
-  passengerDestinationInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.secondary + '15',
+    backgroundColor: Colors.secondary + '10',
     padding: Spacing.sm,
     borderRadius: BorderRadius.md,
-    marginTop: Spacing.sm,
-    marginBottom: Spacing.sm,
-    gap: Spacing.xs,
+    gap: Spacing.sm,
   },
-  passengerDestinationText: {
+  etaText: {
     fontSize: FontSizes.sm,
     color: Colors.gray[700],
-    flex: 1,
   },
-  tripActionsContainer: {
-    marginTop: Spacing.md,
-    paddingTop: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray[200],
-  },
-  tripActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
-    gap: Spacing.xs,
-    width: '100%',
-  },
-  pickupButton: {
-    backgroundColor: Colors.success,
-  },
-  dropoffButton: {
-    backgroundColor: Colors.primary,
-  },
-  rateButton: {
-    backgroundColor: Colors.secondary,
-    marginTop: Spacing.sm,
-  },
-  tripActionText: {
-    color: Colors.white,
+  etaHighlight: {
     fontWeight: FontWeights.bold,
-    fontSize: FontSizes.sm,
-  },
-  completedStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.sm,
-    gap: Spacing.xs,
-  },
-  completedStatusText: {
-    color: Colors.success,
-    fontWeight: FontWeights.semibold,
-    fontSize: FontSizes.sm,
+    color: Colors.secondary,
   },
   sectionCard: {
     backgroundColor: Colors.white,
     borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
+    marginBottom: Spacing.md,
     ...CommonStyles.shadowSm,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: Spacing.md,
   },
   sectionTitle: {
+    fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    fontSize: FontSizes.lg,
   },
   sectionSubtitle: {
+    fontSize: FontSizes.sm,
     color: Colors.gray[500],
+    marginTop: 2,
   },
-  loader: {
+  actionIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.primary + '10',
     alignItems: 'center',
-    paddingVertical: Spacing.lg,
-    gap: Spacing.sm,
-  },
-  loaderText: {
-    color: Colors.gray[500],
-  },
-  emptyCard: {
-    alignItems: 'center',
-    paddingVertical: Spacing.xl,
-    gap: Spacing.sm,
-  },
-  emptyTitle: {
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  emptySubtitle: {
-    color: Colors.gray[500],
-    textAlign: 'center',
+    justifyContent: 'center',
   },
   bookingCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
     borderWidth: 1,
     borderColor: Colors.gray[100],
-    borderRadius: BorderRadius.lg,
     padding: Spacing.md,
-    marginTop: Spacing.md,
+    marginBottom: Spacing.md,
+    ...CommonStyles.shadowSm,
   },
   bookingHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.sm,
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: BorderRadius.full,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: Spacing.md,
   },
   bookingInfo: {
     flex: 1,
+    marginLeft: Spacing.md,
   },
   bookingName: {
+    fontSize: FontSizes.md,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
   bookingMeta: {
-    color: Colors.gray[500],
-    fontSize: FontSizes.sm,
-  },
-  statusBadge: {
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-  },
-  statusText: {
     fontSize: FontSizes.xs,
-    fontWeight: FontWeights.semibold,
-    textTransform: 'uppercase',
-  },
-  reasonBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(239,68,68,0.08)',
-    padding: Spacing.sm,
-    borderRadius: BorderRadius.md,
-    marginBottom: Spacing.sm,
-    gap: Spacing.sm,
-  },
-  reasonText: {
-    color: Colors.danger,
-    flex: 1,
+    color: Colors.gray[500],
+    marginTop: 2,
   },
   bookingFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[50],
   },
   metaLabel: {
-    color: Colors.gray[500],
     fontSize: FontSizes.xs,
-    textTransform: 'uppercase',
-    marginBottom: 2,
+    color: Colors.gray[500],
   },
   metaValue: {
+    fontSize: FontSizes.md,
     fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
   },
   actionRow: {
     flexDirection: 'row',
@@ -1693,279 +1347,363 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    paddingVertical: 8,
     borderRadius: BorderRadius.md,
-    gap: Spacing.xs,
+    gap: 6,
   },
   acceptButton: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.success,
   },
   rejectButton: {
-    backgroundColor: 'rgba(239,68,68,0.12)',
+    backgroundColor: Colors.danger + '10',
   },
   actionText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
     color: Colors.white,
-    fontWeight: FontWeights.semibold,
+  },
+  stickyFooter: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: Colors.white,
+    padding: Spacing.lg,
+    paddingBottom: 34, // Safe area
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[100],
+    flexDirection: 'row',
+    gap: Spacing.md,
+    ...CommonStyles.shadowLg,
+  },
+  primaryButton: {
+    flex: 1,
+    height: 54,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    ...CommonStyles.shadowMd,
+  },
+  primaryButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.md,
+    fontWeight: FontWeights.bold,
+  },
+  startTripButton: {
+    backgroundColor: Colors.success,
+  },
+  completeTripButton: {
+    backgroundColor: Colors.success,
+  },
+  secondaryButton: {
+    flex: 1,
+    height: 54,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+  },
+  secondaryButtonText: {
+    color: Colors.gray[700],
+    fontSize: FontSizes.md,
+    fontWeight: FontWeights.bold,
+  },
+  loader: {
+    padding: Spacing.xl,
+    alignItems: 'center',
+  },
+  loaderText: {
+    marginTop: Spacing.sm,
+    color: Colors.gray[500],
+    fontSize: FontSizes.sm,
+  },
+  emptyCard: {
+    padding: Spacing.xl,
+    alignItems: 'center',
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.lg,
+  },
+  emptyTitle: {
+    fontSize: FontSizes.md,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginTop: Spacing.sm,
+  },
+  emptySubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  markerStartCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.success,
+    borderWidth: 2,
+    borderColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...CommonStyles.shadowSm,
+  },
+  markerEndCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.primary,
+    borderWidth: 2,
+    borderColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...CommonStyles.shadowSm,
+  },
+  tripActionsContainer: {
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[50],
+    gap: Spacing.sm,
+  },
+  tripActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 48,
+    borderRadius: BorderRadius.md,
+    gap: 8,
+  },
+  pickupButton: {
+    backgroundColor: Colors.success,
+  },
+  dropoffButton: {
+    backgroundColor: Colors.primary,
+  },
+  rateButton: {
+    backgroundColor: Colors.secondary,
+  },
+  tripActionText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  completedStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 4,
+  },
+  completedStatusText: {
+    color: Colors.success,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  bookingActionsRow: {
+    flexDirection: 'row',
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[50],
+  },
+  bookingActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 44,
+    borderRadius: BorderRadius.md,
+    gap: 8,
+  },
+  bookingActionCall: {
+    backgroundColor: Colors.success + '10',
+  },
+  bookingActionCallText: {
+    color: Colors.success,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  reasonBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.danger + '10',
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.sm,
+    gap: 8,
+  },
+  reasonText: {
+    fontSize: FontSizes.xs,
+    color: Colors.danger,
+    flex: 1,
+  },
+  passengerDestinationInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.gray[50],
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.sm,
+    gap: 8,
+  },
+  passengerDestinationText: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+    flex: 1,
   },
   bookingModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center',
-    padding: Spacing.xl,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
   },
   bookingModalCard: {
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
     padding: Spacing.xl,
-    ...CommonStyles.shadowLg,
+    paddingBottom: 40,
   },
   bookingModalTitle: {
     fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
+    textAlign: 'center',
   },
   bookingModalDescription: {
-    color: Colors.gray[600],
-    marginVertical: Spacing.sm,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+    textAlign: 'center',
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xl,
   },
   bookingSeatInput: {
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    height: 100,
+    fontSize: FontSizes.md,
+    color: Colors.gray[900],
     borderWidth: 1,
-    borderColor: Colors.gray[300],
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    marginTop: Spacing.sm,
-    textAlignVertical: 'top',
+    borderColor: Colors.gray[200],
   },
   bookingModalError: {
     color: Colors.danger,
-    marginTop: Spacing.sm,
+    fontSize: FontSizes.xs,
+    marginTop: 4,
   },
   bookingModalActions: {
     flexDirection: 'row',
-    gap: Spacing.sm,
-    marginTop: Spacing.md,
+    gap: Spacing.md,
+    marginTop: Spacing.xl,
   },
   bookingModalButton: {
     flex: 1,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
+    height: 54,
+    borderRadius: BorderRadius.lg,
     alignItems: 'center',
-  },
-  bookingModalButtonSecondary: {
-    borderWidth: 1,
-    borderColor: Colors.gray[300],
+    justifyContent: 'center',
   },
   bookingModalButtonPrimary: {
     backgroundColor: Colors.primary,
   },
-  bookingModalButtonSecondaryText: {
-    color: Colors.gray[800],
-    fontWeight: FontWeights.semibold,
+  bookingModalButtonSecondary: {
+    backgroundColor: Colors.gray[100],
   },
   bookingModalButtonPrimaryText: {
     color: Colors.white,
+    fontSize: FontSizes.md,
     fontWeight: FontWeights.bold,
   },
-  mapContainer: {
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xl,
+  bookingModalButtonSecondaryText: {
+    color: Colors.gray[700],
+    fontSize: FontSizes.md,
+    fontWeight: FontWeights.bold,
   },
-  mapPreview: {
-    height: 220,
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
-    backgroundColor: Colors.gray[200],
-    ...CommonStyles.shadowSm,
+  reviewCta: {
+    backgroundColor: Colors.secondary,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.md,
   },
-  mapView: {
-    ...StyleSheet.absoluteFillObject,
+  reviewCtaTitle: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
   },
-  mapOverlay: {
-    position: 'absolute',
-    bottom: Spacing.md,
-    left: Spacing.md,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.full,
-  },
-  mapOverlayText: {
+  reviewCtaSubtitle: {
     color: Colors.white,
     fontSize: FontSizes.xs,
-    fontWeight: FontWeights.semibold,
-  },
-  expandButton: {
-    position: 'absolute',
-    bottom: Spacing.md,
-    right: Spacing.md,
-  },
-  expandButtonInner: {
-    width: 40,
-    height: 40,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...CommonStyles.shadowLg,
-  },
-  markerStartCircle: {
-    width: 32,
-    height: 32,
-    backgroundColor: Colors.success,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  markerEndCircle: {
-    width: 32,
-    height: 32,
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  markerPassengerDestCircle: {
-    width: 28,
-    height: 28,
-    backgroundColor: Colors.secondary,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...CommonStyles.shadowMd,
-  },
-  markerPassengerLocationCircle: {
-    width: 36,
-    height: 36,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: Colors.secondary,
-    ...CommonStyles.shadowLg,
-  },
-  passengerLocationCallout: {
-    padding: Spacing.xs,
-    minWidth: 150,
-  },
-  passengerLocationCalloutName: {
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.sm,
-    color: Colors.gray[900],
-    marginBottom: 2,
-  },
-  passengerLocationCalloutText: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[600],
+    opacity: 0.9,
   },
   mapModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    padding: Spacing.md,
-    justifyContent: 'center',
+    backgroundColor: Colors.white,
   },
   mapModalContent: {
     flex: 1,
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
   },
   fullscreenMap: {
-    width: '100%',
-    height: '100%',
+    flex: 1,
   },
   closeMapButton: {
     position: 'absolute',
-    top: Spacing.xl,
-    right: Spacing.xl,
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    top: 50,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  bookingActionsRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginTop: Spacing.md,
-    paddingTop: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray[200],
-  },
-  bookingActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.md,
-    gap: Spacing.xs,
-    flex: 1,
-  },
-  bookingActionCall: {
-    backgroundColor: 'rgba(46, 204, 113, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(46, 204, 113, 0.3)',
-  },
-  bookingActionText: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-  },
-  bookingActionCallText: {
-    color: Colors.success,
   },
   contactModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: Spacing.xl,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
   },
   contactModalCard: {
-    width: '100%',
-    maxWidth: 400,
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xxl,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
     padding: Spacing.xl,
+    paddingBottom: 40,
   },
   contactModalHeader: {
     alignItems: 'center',
     marginBottom: Spacing.xl,
   },
   contactModalIconWrapper: {
-    width: 80,
-    height: 80,
-    borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(46, 204, 113, 0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: Spacing.md,
   },
   contactModalIconBadge: {
-    width: 56,
-    height: 56,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.white,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.primary + '10',
     alignItems: 'center',
     justifyContent: 'center',
-    ...CommonStyles.shadowSm,
   },
   contactModalTitle: {
     fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
     textAlign: 'center',
-    marginBottom: Spacing.xs,
   },
   contactModalSubtitle: {
     fontSize: FontSizes.sm,
-    color: Colors.gray[600],
+    color: Colors.gray[500],
     textAlign: 'center',
+    marginTop: 4,
   },
   contactModalActions: {
     gap: Spacing.md,
-    marginBottom: Spacing.md,
   },
   contactModalButton: {
     flexDirection: 'row',
@@ -1973,50 +1711,38 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.gray[200],
-    backgroundColor: Colors.gray[50],
-  },
-  contactModalButtonCall: {
-    borderColor: 'rgba(46, 204, 113, 0.3)',
-    backgroundColor: 'rgba(46, 204, 113, 0.05)',
-  },
-  contactModalButtonWhatsApp: {
-    borderColor: 'rgba(37, 211, 102, 0.3)',
-    backgroundColor: 'rgba(37, 211, 102, 0.05)',
+    borderColor: Colors.gray[100],
   },
   contactModalButtonIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.white,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.gray[50],
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.md,
-    ...CommonStyles.shadowSm,
   },
   contactModalButtonContent: {
     flex: 1,
   },
   contactModalButtonTitle: {
-    fontSize: FontSizes.base,
+    fontSize: FontSizes.md,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    marginBottom: 2,
   },
   contactModalButtonSubtitle: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    marginTop: 2,
   },
   contactModalCancelButton: {
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
+    marginTop: Spacing.lg,
     alignItems: 'center',
-    backgroundColor: Colors.gray[100],
   },
   contactModalCancelText: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[700],
+    fontSize: FontSizes.md,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[500],
   },
 });
 
