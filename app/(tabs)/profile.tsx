@@ -1347,7 +1347,7 @@ export default function ProfileScreen() {
   );
 }
 
-  styles = StyleSheet.create({
+const styles = StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: Colors.gray[50],

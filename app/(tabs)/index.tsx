@@ -704,7 +704,7 @@ export default function HomeScreen() {
   );
 }
 
-  styles = StyleSheet.create({
+const styles = StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: Colors.gray[50],
