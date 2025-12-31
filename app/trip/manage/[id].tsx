@@ -624,6 +624,72 @@ export default function ManageTripScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Visualisation Carte */}
+        <TouchableOpacity
+          style={styles.mapCard}
+          onPress={() => setMapModalVisible(true)}
+          activeOpacity={0.9}
+        >
+          <View style={styles.mapPreview}>
+            <MapView
+              provider={PROVIDER_GOOGLE}
+              style={styles.mapView}
+              initialRegion={mapRegion}
+              scrollEnabled={false}
+              zoomEnabled={false}
+              pitchEnabled={false}
+              rotateEnabled={false}
+            >
+              {/* Route polyline */}
+              {routeCoordinates && routeCoordinates.length > 0 ? (
+                <Polyline
+                  coordinates={routeCoordinates}
+                  strokeColor={Colors.primary}
+                  strokeWidth={4}
+                />
+              ) : (
+                <Polyline
+                  coordinates={[departureCoordinate!, arrivalCoordinate!]}
+                  strokeColor={Colors.primary}
+                  strokeWidth={4}
+                  lineDashPattern={[5, 5]}
+                />
+              )}
+
+              <Marker coordinate={departureCoordinate!}>
+                <View style={[styles.markerStartCircle, { width: 24, height: 24, borderRadius: 12 }]}>
+                  <Ionicons name="location" size={14} color={Colors.white} />
+                </View>
+              </Marker>
+
+              <Marker coordinate={arrivalCoordinate!}>
+                <View style={[styles.markerEndCircle, { width: 24, height: 24, borderRadius: 12 }]}>
+                  <Ionicons name="navigate" size={14} color={Colors.white} />
+                </View>
+              </Marker>
+
+              {/* Position actuelle du conducteur si en cours */}
+              {trip.status === 'ongoing' && trip.currentLocation?.coordinates && (
+                <Marker
+                  coordinate={{
+                    latitude: trip.currentLocation.coordinates[1],
+                    longitude: trip.currentLocation.coordinates[0],
+                  }}
+                >
+                  <View style={[styles.markerStartCircle, { backgroundColor: Colors.info, width: 20, height: 20, borderRadius: 10 }]}>
+                    <Ionicons name="car-sport" size={12} color={Colors.white} />
+                  </View>
+                </Marker>
+              )}
+            </MapView>
+
+            <View style={styles.mapBadge}>
+              <Ionicons name="expand" size={12} color={Colors.white} />
+              <Text style={styles.mapBadgeText}>Agrandir</Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+
         {/* Résumé du trajet */}
         <View style={styles.summaryCard}>
           <View style={styles.summaryHeader}>
