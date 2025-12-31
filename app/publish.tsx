@@ -2341,7 +2341,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     paddingHorizontal: Spacing.md,
     height: 48,
-    justifyContent: 'space-between',
+    gap: Spacing.md,
   },
   priceInput: {
     flex: 1,

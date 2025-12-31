@@ -2,7 +2,7 @@ import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardMod
 import LocationPickerModal, { type MapLocationSelection } from '@/components/LocationPickerModal';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useUserLocation } from '@/hooks/useUserLocation';
@@ -115,7 +115,7 @@ export default function TripDetailsScreen() {
   const params = useLocalSearchParams();
   const tripId = typeof params.id === 'string' ? (params.id as string) : '';
   const trackParam = Array.isArray(params.track) ? params.track.includes('true') : params.track === 'true'; // Permet le suivi via lien partagé
-  
+
   // Récupérer le trajet depuis l'API si pas dans le store
   const {
     data: tripFromApi,
@@ -123,11 +123,11 @@ export default function TripDetailsScreen() {
     isFetching: tripFetching,
     refetch: refetchTrip,
   } = useGetTripByIdQuery(tripId, { skip: !tripId });
-  
+
   // Utiliser le trajet de l'API en priorité, sinon celui du store
   const tripFromStore = useAppSelector((state) => selectTripById(tripId)(state));
   const trip = tripFromApi || tripFromStore;
-  
+
   const user = useAppSelector(selectUser);
   const { checkIdentity, isIdentityVerified } = useIdentityCheck();
   const { showDialog } = useDialog();
@@ -263,18 +263,18 @@ export default function TripDetailsScreen() {
     transform: [{ scale: pulseAnim.value }],
   }));
 
-    const activeBooking = useMemo(() => {
-      if (!trip || !myBookings) {
-        return null;
-      }
-      return (
-        myBookings.find(
-          (booking: any) =>
-            booking.tripId === trip.id &&
-            (booking.status === 'pending' || booking.status === 'accepted' || booking.status === 'completed'),
-        ) ?? null
-      );
-    }, [myBookings, trip]);
+  const activeBooking = useMemo(() => {
+    if (!trip || !myBookings) {
+      return null;
+    }
+    return (
+      myBookings.find(
+        (booking: any) =>
+          booking.tripId === trip.id &&
+          (booking.status === 'pending' || booking.status === 'accepted' || booking.status === 'completed'),
+      ) ?? null
+    );
+  }, [myBookings, trip]);
   const hasAcceptedBooking = activeBooking?.status === 'accepted';
   // Permettre le suivi si : conducteur, passager accepté, ou via lien partagé (track=true)
   const canTrackTrip = Boolean(trip && user && (isTripDriver || hasAcceptedBooking || trackParam));
@@ -553,9 +553,9 @@ export default function TripDetailsScreen() {
         passengerDestination: passengerDestination?.title || passengerDestination?.address,
         passengerDestinationCoordinates: passengerDestination
           ? {
-              latitude: passengerDestination.latitude,
-              longitude: passengerDestination.longitude,
-            }
+            latitude: passengerDestination.latitude,
+            longitude: passengerDestination.longitude,
+          }
           : undefined,
       }).unwrap();
       setBookingModalVisible(false);
@@ -715,13 +715,13 @@ export default function TripDetailsScreen() {
       const formData = buildKycFormData({ front, back, selfie });
       const result = await uploadKyc(formData).unwrap();
       setKycWizardVisible(false);
-      
+
       // Refetch immédiatement pour obtenir le statut mis à jour
       await refetchKycStatus();
-      
+
       // Vérifier le statut retourné par le backend
       const kycStatusAfterUpload = result?.status;
-      
+
       if (kycStatusAfterUpload === 'approved') {
         // KYC approuvé immédiatement (validation automatique réussie)
         showDialog({
@@ -748,7 +748,7 @@ export default function TripDetailsScreen() {
     } catch (error: any) {
       // Gérer les erreurs détaillées du backend
       let errorMessage = error?.data?.message ?? error?.error ?? 'Impossible de soumettre les documents pour le moment.';
-      
+
       // Si le message est une chaîne, la traiter directement
       if (typeof errorMessage === 'string') {
         // Le backend peut retourner des messages multi-lignes avec des détails
@@ -756,7 +756,7 @@ export default function TripDetailsScreen() {
       } else if (Array.isArray(errorMessage)) {
         errorMessage = errorMessage.join('\n');
       }
-      
+
       showDialog({
         variant: 'danger',
         title: 'Erreur KYC',
@@ -829,7 +829,7 @@ export default function TripDetailsScreen() {
       .then((info) => {
         setRouteCoordinates(info.coordinates);
         setRouteInfo(info);
-        
+
         // Calculate arrival time based on departure time + route duration
         if (info.duration > 0 && trip.departureTime) {
           const departureDate = new Date(trip.departureTime);
@@ -838,7 +838,7 @@ export default function TripDetailsScreen() {
         } else {
           setCalculatedArrivalTime(null);
         }
-        
+
         setIsLoadingRoute(false);
       })
       .catch(() => {
@@ -1342,7 +1342,10 @@ export default function TripDetailsScreen() {
               style={styles.driverInfo}
               onPress={() => {
                 if (trip?.driverId) {
-                  router.push(`/driver/${trip?.driverId}`);
+                  router.push({
+                    pathname: '/driver/[id]',
+                    params: { id: trip.driverId }
+                  });
                 }
               }}
               activeOpacity={0.7}
@@ -1375,7 +1378,7 @@ export default function TripDetailsScreen() {
                   <Text style={styles.driverRating}>{driverReviewAverage.toFixed(1)}</Text>
                   <View style={styles.driverDot} />
                   <Text style={styles.driverVehicle} numberOfLines={1}>
-                    {trip?.vehicle 
+                    {trip?.vehicle
                       ? `${trip.vehicle.brand} ${trip.vehicle.model}`
                       : trip?.vehicleInfo}
                   </Text>
@@ -1472,16 +1475,16 @@ export default function TripDetailsScreen() {
 
               <View style={styles.detailRow}>
                 <View style={styles.detailLeft}>
-                  <Ionicons 
+                  <Ionicons
                     name={
-                      trip?.vehicleType === 'moto' 
-                        ? 'bicycle' 
+                      trip?.vehicleType === 'moto'
+                        ? 'bicycle'
                         : trip?.vehicleType === 'tricycle'
-                        ? 'car-sport'
-                        : 'car'
-                    } 
-                    size={20} 
-                    color={Colors.gray[600]} 
+                          ? 'car-sport'
+                          : 'car'
+                    }
+                    size={20}
+                    color={Colors.gray[600]}
                   />
                   <Text style={styles.detailLabel}>Véhicule</Text>
                 </View>
@@ -1498,11 +1501,11 @@ export default function TripDetailsScreen() {
                   ) : (
                     <>
                       <Text style={styles.detailValue}>
-                        {trip?.vehicleType === 'moto' 
-                          ? 'Moto' 
+                        {trip?.vehicleType === 'moto'
+                          ? 'Moto'
                           : trip?.vehicleType === 'tricycle'
-                          ? 'Tricycle'
-                          : 'Voiture'}
+                            ? 'Tricycle'
+                            : 'Voiture'}
                       </Text>
                       {trip?.vehicleInfo && trip?.vehicleInfo !== 'Informations véhicule fournies par le conducteur' && (
                         <Text style={styles.vehicleDetails}>{trip?.vehicleInfo}</Text>
@@ -1574,100 +1577,100 @@ export default function TripDetailsScreen() {
           // Vérifier si le trajet est expiré (date de départ passée)
           const isExpired = trip?.departureTime && new Date(trip?.departureTime) < new Date();
           // Vérifier si le trajet peut être réservé (pas complété, pas annulé, pas expiré)
-          const canBook = trip?.status !== 'completed' && 
-                         trip?.status !== 'cancelled' && 
-                         !isExpired &&
-                         (trip?.status === 'upcoming' || (trip?.status === 'ongoing' && availableSeats > 0));
-          
-            if (canBook) {
-              return (
-                <View style={styles.actionsContainer}>
-                  {activeBooking && activeBookingStatus ? (
-                    activeBooking.status === 'completed' ? (
-                      <TouchableOpacity
-                        style={[styles.actionButton, { backgroundColor: Colors.secondary }]}
-                        onPress={() => router.push(`/rate/${trip.id}`)}
-                      >
-                        <Ionicons name="star" size={20} color={Colors.white} style={{ marginRight: 8 }} />
-                        <Text style={styles.actionButtonText}>Évaluer le trajet</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <View style={styles.bookingCard}>
-                        <View style={styles.bookingCardHeader}>
-                          <View>
-                            <Text style={styles.bookingCardTitle}>Ma réservation</Text>
-                            <Text style={styles.bookingCardSubtitle}>
-                              {activeBooking.numberOfSeats} place{activeBooking.numberOfSeats > 1 ? 's' : ''}{' • '}{trip.price === 0 ? 'Gratuit' : `${trip.price} FC`}
-                            </Text>
-                          </View>
-                          <View
-                            style={[
-                              styles.bookingStatusBadge,
-                              { backgroundColor: activeBookingStatus.background },
-                            ]}
-                          >
-                            <Text style={[styles.bookingStatusText, { color: activeBookingStatus.color }]}>
-                              {activeBookingStatus.label}
-                            </Text>
-                          </View>
-                        </View>
+          const canBook = trip?.status !== 'completed' &&
+            trip?.status !== 'cancelled' &&
+            !isExpired &&
+            (trip?.status === 'upcoming' || (trip?.status === 'ongoing' && availableSeats > 0));
 
-                        {/* Indicateur de confirmation en attente */}
-                        {activeBooking.status === 'accepted' && (
-                          <>
-                            {activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger && (
-                              <View style={styles.confirmationBanner}>
-                                <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
-                                <Text style={styles.confirmationBannerText}>
-                                  Confirmation de prise en charge requise
-                                </Text>
-                              </View>
+          if (canBook) {
+            return (
+              <View style={styles.actionsContainer}>
+                {activeBooking && activeBookingStatus ? (
+                  activeBooking.status === 'completed' ? (
+                    <TouchableOpacity
+                      style={[styles.actionButton, { backgroundColor: Colors.secondary }]}
+                      onPress={() => router.push(`/rate/${trip.id}`)}
+                    >
+                      <Ionicons name="star" size={20} color={Colors.white} style={{ marginRight: 8 }} />
+                      <Text style={styles.actionButtonText}>Évaluer le trajet</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={styles.bookingCard}>
+                      <View style={styles.bookingCardHeader}>
+                        <View>
+                          <Text style={styles.bookingCardTitle}>Ma réservation</Text>
+                          <Text style={styles.bookingCardSubtitle}>
+                            {activeBooking.numberOfSeats} place{activeBooking.numberOfSeats > 1 ? 's' : ''}{' • '}{trip.price === 0 ? 'Gratuit' : `${trip.price} FC`}
+                          </Text>
+                        </View>
+                        <View
+                          style={[
+                            styles.bookingStatusBadge,
+                            { backgroundColor: activeBookingStatus.background },
+                          ]}
+                        >
+                          <Text style={[styles.bookingStatusText, { color: activeBookingStatus.color }]}>
+                            {activeBookingStatus.label}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Indicateur de confirmation en attente */}
+                      {activeBooking.status === 'accepted' && (
+                        <>
+                          {activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger && (
+                            <View style={styles.confirmationBanner}>
+                              <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
+                              <Text style={styles.confirmationBannerText}>
+                                Confirmation de prise en charge requise
+                              </Text>
+                            </View>
+                          )}
+                          {activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger && (
+                            <View style={styles.confirmationBanner}>
+                              <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
+                              <Text style={styles.confirmationBannerText}>
+                                Confirmation de dépose requise
+                              </Text>
+                            </View>
+                          )}
+                        </>
+                      )}
+
+                      <View style={styles.bookingActionsRow}>
+                        {activeBooking.status === 'accepted' && activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger && (
+                          <TouchableOpacity
+                            style={[styles.bookingActionButton, styles.bookingActionConfirm]}
+                            onPress={handleConfirmPickup}
+                            disabled={isConfirmingPickup}
+                          >
+                            {isConfirmingPickup ? <ActivityIndicator size="small" color={Colors.white} /> : (
+                              <>
+                                <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
+                                <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Confirmer</Text>
+                              </>
                             )}
-                            {activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger && (
-                              <View style={styles.confirmationBanner}>
-                                <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
-                                <Text style={styles.confirmationBannerText}>
-                                  Confirmation de dépose requise
-                                </Text>
-                              </View>
-                            )}
-                          </>
+                          </TouchableOpacity>
                         )}
 
-                        <View style={styles.bookingActionsRow}>
-                          {activeBooking.status === 'accepted' && activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger && (
-                            <TouchableOpacity
-                              style={[styles.bookingActionButton, styles.bookingActionConfirm]}
-                              onPress={handleConfirmPickup}
-                              disabled={isConfirmingPickup}
-                            >
-                              {isConfirmingPickup ? <ActivityIndicator size="small" color={Colors.white} /> : (
-                                <>
-                                  <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
-                                  <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Confirmer</Text>
-                                </>
-                              )}
-                            </TouchableOpacity>
-                          )}
+                        {activeBooking.status === 'accepted' && activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger && (
+                          <TouchableOpacity
+                            style={[styles.bookingActionButton, styles.bookingActionConfirm]}
+                            onPress={handleConfirmDropoff}
+                            disabled={isConfirmingDropoff}
+                          >
+                            {isConfirmingDropoff ? <ActivityIndicator size="small" color={Colors.white} /> : (
+                              <>
+                                <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
+                                <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Confirmer dépose</Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                        )}
 
-                          {activeBooking.status === 'accepted' && activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger && (
-                            <TouchableOpacity
-                              style={[styles.bookingActionButton, styles.bookingActionConfirm]}
-                              onPress={handleConfirmDropoff}
-                              disabled={isConfirmingDropoff}
-                            >
-                              {isConfirmingDropoff ? <ActivityIndicator size="small" color={Colors.white} /> : (
-                                <>
-                                  <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
-                                  <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Confirmer dépose</Text>
-                                </>
-                              )}
-                            </TouchableOpacity>
-                          )}
-
-                          {activeBooking.status === 'accepted' && driverPhone && 
-                           !(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
-                           !(activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger) && (
+                        {activeBooking.status === 'accepted' && driverPhone &&
+                          !(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
+                          !(activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger) && (
                             <TouchableOpacity
                               style={[styles.bookingActionButton, styles.bookingActionCall]}
                               onPress={() => setContactModalVisible(true)}
@@ -1676,9 +1679,9 @@ export default function TripDetailsScreen() {
                               <Text style={[styles.bookingActionText, styles.bookingActionCallText]}>Appeler</Text>
                             </TouchableOpacity>
                           )}
-                          
-                          {!(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
-                           !(activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger) && (
+
+                        {!(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
+                          !(activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger) && (
                             <TouchableOpacity
                               style={[styles.bookingActionButton, styles.bookingActionDanger]}
                               onPress={confirmCancelBooking}
@@ -1692,10 +1695,10 @@ export default function TripDetailsScreen() {
                               )}
                             </TouchableOpacity>
                           )}
-                        </View>
                       </View>
-                    )
-                  ) : (
+                    </View>
+                  )
+                ) : (
                   <TouchableOpacity
                     style={[
                       styles.actionButton,
@@ -1714,7 +1717,7 @@ export default function TripDetailsScreen() {
               </View>
             );
           }
-          
+
           // Trajets terminés ou expirés
           if (trip?.status === 'completed' || trip?.status === 'cancelled' || isExpired) {
             return (
@@ -3047,7 +3050,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     maxHeight: '85%',
+    minHeight: '50%', // Assure une hauteur minimale même sans contenu
     padding: Spacing.xl,
+    paddingBottom: Spacing.xxl, // Espace pour la barre de navigation
   },
   reviewsModalHeader: {
     flexDirection: 'row',
