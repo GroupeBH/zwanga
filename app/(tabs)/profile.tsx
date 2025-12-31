@@ -2123,11 +2123,10 @@ export default function ProfileScreen() {
       color: Colors.primary,
       fontWeight: FontWeights.bold,
     },
-  });
-
-    fontWeight: FontWeights.medium,
-    fontSize: FontSizes.base,
-  },
+    menuText: {
+      fontWeight: FontWeights.medium,
+      fontSize: FontSizes.base,
+    },
   menuRight: {
     flexDirection: 'row',
     alignItems: 'center',
