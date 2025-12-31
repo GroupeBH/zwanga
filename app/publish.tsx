@@ -109,13 +109,13 @@ export default function PublishScreen() {
       const formData = buildKycFormData({ front, back, selfie });
       const result = await uploadKyc(formData).unwrap();
       setKycModalVisible(false);
-      
+
       // Refetch immédiatement pour obtenir le statut mis à jour
       await refetchKycStatus();
-      
+
       // Vérifier le statut retourné par le backend
       const kycStatusAfterUpload = result?.status;
-      
+
       if (kycStatusAfterUpload === 'approved') {
         // KYC approuvé immédiatement (validation automatique réussie)
         showDialog({
@@ -142,7 +142,7 @@ export default function PublishScreen() {
     } catch (error: any) {
       // Gérer les erreurs détaillées du backend
       let errorMessage = error?.data?.message ?? error?.error ?? 'Impossible de soumettre les documents pour le moment.';
-      
+
       // Si le message est une chaîne, la traiter directement
       if (typeof errorMessage === 'string') {
         // Le backend peut retourner des messages multi-lignes avec des détails
@@ -150,7 +150,7 @@ export default function PublishScreen() {
       } else if (Array.isArray(errorMessage)) {
         errorMessage = errorMessage.join('\n');
       }
-      
+
       showDialog({
         variant: 'danger',
         title: 'Erreur KYC',
@@ -646,15 +646,7 @@ export default function PublishScreen() {
         {/* Étape 1: Itinéraire */}
         {step === 'route' && (
           <Animated.View entering={FadeInDown} style={styles.stepContainer}>
-            <View style={styles.iconContainer}>
-              <View style={styles.iconCircle}>
-                <Ionicons name="map" size={40} color={Colors.primary} />
-              </View>
-              <Text style={styles.stepTitle}>Votre itinéraire</Text>
-              <Text style={styles.stepSubtitle}>
-                Indiquez le point de départ et d'arrivée
-              </Text>
-            </View>
+            <Text style={styles.sectionTitle}>Votre itinéraire</Text>
 
             {/* Message KYC visible dans l'étape route */}
             {!isIdentityVerified && (
@@ -681,14 +673,47 @@ export default function PublishScreen() {
               </View>
             )}
 
-            {renderLocationCard('departure', departureSummary)}
-            {renderLocationCard('arrival', arrivalSummary)}
+            <View style={styles.routeCard}>
+              <View style={styles.routeVisual}>
+                <View style={styles.dotGreen} />
+                <View style={styles.routeLine} />
+                <View style={styles.dotBlue} />
+              </View>
+              <View style={styles.routeInputs}>
+                <TouchableOpacity
+                  style={styles.locationSelector}
+                  onPress={() => openLocationPicker('departure')}
+                >
+                  <Text style={styles.locationLabel}>DÉPART</Text>
+                  <Text style={styles.locationValue} numberOfLines={1}>
+                    {departureLocation?.title || 'Sélectionnez le point de départ'}
+                  </Text>
+                </TouchableOpacity>
+                <View style={styles.divider} />
+                <TouchableOpacity
+                  style={styles.locationSelector}
+                  onPress={() => openLocationPicker('arrival')}
+                >
+                  <Text style={styles.locationLabel}>ARRIVÉE</Text>
+                  <Text style={[styles.locationValue, !arrivalLocation && { color: Colors.gray[400] }]} numberOfLines={1}>
+                    {arrivalLocation?.title || 'Où allez-vous ?'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
 
-            <TouchableOpacity 
+            <View style={styles.infoBox}>
+              <Ionicons name="information-circle-outline" size={20} color={Colors.info} />
+              <Text style={styles.infoText}>
+                Assurez-vous que vos informations sont exactes pour faciliter la réservation.
+              </Text>
+            </View>
+
+            <TouchableOpacity
               style={[
                 styles.button,
                 !isIdentityVerified && styles.buttonDisabled
-              ]} 
+              ]}
               onPress={handleNextStep}
               disabled={!isIdentityVerified}
             >
@@ -1463,12 +1488,18 @@ const styles = StyleSheet.create({
   inputWithIcon: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: Colors.gray[300],
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.xl,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.lg,
     marginBottom: Spacing.sm,
+    backgroundColor: Colors.white,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.02,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   input: {
     flex: 1,
@@ -1479,6 +1510,19 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 100,
     textAlignVertical: 'top',
+    borderWidth: 1.5,
+    borderColor: Colors.gray[300],
+    borderRadius: BorderRadius.xl,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    fontSize: FontSizes.base,
+    color: Colors.gray[800],
+    backgroundColor: Colors.white,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.02,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   datetimeButtons: {
     flexDirection: 'row',
@@ -1493,6 +1537,12 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     padding: Spacing.md,
     gap: Spacing.md,
+    backgroundColor: Colors.white,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   datetimeButtonIcon: {
     width: 40,
@@ -1537,10 +1587,10 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     marginBottom: Spacing.lg,
     shadowColor: Colors.black,
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
   locationCardHeader: {
     flexDirection: 'row',
@@ -1597,17 +1647,27 @@ const styles = StyleSheet.create({
   button: {
     backgroundColor: Colors.primary,
     paddingVertical: Spacing.lg,
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.xl,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   buttonDisabled: {
     opacity: 0.7,
   },
   buttonSecondary: {
     backgroundColor: Colors.white,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: Colors.gray[300],
+    shadowColor: Colors.black,
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   buttonText: {
     color: Colors.white,
@@ -1625,10 +1685,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   confirmCard: {
-    backgroundColor: Colors.gray[50],
+    backgroundColor: Colors.white,
     borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
     marginBottom: Spacing.xl,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    shadowColor: Colors.black,
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   },
   confirmSection: {
     marginBottom: Spacing.lg,
@@ -1711,6 +1778,11 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xxl,
     padding: Spacing.xl,
     gap: Spacing.lg,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
   },
   kycModalHero: {
     alignItems: 'center',
@@ -1799,6 +1871,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     paddingVertical: Spacing.md,
     borderRadius: BorderRadius.full,
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
   kycPrimaryButtonText: {
     color: Colors.white,
@@ -1811,6 +1888,8 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.gray[100],
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
   },
   kycSecondaryButtonText: {
     color: Colors.gray[700],
@@ -1828,10 +1907,15 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
+    borderRadius: BorderRadius.xxl,
     padding: Spacing.xl,
     alignItems: 'center',
     gap: Spacing.md,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
   },
   driverModalIcon: {
     width: 80,
@@ -1924,12 +2008,23 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderWidth: 2,
     borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.lg,
+    borderRadius: BorderRadius.xl,
     gap: Spacing.xs,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   vehicleCardActive: {
     borderColor: Colors.primary,
     backgroundColor: Colors.primary + '08',
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+    transform: [{ scale: 1.02 }],
   },
   vehicleCardHeader: {
     flexDirection: 'row',
@@ -1972,10 +2067,17 @@ const styles = StyleSheet.create({
   // Vehicle Form Styles
   vehicleForm: {
     marginTop: Spacing.md,
-    padding: Spacing.md,
-    backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
     gap: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    shadowColor: Colors.black,
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   vehicleFormHeader: {
     flexDirection: 'row',
@@ -1996,13 +2098,18 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.medium,
   },
   vehicleFormInput: {
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: Colors.gray[300],
     borderRadius: BorderRadius.lg,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     fontSize: FontSizes.base,
     backgroundColor: Colors.white,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.02,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   vehicleFormButtons: {
     flexDirection: 'row',
@@ -2030,5 +2137,156 @@ const styles = StyleSheet.create({
   vehicleFormButtonSecondaryText: {
     color: Colors.gray[700],
     fontWeight: FontWeights.semibold,
+  },
+  // Step Indicator Styles
+  stepIndicatorContainer: {
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
+    backgroundColor: Colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+  },
+  stepIndicatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  stepDot: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[300],
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.black,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  stepDotActive: {
+    backgroundColor: Colors.primary,
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+    transform: [{ scale: 1.1 }],
+  },
+  stepDotCompleted: {
+    backgroundColor: Colors.success,
+    shadowColor: Colors.success,
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  stepLine: {
+    flex: 1,
+    height: 3,
+    backgroundColor: Colors.gray[200],
+    marginHorizontal: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+  },
+  stepLineActive: {
+    backgroundColor: Colors.success,
+  },
+  stepLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: Spacing.sm,
+  },
+  stepLabel: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[500],
+    textAlign: 'center',
+    flex: 1,
+  },
+  stepLabelActive: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  // Route Card Styles (from request.tsx)
+  sectionTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: Spacing.lg,
+  },
+  routeCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    flexDirection: 'row',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 15,
+    elevation: 3,
+    marginBottom: Spacing.lg,
+  },
+  routeVisual: {
+    width: 20,
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  dotGreen: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.success,
+  },
+  dotBlue: {
+    width: 10,
+    height: 10,
+    borderRadius: 2,
+    backgroundColor: Colors.primary,
+  },
+  routeLine: {
+    flex: 1,
+    width: 1,
+    backgroundColor: Colors.gray[200],
+    marginVertical: 4,
+  },
+  routeInputs: {
+    flex: 1,
+    marginLeft: Spacing.md,
+  },
+  locationSelector: {
+    paddingVertical: Spacing.xs,
+  },
+  locationLabel: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[400],
+    letterSpacing: 1,
+  },
+  locationValue: {
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+    fontWeight: FontWeights.medium,
+    marginTop: 4,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.gray[100],
+    marginVertical: Spacing.md,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    backgroundColor: Colors.info + '10',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    marginBottom: Spacing.lg,
+    alignItems: 'center',
+  },
+  infoText: {
+    flex: 1,
+    marginLeft: Spacing.sm,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    lineHeight: 18,
   },
 });
