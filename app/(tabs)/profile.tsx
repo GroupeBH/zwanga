@@ -13,7 +13,6 @@ import { selectUser } from '@/store/selectors';
 import { logout } from '@/store/slices/authSlice';
 import type { Vehicle } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -34,6 +33,7 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const styles = StyleSheet.create({
   container: {
@@ -496,11 +496,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.md,
   },
-  sectionTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
   vehicleAddButton: {
     width: 32,
     height: 32,
@@ -582,7 +577,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: FontSizes.base,
     color: Colors.gray[800],
-    fontWeight: FontWeights.medium,
   },
   menuRight: {
     flexDirection: 'row',
@@ -596,7 +590,6 @@ const styles = StyleSheet.create({
     minWidth: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.primary,
   },
   menuBadgeText: {
     color: Colors.white,
@@ -701,14 +694,17 @@ const styles = StyleSheet.create({
   pinModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
   },
   pinModalCard: {
     backgroundColor: Colors.white,
-    borderTopLeftRadius: BorderRadius.xxl,
-    borderTopRightRadius: BorderRadius.xxl,
+    borderRadius: BorderRadius.xl,
     padding: Spacing.xl,
-    minHeight: 400,
+    width: '100%',
+    maxWidth: 400,
+    ...CommonStyles.shadowLg,
   },
   pinModalHeader: {
     flexDirection: 'row',
@@ -717,59 +713,64 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   pinModalTitle: {
-    fontSize: FontSizes.lg,
+    fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
   pinModalSubtitle: {
     fontSize: FontSizes.sm,
-    color: Colors.gray[500],
+    color: Colors.gray[600],
     marginBottom: Spacing.xl,
     textAlign: 'center',
   },
   formSection: {
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.lg,
   },
   inputLabel: {
-    fontSize: 14,
-    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
     color: Colors.gray[700],
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
   },
   inputLabelSmall: {
-    fontSize: 12,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.medium,
     color: Colors.gray[500],
-    marginBottom: 12,
+    marginBottom: Spacing.xs,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.gray[50],
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
+    borderWidth: 1.5,
+    borderColor: Colors.gray[300],
     borderRadius: BorderRadius.lg,
-    paddingHorizontal: 16,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: Colors.gray[50],
+    height: 56,
   },
   inputIcon: {
-    marginRight: 12,
+    marginRight: Spacing.sm,
   },
   input: {
     flex: 1,
-    paddingVertical: 12,
     fontSize: FontSizes.base,
     color: Colors.gray[900],
+    height: '100%',
   },
   pinModalButton: {
-    paddingVertical: 16,
-    borderRadius: BorderRadius.xl,
+    backgroundColor: Colors.gray[300],
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
     alignItems: 'center',
-    marginBottom: Spacing.md,
+    justifyContent: 'center',
+    marginTop: Spacing.lg,
   },
   pinModalButtonActive: {
     backgroundColor: Colors.primary,
   },
   pinModalButtonDisabled: {
     backgroundColor: Colors.gray[300],
+    opacity: 0.5,
   },
   pinModalButtonText: {
     color: Colors.white,
@@ -777,42 +778,45 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
   },
   pinModalForgotButton: {
+    marginTop: Spacing.md,
     alignItems: 'center',
-    paddingVertical: 8,
   },
   pinModalForgotText: {
-    color: Colors.primary,
-    fontWeight: FontWeights.semibold,
+    color: Colors.gray[600],
     fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+    textDecorationLine: 'underline',
   },
   smsCodeContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 8,
+    marginVertical: Spacing.lg,
+    gap: Spacing.sm,
   },
   smsInput: {
     flex: 1,
     height: 60,
-    backgroundColor: Colors.gray[50],
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.lg,
+    borderWidth: 1.5,
+    borderColor: Colors.gray[300],
+    borderRadius: BorderRadius.md,
     textAlign: 'center',
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: FontWeights.bold,
     color: Colors.gray[900],
+    backgroundColor: Colors.gray[50],
   },
   smsInputFilled: {
     borderColor: Colors.primary,
-    backgroundColor: Colors.primary + '05',
+    backgroundColor: Colors.white,
   },
   pinModalResendButton: {
+    marginTop: Spacing.md,
     alignItems: 'center',
-    paddingVertical: 12,
   },
   pinModalResendText: {
     color: Colors.primary,
-    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
   },
 });
 
@@ -1421,7 +1425,6 @@ export default function ProfileScreen() {
 
   const handleLogout = () => {
     dispatch(logout());
-    // router.replace('/auth');
   };
 
   return (
@@ -1431,7 +1434,6 @@ export default function ProfileScreen() {
         contentContainerStyle={{ paddingBottom: 120 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       >
-        {/* Header avec Gradient */}
         <View style={styles.header}>
           <LinearGradient
             colors={[Colors.primary, '#2563EB']}
@@ -1449,7 +1451,6 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Infos utilisateur */}
           <View style={styles.userInfo}>
             <TouchableOpacity
               style={styles.avatarContainer}
@@ -1494,7 +1495,6 @@ export default function ProfileScreen() {
               <Text style={styles.userPhone}>{currentUser?.phone || ''}</Text>
             </View>
 
-            {/* Rating & Stats Rapides */}
             <View style={styles.headerStats}>
               <View style={styles.headerStatItem}>
                 <Ionicons name="star" size={16} color={Colors.secondary} />
@@ -1511,7 +1511,6 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Section Actions Principales - Cartes flottantes */}
         <View style={styles.mainActionsContainer}>
           <TouchableOpacity
             style={[styles.mainActionCard, { borderColor: Colors.primary + '30' }]}
@@ -1564,7 +1563,6 @@ export default function ProfileScreen() {
           )}
         </View>
 
-        {/* Statistiques détaillées */}
         <View style={styles.section}>
           <Text style={styles.sectionHeaderTitle}>Activité</Text>
           <View style={styles.statsGrid}>
@@ -1577,7 +1575,6 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Badges */}
         {badges.length > 0 && (
           <View style={styles.badgesContainer}>
             <View style={styles.badgesCard}>
@@ -1600,7 +1597,6 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* Reviews summary */}
         <View style={styles.reviewsContainer}>
           <View style={styles.reviewsCard}>
             <View style={styles.reviewsHeader}>
@@ -1654,7 +1650,6 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* KYC */}
         <View style={styles.kycContainer}>
           <View style={styles.kycCard}>
             <View style={styles.kycHeader}>
@@ -1771,7 +1766,6 @@ export default function ProfileScreen() {
           )}
         </View>
 
-        {/* Menu */}
         <View style={styles.menuContainer}>
           <View style={styles.menuCard}>
             {menuItems.map((item, index) => (
@@ -1811,7 +1805,6 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Bouton déconnexion */}
         <View style={styles.logoutContainer}>
           <TouchableOpacity
             style={styles.logoutButton}
@@ -1967,7 +1960,6 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
-      {/* Modal de modification du PIN */}
       <Modal visible={pinModalVisible} transparent animationType="fade" onRequestClose={() => setPinModalVisible(false)}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
