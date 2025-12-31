@@ -842,7 +842,7 @@ export default function ManageTripScreen() {
                         style={[styles.actionButton, { backgroundColor: Colors.info }]}
                         onPress={() => handleConfirmPickup(booking.id)}
                       >
-                        <Text style={styles.actionText}>Récupéré</Text>
+                        <Text style={styles.actionText}>Récupérer</Text>
                       </TouchableOpacity>
                     )}
 
@@ -851,7 +851,7 @@ export default function ManageTripScreen() {
                         style={[styles.actionButton, { backgroundColor: Colors.success }]}
                         onPress={() => handleConfirmDropoff(booking.id)}
                       >
-                        <Text style={styles.actionText}>Déposé</Text>
+                        <Text style={styles.actionText}>Déposer</Text>
                       </TouchableOpacity>
                     )}
                   </View>
