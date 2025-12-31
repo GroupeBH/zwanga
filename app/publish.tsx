@@ -332,37 +332,49 @@ export default function PublishScreen() {
     const accentColor = type === 'departure' ? Colors.success : Colors.primary;
     const hasSelection = type === 'departure' ? !!departureLocation : !!arrivalLocation;
     const coords = formatCoordinatePair(summary.latitude, summary.longitude);
+    
     return (
-      <View style={styles.locationCard}>
+      <TouchableOpacity 
+        style={[
+          styles.locationCard, 
+          hasSelection && { borderColor: accentColor + '40', backgroundColor: accentColor + '05' }
+        ]}
+        onPress={() => openLocationPicker(type)}
+        activeOpacity={0.7}
+      >
         <View style={styles.locationCardHeader}>
-          <Text style={styles.locationCardLabel}>
-            {type === 'departure' ? 'Point de départ *' : 'Destination *'}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+            <View style={[styles.locationCardButtonIcon, { backgroundColor: accentColor + '20' }]}>
+              <Ionicons name={type === 'departure' ? "location" : "navigate"} size={18} color={accentColor} />
+            </View>
+            <Text style={[styles.locationCardLabel, { color: accentColor }]}>
+              {type === 'departure' ? 'DÉPART' : 'ARRIVÉE'}
+            </Text>
+          </View>
           {hasSelection && (
-            <TouchableOpacity onPress={() => openLocationPicker(type)}>
-              <Text style={styles.locationCardAction}>Modifier</Text>
-            </TouchableOpacity>
+            <View style={styles.verifiedBadge}>
+              <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
+              <Text style={styles.verifiedText}>Défini</Text>
+            </View>
           )}
         </View>
+        
         <View style={styles.locationCardContent}>
-          <Text style={styles.locationCardTitle}>{summary.title}</Text>
-          <Text style={styles.locationCardSubtitle}>{summary.address}</Text>
-          <Text style={styles.locationCardCoords}>
-            {coords ?? 'Coordonnées non définies'}
+          <Text style={[styles.locationCardTitle, !hasSelection && { color: Colors.gray[400] }]} numberOfLines={1}>
+            {summary.title}
+          </Text>
+          <Text style={[styles.locationCardSubtitle, !hasSelection && { color: Colors.gray[300] }]} numberOfLines={2}>
+            {summary.address}
           </Text>
         </View>
-        <TouchableOpacity
-          style={styles.locationCardButton}
-          onPress={() => openLocationPicker(type)}
-        >
-          <View style={[styles.locationCardButtonIcon, { backgroundColor: accentColor + '1A' }]}>
-            <Ionicons name="map" size={18} color={accentColor} />
+
+        {!hasSelection && (
+          <View style={styles.locationCardPlaceholder}>
+            <Text style={styles.locationCardAction}>Appuyez pour sélectionner</Text>
+            <Ionicons name="arrow-forward" size={16} color={Colors.primary} />
           </View>
-          <Text style={styles.locationCardButtonText}>
-            {hasSelection ? 'Mettre à jour sur la carte' : 'Choisir sur la carte'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+        )}
+      </TouchableOpacity>
     );
   };
 
@@ -595,9 +607,26 @@ export default function PublishScreen() {
         </View>
       </View>
 
-      {/* Barre de progression */}
-      <View style={styles.progressBar}>
-        <View style={[styles.progressFill, { width: progressWidth }]} />
+      {/* Step Indicator */}
+      <View style={styles.stepIndicatorContainer}>
+        <View style={styles.stepIndicatorRow}>
+          <View style={[styles.stepDot, step === 'route' && styles.stepDotActive, (step === 'details' || step === 'confirm') && styles.stepDotCompleted]}>
+            <Ionicons name={step === 'details' || step === 'confirm' ? "checkmark" : "map"} size={14} color={Colors.white} />
+          </View>
+          <View style={[styles.stepLine, (step === 'details' || step === 'confirm') && styles.stepLineActive]} />
+          <View style={[styles.stepDot, step === 'details' && styles.stepDotActive, step === 'confirm' && styles.stepDotCompleted]}>
+            <Ionicons name={step === 'confirm' ? "checkmark" : "car"} size={14} color={step === 'details' || step === 'confirm' ? Colors.white : Colors.gray[400]} />
+          </View>
+          <View style={[styles.stepLine, step === 'confirm' && styles.stepLineActive]} />
+          <View style={[styles.stepDot, step === 'confirm' && styles.stepDotActive]}>
+            <Ionicons name="checkmark-done" size={14} color={step === 'confirm' ? Colors.white : Colors.gray[400]} />
+          </View>
+        </View>
+        <View style={styles.stepLabelRow}>
+          <Text style={[styles.stepLabel, step === 'route' && styles.stepLabelActive]}>Route</Text>
+          <Text style={[styles.stepLabel, step === 'details' && styles.stepLabelActive]}>Détails</Text>
+          <Text style={[styles.stepLabel, step === 'confirm' && styles.stepLabelActive]}>Confirmer</Text>
+        </View>
       </View>
 
       {!isIdentityVerified && (
@@ -889,15 +918,29 @@ export default function PublishScreen() {
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Nombre de places *</Text>
-              <View style={styles.inputWithIcon}>
-                <Ionicons name="people" size={20} color={Colors.gray[600]} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ex: 3"
-                  keyboardType="number-pad"
-                  value={seats}
-                  onChangeText={setSeats}
-                />
+              <View style={styles.stepperContainer}>
+                <TouchableOpacity
+                  style={[styles.stepperButton, parseInt(seats, 10) <= 1 && styles.stepperButtonDisabled]}
+                  onPress={() => {
+                    const current = parseInt(seats, 10);
+                    if (current > 1) setSeats((current - 1).toString());
+                  }}
+                >
+                  <Ionicons name="remove" size={24} color={parseInt(seats, 10) <= 1 ? Colors.gray[400] : Colors.gray[900]} />
+                </TouchableOpacity>
+                <View style={styles.stepperValueContainer}>
+                  <Text style={styles.stepperValue}>{seats}</Text>
+                  <Text style={styles.stepperLabel}>places disponibles</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.stepperButton, parseInt(seats, 10) >= 10 && styles.stepperButtonDisabled]}
+                  onPress={() => {
+                    const current = parseInt(seats, 10);
+                    if (current < 10) setSeats((current + 1).toString());
+                  }}
+                >
+                  <Ionicons name="add" size={24} color={parseInt(seats, 10) >= 10 ? Colors.gray[400] : Colors.gray[900]} />
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -961,125 +1004,133 @@ export default function PublishScreen() {
           </Animated.View>
         )}
 
-        {/* Étape 3: Confirmation */}
-        {step === 'confirm' && (
-          <Animated.View entering={FadeInDown} style={styles.stepContainer}>
-            <View style={styles.iconContainer}>
-              <View style={[styles.iconCircle, styles.iconCircleGreen]}>
-                <Ionicons name="checkmark-circle" size={40} color={Colors.success} />
+          {/* Étape 3: Confirmation */}
+          {step === 'confirm' && (
+            <Animated.View entering={FadeInDown} style={styles.stepContainer}>
+              <View style={styles.iconContainer}>
+                <View style={[styles.iconCircle, styles.iconCircleGreen]}>
+                  <Ionicons name="checkmark-circle" size={40} color={Colors.success} />
+                </View>
+                <Text style={styles.stepTitle}>Confirmation</Text>
+                <Text style={styles.stepSubtitle}>
+                  Vérifiez les informations avant de publier
+                </Text>
               </View>
-              <Text style={styles.stepTitle}>Confirmation</Text>
-              <Text style={styles.stepSubtitle}>
-                Vérifiez les informations avant de publier
-              </Text>
-            </View>
 
-            <View style={styles.confirmCard}>
-              {/* Itinéraire */}
-              <View style={styles.confirmSection}>
-                <Text style={styles.confirmSectionTitle}>ITINÉRAIRE</Text>
-                <View style={styles.confirmRoute}>
-                  <View style={styles.confirmRouteRow}>
-                    <Ionicons name="location" size={20} color={Colors.success} />
-                    <View style={styles.confirmRouteContent}>
-                      <Text style={styles.confirmRouteName}>{departureSummary.title}</Text>
-                      {departureLocation?.address && (
+              <View style={styles.ticketContainer}>
+                <View style={styles.ticketHeader}>
+                  <Text style={styles.confirmSectionTitle}>VOTRE TRAJET</Text>
+                  <View style={styles.confirmRoute}>
+                    <View style={styles.confirmRouteRow}>
+                      <View style={[styles.locationCardButtonIcon, { backgroundColor: Colors.success + '20' }]}>
+                        <Ionicons name="location" size={18} color={Colors.success} />
+                      </View>
+                      <View style={styles.confirmRouteContent}>
+                        <Text style={styles.confirmRouteName}>{departureSummary.title}</Text>
                         <Text style={styles.confirmRouteAddress}>{departureSummary.address}</Text>
-                      )}
-                      <Text style={styles.confirmRouteAddress}>
-                        {formatCoordinatePair(
-                          departureSummary.latitude,
-                          departureSummary.longitude,
-                        ) ?? '- / -'}
-                      </Text>
+                      </View>
                     </View>
-                  </View>
-                  <View style={styles.confirmRouteDivider} />
-                  <View style={styles.confirmRouteRow}>
-                    <Ionicons name="navigate" size={20} color={Colors.primary} />
-                    <View style={styles.confirmRouteContent}>
-                      <Text style={styles.confirmRouteName}>{arrivalSummary.title}</Text>
-                      {arrivalLocation?.address && (
+                    <View style={styles.confirmRouteDivider} />
+                    <View style={styles.confirmRouteRow}>
+                      <View style={[styles.locationCardButtonIcon, { backgroundColor: Colors.primary + '20' }]}>
+                        <Ionicons name="navigate" size={18} color={Colors.primary} />
+                      </View>
+                      <View style={styles.confirmRouteContent}>
+                        <Text style={styles.confirmRouteName}>{arrivalSummary.title}</Text>
                         <Text style={styles.confirmRouteAddress}>{arrivalSummary.address}</Text>
-                      )}
-                      <Text style={styles.confirmRouteAddress}>
-                        {formatCoordinatePair(
-                          arrivalSummary.latitude,
-                          arrivalSummary.longitude,
-                        ) ?? '- / -'}
-                      </Text>
+                      </View>
                     </View>
                   </View>
                 </View>
-              </View>
 
-              {/* Détails */}
-              <View>
-                <Text style={styles.confirmSectionTitle}>DÉTAILS</Text>
-                <View style={styles.confirmDetails}>
-                  <View style={styles.confirmDetailRow}>
-                    <View style={styles.confirmDetailLeft}>
-                      <Ionicons name="time" size={18} color={Colors.gray[600]} />
-                      <Text style={styles.confirmDetailLabel}>Heure de départ</Text>
-                    </View>
-                    <Text style={styles.confirmDetailValue}>{formattedFullDateTime}</Text>
-                  </View>
-                  <View style={styles.confirmDetailRow}>
-                    <View style={styles.confirmDetailLeft}>
-                      <Ionicons name="people" size={18} color={Colors.gray[600]} />
-                      <Text style={styles.confirmDetailLabel}>Places</Text>
-                    </View>
-                    <Text style={styles.confirmDetailValue}>{seats}</Text>
-                  </View>
-                  <View style={styles.confirmDetailRow}>
-                    <View style={styles.confirmDetailLeft}>
-                      <Ionicons name="cash" size={18} color={Colors.gray[600]} />
-                      <Text style={styles.confirmDetailLabel}>Prix</Text>
-                    </View>
-                    <Text style={[styles.confirmDetailValue, { color: Colors.success }]}>
-                      {isFreeTrip ? 'Gratuit' : `${price} FC/pers`}
-                    </Text>
-                  </View>
-                  {description ? (
+                <View style={styles.ticketDivider}>
+                  <View style={styles.ticketDot} />
+                  <View style={styles.ticketDividerLine} />
+                  <View style={[styles.ticketDot, styles.ticketDotRight]} />
+                </View>
+
+                <View style={styles.ticketBody}>
+                  <View style={styles.confirmDetails}>
                     <View style={styles.confirmDetailRow}>
                       <View style={styles.confirmDetailLeft}>
-                        <Ionicons name="chatbox-ellipses" size={18} color={Colors.gray[600]} />
-                        <Text style={styles.confirmDetailLabel}>Description</Text>
+                        <Ionicons name="calendar" size={18} color={Colors.gray[400]} />
+                        <Text style={styles.confirmDetailLabel}>Date et heure</Text>
                       </View>
-                      <Text style={[styles.confirmDetailValue, styles.confirmDetailDescription]}>{description}</Text>
+                      <Text style={styles.confirmDetailValue}>{formattedFullDateTime}</Text>
                     </View>
-                  ) : null}
+                    <View style={styles.confirmDetailRow}>
+                      <View style={styles.confirmDetailLeft}>
+                        <Ionicons name="people" size={18} color={Colors.gray[400]} />
+                        <Text style={styles.confirmDetailLabel}>Places</Text>
+                      </View>
+                      <Text style={styles.confirmDetailValue}>{seats} places</Text>
+                    </View>
+                    <View style={styles.confirmDetailRow}>
+                      <View style={styles.confirmDetailLeft}>
+                        <Ionicons name="car" size={18} color={Colors.gray[400]} />
+                        <Text style={styles.confirmDetailLabel}>Véhicule</Text>
+                      </View>
+                      <Text style={styles.confirmDetailValue}>
+                        {vehicles.find(v => v.id === selectedVehicleId)?.brand} {vehicles.find(v => v.id === selectedVehicleId)?.model}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.ticketFooter}>
+                  <View>
+                    <Text style={styles.confirmDetailLabel}>Prix par place</Text>
+                    <Text style={styles.ticketPrice}>
+                      {isFreeTrip ? 'GRATUIT' : `${price} FC`}
+                    </Text>
+                  </View>
+                  <View style={[styles.confirmRouteDivider, { height: 30, marginHorizontal: Spacing.md, marginBottom: 0 }]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.confirmDetailLabel}>Total potentiel</Text>
+                    <Text style={[styles.ticketPrice, { color: Colors.gray[900] }]}>
+                      {isFreeTrip ? '0 FC' : `${parseInt(price || '0') * parseInt(seats)} FC`}
+                    </Text>
+                  </View>
                 </View>
               </View>
-            </View>
 
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={[styles.button, styles.buttonSecondary]}
-                onPress={() => setStep('details')}
-              >
-                <Text style={styles.buttonSecondaryText}>Retour</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.button,
-                  { flex: 1, marginLeft: Spacing.md },
-                  (isPublishing || !isIdentityVerified) && styles.buttonDisabled,
-                ]}
-                onPress={handlePublish}
-                disabled={isPublishing || !isIdentityVerified}
-              >
-                {isPublishing ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <Text style={styles.buttonText}>
-                    {isIdentityVerified ? 'Publier' : 'KYC requis'}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
-        )}
+              {description ? (
+                <View style={[styles.confirmCard, { backgroundColor: Colors.gray[50], borderStyle: 'dashed', borderWidth: 1, borderColor: Colors.gray[300] }]}>
+                  <Text style={styles.confirmSectionTitle}>NOTES COMPLÉMENTAIRES</Text>
+                  <Text style={styles.confirmDetailDescription}>{description}</Text>
+                </View>
+              ) : null}
+
+              <View style={styles.buttonRow}>
+                <TouchableOpacity
+                  style={[styles.button, styles.buttonSecondary, { flex: 0.4 }]}
+                  onPress={() => setStep('details')}
+                >
+                  <Text style={styles.buttonSecondaryText}>Modifier</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.button,
+                    { flex: 1, marginLeft: Spacing.md },
+                    (isPublishing || !isIdentityVerified) && styles.buttonDisabled,
+                  ]}
+                  onPress={handlePublish}
+                  disabled={isPublishing || !isIdentityVerified}
+                >
+                  {isPublishing ? (
+                    <ActivityIndicator color={Colors.white} />
+                  ) : (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Ionicons name="cloud-upload" size={20} color={Colors.white} />
+                      <Text style={styles.buttonText}>
+                        Confirmer et Publier
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
+          )}
       </ScrollView>
 
       <LocationPickerModal
@@ -1242,13 +1293,161 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
     marginTop: Spacing.xs,
   },
-  progressBar: {
-    height: 4,
-    backgroundColor: Colors.gray[200],
+  stepIndicatorContainer: {
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.white,
   },
-  progressFill: {
-    height: '100%',
+  stepIndicatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.gray[200],
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.gray[200],
+  },
+  stepDotActive: {
     backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  stepDotCompleted: {
+    backgroundColor: Colors.success,
+    borderColor: Colors.success,
+  },
+  stepLine: {
+    width: 60,
+    height: 3,
+    backgroundColor: Colors.gray[200],
+    marginHorizontal: Spacing.xs,
+  },
+  stepLineActive: {
+    backgroundColor: Colors.success,
+  },
+  stepLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: Spacing.xs,
+    gap: 40,
+  },
+  stepLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    fontWeight: FontWeights.medium,
+    width: 60,
+    textAlign: 'center',
+  },
+  stepLabelActive: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  stepperContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xs,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+  },
+  stepperButton: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.black,
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  stepperButtonDisabled: {
+    backgroundColor: Colors.gray[100],
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  stepperValueContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperValue: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  stepperLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+  },
+  ticketContainer: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xxl,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    overflow: 'hidden',
+    shadowColor: Colors.black,
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+    marginBottom: Spacing.xl,
+  },
+  ticketHeader: {
+    padding: Spacing.xl,
+    backgroundColor: Colors.gray[50],
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+  },
+  ticketBody: {
+    padding: Spacing.xl,
+  },
+  ticketFooter: {
+    padding: Spacing.xl,
+    backgroundColor: Colors.gray[50],
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[100],
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  ticketPrice: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.success,
+  },
+  ticketDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: Spacing.md,
+  },
+  ticketDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: Colors.gray[200],
+    borderStyle: 'dashed',
+  },
+  ticketDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    position: 'absolute',
+    left: -10,
+  },
+  ticketDotRight: {
+    left: undefined,
+    right: -10,
   },
   identityWarningCard: {
     flexDirection: 'row',
@@ -1566,12 +1765,28 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     paddingVertical: Spacing.sm,
   },
-  locationCardButtonIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: BorderRadius.full,
+  locationCardPlaceholder: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.gray[50],
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.xs,
+  },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.success + '15',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.full,
+  },
+  verifiedText: {
+    fontSize: FontSizes.xs,
+    color: Colors.success,
+    fontWeight: FontWeights.bold,
   },
   locationCardButtonText: {
     fontWeight: FontWeights.bold,
