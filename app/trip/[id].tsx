@@ -206,10 +206,6 @@ export default function TripDetailsScreen() {
     refetch: refetchKycStatus,
   } = useGetKycStatusQuery();
   const [uploadKyc, { isLoading: uploadingKyc }] = useUploadKycMutation();
-  const { data: currentReviews, isLoading: reviewsLoading } = useGetReviewsQuery(selectedReviewUserId ?? '', {
-    skip: !selectedReviewUserId || !reviewsModalVisible,
-  });
-
   const { data: driverReviews } = useGetReviewsQuery(trip?.driverId ?? '', {
     skip: !trip?.driverId,
   });
@@ -664,12 +660,6 @@ export default function TripDetailsScreen() {
         message: Array.isArray(message) ? message.join('\n') : message,
       });
     }
-  };
-
-  const openReviewsModal = (userId: string, userName: string) => {
-    setSelectedReviewUserId(userId);
-    setSelectedReviewUserName(userName);
-    setReviewsModalVisible(true);
   };
 
   const closeKycWizard = () => {
@@ -1380,69 +1370,79 @@ export default function TripDetailsScreen() {
                   <Text style={styles.driverName} numberOfLines={1}>{trip.driverName}</Text>
                   <Ionicons name="chevron-forward" size={18} color={Colors.gray[300]} />
                 </View>
-                  <TouchableOpacity 
-                    style={styles.driverMeta}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      if (trip.driverId) {
-                        openReviewsModal(trip.driverId, trip.driverName);
-                      }
-                    }}
-                  >
-                    <Ionicons name="star" size={14} color={Colors.secondary} />
-                    <Text style={styles.driverRating}>{driverReviewAverage.toFixed(1)}</Text>
-                    <View style={styles.driverDot} />
-                    <Text style={styles.driverVehicle} numberOfLines={1}>
-                      {trip.vehicle 
-                        ? `${trip.vehicle.brand} ${trip.vehicle.model}`
-                        : trip.vehicleInfo}
-                    </Text>
-                  </TouchableOpacity>
+                <View style={styles.driverMeta}>
+                  <Ionicons name="star" size={14} color={Colors.secondary} />
+                  <Text style={styles.driverRating}>{driverReviewAverage.toFixed(1)}</Text>
+                  <View style={styles.driverDot} />
+                  <Text style={styles.driverVehicle} numberOfLines={1}>
+                    {trip.vehicle 
+                      ? `${trip.vehicle.brand} ${trip.vehicle.model}`
+                      : trip.vehicleInfo}
+                  </Text>
                 </View>
-              </TouchableOpacity>
-
-              <View style={styles.driverActions}>
                 <TouchableOpacity
-                  style={styles.driverActionButton}
-                  onPress={handleContactDriver}
-                  disabled={isCreatingConversation}
-                >
-                  {isCreatingConversation ? (
-                    <ActivityIndicator size="small" color={Colors.primary} />
-                  ) : (
-                    <>
-                      <Ionicons name="chatbubble-ellipses" size={18} color={Colors.primary} />
-                      <Text style={styles.driverActionText}>Message</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.driverActionButton, styles.driverActionButtonGreen]}
-                  disabled={!driverPhone}
-                  onPress={() => {
-                    if (driverPhone) {
-                      setContactModalVisible(true);
-                    }
+                  style={styles.driverReviewLink}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    setDriverReviewsModalVisible(true);
                   }}
+                  disabled={driverReviewCount === 0}
                 >
-                  <Ionicons
-                    name="call"
-                    size={18}
-                    color={driverPhone ? Colors.success : Colors.gray[300]}
-                  />
                   <Text
                     style={[
-                      styles.driverActionText,
-                      { color: driverPhone ? Colors.success : Colors.gray[400] },
+                      styles.driverReviewLinkText,
+                      driverReviewCount === 0 && styles.driverReviewLinkTextDisabled,
                     ]}
                   >
-                    Appeler
+                    {driverReviewCount > 0
+                      ? `${driverReviewCount} avis`
+                      : 'Pas encore d\'avis'}
                   </Text>
                 </TouchableOpacity>
               </View>
-            </View>
-          </Animated.View>
+            </TouchableOpacity>
 
+            <View style={styles.driverActions}>
+              <TouchableOpacity
+                style={styles.driverActionButton}
+                onPress={handleContactDriver}
+                disabled={isCreatingConversation}
+              >
+                {isCreatingConversation ? (
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                ) : (
+                  <>
+                    <Ionicons name="chatbubble-ellipses" size={18} color={Colors.primary} />
+                    <Text style={styles.driverActionText}>Message</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.driverActionButton, styles.driverActionButtonGreen]}
+                disabled={!driverPhone}
+                onPress={() => {
+                  if (driverPhone) {
+                    setContactModalVisible(true);
+                  }
+                }}
+              >
+                <Ionicons
+                  name="call"
+                  size={18}
+                  color={driverPhone ? Colors.success : Colors.gray[300]}
+                />
+                <Text
+                  style={[
+                    styles.driverActionText,
+                    { color: driverPhone ? Colors.success : Colors.gray[400] },
+                  ]}
+                >
+                  Appeler
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Animated.View>
 
         {/* Détails */}
         <Animated.View entering={FadeInDown.delay(400)} style={styles.section}>
@@ -1548,29 +1548,14 @@ export default function TripDetailsScreen() {
                           <Ionicons name="person" size={20} color={Colors.gray[500]} />
                         </View>
                       )}
-                        <View style={styles.passengerInfo}>
-                          <Text style={styles.passengerName}>
-                            {booking.passengerName || 'Passager'}
-                          </Text>
-                          <View style={styles.passengerMeta}>
-                            <Text style={styles.passengerSeats}>
-                              {booking.numberOfSeats} place{booking.numberOfSeats > 1 ? 's' : ''}
-                            </Text>
-                            <TouchableOpacity
-                              style={styles.passengerReviewButton}
-                              onPress={(e) => {
-                                e.stopPropagation();
-                                if (booking.passengerId) {
-                                  openReviewsModal(booking.passengerId, booking.passengerName || 'Passager');
-                                }
-                              }}
-                            >
-                              <Ionicons name="star" size={12} color={Colors.secondary} />
-                              <Text style={styles.passengerReviewText}>Avis</Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-
+                      <View style={styles.passengerInfo}>
+                        <Text style={styles.passengerName}>
+                          {booking.passengerName || 'Passager'}
+                        </Text>
+                        <Text style={styles.passengerSeats}>
+                          {booking.numberOfSeats} place{booking.numberOfSeats > 1 ? 's' : ''}
+                        </Text>
+                      </View>
                       <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
                     </TouchableOpacity>
                   ))}
@@ -1922,53 +1907,50 @@ export default function TripDetailsScreen() {
         </View>
       </Modal>
 
-        <Modal
-          animationType="fade"
-          transparent
-          visible={reviewsModalVisible}
-          onRequestClose={() => setReviewsModalVisible(false)}
-        >
-          <View style={styles.reviewsModalOverlay}>
-            <Animated.View entering={FadeInDown} style={styles.reviewsModalCard}>
-              <View style={styles.reviewsModalHeader}>
-                <Text style={styles.reviewsModalTitle}>Avis sur {selectedReviewUserName}</Text>
-                <TouchableOpacity onPress={() => setReviewsModalVisible(false)}>
-                  <Ionicons name="close" size={20} color={Colors.gray[600]} />
-                </TouchableOpacity>
-              </View>
-              <ScrollView
-                style={styles.reviewsModalContent}
-                contentContainerStyle={{ paddingBottom: Spacing.xl }}
-                showsVerticalScrollIndicator={false}
-              >
-                {reviewsLoading ? (
-                  <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: 20 }} />
-                ) : !currentReviews || currentReviews.length === 0 ? (
-                  <Text style={styles.reviewsEmptyText}>Pas encore d'avis pour cet utilisateur.</Text>
-                ) : (
-                  currentReviews.map((review) => (
-                    <View key={review.id} style={styles.reviewItem}>
-                      <View style={styles.reviewItemHeader}>
-                        <Text style={styles.reviewAuthor}>{review.fromUserName ?? 'Utilisateur'}</Text>
-                        <View style={styles.reviewRating}>
-                          <Ionicons name="star" size={16} color={Colors.secondary} />
-                          <Text style={styles.reviewRatingText}>{review.rating.toFixed(1)}</Text>
-                        </View>
+      <Modal
+        animationType="fade"
+        transparent
+        visible={driverReviewsModalVisible}
+        onRequestClose={() => setDriverReviewsModalVisible(false)}
+      >
+        <View style={styles.reviewsModalOverlay}>
+          <Animated.View entering={FadeInDown} style={styles.reviewsModalCard}>
+            <View style={styles.reviewsModalHeader}>
+              <Text style={styles.reviewsModalTitle}>Avis sur {trip?.driverName}</Text>
+              <TouchableOpacity onPress={() => setDriverReviewsModalVisible(false)}>
+                <Ionicons name="close" size={20} color={Colors.gray[600]} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={styles.reviewsModalContent}
+              contentContainerStyle={{ paddingBottom: Spacing.xl }}
+              showsVerticalScrollIndicator={false}
+            >
+              {driverReviewCount === 0 ? (
+                <Text style={styles.reviewsEmptyText}>Pas encore d'avis pour ce conducteur.</Text>
+              ) : (
+                driverReviews?.map((review) => (
+                  <View key={review.id} style={styles.reviewItem}>
+                    <View style={styles.reviewItemHeader}>
+                      <Text style={styles.reviewAuthor}>{review.fromUserName ?? 'Utilisateur'}</Text>
+                      <View style={styles.reviewRating}>
+                        <Ionicons name="star" size={16} color={Colors.secondary} />
+                        <Text style={styles.reviewRatingText}>{review.rating.toFixed(1)}</Text>
                       </View>
-                      <Text style={styles.reviewDate}>
-                        {new Date(review.createdAt).toLocaleDateString('fr-FR')}
-                      </Text>
-                      {review.comment ? (
-                        <Text style={styles.reviewComment}>{review.comment}</Text>
-                      ) : null}
                     </View>
-                  ))
-                )}
-              </ScrollView>
-            </Animated.View>
-          </View>
-        </Modal>
-
+                    <Text style={styles.reviewDate}>
+                      {new Date(review.createdAt).toLocaleDateString('fr-FR')}
+                    </Text>
+                    {review.comment ? (
+                      <Text style={styles.reviewComment}>{review.comment}</Text>
+                    ) : null}
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </Modal>
 
       <TutorialOverlay
         visible={tripGuideVisible}
@@ -4382,28 +4364,6 @@ const styles = StyleSheet.create({
   },
   passengerInfo: {
     flex: 1,
-  },
-  passengerMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    marginTop: 2,
-  },
-  passengerReviewButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: Colors.secondary + '20',
-  },
-  passengerReviewText: {
-    fontSize: 10,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[700],
   },
   passengerName: {
     fontSize: FontSizes.base,
