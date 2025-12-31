@@ -320,184 +320,205 @@ export default function HomeScreen() {
   }));
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.greeting}>Bonjour 👋</Text>
-            <Text style={styles.headerTitle}>Trouvez votre trajet</Text>
-          </View>
-          <View style={styles.headerTopRight}>
-            <TouchableOpacity 
-              style={styles.expandButton} 
-              onPress={() => setIsHeaderExpanded(!isHeaderExpanded)}
-            >
-              <Ionicons 
-                name={isHeaderExpanded ? "chevron-up" : "chevron-down"} 
-                size={20} 
-                color={Colors.white} 
-              />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.notificationButton} onPress={openNotifications}>
-              <Ionicons name="notifications" size={24} color={Colors.white} />
-              {unreadNotifications > 0 && (
-                <View style={styles.notificationBadge}>
-                  <Text style={styles.notificationBadgeText}>
-                    {unreadNotifications > 9 ? '9+' : unreadNotifications}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Recherche intelligente */}
-        <Animated.View 
-          style={[
-            styles.searchCardContainer,
-            animatedSearchCardStyle,
-          ]}
-        >
-          <View style={styles.searchCard}>
-            <View style={styles.advancedCard}>
-              {/* <Text style={styles.advancedTitle}>Recherche par carte</Text> */}
-              <View style={styles.advancedLocations}>
-                <TouchableOpacity
-                  style={styles.advancedLocationButton}
-                  onPress={() => setActivePicker('departure')}
-                >
-                  <View style={[styles.advancedLocationIcon, { backgroundColor: Colors.success + '15' }]}>
-                    <Ionicons name="location" size={18} color={Colors.success} />
+      <SafeAreaView style={styles.container} edges={['top']}>
+        {/* Header avec un nouveau style plus moderne */}
+        <View style={styles.header}>
+          <LinearGradient
+            colors={[Colors.primary, '#2563EB']}
+            style={styles.headerGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+          <View style={styles.headerTop}>
+            <View>
+              <Text style={styles.greeting}>Bonjour {currentUser?.name?.split(' ')[0] || ''} 👋</Text>
+              <Text style={styles.headerTitle}>Où allez-vous ?</Text>
+            </View>
+            <View style={styles.headerTopRight}>
+              <TouchableOpacity 
+                style={styles.expandButton} 
+                onPress={() => setIsHeaderExpanded(!isHeaderExpanded)}
+              >
+                <Ionicons 
+                  name={isHeaderExpanded ? "search" : "options-outline"} 
+                  size={20} 
+                  color={Colors.white} 
+                />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.notificationButton} onPress={openNotifications}>
+                <Ionicons name="notifications-outline" size={24} color={Colors.white} />
+                {unreadNotifications > 0 && (
+                  <View style={styles.notificationBadge}>
+                    <Text style={styles.notificationBadgeText}>
+                      {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                    </Text>
                   </View>
-                  <View style={styles.advancedLocationContent}>
-                    <Text style={styles.advancedLocationLabel}>Départ</Text>
-                    <Text style={styles.advancedLocationTitle}>{advancedDepartureSummary.title}</Text>
-                    <Text style={styles.advancedLocationSubtitle}>{advancedDepartureSummary.address}</Text>
-                    <Text style={styles.advancedLocationCoords}>{advancedDepartureSummary.coords}</Text>
-                  </View>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.advancedLocationButton}
-                  onPress={() => setActivePicker('arrival')}
-                >
-                  <View style={[styles.advancedLocationIcon, { backgroundColor: Colors.primary + '15' }]}>
-                    <Ionicons name="navigate" size={18} color={Colors.primary} />
-                  </View>
-                  <View style={styles.advancedLocationContent}>
-                    <Text style={styles.advancedLocationLabel}>Arrivée</Text>
-                    <Text style={styles.advancedLocationTitle}>{advancedArrivalSummary.title}</Text>
-                    <Text style={styles.advancedLocationSubtitle}>{advancedArrivalSummary.address}</Text>
-                    <Text style={styles.advancedLocationCoords}>{advancedArrivalSummary.coords}</Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-
-              {hasLocationSelections && (
-                <View style={styles.advancedButtons}>
-                  <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={handleClearAdvancedFilters}>
-                    <Text style={styles.buttonSecondaryText}>Réinitialiser</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.button,
-                      { flex: 1, marginLeft: Spacing.md },
-                      (advancedSearching || !hasLocationSelections) && styles.buttonDisabled,
-                    ]}
-                    onPress={handleAdvancedSearch}
-                    disabled={advancedSearching}
-                  >
-                    {advancedSearching ? (
-                      <ActivityIndicator color={Colors.white} />
-                    ) : (
-                      <Text style={styles.buttonText}>Appliquer</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              )}
+                )}
+              </TouchableOpacity>
             </View>
           </View>
-        </Animated.View>
-      </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollViewContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Actions rapides */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Actions rapides</Text>
-          <View style={styles.quickActions}>
-            <TouchableOpacity
-              style={[styles.quickActionCard, { marginRight: Spacing.md }]}
-              onPress={() => router.push('/publish')}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: Colors.primary }]}>
-                <Ionicons name="add-circle" size={24} color={Colors.white} />
-              </View>
-              <Text style={styles.quickActionTitle}>Publier un trajet</Text>
-              <Text style={styles.quickActionSubtitle}>En 3 clics</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.quickActionCard, styles.quickActionCardBlue, { overflow: 'hidden', padding: 0 }]}
-              onPress={() => router.push('/search')}
-            >
-              <LinearGradient
-                colors={['#0052D4', '#4364F7', '#6FB1FC']} // Gradient Bleu (Deep Blue to Light Blue)
-                style={{ flex: 1, padding: Spacing.md, justifyContent: 'center' }}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                  <Ionicons name="search" size={24} color={Colors.white} />
+          {/* Recherche intelligente - Améliorée */}
+          <Animated.View 
+            style={[
+              styles.searchCardContainer,
+              animatedSearchCardStyle,
+            ]}
+          >
+            <View style={styles.searchCard}>
+              <View style={styles.advancedCard}>
+                <View style={styles.advancedHeader}>
+                  <Text style={styles.advancedTitle}>Recherche précise</Text>
+                  <Ionicons name="map" size={20} color={Colors.primary} />
                 </View>
-                <Text style={styles.quickActionTitleb}>Chercher un trajet</Text>
-                <Text style={styles.quickActionSubtitleb}>Trouvez votre route</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-          
-          {/* Deuxième ligne d'actions rapides */}
-          <View style={[styles.quickActions, { marginTop: Spacing.md }]}>
-            <TouchableOpacity
-              style={[styles.quickActionCard, { marginRight: Spacing.md, backgroundColor: 'rgba(34, 197, 94, 0.1)', borderColor: 'rgba(34, 197, 94, 0.2)' }]}
-              onPress={() => router.push('/request')}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: Colors.success }]}>
-                <Ionicons name="document-text" size={24} color={Colors.white} />
-              </View>
-              <Text style={styles.quickActionTitle}>Créer une demande</Text>
-              <Text style={styles.quickActionSubtitle}>Les propriétaires vous ferons des offres</Text>
-            </TouchableOpacity>
+                
+                <View style={styles.advancedLocations}>
+                  <TouchableOpacity
+                    style={styles.advancedLocationButton}
+                    onPress={() => setActivePicker('departure')}
+                  >
+                    <View style={[styles.advancedLocationIcon, { backgroundColor: Colors.success + '15' }]}>
+                      <Ionicons name="location" size={18} color={Colors.success} />
+                    </View>
+                    <View style={styles.advancedLocationContent}>
+                      <Text style={styles.advancedLocationLabel}>Départ</Text>
+                      <Text style={styles.advancedLocationTitle} numberOfLines={1}>
+                        {filterDepartureLocation?.title ?? 'Point de départ'}
+                      </Text>
+                      <Text style={styles.advancedLocationSubtitle} numberOfLines={1}>
+                        {filterDepartureLocation?.address ?? 'Sélectionnez un lieu'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
 
-            {currentUser?.isDriver ? (
+                  <View style={styles.advancedLocationDivider}>
+                    <View style={styles.locationLine} />
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.advancedLocationButton}
+                    onPress={() => setActivePicker('arrival')}
+                  >
+                    <View style={[styles.advancedLocationIcon, { backgroundColor: Colors.primary + '15' }]}>
+                      <Ionicons name="navigate" size={18} color={Colors.primary} />
+                    </View>
+                    <View style={styles.advancedLocationContent}>
+                      <Text style={styles.advancedLocationLabel}>Arrivée</Text>
+                      <Text style={styles.advancedLocationTitle} numberOfLines={1}>
+                        {filterArrivalLocation?.title ?? 'Destination'}
+                      </Text>
+                      <Text style={styles.advancedLocationSubtitle} numberOfLines={1}>
+                        {filterArrivalLocation?.address ?? 'Où souhaitez-vous aller ?'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+
+                {hasLocationSelections && (
+                  <View style={styles.advancedButtons}>
+                    <TouchableOpacity style={[styles.button, styles.buttonSecondary]} onPress={handleClearAdvancedFilters}>
+                      <Text style={styles.buttonSecondaryText}>Effacer</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.button,
+                        styles.buttonPrimary,
+                        { flex: 1, marginLeft: Spacing.md },
+                        (advancedSearching) && styles.buttonDisabled,
+                      ]}
+                      onPress={handleAdvancedSearch}
+                      disabled={advancedSearching}
+                    >
+                      {advancedSearching ? (
+                        <ActivityIndicator color={Colors.white} />
+                      ) : (
+                        <Text style={styles.buttonText}>Rechercher</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            </View>
+          </Animated.View>
+        </View>
+
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollViewContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Bannière de bienvenue/promo si premier lancement ou autre */}
+          <Animated.View entering={FadeInDown.delay(100)} style={styles.promoBanner}>
+            <LinearGradient
+              colors={['#6366F1', '#8B5CF6']}
+              style={styles.promoGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <View style={styles.promoContent}>
+                <Text style={styles.promoTitle}>Voyagez l'esprit tranquille</Text>
+                <Text style={styles.promoSubtitle}>Économisez sur vos trajets quotidiens avec le covoiturage.</Text>
+              </View>
+              <View style={styles.promoImage}>
+                <Ionicons name="shield-checkmark" size={40} color="rgba(255,255,255,0.3)" />
+              </View>
+            </LinearGradient>
+          </Animated.View>
+
+          {/* Actions rapides */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Que souhaitez-vous faire ?</Text>
+            <View style={styles.quickActions}>
               <TouchableOpacity
-                style={[styles.quickActionCard, { backgroundColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.2)' }]}
-                onPress={() => router.push('/requests')}
+                style={[styles.quickActionCard, styles.publishActionCard]}
+                onPress={() => router.push('/publish')}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: Colors.primary }]}>
+                  <Ionicons name="add" size={28} color={Colors.white} />
+                </View>
+                <Text style={styles.quickActionTitle}>Publier</Text>
+                <Text style={styles.quickActionSubtitle}>Je conduis</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.quickActionCard, styles.searchActionCard]}
+                onPress={() => router.push('/search')}
               >
                 <View style={[styles.quickActionIcon, { backgroundColor: '#3B82F6' }]}>
-                  <Ionicons name="list-circle" size={24} color={Colors.white} />
+                  <Ionicons name="search" size={24} color={Colors.white} />
                 </View>
-                <Text style={styles.quickActionTitle}>Demandes disponibles</Text>
-                <Text style={styles.quickActionSubtitle}>Faire des offres</Text>
+                <Text style={styles.quickActionTitle}>Chercher</Text>
+                <Text style={styles.quickActionSubtitle}>Je voyage</Text>
               </TouchableOpacity>
-            ) : (
+            </View>
+            
+            <View style={[styles.quickActions, { marginTop: Spacing.md }]}>
               <TouchableOpacity
-                style={[styles.quickActionCard, { backgroundColor: 'rgba(139, 92, 246, 0.1)', borderColor: 'rgba(139, 92, 246, 0.2)' }]}
-                onPress={() => router.push('/my-requests')}
+                style={[styles.quickActionCard, styles.requestActionCard]}
+                onPress={() => router.push('/request')}
+              >
+                <View style={[styles.quickActionIcon, { backgroundColor: Colors.success }]}>
+                  <Ionicons name="paper-plane" size={24} color={Colors.white} />
+                </View>
+                <Text style={styles.quickActionTitle}>Demander</Text>
+                <Text style={styles.quickActionSubtitle}>Trajet sur mesure</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.quickActionCard, styles.listActionCard]}
+                onPress={() => router.push(currentUser?.isDriver ? '/requests' : '/my-requests')}
               >
                 <View style={[styles.quickActionIcon, { backgroundColor: '#8B5CF6' }]}>
                   <Ionicons name="list" size={24} color={Colors.white} />
                 </View>
-                <Text style={styles.quickActionTitle}>les demandes</Text>
-                <Text style={styles.quickActionSubtitle}>Voir les demandes</Text>
+                <Text style={styles.quickActionTitle}>Demandes</Text>
+                <Text style={styles.quickActionSubtitle}>
+                  {currentUser?.isDriver ? 'Offres' : 'Mes demandes'}
+                </Text>
               </TouchableOpacity>
-            )}
+            </View>
           </View>
-        </View>
+
 
         {/* Trajets disponibles */}
         <View style={styles.section}>
@@ -683,639 +704,489 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.gray[50],
-  },
-  header: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.lg,
-    borderBottomLeftRadius: BorderRadius.xxl,
-    borderBottomRightRadius: BorderRadius.xxl,
-  },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.xl,
-  },
-  headerTopRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  expandButton: {
-    width: 40,
-    height: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  greeting: {
-    color: Colors.white,
-    opacity: 0.8,
-    fontSize: FontSizes.sm,
-    marginBottom: Spacing.xs,
-  },
-  headerTitle: {
-    color: Colors.white,
-    fontSize: FontSizes.xxl,
-    fontWeight: FontWeights.bold,
-  },
-  notificationButton: {
-    width: 48,
-    height: 48,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  notificationBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    minWidth: 18,
-    height: 18,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.danger,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.xs / 2,
-  },
-  notificationBadgeText: {
-    color: Colors.white,
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-  },
-  searchCardContainer: {
-    marginTop: Spacing.md,
-    overflow: 'hidden',
-  },
-  searchCard: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    ...CommonStyles.shadowLg,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-    paddingBottom: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[100],
-  },
-  searchDivider: {
-    height: 1,
-    backgroundColor: Colors.gray[100],
-    marginBottom: Spacing.md,
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: Spacing.md,
-    fontSize: FontSizes.base,
-    color: Colors.gray[800],
-  },
-  searchButton: {
-    backgroundColor: Colors.primary,
-    marginTop: Spacing.lg,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchButtonText: {
-    color: Colors.white,
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollViewContent: {
-    flexGrow: 1,
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xl,
-    paddingBottom: 120, // Increased to ensure content is not hidden behind the tab bar
-  },
-  section: {
-    marginBottom: Spacing.xl,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  sectionTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    marginBottom: Spacing.md,
-  },
-  seeAllText: {
-    color: Colors.primary,
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-  },
-  popularLocations: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: Spacing.md,
-  },
-  locationChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: Colors.primary + '30',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    marginRight: Spacing.sm,
-    marginBottom: Spacing.sm,
-    ...CommonStyles.shadowSm,
-  },
-  locationChipText: {
-    marginLeft: Spacing.xs,
-    fontSize: FontSizes.sm,
-    color: Colors.gray[800],
-    fontWeight: FontWeights.semibold,
-  },
-  locationCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.gray[100],
-    marginBottom: Spacing.sm,
-  },
-  locationIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary + '10',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.md,
-  },
-  locationInfo: {
-    flex: 1,
-  },
-  locationName: {
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  locationAddress: {
-    color: Colors.gray[500],
-    fontSize: FontSizes.sm,
-    marginTop: 2,
-  },
-  savedSection: {
-    marginTop: Spacing.md,
-  },
-  savedTitle: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[500],
-    marginBottom: Spacing.sm,
-  },
-  addLocationCard: {
-    marginTop: Spacing.md,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    gap: Spacing.sm,
-  },
-  addLocationTitle: {
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    marginBottom: Spacing.sm,
-  },
-  addInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    gap: Spacing.sm,
-  },
-  addInput: {
-    flex: 1,
-    fontSize: FontSizes.base,
-    color: Colors.gray[800],
-    paddingVertical: Spacing.sm,
-  },
-  coordsRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  coordInput: {
-    flex: 1,
-  },
-  addButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-    marginTop: Spacing.sm,
-  },
-  addButtonText: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
-  },
-  quickToggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.lg,
-    padding: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.gray[50],
-  },
-  quickToggleLabel: {
-    color: Colors.gray[700],
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.medium,
-  },
-  quickToggleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  quickToggleAction: {
-    color: Colors.primary,
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.sm,
-  },
-  button: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonText: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
-  },
-  buttonSecondary: {
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-  },
-  buttonSecondaryText: {
-    color: Colors.gray[700],
-    fontWeight: FontWeights.medium,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  quickActions: {
-    flexDirection: 'row',
-  },
-  quickActionCard: {
-    flex: 1,
-    backgroundColor: 'rgba(255, 107, 53, 0.1)',
-    padding: Spacing.lg,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 107, 53, 0.2)',
-  },
-  quickActionCardBlue: {
-    backgroundColor: 'rgba(52, 152, 219, 0.1)',
-    borderColor: 'rgba(52, 152, 219, 0.2)',
-  },
-  quickActionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.sm,
-  },
-  quickActionTitle: {
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    fontSize: FontSizes.base,
-    marginBottom: Spacing.xs,
-  },
-  quickActionTitleb: {
-    fontWeight: FontWeights.bold,
-    color: Colors.white,
-    fontSize: FontSizes.base,
-    marginBottom: Spacing.xs,
-  },
-  quickActionSubtitle: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[600],
-    marginTop: Spacing.xs,
-  },
-  quickActionSubtitleb: {
-    fontSize: FontSizes.xs,
-    color: Colors.white,
-    marginTop: Spacing.xs,
-  },
-  tripCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    marginBottom: Spacing.md,
-    ...CommonStyles.shadowSm,
-  },
-  advancedCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    borderColor: Colors.gray[100],
-    padding: Spacing.lg,
-    marginBottom: Spacing.lg,
-    ...CommonStyles.shadowSm,
-  },
-  advancedTitle: {
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    marginBottom: Spacing.md,
-  },
-  advancedLocations: {
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  advancedLocationButton: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    gap: Spacing.md,
-  },
-  advancedLocationIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  advancedLocationContent: {
-    flex: 1,
-  },
-  advancedLocationLabel: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
-    textTransform: 'uppercase',
-  },
-  advancedLocationTitle: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  advancedLocationSubtitle: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-  },
-  advancedLocationCoords: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
-  },
-  advancedInputRow: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  advancedInputGroup: {
-    flex: 1,
-  },
-  advancedInputLabel: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[600],
-    marginBottom: Spacing.xs,
-    textTransform: 'uppercase',
-  },
-  advancedInput: {
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    fontSize: FontSizes.base,
-    color: Colors.gray[900],
-    backgroundColor: Colors.white,
-  },
-  advancedButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  tripStateCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.gray[100],
-    marginBottom: Spacing.md,
-    gap: Spacing.sm,
-  },
-  tripStateText: {
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-  },
-  tripStateSubText: {
-    color: Colors.gray[600],
-    fontSize: FontSizes.sm,
-    textAlign: 'center',
-  },
-  retryButton: {
-    marginTop: Spacing.xs,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.primary,
-  },
-  retryButtonText: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
-  },
-  tripHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: Spacing.md,
-  },
-  tripDriverInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    backgroundColor: Colors.gray[300],
-    borderRadius: BorderRadius.full,
-    marginRight: Spacing.md,
-  },
-  tripDriverDetails: {
-    flex: 1,
-    minWidth: 0, // Permet au flex de fonctionner correctement avec numberOfLines
-  },
-  driverName: {
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    fontSize: FontSizes.base,
-    marginBottom: Spacing.xs,
-    maxWidth: '100%',
-  },
-  driverMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  driverRating: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    marginLeft: Spacing.xs,
-  },
-  dot: {
-    width: 4,
-    height: 4,
-    backgroundColor: Colors.gray[400],
-    borderRadius: BorderRadius.full,
-    marginHorizontal: Spacing.sm,
-  },
-  vehicleInfo: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    flex: 1,
-    minWidth: 0,
-  },
-  headerBadges: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    flexWrap: 'wrap',
-    maxWidth: 120,
-    justifyContent: 'flex-end',
-  },
-  bookedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary + '15',
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    gap: 4,
-  },
-  bookedBadgeText: {
-    color: Colors.primary,
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.xs,
-  },
-  ongoingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.success + '15',
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    gap: 4,
-  },
-  ongoingBadgeText: {
-    color: Colors.success,
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.xs,
-  },
-  priceBadge: {
-    backgroundColor: 'rgba(46, 204, 113, 0.1)',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.full,
-  },
-  priceText: {
-    color: Colors.success,
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.sm,
-  },
-  freeBadge: {
-    backgroundColor: Colors.success + '15',
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-  },
-  freeBadgeText: {
-    color: Colors.success,
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.base,
-  },
-  tripRoute: {
-    marginBottom: Spacing.md,
-  },
-  routeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-  },
-  routeText: {
-    color: Colors.gray[700],
-    marginLeft: Spacing.sm,
-    flex: 1,
-    fontSize: FontSizes.base,
-  },
-  timeContainer: {
-    alignItems: 'flex-end',
-  },
-  routeDateLabel: {
-    fontSize: FontSizes.xs,
-    color: Colors.primary,
-    fontWeight: FontWeights.medium,
-    marginBottom: 2,
-  },
-  routeTime: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[500],
-  },
-  tripFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray[100],
-  },
-  tripFooterLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  seatsText: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    marginLeft: Spacing.xs,
-  },
-  reserveButton: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.md,
-  },
-  viewButton: {
-    backgroundColor: Colors.secondary,
-  },
-  reserveButtonText: {
-    color: Colors.white,
-    fontWeight: FontWeights.semibold,
-    fontSize: FontSizes.sm,
-  },
-});
+  styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: Colors.gray[50],
+    },
+    header: {
+      paddingHorizontal: Spacing.xl,
+      paddingTop: Spacing.lg,
+      paddingBottom: Spacing.xl,
+      borderBottomLeftRadius: BorderRadius.xxl,
+      borderBottomRightRadius: BorderRadius.xxl,
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    headerGradient: {
+      ...StyleSheet.absoluteFillObject,
+    },
+    headerTop: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Spacing.lg,
+      zIndex: 1,
+    },
+    headerTopRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.sm,
+    },
+    expandButton: {
+      width: 40,
+      height: 40,
+      backgroundColor: 'rgba(255, 255, 255, 0.15)',
+      borderRadius: BorderRadius.full,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.2)',
+    },
+    greeting: {
+      color: Colors.white,
+      opacity: 0.9,
+      fontSize: FontSizes.sm,
+      fontWeight: FontWeights.medium,
+      marginBottom: 2,
+    },
+    headerTitle: {
+      color: Colors.white,
+      fontSize: FontSizes.xxl,
+      fontWeight: FontWeights.bold,
+    },
+    notificationButton: {
+      width: 40,
+      height: 40,
+      backgroundColor: 'rgba(255, 255, 255, 0.15)',
+      borderRadius: BorderRadius.full,
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.2)',
+    },
+    notificationBadge: {
+      position: 'absolute',
+      top: -2,
+      right: -2,
+      minWidth: 18,
+      height: 18,
+      borderRadius: 9,
+      backgroundColor: Colors.danger,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 4,
+      borderWidth: 2,
+      borderColor: Colors.primary,
+    },
+    notificationBadgeText: {
+      color: Colors.white,
+      fontSize: 10,
+      fontWeight: FontWeights.bold,
+    },
+    searchCardContainer: {
+      marginTop: Spacing.sm,
+      overflow: 'hidden',
+    },
+    searchCard: {
+      backgroundColor: 'transparent',
+    },
+    advancedCard: {
+      backgroundColor: Colors.white,
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.lg,
+      ...CommonStyles.shadowLg,
+    },
+    advancedHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Spacing.lg,
+    },
+    advancedTitle: {
+      fontSize: FontSizes.base,
+      fontWeight: FontWeights.bold,
+      color: Colors.gray[900],
+    },
+    advancedLocations: {
+      gap: 0,
+    },
+    advancedLocationButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: Spacing.md,
+    },
+    advancedLocationIcon: {
+      width: 44,
+      height: 44,
+      borderRadius: BorderRadius.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: Spacing.md,
+    },
+    advancedLocationContent: {
+      flex: 1,
+    },
+    advancedLocationLabel: {
+      fontSize: 10,
+      color: Colors.gray[500],
+      fontWeight: FontWeights.bold,
+      textTransform: 'uppercase',
+      marginBottom: 2,
+    },
+    advancedLocationTitle: {
+      fontSize: FontSizes.base,
+      fontWeight: FontWeights.bold,
+      color: Colors.gray[900],
+    },
+    advancedLocationSubtitle: {
+      fontSize: FontSizes.sm,
+      color: Colors.gray[500],
+    },
+    advancedLocationDivider: {
+      height: 20,
+      marginLeft: 22,
+      justifyContent: 'center',
+    },
+    locationLine: {
+      width: 2,
+      height: '100%',
+      backgroundColor: Colors.gray[200],
+      borderRadius: 1,
+    },
+    advancedButtons: {
+      flexDirection: 'row',
+      marginTop: Spacing.lg,
+      gap: Spacing.md,
+    },
+    button: {
+      height: 48,
+      borderRadius: BorderRadius.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: Spacing.lg,
+    },
+    buttonPrimary: {
+      backgroundColor: Colors.primary,
+    },
+    buttonSecondary: {
+      backgroundColor: Colors.gray[100],
+    },
+    buttonSecondaryText: {
+      color: Colors.gray[700],
+      fontWeight: FontWeights.bold,
+    },
+    buttonText: {
+      color: Colors.white,
+      fontWeight: FontWeights.bold,
+      fontSize: FontSizes.base,
+    },
+    buttonDisabled: {
+      opacity: 0.6,
+    },
+    scrollView: {
+      flex: 1,
+    },
+    scrollViewContent: {
+      paddingBottom: 100,
+    },
+    promoBanner: {
+      marginHorizontal: Spacing.xl,
+      marginTop: Spacing.xl,
+      marginBottom: Spacing.lg,
+      borderRadius: BorderRadius.xl,
+      overflow: 'hidden',
+      ...CommonStyles.shadowMd,
+    },
+    promoGradient: {
+      flexDirection: 'row',
+      padding: Spacing.lg,
+      alignItems: 'center',
+    },
+    promoContent: {
+      flex: 1,
+    },
+    promoTitle: {
+      color: Colors.white,
+      fontSize: FontSizes.lg,
+      fontWeight: FontWeights.bold,
+      marginBottom: 4,
+    },
+    promoSubtitle: {
+      color: Colors.white,
+      opacity: 0.9,
+      fontSize: FontSizes.sm,
+    },
+    promoImage: {
+      marginLeft: Spacing.md,
+    },
+    section: {
+      paddingHorizontal: Spacing.xl,
+      marginBottom: Spacing.xl,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Spacing.md,
+    },
+    sectionTitle: {
+      fontSize: FontSizes.lg,
+      fontWeight: FontWeights.bold,
+      color: Colors.gray[900],
+    },
+    seeAllText: {
+      color: Colors.primary,
+      fontWeight: FontWeights.bold,
+    },
+    quickActions: {
+      flexDirection: 'row',
+      gap: Spacing.md,
+    },
+    quickActionCard: {
+      flex: 1,
+      padding: Spacing.lg,
+      borderRadius: BorderRadius.xl,
+      backgroundColor: Colors.white,
+      borderWidth: 1,
+      borderColor: Colors.gray[100],
+      ...CommonStyles.shadowSm,
+    },
+    publishActionCard: {
+      backgroundColor: Colors.primary + '08',
+      borderColor: Colors.primary + '20',
+    },
+    searchActionCard: {
+      backgroundColor: '#3B82F608',
+      borderColor: '#3B82F620',
+    },
+    requestActionCard: {
+      backgroundColor: Colors.success + '08',
+      borderColor: Colors.success + '20',
+    },
+    listActionCard: {
+      backgroundColor: '#8B5CF608',
+      borderColor: '#8B5CF620',
+    },
+    quickActionIcon: {
+      width: 48,
+      height: 48,
+      borderRadius: BorderRadius.full,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: Spacing.md,
+    },
+    quickActionTitle: {
+      fontSize: FontSizes.base,
+      fontWeight: FontWeights.bold,
+      color: Colors.gray[900],
+    },
+    quickActionSubtitle: {
+      fontSize: FontSizes.xs,
+      color: Colors.gray[500],
+      marginTop: 2,
+    },
+    tripCard: {
+      backgroundColor: Colors.white,
+      borderRadius: BorderRadius.xl,
+      padding: Spacing.lg,
+      marginBottom: Spacing.md,
+      borderWidth: 1,
+      borderColor: Colors.gray[100],
+      ...CommonStyles.shadowSm,
+    },
+    tripHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: Spacing.md,
+    },
+    tripDriverInfo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+    },
+    avatar: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: Colors.gray[200],
+      marginRight: Spacing.md,
+    },
+    tripDriverDetails: {
+      flex: 1,
+    },
+    driverName: {
+      fontSize: FontSizes.base,
+      fontWeight: FontWeights.bold,
+      color: Colors.gray[900],
+    },
+    driverMeta: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 2,
+    },
+    driverRating: {
+      fontSize: 12,
+      color: Colors.gray[600],
+      marginLeft: 4,
+    },
+    dot: {
+      width: 3,
+      height: 3,
+      borderRadius: 1.5,
+      backgroundColor: Colors.gray[400],
+      marginHorizontal: 6,
+    },
+    vehicleInfo: {
+      fontSize: 12,
+      color: Colors.gray[500],
+      flex: 1,
+    },
+    headerBadges: {
+      alignItems: 'flex-end',
+      gap: 4,
+    },
+    bookedBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: Colors.primary + '15',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+    },
+    bookedBadgeText: {
+      fontSize: 10,
+      fontWeight: FontWeights.bold,
+      color: Colors.primary,
+      marginLeft: 4,
+    },
+    ongoingBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: Colors.success + '15',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+    },
+    ongoingBadgeText: {
+      fontSize: 10,
+      fontWeight: FontWeights.bold,
+      color: Colors.success,
+      marginLeft: 4,
+    },
+    priceBadge: {
+      backgroundColor: Colors.success + '10',
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: BorderRadius.full,
+    },
+    priceText: {
+      fontSize: FontSizes.sm,
+      fontWeight: FontWeights.bold,
+      color: Colors.success,
+    },
+    freeBadge: {
+      backgroundColor: Colors.success + '15',
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: BorderRadius.full,
+    },
+    freeBadgeText: {
+      fontSize: FontSizes.sm,
+      fontWeight: FontWeights.bold,
+      color: Colors.success,
+    },
+    tripRoute: {
+      marginVertical: Spacing.md,
+      paddingLeft: 4,
+    },
+    routeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: Spacing.md,
+      marginVertical: 4,
+    },
+    routeText: {
+      flex: 1,
+      fontSize: FontSizes.base,
+      color: Colors.gray[800],
+    },
+    timeContainer: {
+      alignItems: 'flex-end',
+    },
+    routeDateLabel: {
+      fontSize: 10,
+      color: Colors.primary,
+      fontWeight: FontWeights.bold,
+    },
+    routeTime: {
+      fontSize: 12,
+      color: Colors.gray[500],
+      fontWeight: FontWeights.medium,
+    },
+    tripFooter: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginTop: Spacing.md,
+      paddingTop: Spacing.md,
+      borderTopWidth: 1,
+      borderTopColor: Colors.gray[50],
+    },
+    tripFooterLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    seatsText: {
+      fontSize: 13,
+      color: Colors.gray[600],
+    },
+    reserveButton: {
+      backgroundColor: Colors.primary,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: BorderRadius.lg,
+    },
+    viewButton: {
+      backgroundColor: Colors.secondary,
+    },
+    reserveButtonText: {
+      color: Colors.white,
+      fontWeight: FontWeights.bold,
+      fontSize: 14,
+    },
+    tripStateCard: {
+      padding: Spacing.xxl,
+      alignItems: 'center',
+      backgroundColor: Colors.white,
+      borderRadius: BorderRadius.xl,
+      borderWidth: 1,
+      borderColor: Colors.gray[100],
+    },
+    tripStateText: {
+      fontSize: FontSizes.base,
+      color: Colors.gray[800],
+      fontWeight: FontWeights.bold,
+      marginTop: Spacing.md,
+    },
+    tripStateSubText: {
+      fontSize: FontSizes.sm,
+      color: Colors.gray[500],
+      textAlign: 'center',
+      marginTop: 4,
+    },
+    retryButton: {
+      marginTop: Spacing.lg,
+      paddingHorizontal: Spacing.xl,
+      paddingVertical: Spacing.md,
+      backgroundColor: Colors.primary,
+      borderRadius: BorderRadius.lg,
+    },
+    retryButtonText: {
+      color: Colors.white,
+      fontWeight: FontWeights.bold,
+    },
+  });
+
