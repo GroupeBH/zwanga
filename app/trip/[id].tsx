@@ -1850,8 +1850,10 @@ export default function TripDetailsScreen() {
 
       <LocationPickerModal
         visible={showDestinationPicker}
-        title="Sélectionner ma destination"
+        title="Ma destination sur le trajet"
         initialLocation={passengerDestination}
+        routeCoordinates={routeCoordinates || undefined}
+        restrictToRoute={true}
         onClose={() => setShowDestinationPicker(false)}
         onSelect={(location) => {
           setPassengerDestination(location);
