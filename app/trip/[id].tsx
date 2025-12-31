@@ -261,18 +261,18 @@ export default function TripDetailsScreen() {
     transform: [{ scale: pulseAnim.value }],
   }));
 
-  const activeBooking = useMemo(() => {
-    if (!trip || !myBookings) {
-      return null;
-    }
-    return (
-      myBookings.find(
-        (booking: any) =>
-          booking.tripId === trip.id &&
-          (booking.status === 'pending' || booking.status === 'accepted'),
-      ) ?? null
-    );
-  }, [myBookings, trip]);
+    const activeBooking = useMemo(() => {
+      if (!trip || !myBookings) {
+        return null;
+      }
+      return (
+        myBookings.find(
+          (booking: any) =>
+            booking.tripId === trip.id &&
+            (booking.status === 'pending' || booking.status === 'accepted' || booking.status === 'completed'),
+        ) ?? null
+      );
+    }, [myBookings, trip]);
   const hasAcceptedBooking = activeBooking?.status === 'accepted';
   // Permettre le suivi si : conducteur, passager accepté, ou via lien partagé (track=true)
   const canTrackTrip = Boolean(trip && user && (isTripDriver || hasAcceptedBooking || trackParam));
@@ -1577,113 +1577,123 @@ export default function TripDetailsScreen() {
                          !isExpired &&
                          (trip.status === 'upcoming' || (trip.status === 'ongoing' && availableSeats > 0));
           
-          if (canBook) {
-            return (
-              <View style={styles.actionsContainer}>
-                {activeBooking && activeBookingStatus ? (
-                  <View style={styles.bookingCard}>
-                    <View style={styles.bookingCardHeader}>
-                      <View>
-                        <Text style={styles.bookingCardTitle}>Ma réservation</Text>
-                        <Text style={styles.bookingCardSubtitle}>
-                          {activeBooking.numberOfSeats} place{activeBooking.numberOfSeats > 1 ? 's' : ''}{' • '}{trip.price === 0 ? 'Gratuit' : `${trip.price} FC`}
-                        </Text>
-                      </View>
-                      <View
-                        style={[
-                          styles.bookingStatusBadge,
-                          { backgroundColor: activeBookingStatus.background },
-                        ]}
+            if (canBook) {
+              return (
+                <View style={styles.actionsContainer}>
+                  {activeBooking && activeBookingStatus ? (
+                    activeBooking.status === 'completed' ? (
+                      <TouchableOpacity
+                        style={[styles.actionButton, { backgroundColor: Colors.secondary }]}
+                        onPress={() => router.push(`/rate/${trip.id}`)}
                       >
-                        <Text style={[styles.bookingStatusText, { color: activeBookingStatus.color }]}>
-                          {activeBookingStatus.label}
-                        </Text>
+                        <Ionicons name="star" size={20} color={Colors.white} style={{ marginRight: 8 }} />
+                        <Text style={styles.actionButtonText}>Évaluer le trajet</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={styles.bookingCard}>
+                        <View style={styles.bookingCardHeader}>
+                          <View>
+                            <Text style={styles.bookingCardTitle}>Ma réservation</Text>
+                            <Text style={styles.bookingCardSubtitle}>
+                              {activeBooking.numberOfSeats} place{activeBooking.numberOfSeats > 1 ? 's' : ''}{' • '}{trip.price === 0 ? 'Gratuit' : `${trip.price} FC`}
+                            </Text>
+                          </View>
+                          <View
+                            style={[
+                              styles.bookingStatusBadge,
+                              { backgroundColor: activeBookingStatus.background },
+                            ]}
+                          >
+                            <Text style={[styles.bookingStatusText, { color: activeBookingStatus.color }]}>
+                              {activeBookingStatus.label}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* Indicateur de confirmation en attente */}
+                        {activeBooking.status === 'accepted' && (
+                          <>
+                            {activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger && (
+                              <View style={styles.confirmationBanner}>
+                                <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
+                                <Text style={styles.confirmationBannerText}>
+                                  Confirmation de prise en charge requise
+                                </Text>
+                              </View>
+                            )}
+                            {activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger && (
+                              <View style={styles.confirmationBanner}>
+                                <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
+                                <Text style={styles.confirmationBannerText}>
+                                  Confirmation de dépose requise
+                                </Text>
+                              </View>
+                            )}
+                          </>
+                        )}
+
+                        <View style={styles.bookingActionsRow}>
+                          {activeBooking.status === 'accepted' && activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger && (
+                            <TouchableOpacity
+                              style={[styles.bookingActionButton, styles.bookingActionConfirm]}
+                              onPress={handleConfirmPickup}
+                              disabled={isConfirmingPickup}
+                            >
+                              {isConfirmingPickup ? <ActivityIndicator size="small" color={Colors.white} /> : (
+                                <>
+                                  <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
+                                  <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Confirmer</Text>
+                                </>
+                              )}
+                            </TouchableOpacity>
+                          )}
+
+                          {activeBooking.status === 'accepted' && activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger && (
+                            <TouchableOpacity
+                              style={[styles.bookingActionButton, styles.bookingActionConfirm]}
+                              onPress={handleConfirmDropoff}
+                              disabled={isConfirmingDropoff}
+                            >
+                              {isConfirmingDropoff ? <ActivityIndicator size="small" color={Colors.white} /> : (
+                                <>
+                                  <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
+                                  <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Confirmer dépose</Text>
+                                </>
+                              )}
+                            </TouchableOpacity>
+                          )}
+
+                          {activeBooking.status === 'accepted' && driverPhone && 
+                           !(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
+                           !(activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger) && (
+                            <TouchableOpacity
+                              style={[styles.bookingActionButton, styles.bookingActionCall]}
+                              onPress={() => setContactModalVisible(true)}
+                            >
+                              <Ionicons name="call" size={18} color={Colors.success} />
+                              <Text style={[styles.bookingActionText, styles.bookingActionCallText]}>Appeler</Text>
+                            </TouchableOpacity>
+                          )}
+                          
+                          {!(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
+                           !(activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger) && (
+                            <TouchableOpacity
+                              style={[styles.bookingActionButton, styles.bookingActionDanger]}
+                              onPress={confirmCancelBooking}
+                              disabled={isCancellingBooking}
+                            >
+                              {isCancellingBooking ? <ActivityIndicator size="small" color={Colors.danger} /> : (
+                                <>
+                                  <Ionicons name="close-circle" size={18} color={Colors.danger} />
+                                  <Text style={[styles.bookingActionText, styles.bookingActionDangerText]}>Annuler</Text>
+                                </>
+                              )}
+                            </TouchableOpacity>
+                          )}
+                        </View>
                       </View>
-                    </View>
-
-                    {/* Indicateur de confirmation en attente */}
-                    {activeBooking.status === 'accepted' && (
-                      <>
-                        {activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger && (
-                          <View style={styles.confirmationBanner}>
-                            <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
-                            <Text style={styles.confirmationBannerText}>
-                              Confirmation de prise en charge requise
-                            </Text>
-                          </View>
-                        )}
-                        {activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger && (
-                          <View style={styles.confirmationBanner}>
-                            <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
-                            <Text style={styles.confirmationBannerText}>
-                              Confirmation de dépose requise
-                            </Text>
-                          </View>
-                        )}
-                      </>
-                    )}
-
-                    <View style={styles.bookingActionsRow}>
-                      {activeBooking.status === 'accepted' && activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger && (
-                        <TouchableOpacity
-                          style={[styles.bookingActionButton, styles.bookingActionConfirm]}
-                          onPress={handleConfirmPickup}
-                          disabled={isConfirmingPickup}
-                        >
-                          {isConfirmingPickup ? <ActivityIndicator size="small" color={Colors.white} /> : (
-                            <>
-                              <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
-                              <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Confirmer</Text>
-                            </>
-                          )}
-                        </TouchableOpacity>
-                      )}
-
-                      {activeBooking.status === 'accepted' && activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger && (
-                        <TouchableOpacity
-                          style={[styles.bookingActionButton, styles.bookingActionConfirm]}
-                          onPress={handleConfirmDropoff}
-                          disabled={isConfirmingDropoff}
-                        >
-                          {isConfirmingDropoff ? <ActivityIndicator size="small" color={Colors.white} /> : (
-                            <>
-                              <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
-                              <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Confirmer dépose</Text>
-                            </>
-                          )}
-                        </TouchableOpacity>
-                      )}
-
-                      {activeBooking.status === 'accepted' && driverPhone && 
-                       !(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
-                       !(activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger) && (
-                        <TouchableOpacity
-                          style={[styles.bookingActionButton, styles.bookingActionCall]}
-                          onPress={() => setContactModalVisible(true)}
-                        >
-                          <Ionicons name="call" size={18} color={Colors.success} />
-                          <Text style={[styles.bookingActionText, styles.bookingActionCallText]}>Appeler</Text>
-                        </TouchableOpacity>
-                      )}
-                      
-                      {!(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
-                       !(activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger) && (
-                        <TouchableOpacity
-                          style={[styles.bookingActionButton, styles.bookingActionDanger]}
-                          onPress={confirmCancelBooking}
-                          disabled={isCancellingBooking}
-                        >
-                          {isCancellingBooking ? <ActivityIndicator size="small" color={Colors.danger} /> : (
-                            <>
-                              <Ionicons name="close-circle" size={18} color={Colors.danger} />
-                              <Text style={[styles.bookingActionText, styles.bookingActionDangerText]}>Annuler</Text>
-                            </>
-                          )}
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
-                ) : (
+                    )
+                  ) : (
                   <TouchableOpacity
                     style={[
                       styles.actionButton,
