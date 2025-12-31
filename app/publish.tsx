@@ -727,18 +727,10 @@ export default function PublishScreen() {
         {/* Étape 2: Détails */}
         {step === 'details' && (
           <Animated.View entering={FadeInDown} style={styles.stepContainer}>
-            <View style={styles.iconContainer}>
-              <View style={[styles.iconCircle, styles.iconCircleYellow]}>
-                <Ionicons name="information-circle" size={40} color={Colors.secondary} />
-              </View>
-              <Text style={styles.stepTitle}>Détails du trajet</Text>
-              <Text style={styles.stepSubtitle}>
-                Complétez les informations
-              </Text>
-            </View>
+            <Text style={styles.sectionTitle}>Détails du trajet</Text>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Date et heure de départ *</Text>
+            <View style={styles.card}>
+              <Text style={styles.cardLabel}>QUAND PARTEZ-VOUS ?</Text>
               <View style={styles.datetimeButtons}>
                 <TouchableOpacity
                   style={styles.datetimeButton}
@@ -747,9 +739,9 @@ export default function PublishScreen() {
                   <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.primary + '15' }]}>
                     <Ionicons name="calendar" size={18} color={Colors.primary} />
                   </View>
-                  <View>
+                  <View style={{ flex: 1 }}>
                     <Text style={styles.datetimeButtonLabel}>Date</Text>
-                    <Text style={styles.datetimeButtonValue}>{formattedDateLabel}</Text>
+                    <Text style={styles.datetimeButtonValue} numberOfLines={1} ellipsizeMode="tail">{formattedDateLabel}</Text>
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -759,9 +751,9 @@ export default function PublishScreen() {
                   <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.gray[200] }]}>
                     <Ionicons name="time" size={18} color={Colors.gray[700]} />
                   </View>
-                  <View>
+                  <View style={{ flex: 1 }}>
                     <Text style={styles.datetimeButtonLabel}>Heure</Text>
-                    <Text style={styles.datetimeButtonValue}>{formattedTimeLabel}</Text>
+                    <Text style={styles.datetimeButtonValue} numberOfLines={1} ellipsizeMode="tail">{formattedTimeLabel}</Text>
                   </View>
                 </TouchableOpacity>
               </View>
@@ -929,59 +921,62 @@ export default function PublishScreen() {
               )}
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Nombre de places *</Text>
-              <View style={styles.inputWithIcon}>
-                <Ionicons name="people" size={20} color={Colors.gray[600]} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ex: 3"
-                  keyboardType="number-pad"
-                  value={seats}
-                  onChangeText={setSeats}
-                />
+            <View style={styles.row}>
+              <View style={[styles.card, { flex: 1, marginRight: Spacing.sm }]}>
+                <Text style={styles.cardLabel}>PLACES</Text>
+                <View style={styles.counterContainer}>
+                  <TouchableOpacity
+                    onPress={() => setSeats(Math.max(1, parseInt(seats || '1') - 1).toString())}
+                    style={styles.counterBtn}
+                  >
+                    <Ionicons name="remove" size={20} color={Colors.gray[900]} />
+                  </TouchableOpacity>
+                  <Text style={styles.counterValue}>{seats}</Text>
+                  <TouchableOpacity
+                    onPress={() => setSeats((parseInt(seats || '1') + 1).toString())}
+                    style={styles.counterBtn}
+                  >
+                    <Ionicons name="add" size={20} color={Colors.gray[900]} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View style={[styles.card, { flex: 1.5 }]}>
+                <Text style={styles.cardLabel}>PRIX PAR PLACE (FC)</Text>
+                <View style={styles.priceInputContainer}>
+                  <TextInput
+                    style={styles.priceInput}
+                    placeholder={isFreeTrip ? "Gratuit" : "Ex: 2000"}
+                    keyboardType="number-pad"
+                    value={price}
+                    onChangeText={setPrice}
+                    editable={!isFreeTrip}
+                  />
+                  <TouchableOpacity
+                    style={styles.freeToggle}
+                    onPress={() => {
+                      setIsFreeTrip(!isFreeTrip);
+                      if (!isFreeTrip) {
+                        setPrice('');
+                      }
+                    }}
+                  >
+                    <View style={[styles.toggleSwitch, isFreeTrip && styles.toggleSwitchActive]}>
+                      <View style={[styles.toggleThumb, isFreeTrip && styles.toggleThumbActive]} />
+                    </View>
+                    <Text style={[styles.freeToggleText, isFreeTrip && styles.freeToggleTextActive]}>
+                      Gratuit
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
 
-            <View style={[styles.inputGroup, { marginBottom: Spacing.xl }]}>
-              <View style={styles.labelRow}>
-                <Text style={styles.label}>Prix par personne (FC) *</Text>
-                <TouchableOpacity
-                  style={styles.freeToggle}
-                  onPress={() => {
-                    setIsFreeTrip(!isFreeTrip);
-                    if (!isFreeTrip) {
-                      setPrice('');
-                    }
-                  }}
-                >
-                  <View style={[styles.toggleSwitch, isFreeTrip && styles.toggleSwitchActive]}>
-                    <View style={[styles.toggleThumb, isFreeTrip && styles.toggleThumbActive]} />
-                  </View>
-                  <Text style={[styles.freeToggleText, isFreeTrip && styles.freeToggleTextActive]}>
-                    Gratuit
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.inputWithIcon}>
-                <Ionicons name="cash" size={20} color={Colors.gray[600]} />
-                <TextInput
-                  style={[styles.input, isFreeTrip && styles.inputDisabled]}
-                  placeholder={isFreeTrip ? "Gratuit" : "Ex: 2000"}
-                  keyboardType="number-pad"
-                  value={price}
-                  onChangeText={setPrice}
-                  editable={!isFreeTrip}
-                />
-              </View>
-            </View>
-
-            <View style={[styles.inputGroup, { marginBottom: Spacing.xl }]}>
-              <Text style={styles.label}>Description (optionnel)</Text>
+            <View style={styles.card}>
+              <Text style={styles.cardLabel}>DESCRIPTION (OPTIONNEL)</Text>
               <TextInput
-                style={[styles.input, styles.textArea]}
+                style={styles.textAreaCard}
                 placeholder="Ajoutez des informations supplémentaires (ex: bagages acceptés, point de rendez-vous, etc.)"
-                placeholderTextColor={Colors.gray[500]}
+                placeholderTextColor={Colors.gray[400]}
                 value={description}
                 onChangeText={setDescription}
                 multiline
@@ -1557,10 +1552,11 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   datetimeButtonValue: {
-    fontSize: FontSizes.base,
+    fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
     marginTop: 2,
+    flexShrink: 1,
   },
   iosPickerContainer: {
     marginTop: Spacing.sm,
@@ -1668,6 +1664,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
+    paddingHorizontal: Spacing.lg,
   },
   buttonText: {
     color: Colors.white,
@@ -2288,5 +2285,77 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
     lineHeight: 18,
+  },
+  // Card Styles (from request.tsx)
+  card: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    marginBottom: Spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 15,
+    elevation: 2,
+  },
+  cardLabel: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[400],
+    letterSpacing: 1,
+    marginBottom: Spacing.md,
+  },
+  row: {
+    flexDirection: 'row',
+  },
+  counterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.xs,
+  },
+  counterBtn: {
+    width: 36,
+    height: 36,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  counterValue: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  priceInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    height: 48,
+    justifyContent: 'space-between',
+  },
+  priceInput: {
+    flex: 1,
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  textAreaCard: {
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+    minHeight: 80,
+    textAlignVertical: 'top',
   },
 });
