@@ -1,20 +1,20 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
-import { useGetUserByIdQuery } from '@/store/api/userApi';
 import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
+import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
+import { useGetPublicUserInfoQuery } from '@/store/api/userApi';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo } from 'react';
 import {
-    ActivityIndicator,
-    Image,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Image,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 export default function PassengerDetailsScreen() {
@@ -22,7 +22,7 @@ export default function PassengerDetailsScreen() {
   const params = useLocalSearchParams();
   const passengerId = typeof params.id === 'string' ? params.id : '';
 
-  const { data: passenger, isLoading: passengerLoading } = useGetUserByIdQuery(passengerId, {
+  const { data: passenger, isLoading: passengerLoading } = useGetPublicUserInfoQuery(passengerId, {
     skip: !passengerId,
   });
 
