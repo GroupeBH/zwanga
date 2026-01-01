@@ -33,6 +33,792 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.gray[50],
+  },
+  header: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.xxl,
+    borderBottomLeftRadius: BorderRadius.xxl,
+    borderBottomRightRadius: BorderRadius.xxl,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  headerGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.xl,
+    zIndex: 1,
+  },
+  headerTitle: {
+    fontSize: FontSizes.xxl,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
+  },
+  settingsButton: {
+    width: 40,
+    height: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  userInfo: {
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  avatarContainer: {
+    position: 'relative',
+    marginBottom: Spacing.md,
+  },
+  avatarWrapper: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 4,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    overflow: 'hidden',
+    backgroundColor: Colors.white,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: Colors.gray[200],
+  },
+  avatarPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.gray[100],
+  },
+  avatarEmoji: {
+    fontSize: 40,
+  },
+  uploadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  verifiedBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    backgroundColor: Colors.success,
+    borderRadius: 14,
+    borderWidth: 3,
+    borderColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...CommonStyles.shadowSm,
+  },
+  cameraBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    backgroundColor: Colors.primary,
+    borderRadius: 14,
+    borderWidth: 3,
+    borderColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...CommonStyles.shadowSm,
+  },
+  userName: {
+    fontSize: FontSizes.xxl,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
+    marginBottom: 4,
+  },
+  userPhoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    opacity: 0.8,
+    marginBottom: Spacing.xl,
+  },
+  userPhone: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+  },
+  headerStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.xl,
+    gap: Spacing.xl,
+  },
+  headerStatItem: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  headerStatValue: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.base,
+  },
+  headerStatLabel: {
+    color: Colors.white,
+    opacity: 0.7,
+    fontSize: 10,
+    textTransform: 'uppercase',
+    fontWeight: FontWeights.medium,
+  },
+  headerStatDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  mainActionsContainer: {
+    paddingHorizontal: Spacing.xl,
+    marginTop: -Spacing.xl,
+    gap: Spacing.md,
+    marginBottom: Spacing.xl,
+  },
+  mainActionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.md,
+    borderWidth: 1,
+    ...CommonStyles.shadowSm,
+  },
+  mainActionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  mainActionContent: {
+    flex: 1,
+  },
+  mainActionTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  mainActionSubtitle: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    marginTop: 2,
+  },
+  section: {
+    paddingHorizontal: Spacing.xl,
+    marginBottom: Spacing.xl,
+  },
+  sectionHeaderTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: Spacing.md,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.md,
+    ...CommonStyles.shadowSm,
+  },
+  statGridItem: {
+    width: '50%',
+    padding: Spacing.md,
+    alignItems: 'center',
+  },
+  statGridValue: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    marginBottom: 4,
+  },
+  statGridLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    textAlign: 'center',
+  },
+  badgesContainer: {
+    paddingHorizontal: Spacing.xl,
+    marginBottom: Spacing.xl,
+  },
+  badgesCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    ...CommonStyles.shadowSm,
+  },
+  badgesTitle: {
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: Spacing.lg,
+    fontSize: FontSizes.base,
+  },
+  badgesList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.lg,
+    justifyContent: 'center',
+  },
+  badgeItem: {
+    alignItems: 'center',
+    width: 80,
+  },
+  badgeIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  badgeLabel: {
+    fontSize: 10,
+    color: Colors.gray[600],
+    textAlign: 'center',
+    fontWeight: FontWeights.medium,
+  },
+  reviewsContainer: {
+    paddingHorizontal: Spacing.xl,
+    marginBottom: Spacing.xl,
+  },
+  reviewsCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    ...CommonStyles.shadowSm,
+  },
+  reviewsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: Spacing.lg,
+  },
+  reviewsTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  reviewsSubtitle: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    marginTop: 2,
+  },
+  reviewsLinkButton: {
+    backgroundColor: Colors.primary + '10',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+  },
+  reviewsLinkButtonDisabled: {
+    opacity: 0.5,
+  },
+  reviewsLinkText: {
+    color: Colors.primary,
+    fontSize: 12,
+    fontWeight: FontWeights.bold,
+  },
+  reviewsLinkTextDisabled: {
+    color: Colors.gray[400],
+  },
+  reviewsEmptyText: {
+    textAlign: 'center',
+    color: Colors.gray[500],
+    fontSize: FontSizes.sm,
+    paddingVertical: Spacing.lg,
+  },
+  reviewItem: {
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  reviewItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  reviewAuthor: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  reviewDate: {
+    fontSize: 10,
+    color: Colors.gray[500],
+  },
+  reviewRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  reviewRatingText: {
+    fontSize: 12,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  reviewComment: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+    lineHeight: 18,
+  },
+  reviewsModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  reviewsModalCard: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    height: '80%',
+    padding: Spacing.xl,
+  },
+  reviewsModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.xl,
+  },
+  reviewsModalTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  reviewsModalContent: {
+    flex: 1,
+  },
+  kycContainer: {
+    paddingHorizontal: Spacing.xl,
+    marginBottom: Spacing.xl,
+  },
+  kycCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    ...CommonStyles.shadowSm,
+  },
+  kycHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  kycHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  kycTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  kycStatusText: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    marginBottom: 4,
+  },
+  kycStatusApproved: {
+    color: Colors.success,
+  },
+  kycStatusPending: {
+    color: Colors.warning,
+  },
+  kycRejectionContainer: {
+    backgroundColor: Colors.danger + '10',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    marginVertical: Spacing.sm,
+  },
+  kycRejectionTitle: {
+    color: Colors.danger,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.sm,
+    marginBottom: 2,
+  },
+  kycRejectionText: {
+    color: Colors.danger,
+    fontSize: FontSizes.xs,
+  },
+  kycHelperText: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    marginBottom: Spacing.lg,
+  },
+  kycButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary + '10',
+    paddingVertical: 12,
+    borderRadius: BorderRadius.lg,
+    gap: 8,
+  },
+  kycButtonDisabled: {
+    opacity: 0.6,
+  },
+  kycButtonLocked: {
+    backgroundColor: Colors.gray[100],
+  },
+  kycButtonText: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  kycButtonTextMuted: {
+    color: Colors.gray[500],
+  },
+  vehiclesContainer: {
+    paddingHorizontal: Spacing.xl,
+    marginBottom: Spacing.xl,
+  },
+  vehiclesHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  vehicleAddButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.xl,
+    marginBottom: Spacing.sm,
+    ...CommonStyles.shadowSm,
+  },
+  vehicleTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  vehiclePlate: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+    marginTop: 2,
+  },
+  vehicleColor: {
+    fontSize: 10,
+    color: Colors.gray[400],
+    textTransform: 'uppercase',
+    marginTop: 2,
+  },
+  vehicleStatus: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+  },
+  vehicleStatusText: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+  },
+  vehicleEmptyText: {
+    textAlign: 'center',
+    color: Colors.gray[500],
+    fontSize: FontSizes.sm,
+    paddingVertical: Spacing.xl,
+  },
+  menuContainer: {
+    paddingHorizontal: Spacing.xl,
+    marginBottom: Spacing.xl,
+  },
+  menuCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+    ...CommonStyles.shadowSm,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.lg,
+  },
+  menuItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[50],
+  },
+  menuIcon: {
+    width: 36,
+    height: 36,
+    backgroundColor: Colors.gray[50],
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  menuText: {
+    flex: 1,
+    fontSize: FontSizes.base,
+    color: Colors.gray[800],
+  },
+  menuRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  menuBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    minWidth: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuBadgeText: {
+    color: Colors.white,
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+  },
+  logoutContainer: {
+    paddingHorizontal: Spacing.xl,
+    marginBottom: Spacing.xl,
+  },
+  logoutButton: {
+    backgroundColor: Colors.danger + '10',
+    paddingVertical: 16,
+    borderRadius: BorderRadius.xl,
+    alignItems: 'center',
+  },
+  logoutButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  logoutText: {
+    color: Colors.danger,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.base,
+  },
+  vehicleModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  vehicleModalCard: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    padding: Spacing.xl,
+    maxHeight: '90%',
+  },
+  vehicleModalHeader: {
+    alignItems: 'flex-end',
+    marginBottom: Spacing.md,
+  },
+  vehicleModalHero: {
+    alignItems: 'center',
+    marginBottom: Spacing.xl,
+  },
+  vehicleModalBadge: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  vehicleModalTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: 4,
+  },
+  vehicleModalSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+    textAlign: 'center',
+  },
+  vehicleModalContent: {
+    gap: Spacing.md,
+  },
+  vehicleInputGroup: {
+    gap: 4,
+  },
+  vehicleInputLabel: {
+    fontSize: 12,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[700],
+  },
+  vehicleInput: {
+    backgroundColor: Colors.gray[50],
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: FontSizes.base,
+  },
+  vehicleSaveButton: {
+    backgroundColor: Colors.primary,
+    paddingVertical: 16,
+    borderRadius: BorderRadius.xl,
+    alignItems: 'center',
+    marginTop: Spacing.md,
+  },
+  vehicleSaveButtonDisabled: {
+    opacity: 0.6,
+  },
+  vehicleSaveButtonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.base,
+  },
+  pinModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  pinModalCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    width: '100%',
+    maxWidth: 400,
+    ...CommonStyles.shadowLg,
+  },
+  pinModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  pinModalTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  pinModalSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginBottom: Spacing.xl,
+    textAlign: 'center',
+  },
+  formSection: {
+    marginBottom: Spacing.lg,
+  },
+  inputLabel: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+    marginBottom: Spacing.sm,
+  },
+  inputLabelSmall: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[500],
+    marginBottom: Spacing.xs,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: Colors.gray[300],
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: Colors.gray[50],
+    height: 56,
+  },
+  inputIcon: {
+    marginRight: Spacing.sm,
+  },
+  input: {
+    flex: 1,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+    height: '100%',
+  },
+  pinModalButton: {
+    backgroundColor: Colors.gray[300],
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.lg,
+  },
+  pinModalButtonActive: {
+    backgroundColor: Colors.primary,
+  },
+  pinModalButtonDisabled: {
+    backgroundColor: Colors.gray[300],
+    opacity: 0.5,
+  },
+  pinModalButtonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.base,
+  },
+  pinModalForgotButton: {
+    marginTop: Spacing.md,
+    alignItems: 'center',
+  },
+  pinModalForgotText: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+    textDecorationLine: 'underline',
+  },
+  smsCodeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginVertical: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  smsInput: {
+    flex: 1,
+    height: 60,
+    borderWidth: 1.5,
+    borderColor: Colors.gray[300],
+    borderRadius: BorderRadius.md,
+    textAlign: 'center',
+    fontSize: 24,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    backgroundColor: Colors.gray[50],
+  },
+  smsInputFilled: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.white,
+  },
+  pinModalResendButton: {
+    marginTop: Spacing.md,
+    alignItems: 'center',
+  },
+  pinModalResendText: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+  },
+});
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -639,7 +1425,6 @@ export default function ProfileScreen() {
 
   const handleLogout = () => {
     dispatch(logout());
-    // router.replace('/auth');
   };
 
   return (
@@ -649,8 +1434,13 @@ export default function ProfileScreen() {
         contentContainerStyle={{ paddingBottom: 120 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       >
-        {/* Header */}
         <View style={styles.header}>
+          <LinearGradient
+            colors={[Colors.primary, '#2563EB']}
+            style={styles.headerGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
           <View style={styles.headerTop}>
             <Text style={styles.headerTitle}>Mon Profil</Text>
             <TouchableOpacity
@@ -661,7 +1451,6 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Infos utilisateur */}
           <View style={styles.userInfo}>
             <TouchableOpacity
               style={styles.avatarContainer}
@@ -669,160 +1458,123 @@ export default function ProfileScreen() {
               disabled={isUploading}
               activeOpacity={0.8}
             >
-              {currentUser?.profilePicture || user?.avatar ? (
-                <Image
-                  source={{ uri: currentUser?.profilePicture ?? user?.avatar ?? undefined }}
-                  style={styles.avatarImage}
-                />
-              ) : (
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarEmoji}>👤</Text>
-                </View>
-              )}
-              {isUploading && (
-                <View style={styles.uploadingOverlay}>
-                  <ActivityIndicator size="small" color={Colors.white} />
-                </View>
-                // ) : (
-                //   <View style={styles.editBadge}>
-                //     <Ionicons name="camera" size={14} color={Colors.white} />
-                //   </View>
-                // )}}
-              )}
+              <View style={styles.avatarWrapper}>
+                {currentUser?.profilePicture || user?.avatar ? (
+                  <Image
+                    source={{ uri: currentUser?.profilePicture ?? user?.avatar ?? undefined }}
+                    style={styles.avatarImage}
+                  />
+                ) : (
+                  <View style={styles.avatarPlaceholder}>
+                    <Text style={styles.avatarEmoji}>👤</Text>
+                  </View>
+                )}
+                {isUploading && (
+                  <View style={styles.uploadingOverlay}>
+                    <ActivityIndicator size="small" color={Colors.white} />
+                  </View>
+                )}
+              </View>
               {currentUser?.identityVerified && (
                 <View style={styles.verifiedBadge}>
-                  <Ionicons name="checkmark" size={16} color={Colors.white} />
+                  <Ionicons name="checkmark-sharp" size={14} color={Colors.white} />
                 </View>
               )}
+              <TouchableOpacity 
+                style={styles.cameraBadge}
+                onPress={changeProfilePhoto}
+                disabled={isUploading}
+              >
+                <Ionicons name="camera" size={14} color={Colors.white} />
+              </TouchableOpacity>
             </TouchableOpacity>
+            
             <Text style={styles.userName}>{currentUser?.name || 'Utilisateur'}</Text>
-            <Text style={styles.userPhone}>{currentUser?.phone || ''}</Text>
-
-            {/* Bouton pour modifier la photo de profil */}
-            <TouchableOpacity
-              style={styles.changePhotoButton}
-              onPress={changeProfilePhoto}
-              disabled={isUploading}
-            >
-              {isUploading ? (
-                <ActivityIndicator size="small" color={Colors.white} />
-              ) : (
-                <>
-                  <Ionicons name="camera" size={16} color={Colors.white} />
-                  <Text style={styles.changePhotoButtonText}>Modifier la photo</Text>
-                </>
-              )}
-            </TouchableOpacity>
-
-            {/* Rating */}
-            <View style={styles.ratingBadge}>
-              <Ionicons name="star" size={20} color={Colors.secondary} />
-              <Text style={styles.ratingText}>{(currentUser?.rating ?? 0).toFixed(1)}</Text>
-              <Text style={styles.ratingSubtext}>{currentUser?.totalTrips ?? 0} trajets</Text>
+            <View style={styles.userPhoneRow}>
+              <Ionicons name="call-outline" size={14} color="rgba(255,255,255,0.7)" />
+              <Text style={styles.userPhone}>{currentUser?.phone || ''}</Text>
             </View>
-            {profileLoading && (
-              <View style={styles.loadingRow}>
-                <ActivityIndicator color={Colors.white} size="small" />
-                <Text style={styles.loadingRowText}>Synchronisation du profil…</Text>
+
+            <View style={styles.headerStats}>
+              <View style={styles.headerStatItem}>
+                <Ionicons name="star" size={16} color={Colors.secondary} />
+                <Text style={styles.headerStatValue}>{(currentUser?.rating ?? 0).toFixed(1)}</Text>
+                <Text style={styles.headerStatLabel}>Note</Text>
               </View>
-            )}
+              <View style={styles.headerStatDivider} />
+              <View style={styles.headerStatItem}>
+                <Ionicons name="car-outline" size={18} color={Colors.white} />
+                <Text style={styles.headerStatValue}>{currentUser?.totalTrips ?? 0}</Text>
+                <Text style={styles.headerStatLabel}>Trajets</Text>
+              </View>
+            </View>
           </View>
         </View>
 
-        {/* Réservations - Mise en avant */}
-        <View style={styles.bookingsContainer}>
+        <View style={styles.mainActionsContainer}>
           <TouchableOpacity
-            style={styles.bookingsCard}
+            style={[styles.mainActionCard, { borderColor: Colors.primary + '30' }]}
             onPress={() => router.push('/bookings')}
-            activeOpacity={0.7}
           >
-            <View style={styles.bookingsIconContainer}>
-              <Ionicons name="bookmark" size={28} color={Colors.primary} />
+            <View style={[styles.mainActionIcon, { backgroundColor: Colors.primary + '15' }]}>
+              <Ionicons name="calendar" size={24} color={Colors.primary} />
             </View>
-            <View style={styles.bookingsContent}>
-              <Text style={styles.bookingsTitle}>Mes réservations</Text>
-              <Text style={styles.bookingsSubtitle}>
-                {stats?.bookingsAsPassenger ?? 0} en tant que passager · {stats?.bookingsAsDriver ?? 0} en tant que conducteur
+            <View style={styles.mainActionContent}>
+              <Text style={styles.mainActionTitle}>Réservations</Text>
+              <Text style={styles.mainActionSubtitle} numberOfLines={1}>
+                {stats?.bookingsAsPassenger ?? 0} Passager · {stats?.bookingsAsDriver ?? 0} Conducteur
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={24} color={Colors.primary} />
+            <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
           </TouchableOpacity>
-        </View>
 
-        {/* Demandes de trajet - Mise en avant */}
-        <View style={styles.bookingsContainer}>
           <TouchableOpacity
-            style={styles.bookingsCard}
+            style={[styles.mainActionCard, { borderColor: Colors.warning + '30' }]}
             onPress={() => router.push('/my-requests')}
-            activeOpacity={0.7}
           >
-            <View style={styles.bookingsIconContainer}>
-              <Ionicons name="document-text" size={28} color={Colors.warning} />
+            <View style={[styles.mainActionIcon, { backgroundColor: Colors.warning + '15' }]}>
+              <Ionicons name="document-text" size={24} color={Colors.warning} />
             </View>
-            <View style={styles.bookingsContent}>
-              <Text style={styles.bookingsTitle}>Mes demandes de trajet</Text>
-              <Text style={styles.bookingsSubtitle}>
-                {tripRequestsStats.activeRequests} active{tripRequestsStats.activeRequests > 1 ? 's' : ''} · {tripRequestsStats.requestsWithOffers} avec offre{tripRequestsStats.requestsWithOffers > 1 ? 's' : ''}
+            <View style={styles.mainActionContent}>
+              <Text style={styles.mainActionTitle}>Mes Demandes</Text>
+              <Text style={styles.mainActionSubtitle} numberOfLines={1}>
+                {tripRequestsStats.activeRequests} actives · {tripRequestsStats.requestsWithOffers} offres
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={24} color={Colors.warning} />
+            <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
           </TouchableOpacity>
-        </View>
 
-        {/* Offres - Mise en avant (uniquement pour les drivers) */}
-        {currentUser?.isDriver && (
-          <View style={styles.bookingsContainer}>
+          {currentUser?.isDriver && (
             <TouchableOpacity
-              style={styles.bookingsCard}
+              style={[styles.mainActionCard, { borderColor: Colors.info + '30' }]}
               onPress={() => router.push('/my-offers')}
-              activeOpacity={0.7}
             >
-              <View style={styles.bookingsIconContainer}>
-                <Ionicons name="briefcase" size={28} color={Colors.info} />
+              <View style={[styles.mainActionIcon, { backgroundColor: Colors.info + '15' }]}>
+                <Ionicons name="gift" size={24} color={Colors.info} />
               </View>
-              <View style={styles.bookingsContent}>
-                <Text style={styles.bookingsTitle}>Mes offres</Text>
-                <Text style={styles.bookingsSubtitle}>
-                  {offersStats.pendingOffers} en attente · {offersStats.acceptedOffers} acceptée{offersStats.acceptedOffers > 1 ? 's' : ''}
+              <View style={styles.mainActionContent}>
+                <Text style={styles.mainActionTitle}>Mes Offres</Text>
+                <Text style={styles.mainActionSubtitle} numberOfLines={1}>
+                  {offersStats.pendingOffers} en attente · {offersStats.acceptedOffers} acceptées
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={24} color={Colors.info} />
+              <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
             </TouchableOpacity>
-          </View>
-        )}
+          )}
+        </View>
 
-        {/* Statistiques */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statsCard}>
-            <Text style={styles.statsTitle}>Statistiques</Text>
-            <View style={styles.statsGrid}>
-              {derivedStats.map((stat, index) => {
-                const totalStats = derivedStats.length;
-                const itemsPerRow = 2;
-                const rowIndex = Math.floor(index / itemsPerRow);
-                const totalRows = Math.ceil(totalStats / itemsPerRow);
-                const isLastRow = rowIndex === totalRows - 1;
-                const isRightColumn = index % itemsPerRow === 0;
-                
-                return (
-                  <View
-                    key={stat.label}
-                    style={[
-                      styles.statItem,
-                      isRightColumn && styles.statItemBorderRight,
-                      !isLastRow && styles.statItemBorderBottom,
-                    ]}
-                  >
-                    <Text style={[styles.statValue, { color: stat.color }]}>{stat.value}</Text>
-                    <Text style={styles.statLabel}>{stat.label}</Text>
-                  </View>
-                );
-              })}
-            </View>
+        <View style={styles.section}>
+          <Text style={styles.sectionHeaderTitle}>Activité</Text>
+          <View style={styles.statsGrid}>
+            {derivedStats.map((stat, index) => (
+              <View key={stat.label} style={styles.statGridItem}>
+                <Text style={[styles.statGridValue, { color: stat.color }]}>{stat.value}</Text>
+                <Text style={styles.statGridLabel}>{stat.label}</Text>
+              </View>
+            ))}
           </View>
         </View>
 
-        {/* Badges */}
         {badges.length > 0 && (
           <View style={styles.badgesContainer}>
             <View style={styles.badgesCard}>
@@ -845,7 +1597,6 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* Reviews summary */}
         <View style={styles.reviewsContainer}>
           <View style={styles.reviewsCard}>
             <View style={styles.reviewsHeader}>
@@ -899,7 +1650,6 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* KYC */}
         <View style={styles.kycContainer}>
           <View style={styles.kycCard}>
             <View style={styles.kycHeader}>
@@ -1016,7 +1766,6 @@ export default function ProfileScreen() {
           )}
         </View>
 
-        {/* Menu */}
         <View style={styles.menuContainer}>
           <View style={styles.menuCard}>
             {menuItems.map((item, index) => (
@@ -1056,7 +1805,6 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Bouton déconnexion */}
         <View style={styles.logoutContainer}>
           <TouchableOpacity
             style={styles.logoutButton}
@@ -1212,7 +1960,6 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
-      {/* Modal de modification du PIN */}
       <Modal visible={pinModalVisible} transparent animationType="fade" onRequestClose={() => setPinModalVisible(false)}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -1373,825 +2120,3 @@ export default function ProfileScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.gray[50],
-  },
-  header: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.xxl,
-    borderBottomLeftRadius: BorderRadius.xxl,
-    borderBottomRightRadius: BorderRadius.xxl,
-  },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.xl,
-  },
-  headerTitle: {
-    fontSize: FontSizes.xxl,
-    fontWeight: FontWeights.bold,
-    color: Colors.white,
-  },
-  settingsButton: {
-    width: 40,
-    height: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  userInfo: {
-    alignItems: 'center',
-  },
-  avatarContainer: {
-    position: 'relative',
-    marginBottom: Spacing.lg,
-  },
-  avatar: {
-    width: 96,
-    height: 96,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarImage: {
-    width: 96,
-    height: 96,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.gray[200],
-  },
-  avatarEmoji: {
-    fontSize: 48,
-  },
-  editBadge: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 32,
-    height: 32,
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.full,
-    borderWidth: 3,
-    borderColor: Colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...CommonStyles.shadowSm,
-  },
-  uploadingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  verifiedBadge: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: 28,
-    height: 28,
-    backgroundColor: Colors.success,
-    borderRadius: BorderRadius.full,
-    borderWidth: 2,
-    borderColor: Colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  userName: {
-    fontSize: FontSizes.xxl,
-    fontWeight: FontWeights.bold,
-    color: Colors.white,
-    marginBottom: Spacing.xs,
-  },
-  userPhone: {
-    color: Colors.white,
-    opacity: 0.8,
-    marginBottom: Spacing.lg,
-    fontSize: FontSizes.base,
-  },
-  ratingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.full,
-  },
-  ratingText: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.lg,
-    marginLeft: Spacing.sm,
-  },
-  ratingSubtext: {
-    color: Colors.white,
-    opacity: 0.8,
-    marginLeft: Spacing.xs,
-    fontSize: FontSizes.base,
-  },
-  loadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: Spacing.sm,
-    gap: Spacing.sm,
-  },
-  loadingRowText: {
-    color: Colors.white,
-    opacity: 0.85,
-  },
-  changePhotoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.full,
-    marginTop: Spacing.sm,
-    marginBottom: Spacing.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  changePhotoButtonText: {
-    color: Colors.white,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-  },
-  bookingsContainer: {
-    paddingHorizontal: Spacing.xl,
-    marginTop: -Spacing.xl,
-    marginBottom: Spacing.lg,
-  },
-  bookingsCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    gap: Spacing.md,
-    ...CommonStyles.shadowMd,
-    borderWidth: 2,
-    borderColor: Colors.primary + '20',
-  },
-  bookingsIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary + '15',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bookingsContent: {
-    flex: 1,
-  },
-  bookingsTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    marginBottom: Spacing.xs,
-  },
-  bookingsSubtitle: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-  },
-  statsContainer: {
-    paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.xl,
-  },
-  statsCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    ...CommonStyles.shadowSm,
-  },
-  statsTitle: {
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    marginBottom: Spacing.md,
-    fontSize: FontSizes.base,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  statItem: {
-    width: '50%',
-    alignItems: 'center',
-    paddingVertical: Spacing.md,
-  },
-  statItemBorderRight: {
-    borderRightWidth: 1,
-    borderRightColor: Colors.gray[100],
-  },
-  statItemBorderBottom: {
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[100],
-  },
-  statValue: {
-    fontSize: FontSizes.xxl,
-    fontWeight: FontWeights.bold,
-    marginBottom: Spacing.xs,
-  },
-  statLabel: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-  },
-  badgesContainer: {
-    paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.xl,
-  },
-  badgesCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    ...CommonStyles.shadowSm,
-  },
-  badgesTitle: {
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    marginBottom: Spacing.md,
-    fontSize: FontSizes.base,
-  },
-  sectionTitle: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[900],
-  },
-  badgesList: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  badgeItem: {
-    alignItems: 'center',
-  },
-  badgeIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.sm,
-  },
-  badgeLabel: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[600],
-    textAlign: 'center',
-  },
-  reviewsContainer: {
-    paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.xl,
-  },
-  reviewsCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    gap: Spacing.md,
-    ...CommonStyles.shadowSm,
-  },
-  reviewsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  reviewsTitle: {
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.base,
-    color: Colors.gray[900],
-  },
-  reviewsSubtitle: {
-    color: Colors.gray[500],
-    fontSize: FontSizes.sm,
-  },
-  reviewsLinkButton: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary + '15',
-  },
-  reviewsLinkButtonDisabled: {
-    backgroundColor: Colors.gray[200],
-  },
-  reviewsLinkText: {
-    color: Colors.primary,
-    fontWeight: FontWeights.semibold,
-  },
-  reviewsLinkTextDisabled: {
-    color: Colors.gray[500],
-  },
-  reviewsEmptyText: {
-    color: Colors.gray[500],
-    fontSize: FontSizes.sm,
-  },
-  reviewItem: {
-    borderWidth: 1,
-    borderColor: Colors.gray[100],
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    gap: Spacing.xs,
-  },
-  reviewItemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  reviewAuthor: {
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[800],
-  },
-  reviewDate: {
-    color: Colors.gray[500],
-    fontSize: FontSizes.xs,
-  },
-  reviewRating: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  reviewRatingText: {
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-  },
-  reviewComment: {
-    color: Colors.gray[700],
-    fontSize: FontSizes.sm,
-  },
-  reviewsModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.55)',
-    justifyContent: 'center',
-    padding: Spacing.xl,
-  },
-  reviewsModalCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    maxHeight: '85%',
-    padding: Spacing.lg,
-  },
-  reviewsModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  reviewsModalTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  reviewsModalContent: {
-    flex: 1,
-  },
-  kycContainer: {
-    paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.xl,
-  },
-  kycCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    ...CommonStyles.shadowSm,
-  },
-  kycHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-  },
-  kycHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  kycTitle: {
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[800],
-  },
-  kycStatusText: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    marginBottom: Spacing.sm,
-  },
-  kycStatusApproved: {
-    color: Colors.success,
-  },
-  kycStatusPending: {
-    color: Colors.secondary,
-  },
-  kycRejectionContainer: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    marginTop: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  kycRejectionTitle: {
-    color: Colors.danger,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-    marginBottom: Spacing.xs,
-  },
-  kycRejectionText: {
-    color: Colors.danger,
-    fontSize: FontSizes.sm,
-    lineHeight: 20,
-  },
-  kycHelperText: {
-    color: Colors.gray[600],
-    marginBottom: Spacing.md,
-    fontSize: FontSizes.sm,
-  },
-  kycButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-  },
-  kycButtonDisabled: {
-    opacity: 0.6,
-  },
-  kycButtonLocked: {
-    borderColor: Colors.gray[300],
-    backgroundColor: Colors.gray[100],
-  },
-  kycButtonText: {
-    color: Colors.primary,
-    fontWeight: FontWeights.semibold,
-  },
-  kycButtonTextMuted: {
-    color: Colors.gray[500],
-  },
-  vehiclesContainer: {
-    paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.xl,
-  },
-  vehiclesHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  vehicleAddButton: {
-    width: 36,
-    height: 36,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  vehicleItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: Spacing.lg,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    marginBottom: Spacing.sm,
-    ...CommonStyles.shadowSm,
-  },
-  vehicleTitle: {
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[900],
-  },
-  vehiclePlate: {
-    color: Colors.gray[600],
-    marginTop: Spacing.xs,
-  },
-  vehicleColor: {
-    color: Colors.gray[500],
-    fontSize: FontSizes.sm,
-  },
-  vehicleStatus: {
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-  },
-  vehicleStatusText: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-  },
-  vehicleEmptyText: {
-    textAlign: 'center',
-    color: Colors.gray[600],
-    marginTop: Spacing.sm,
-  },
-  vehicleModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.55)',
-    justifyContent: 'center',
-    padding: Spacing.xl,
-  },
-  vehicleModalCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    maxHeight: '90%',
-    ...CommonStyles.shadowLg,
-  },
-  vehicleModalHeader: {
-    alignItems: 'flex-end',
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-  },
-  vehicleModalHero: {
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginBottom: Spacing.xl,
-  },
-  vehicleModalBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  vehicleModalTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  vehicleModalSubtitle: {
-    color: Colors.gray[600],
-    marginBottom: Spacing.md,
-    fontSize: FontSizes.sm,
-  },
-  vehicleModalContent: {
-    gap: Spacing.md,
-    paddingBottom: Spacing.lg,
-  },
-  vehicleInputGroup: {
-    gap: Spacing.xs,
-  },
-  vehicleInputLabel: {
-    color: Colors.gray[600],
-    fontSize: FontSizes.sm,
-  },
-  vehicleInput: {
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.lg,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    color: Colors.gray[900],
-    backgroundColor: Colors.gray[50],
-  },
-  vehicleSaveButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.xl,
-    paddingVertical: Spacing.sm,
-    alignItems: 'center',
-    ...CommonStyles.shadowMd,
-  },
-  vehicleSaveButtonDisabled: {
-    opacity: 0.6,
-  },
-  vehicleSaveButtonText: {
-    color: Colors.white,
-    fontWeight: FontWeights.semibold,
-  },
-  menuContainer: {
-    paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.xl,
-  },
-  menuCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
-    ...CommonStyles.shadowSm,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.lg,
-  },
-  menuItemBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[100],
-  },
-  menuIcon: {
-    width: 40,
-    height: 40,
-    backgroundColor: Colors.gray[100],
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.md,
-  },
-  menuText: {
-    flex: 1,
-    color: Colors.gray[800],
-    fontWeight: FontWeights.medium,
-    fontSize: FontSizes.base,
-  },
-  menuRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  menuBadge: {
-    minWidth: 24,
-    height: 24,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.xs,
-  },
-  menuBadgeText: {
-    color: Colors.white,
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-  },
-  logoutContainer: {
-    paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.xxl,
-  },
-  logoutButton: {
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.2)',
-    paddingVertical: Spacing.lg,
-    borderRadius: BorderRadius.xl,
-    alignItems: 'center',
-  },
-  logoutButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  logoutText: {
-    color: Colors.danger,
-    fontWeight: FontWeights.bold,
-    marginLeft: Spacing.sm,
-    fontSize: FontSizes.base,
-  },
-  // Styles pour le modal PIN
-  pinModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: Spacing.xl,
-  },
-  pinModalCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.xl,
-    width: '100%',
-    maxWidth: 400,
-    ...CommonStyles.shadowLg,
-  },
-  pinModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-  },
-  pinModalTitle: {
-    fontSize: FontSizes.xl,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  pinModalSubtitle: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    marginBottom: Spacing.xl,
-    textAlign: 'center',
-  },
-  smsCodeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: Spacing.lg,
-    gap: Spacing.sm,
-  },
-  smsInput: {
-    flex: 1,
-    height: 60,
-    borderWidth: 1.5,
-    borderColor: Colors.gray[300],
-    borderRadius: BorderRadius.md,
-    textAlign: 'center',
-    fontSize: 24,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    backgroundColor: Colors.gray[50],
-  },
-  smsInputFilled: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.white,
-  },
-  // Styles pour PIN (4 chiffres) - Design différent pour éviter la confusion
-  pinCodeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: Spacing.md,
-    marginVertical: Spacing.lg,
-  },
-  pinInput: {
-    width: 56,
-    height: 64,
-    borderWidth: 2,
-    borderColor: Colors.gray[300],
-    borderRadius: BorderRadius.lg,
-    textAlign: 'center',
-    fontSize: FontSizes.xxl,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    backgroundColor: Colors.gray[100],
-  },
-  pinInputFilled: {
-    borderColor: Colors.secondary,
-    backgroundColor: '#F0F9FF',
-    borderWidth: 2.5,
-  },
-  inputLabelSmall: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.medium,
-    color: Colors.gray[500],
-    marginBottom: Spacing.xs,
-  },
-  formSection: {
-    marginBottom: Spacing.lg,
-  },
-  inputLabel: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[700],
-    marginBottom: Spacing.sm,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: Colors.gray[300],
-    borderRadius: BorderRadius.lg,
-    paddingHorizontal: Spacing.md,
-    backgroundColor: Colors.gray[50],
-    height: 56,
-  },
-  inputIcon: {
-    marginRight: Spacing.sm,
-  },
-  input: {
-    flex: 1,
-    fontSize: FontSizes.base,
-    color: Colors.gray[900],
-    height: '100%',
-  },
-  pinModalButton: {
-    backgroundColor: Colors.gray[300],
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: Spacing.lg,
-  },
-  pinModalButtonActive: {
-    backgroundColor: Colors.primary,
-  },
-  pinModalButtonDisabled: {
-    backgroundColor: Colors.gray[300],
-    opacity: 0.5,
-  },
-  pinModalButtonText: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.base,
-  },
-  pinModalResendButton: {
-    marginTop: Spacing.md,
-    alignItems: 'center',
-  },
-  pinModalResendText: {
-    color: Colors.primary,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.medium,
-  },
-  pinModalForgotButton: {
-    marginTop: Spacing.md,
-    alignItems: 'center',
-  },
-  pinModalForgotText: {
-    color: Colors.gray[600],
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.medium,
-    textDecorationLine: 'underline',
-  },
-});

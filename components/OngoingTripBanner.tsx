@@ -5,9 +5,19 @@ import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { formatTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { usePathname, useRouter } from 'expo-router';
-import React, { useMemo } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo } from 'react';
+import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withSpring,
+  withTiming
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export type OngoingTripBannerPosition = 'top' | 'bottom';
@@ -16,24 +26,26 @@ interface OngoingTripBannerProps {
   position?: OngoingTripBannerPosition;
 }
 
-export function OngoingTripBanner({ position = 'top' }: OngoingTripBannerProps = {}) {
+export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProps = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const user = useAppSelector(selectUser);
   const insets = useSafeAreaInsets();
 
+  // Animation values
+  const translateY = useSharedValue(100);
+  const scale = useSharedValue(1);
+
   // Récupérer les trajets de l'utilisateur (comme conducteur)
-  // Rafraîchir périodiquement pour détecter les changements de statut
-  const { data: myTrips } = useGetMyTripsQuery(undefined, { 
+  const { data: myTrips } = useGetMyTripsQuery(undefined, {
     skip: !user,
-    pollingInterval: 10000, // Rafraîchir toutes les 10 secondes
+    pollingInterval: 10000,
   });
-  
+
   // Récupérer les réservations de l'utilisateur (comme passager)
-  // Rafraîchir périodiquement pour détecter les changements de statut (comme completed)
-  const { data: myBookings } = useGetMyBookingsQuery(undefined, { 
+  const { data: myBookings } = useGetMyBookingsQuery(undefined, {
     skip: !user,
-    pollingInterval: 10000, // Rafraîchir toutes les 10 secondes
+    pollingInterval: 10000,
   });
 
   // Trouver un trajet en cours
@@ -49,24 +61,18 @@ export function OngoingTripBanner({ position = 'top' }: OngoingTripBannerProps =
       };
     }
 
-    // Chercher un trajet en cours comme passager (réservation acceptée, trajet en cours, et passager pas encore déposé)
-    // Exclure explicitement les bookings complétés car cela signifie que le passager a été déposé
+    // Chercher un trajet en cours comme passager
     const passengerOngoingBooking = myBookings?.find(
       (booking) => {
-        // Exclure explicitement les bookings complétés (le passager a été déposé)
         if (booking.status === 'completed') {
           return false;
         }
-        // Le booking doit être accepté (pas rejeté, annulé, etc.)
         if (booking.status !== 'accepted') {
           return false;
         }
-        // Le trajet doit être en cours
         if (booking.trip?.status !== 'ongoing') {
           return false;
         }
-        // Le passager ne doit pas avoir été déposé
-        // Si droppedOffConfirmedByPassenger est true, le booking est complété (status devient 'completed')
         if (booking.droppedOffConfirmedByPassenger === true) {
           return false;
         }
@@ -83,40 +89,56 @@ export function OngoingTripBanner({ position = 'top' }: OngoingTripBannerProps =
     return null;
   }, [myTrips, myBookings, user]);
 
-  // Déterminer la position automatiquement selon le pathname si non spécifiée
-  const finalPosition = useMemo(() => {
-    if (position) return position;
-    
-    // Par défaut, en haut sauf pour certaines pages où on peut le mettre en bas
-    // Par exemple, sur la page d'accueil ou de recherche, on peut le mettre en bas
-    if (pathname === '/' || pathname?.startsWith('/search') || pathname?.startsWith('/(tabs)')) {
-      return 'bottom';
-    }
-    
-    return 'top';
-  }, [position, pathname]);
-
   // Ne pas afficher sur certaines pages
   const shouldHide = useMemo(() => {
     if (!ongoingTrip) return true;
-    
-    // Cacher sur les pages d'authentification
+
     if (pathname?.startsWith('/auth') || pathname?.startsWith('/splash') || pathname?.startsWith('/onboarding')) {
       return true;
     }
-    
-    // Cacher sur la page de détails du trajet en cours (pour éviter la redondance)
+
     if (pathname?.includes(`/trip/${ongoingTrip.trip.id}`)) {
       return true;
     }
-    
-    // Cacher sur la page de gestion du trajet en cours (pour éviter la redondance)
+
     if (pathname?.includes(`/trip/manage/${ongoingTrip.trip.id}`)) {
       return true;
     }
-    
+
     return false;
   }, [pathname, ongoingTrip]);
+
+  // Animate in/out
+  useEffect(() => {
+    if (!shouldHide && ongoingTrip) {
+      translateY.value = withSpring(0, {
+        damping: 15,
+        stiffness: 100,
+      });
+
+      // Subtle pulse animation
+      scale.value = withRepeat(
+        withSequence(
+          withTiming(1.02, { duration: 2000, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1,
+        false
+      );
+    } else {
+      translateY.value = withTiming(100, {
+        duration: 300,
+        easing: Easing.inOut(Easing.ease),
+      });
+    }
+  }, [shouldHide, ongoingTrip]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: translateY.value },
+      { scale: scale.value }
+    ],
+  }));
 
   if (!ongoingTrip || shouldHide) {
     return null;
@@ -133,122 +155,219 @@ export function OngoingTripBanner({ position = 'top' }: OngoingTripBannerProps =
     }
   };
 
-  const containerStyle = useMemo(() => {
-    if (finalPosition === 'bottom') {
-      return [
-        styles.container,
-        styles.containerBottom,
-        { paddingBottom: insets.bottom },
-      ];
-    }
-    return [
-      styles.container,
-      styles.containerTop,
-      { paddingTop: insets.top },
-    ];
-  }, [finalPosition, insets.top, insets.bottom]);
+  // Gradient colors based on role
+  const gradientColors = isDriver
+    ? ['#6366F1', '#8B5CF6', '#A855F7'] as const // Purple gradient for driver
+    : ['#0EA5E9', '#06B6D4', '#14B8A6'] as const; // Cyan/Teal gradient for passenger
 
-  const bannerStyle = useMemo(() => {
-    if (finalPosition === 'bottom') {
-      return [styles.banner, styles.bannerBottom];
-    }
-    return [styles.banner, styles.bannerTop];
-  }, [finalPosition]);
+  const iconName = isDriver ? 'car-sport' : 'navigate-circle';
+  const statusBadgeColor = isDriver ? '#A855F7' : '#14B8A6';
+
+  // Calculate bottom padding for tab bar
+  const tabBarHeight = Platform.OS === 'ios' ? 88 : 125;
+  const bottomPadding = tabBarHeight + Spacing.sm;
 
   return (
-    <View style={containerStyle}>
+    <Animated.View
+      style={[
+        styles.container,
+        { bottom: bottomPadding + insets.bottom },
+        animatedStyle
+      ]}
+    >
       <TouchableOpacity
-        style={bannerStyle}
         onPress={handlePress}
-        activeOpacity={0.8}
+        activeOpacity={0.9}
+        style={styles.touchable}
       >
-        <View style={styles.content}>
-          <View style={styles.iconContainer}>
-            <Ionicons name="car-sport" size={20} color={Colors.white} />
+        <LinearGradient
+          colors={gradientColors}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.gradient}
+        >
+          {/* Glassmorphism overlay */}
+          <View style={styles.glassOverlay} />
+
+          <View style={styles.content}>
+            {/* Icon with glow effect */}
+            <View style={styles.iconWrapper}>
+              <View style={[styles.iconGlow, { backgroundColor: statusBadgeColor }]} />
+              <View style={styles.iconContainer}>
+                <Ionicons name={iconName} size={24} color={Colors.white} />
+              </View>
+            </View>
+
+            {/* Text content */}
+            <View style={styles.textContainer}>
+              <View style={styles.titleRow}>
+                <Text style={styles.title}>
+                  {isDriver ? 'Trajet en cours' : 'Vous êtes en route'}
+                </Text>
+                <View style={[styles.statusBadge, { backgroundColor: statusBadgeColor }]}>
+                  <Text style={styles.statusBadgeText}>
+                    {isDriver ? 'Conducteur' : 'Passager'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.routeRow}>
+                <Ionicons name="location" size={14} color={Colors.white} style={styles.routeIcon} />
+                <Text style={styles.routeText} numberOfLines={1}>
+                  {trip.departure.name}
+                </Text>
+              </View>
+
+              <View style={styles.routeRow}>
+                <Ionicons name="navigate" size={14} color={Colors.white} style={styles.routeIcon} />
+                <Text style={styles.routeText} numberOfLines={1}>
+                  {trip.arrival.name}
+                </Text>
+              </View>
+
+              {trip.departureTime && (
+                <View style={styles.timeRow}>
+                  <Ionicons name="time-outline" size={14} color={Colors.white} style={styles.routeIcon} />
+                  <Text style={styles.timeText}>
+                    Départ à {formatTime(trip.departureTime)}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Chevron */}
+            <View style={styles.chevronContainer}>
+              <Ionicons name="chevron-forward" size={24} color={Colors.white} />
+            </View>
           </View>
-          <View style={styles.textContainer}>
-            <Text style={styles.title}>
-              {isDriver ? 'Trajet en cours' : 'Vous êtes dans un trajet'}
-            </Text>
-            <Text style={styles.subtitle} numberOfLines={1}>
-              {trip.departure.name} → {trip.arrival.name}
-            </Text>
-            {trip.departureTime && (
-              <Text style={styles.time}>
-                {formatTime(trip.departureTime)}
-              </Text>
-            )}
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={Colors.white} />
-        </View>
+        </LinearGradient>
       </TouchableOpacity>
-    </View>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    left: Spacing.md,
+    right: Spacing.md,
     zIndex: 1000,
   },
-  containerTop: {
-    top: 0,
+  touchable: {
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.3,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 12,
+      },
+    }),
   },
-  containerBottom: {
-    bottom: 0,
+  gradient: {
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
   },
-  banner: {
-    backgroundColor: Colors.primary,
-    marginHorizontal: Spacing.md,
-    borderRadius: BorderRadius.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  bannerTop: {
-    marginTop: Spacing.sm,
-  },
-  bannerBottom: {
-    marginBottom: Spacing.sm,
+  glassOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backdropFilter: 'blur(10px)',
   },
   content: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Spacing.md,
+    padding: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  iconWrapper: {
+    position: 'relative',
+    marginRight: Spacing.md,
+  },
+  iconGlow: {
+    position: 'absolute',
+    width: 56,
+    height: 56,
+    borderRadius: BorderRadius.full,
+    opacity: 0.3,
+    top: -4,
+    left: -4,
   },
   iconContainer: {
-    width: 40,
-    height: 40,
+    width: 48,
+    height: 48,
     borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: Spacing.md,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
   },
   textContainer: {
     flex: 1,
     marginRight: Spacing.sm,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.xs,
+    gap: Spacing.sm,
+  },
   title: {
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.white,
+    letterSpacing: 0.3,
+  },
+  statusBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  statusBadgeText: {
+    fontSize: FontSizes.xs - 1,
+    fontWeight: FontWeights.semibold,
+    color: Colors.white,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  routeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 2,
   },
-  subtitle: {
+  routeIcon: {
+    marginRight: Spacing.xs,
+    opacity: 0.9,
+  },
+  routeText: {
     fontSize: FontSizes.sm,
     color: Colors.white,
-    opacity: 0.9,
-    marginBottom: 2,
+    opacity: 0.95,
+    flex: 1,
   },
-  time: {
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.xs,
+  },
+  timeText: {
     fontSize: FontSizes.xs,
     color: Colors.white,
-    opacity: 0.8,
+    opacity: 0.85,
+    fontWeight: FontWeights.medium,
+  },
+  chevronContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 
