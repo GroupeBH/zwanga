@@ -83,9 +83,15 @@ export const userApi = baseApi.injectEndpoints({
       invalidatesTags: ['User'],
     }),
 
-    // Récupérer un utilisateur par son ID
     getUserById: builder.query<User, string>({
       query: (id: string) => `/users/${id}`,
+      providesTags: (_result: User | undefined, _error: unknown, id: string) => [{ type: 'User', id }],
+      transformResponse: (response: ServerUser) => mapServerUser(response),
+    }),
+
+    // Récupérer le profil public d'un utilisateur
+    getPublicUserInfo: builder.query<User, string>({
+      query: (id: string) => `/users/${id}/public`,
       providesTags: (_result: User | undefined, _error: unknown, id: string) => [{ type: 'User', id }],
       transformResponse: (response: ServerUser) => mapServerUser(response),
     }),
@@ -118,11 +124,11 @@ export const userApi = baseApi.injectEndpoints({
             ).unwrap();
 
             console.log('Tokens refreshed successfully after KYC upload');
-            
+
             // Invalider les tags User et KycStatus pour forcer un refetch immédiat
             // Cela garantit que tous les composants utilisant ces données se mettent à jour
             dispatch(userApi.util.invalidateTags(['User', 'KycStatus']));
-            
+
             // Forcer un refetch immédiat du statut KYC et du profil utilisateur
             dispatch(userApi.endpoints.getKycStatus.initiate(undefined, { forceRefetch: true }));
             dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true }));
@@ -162,7 +168,7 @@ export const userApi = baseApi.injectEndpoints({
     sendPhoneVerificationOtp: builder.mutation<{ message: string }, { phone: string; context: 'registration' | 'login' | 'update' }>({
       queryFn: async (data: { phone: string; context: 'registration' | 'login' | 'update' }, _api, _extraOptions, baseQuery) => {
         console.log('sendPhoneVerificationOtp queryFn called with:', data);
-        
+
         // S'assurer que le contexte est bien défini
         if (!data.context || (data.context !== 'login' && data.context !== 'registration' && data.context !== 'update')) {
           return {
@@ -173,7 +179,7 @@ export const userApi = baseApi.injectEndpoints({
             },
           } as any;
         }
-        
+
         const result = await baseQuery({
           url: '/users/phone/send-otp',
           method: 'POST',
@@ -182,7 +188,7 @@ export const userApi = baseApi.injectEndpoints({
             context: data.context,
           },
         });
-        
+
         // Typage explicite pour correspondre au type attendu
         if (result.error) {
           return { error: result.error } as any;
@@ -221,7 +227,7 @@ export const userApi = baseApi.injectEndpoints({
     }),
 
     // ==================== Favorite Locations Endpoints ====================
-    
+
     // Récupérer tous les lieux favoris de l'utilisateur
     getFavoriteLocations: builder.query<FavoriteLocation[], void>({
       query: () => '/users/favorite-locations',
@@ -294,6 +300,7 @@ export const {
   useGetCurrentUserQuery,
   useUpdateUserMutation,
   useGetUserByIdQuery,
+  useGetPublicUserInfoQuery,
   useUploadKycMutation,
   useGetKycStatusQuery,
   useUpdateFcmTokenMutation,

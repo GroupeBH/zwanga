@@ -1,20 +1,20 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
 import { useGetTripsQuery } from '@/store/api/tripApi';
-import { useGetUserByIdQuery } from '@/store/api/userApi';
+import { useGetPublicUserInfoQuery } from '@/store/api/userApi';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo } from 'react';
 import {
-    ActivityIndicator,
-    Image,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Image,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 export default function DriverDetailsScreen() {
@@ -22,7 +22,7 @@ export default function DriverDetailsScreen() {
   const params = useLocalSearchParams();
   const driverId = typeof params.id === 'string' ? params.id : '';
 
-  const { data: driver, isLoading: driverLoading } = useGetUserByIdQuery(driverId, {
+  const { data: driver, isLoading: driverLoading } = useGetPublicUserInfoQuery(driverId, {
     skip: !driverId,
   });
 
@@ -170,12 +170,12 @@ export default function DriverDetailsScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.phoneButton, styles.phoneButtonWhatsApp]}
-                  onPress={() => {
-                    openWhatsApp(driverPhone, (errorMsg: string) => {
-                      // Gérer l'erreur si nécessaire
-                      console.error('Erreur WhatsApp:', errorMsg);
-                    });
-                  }}
+                    onPress={() => {
+                      openWhatsApp(driverPhone, (errorMsg: string) => {
+                        // Gérer l'erreur si nécessaire
+                        console.error('Erreur WhatsApp:', errorMsg);
+                      });
+                    }}
                   >
                     <Ionicons name="logo-whatsapp" size={18} color="#25D366" />
                   </TouchableOpacity>
@@ -307,6 +307,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[200],
+    paddingTop: 50,
   },
   backButton: {
     padding: Spacing.xs,
