@@ -951,25 +951,32 @@ export default function PublishScreen() {
                     onChangeText={setPrice}
                     editable={!isFreeTrip}
                   />
-                  <TouchableOpacity
-                    style={styles.freeToggle}
-                    onPress={() => {
-                      setIsFreeTrip(!isFreeTrip);
-                      if (!isFreeTrip) {
-                        setPrice('');
-                      }
-                    }}
-                  >
-                    <View style={[styles.toggleSwitch, isFreeTrip && styles.toggleSwitchActive]}>
-                      <View style={[styles.toggleThumb, isFreeTrip && styles.toggleThumbActive]} />
-                    </View>
-                    <Text style={[styles.freeToggleText, isFreeTrip && styles.freeToggleTextActive]}>
-                      Gratuit
-                    </Text>
-                  </TouchableOpacity>
                 </View>
               </View>
             </View>
+
+            <TouchableOpacity
+              style={[styles.card, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing.md }]}
+              onPress={() => {
+                setIsFreeTrip(!isFreeTrip);
+                if (!isFreeTrip) {
+                  setPrice('');
+                }
+              }}
+              activeOpacity={0.8}
+            >
+              <View>
+                <Text style={{ fontSize: FontSizes.base, fontWeight: FontWeights.semibold, color: Colors.gray[900] }}>
+                  Trajet gratuit
+                </Text>
+                <Text style={{ fontSize: FontSizes.sm, color: Colors.gray[500], marginTop: 2 }}>
+                  Proposer ce trajet gratuitement aux passagers
+                </Text>
+              </View>
+              <View style={[styles.toggleSwitch, isFreeTrip && styles.toggleSwitchActive]}>
+                <View style={[styles.toggleThumb, isFreeTrip && styles.toggleThumbActive]} />
+              </View>
+            </TouchableOpacity>
 
             <View style={styles.card}>
               <Text style={styles.cardLabel}>DESCRIPTION (OPTIONNEL)</Text>
