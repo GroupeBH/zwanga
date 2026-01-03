@@ -782,7 +782,7 @@ export default function ManageTripScreen() {
                   <View style={styles.bookingInfo}>
                     <Text style={styles.bookingName}>{booking.passengerName}</Text>
                     <Text style={styles.bookingMeta}>
-                      {booking.seats} place(s) • {booking.totalPrice} FCFA
+                      {booking.numberOfSeats} place(s) • {(booking.numberOfSeats * (trip?.price ?? 0)).toLocaleString()} FC
                     </Text>
                     {booking.passengerDestination && (
                       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 4 }}>
@@ -1392,7 +1392,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   timeText: {
-    fontSize: FontSizes.md,
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
@@ -1443,7 +1443,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   itineraryValue: {
-    fontSize: FontSizes.md,
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.semibold,
     color: Colors.gray[900],
   },
@@ -1474,7 +1474,7 @@ const styles = StyleSheet.create({
     color: Colors.gray[500],
   },
   statValue: {
-    fontSize: FontSizes.md,
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
@@ -1551,7 +1551,7 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.md,
   },
   bookingName: {
-    fontSize: FontSizes.md,
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
@@ -1574,7 +1574,7 @@ const styles = StyleSheet.create({
     color: Colors.gray[500],
   },
   metaValue: {
-    fontSize: FontSizes.md,
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
   },
   actionRow: {
@@ -1627,7 +1627,7 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: Colors.white,
-    fontSize: FontSizes.md,
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
   },
   secondaryButton: {
@@ -1640,7 +1640,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   secondaryButtonText: {
-    fontSize: FontSizes.md,
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[700],
   },
@@ -1669,7 +1669,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs,
   },
   bookingModalDescription: {
-    fontSize: FontSizes.md,
+    fontSize: FontSizes.base,
     color: Colors.gray[500],
     marginBottom: Spacing.lg,
   },
@@ -1677,7 +1677,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
     borderRadius: BorderRadius.lg,
     padding: Spacing.md,
-    fontSize: FontSizes.md,
+    fontSize: FontSizes.base,
     color: Colors.gray[900],
     borderWidth: 1,
     borderColor: Colors.gray[200],
@@ -1709,12 +1709,12 @@ const styles = StyleSheet.create({
   },
   bookingModalButtonPrimaryText: {
     color: Colors.white,
-    fontSize: FontSizes.md,
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
   },
   bookingModalButtonSecondaryText: {
     color: Colors.gray[700],
-    fontSize: FontSizes.md,
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
   },
   mapModalOverlay: {
@@ -1832,7 +1832,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs,
   },
   contactModalSubtitle: {
-    fontSize: FontSizes.md,
+    fontSize: FontSizes.base,
     color: Colors.gray[500],
     textAlign: 'center',
   },
@@ -1862,7 +1862,7 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.md,
   },
   contactModalButtonTitle: {
-    fontSize: FontSizes.md,
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
@@ -1883,7 +1883,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   contactModalCancelText: {
-    fontSize: FontSizes.md,
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.semibold,
     color: Colors.gray[500],
   },
