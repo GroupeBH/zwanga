@@ -15,7 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import MapView, { Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
+import MapView, { Polyline, PROVIDER_GOOGLE, Region, MapPressEvent } from 'react-native-maps';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -227,7 +227,7 @@ export default function LocationPickerModal({
     };
   }, []);
 
-  const animateToCoordinate = (latitude: number, longitude: number, skipMarkerUpdate = false) => {
+  const animateToCoordinate = (latitude: number, longitude: number, skipMarkerUpdate = false, triggerGeocodeAfter = false) => {
     try {
       // Valider les coordonnées avant d'animer
       if (
@@ -282,10 +282,13 @@ export default function LocationPickerModal({
         mapRef.current.animateToRegion(nextRegion, 250);
       }
 
-      // Réinitialiser après l'animation
+      // Réinitialiser après l'animation et déclencher le geocoding si demandé
       setTimeout(() => {
         isUpdatingMarkerRef.current = false;
         isUserInteractionRef.current = true;
+        if (triggerGeocodeAfter) {
+          updateLocationFromCoordinates({ latitude, longitude });
+        }
       }, 400); // Légèrement après la durée de l'animation
     } catch (error) {
       console.error('Error animating to coordinate:', error);
@@ -386,11 +389,61 @@ export default function LocationPickerModal({
     });
   };
 
+  const handleMapPress = (event: MapPressEvent) => {
+    // Ignorer si on est déjà en train de mettre à jour le marqueur
+    if (isUpdatingMarkerRef.current) {
+      return;
+    }
+
+    const { latitude, longitude } = event.nativeEvent.coordinate;
+
+    // Valider les coordonnées
+    if (
+      typeof latitude !== 'number' ||
+      typeof longitude !== 'number' ||
+      isNaN(latitude) ||
+      isNaN(longitude) ||
+      !isFinite(latitude) ||
+      !isFinite(longitude) ||
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      return;
+    }
+
+    // Snap to route if required
+    let finalCoords = { latitude, longitude };
+    if (restrictToRoute || routeCoordinates) {
+      finalCoords = snapPointToRoute(latitude, longitude);
+    }
+
+    // Animer vers le point cliqué et faire le geocoding
+    animateToCoordinate(finalCoords.latitude, finalCoords.longitude, false, true);
+  };
+
   const handleMapIdle = (region: Region) => {
+    // Ignorer si on est déjà en train de mettre à jour le marqueur programmatiquement
+    if (isUpdatingMarkerRef.current) {
+      return;
+    }
+
     setIsPanning(false);
     dropPin();
 
     const { latitude, longitude } = region;
+
+    // Vérifier si les coordonnées ont significativement changé pour éviter les boucles
+    const lastUpdate = lastMarkerUpdateRef.current;
+    if (lastUpdate) {
+      const latDiff = Math.abs(latitude - lastUpdate.latitude);
+      const lngDiff = Math.abs(longitude - lastUpdate.longitude);
+      // Si la différence est très petite (< 0.0001 degrés, ~11 mètres), ignorer
+      if (latDiff < 0.0001 && lngDiff < 0.0001) {
+        return;
+      }
+    }
 
     // Snap to route if required
     let finalCoords = { latitude, longitude };
@@ -398,7 +451,10 @@ export default function LocationPickerModal({
       finalCoords = snapPointToRoute(latitude, longitude);
       // Si on a snapé, on recentre la carte
       if (finalCoords.latitude !== latitude || finalCoords.longitude !== longitude) {
-        animateToCoordinate(finalCoords.latitude, finalCoords.longitude, true);
+        // Marquer qu'on est en train de mettre à jour pour éviter la boucle
+        // Le geocoding sera déclenché après l'animation via triggerGeocodeAfter
+        animateToCoordinate(finalCoords.latitude, finalCoords.longitude, true, true);
+        return; // Ne pas faire le geocoding maintenant, il sera fait après le snap
       }
     }
 
@@ -1022,6 +1078,7 @@ export default function LocationPickerModal({
             initialRegion={region}
             onRegionChange={handleCameraChanged}
             onRegionChangeComplete={handleMapIdle}
+            onPress={handleMapPress}
             showsUserLocation={permissionStatus === Location.PermissionStatus.GRANTED}
             showsCompass={false}
             scrollEnabled={!searchLoading && !isLocating}
