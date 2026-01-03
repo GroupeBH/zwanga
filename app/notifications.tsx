@@ -279,6 +279,42 @@ export default function NotificationsScreen() {
     }
   };
 
+  const handleDeleteAllNotifications = () => {
+    if (notifications.length === 0) {
+      return;
+    }
+
+    showDialog({
+      variant: 'warning',
+      title: 'Supprimer toutes les notifications',
+      message: `Êtes-vous sûr de vouloir supprimer toutes les ${notifications.length} notification${notifications.length > 1 ? 's' : ''} ? Cette action est irréversible.`,
+      actions: [
+        { label: 'Annuler', variant: 'ghost' },
+        {
+          label: 'Supprimer tout',
+          variant: 'primary',
+          onPress: async () => {
+            try {
+              const allNotificationIds = notifications.map((n) => n.id);
+              await disableNotifications({ notificationIds: allNotificationIds }).unwrap();
+              showDialog({
+                variant: 'success',
+                title: 'Notifications supprimées',
+                message: 'Toutes les notifications ont été supprimées avec succès.',
+              });
+            } catch (error: any) {
+              showDialog({
+                variant: 'danger',
+                title: 'Erreur',
+                message: error?.data?.message || 'Impossible de supprimer les notifications',
+              });
+            }
+          },
+        },
+      ],
+    });
+  };
+
   const renderRightActions = (notification: Notification) => {
     return (
       <View style={styles.rightActionContainer}>
@@ -414,6 +450,11 @@ export default function NotificationsScreen() {
           {unreadCount > 0 && (
             <TouchableOpacity style={styles.markAllButton} onPress={handleMarkAllAsRead}>
               <Ionicons name="checkmark-done" size={18} color={Colors.primary} />
+            </TouchableOpacity>
+          )}
+          {notifications.length > 0 && (
+            <TouchableOpacity style={styles.deleteAllButton} onPress={handleDeleteAllNotifications}>
+              <Ionicons name="trash-outline" size={18} color={Colors.danger} />
             </TouchableOpacity>
           )}
           <TouchableOpacity style={styles.refreshButton} onPress={() => refetch()}>
@@ -636,6 +677,16 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     borderWidth: 1,
     borderColor: Colors.gray[200],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteAllButton: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.danger + '40',
+    backgroundColor: Colors.danger + '10',
     alignItems: 'center',
     justifyContent: 'center',
   },
