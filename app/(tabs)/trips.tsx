@@ -72,7 +72,7 @@ export default function TripsScreen() {
   };
 
   const trips = myTrips ?? [];
-  
+
   const upcomingTrips = useMemo(
     () => {
       const now = new Date();
@@ -81,7 +81,7 @@ export default function TripsScreen() {
         if (trip.status === 'completed') {
           return false;
         }
-        
+
         // Si le trajet est 'upcoming' ou 'ongoing', vérifier si la date de départ est passée
         if (trip.status === 'upcoming' || trip.status === 'ongoing') {
           if (trip.departureTime) {
@@ -93,10 +93,10 @@ export default function TripsScreen() {
           }
           return true;
         }
-        
+
         return false;
       });
-      
+
       // Trier par date de départ (les plus récents en premier)
       return filtered.sort((a, b) => {
         const dateA = new Date(a.departureTime).getTime();
@@ -106,7 +106,7 @@ export default function TripsScreen() {
     },
     [trips],
   );
-  
+
   const completedTrips = useMemo(
     () => {
       const now = new Date();
@@ -115,7 +115,7 @@ export default function TripsScreen() {
         if (trip.status === 'completed') {
           return true;
         }
-        
+
         // Les trajets 'upcoming' ou 'ongoing' dont la date de départ est passée sont expirés
         if (trip.status === 'upcoming' || trip.status === 'ongoing') {
           if (trip.departureTime) {
@@ -126,10 +126,10 @@ export default function TripsScreen() {
             }
           }
         }
-        
+
         return false;
       });
-      
+
       // Trier par date de départ (les plus récents en premier)
       return filtered.sort((a, b) => {
         const dateA = new Date(a.departureTime).getTime();
@@ -273,7 +273,7 @@ export default function TripsScreen() {
       await updateTripMutation({
         id: editingTrip.id,
         updates: {
-          availableSeats: seatsValue,
+          totalSeats: seatsValue,
           pricePerSeat: priceValue,
           departureDate: editDateTime.toISOString(),
         },
@@ -307,7 +307,7 @@ export default function TripsScreen() {
     if (trip.status === 'completed') {
       return false;
     }
-    
+
     // Vérifier si la date de départ est passée
     if (trip.departureTime) {
       const departureDate = new Date(trip.departureTime);
@@ -316,19 +316,19 @@ export default function TripsScreen() {
         return false; // Trajet expiré, ne peut plus être modifié
       }
     }
-    
+
     return trip.status === 'upcoming' || trip.status === 'ongoing';
   };
 
   const getStatusConfig = (trip: Trip) => {
     // Vérifier si le trajet est expiré (date de départ passée)
     const isExpired = trip.departureTime && new Date(trip.departureTime) < new Date();
-    
+
     // Si le trajet est expiré mais n'a pas le status 'completed', afficher "Expiré"
     if (isExpired && trip.status !== 'completed') {
       return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: 'Expiré' };
     }
-    
+
     switch (trip.status) {
       case 'upcoming':
         return { bgColor: 'rgba(247, 184, 1, 0.1)', textColor: Colors.secondary, label: 'À venir' };
@@ -439,12 +439,12 @@ export default function TripsScreen() {
           displayTrips.map((trip, index) => {
             const TripCardWithArrival = () => {
               const calculatedArrivalTime = useTripArrivalTime(trip);
-              const arrivalTimeDisplay = calculatedArrivalTime 
+              const arrivalTimeDisplay = calculatedArrivalTime
                 ? formatTime(calculatedArrivalTime.toISOString())
                 : formatTime(trip.arrivalTime);
-              
+
               const statusConfig = getStatusConfig(trip);
-              
+
               return (
                 <Animated.View
                   key={trip.id}
@@ -518,31 +518,31 @@ export default function TripsScreen() {
                     </View>
                   </View>
 
-                {/* Info */}
-                <View style={styles.tripFooter}>
-                  <View style={styles.tripFooterLeft}>
-                    <View style={styles.infoItem}>
-                      <Ionicons name="people" size={16} color={Colors.gray[600]} />
-                      <Text style={styles.infoText}>{trip.availableSeats} places</Text>
+                  {/* Info */}
+                  <View style={styles.tripFooter}>
+                    <View style={styles.tripFooterLeft}>
+                      <View style={styles.infoItem}>
+                        <Ionicons name="people" size={16} color={Colors.gray[600]} />
+                        <Text style={styles.infoText}>{trip.availableSeats} places</Text>
+                      </View>
+                      <View style={[styles.infoItem, { marginLeft: Spacing.lg }]}>
+                        <Ionicons name="cash" size={16} color={Colors.gray[600]} />
+                        {trip.price === 0 ? (
+                          <Text style={[styles.infoText, { color: Colors.success, fontWeight: FontWeights.bold }]}>Gratuit</Text>
+                        ) : (
+                          <Text style={styles.infoText}>{trip.price} FC</Text>
+                        )}
+                      </View>
                     </View>
-                    <View style={[styles.infoItem, { marginLeft: Spacing.lg }]}>
-                      <Ionicons name="cash" size={16} color={Colors.gray[600]} />
-                      {trip.price === 0 ? (
-                        <Text style={[styles.infoText, { color: Colors.success, fontWeight: FontWeights.bold }]}>Gratuit</Text>
-                      ) : (
-                        <Text style={styles.infoText}>{trip.price} FC</Text>
-                      )}
-                    </View>
+                    {/* Bouton Détails - Toujours accessible, même pour les trajets expirés/complétés */}
+                    <TouchableOpacity
+                      style={styles.detailsButton}
+                      onPress={() => router.push(`/trip/manage/${trip.id}`)}
+                    >
+                      <Text style={styles.detailsButtonText}>Détails</Text>
+                      <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+                    </TouchableOpacity>
                   </View>
-                  {/* Bouton Détails - Toujours accessible, même pour les trajets expirés/complétés */}
-                  <TouchableOpacity
-                    style={styles.detailsButton}
-                    onPress={() => router.push(`/trip/manage/${trip.id}`)}
-                  >
-                    <Text style={styles.detailsButtonText}>Détails</Text>
-                    <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
-                  </TouchableOpacity>
-                </View>
 
                   {/* Actions de gestion - Désactivées pour les trajets expirés/complétés mais toujours visibles */}
                   <View style={styles.ownerActionsRow}>

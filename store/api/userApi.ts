@@ -230,7 +230,7 @@ export const userApi = baseApi.injectEndpoints({
 
     // Récupérer tous les lieux favoris de l'utilisateur
     getFavoriteLocations: builder.query<FavoriteLocation[], void>({
-      query: () => '/users/favorite-locations',
+      query: () => '/favorite-places',
       providesTags: ['FavoriteLocations'],
     }),
 
@@ -238,14 +238,14 @@ export const userApi = baseApi.injectEndpoints({
     getDefaultFavoriteLocation: builder.query<FavoriteLocation | null, { type?: 'home' | 'work' | 'other' } | void>({
       query: (params) => {
         const queryParams = params && params.type ? `?type=${params.type}` : '';
-        return `/users/favorite-locations/default${queryParams}`;
+        return `/favorite-places/default${queryParams}`;
       },
       providesTags: ['FavoriteLocations'],
     }),
 
     // Récupérer un lieu favori par ID
     getFavoriteLocationById: builder.query<FavoriteLocation, string>({
-      query: (id: string) => `/users/favorite-locations/${id}`,
+      query: (id: string) => `/favorite-places/${id}`,
       providesTags: (_result, _error, id) => [{ type: 'FavoriteLocations', id }],
     }),
 
@@ -259,7 +259,7 @@ export const userApi = baseApi.injectEndpoints({
       notes?: string;
     }>({
       query: (data) => ({
-        url: '/users/favorite-locations',
+        url: '/favorite-places',
         method: 'POST',
         body: data,
       }),
@@ -277,7 +277,7 @@ export const userApi = baseApi.injectEndpoints({
       notes?: string;
     }>({
       query: ({ id, ...data }) => ({
-        url: `/users/favorite-locations/${id}`,
+        url: `/favorite-places/${id}`,
         method: 'PUT',
         body: data,
       }),
@@ -287,7 +287,7 @@ export const userApi = baseApi.injectEndpoints({
     // Supprimer un lieu favori
     deleteFavoriteLocation: builder.mutation<{ message: string }, string>({
       query: (id: string) => ({
-        url: `/users/favorite-locations/${id}`,
+        url: `/favorite-places/${id}`,
         method: 'DELETE',
       }),
       invalidatesTags: (_result, _error, id) => [{ type: 'FavoriteLocations', id }, 'FavoriteLocations'],
