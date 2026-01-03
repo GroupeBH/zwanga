@@ -218,7 +218,7 @@ export default function LocationPickerModal({
     }
   }, [initialLocation, visible]);
 
-  // Nettoyer le timeout de géocodage quand le composant est démonté
+  // clean geocoding timeout when component unmount
   useEffect(() => {
     return () => {
       if (geocodeTimeoutRef.current) {
