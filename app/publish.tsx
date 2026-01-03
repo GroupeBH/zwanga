@@ -6,6 +6,7 @@ import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useCreateTripMutation } from '@/store/api/tripApi';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
+import { createBecomeDriverAction, isDriverRequiredError } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -180,7 +181,11 @@ export default function PublishScreen() {
   // Driver and Vehicle Management
   const { data: profileSummary } = useGetProfileSummaryQuery();
   const user = profileSummary?.user;
-  const isDriver = user?.isDriver ?? false;
+  // Déterminer si l'utilisateur est conducteur basé sur le role
+  const isDriver = useMemo(() => {
+    const role = user?.role;
+    return role === 'driver' || role === 'both';
+  }, [user?.role]);
   const [showDriverRequiredModal, setShowDriverRequiredModal] = useState(false);
 
   const { data: vehicles = [], refetch: refetchVehicles } = useGetVehiclesQuery(undefined, {
@@ -570,10 +575,20 @@ export default function PublishScreen() {
         error?.data?.message ??
         error?.error ??
         'Impossible de publier le trajet pour le moment. Veuillez réessayer.';
+      
+      // Vérifier si l'erreur est liée au fait que l'utilisateur n'est pas conducteur
+      const isDriverError = isDriverRequiredError(error);
+      
       showDialog({
         variant: 'danger',
         title: 'Erreur',
         message: Array.isArray(message) ? message.join('\n') : message,
+        actions: isDriverError
+          ? [
+              { label: 'Fermer', variant: 'ghost' },
+              createBecomeDriverAction(router),
+            ]
+          : undefined,
       });
     }
   };
@@ -1174,7 +1189,7 @@ export default function PublishScreen() {
                 style={[styles.driverModalButton, styles.driverModalButtonPrimary]}
                 onPress={() => {
                   setShowDriverRequiredModal(false);
-                  router.push('/edit-profile');
+                  router.push('/profile');
                 }}
               >
                 <Text style={styles.driverModalButtonPrimaryText}>Devenir conducteur</Text>

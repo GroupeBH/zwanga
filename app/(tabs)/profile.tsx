@@ -5,16 +5,18 @@ import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } f
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
+import { useGetMyDriverOffersQuery, useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useSendPhoneVerificationOtpMutation, useUpdatePinMutation, useUpdatePinWithOtpMutation, useUploadKycMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
-import { useGetMyTripRequestsQuery, useGetMyDriverOffersQuery } from '@/store/api/tripRequestApi';
-import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
+import { useCreateVehicleMutation, useDeleteVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { logout } from '@/store/slices/authSlice';
 import type { Vehicle } from '@/types';
+import { createBecomeDriverAction, isDriverRequiredError } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -29,11 +31,11 @@ import {
   TextInput,
   TextInputKeyPressEventData,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 
 const styles = StyleSheet.create({
   container: {
@@ -514,6 +516,18 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
     ...CommonStyles.shadowSm,
   },
+  vehicleItemLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  vehicleDeleteButton: {
+    padding: Spacing.sm,
+    marginLeft: Spacing.md,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.danger + '10',
+  },
   vehicleTitle: {
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
@@ -627,6 +641,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: BorderRadius.xxl,
     padding: Spacing.xl,
     maxHeight: '90%',
+    width: '100%',
   },
   vehicleModalHeader: {
     alignItems: 'flex-end',
@@ -818,6 +833,67 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.medium,
   },
+  becomeDriverCard: {
+    marginTop: Spacing.md,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+    ...CommonStyles.shadowMd,
+  },
+  becomeDriverGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.lg,
+    position: 'relative',
+  },
+  becomeDriverContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  becomeDriverIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  becomeDriverTextContainer: {
+    flex: 1,
+  },
+  becomeDriverTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
+    marginBottom: 2,
+  },
+  becomeDriverSubtitle: {
+    fontSize: FontSizes.xs,
+    color: 'rgba(255, 255, 255, 0.9)',
+  },
+  becomeDriverProgress: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginTop: Spacing.sm,
+  },
+  becomeDriverProgressItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  becomeDriverProgressText: {
+    fontSize: FontSizes.xs,
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontWeight: FontWeights.medium,
+  },
+  becomeDriverProgressTextCompleted: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+  },
+  becomeDriverArrow: {
+    marginLeft: Spacing.sm,
+  },
 });
 
 export default function ProfileScreen() {
@@ -866,6 +942,7 @@ export default function ProfileScreen() {
     refetch: refetchVehicles,
   } = useGetVehiclesQuery();
   const [createVehicle, { isLoading: creatingVehicle }] = useCreateVehicleMutation();
+  const [deleteVehicle, { isLoading: deletingVehicle }] = useDeleteVehicleMutation();
   const [uploadKyc, { isLoading: uploadingKyc }] = useUploadKycMutation();
   const [updatePin, { isLoading: isUpdatingPin }] = useUpdatePinMutation();
   const [updatePinWithOtp, { isLoading: isUpdatingPinWithOtp }] = useUpdatePinWithOtpMutation();
@@ -877,6 +954,12 @@ export default function ProfileScreen() {
   const currentUser = profileSummary?.user ?? user;
   const stats = profileSummary?.stats;
   const vehicleList: Vehicle[] = vehicles ?? [];
+
+  // Déterminer si l'utilisateur est conducteur basé sur le role
+  const isDriver = useMemo(() => {
+    const role = currentUser?.role;
+    return role === 'driver' || role === 'both';
+  }, [currentUser?.role]);
 
   const isKycApproved = kycStatus?.status === 'approved';
   const isKycPending = kycStatus?.status === 'pending';
@@ -978,12 +1061,29 @@ export default function ProfileScreen() {
     }
   };
 
-  const resetVehicleForm = () => {
+  const resetVehicleForm = useCallback(() => {
     setVehicleBrand('');
     setVehicleModel('');
     setVehicleColor('');
     setVehiclePlate('');
-  };
+  }, []);
+
+  // Handlers optimisés pour éviter les re-renders
+  const handleVehicleBrandChange = useCallback((text: string) => {
+    setVehicleBrand(text);
+  }, []);
+
+  const handleVehicleModelChange = useCallback((text: string) => {
+    setVehicleModel(text);
+  }, []);
+
+  const handleVehicleColorChange = useCallback((text: string) => {
+    setVehicleColor(text);
+  }, []);
+
+  const handleVehiclePlateChange = useCallback((text: string) => {
+    setVehiclePlate(text);
+  }, []);
 
   const resetKycForm = () => {
     setKycFrontImage(null);
@@ -1020,14 +1120,64 @@ export default function ProfileScreen() {
       await Promise.all([refetchVehicles(), refetchProfile()]);
     } catch (error: any) {
       const message =
-        error?.data?.message ?? error?.error ?? 'Impossible d\’ajouter le véhicule pour le moment.';
+        error?.data?.message ?? error?.error ?? 'Impossible d\'ajouter le véhicule pour le moment.';
+      const isDriverError = isDriverRequiredError(error);
+      
       showDialog({
         variant: 'danger',
         title: 'Erreur',
         message: Array.isArray(message) ? message.join('\n') : message,
+        actions: isDriverError
+          ? [
+              { label: 'Fermer', variant: 'ghost' },
+              createBecomeDriverAction(router),
+            ]
+          : undefined,
       });
     }
   };
+
+  const handleDeleteVehicle = useCallback((vehicle: Vehicle) => {
+    showDialog({
+      variant: 'warning',
+      title: 'Supprimer le véhicule',
+      message: `Êtes-vous sûr de vouloir supprimer ${vehicle.brand} ${vehicle.model} (${vehicle.licensePlate}) ? Cette action est irréversible.`,
+      actions: [
+        { label: 'Annuler', variant: 'ghost' },
+        {
+          label: 'Supprimer',
+          variant: 'primary',
+          onPress: async () => {
+            try {
+              await deleteVehicle(vehicle.id).unwrap();
+              await refetchVehicles();
+              showDialog({
+                variant: 'success',
+                title: 'Véhicule supprimé',
+                message: 'Le véhicule a été supprimé avec succès.',
+              });
+            } catch (error: any) {
+              const message =
+                error?.data?.message ?? error?.error ?? 'Impossible de supprimer le véhicule pour le moment.';
+              const isDriverError = isDriverRequiredError(error);
+              
+              showDialog({
+                variant: 'danger',
+                title: 'Erreur',
+                message: Array.isArray(message) ? message.join('\n') : message,
+                actions: isDriverError
+                  ? [
+                      { label: 'Fermer', variant: 'ghost' },
+                      createBecomeDriverAction(router),
+                    ]
+                  : undefined,
+              });
+            }
+          },
+        },
+      ],
+    });
+  }, [deleteVehicle, refetchVehicles, router, showDialog]);
 
   const handleOpenKycModal = () => {
     if (isKycApproved) {
@@ -1329,15 +1479,13 @@ export default function ProfileScreen() {
     try {
       if (forgotPinMode) {
         // Utiliser updatePinWithOtp si l'utilisateur a oublié son PIN
+        // Note: L'OTP doit être vérifié avant d'appeler cette fonction
         await updatePinWithOtp({
-          phone: currentUser?.phone || '',
-          otp: otpCode.join(''),
           newPin: newPin,
         }).unwrap();
       } else {
-        // Utiliser updatePin avec l'ancien PIN
+        // Utiliser updatePin (l'ancien PIN est vérifié côté serveur via l'authentification)
         await updatePin({
-          oldPin: oldPin,
           newPin: newPin,
         }).unwrap();
       }
@@ -1406,7 +1554,7 @@ export default function ProfileScreen() {
       badge: tripRequestsCount > 0 ? tripRequestsCount : undefined,
       badgeColor: tripRequestsWithOffersCount > 0 ? Colors.info : Colors.warning,
     },
-    ...(currentUser?.isDriver
+    ...(isDriver
       ? [
           { icon: 'list-outline', label: 'Demandes disponibles', route: '/requests' },
           {
@@ -1544,7 +1692,7 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
           </TouchableOpacity>
 
-          {currentUser?.isDriver && (
+          {isDriver && (
             <TouchableOpacity
               style={[styles.mainActionCard, { borderColor: Colors.info + '30' }]}
               onPress={() => router.push('/my-offers')}
@@ -1560,6 +1708,103 @@ export default function ProfileScreen() {
               </View>
               <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
             </TouchableOpacity>
+          )}
+
+          {/* Section "Devenir conducteur" pour les passagers */}
+          {!isDriver && (
+            <Animated.View entering={FadeInDown.delay(200)}>
+              <TouchableOpacity
+                style={styles.becomeDriverCard}
+                onPress={() => {
+                  // Vérifier les prérequis et guider l'utilisateur
+                  const hasVehicle = vehicleList.length > 0;
+                  const hasKyc = isKycApproved;
+                  
+                  if (!hasVehicle && !hasKyc) {
+                    showDialog({
+                      variant: 'info',
+                      title: 'Devenir conducteur',
+                      message: 'Pour devenir conducteur, vous devez :\n\n1. Ajouter un véhicule\n2. Compléter la vérification d\'identité (KYC)\n\nSouhaitez-vous commencer par ajouter un véhicule ?',
+                      actions: [
+                        { label: 'Plus tard', variant: 'ghost' },
+                        {
+                          label: 'Ajouter un véhicule',
+                          variant: 'primary',
+                          onPress: () => {
+                            resetVehicleForm();
+                            setVehicleModalVisible(true);
+                          },
+                        },
+                      ],
+                    });
+                  } else if (!hasVehicle) {
+                    resetVehicleForm();
+                    setVehicleModalVisible(true);
+                  } else if (!hasKyc) {
+                    handleOpenKycModal();
+                  } else {
+                    showDialog({
+                      variant: 'info',
+                      title: 'Félicitations !',
+                      message: 'Vous avez tous les prérequis pour devenir conducteur. Contactez le support pour activer votre compte conducteur.',
+                    });
+                  }
+                }}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={[Colors.secondary, '#F59E0B']}
+                  style={styles.becomeDriverGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <View style={styles.becomeDriverContent}>
+                    <View style={styles.becomeDriverIconContainer}>
+                      <Ionicons name="car-sport" size={32} color={Colors.white} />
+                    </View>
+                    <View style={styles.becomeDriverTextContainer}>
+                      <Text style={styles.becomeDriverTitle}>Devenir conducteur</Text>
+                      <Text style={styles.becomeDriverSubtitle}>
+                        Gagnez de l'argent en proposant des trajets
+                      </Text>
+                    </View>
+                    <View style={styles.becomeDriverProgress}>
+                      <View style={styles.becomeDriverProgressItem}>
+                        <Ionicons
+                          name={vehicleList.length > 0 ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={16}
+                          color={vehicleList.length > 0 ? Colors.white : 'rgba(255,255,255,0.6)'}
+                        />
+                        <Text
+                          style={[
+                            styles.becomeDriverProgressText,
+                            vehicleList.length > 0 && styles.becomeDriverProgressTextCompleted,
+                          ]}
+                        >
+                          Véhicule
+                        </Text>
+                      </View>
+                      <View style={styles.becomeDriverProgressItem}>
+                        <Ionicons
+                          name={isKycApproved ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={16}
+                          color={isKycApproved ? Colors.white : 'rgba(255,255,255,0.6)'}
+                        />
+                        <Text
+                          style={[
+                            styles.becomeDriverProgressText,
+                            isKycApproved && styles.becomeDriverProgressTextCompleted,
+                          ]}
+                        >
+                          KYC
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                  <Ionicons name="arrow-forward-circle" size={24} color={Colors.white} style={styles.becomeDriverArrow} />
+                </LinearGradient>
+              </TouchableOpacity>
+            </Animated.View>
           )}
         </View>
 
@@ -1719,7 +1964,7 @@ export default function ProfileScreen() {
 
         <View style={styles.vehiclesContainer}>
           <View style={styles.vehiclesHeader}>
-            <Text style={styles.sectionTitle}>Mes véhicules</Text>
+            <Text style={styles.sectionHeaderTitle}>Mes véhicules</Text>
             <TouchableOpacity
               style={styles.vehicleAddButton}
               onPress={() => {
@@ -1735,28 +1980,42 @@ export default function ProfileScreen() {
           ) : vehicleList.length > 0 ? (
             vehicleList.map((vehicle) => (
               <View key={vehicle.id} style={styles.vehicleItem}>
-                <View>
-                  <Text style={styles.vehicleTitle}>
-                    {vehicle.brand} {vehicle.model}
-                  </Text>
-                  <Text style={styles.vehiclePlate}>{vehicle.licensePlate}</Text>
-                  <Text style={styles.vehicleColor}>{vehicle.color}</Text>
-                </View>
-                <View
-                  style={[
-                    styles.vehicleStatus,
-                    { backgroundColor: vehicle.isActive ? Colors.success + '20' : Colors.gray[200] },
-                  ]}
-                >
-                  <Text
+                <View style={styles.vehicleItemLeft}>
+                  <View>
+                    <Text style={styles.vehicleTitle}>
+                      {vehicle.brand} {vehicle.model}
+                    </Text>
+                    <Text style={styles.vehiclePlate}>{vehicle.licensePlate}</Text>
+                    <Text style={styles.vehicleColor}>{vehicle.color}</Text>
+                  </View>
+                  <View
                     style={[
-                      styles.vehicleStatusText,
-                      { color: vehicle.isActive ? Colors.success : Colors.gray[600] },
+                      styles.vehicleStatus,
+                      { backgroundColor: vehicle.isActive ? Colors.success + '20' : Colors.gray[200] },
                     ]}
                   >
-                    {vehicle.isActive ? 'Actif' : 'Inactif'}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.vehicleStatusText,
+                        { color: vehicle.isActive ? Colors.success : Colors.gray[600] },
+                      ]}
+                    >
+                      {vehicle.isActive ? 'Actif' : 'Inactif'}
+                    </Text>
+                  </View>
                 </View>
+                <TouchableOpacity
+                  style={styles.vehicleDeleteButton}
+                  onPress={() => handleDeleteVehicle(vehicle)}
+                  disabled={deletingVehicle}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  {deletingVehicle ? (
+                    <ActivityIndicator size="small" color={Colors.danger} />
+                  ) : (
+                    <Ionicons name="trash-outline" size={20} color={Colors.danger} />
+                  )}
+                </TouchableOpacity>
               </View>
             ))
           ) : (
@@ -1818,12 +2077,20 @@ export default function ProfileScreen() {
         </View>
       </ScrollView>
 
-      <Modal visible={vehicleModalVisible} transparent animationType="fade">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.vehicleModalOverlay}
-        >
-          <Animated.View entering={FadeInDown} style={styles.vehicleModalCard}>
+      <Modal 
+        visible={vehicleModalVisible} 
+        transparent 
+        animationType="slide"
+        onRequestClose={() => setVehicleModalVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setVehicleModalVisible(false)}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.vehicleModalOverlay}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+          >
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+              <View style={styles.vehicleModalCard}>
             <View style={styles.vehicleModalHeader}>
               <TouchableOpacity onPress={() => setVehicleModalVisible(false)}>
                 <Ionicons name="close" size={24} color={Colors.gray[500]} />
@@ -1842,6 +2109,8 @@ export default function ProfileScreen() {
               contentContainerStyle={styles.vehicleModalContent}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled={true}
+              bounces={false}
             >
               <View style={styles.vehicleInputGroup}>
                 <Text style={styles.vehicleInputLabel}>Marque</Text>
@@ -1850,7 +2119,7 @@ export default function ProfileScreen() {
                   placeholder="Toyota"
                   placeholderTextColor={Colors.gray[400]}
                   value={vehicleBrand}
-                  onChangeText={setVehicleBrand}
+                  onChangeText={handleVehicleBrandChange}
                 />
               </View>
               <View style={styles.vehicleInputGroup}>
@@ -1860,7 +2129,7 @@ export default function ProfileScreen() {
                   placeholder="Corolla"
                   placeholderTextColor={Colors.gray[400]}
                   value={vehicleModel}
-                  onChangeText={setVehicleModel}
+                  onChangeText={handleVehicleModelChange}
                 />
               </View>
               <View style={styles.vehicleInputGroup}>
@@ -1870,7 +2139,7 @@ export default function ProfileScreen() {
                   placeholder="Bleu"
                   placeholderTextColor={Colors.gray[400]}
                   value={vehicleColor}
-                  onChangeText={setVehicleColor}
+                  onChangeText={handleVehicleColorChange}
                 />
               </View>
               <View style={styles.vehicleInputGroup}>
@@ -1880,7 +2149,7 @@ export default function ProfileScreen() {
                   placeholder="ABC-1234"
                   placeholderTextColor={Colors.gray[400]}
                   value={vehiclePlate}
-                  onChangeText={setVehiclePlate}
+                  onChangeText={handleVehiclePlateChange}
                 />
               </View>
               <TouchableOpacity
@@ -1895,8 +2164,10 @@ export default function ProfileScreen() {
                 )}
               </TouchableOpacity>
             </ScrollView>
-          </Animated.View>
+          </View>
+            </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
       </Modal>
 
       <KycWizardModal
