@@ -20,6 +20,7 @@ import {
   useMarkAllNotificationsAsReadMutation,
   useDisableNotificationsMutation,
 } from '@/store/api/notificationApi';
+import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import type { Notification } from '@/types';
 import { formatDateTime, formatRelativeTime } from '@/utils/dateHelpers';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -53,6 +54,7 @@ const notificationTypeConfig: Record<
 export default function NotificationsScreen() {
   const router = useRouter();
   const { showDialog } = useDialog();
+  const { data: currentUser } = useGetCurrentUserQuery();
   const {
     data: notificationsData,
     isLoading,
@@ -67,6 +69,44 @@ export default function NotificationsScreen() {
 
   const notifications = notificationsData?.notifications ?? [];
   const unreadCount = notificationsData?.unreadCount ?? 0;
+
+  // Fonction pour déterminer si l'utilisateur connecté est le conducteur du trajet
+  const isUserDriverOfTrip = (data: Record<string, any>): boolean => {
+    if (!currentUser?.id || !data.tripId) return false;
+    
+    // Si les données contiennent driverId, vérifier directement
+    if (data.driverId) {
+      return String(data.driverId) === String(currentUser.id);
+    }
+    
+    // Si les données contiennent l'objet trip avec driverId
+    if (data.trip?.driverId) {
+      return String(data.trip.driverId) === String(currentUser.id);
+    }
+    
+    return false;
+  };
+
+  // Fonction pour déterminer l'URL du trajet (manage ou détail)
+  const getTripUrl = (tripId: string, data: Record<string, any>): string => {
+    // Si l'utilisateur est le conducteur du trajet, rediriger vers la page de gestion
+    if (isUserDriverOfTrip(data)) {
+      return `/trip/manage/${tripId}`;
+    }
+    // Sinon, rediriger vers la page de détail
+    return `/trip/${tripId}`;
+  };
+
+  // Fonction pour détecter si c'est une notification explicitement pour un conducteur
+  const isDriverNotification = (type: string): boolean => {
+    const driverTypes = [
+      'trip_expiring',
+      'driver_reminder',
+      'booking_pending', // Une nouvelle réservation pour le conducteur
+      'trip_starting_soon',
+    ];
+    return driverTypes.includes(type);
+  };
 
   // Fonction helper pour extraire l'ID du trip-request depuis différentes structures de données
   const extractTripRequestId = (data: Record<string, any>): string | null => {
@@ -116,7 +156,7 @@ export default function NotificationsScreen() {
         // Gérer les notifications de trajets
         if (type === 'trip' || type === 'trip_update') {
           if (tripId) {
-            router.push(`/trip/${tripId}`);
+            router.push(getTripUrl(tripId, data));
             return;
           }
         }
@@ -130,7 +170,7 @@ export default function NotificationsScreen() {
           type === 'booking_pending'
         ) {
           if (tripId) {
-            router.push(`/trip/${tripId}`);
+            router.push(getTripUrl(tripId, data));
             return;
           } else if (bookingId) {
             router.push('/bookings');
@@ -155,6 +195,12 @@ export default function NotificationsScreen() {
             router.push(`/trip/manage/${tripId}`);
             return;
           }
+        }
+
+        // Gérer les notifications explicitement pour conducteurs
+        if (isDriverNotification(type) && tripId) {
+          router.push(`/trip/manage/${tripId}`);
+          return;
         }
 
         // Gérer les notifications de demandes de trajet
@@ -232,7 +278,7 @@ export default function NotificationsScreen() {
           return;
         }
         if (tripId) {
-          router.push(`/trip/${tripId}`);
+          router.push(getTripUrl(tripId, data));
           return;
         }
         if (conversationId) {
@@ -576,16 +622,18 @@ export default function NotificationsScreen() {
                                 type === 'booking_pending') &&
                               tripId
                             ) {
-                              router.push(`/trip/${tripId}`);
+                              router.push(getTripUrl(tripId, data));
                             } else if ((type === 'trip' || type === 'trip_update') && tripId) {
-                              router.push(`/trip/${tripId}`);
+                              router.push(getTripUrl(tripId, data));
+                            } else if (isDriverNotification(type) && tripId) {
+                              router.push(`/trip/manage/${tripId}`);
                             }
                             // Priorité 2 : Fallback selon les IDs disponibles
                             // Vérifier requestId AVANT tripId pour éviter de naviguer vers un trajet au lieu d'une demande
                             else if (requestId) {
                               router.push(`/request/${requestId}`);
                             } else if (tripId) {
-                              router.push(`/trip/${tripId}`);
+                              router.push(getTripUrl(tripId, data));
                             } else if (conversationId) {
                               router.push({
                                 pathname: '/chat/[id]',
