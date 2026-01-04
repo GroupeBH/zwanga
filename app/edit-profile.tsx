@@ -44,11 +44,23 @@ export default function EditProfileScreen() {
       setFirstName(user.firstName ?? '');
       setLastName(user.lastName ?? '');
       setPhone(user.phone ?? '');
-      setWantsToBeDriver(user?.role === 'driver');
+      // Utiliser role pour déterminer si l'utilisateur est conducteur
+      const isDriver = user?.role === 'driver' || user?.role === 'both';
+      setWantsToBeDriver(isDriver);
     }
   }, [user]);
 
-  const canBecomeDriver = useMemo(() => !user?.isDriver, [user?.isDriver]);
+  // L'utilisateur peut devenir conducteur s'il n'est pas déjà driver ou both
+  const canBecomeDriver = useMemo(() => {
+    const role = user?.role;
+    return role !== 'driver' && role !== 'both';
+  }, [user?.role]);
+  
+  // L'utilisateur est actuellement conducteur si son role est driver ou both
+  const isCurrentlyDriver = useMemo(() => {
+    const role = user?.role;
+    return role === 'driver' || role === 'both';
+  }, [user?.role]);
 
   const handleSave = async () => {
     if (!firstName.trim() || !lastName.trim()) {
@@ -64,9 +76,15 @@ export default function EditProfileScreen() {
       formData.append('firstName', firstName.trim());
       formData.append('lastName', lastName.trim());
       formData.append('phone', phone.trim());
-      if (canBecomeDriver) {
-        formData.append('role', wantsToBeDriver ? 'driver' : 'passenger');
+      // Ne modifier le rôle que si l'utilisateur n'est pas déjà conducteur
+      // et qu'il souhaite devenir conducteur
+      if (canBecomeDriver && wantsToBeDriver) {
+        formData.append('role', 'driver');
+      } else if (canBecomeDriver && !wantsToBeDriver) {
+        // Si l'utilisateur ne veut plus être conducteur (mais n'est pas encore actif)
+        formData.append('role', 'passenger');
       }
+      // Si l'utilisateur est déjà conducteur (role === 'driver' ou 'both'), on ne modifie pas le rôle
       const updated = await updateUserMutation(formData).unwrap();
       dispatch(
         updateUserAction({
@@ -77,14 +95,18 @@ export default function EditProfileScreen() {
           phone: updated.phone,
           avatar: updated.profilePicture ?? updated.avatar,
           profilePicture: updated.profilePicture,
+          role: updated.role,
           isDriver: updated.isDriver,
         }),
       );
       await refetch();
+      const successMessage = wantsToBeDriver && canBecomeDriver
+        ? 'Profil mis à jour. N\'oubliez pas d\'ajouter un véhicule et de compléter la vérification KYC pour devenir conducteur.'
+        : 'Profil mis à jour avec succès.';
       setFeedback({
         visible: true,
         success: true,
-        message: 'Profil mis à jour avec succès.',
+        message: successMessage,
       });
     } catch (error: any) {
       const message = error?.data?.message ?? error?.error ?? 'Impossible de sauvegarder les informations.';
@@ -168,33 +190,77 @@ export default function EditProfileScreen() {
         <Animated.View entering={FadeInDown.delay(200)} style={styles.card}>
           <View style={styles.toggleRow}>
             <View style={styles.toggleText}>
-              <Text style={styles.sectionTitle}>Devenir conducteur</Text>
+              <View style={styles.titleRow}>
+                <Text style={styles.sectionTitle}>Devenir conducteur</Text>
+                {isCurrentlyDriver && (
+                  <View style={styles.driverBadge}>
+                    <Ionicons name="checkmark-circle" size={14} color={Colors.success} />
+                    <Text style={styles.badgeText}>Actif</Text>
+                  </View>
+                )}
+              </View>
               <Text style={styles.sectionSubtitle}>
-                {canBecomeDriver
-                  ? 'Activez pour proposer vos trajets sur Zwanga.'
-                  : 'Vous êtes déjà conducteur.'}
+                {isCurrentlyDriver
+                  ? 'Vous êtes conducteur. Vous pouvez proposer des trajets sur Zwanga.'
+                  : canBecomeDriver
+                    ? 'Activez pour proposer vos trajets sur Zwanga. Vous devrez ajouter un véhicule et compléter la vérification KYC.'
+                    : 'Vous êtes déjà conducteur.'}
               </Text>
             </View>
             <Switch
-              value={wantsToBeDriver}
-              onValueChange={(value) => setWantsToBeDriver(value)}
-              disabled={!canBecomeDriver}
-              thumbColor={wantsToBeDriver ? Colors.primary : Colors.gray[300]}
+              value={isCurrentlyDriver || wantsToBeDriver}
+              onValueChange={(value) => {
+                if (!isCurrentlyDriver) {
+                  setWantsToBeDriver(value);
+                }
+              }}
+              disabled={isCurrentlyDriver}
+              thumbColor={isCurrentlyDriver || wantsToBeDriver ? Colors.primary : Colors.gray[300]}
               trackColor={{ false: Colors.gray[200], true: Colors.primary + '50' }}
             />
           </View>
 
-          {wantsToBeDriver && (
-            <View style={styles.driverCard}>
+          {isCurrentlyDriver && (
+            <View style={[styles.driverCard, styles.driverCardActive]}>
+              <View style={styles.driverCardHeader}>
+                <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
+                <Text style={styles.driverCardTitle}>Profil conducteur actif</Text>
+              </View>
               <Text style={styles.driverCardText}>
-                Ajoutez votre véhicule pour compléter votre profil conducteur.
+                Vous pouvez publier des trajets et recevoir des réservations. Gérez votre véhicule depuis votre profil.
               </Text>
               <TouchableOpacity
                 style={styles.driverButton}
                 onPress={() => router.push('/profile')}
               >
                 <Ionicons name="car" size={16} color={Colors.primary} />
-                <Text style={styles.driverButtonText}>Ajouter mon véhicule</Text>
+                <Text style={styles.driverButtonText}>Voir mon profil</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {!isCurrentlyDriver && wantsToBeDriver && (
+            <View style={styles.driverCard}>
+              <View style={styles.driverCardHeader}>
+                <Ionicons name="information-circle" size={20} color={Colors.warning} />
+                <Text style={styles.driverCardTitle}>Étapes pour devenir conducteur</Text>
+              </View>
+              <View style={styles.stepsList}>
+                <View style={styles.stepItem}>
+                  <Ionicons name="car-outline" size={16} color={Colors.primary} />
+                  <Text style={styles.stepText}>Ajouter un véhicule</Text>
+                </View>
+                <View style={styles.stepItem}>
+                  <Ionicons name="shield-checkmark-outline" size={16} color={Colors.primary} />
+                  <Text style={styles.stepText}>Compléter la vérification KYC</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.driverButton}
+                onPress={() => router.push('/profile')}
+              >
+                <Ionicons name="car" size={16} color={Colors.primary} />
+                <Text style={styles.driverButtonText}>Commencer maintenant</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -336,24 +402,77 @@ const styles = StyleSheet.create({
   toggleText: {
     flex: 1,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  driverBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.success + '15',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.full,
+  },
+  badgeText: {
+    fontSize: FontSizes.xs,
+    color: Colors.success,
+    fontWeight: FontWeights.semibold,
+  },
   driverCard: {
     marginTop: Spacing.md,
     padding: Spacing.md,
     borderRadius: BorderRadius.lg,
     backgroundColor: Colors.primary + '10',
   },
+  driverCardActive: {
+    backgroundColor: Colors.success + '10',
+    borderWidth: 1,
+    borderColor: Colors.success + '30',
+  },
+  driverCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  driverCardTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
   driverCardText: {
     color: Colors.gray[700],
+    fontSize: FontSizes.sm,
     marginBottom: Spacing.sm,
+    lineHeight: 18,
+  },
+  stepsList: {
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  stepItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  stepText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
   },
   driverButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
+    alignSelf: 'flex-start',
+    marginTop: Spacing.xs,
   },
   driverButtonText: {
     color: Colors.primary,
     fontWeight: FontWeights.semibold,
+    fontSize: FontSizes.sm,
   },
   footer: {
     paddingHorizontal: Spacing.xl,

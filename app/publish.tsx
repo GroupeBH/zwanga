@@ -6,6 +6,7 @@ import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useCreateTripMutation } from '@/store/api/tripApi';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
+import { createBecomeDriverAction, isDriverRequiredError } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -180,7 +181,11 @@ export default function PublishScreen() {
   // Driver and Vehicle Management
   const { data: profileSummary } = useGetProfileSummaryQuery();
   const user = profileSummary?.user;
-  const isDriver = user?.isDriver ?? false;
+  // Déterminer si l'utilisateur est conducteur basé sur le role
+  const isDriver = useMemo(() => {
+    const role = user?.role;
+    return role === 'driver' || role === 'both';
+  }, [user?.role]);
   const [showDriverRequiredModal, setShowDriverRequiredModal] = useState(false);
 
   const { data: vehicles = [], refetch: refetchVehicles } = useGetVehiclesQuery(undefined, {
@@ -570,10 +575,20 @@ export default function PublishScreen() {
         error?.data?.message ??
         error?.error ??
         'Impossible de publier le trajet pour le moment. Veuillez réessayer.';
+      
+      // Vérifier si l'erreur est liée au fait que l'utilisateur n'est pas conducteur
+      const isDriverError = isDriverRequiredError(error);
+      
       showDialog({
         variant: 'danger',
         title: 'Erreur',
         message: Array.isArray(message) ? message.join('\n') : message,
+        actions: isDriverError
+          ? [
+              { label: 'Fermer', variant: 'ghost' },
+              createBecomeDriverAction(router),
+            ]
+          : undefined,
       });
     }
   };
@@ -951,25 +966,32 @@ export default function PublishScreen() {
                     onChangeText={setPrice}
                     editable={!isFreeTrip}
                   />
-                  <TouchableOpacity
-                    style={styles.freeToggle}
-                    onPress={() => {
-                      setIsFreeTrip(!isFreeTrip);
-                      if (!isFreeTrip) {
-                        setPrice('');
-                      }
-                    }}
-                  >
-                    <View style={[styles.toggleSwitch, isFreeTrip && styles.toggleSwitchActive]}>
-                      <View style={[styles.toggleThumb, isFreeTrip && styles.toggleThumbActive]} />
-                    </View>
-                    <Text style={[styles.freeToggleText, isFreeTrip && styles.freeToggleTextActive]}>
-                      Gratuit
-                    </Text>
-                  </TouchableOpacity>
                 </View>
               </View>
             </View>
+
+            <TouchableOpacity
+              style={[styles.card, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing.md }]}
+              onPress={() => {
+                setIsFreeTrip(!isFreeTrip);
+                if (!isFreeTrip) {
+                  setPrice('');
+                }
+              }}
+              activeOpacity={0.8}
+            >
+              <View>
+                <Text style={{ fontSize: FontSizes.base, fontWeight: FontWeights.semibold, color: Colors.gray[900] }}>
+                  Trajet gratuit
+                </Text>
+                <Text style={{ fontSize: FontSizes.sm, color: Colors.gray[500], marginTop: 2 }}>
+                  Proposer ce trajet gratuitement aux passagers
+                </Text>
+              </View>
+              <View style={[styles.toggleSwitch, isFreeTrip && styles.toggleSwitchActive]}>
+                <View style={[styles.toggleThumb, isFreeTrip && styles.toggleThumbActive]} />
+              </View>
+            </TouchableOpacity>
 
             <View style={styles.card}>
               <Text style={styles.cardLabel}>DESCRIPTION (OPTIONNEL)</Text>
@@ -1167,7 +1189,7 @@ export default function PublishScreen() {
                 style={[styles.driverModalButton, styles.driverModalButtonPrimary]}
                 onPress={() => {
                   setShowDriverRequiredModal(false);
-                  router.push('/edit-profile');
+                  router.push('/profile');
                 }}
               >
                 <Text style={styles.driverModalButtonPrimaryText}>Devenir conducteur</Text>
