@@ -4,6 +4,7 @@ import {
     setupForegroundNotificationHandlers,
 } from '@/services/pushNotifications';
 import { registerBackgroundNotificationTask } from '@/services/backgroundNotificationTask';
+import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
@@ -15,6 +16,7 @@ import { Linking } from 'react-native';
  */
 export function NotificationHandler() {
   const router = useRouter();
+  const { data: currentUser } = useGetCurrentUserQuery();
 
   useEffect(() => {
     // Configurer le comportement des notifications
@@ -55,6 +57,44 @@ export function NotificationHandler() {
       return null;
     };
 
+    // Fonction pour déterminer si l'utilisateur connecté est le conducteur du trajet
+    const isUserDriverOfTrip = (data: Record<string, any>): boolean => {
+      if (!currentUser?.id || !data.tripId) return false;
+      
+      // Si les données contiennent driverId, vérifier directement
+      if (data.driverId) {
+        return String(data.driverId) === String(currentUser.id);
+      }
+      
+      // Si les données contiennent l'objet trip avec driverId
+      if (data.trip?.driverId) {
+        return String(data.trip.driverId) === String(currentUser.id);
+      }
+      
+      return false;
+    };
+
+    // Fonction pour déterminer l'URL du trajet (manage ou détail)
+    const getTripUrl = (tripId: string, data: Record<string, any>): string => {
+      // Si l'utilisateur est le conducteur du trajet, rediriger vers la page de gestion
+      if (isUserDriverOfTrip(data)) {
+        return `/trip/manage/${tripId}`;
+      }
+      // Sinon, rediriger vers la page de détail
+      return `/trip/${tripId}`;
+    };
+
+    // Fonction pour détecter si c'est une notification explicitement pour un conducteur
+    const isDriverNotification = (type: string): boolean => {
+      const driverTypes = [
+        'trip_expiring',
+        'driver_reminder',
+        'booking_pending', // Une nouvelle réservation pour le conducteur
+        'trip_starting_soon',
+      ];
+      return driverTypes.includes(type);
+    };
+
     // Fonction pour naviguer selon le type de notification
     const handleNotificationPress = (data: Record<string, any>) => {
       try {
@@ -71,7 +111,7 @@ export function NotificationHandler() {
           // Gérer les notifications de trajets
           if (type === 'trip' || type === 'trip_update') {
             if (tripId) {
-              router.push(`/trip/${tripId}`);
+              router.push(getTripUrl(tripId, data));
               return;
             }
           }
@@ -85,7 +125,7 @@ export function NotificationHandler() {
             type === 'booking_pending'
           ) {
             if (tripId) {
-              router.push(`/trip/${tripId}`);
+              router.push(getTripUrl(tripId, data));
               return;
             } else if (bookingId) {
               router.push('/bookings');
@@ -110,6 +150,12 @@ export function NotificationHandler() {
               router.push(`/trip/manage/${tripId}`);
               return;
             }
+          }
+
+          // Gérer les notifications explicitement pour conducteurs
+          if (isDriverNotification(type) && tripId) {
+            router.push(`/trip/manage/${tripId}`);
+            return;
           }
 
           // Gérer les notifications de demandes de trajet
@@ -184,7 +230,7 @@ export function NotificationHandler() {
             return;
           }
           if (tripId) {
-            router.push(`/trip/${tripId}`);
+            router.push(getTripUrl(tripId, data));
             return;
           }
           if (conversationId) {
@@ -253,17 +299,41 @@ export function NotificationHandler() {
           return params;
         };
 
-        if (route.startsWith('trip/')) {
+        if (route.startsWith('trip/manage/')) {
+          // Gérer explicitement les URLs trip/manage/
+          const tripId = route.replace('trip/manage/', '').split('?')[0];
+          router.push({
+            pathname: '/trip/manage/[id]',
+            params: { id: tripId },
+          });
+        } else if (route.startsWith('trip/')) {
           // Extraire l'ID et les paramètres de requête
           const parts = route.replace('trip/', '').split('?');
           const tripId = parts[0];
           const params = parseQueryParams(parts[1] || '');
           
-          // Naviguer vers le trajet avec les paramètres
-          router.push({
-            pathname: '/trip/[id]',
-            params: { id: tripId, ...params },
-          });
+          // Déterminer si c'est un lien vers manage ou détail
+          // Créer un objet data pour passer à getTripUrl
+          const linkData = {
+            tripId,
+            driverId: params.driverId, // Si le backend envoie le driverId dans l'URL
+            ...params,
+          };
+          
+          const targetUrl = getTripUrl(tripId, linkData);
+          
+          // Naviguer vers l'URL appropriée
+          if (targetUrl.includes('/trip/manage/')) {
+            router.push({
+              pathname: '/trip/manage/[id]',
+              params: { id: tripId, ...params },
+            });
+          } else {
+            router.push({
+              pathname: '/trip/[id]',
+              params: { id: tripId, ...params },
+            });
+          }
         } else if (route.startsWith('chat/')) {
           const conversationId = route.replace('chat/', '').split('?')[0];
           router.push({
@@ -278,12 +348,6 @@ export function NotificationHandler() {
           });
         } else if (route.startsWith('bookings')) {
           router.push('/bookings');
-        } else if (route.startsWith('trip/manage/')) {
-          const tripId = route.replace('trip/manage/', '').split('?')[0];
-          router.push({
-            pathname: '/trip/manage/[id]',
-            params: { id: tripId },
-          });
         } else if (route.startsWith('rate/')) {
           const tripId = route.replace('rate/', '').split('?')[0];
           router.push({

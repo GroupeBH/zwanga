@@ -108,6 +108,11 @@ const BOOKING_STATUS_CONFIG: Record<
     color: Colors.gray[600],
     background: 'rgba(107, 114, 128, 0.18)',
   },
+  expired: {
+    label: '',
+    color: '',
+    background: ''
+  }
 };
 
 export default function TripDetailsScreen() {
@@ -1282,7 +1287,7 @@ export default function TripDetailsScreen() {
               )}
             </View>
 
-            {trip.status === 'ongoing' && (
+            {trip?.status === 'ongoing' && (
               <>
                 <View style={styles.progressBar}>
                   <View style={[styles.progressFill, { width: `${progress}%` }]} />
@@ -1311,7 +1316,7 @@ export default function TripDetailsScreen() {
                 <Text style={styles.routeName}>{trip?.departure.name}</Text>
                 <Text style={styles.routeAddress} numberOfLines={2}>{trip?.departure.address}</Text>
                 <Text style={styles.routeTime}>
-                  Départ: {formatTime(trip?.departureTime)}
+                  Départ: {trip?.departureTime ? formatTime(trip.departureTime) : ''}
                 </Text>
               </View>
             </View>
@@ -1326,7 +1331,7 @@ export default function TripDetailsScreen() {
                 <Text style={styles.routeName}>{trip?.arrival.name}</Text>
                 <Text style={styles.routeAddress} numberOfLines={2}>{trip?.arrival.address}</Text>
                 <Text style={styles.routeTime}>
-                  Arrivée: {calculatedArrivalTime ? formatTime(calculatedArrivalTime.toISOString()) : formatTime(trip?.arrivalTime)}
+                  Arrivée: {calculatedArrivalTime ? formatTime(calculatedArrivalTime.toISOString()) : (trip?.arrivalTime ? formatTime(trip.arrivalTime!) : '')}
                 </Text>
               </View>
             </View>
@@ -1893,7 +1898,7 @@ export default function TripDetailsScreen() {
                 style={[
                   styles.feedbackModalButton,
                   styles.feedbackModalSecondary,
-                  styles.feedbackModalButtonSpacing,
+                  styles.feedbackModalButton,
                 ]}
                 onPress={closeBookingSuccessModal}
               >
