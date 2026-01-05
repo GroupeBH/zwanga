@@ -8,6 +8,7 @@ import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,9 +22,16 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type RequestStep = 'route' | 'details' | 'confirm';
+
+const STEPS: { id: RequestStep; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { id: 'route', label: 'Trajet', icon: 'map' },
+  { id: 'details', label: 'Détails', icon: 'options' },
+  { id: 'confirm', label: 'Fin', icon: 'checkmark-circle' },
+];
 
 export default function RequestTripScreen() {
   const router = useRouter();
@@ -35,7 +43,7 @@ export default function RequestTripScreen() {
   const [departureLocation, setDepartureLocation] = useState<MapLocationSelection | null>(null);
   const [arrivalLocation, setArrivalLocation] = useState<MapLocationSelection | null>(null);
   const [departureDateMin, setDepartureDateMin] = useState(new Date());
-  const [departureDateMax, setDepartureDateMax] = useState(new Date(Date.now() + 24 * 60 * 60 * 1000)); // +24h par défaut
+  const [departureDateMax, setDepartureDateMax] = useState(new Date(Date.now() + 24 * 60 * 60 * 1000));
   const [iosPickerModeMin, setIosPickerModeMin] = useState<'date' | 'time' | null>(null);
   const [iosPickerModeMax, setIosPickerModeMax] = useState<'date' | 'time' | null>(null);
   const [numberOfSeats, setNumberOfSeats] = useState('1');
@@ -45,7 +53,6 @@ export default function RequestTripScreen() {
   // Modals
   const [activePicker, setActivePicker] = useState<'departure' | 'arrival' | null>(null);
 
-  // Fonctions pour appliquer uniquement la date ou l'heure
   const applyDatePart = (date: Date, currentDate: Date) => {
     const next = new Date(currentDate);
     next.setFullYear(date.getFullYear());
@@ -77,7 +84,6 @@ export default function RequestTripScreen() {
               ? applyDatePart(selectedDate, departureDateMin) 
               : applyTimePart(selectedDate, departureDateMin)
           );
-          // Ajuster la date max si nécessaire
           if (mode === 'date' && selectedDate >= departureDateMax) {
             setDepartureDateMax(new Date(selectedDate.getTime() + 24 * 60 * 60 * 1000));
           }
@@ -100,11 +106,7 @@ export default function RequestTripScreen() {
           const newDate = mode === 'date' 
             ? applyDatePart(selectedDate, departureDateMax) 
             : applyTimePart(selectedDate, departureDateMax);
-          if (mode === 'date' && newDate > departureDateMin) {
-            setDepartureDateMax(newDate);
-          } else if (mode === 'time') {
-            setDepartureDateMax(newDate);
-          }
+          setDepartureDateMax(newDate);
         },
       });
     } else {
@@ -119,7 +121,7 @@ export default function RequestTripScreen() {
       : applyTimePart(selectedDate, departureDateMin);
     setDepartureDateMin(newDate);
     if (iosPickerModeMin === 'date' && newDate >= departureDateMax) {
-      setDepartureDateMax(new Date(newDate.getTime() + 24 * 60 * 60 * 1000));
+      setDepartureDateMax(newDate);
     }
   };
 
@@ -128,19 +130,15 @@ export default function RequestTripScreen() {
     const newDate = iosPickerModeMax === 'date' 
       ? applyDatePart(selectedDate, departureDateMax) 
       : applyTimePart(selectedDate, departureDateMax);
-    if (iosPickerModeMax === 'date' && newDate > departureDateMin) {
-      setDepartureDateMax(newDate);
-    } else if (iosPickerModeMax === 'time') {
-      setDepartureDateMax(newDate);
-    }
+    setDepartureDateMax(newDate);
   };
 
   const handleNextStep = () => {
     if (step === 'route') {
       if (!departureLocation || !arrivalLocation) {
         showDialog({
-          title: 'Champs requis',
-          message: 'Veuillez sélectionner les points de départ et d\'arrivée',
+          title: 'Destination requise',
+          message: 'Où allez-vous ? Sélectionnez vos points de départ et d\'arrivée.',
           variant: 'danger',
         });
         return;
@@ -149,54 +147,32 @@ export default function RequestTripScreen() {
     } else if (step === 'details') {
       if (!numberOfSeats || parseInt(numberOfSeats) < 1) {
         showDialog({
-          title: 'Champs requis',
-          message: 'Veuillez spécifier le nombre de places',
+          title: 'Places requises',
+          message: 'Combien de personnes voyagent avec vous ?',
           variant: 'danger',
         });
         return;
       }
-      
-      // Valider les dates
-      const minDate = new Date(departureDateMin);
-      const maxDate = new Date(departureDateMax);
-      
-      if (minDate >= maxDate) {
+      if (departureDateMin >= departureDateMax) {
         showDialog({
           title: 'Dates invalides',
-          message: 'La date et heure de départ maximum doivent être postérieures à la date et heure minimum',
+          message: 'Le délai maximum doit être après le départ minimum.',
           variant: 'danger',
         });
         return;
       }
-      
-      if (minDate < new Date()) {
-        showDialog({
-          title: 'Date invalide',
-          message: 'La date de départ minimum ne peut pas être dans le passé',
-          variant: 'danger',
-        });
-        return;
-      }
-      
       setStep('confirm');
     }
   };
 
   const handleBack = () => {
-    if (step === 'details') {
-      setStep('route');
-    } else if (step === 'confirm') {
-      setStep('details');
-    } else {
-      router.back();
-    }
+    if (step === 'details') setStep('route');
+    else if (step === 'confirm') setStep('details');
+    else router.back();
   };
 
   const handleCreateRequest = async () => {
-    if (!departureLocation || !arrivalLocation) {
-      return;
-    }
-
+    if (!departureLocation || !arrivalLocation) return;
     try {
       await createTripRequest({
         departureLocation: departureLocation.title,
@@ -211,384 +187,308 @@ export default function RequestTripScreen() {
       }).unwrap();
 
       showDialog({
-        title: 'Demande créée',
-        message: 'Votre demande de trajet a été créée avec succès. Les drivers pourront maintenant vous proposer leurs services.',
+        title: 'Demande publiée !',
+        message: 'Les chauffeurs seront bientôt notifiés de votre demande.',
         variant: 'success',
-        actions: [
-          {
-            label: 'OK',
-            variant: 'primary',
-            onPress: () => {
-              router.back();
-            },
-          },
-        ],
+        actions: [{ label: 'Fermer', variant: 'primary', onPress: () => router.back() }],
       });
     } catch (error: any) {
       showDialog({
         title: 'Erreur',
-        message: error?.data?.message || 'Impossible de créer la demande de trajet',
+        message: error?.data?.message || 'Impossible de créer la demande.',
         variant: 'danger',
       });
     }
   };
 
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString('fr-FR', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  const formatDateShort = (date: Date) => {
-    return date.toLocaleDateString('fr-FR', {
-      day: 'numeric',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const StepIndicator = () => (
+    <View style={styles.stepIndicatorContainer}>
+      {STEPS.map((s, idx) => {
+        const isActive = step === s.id;
+        const isCompleted = STEPS.findIndex(x => x.id === step) > idx;
+        return (
+          <React.Fragment key={s.id}>
+            <View style={styles.stepItem}>
+              <View style={[
+                styles.stepCircle,
+                isActive && styles.stepCircleActive,
+                isCompleted && styles.stepCircleCompleted
+              ]}>
+                {isCompleted ? (
+                  <Ionicons name="checkmark" size={16} color={Colors.white} />
+                ) : (
+                  <Ionicons name={s.icon} size={16} color={isActive ? Colors.primary : Colors.gray[400]} />
+                )}
+              </View>
+              <Text style={[styles.stepLabel, isActive && styles.stepLabelActive]}>{s.label}</Text>
+            </View>
+            {idx < STEPS.length - 1 && (
+              <View style={[styles.stepLine, isCompleted && styles.stepLineCompleted]} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
+          <Ionicons name="chevron-back" size={28} color={Colors.gray[900]} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {step === 'route' && 'Itinéraire'}
-          {step === 'details' && 'Détails'}
-          {step === 'confirm' && 'Confirmation'}
-        </Text>
-        <View style={styles.headerSpacer} />
+        <Text style={styles.headerTitle}>Demander un trajet</Text>
+        <View style={{ width: 40 }} />
       </View>
+
+      <StepIndicator />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoidingView}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         <ScrollView
-          style={styles.content}
           contentContainerStyle={styles.contentContainer}
-          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          {/* Étape 1: Itinéraire */}
           {step === 'route' && (
-            <View style={styles.stepContainer}>
-            <Text style={styles.stepTitle}>Où souhaitez-vous aller ?</Text>
-            <Text style={styles.stepSubtitle}>Sélectionnez votre point de départ et d'arrivée</Text>
-
-            <TouchableOpacity
-              style={styles.locationButton}
-              onPress={() => setActivePicker('departure')}
-            >
-              <View style={styles.locationButtonContent}>
-                <Ionicons name="location" size={24} color={Colors.success} />
-                <View style={styles.locationButtonText}>
-                  <Text style={styles.locationLabel}>Départ</Text>
-                  <Text style={styles.locationValue}>
-                    {departureLocation?.title || 'Choisir le point de départ'}
-                  </Text>
+            <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.stepWrapper}>
+              <Text style={styles.sectionTitle}>Votre itinéraire</Text>
+              <View style={styles.routeCard}>
+                <View style={styles.routeVisual}>
+                  <View style={styles.dotGreen} />
+                  <View style={styles.routeLine} />
+                  <View style={styles.dotBlue} />
+                </View>
+                <View style={styles.routeInputs}>
+                  <TouchableOpacity
+                    style={styles.locationSelector}
+                    onPress={() => setActivePicker('departure')}
+                  >
+                    <Text style={styles.locationLabel}>DÉPART</Text>
+                    <Text style={styles.locationValue} numberOfLines={1}>
+                      {departureLocation?.title || 'Ma position actuelle'}
+                    </Text>
+                  </TouchableOpacity>
+                  <View style={styles.divider} />
+                  <TouchableOpacity
+                    style={styles.locationSelector}
+                    onPress={() => setActivePicker('arrival')}
+                  >
+                    <Text style={styles.locationLabel}>ARRIVÉE</Text>
+                    <Text style={[styles.locationValue, !arrivalLocation && { color: Colors.gray[400] }]} numberOfLines={1}>
+                      {arrivalLocation?.title || 'Où allez-vous ?'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.locationButton}
-              onPress={() => setActivePicker('arrival')}
-            >
-              <View style={styles.locationButtonContent}>
-                <Ionicons name="navigate" size={24} color={Colors.primary} />
-                <View style={styles.locationButtonText}>
-                  <Text style={styles.locationLabel}>Arrivée</Text>
-                  <Text style={styles.locationValue}>
-                    {arrivalLocation?.title || 'Choisir le point d\'arrivée'}
-                  </Text>
-                </View>
+              <View style={styles.infoBox}>
+                <Ionicons name="information-circle-outline" size={20} color={Colors.info} />
+                <Text style={styles.infoText}>
+                  Les trajets spontanés permettent aux drivers à proximité de vous proposer leurs services rapidement.
+                </Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
-            </TouchableOpacity>
-            </View>
+            </Animated.View>
           )}
 
-          {/* Étape 2: Détails */}
           {step === 'details' && (
-            <View style={styles.stepContainer}>
-            <Text style={styles.stepTitle}>Détails de votre demande</Text>
-            <Text style={styles.stepSubtitle}>Remplissez les informations nécessaires</Text>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Date et heure de départ minimum *</Text>
-              <Text style={styles.helperText}>
-                Quand souhaitez-vous partir au plus tôt ?
-              </Text>
-              <View style={styles.datetimeButtons}>
-                <TouchableOpacity
-                  style={styles.datetimeButton}
-                  onPress={() => openDateOrTimePickerMin('date')}
-                >
-                  <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.primary + '15' }]}>
-                    <Ionicons name="calendar" size={20} color={Colors.primary} />
+            <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.stepWrapper}>
+              <Text style={styles.sectionTitle}>Horaires et options</Text>
+              
+              <View style={styles.card}>
+                <Text style={styles.cardLabel}>QUAND VOULEZ-VOUS PARTIR ?</Text>
+                <View style={styles.timeRangeContainer}>
+                  <View style={styles.timeBox}>
+                    <Text style={styles.timeLabel}>AU PLUS TÔT</Text>
+                    <TouchableOpacity onPress={() => openDateOrTimePickerMin('time')} style={styles.timeValueBox}>
+                      <Text style={styles.timeValue}>
+                        {departureDateMin.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
-                  <View style={styles.datetimeButtonContent}>
-                    <Text style={styles.datetimeButtonLabel}>Date</Text>
-                    <Text style={styles.datetimeButtonValue}>
-                      {departureDateMin.toLocaleDateString('fr-FR', {
-                        weekday: 'short',
-                        day: 'numeric',
-                        month: 'short',
-                      })}
-                    </Text>
+                  <Ionicons name="arrow-forward" size={20} color={Colors.gray[300]} style={{ marginTop: 25 }} />
+                  <View style={styles.timeBox}>
+                    <Text style={styles.timeLabel}>AU PLUS TARD</Text>
+                    <TouchableOpacity onPress={() => openDateOrTimePickerMax('time')} style={styles.timeValueBox}>
+                      <Text style={styles.timeValue}>
+                        {departureDateMax.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.datetimeButton}
-                  onPress={() => openDateOrTimePickerMin('time')}
-                >
-                  <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.success + '15' }]}>
-                    <Ionicons name="time" size={20} color={Colors.success} />
-                  </View>
-                  <View style={styles.datetimeButtonContent}>
-                    <Text style={styles.datetimeButtonLabel}>Heure</Text>
-                    <Text style={styles.datetimeButtonValue}>
-                      {departureDateMin.toLocaleTimeString('fr-FR', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-              {Platform.OS === 'ios' && iosPickerModeMin && (
-                <Modal
-                  transparent
-                  animationType="slide"
-                  visible={iosPickerModeMin !== null}
-                  onRequestClose={() => setIosPickerModeMin(null)}
-                >
-                  <View style={styles.iosPickerOverlay}>
-                    <View style={styles.iosPickerContainer}>
-                      <DateTimePicker
-                        value={departureDateMin}
-                        mode={iosPickerModeMin}
-                        display="spinner"
-                        onChange={handleIosPickerChangeMin}
-                        minimumDate={iosPickerModeMin === 'date' ? new Date() : undefined}
-                      />
-                      <TouchableOpacity
-                        style={styles.iosPickerCloseButton}
-                        onPress={() => setIosPickerModeMin(null)}
-                      >
-                        <Text style={styles.iosPickerCloseText}>Confirmer</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </Modal>
-              )}
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Date et heure de départ maximum (délai) *</Text>
-              <Text style={styles.helperText}>
-                Jusqu'à quand pouvez-vous attendre ? Les proprietaires de vehicules pourront proposer un départ entre ces deux dates.
-              </Text>
-              <View style={styles.datetimeButtons}>
-                <TouchableOpacity
-                  style={styles.datetimeButton}
-                  onPress={() => openDateOrTimePickerMax('date')}
-                >
-                  <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.warning + '15' }]}>
-                    <Ionicons name="calendar-outline" size={20} color={Colors.warning} />
-                  </View>
-                  <View style={styles.datetimeButtonContent}>
-                    <Text style={styles.datetimeButtonLabel}>Date</Text>
-                    <Text style={styles.datetimeButtonValue}>
-                      {departureDateMax.toLocaleDateString('fr-FR', {
-                        weekday: 'short',
-                        day: 'numeric',
-                        month: 'short',
-                      })}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.datetimeButton}
-                  onPress={() => openDateOrTimePickerMax('time')}
-                >
-                  <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.info + '15' }]}>
-                    <Ionicons name="time-outline" size={20} color={Colors.info} />
-                  </View>
-                  <View style={styles.datetimeButtonContent}>
-                    <Text style={styles.datetimeButtonLabel}>Heure</Text>
-                    <Text style={styles.datetimeButtonValue}>
-                      {departureDateMax.toLocaleTimeString('fr-FR', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-              {Platform.OS === 'ios' && iosPickerModeMax && (
-                <Modal
-                  transparent
-                  animationType="slide"
-                  visible={iosPickerModeMax !== null}
-                  onRequestClose={() => setIosPickerModeMax(null)}
-                >
-                  <View style={styles.iosPickerOverlay}>
-                    <View style={styles.iosPickerContainer}>
-                      <DateTimePicker
-                        value={departureDateMax}
-                        mode={iosPickerModeMax}
-                        display="spinner"
-                        onChange={handleIosPickerChangeMax}
-                        minimumDate={iosPickerModeMax === 'date' ? departureDateMin : undefined}
-                      />
-                      <TouchableOpacity
-                        style={styles.iosPickerCloseButton}
-                        onPress={() => setIosPickerModeMax(null)}
-                      >
-                        <Text style={styles.iosPickerCloseText}>Confirmer</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </Modal>
-              )}
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Nombre de places</Text>
-              <TextInput
-                style={styles.input}
-                value={numberOfSeats}
-                onChangeText={setNumberOfSeats}
-                keyboardType="number-pad"
-                placeholder="1"
-                placeholderTextColor={Colors.gray[400]}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Prix maximum par place (FC) - Optionnel</Text>
-              <TextInput
-                style={styles.input}
-                value={maxPricePerSeat}
-                onChangeText={setMaxPricePerSeat}
-                keyboardType="decimal-pad"
-                placeholder="Laissez vide si aucun maximum"
-                placeholderTextColor={Colors.gray[400]}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Description - Optionnel</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={description}
-                onChangeText={setDescription}
-                multiline
-                numberOfLines={4}
-                placeholder="Ajoutez des détails sur votre demande..."
-                placeholderTextColor={Colors.gray[400]}
-                textAlignVertical="top"
-              />
-            </View>
-            </View>
-          )}
-
-          {/* Étape 3: Confirmation */}
-          {step === 'confirm' && (
-            <View style={styles.stepContainer}>
-            <Text style={styles.stepTitle}>Confirmer votre demande</Text>
-            <Text style={styles.stepSubtitle}>Vérifiez les informations avant de publier</Text>
-
-            <View style={styles.confirmCard}>
-              <View style={styles.confirmRow}>
-                <Ionicons name="location" size={20} color={Colors.success} />
-                <Text style={styles.confirmLabel}>Départ:</Text>
-                <Text style={styles.confirmValue}>{departureLocation?.title}</Text>
-              </View>
-              <View style={styles.confirmRow}>
-                <Ionicons name="navigate" size={20} color={Colors.primary} />
-                <Text style={styles.confirmLabel}>Arrivée:</Text>
-                <Text style={styles.confirmValue}>{arrivalLocation?.title}</Text>
-              </View>
-              <View style={styles.confirmRow}>
-                <Ionicons name="calendar" size={20} color={Colors.gray[600]} />
-                <Text style={styles.confirmLabel}>Départ min:</Text>
-                <Text style={styles.confirmValue}>{formatDateShort(departureDateMin)}</Text>
-              </View>
-              <View style={styles.confirmRow}>
-                <Ionicons name="calendar-outline" size={20} color={Colors.gray[600]} />
-                <Text style={styles.confirmLabel}>Départ max:</Text>
-                <Text style={styles.confirmValue}>{formatDateShort(departureDateMax)}</Text>
-              </View>
-              <View style={styles.confirmRow}>
-                <Ionicons name="people" size={20} color={Colors.gray[600]} />
-                <Text style={styles.confirmLabel}>Places:</Text>
-                <Text style={styles.confirmValue}>{numberOfSeats}</Text>
-              </View>
-              {maxPricePerSeat && (
-                <View style={styles.confirmRow}>
-                  <Ionicons name="cash" size={20} color={Colors.gray[600]} />
-                  <Text style={styles.confirmLabel}>Prix max/place:</Text>
-                  <Text style={styles.confirmValue}>{maxPricePerSeat} FC</Text>
                 </View>
-              )}
-            </View>
-            </View>
+                <TouchableOpacity onPress={() => openDateOrTimePickerMin('date')} style={styles.dateSelector}>
+                  <Ionicons name="calendar-outline" size={20} color={Colors.primary} />
+                  <Text style={styles.dateText}>
+                    {departureDateMin.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.row}>
+                <View style={[styles.card, { flex: 1, marginRight: Spacing.sm }]}>
+                  <Text style={styles.cardLabel}>PLACES</Text>
+                  <View style={styles.counterContainer}>
+                    <TouchableOpacity 
+                      onPress={() => setNumberOfSeats(Math.max(1, parseInt(numberOfSeats) - 1).toString())}
+                      style={styles.counterBtn}
+                    >
+                      <Ionicons name="remove" size={20} color={Colors.gray[900]} />
+                    </TouchableOpacity>
+                    <Text style={styles.counterValue}>{numberOfSeats}</Text>
+                    <TouchableOpacity 
+                      onPress={() => setNumberOfSeats((parseInt(numberOfSeats) + 1).toString())}
+                      style={styles.counterBtn}
+                    >
+                      <Ionicons name="add" size={20} color={Colors.gray[900]} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <View style={[styles.card, { flex: 1.5 }]}>
+                  <Text style={styles.cardLabel}>PRIX MAX (FACULTATIF)</Text>
+                  <View style={styles.priceInputContainer}>
+                    <TextInput
+                      style={styles.priceInput}
+                      value={maxPricePerSeat}
+                      onChangeText={setMaxPricePerSeat}
+                      keyboardType="number-pad"
+                      placeholder="FC"
+                    />
+                    <Text style={styles.currency}>FC</Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.card}>
+                <Text style={styles.cardLabel}>NOTES POUR LE CHAUFFEUR</Text>
+                <TextInput
+                  style={styles.textArea}
+                  value={description}
+                  onChangeText={setDescription}
+                  multiline
+                  placeholder="Ex: Bagages volumineux, bébé à bord..."
+                  placeholderTextColor={Colors.gray[400]}
+                />
+              </View>
+            </Animated.View>
           )}
 
-          {/* Boutons d'action */}
-          <View style={styles.actions}>
-          {step !== 'confirm' ? (
-            <TouchableOpacity
-              style={[styles.button, styles.primaryButton]}
-              onPress={handleNextStep}
-            >
-              <Text style={styles.buttonText}>Suivant</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={[styles.button, styles.primaryButton]}
-              onPress={handleCreateRequest}
-              disabled={isCreating}
-            >
-              {isCreating ? (
-                <ActivityIndicator color={Colors.white} />
-              ) : (
-                <Text style={styles.buttonText}>Publier la demande</Text>
-              )}
-            </TouchableOpacity>
+          {step === 'confirm' && (
+            <Animated.View entering={FadeIn} style={styles.stepWrapper}>
+              <Text style={styles.sectionTitle}>Résumé de votre demande</Text>
+              <View style={styles.summaryCard}>
+                <View style={styles.summaryHeader}>
+                  <LinearGradient
+                    colors={[Colors.primary, '#6366f1']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.summaryHeaderGradient}
+                  >
+                    <Text style={styles.summaryHeaderText}>VOTRE TRAJET</Text>
+                    <Ionicons name="car-sport" size={24} color={Colors.white} />
+                  </LinearGradient>
+                </View>
+                
+                <View style={styles.summaryBody}>
+                  <View style={styles.summaryRow}>
+                    <View style={styles.summaryDotGreen} />
+                    <Text style={styles.summaryLocation} numberOfLines={2}>{departureLocation?.title}</Text>
+                  </View>
+                  <View style={styles.summaryLine} />
+                  <View style={styles.summaryRow}>
+                    <View style={styles.summaryDotBlue} />
+                    <Text style={styles.summaryLocation} numberOfLines={2}>{arrivalLocation?.title}</Text>
+                  </View>
+
+                  <View style={styles.summaryDivider} />
+
+                  <View style={styles.summaryGrid}>
+                    <View style={styles.gridItem}>
+                      <Text style={styles.gridLabel}>HEURE</Text>
+                      <Text style={styles.gridValue}>
+                        {departureDateMin.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </View>
+                    <View style={styles.gridItem}>
+                      <Text style={styles.gridLabel}>PLACES</Text>
+                      <Text style={styles.gridValue}>{numberOfSeats}</Text>
+                    </View>
+                    <View style={styles.gridItem}>
+                      <Text style={styles.gridLabel}>PRIX MAX</Text>
+                      <Text style={styles.gridValue}>{maxPricePerSeat || 'Libre'} {maxPricePerSeat ? 'FC' : ''}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.summaryFooter}>
+                  <Text style={styles.summaryFooterText}>
+                    En publiant cette demande, vous acceptez que les drivers à proximité puissent vous contacter.
+                  </Text>
+                </View>
+              </View>
+            </Animated.View>
           )}
-          </View>
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Location Picker Modal */}
+      <View style={styles.footer}>
+        <TouchableOpacity
+          onPress={step === 'confirm' ? handleCreateRequest : handleNextStep}
+          disabled={isCreating}
+          activeOpacity={0.8}
+        >
+          <LinearGradient
+            colors={step === 'confirm' ? [Colors.success, '#10b981'] : [Colors.primary, '#6366f1']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.mainButton}
+          >
+            {isCreating ? (
+              <ActivityIndicator color={Colors.white} />
+            ) : (
+              <>
+                <Text style={styles.mainButtonText}>
+                  {step === 'confirm' ? 'Publier ma demande' : 'Continuer'}
+                </Text>
+                <Ionicons name={step === 'confirm' ? 'send' : 'arrow-forward'} size={20} color={Colors.white} />
+              </>
+            )}
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
+
       <LocationPickerModal
         visible={activePicker !== null}
-        title={activePicker === 'departure' ? 'Choisir le départ' : 'Choisir l\'arrivée'}
+        title={activePicker === 'departure' ? 'Lieu de départ' : 'Lieu d\'arrivée'}
         initialLocation={activePicker === 'departure' ? departureLocation : arrivalLocation}
         onClose={() => setActivePicker(null)}
         onSelect={(location) => {
-          if (activePicker === 'departure') {
-            setDepartureLocation(location);
-          } else {
-            setArrivalLocation(location);
-          }
+          if (activePicker === 'departure') setDepartureLocation(location);
+          else setArrivalLocation(location);
           setActivePicker(null);
         }}
       />
+
+      {Platform.OS === 'ios' && (iosPickerModeMin || iosPickerModeMax) && (
+        <Modal transparent animationType="slide">
+          <View style={styles.iosPickerOverlay}>
+            <View style={styles.iosPickerContainer}>
+              <DateTimePicker
+                value={iosPickerModeMin ? departureDateMin : departureDateMax}
+                mode={iosPickerModeMin || iosPickerModeMax || 'date'}
+                display="spinner"
+                onChange={iosPickerModeMin ? handleIosPickerChangeMin : handleIosPickerChangeMax}
+              />
+              <TouchableOpacity
+                style={styles.iosPickerCloseButton}
+                onPress={() => { setIosPickerModeMin(null); setIosPickerModeMax(null); }}
+              >
+                <Text style={styles.iosPickerCloseText}>Terminer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -596,201 +496,393 @@ export default function RequestTripScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.white,
+    backgroundColor: '#F8FAFC',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[200],
   },
   backButton: {
-    marginRight: Spacing.md,
+    padding: Spacing.xs,
   },
   headerTitle: {
-    fontSize: FontSizes.xl,
+    fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    flex: 1,
   },
-  headerSpacer: {
+  stepIndicatorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+  },
+  stepItem: {
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  stepCircle: {
     width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.gray[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  stepCircleActive: {
+    backgroundColor: Colors.primary + '15',
+    borderColor: Colors.primary,
+  },
+  stepCircleCompleted: {
+    backgroundColor: Colors.primary,
+  },
+  stepLabel: {
+    fontSize: 10,
+    color: Colors.gray[400],
+    fontWeight: FontWeights.medium,
+    marginTop: 4,
+  },
+  stepLabelActive: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  stepLine: {
+    flex: 1,
+    height: 2,
+    backgroundColor: Colors.gray[100],
+    marginHorizontal: -8,
+    marginTop: -16,
+  },
+  stepLineCompleted: {
+    backgroundColor: Colors.primary,
   },
   keyboardAvoidingView: {
     flex: 1,
   },
-  content: {
-    flex: 1,
-  },
   contentContainer: {
     padding: Spacing.lg,
-    paddingBottom: Spacing.xl * 2, // Extra padding pour éviter que le contenu soit caché par le clavier
   },
-  stepContainer: {
-    marginBottom: Spacing.xl,
+  stepWrapper: {
+    flex: 1,
   },
-  stepTitle: {
-    fontSize: FontSizes.xxl,
+  sectionTitle: {
+    fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    marginBottom: Spacing.xs,
+    marginBottom: Spacing.lg,
   },
-  stepSubtitle: {
-    fontSize: FontSizes.base,
-    color: Colors.gray[600],
-    marginBottom: Spacing.xl,
-  },
-  locationButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.lg,
+  routeCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
-    marginBottom: Spacing.md,
-  },
-  locationButtonContent: {
     flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 15,
+    elevation: 3,
   },
-  locationButtonText: {
-    marginLeft: Spacing.md,
+  routeVisual: {
+    width: 20,
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  dotGreen: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.success,
+  },
+  dotBlue: {
+    width: 10,
+    height: 10,
+    borderRadius: 2,
+    backgroundColor: Colors.primary,
+  },
+  routeLine: {
     flex: 1,
+    width: 1,
+    backgroundColor: Colors.gray[200],
+    marginVertical: 4,
+  },
+  routeInputs: {
+    flex: 1,
+    marginLeft: Spacing.md,
+  },
+  locationSelector: {
+    paddingVertical: Spacing.xs,
   },
   locationLabel: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    marginBottom: Spacing.xs,
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[400],
+    letterSpacing: 1,
   },
   locationValue: {
     fontSize: FontSizes.base,
     color: Colors.gray[900],
     fontWeight: FontWeights.medium,
+    marginTop: 4,
   },
-  inputGroup: {
-    marginBottom: Spacing.lg,
+  divider: {
+    height: 1,
+    backgroundColor: Colors.gray[100],
+    marginVertical: Spacing.md,
   },
-  label: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[900],
-    marginBottom: Spacing.sm,
-  },
-  input: {
-    backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    fontSize: FontSizes.base,
-    color: Colors.gray[900],
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-  },
-  textArea: {
-    minHeight: 100,
-    paddingTop: Spacing.md,
-  },
-  dateButton: {
+  infoBox: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.info + '10',
     padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-  },
-  dateButtonText: {
-    marginLeft: Spacing.sm,
-    fontSize: FontSizes.base,
-    color: Colors.gray[900],
-    flex: 1,
-  },
-  helperText: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[500],
-    marginTop: Spacing.xs,
-    fontStyle: 'italic',
-  },
-  confirmCard: {
-    backgroundColor: Colors.gray[50],
     borderRadius: BorderRadius.lg,
-    padding: Spacing.lg,
-    marginTop: Spacing.md,
-  },
-  confirmRow: {
-    flexDirection: 'row',
+    marginTop: Spacing.xl,
     alignItems: 'center',
+  },
+  infoText: {
+    flex: 1,
+    marginLeft: Spacing.sm,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    lineHeight: 18,
+  },
+  card: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    marginBottom: Spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 15,
+    elevation: 2,
+  },
+  cardLabel: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[400],
+    letterSpacing: 1,
     marginBottom: Spacing.md,
   },
-  confirmLabel: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[700],
-    marginLeft: Spacing.sm,
-    marginRight: Spacing.xs,
-  },
-  confirmValue: {
-    fontSize: FontSizes.base,
-    color: Colors.gray[900],
-    flex: 1,
-  },
-  actions: {
-    marginTop: Spacing.xl,
+  timeRangeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     marginBottom: Spacing.lg,
   },
-  button: {
+  timeBox: {
+    flex: 1,
+  },
+  timeLabel: {
+    fontSize: 10,
+    color: Colors.gray[500],
+    marginBottom: 4,
+  },
+  timeValueBox: {
+    backgroundColor: Colors.gray[50],
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    alignItems: 'center',
+  },
+  timeValue: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  dateSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary + '05',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.primary + '15',
+  },
+  dateText: {
+    marginLeft: Spacing.sm,
+    fontSize: FontSizes.base,
+    color: Colors.gray[800],
+    fontWeight: FontWeights.medium,
+    textTransform: 'capitalize',
+  },
+  row: {
+    flexDirection: 'row',
+  },
+  counterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.xs,
+  },
+  counterBtn: {
+    width: 36,
+    height: 36,
+    backgroundColor: Colors.white,
     borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  primaryButton: {
-    backgroundColor: Colors.primary,
+  counterValue: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
   },
-  buttonText: {
+  priceInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    height: 48,
+  },
+  priceInput: {
+    flex: 1,
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  currency: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[400],
+    marginLeft: 4,
+  },
+  textArea: {
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  summaryCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xxl,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 5,
+  },
+  summaryHeader: {
+    height: 60,
+  },
+  summaryHeaderGradient: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.xl,
+  },
+  summaryHeaderText: {
     color: Colors.white,
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
+    letterSpacing: 2,
   },
-  datetimeButtons: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-    marginTop: Spacing.sm,
+  summaryBody: {
+    padding: Spacing.xl,
   },
-  datetimeButton: {
-    flex: 1,
+  summaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    gap: Spacing.md,
-    backgroundColor: Colors.white,
   },
-  datetimeButtonIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
+  summaryDotGreen: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: Colors.success,
+    borderWidth: 3,
+    borderColor: Colors.success + '30',
   },
-  datetimeButtonContent: {
+  summaryDotBlue: {
+    width: 12,
+    height: 12,
+    borderRadius: 3,
+    backgroundColor: Colors.primary,
+    borderWidth: 3,
+    borderColor: Colors.primary + '30',
+  },
+  summaryLocation: {
+    marginLeft: Spacing.md,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
     flex: 1,
   },
-  datetimeButtonLabel: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
-    textTransform: 'uppercase',
-    fontWeight: FontWeights.medium,
+  summaryLine: {
+    width: 2,
+    height: 24,
+    backgroundColor: Colors.gray[100],
+    marginLeft: 5,
+    marginVertical: 4,
   },
-  datetimeButtonValue: {
+  summaryDivider: {
+    height: 1,
+    backgroundColor: Colors.gray[100],
+    marginVertical: Spacing.xl,
+  },
+  summaryGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  gridItem: {
+    flex: 1,
+  },
+  gridLabel: {
+    fontSize: 10,
+    color: Colors.gray[400],
+    fontWeight: FontWeights.bold,
+    marginBottom: 4,
+  },
+  gridValue: {
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    marginTop: 2,
+  },
+  summaryFooter: {
+    backgroundColor: Colors.gray[50],
+    padding: Spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[100],
+  },
+  summaryFooterText: {
+    fontSize: 12,
+    color: Colors.gray[500],
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  footer: {
+    padding: Spacing.lg,
+    backgroundColor: Colors.white,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[100],
+  },
+  mainButton: {
+    height: 56,
+    borderRadius: BorderRadius.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+  },
+  mainButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
   },
   iosPickerOverlay: {
     flex: 1,
@@ -802,14 +894,12 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: BorderRadius.xl,
     borderTopRightRadius: BorderRadius.xl,
     paddingTop: Spacing.md,
-    overflow: 'hidden',
   },
   iosPickerCloseButton: {
-    paddingVertical: Spacing.md,
+    padding: Spacing.lg,
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: Colors.gray[200],
-    backgroundColor: Colors.gray[50],
+    borderTopColor: Colors.gray[100],
   },
   iosPickerCloseText: {
     color: Colors.primary,
@@ -817,4 +907,3 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
   },
 });
-

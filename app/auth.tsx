@@ -914,17 +914,17 @@ export default function AuthScreen() {
             {mode === 'login' ? (
               // Mode login : un seul champ PIN
               <>
-                <View style={styles.inputWrapper}>
-                  <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+                <View style={styles.pinInputWrapper}>
+                  <Ionicons name="lock-closed" size={18} color={Colors.gray[500]} style={styles.pinInputIcon} />
                   <TextInput
                     ref={pinInputRef}
-                    style={styles.input}
+                    style={styles.pinInputField}
                     keyboardType="number-pad"
                     maxLength={4}
                     secureTextEntry
                     value={pin}
                     onChangeText={handlePinChange}
-                    placeholder="Entrez votre PIN (4 chiffres)"
+                    placeholder="••••"
                     placeholderTextColor={Colors.gray[400]}
                   />
                 </View>
@@ -956,17 +956,17 @@ export default function AuthScreen() {
               <>
                 <View style={styles.formSection}>
                   <Text style={styles.inputLabel}>Mot de passe PIN</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+                  <View style={styles.pinInputWrapper}>
+                    <Ionicons name="lock-closed" size={18} color={Colors.gray[500]} style={styles.pinInputIcon} />
                     <TextInput
                       ref={pinInputRef}
-                      style={styles.input}
+                      style={styles.pinInputField}
                       keyboardType="number-pad"
                       maxLength={4}
                       secureTextEntry
                       value={pin}
                       onChangeText={handlePinChange}
-                      placeholder="Créez un PIN (4 chiffres)"
+                      placeholder="••••"
                       placeholderTextColor={Colors.gray[400]}
                     />
                   </View>
@@ -974,17 +974,17 @@ export default function AuthScreen() {
 
                 <View style={styles.formSection}>
                   <Text style={styles.inputLabel}>Confirmer le mot de passe PIN</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+                  <View style={styles.pinInputWrapper}>
+                    <Ionicons name="lock-closed" size={18} color={Colors.gray[500]} style={styles.pinInputIcon} />
                     <TextInput
                       ref={pinConfirmInputRef}
-                      style={styles.input}
+                      style={styles.pinInputField}
                       keyboardType="number-pad"
                       maxLength={4}
                       secureTextEntry
                       value={pinConfirm}
                       onChangeText={handlePinConfirmChange}
-                      placeholder="Confirmez votre PIN (4 chiffres)"
+                      placeholder="••••"
                       placeholderTextColor={Colors.gray[400]}
                     />
                   </View>
@@ -1425,6 +1425,32 @@ const styles = StyleSheet.create({
   pinCodeContainer: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginVertical: 24 },
   pinInput: { width: 56, height: 64, borderWidth: 2, borderColor: '#D1D5DB', borderRadius: 16, textAlign: 'center', fontSize: 28, fontWeight: 'bold', color: Colors.gray[900], backgroundColor: '#F3F4F6' },
   pinInputFilled: { borderColor: Colors.secondary, backgroundColor: '#F0F9FF', borderWidth: 2.5 },
+  
+  // Styles pour champ PIN compact (4 chiffres)
+  pinInputWrapper: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    borderWidth: 1.5, 
+    borderColor: '#E5E7EB', 
+    borderRadius: 12, 
+    paddingHorizontal: 12, 
+    backgroundColor: '#F9FAFB', 
+    height: 48, 
+    marginBottom: 12,
+    alignSelf: 'center',
+    width: 160,
+    justifyContent: 'center',
+  },
+  pinInputIcon: { marginRight: 8 },
+  pinInputField: { 
+    flex: 1, 
+    fontSize: 20, 
+    fontWeight: '600',
+    color: Colors.gray[900], 
+    height: '100%',
+    textAlign: 'center',
+    letterSpacing: 8,
+  },
 
   // Profile
   profileHeader: { alignItems: 'center', marginBottom: 24 },

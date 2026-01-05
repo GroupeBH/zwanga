@@ -3,6 +3,8 @@ import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } f
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import {
   useCancelBookingMutation,
+  useConfirmDropoffByPassengerMutation,
+  useConfirmPickupByPassengerMutation,
   useGetMyBookingsQuery,
 } from '@/store/api/bookingApi';
 import type { BookingStatus } from '@/types';
@@ -56,6 +58,11 @@ const STATUS_CONFIG: Record<
     color: Colors.gray[600],
     background: 'rgba(107, 114, 128, 0.18)',
   },
+  expired: {
+    label: 'Expirée',
+    color: Colors.gray[600],
+    background: 'rgba(156, 163, 175, 0.2)',
+  },
 };
 
 export default function BookingsScreen() {
@@ -74,6 +81,8 @@ export default function BookingsScreen() {
     refetch,
   } = useGetMyBookingsQuery();
   const [cancelBooking, { isLoading: isCancelling }] = useCancelBookingMutation();
+  const [confirmPickupByPassenger, { isLoading: isConfirmingPickup }] = useConfirmPickupByPassengerMutation();
+  const [confirmDropoffByPassenger, { isLoading: isConfirmingDropoff }] = useConfirmDropoffByPassengerMutation();
 
   const activeBookings = useMemo(
     () => {
@@ -132,7 +141,7 @@ export default function BookingsScreen() {
   const displayBookings = activeTab === 'active' ? activeBookings : historyBookings;
   const emptyText =
     activeTab === 'active'
-      ? 'Vous n’avez pas encore de réservation active.'
+      ? 'Vous n\’avez pas encore de réservation active.'
       : 'Aucune réservation passée pour le moment.';
 
   const handleCancel = (bookingId: string) => {
@@ -153,7 +162,7 @@ export default function BookingsScreen() {
               const message =
                 error?.data?.message ??
                 error?.error ??
-                'Impossible d’annuler la réservation pour le moment.';
+                'Impossible d\'annuler la réservation pour le moment.';
               showDialog({
                 variant: 'danger',
                 title: 'Erreur',
@@ -164,6 +173,50 @@ export default function BookingsScreen() {
         },
       ],
     });
+  };
+
+  const handleConfirmPickup = async (bookingId: string) => {
+    try {
+      await confirmPickupByPassenger(bookingId).unwrap();
+      showDialog({
+        variant: 'success',
+        title: 'Confirmation réussie',
+        message: 'Vous avez confirmé votre prise en charge.',
+      });
+      refetch();
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        'Impossible de confirmer la prise en charge pour le moment.';
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
+  };
+
+  const handleConfirmDropoff = async (bookingId: string) => {
+    try {
+      await confirmDropoffByPassenger(bookingId).unwrap();
+      showDialog({
+        variant: 'success',
+        title: 'Confirmation réussie',
+        message: 'Vous avez confirmé votre dépose. La réservation est maintenant complétée.',
+      });
+      refetch();
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        'Impossible de confirmer la dépose pour le moment.';
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
   };
 
   const renderBookingCard = (bookingId: string, booking: typeof displayBookings[number], index: number) => {
@@ -240,6 +293,28 @@ export default function BookingsScreen() {
           </View>
         </View>
 
+        {/* Indicateur de confirmation en attente */}
+        {activeTab === 'active' && !isExpired && booking.status === 'accepted' && (
+          <>
+            {booking.pickedUp && !booking.pickedUpConfirmedByPassenger && (
+              <View style={styles.confirmationBanner}>
+                <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
+                <Text style={styles.confirmationBannerText}>
+                  Le conducteur a confirmé votre prise en charge. Veuillez confirmer également.
+                </Text>
+              </View>
+            )}
+            {booking.droppedOff && !booking.droppedOffConfirmedByPassenger && (
+              <View style={styles.confirmationBanner}>
+                <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
+                <Text style={styles.confirmationBannerText}>
+                  Le conducteur a confirmé votre dépose. Veuillez confirmer également.
+                </Text>
+              </View>
+            )}
+          </>
+        )}
+
         <View style={styles.bookingFooter}>
           {/* Bouton "Voir le trajet" - Toujours accessible, même pour les réservations expirées dans l'historique */}
           <TouchableOpacity
@@ -250,8 +325,57 @@ export default function BookingsScreen() {
             <Text style={styles.linkButtonText}>Voir le trajet</Text>
           </TouchableOpacity>
 
+          {/* Bouton "Confirmer la prise en charge" - Quand le driver a confirmé mais pas le passager */}
+          {activeTab === 'active' && !isExpired && booking.status === 'accepted' && booking.pickedUp && !booking.pickedUpConfirmedByPassenger && (
+            <TouchableOpacity
+              style={[styles.linkButton, styles.confirmButton]}
+              onPress={() => handleConfirmPickup(booking.id)}
+              disabled={isConfirmingPickup}
+            >
+              {isConfirmingPickup ? (
+                <ActivityIndicator size="small" color={Colors.white} />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle" size={16} color={Colors.white} />
+                  <Text style={[styles.linkButtonText, styles.confirmButtonText]}>Confirmer prise en charge</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {/* Bouton "Confirmer la dépose" - Quand le driver a confirmé mais pas le passager */}
+          {activeTab === 'active' && !isExpired && booking.status === 'accepted' && booking.droppedOff && !booking.droppedOffConfirmedByPassenger && (
+            <TouchableOpacity
+              style={[styles.linkButton, styles.confirmButton]}
+              onPress={() => handleConfirmDropoff(booking.id)}
+              disabled={isConfirmingDropoff}
+            >
+              {isConfirmingDropoff ? (
+                <ActivityIndicator size="small" color={Colors.white} />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle" size={16} color={Colors.white} />
+                  <Text style={[styles.linkButtonText, styles.confirmButtonText]}>Confirmer dépose</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+
+          {/* Bouton "Noter le conducteur" - Après confirmation de dépose (actif et historique) */}
+          {booking.status === 'completed' && booking.droppedOffConfirmedByPassenger && trip?.id && (
+            <TouchableOpacity
+              style={[styles.linkButton, styles.rateButton]}
+              onPress={() => router.push(`/rate/${trip.id}`)}
+            >
+              <Ionicons name="star" size={16} color={Colors.secondary} />
+              <Text style={[styles.linkButtonText, styles.rateButtonText]}>Noter le conducteur</Text>
+            </TouchableOpacity>
+          )}
+
           {/* Bouton "Appeler" - Seulement pour les réservations actives acceptées et non expirées */}
-          {activeTab === 'active' && !isExpired && booking.status === 'accepted' && trip?.driver?.phone && (
+          {activeTab === 'active' && !isExpired && booking.status === 'accepted' && trip?.driver?.phone && 
+           !(booking.pickedUp && !booking.pickedUpConfirmedByPassenger) &&
+           !(booking.droppedOff && !booking.droppedOffConfirmedByPassenger) && (
             <TouchableOpacity
               style={[styles.linkButton, styles.callButton]}
               onPress={() => {
@@ -266,7 +390,9 @@ export default function BookingsScreen() {
           )}
 
           {/* Bouton "Annuler" - Seulement pour les réservations actives et non expirées */}
-          {activeTab === 'active' && !isExpired && (booking.status === 'pending' || booking.status === 'accepted') && (
+          {activeTab === 'active' && !isExpired && (booking.status === 'pending' || booking.status === 'accepted') && 
+           !(booking.pickedUp && !booking.pickedUpConfirmedByPassenger) &&
+           !(booking.droppedOff && !booking.droppedOffConfirmedByPassenger) && (
             <TouchableOpacity
               style={[styles.linkButton, styles.dangerButton]}
               onPress={() => handleCancel(booking.id)}
@@ -684,6 +810,34 @@ const styles = StyleSheet.create({
   },
   dangerButtonText: {
     color: Colors.danger,
+  },
+  confirmationBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(247, 184, 1, 0.15)',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  confirmationBannerText: {
+    flex: 1,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[800],
+    fontWeight: FontWeights.medium,
+  },
+  confirmButton: {
+    backgroundColor: Colors.secondary,
+  },
+  confirmButtonText: {
+    color: Colors.white,
+  },
+  rateButton: {
+    backgroundColor: 'rgba(247, 184, 1, 0.1)',
+  },
+  rateButtonText: {
+    color: Colors.secondary,
   },
   emptyState: {
     alignItems: 'center',

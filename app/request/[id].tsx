@@ -14,6 +14,7 @@ import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import type { Vehicle } from '@/types';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { getRouteCoordinates } from '@/utils/routeHelpers';
+import { createBecomeDriverAction, isDriverRequiredError } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -48,6 +49,12 @@ export default function TripRequestDetailsScreen() {
   
   const { data: currentUser } = useGetCurrentUserQuery();
   const { isIdentityVerified, checkIdentity } = useIdentityCheck();
+  
+  // Déterminer si l'utilisateur est conducteur basé sur le role
+  const isDriver = useMemo(() => {
+    const role = currentUser?.role;
+    return role === 'driver' || role === 'both';
+  }, [currentUser?.role]);
   const { data: tripRequest, isLoading, error, refetch, isError } = useGetTripRequestByIdQuery(id || '', {
     skip: !id,
   });
@@ -264,18 +271,14 @@ export default function TripRequestDetailsScreen() {
     if (!tripRequest || !id) return;
 
     // Vérifier que l'utilisateur est driver
-    if (!currentUser?.isDriver) {
+    if (!isDriver) {
       showDialog({
         title: 'Devenir conducteur requis',
         message: 'Pour faire une offre sur une demande de trajet, vous devez être conducteur. Voulez-vous devenir conducteur ?',
         variant: 'warning',
         actions: [
           { label: 'Annuler', variant: 'ghost' },
-          { 
-            label: 'Devenir conducteur', 
-            variant: 'primary', 
-            onPress: () => router.push('/publish') 
-          },
+          createBecomeDriverAction(router),
         ],
       });
       return;
@@ -387,10 +390,19 @@ export default function TripRequestDetailsScreen() {
         ],
       });
     } catch (error: any) {
+      const message = error?.data?.message || 'Impossible de créer l\'offre';
+      const isDriverError = isDriverRequiredError(error);
+      
       showDialog({
         title: 'Erreur',
-        message: error?.data?.message || 'Impossible de créer l\'offre',
+        message,
         variant: 'danger',
+        actions: isDriverError
+          ? [
+              { label: 'Fermer', variant: 'ghost' },
+              createBecomeDriverAction(router),
+            ]
+          : undefined,
       });
     }
   };
