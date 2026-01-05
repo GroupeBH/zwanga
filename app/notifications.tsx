@@ -1,4 +1,17 @@
-import React, { useState, useRef } from 'react';
+import { useDialog } from '@/components/ui/DialogProvider';
+import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import {
+  useDisableNotificationsMutation,
+  useGetNotificationsQuery,
+  useMarkAllNotificationsAsReadMutation,
+  useMarkNotificationsAsReadMutation,
+} from '@/store/api/notificationApi';
+import { useGetCurrentUserQuery } from '@/store/api/userApi';
+import type { Notification } from '@/types';
+import { formatDateTime, formatRelativeTime } from '@/utils/dateHelpers';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -9,20 +22,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
-import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
-import {
-  useGetNotificationsQuery,
-  useMarkNotificationsAsReadMutation,
-  useMarkAllNotificationsAsReadMutation,
-  useDisableNotificationsMutation,
-} from '@/store/api/notificationApi';
-import type { Notification } from '@/types';
-import { formatDateTime, formatRelativeTime } from '@/utils/dateHelpers';
-import { useDialog } from '@/components/ui/DialogProvider';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const notificationTypeConfig: Record<
   string,
@@ -53,6 +54,7 @@ const notificationTypeConfig: Record<
 export default function NotificationsScreen() {
   const router = useRouter();
   const { showDialog } = useDialog();
+  const { data: currentUser } = useGetCurrentUserQuery();
   const {
     data: notificationsData,
     isLoading,
@@ -67,6 +69,44 @@ export default function NotificationsScreen() {
 
   const notifications = notificationsData?.notifications ?? [];
   const unreadCount = notificationsData?.unreadCount ?? 0;
+
+  // Fonction pour déterminer si l'utilisateur connecté est le conducteur du trajet
+  const isUserDriverOfTrip = (data: Record<string, any>): boolean => {
+    if (!currentUser?.id || !data.tripId) return false;
+    
+    // Si les données contiennent driverId, vérifier directement
+    if (data.driverId) {
+      return String(data.driverId) === String(currentUser.id);
+    }
+    
+    // Si les données contiennent l'objet trip avec driverId
+    if (data.trip?.driverId) {
+      return String(data.trip.driverId) === String(currentUser.id);
+    }
+    
+    return false;
+  };
+
+  // Fonction pour déterminer l'URL du trajet (manage ou détail)
+  const getTripUrl = (tripId: string, data: Record<string, any>): string => {
+    // Si l'utilisateur est le conducteur du trajet, rediriger vers la page de gestion
+    if (isUserDriverOfTrip(data)) {
+      return `/trip/manage/${tripId}`;
+    }
+    // Sinon, rediriger vers la page de détail
+    return `/trip/${tripId}`;
+  };
+
+  // Fonction pour détecter si c'est une notification explicitement pour un conducteur
+  const isDriverNotification = (type: string): boolean => {
+    const driverTypes = [
+      'trip_expiring',
+      'driver_reminder',
+      'booking_pending', // Une nouvelle réservation pour le conducteur
+      'trip_starting_soon',
+    ];
+    return driverTypes.includes(type);
+  };
 
   // Fonction helper pour extraire l'ID du trip-request depuis différentes structures de données
   const extractTripRequestId = (data: Record<string, any>): string | null => {
@@ -116,8 +156,11 @@ export default function NotificationsScreen() {
         // Gérer les notifications de trajets
         if (type === 'trip' || type === 'trip_update') {
           if (tripId) {
-            router.push(`/trip/${tripId}`);
-            return;
+            const url = getTripUrl(tripId, data);
+            if (typeof url === 'string' && url.startsWith('/')) {
+              router.push(url as any); // Cast to any to bypass strict typing
+              return;
+            }
           }
         }
 
@@ -130,8 +173,11 @@ export default function NotificationsScreen() {
           type === 'booking_pending'
         ) {
           if (tripId) {
-            router.push(`/trip/${tripId}`);
-            return;
+            const url = getTripUrl(tripId, data);
+            if (typeof url === 'string' && url.startsWith('/')) {
+              router.push(url as any); // Cast to any to bypass strict typing
+              return;
+            }
           } else if (bookingId) {
             router.push('/bookings');
             return;
@@ -141,10 +187,7 @@ export default function NotificationsScreen() {
         // Gérer les notifications de messages
         if (type === 'message' || type === 'chat') {
           if (conversationId) {
-            router.push({
-              pathname: '/chat/[id]',
-              params: { id: conversationId },
-            });
+            router.push(`/chat/${conversationId}`);
             return;
           }
         }
@@ -155,6 +198,12 @@ export default function NotificationsScreen() {
             router.push(`/trip/manage/${tripId}`);
             return;
           }
+        }
+
+        // Gérer les notifications explicitement pour conducteurs
+        if (isDriverNotification(type) && tripId) {
+          router.push(`/trip/manage/${tripId}`);
+          return;
         }
 
         // Gérer les notifications de demandes de trajet
@@ -232,7 +281,7 @@ export default function NotificationsScreen() {
           return;
         }
         if (tripId) {
-          router.push(`/trip/${tripId}`);
+          router.push(getTripUrl(tripId, data) as any);
           return;
         }
         if (conversationId) {
@@ -277,6 +326,42 @@ export default function NotificationsScreen() {
         message: error?.data?.message || 'Impossible de supprimer la notification',
       });
     }
+  };
+
+  const handleDeleteAllNotifications = () => {
+    if (notifications.length === 0) {
+      return;
+    }
+
+    showDialog({
+      variant: 'warning',
+      title: 'Supprimer toutes les notifications',
+      message: `Êtes-vous sûr de vouloir supprimer toutes les ${notifications.length} notification${notifications.length > 1 ? 's' : ''} ? Cette action est irréversible.`,
+      actions: [
+        { label: 'Annuler', variant: 'ghost' },
+        {
+          label: 'Supprimer tout',
+          variant: 'primary',
+          onPress: async () => {
+            try {
+              const allNotificationIds = notifications.map((n) => n.id);
+              await disableNotifications({ notificationIds: allNotificationIds }).unwrap();
+              showDialog({
+                variant: 'success',
+                title: 'Notifications supprimées',
+                message: 'Toutes les notifications ont été supprimées avec succès.',
+              });
+            } catch (error: any) {
+              showDialog({
+                variant: 'danger',
+                title: 'Erreur',
+                message: error?.data?.message || 'Impossible de supprimer les notifications',
+              });
+            }
+          },
+        },
+      ],
+    });
   };
 
   const renderRightActions = (notification: Notification) => {
@@ -416,6 +501,11 @@ export default function NotificationsScreen() {
               <Ionicons name="checkmark-done" size={18} color={Colors.primary} />
             </TouchableOpacity>
           )}
+          {notifications.length > 0 && (
+            <TouchableOpacity style={styles.deleteAllButton} onPress={handleDeleteAllNotifications}>
+              <Ionicons name="trash-outline" size={18} color={Colors.danger} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.refreshButton} onPress={() => refetch()}>
             {isFetching ? (
               <ActivityIndicator size="small" color={Colors.primary} />
@@ -535,16 +625,18 @@ export default function NotificationsScreen() {
                                 type === 'booking_pending') &&
                               tripId
                             ) {
-                              router.push(`/trip/${tripId}`);
+                              router.push(getTripUrl(tripId, data) as any);
                             } else if ((type === 'trip' || type === 'trip_update') && tripId) {
-                              router.push(`/trip/${tripId}`);
+                              router.push(getTripUrl(tripId, data) as any);
+                            } else if (isDriverNotification(type) && tripId) {
+                              router.push(`/trip/manage/${tripId}`);
                             }
                             // Priorité 2 : Fallback selon les IDs disponibles
                             // Vérifier requestId AVANT tripId pour éviter de naviguer vers un trajet au lieu d'une demande
                             else if (requestId) {
                               router.push(`/request/${requestId}`);
                             } else if (tripId) {
-                              router.push(`/trip/${tripId}`);
+                              router.push(getTripUrl(tripId, data) as any);
                             } else if (conversationId) {
                               router.push({
                                 pathname: '/chat/[id]',
@@ -636,6 +728,16 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     borderWidth: 1,
     borderColor: Colors.gray[200],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteAllButton: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.danger + '40',
+    backgroundColor: Colors.danger + '10',
     alignItems: 'center',
     justifyContent: 'center',
   },

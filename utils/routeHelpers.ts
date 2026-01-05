@@ -289,7 +289,7 @@ export function isPointOnRoute(
  * @param routeCoordinates Array of coordinates representing the route
  * @returns The index of the closest segment and the closest point on that segment, or null if route is invalid
  */
-function findClosestPointOnRoute(
+export function findClosestPointOnRoute(
   point: LatLng,
   routeCoordinates: LatLng[]
 ): { segmentIndex: number; closestPoint: LatLng; distance: number } | null {

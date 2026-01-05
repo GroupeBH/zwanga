@@ -1,9 +1,8 @@
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { getGoogleMapsPlaceDetails, searchGoogleMapsPlaces, type GoogleMapsSearchSuggestion } from '@/utils/googleMapsPlaces';
 import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
+import { getGoogleMapsPlaceDetails, searchGoogleMapsPlaces, type GoogleMapsSearchSuggestion } from '@/utils/googleMapsPlaces';
+import { findClosestPointOnRoute } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
-import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
-import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -16,6 +15,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import MapView, { Polyline, PROVIDER_GOOGLE, Region, MapPressEvent } from 'react-native-maps';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 
 
 export type MapLocationSelection = {
@@ -31,6 +37,8 @@ type LocationPickerModalProps = {
   initialLocation?: MapLocationSelection | null;
   onClose: () => void;
   onSelect: (location: MapLocationSelection) => void;
+  routeCoordinates?: Array<{ latitude: number; longitude: number }>;
+  restrictToRoute?: boolean;
 };
 
 type SearchResult = MapLocationSelection;
@@ -92,6 +100,8 @@ export default function LocationPickerModal({
   onSelect,
   title = 'Choisir un lieu',
   initialLocation,
+  routeCoordinates,
+  restrictToRoute = false,
 }: LocationPickerModalProps) {
   const mapRef = useRef<MapView>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -106,13 +116,57 @@ export default function LocationPickerModal({
   );
   const [permissionStatus, setPermissionStatus] = useState<Location.PermissionStatus | null>(null);
   const [isLocating, setIsLocating] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const geocodeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isUserInteractionRef = useRef(false);
   const lastMarkerUpdateRef = useRef<{ latitude: number; longitude: number } | null>(null);
   const isUpdatingMarkerRef = useRef(false);
+
+  // Animation for the center pin
+  const pinTranslateY = useSharedValue(0);
+  const pinScale = useSharedValue(1);
+  const pinShadowScale = useSharedValue(1);
+  const pinShadowOpacity = useSharedValue(0.2);
+
+  const animatedPinStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: pinTranslateY.value },
+      { scale: pinScale.value }
+    ],
+  }));
+
+  const animatedShadowStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pinShadowScale.value }],
+    opacity: pinShadowOpacity.value,
+  }));
+
+  const liftPin = () => {
+    pinTranslateY.value = withSpring(-20, { damping: 15 });
+    pinScale.value = withSpring(1.1);
+    pinShadowScale.value = withSpring(0.5);
+    pinShadowOpacity.value = withTiming(0.1);
+  };
+
+  const dropPin = () => {
+    pinTranslateY.value = withSpring(0, { damping: 12, stiffness: 100 });
+    pinScale.value = withSpring(1);
+    pinShadowScale.value = withSpring(1);
+    pinShadowOpacity.value = withTiming(0.2);
+  };
+
+  // Helper to snap point to route if needed
+  const snapPointToRoute = (latitude: number, longitude: number) => {
+    if (!routeCoordinates || routeCoordinates.length < 2) {
+      return { latitude, longitude };
+    }
+
+    const closest = findClosestPointOnRoute({ latitude, longitude }, routeCoordinates);
+    if (closest) {
+      return closest.closestPoint;
+    }
+    return { latitude, longitude };
+  };
 
   // Récupérer les lieux favoris
   const { data: favoriteLocations = [], isLoading: favoritesLoading } = useGetFavoriteLocationsQuery(undefined, {
@@ -131,8 +185,10 @@ export default function LocationPickerModal({
 
   // Handler pour sélectionner un lieu favori
   const handleFavoritePress = (favorite: SearchResult) => {
-    setSelectedLocation(favorite);
-    animateToCoordinate(favorite.latitude, favorite.longitude);
+    const snapped = snapPointToRoute(favorite.latitude, favorite.longitude);
+    const updatedFavorite = { ...favorite, ...snapped };
+    setSelectedLocation(updatedFavorite);
+    animateToCoordinate(updatedFavorite.latitude, updatedFavorite.longitude);
     setSearchQuery('');
     setSearchResults([]);
     setGoogleMapsSuggestions([]);
@@ -162,7 +218,7 @@ export default function LocationPickerModal({
     }
   }, [initialLocation, visible]);
 
-  // Nettoyer le timeout de géocodage quand le composant est démonté
+  // clean geocoding timeout when component unmount
   useEffect(() => {
     return () => {
       if (geocodeTimeoutRef.current) {
@@ -171,7 +227,7 @@ export default function LocationPickerModal({
     };
   }, []);
 
-  const animateToCoordinate = (latitude: number, longitude: number, skipMarkerUpdate = false) => {
+  const animateToCoordinate = (latitude: number, longitude: number, skipMarkerUpdate = false, triggerGeocodeAfter = false) => {
     try {
       // Valider les coordonnées avant d'animer
       if (
@@ -197,12 +253,12 @@ export default function LocationPickerModal({
         longitudeDelta: 0.01,
       };
       setRegion(nextRegion);
-      
+
       // Marquer que c'est une mise à jour programmée pour éviter les boucles
       isUserInteractionRef.current = false;
       isUpdatingMarkerRef.current = true;
       lastMarkerUpdateRef.current = { latitude, longitude };
-      
+
       // Si skipMarkerUpdate est false, mettre à jour le marqueur aussi
       if (!skipMarkerUpdate) {
         setSelectedLocation((prev) => {
@@ -221,15 +277,18 @@ export default function LocationPickerModal({
           };
         });
       }
-      
+
       if (mapRef.current) {
-        mapRef.current.animateToRegion(nextRegion, 350);
+        mapRef.current.animateToRegion(nextRegion, 250);
       }
 
-      // Réinitialiser après l'animation
+      // Réinitialiser après l'animation et déclencher le geocoding si demandé
       setTimeout(() => {
         isUpdatingMarkerRef.current = false;
         isUserInteractionRef.current = true;
+        if (triggerGeocodeAfter) {
+          updateLocationFromCoordinates({ latitude, longitude });
+        }
       }, 400); // Légèrement après la durée de l'animation
     } catch (error) {
       console.error('Error animating to coordinate:', error);
@@ -249,14 +308,14 @@ export default function LocationPickerModal({
       const position = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      animateToCoordinate(position.coords.latitude, position.coords.longitude);
-      const [address] = await Location.reverseGeocodeAsync({
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-      });
+
+      const snapped = snapPointToRoute(position.coords.latitude, position.coords.longitude);
+
+      animateToCoordinate(snapped.latitude, snapped.longitude);
+      const [address] = await Location.reverseGeocodeAsync(snapped);
       setSelectedLocation(
         buildSelectionFromCoordinate(
-          { latitude: position.coords.latitude, longitude: position.coords.longitude },
+          snapped,
           address,
           'Ma position',
         ),
@@ -268,78 +327,7 @@ export default function LocationPickerModal({
     }
   };
 
-  const handleMapPress = async (event: any) => {
-    // Ne pas gérer le clic sur la carte si on est en train de glisser le marqueur
-    if (isDragging) {
-      return;
-    }
 
-    try {
-      // react-native-maps fournit les coordonnées dans event.nativeEvent.coordinate
-      const coordinate = event?.nativeEvent?.coordinate;
-      
-      // Vérifier que l'événement contient les coordonnées
-      if (!coordinate || typeof coordinate.latitude !== 'number' || typeof coordinate.longitude !== 'number') {
-        console.warn('Invalid map press event:', event);
-        return;
-      }
-
-      const { latitude, longitude } = coordinate;
-      
-      // Valider les coordonnées
-      if (
-        typeof longitude !== 'number' ||
-        typeof latitude !== 'number' ||
-        isNaN(longitude) ||
-        isNaN(latitude) ||
-        !isFinite(longitude) ||
-        !isFinite(latitude) ||
-        latitude < -90 ||
-        latitude > 90 ||
-        longitude < -180 ||
-        longitude > 180
-      ) {
-        console.warn('Invalid coordinates:', { longitude, latitude });
-        return;
-      }
-
-      // Mettre à jour la référence pour éviter les boucles
-      lastMarkerUpdateRef.current = { latitude, longitude };
-      isUpdatingMarkerRef.current = true;
-      isUserInteractionRef.current = false;
-
-      // Mettre à jour le marqueur immédiatement
-      setSelectedLocation({
-        title: 'Point sélectionné',
-        address: 'Détermination de l\'adresse…',
-        latitude,
-        longitude,
-      });
-
-      // Animer la carte vers le nouveau point
-      const nextRegion: Region = {
-        latitude,
-        longitude,
-        latitudeDelta: region.latitudeDelta || 0.01,
-        longitudeDelta: region.longitudeDelta || 0.01,
-      };
-      if (mapRef.current) {
-        mapRef.current.animateToRegion(nextRegion, 300);
-      }
-
-      // Réinitialiser après l'animation
-      setTimeout(() => {
-        isUpdatingMarkerRef.current = false;
-        isUserInteractionRef.current = true;
-      }, 350);
-
-      // Faire le reverse geocoding pour obtenir l'adresse
-      await updateLocationFromCoordinates({ latitude, longitude });
-    } catch (error) {
-      console.error('Error handling map press:', error);
-      isUpdatingMarkerRef.current = false;
-    }
-  };
 
   const updateLocationFromCoordinates = async (coordinate: { latitude: number; longitude: number }) => {
     try {
@@ -357,116 +345,6 @@ export default function LocationPickerModal({
       });
     } finally {
       setIsGeocoding(false);
-    }
-  };
-
-  const handleMarkerDragStart = () => {
-    setIsDragging(true);
-    setSelectedLocation((prev) => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        address: 'Détermination de l\'adresse…',
-      };
-    });
-  };
-
-  const handleMarkerDrag = (event: any) => {
-    try {
-      const coordinate = event?.nativeEvent?.coordinate;
-      if (!coordinate || typeof coordinate.latitude !== 'number' || typeof coordinate.longitude !== 'number') {
-        return;
-      }
-
-      const { latitude, longitude } = coordinate;
-      
-      // Valider les coordonnées
-      if (
-        typeof longitude !== 'number' ||
-        typeof latitude !== 'number' ||
-        isNaN(longitude) ||
-        isNaN(latitude) ||
-        !isFinite(longitude) ||
-        !isFinite(latitude) ||
-        latitude < -90 ||
-        latitude > 90 ||
-        longitude < -180 ||
-        longitude > 180
-      ) {
-        return;
-      }
-
-      // Mettre à jour la position du marqueur en temps réel pendant le drag
-      setSelectedLocation((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          latitude,
-          longitude,
-          address: 'Détermination de l\'adresse…',
-        };
-      });
-    } catch (error) {
-      console.error('Error handling marker drag:', error);
-    }
-  };
-
-  const handleMarkerDragEnd = async (event: any) => {
-    setIsDragging(false);
-    
-    try {
-      const coordinate = event?.nativeEvent?.coordinate;
-      if (!coordinate || typeof coordinate.latitude !== 'number' || typeof coordinate.longitude !== 'number') {
-        return;
-      }
-
-      const { latitude, longitude } = coordinate;
-      
-      // Valider les coordonnées
-      if (
-        typeof longitude !== 'number' ||
-        typeof latitude !== 'number' ||
-        isNaN(longitude) ||
-        isNaN(latitude) ||
-        !isFinite(longitude) ||
-        !isFinite(latitude) ||
-        latitude < -90 ||
-        latitude > 90 ||
-        longitude < -180 ||
-        longitude > 180
-      ) {
-        console.warn('Invalid coordinates after drag:', { longitude, latitude });
-        return;
-      }
-
-      // Mettre à jour la référence pour éviter les boucles
-      lastMarkerUpdateRef.current = { latitude, longitude };
-      isUpdatingMarkerRef.current = true;
-      isUserInteractionRef.current = false;
-
-      // Mettre à jour la région pour suivre le marqueur
-      const nextRegion: Region = {
-        latitude,
-        longitude,
-        latitudeDelta: region.latitudeDelta,
-        longitudeDelta: region.longitudeDelta,
-      };
-      if (mapRef.current) {
-        mapRef.current.animateToRegion(nextRegion, 0);
-      }
-
-      // Réinitialiser après un court délai
-      setTimeout(() => {
-        isUpdatingMarkerRef.current = false;
-        isUserInteractionRef.current = true;
-      }, 100);
-
-      // Faire le reverse geocoding pour obtenir l'adresse
-      await updateLocationFromCoordinates({ latitude, longitude });
-    } catch (error) {
-      console.error('Error handling marker drag end:', error);
-      setIsDragging(false);
-      isUpdatingMarkerRef.current = false;
     }
   };
 
@@ -493,55 +371,32 @@ export default function LocationPickerModal({
   };
 
   const handleCameraChanged = (region: Region) => {
-    // Ignorer si on est en train de mettre à jour le marqueur programmatiquement
+    // Si on n'est pas déjà en déplacement, "soulever" le marqueur
+    if (!isPanning && !isUpdatingMarkerRef.current) {
+      liftPin();
+      setIsPanning(true);
+    }
+
+    setRegion(region);
+
+    // Mettre à jour la position du marqueur immédiatement (visuellement)
+    const { latitude, longitude } = region;
+
+    // On met à jour selectedLocation sans déclencher de reverse geocode ici
+    setSelectedLocation((prev) => {
+      if (!prev) return { title: 'Point sélectionné', address: '...', latitude, longitude };
+      return { ...prev, latitude, longitude, address: 'Détermination de l\'adresse…' };
+    });
+  };
+
+  const handleMapPress = (event: MapPressEvent) => {
+    // Ignorer si on est déjà en train de mettre à jour le marqueur
     if (isUpdatingMarkerRef.current) {
       return;
     }
 
-    // Ignorer si c'est une animation programmée (pas une interaction utilisateur)
-    if (!isUserInteractionRef.current) {
-      isUserInteractionRef.current = true;
-      setRegion(region);
-      return;
-    }
-    
-    setRegion(region);
+    const { latitude, longitude } = event.nativeEvent.coordinate;
 
-    // Ignorer si on est en train de glisser le marqueur
-    if (isDragging) {
-      return;
-    }
-
-    try {
-      const { latitude, longitude } = region;
-      
-      // Vérifier si les coordonnées sont significativement différentes de la dernière mise à jour
-      // pour éviter les mises à jour répétées pour la même position
-      if (lastMarkerUpdateRef.current) {
-        const latDiff = Math.abs(latitude - lastMarkerUpdateRef.current.latitude);
-        const lngDiff = Math.abs(longitude - lastMarkerUpdateRef.current.longitude);
-        // Seulement mettre à jour si la différence est significative (environ 10 mètres)
-        const threshold = 0.0001; // ~11 mètres
-        if (latDiff < threshold && lngDiff < threshold) {
-          return;
-        }
-      }
-      
-      updateMarkerFromMapCenter(latitude, longitude);
-    } catch (error) {
-      console.error('Error handling camera change:', error);
-    }
-  };
-
-  const handleMapIdle = () => {
-    // Quand la carte s'arrête de bouger, s'assurer que le géocodage final est fait
-    if (isPanning && selectedLocation) {
-      // Le timeout dans updateMarkerFromMapCenter s'occupera du géocodage
-      // On peut juste réinitialiser isPanning si nécessaire
-    }
-  };
-
-  const updateMarkerFromMapCenter = (latitude: number, longitude: number) => {
     // Valider les coordonnées
     if (
       typeof latitude !== 'number' ||
@@ -558,41 +413,53 @@ export default function LocationPickerModal({
       return;
     }
 
-    // Marquer qu'on est en train de mettre à jour le marqueur pour éviter les boucles
-    isUpdatingMarkerRef.current = true;
-    setIsPanning(true);
-    
-    // Mettre à jour la référence de la dernière position
-    lastMarkerUpdateRef.current = { latitude, longitude };
-    
-    // Mettre à jour la position du marqueur immédiatement
-    setSelectedLocation((prev) => {
-      if (!prev) {
-        return {
-          title: 'Point sélectionné',
-          address: 'Détermination de l\'adresse…',
-          latitude,
-          longitude,
-        };
-      }
-      return {
-        ...prev,
-        latitude,
-        longitude,
-        address: 'Détermination de l\'adresse…',
-      };
-    });
-
-    // Debounce le reverse geocoding pour éviter trop d'appels pendant le pan
-    if (geocodeTimeoutRef.current) {
-      clearTimeout(geocodeTimeoutRef.current);
+    // Snap to route if required
+    let finalCoords = { latitude, longitude };
+    if (restrictToRoute || routeCoordinates) {
+      finalCoords = snapPointToRoute(latitude, longitude);
     }
 
-    geocodeTimeoutRef.current = setTimeout(async () => {
-      setIsPanning(false);
-      isUpdatingMarkerRef.current = false; // Réinitialiser après le géocodage
-      await updateLocationFromCoordinates({ latitude, longitude });
-    }, 500); // Attendre 500ms après la fin du pan avant de géocoder
+    // Animer vers le point cliqué et faire le geocoding
+    animateToCoordinate(finalCoords.latitude, finalCoords.longitude, false, true);
+  };
+
+  const handleMapIdle = (region: Region) => {
+    // Ignorer si on est déjà en train de mettre à jour le marqueur programmatiquement
+    if (isUpdatingMarkerRef.current) {
+      return;
+    }
+
+    setIsPanning(false);
+    dropPin();
+
+    const { latitude, longitude } = region;
+
+    // Vérifier si les coordonnées ont significativement changé pour éviter les boucles
+    const lastUpdate = lastMarkerUpdateRef.current;
+    if (lastUpdate) {
+      const latDiff = Math.abs(latitude - lastUpdate.latitude);
+      const lngDiff = Math.abs(longitude - lastUpdate.longitude);
+      // Si la différence est très petite (< 0.0001 degrés, ~11 mètres), ignorer
+      if (latDiff < 0.0001 && lngDiff < 0.0001) {
+        return;
+      }
+    }
+
+    // Snap to route if required
+    let finalCoords = { latitude, longitude };
+    if (restrictToRoute || routeCoordinates) {
+      finalCoords = snapPointToRoute(latitude, longitude);
+      // Si on a snapé, on recentre la carte
+      if (finalCoords.latitude !== latitude || finalCoords.longitude !== longitude) {
+        // Marquer qu'on est en train de mettre à jour pour éviter la boucle
+        // Le geocoding sera déclenché après l'animation via triggerGeocodeAfter
+        animateToCoordinate(finalCoords.latitude, finalCoords.longitude, true, true);
+        return; // Ne pas faire le geocoding maintenant, il sera fait après le snap
+      }
+    }
+
+    // Déclencher le reverse geocoding
+    updateLocationFromCoordinates(finalCoords);
   };
 
   // Recherche avec suggestions Mapbox en temps réel
@@ -683,7 +550,7 @@ export default function LocationPickerModal({
     // Vérifier si la requête correspond exactement à une suggestion Mapbox
     const exactMatch = googleMapsSuggestions.find(
       (s) => s.name.toLowerCase() === searchQuery.trim().toLowerCase() ||
-             s.fullAddress?.toLowerCase() === searchQuery.trim().toLowerCase()
+        s.fullAddress?.toLowerCase() === searchQuery.trim().toLowerCase()
     );
 
     // Si on a des suggestions Mapbox et qu'il y a une correspondance exacte, utiliser la suggestion correspondante
@@ -691,20 +558,27 @@ export default function LocationPickerModal({
       try {
         setSearchLoading(true);
         const firstSuggestion = exactMatch; // Utiliser la suggestion qui correspond exactement
-        
+
         if (!firstSuggestion || !firstSuggestion.id) {
           console.warn('Invalid suggestion:', firstSuggestion);
           setSearchLoading(false);
           return;
         }
-        
+
         // Utiliser getMapboxPlaceDetails pour obtenir les coordonnées complètes
         const placeDetails = await getGoogleMapsPlaceDetails(firstSuggestion.id);
-        
+
         if (placeDetails && placeDetails.coordinates.latitude && placeDetails.coordinates.longitude) {
-          const lat = placeDetails.coordinates.latitude;
-          const lng = placeDetails.coordinates.longitude;
-          
+          let lat = placeDetails.coordinates.latitude;
+          let lng = placeDetails.coordinates.longitude;
+
+          // Snap to route if required
+          if (restrictToRoute || routeCoordinates) {
+            const snapped = snapPointToRoute(lat, lng);
+            lat = snapped.latitude;
+            lng = snapped.longitude;
+          }
+
           // Valider les coordonnées avant de les utiliser
           if (
             typeof lat === 'number' &&
@@ -732,7 +606,7 @@ export default function LocationPickerModal({
             return;
           }
         }
-        
+
         // Fallback si retrieve échoue mais qu'on a des coordonnées dans la suggestion
         if (
           firstSuggestion.coordinates.latitude &&
@@ -748,11 +622,21 @@ export default function LocationPickerModal({
           firstSuggestion.coordinates.longitude >= -180 &&
           firstSuggestion.coordinates.longitude <= 180
         ) {
+          let lat = firstSuggestion.coordinates.latitude;
+          let lng = firstSuggestion.coordinates.longitude;
+
+          // Snap to route if required
+          if (restrictToRoute || routeCoordinates) {
+            const snapped = snapPointToRoute(lat, lng);
+            lat = snapped.latitude;
+            lng = snapped.longitude;
+          }
+
           const result: SearchResult = {
             title: firstSuggestion.name || 'Lieu sélectionné',
             address: firstSuggestion.fullAddress || firstSuggestion.name || 'Adresse non disponible',
-            latitude: firstSuggestion.coordinates.latitude,
-            longitude: firstSuggestion.coordinates.longitude,
+            latitude: lat,
+            longitude: lng,
           };
           setSelectedLocation(result);
           animateToCoordinate(result.latitude, result.longitude);
@@ -786,10 +670,17 @@ export default function LocationPickerModal({
               console.warn('Invalid geocode result:', result);
               return null;
             }
-            
-            const lat = result.latitude;
-            const lng = result.longitude;
-            
+
+            let lat = result.latitude;
+            let lng = result.longitude;
+
+            // Snap to route if required
+            if (restrictToRoute || routeCoordinates) {
+              const snapped = snapPointToRoute(lat, lng);
+              lat = snapped.latitude;
+              lng = snapped.longitude;
+            }
+
             // Valider les coordonnées
             if (
               typeof lat !== 'number' ||
@@ -806,7 +697,7 @@ export default function LocationPickerModal({
               console.warn('Invalid coordinates in geocode result:', { lat, lng });
               return null;
             }
-            
+
             const fallbackTitle = query || `Résultat ${index + 1}`;
             const title =
               (typeof result === 'object' && result !== null && 'name' in result && typeof (result as any).name === 'string' && (result as any).name) ||
@@ -826,7 +717,7 @@ export default function LocationPickerModal({
           }
         })
         .filter((result): result is SearchResult => result !== null);
-        
+
       setSearchResults(mappedResults);
       const first = mappedResults[0];
       if (first) {
@@ -842,8 +733,19 @@ export default function LocationPickerModal({
   };
 
   const handleResultPress = (result: SearchResult) => {
-    setSelectedLocation(result);
-    animateToCoordinate(result.latitude, result.longitude);
+    let lat = result.latitude;
+    let lng = result.longitude;
+
+    // Snap to route if required
+    if (restrictToRoute || routeCoordinates) {
+      const snapped = snapPointToRoute(lat, lng);
+      lat = snapped.latitude;
+      lng = snapped.longitude;
+    }
+
+    const finalResult = { ...result, latitude: lat, longitude: lng };
+    setSelectedLocation(finalResult);
+    animateToCoordinate(finalResult.latitude, finalResult.longitude);
     setSearchResults([]);
     setGoogleMapsSuggestions([]);
   };
@@ -853,16 +755,16 @@ export default function LocationPickerModal({
       console.warn('Invalid suggestion:', suggestion);
       return;
     }
-    
+
     try {
       setGoogleMapsLoading(true);
-      
+
       // Essayer d'abord d'utiliser les coordonnées de la suggestion si elles sont valides
       let finalLatitude: number | null = null;
       let finalLongitude: number | null = null;
       let finalName = suggestion.name || 'Lieu sélectionné';
       let finalAddress = suggestion.fullAddress || suggestion.name || 'Adresse non disponible';
-      
+
       // Vérifier si les coordonnées de la suggestion sont valides
       if (
         suggestion?.coordinates &&
@@ -882,11 +784,11 @@ export default function LocationPickerModal({
         finalLatitude = suggestion.coordinates.latitude;
         finalLongitude = suggestion.coordinates.longitude;
       }
-      
+
       // Essayer de récupérer les détails complets pour obtenir une adresse plus précise
       try {
         const placeDetails = await getGoogleMapsPlaceDetails(suggestion.id);
-        
+
         if (placeDetails) {
           // Utiliser les coordonnées des détails si disponibles et valides
           if (
@@ -906,7 +808,7 @@ export default function LocationPickerModal({
             finalLatitude = placeDetails.coordinates.latitude;
             finalLongitude = placeDetails.coordinates.longitude;
           }
-          
+
           // Utiliser les informations des détails si disponibles
           if (placeDetails.name) {
             finalName = placeDetails.name;
@@ -919,16 +821,23 @@ export default function LocationPickerModal({
         console.warn('Failed to retrieve place details, using suggestion data:', error);
         // Continuer avec les données de la suggestion
       }
-      
+
       // Si on a des coordonnées valides, créer le résultat et mettre à jour l'UI
       if (finalLatitude !== null && finalLongitude !== null) {
+        // Snap to route if required
+        if (restrictToRoute || routeCoordinates) {
+          const snapped = snapPointToRoute(finalLatitude, finalLongitude);
+          finalLatitude = snapped.latitude;
+          finalLongitude = snapped.longitude;
+        }
+
         const result: SearchResult = {
           title: finalName,
           address: finalAddress,
           latitude: finalLatitude,
           longitude: finalLongitude,
         };
-        
+
         setSelectedLocation(result);
         animateToCoordinate(result.latitude, result.longitude);
         setGoogleMapsSuggestions([]);
@@ -936,7 +845,7 @@ export default function LocationPickerModal({
         setGoogleMapsLoading(false);
         return;
       }
-      
+
       // Si aucune coordonnée valide n'est disponible, essayer de géocoder le nom
       console.warn('No valid coordinates found for suggestion, attempting geocoding:', suggestion);
       try {
@@ -946,11 +855,11 @@ export default function LocationPickerModal({
           setGoogleMapsLoading(false);
           return;
         }
-        
+
         const geocodeResults = await Location.geocodeAsync(geocodeQuery);
         if (geocodeResults && Array.isArray(geocodeResults) && geocodeResults.length > 0) {
           const firstResult = geocodeResults[0];
-          
+
           // Valider le résultat du géocodage
           if (
             firstResult &&
@@ -968,11 +877,21 @@ export default function LocationPickerModal({
             firstResult.longitude >= -180 &&
             firstResult.longitude <= 180
           ) {
+            let lat = firstResult.latitude;
+            let lng = firstResult.longitude;
+
+            // Snap to route if required
+            if (restrictToRoute || routeCoordinates) {
+              const snapped = snapPointToRoute(lat, lng);
+              lat = snapped.latitude;
+              lng = snapped.longitude;
+            }
+
             const result: SearchResult = {
               title: suggestion.name || 'Lieu sélectionné',
               address: formatAddressFromGeocode(firstResult) || suggestion.fullAddress || suggestion.name || 'Adresse non disponible',
-              latitude: firstResult.latitude,
-              longitude: firstResult.longitude,
+              latitude: lat,
+              longitude: lng,
             };
             setSelectedLocation(result);
             animateToCoordinate(result.latitude, result.longitude);
@@ -1027,8 +946,8 @@ export default function LocationPickerModal({
     <Modal animationType="slide" visible={visible} onRequestClose={handleClose}>
       <View style={styles.modalContainer}>
         <View style={styles.modalHeader}>
-          <TouchableOpacity 
-            onPress={handleClose} 
+          <TouchableOpacity
+            onPress={handleClose}
             style={styles.headerButton}
             hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
             activeOpacity={0.6}
@@ -1084,10 +1003,10 @@ export default function LocationPickerModal({
                   style={styles.resultRow}
                   onPress={() => handleFavoritePress(item)}
                 >
-                  <Ionicons 
-                    name="star" 
-                    size={18} 
-                    color={Colors.secondary} 
+                  <Ionicons
+                    name="star"
+                    size={18}
+                    color={Colors.secondary}
                   />
                   <View style={styles.resultContent}>
                     <Text style={styles.resultTitle}>{item.title}</Text>
@@ -1105,7 +1024,7 @@ export default function LocationPickerModal({
         {googleMapsSuggestions.length > 0 && (
           <View style={styles.resultsContainer}>
             <FlatList
-                  data={googleMapsSuggestions}
+              data={googleMapsSuggestions}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <TouchableOpacity
@@ -1152,46 +1071,36 @@ export default function LocationPickerModal({
         )}
 
         <View style={styles.mapContainer}>
-          {/* Zone de protection pour le header - bloque les touches du MapView */}
-          <View style={styles.headerProtection} />
           <MapView
             ref={mapRef}
             provider={PROVIDER_GOOGLE}
             style={styles.map}
             initialRegion={region}
-            onPress={handleMapPress}
             onRegionChange={handleCameraChanged}
             onRegionChangeComplete={handleMapIdle}
+            onPress={handleMapPress}
+            showsUserLocation={permissionStatus === Location.PermissionStatus.GRANTED}
+            showsCompass={false}
+            scrollEnabled={!searchLoading && !isLocating}
           >
-            {selectedLocation && (
-              <Marker
-                coordinate={{
-                  latitude: selectedLocation.latitude,
-                  longitude: selectedLocation.longitude,
-                }}
-                draggable={true}
-                onDragStart={handleMarkerDragStart}
-                onDrag={handleMarkerDrag}
-                onDragEnd={handleMarkerDragEnd}
-                title="Lieu sélectionné"
-                description={selectedLocation.address || 'Glissez pour déplacer'}
-              >
-                <View
-                  style={[
-                    styles.selectedMarker,
-                    { backgroundColor: Colors.primary },
-                    isDragging && styles.selectedMarkerDragging,
-                  ]}
-                >
-                  {isGeocoding ? (
-                    <ActivityIndicator size="small" color={Colors.white} />
-                  ) : (
-                    <Ionicons name="pin" size={20} color={Colors.white} />
-                  )}
-                </View>
-              </Marker>
+            {routeCoordinates && routeCoordinates.length > 0 && (
+              <Polyline
+                coordinates={routeCoordinates}
+                strokeColor={Colors.primary}
+                strokeWidth={5}
+                lineDashPattern={restrictToRoute ? undefined : [5, 5]}
+              />
             )}
           </MapView>
+
+          {/* Fixed Center Pin Overlay */}
+          <View style={styles.centerPinContainer} pointerEvents="none">
+            <Animated.View style={[styles.centerPinWrapper, animatedPinStyle]}>
+              <View style={styles.centerPinHalo} />
+              <Ionicons name="location" size={40} color={Colors.primary} style={styles.centerPinIcon} />
+            </Animated.View>
+            <Animated.View style={[styles.centerPinShadow, animatedShadowStyle]} />
+          </View>
         </View>
 
         <View style={styles.locationDetails}>
@@ -1202,13 +1111,11 @@ export default function LocationPickerModal({
           )}
           <View style={styles.locationDetailsContent}>
             <Text style={styles.locationDetailsTitle}>
-              {isDragging
-                ? 'Glissez le marqueur pour sélectionner un lieu'
-                : isPanning
-                ? 'Déplacement de la carte…'
+              {isPanning
+                ? '🗺️ Déplacement de la carte…'
                 : isGeocoding
-                ? 'Détermination de l\'adresse…'
-                : selectedLocation?.title ?? 'Touchez la carte ou glissez le marqueur pour sélectionner un lieu'}
+                  ? '🔍 Recherche de l\'adresse…'
+                  : selectedLocation?.title ?? '🗺️ Déplacez la carte pour sélectionner un lieu'}
             </Text>
             {selectedLocation?.address ? (
               <Text style={styles.locationDetailsSubtitle} numberOfLines={2}>
@@ -1376,24 +1283,39 @@ const styles = StyleSheet.create({
     flex: 1,
     marginTop: 0,
   },
-  selectedMarker: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.full,
+  centerPinContainer: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginTop: -40, // Ajuster pour centrer l'icône
+    marginLeft: -20,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: Colors.white,
-    shadowColor: Colors.black,
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
+    zIndex: 1000,
   },
-  selectedMarkerDragging: {
-    transform: [{ scale: 1.1 }],
-    shadowOpacity: 0.5,
-    shadowRadius: 6,
-    elevation: 8,
+  centerPinWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  centerPinHalo: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: Colors.primary,
+    opacity: 0.15,
+  },
+  centerPinIcon: {
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 6,
+  },
+  centerPinShadow: {
+    width: 12,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    marginTop: -4,
   },
   locationDetails: {
     flexDirection: 'row',
@@ -1403,6 +1325,7 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.md,
     borderTopWidth: 1,
     borderColor: Colors.gray[100],
+    backgroundColor: Colors.white,
     gap: Spacing.md,
   },
   locationDetailsContent: {

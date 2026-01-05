@@ -1,11 +1,11 @@
 import type { FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import { API_BASE_URL } from '../../config/env';
 import { storeTokens } from '../../services/tokenStorage';
-import { setUser } from '../../store/slices/authSlice';
+import { setTokens, setUser } from '../../store/slices/authSlice';
 import type { User } from '../../types';
 import { baseApi } from './baseApi';
-import { userApi } from './userApi';
 import type { BaseEndpointBuilder } from './types';
+import { userApi } from './userApi';
 
 /**
  * Interface de réponse d'authentification avec tokens JWT
@@ -37,11 +37,24 @@ export const authApi = baseApi.injectEndpoints({
       ) {
         try {
           const { data } = await queryFulfilled;
-          // Stocker les tokens dans SecureStore
+          
+          console.log('[authApi] Login success - Storing tokens in SecureStore...');
+          
+          // 1. Stocker les tokens dans SecureStore (PRIORITÉ)
           await storeTokens(data.accessToken, data.refreshToken);
-          // Si l'utilisateur n'est pas dans la réponse, le récupérer séparément
+          
+          console.log('[authApi] Tokens stored in SecureStore successfully');
+          
+          // 2. Dispatcher dans Redux (après confirmation du stockage)
+          dispatch(setTokens({ 
+            accessToken: data.accessToken, 
+            refreshToken: data.refreshToken 
+          }));
+          
+          console.log('[authApi] Tokens dispatched to Redux');
+          
+          // 3. Récupérer l'utilisateur
           if (!data.user) {
-            // Récupérer l'utilisateur après la connexion
             const userResult = await dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true }));
             if (userResult.data) {
               dispatch(setUser(userResult.data));
@@ -50,7 +63,7 @@ export const authApi = baseApi.injectEndpoints({
             dispatch(setUser(data.user));
           }
         } catch (error) {
-          console.error('Erreur lors du stockage des tokens après login:', error);
+          console.error('[authApi] Erreur lors du stockage des tokens après login:', error);
         }
       },
       invalidatesTags: ['User'],
@@ -69,11 +82,24 @@ export const authApi = baseApi.injectEndpoints({
       ) {
         try {
           const { data } = await queryFulfilled;
-          // Stocker les tokens dans SecureStore
+          
+          console.log('[authApi] Registration success - Storing tokens in SecureStore...');
+          
+          // 1. Stocker les tokens dans SecureStore (PRIORITÉ)
           await storeTokens(data.accessToken, data.refreshToken);
-          // Si l'utilisateur n'est pas dans la réponse, le récupérer séparément
+          
+          console.log('[authApi] Tokens stored in SecureStore successfully');
+          
+          // 2. Dispatcher dans Redux (après confirmation du stockage)
+          dispatch(setTokens({ 
+            accessToken: data.accessToken, 
+            refreshToken: data.refreshToken 
+          }));
+          
+          console.log('[authApi] Tokens dispatched to Redux');
+          
+          // 3. Récupérer l'utilisateur
           if (!data.user) {
-            // Récupérer l'utilisateur après l'inscription
             const userResult = await dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true }));
             if (userResult.data) {
               dispatch(setUser(userResult.data));
@@ -82,7 +108,7 @@ export const authApi = baseApi.injectEndpoints({
             dispatch(setUser(data.user));
           }
         } catch (error) {
-          console.error('Erreur lors du stockage des tokens après inscription:', error);
+          console.error('[authApi] Erreur lors du stockage des tokens après inscription:', error);
         }
       },
     }),

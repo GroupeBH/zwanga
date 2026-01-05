@@ -1,5 +1,5 @@
-import { DialogProvider } from '@/components/ui/DialogProvider';
 import { OngoingTripBanner } from '@/components/OngoingTripBanner';
+import { DialogProvider } from '@/components/ui/DialogProvider';
 import { Colors } from '@/constants/styles';
 import { IdentityProvider } from '@/contexts/IdentityContext';
 import { TutorialProvider } from '@/contexts/TutorialContext';
@@ -50,10 +50,8 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
         <DialogProvider>
           <TutorialProvider>
             <IdentityProvider>
-              <View style={styles.appContainer}>
-                <OngoingTripBanner />
-                {children}
-              </View>
+              <OngoingTripBanner />
+              {children}
             </IdentityProvider>
           </TutorialProvider>
         </DialogProvider>
