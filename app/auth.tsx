@@ -219,8 +219,8 @@ export default function AuthScreen() {
     setStep('phone');
     setPhone('');
     setSmsCode(['', '', '', '', '']); // 5 chiffres
-    setPin(['', '', '', '']); // 4 chiffres
-    setPinConfirm(['', '', '', '']); // 4 chiffres
+    setPin(''); // 4 chiffres
+    setPinConfirm(''); // 4 chiffres
     setFirstName('');
     setLastName('');
     setEmail('');
@@ -426,8 +426,8 @@ export default function AuthScreen() {
     setStep('resetPin');
     setResetPinStep('otp');
     setResetOtpCode(['', '', '', '', '']);
-    setResetNewPin(['', '', '', '']);
-    setResetNewPinConfirm(['', '', '', '']);
+    setResetNewPin('');
+    setResetNewPinConfirm('');
     
     // Envoyer automatiquement l'OTP
     try {
