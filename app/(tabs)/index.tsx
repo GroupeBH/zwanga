@@ -31,7 +31,7 @@ import {
 import Animated, { FadeInDown, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const RECENT_TRIPS_LIMIT = 5;
+const RECENT_TRIPS_LIMIT = 15;
 
 const styles = StyleSheet.create({
   container: {
@@ -541,7 +541,7 @@ export default function HomeScreen() {
     refetch: refetchTrips,
   } = useGetTripsQuery(queryParams);
 
-  console.log('remoteTrips', remoteTrips);
+  // console.log('remoteTrips', remoteTrips?.length);
   const { data: notificationsData } = useGetNotificationsQuery(undefined, {
     refetchOnMountOrArgChange: true,
   });
@@ -1081,13 +1081,13 @@ export default function HomeScreen() {
                     <View style={styles.headerBadges}>
                       {bookedTripIds.has(trip.id) && (
                         <View style={styles.bookedBadge}>
-                          <Ionicons name="checkmark-circle" size={12} color={Colors.primary} />
+                          <Ionicons name="checkmark-circle" size={10} color={Colors.primary} />
                           <Text style={styles.bookedBadgeText}>Réservé</Text>
                         </View>
                       )}
                       {trip?.status === 'ongoing' && !bookedTripIds.has(trip.id) && (
                         <View style={styles.ongoingBadge}>
-                          <Ionicons name="car-sport" size={12} color={Colors.success} />
+                          <Ionicons name="car-sport" size={10} color={Colors.success} />
                           <Text style={styles.ongoingBadgeText}>En cours</Text>
                         </View>
                       )}
@@ -1181,3 +1181,633 @@ export default function HomeScreen() {
     </SafeAreaView>
   );
 }
+
+// const styles = StyleSheet.create({
+//   container: {
+//     flex: 1,
+//     backgroundColor: Colors.gray[50],
+//   },
+//   header: {
+//     backgroundColor: Colors.primary,
+//     paddingHorizontal: Spacing.xl,
+//     paddingTop: Spacing.lg,
+//     paddingBottom: Spacing.lg,
+//     borderBottomLeftRadius: BorderRadius.xxl,
+//     borderBottomRightRadius: BorderRadius.xxl,
+//   },
+//   headerTop: {
+//     flexDirection: 'row',
+//     justifyContent: 'space-between',
+//     alignItems: 'center',
+//     marginBottom: Spacing.xl,
+//   },
+//   headerTopRight: {
+//     flexDirection: 'row',
+//     alignItems: 'center',
+//     gap: Spacing.sm,
+//   },
+//   expandButton: {
+//     width: 40,
+//     height: 40,
+//     backgroundColor: 'rgba(255, 255, 255, 0.2)',
+//     borderRadius: BorderRadius.full,
+//     alignItems: 'center',
+//     justifyContent: 'center',
+//   },
+//   greeting: {
+//     color: Colors.white,
+//     opacity: 0.8,
+//     fontSize: FontSizes.sm,
+//     marginBottom: Spacing.xs,
+//   },
+//   headerTitle: {
+//     color: Colors.white,
+//     fontSize: FontSizes.xxl,
+//     fontWeight: FontWeights.bold,
+//   },
+//   notificationButton: {
+//     width: 48,
+//     height: 48,
+//     backgroundColor: 'rgba(255, 255, 255, 0.2)',
+//     borderRadius: BorderRadius.full,
+//     alignItems: 'center',
+//     justifyContent: 'center',
+//     position: 'relative',
+//   },
+//   notificationBadge: {
+//     position: 'absolute',
+//     top: -2,
+//     right: -2,
+//     minWidth: 18,
+//     height: 18,
+//     borderRadius: BorderRadius.full,
+//     backgroundColor: Colors.danger,
+//     alignItems: 'center',
+//     justifyContent: 'center',
+//     paddingHorizontal: Spacing.xs / 2,
+//   },
+//   notificationBadgeText: {
+//     color: Colors.white,
+//     fontSize: FontSizes.xs,
+//     fontWeight: FontWeights.bold,
+//   },
+//   searchCardContainer: {
+//     marginTop: Spacing.md,
+//     overflow: 'hidden',
+//   },
+//   searchCard: {
+//     backgroundColor: Colors.primary,
+//     borderRadius: BorderRadius.xl,
+//     padding: Spacing.lg,
+//     ...CommonStyles.shadowLg,
+//   },
+//   searchRow: {
+//     flexDirection: 'row',
+//     alignItems: 'center',
+//     marginBottom: Spacing.md,
+//     paddingBottom: Spacing.md,
+//     borderBottomWidth: 1,
+//     borderBottomColor: Colors.gray[100],
+//   },
+//   searchDivider: {
+//     height: 1,
+//     backgroundColor: Colors.gray[100],
+//     marginBottom: Spacing.md,
+//   },
+//   searchInput: {
+//     flex: 1,
+//     marginLeft: Spacing.md,
+//     fontSize: FontSizes.base,
+//     color: Colors.gray[800],
+//   },
+//   searchButton: {
+//     backgroundColor: Colors.primary,
+//     marginTop: Spacing.lg,
+//     paddingVertical: Spacing.md,
+//     borderRadius: BorderRadius.md,
+//     alignItems: 'center',
+//     justifyContent: 'center',
+//   },
+//   searchButtonText: {
+//     color: Colors.white,
+//     fontSize: FontSizes.base,
+//     fontWeight: FontWeights.bold,
+//   },
+//   scrollView: {
+//     flex: 1,
+//   },
+//   scrollViewContent: {
+//     flexGrow: 1,
+//     paddingHorizontal: Spacing.xl,
+//     paddingTop: Spacing.xl,
+//     paddingBottom: 120, // Increased to ensure content is not hidden behind the tab bar
+//   },
+//   section: {
+//     marginBottom: Spacing.xl,
+//   },
+//   sectionHeader: {
+//     flexDirection: 'row',
+//     justifyContent: 'space-between',
+//     alignItems: 'center',
+//     marginBottom: Spacing.md,
+//   },
+//   sectionTitle: {
+//     fontSize: FontSizes.lg,
+//     fontWeight: FontWeights.bold,
+//     color: Colors.gray[800],
+//     marginBottom: Spacing.md,
+//   },
+//   seeAllText: {
+//     color: Colors.primary,
+//     fontSize: FontSizes.base,
+//     fontWeight: FontWeights.semibold,
+//   },
+//   popularLocations: {
+//     flexDirection: 'row',
+//     flexWrap: 'wrap',
+//     marginBottom: Spacing.md,
+//   },
+//   locationChip: {
+//     flexDirection: 'row',
+//     alignItems: 'center',
+//     backgroundColor: Colors.white,
+//     borderRadius: BorderRadius.full,
+//     borderWidth: 1,
+//     borderColor: Colors.primary + '30',
+//     paddingHorizontal: Spacing.md,
+//     paddingVertical: Spacing.xs,
+//     marginRight: Spacing.sm,
+//     marginBottom: Spacing.sm,
+//     ...CommonStyles.shadowSm,
+//   },
+//   locationChipText: {
+//     marginLeft: Spacing.xs,
+//     fontSize: FontSizes.sm,
+//     color: Colors.gray[800],
+//     fontWeight: FontWeights.semibold,
+//   },
+//   locationCard: {
+//     flexDirection: 'row',
+//     alignItems: 'center',
+//     backgroundColor: Colors.white,
+//     borderRadius: BorderRadius.xl,
+//     padding: Spacing.sm,
+//     borderWidth: 1,
+//     borderColor: Colors.gray[100],
+//     marginBottom: Spacing.sm,
+//   },
+//   locationIcon: {
+//     width: 40,
+//     height: 40,
+//     borderRadius: BorderRadius.full,
+//     backgroundColor: Colors.primary + '10',
+//     alignItems: 'center',
+//     justifyContent: 'center',
+//     marginRight: Spacing.md,
+//   },
+//   locationInfo: {
+//     flex: 1,
+//   },
+//   locationName: {
+//     fontWeight: FontWeights.bold,
+//     color: Colors.gray[900],
+//   },
+//   locationAddress: {
+//     color: Colors.gray[500],
+//     fontSize: FontSizes.sm,
+//     marginTop: 2,
+//   },
+//   savedSection: {
+//     marginTop: Spacing.md,
+//   },
+//   savedTitle: {
+//     fontSize: FontSizes.sm,
+//     color: Colors.gray[500],
+//     marginBottom: Spacing.sm,
+//   },
+//   addLocationCard: {
+//     marginTop: Spacing.md,
+//     backgroundColor: Colors.white,
+//     borderRadius: BorderRadius.xl,
+//     padding: Spacing.lg,
+//     borderWidth: 1,
+//     borderColor: Colors.gray[200],
+//     gap: Spacing.sm,
+//   },
+//   addLocationTitle: {
+//     fontWeight: FontWeights.bold,
+//     color: Colors.gray[800],
+//     marginBottom: Spacing.sm,
+//   },
+//   addInputRow: {
+//     flexDirection: 'row',
+//     alignItems: 'center',
+//     borderWidth: 1,
+//     borderColor: Colors.gray[200],
+//     borderRadius: BorderRadius.md,
+//     paddingHorizontal: Spacing.md,
+//     paddingVertical: Spacing.xs,
+//     gap: Spacing.sm,
+//   },
+//   addInput: {
+//     flex: 1,
+//     fontSize: FontSizes.base,
+//     color: Colors.gray[800],
+//     paddingVertical: Spacing.sm,
+//   },
+//   coordsRow: {
+//     flexDirection: 'row',
+//     gap: Spacing.sm,
+//   },
+//   coordInput: {
+//     flex: 1,
+//   },
+//   addButton: {
+//     backgroundColor: Colors.primary,
+//     borderRadius: BorderRadius.md,
+//     paddingVertical: Spacing.md,
+//     alignItems: 'center',
+//     marginTop: Spacing.sm,
+//   },
+//   addButtonText: {
+//     color: Colors.white,
+//     fontWeight: FontWeights.bold,
+//   },
+//   quickToggleRow: {
+//     flexDirection: 'row',
+//     justifyContent: 'space-between',
+//     alignItems: 'center',
+//     marginTop: Spacing.lg,
+//     marginBottom: Spacing.lg,
+//     padding: Spacing.sm,
+//     borderWidth: 1,
+//     borderColor: Colors.gray[200],
+//     borderRadius: BorderRadius.md,
+//     backgroundColor: Colors.gray[50],
+//   },
+//   quickToggleLabel: {
+//     color: Colors.gray[700],
+//     fontSize: FontSizes.sm,
+//     fontWeight: FontWeights.medium,
+//   },
+//   quickToggleButton: {
+//     flexDirection: 'row',
+//     alignItems: 'center',
+//     gap: Spacing.xs,
+//   },
+//   quickToggleAction: {
+//     color: Colors.primary,
+//     fontWeight: FontWeights.bold,
+//     fontSize: FontSizes.sm,
+//   },
+//   button: {
+//     backgroundColor: Colors.primary,
+//     borderRadius: BorderRadius.md,
+//     paddingVertical: Spacing.md,
+//     paddingHorizontal: Spacing.lg,
+//     alignItems: 'center',
+//     justifyContent: 'center',
+//   },
+//   buttonText: {
+//     color: Colors.white,
+//     fontWeight: FontWeights.bold,
+//   },
+//   buttonSecondary: {
+//     backgroundColor: Colors.white,
+//     borderWidth: 1,
+//     borderColor: Colors.gray[200],
+//   },
+//   buttonSecondaryText: {
+//     color: Colors.gray[700],
+//     fontWeight: FontWeights.medium,
+//   },
+//   buttonDisabled: {
+//     opacity: 0.6,
+//   },
+//   quickActions: {
+//     flexDirection: 'row',
+//   },
+//   quickActionCard: {
+//     flex: 1,
+//     backgroundColor: 'rgba(255, 107, 53, 0.1)',
+//     padding: Spacing.lg,
+//     borderRadius: BorderRadius.xl,
+//     borderWidth: 1,
+//     borderColor: 'rgba(255, 107, 53, 0.2)',
+//   },
+//   quickActionCardBlue: {
+//     backgroundColor: 'rgba(52, 152, 219, 0.1)',
+//     borderColor: 'rgba(52, 152, 219, 0.2)',
+//   },
+//   quickActionIcon: {
+//     width: 48,
+//     height: 48,
+//     borderRadius: BorderRadius.full,
+//     alignItems: 'center',
+//     justifyContent: 'center',
+//     marginBottom: Spacing.sm,
+//   },
+//   quickActionTitle: {
+//     fontWeight: FontWeights.bold,
+//     color: Colors.gray[800],
+//     fontSize: FontSizes.base,
+//     marginBottom: Spacing.xs,
+//   },
+//   quickActionTitleb: {
+//     fontWeight: FontWeights.bold,
+//     color: Colors.white,
+//     fontSize: FontSizes.base,
+//     marginBottom: Spacing.xs,
+//   },
+//   quickActionSubtitle: {
+//     fontSize: FontSizes.xs,
+//     color: Colors.gray[600],
+//     marginTop: Spacing.xs,
+//   },
+//   quickActionSubtitleb: {
+//     fontSize: FontSizes.xs,
+//     color: Colors.white,
+//     marginTop: Spacing.xs,
+//   },
+//   tripCard: {
+//     backgroundColor: Colors.white,
+//     borderRadius: BorderRadius.xl,
+//     padding: Spacing.lg,
+//     marginBottom: Spacing.md,
+//     ...CommonStyles.shadowSm,
+//   },
+//   advancedCard: {
+//     backgroundColor: Colors.white,
+//     borderRadius: BorderRadius.xl,
+//     borderWidth: 1,
+//     borderColor: Colors.gray[100],
+//     padding: Spacing.lg,
+//     marginBottom: Spacing.lg,
+//     ...CommonStyles.shadowSm,
+//   },
+//   advancedTitle: {
+//     fontWeight: FontWeights.bold,
+//     color: Colors.gray[900],
+//     marginBottom: Spacing.md,
+//   },
+//   advancedLocations: {
+//     gap: Spacing.sm,
+//     marginBottom: Spacing.md,
+//   },
+//   advancedLocationButton: {
+//     flexDirection: 'row',
+//     alignItems: 'flex-start',
+//     borderWidth: 1,
+//     borderColor: Colors.gray[200],
+//     borderRadius: BorderRadius.lg,
+//     padding: Spacing.md,
+//     gap: Spacing.md,
+//   },
+//   advancedLocationIcon: {
+//     width: 40,
+//     height: 40,
+//     borderRadius: BorderRadius.full,
+//     alignItems: 'center',
+//     justifyContent: 'center',
+//   },
+//   advancedLocationContent: {
+//     flex: 1,
+//   },
+//   advancedLocationLabel: {
+//     fontSize: FontSizes.xs,
+//     color: Colors.gray[500],
+//     textTransform: 'uppercase',
+//   },
+//   advancedLocationTitle: {
+//     fontSize: FontSizes.base,
+//     fontWeight: FontWeights.bold,
+//     color: Colors.gray[900],
+//   },
+//   advancedLocationSubtitle: {
+//     fontSize: FontSizes.sm,
+//     color: Colors.gray[600],
+//   },
+//   advancedLocationCoords: {
+//     fontSize: FontSizes.xs,
+//     color: Colors.gray[500],
+//   },
+//   advancedInputRow: {
+//     flexDirection: 'row',
+//     gap: Spacing.md,
+//     marginBottom: Spacing.md,
+//   },
+//   advancedInputGroup: {
+//     flex: 1,
+//   },
+//   advancedInputLabel: {
+//     fontSize: FontSizes.xs,
+//     color: Colors.gray[600],
+//     marginBottom: Spacing.xs,
+//     textTransform: 'uppercase',
+//   },
+//   advancedInput: {
+//     borderWidth: 1,
+//     borderColor: Colors.gray[200],
+//     borderRadius: BorderRadius.md,
+//     paddingVertical: Spacing.sm,
+//     paddingHorizontal: Spacing.md,
+//     fontSize: FontSizes.base,
+//     color: Colors.gray[900],
+//     backgroundColor: Colors.white,
+//   },
+//   advancedButtons: {
+//     flexDirection: 'row',
+//     alignItems: 'center',
+//   },
+//   tripStateCard: {
+//     backgroundColor: Colors.white,
+//     borderRadius: BorderRadius.xl,
+//     padding: Spacing.xl,
+//     alignItems: 'center',
+//     justifyContent: 'center',
+//     borderWidth: 1,
+//     borderColor: Colors.gray[100],
+//     marginBottom: Spacing.md,
+//     gap: Spacing.sm,
+//   },
+//   tripStateText: {
+//     fontWeight: FontWeights.bold,
+//     color: Colors.gray[800],
+//   },
+//   tripStateSubText: {
+//     color: Colors.gray[600],
+//     fontSize: FontSizes.sm,
+//     textAlign: 'center',
+//   },
+//   retryButton: {
+//     marginTop: Spacing.xs,
+//     paddingHorizontal: Spacing.lg,
+//     paddingVertical: Spacing.sm,
+//     borderRadius: BorderRadius.md,
+//     backgroundColor: Colors.primary,
+//   },
+//   retryButtonText: {
+//     color: Colors.white,
+//     fontWeight: FontWeights.bold,
+//   },
+//   tripHeader: {
+//     flexDirection: 'row',
+//     justifyContent: 'space-between',
+//     alignItems: 'flex-start',
+//     marginBottom: Spacing.md,
+//   },
+//   tripDriverInfo: {
+//     flexDirection: 'row',
+//     alignItems: 'center',
+//     flex: 1,
+//   },
+//   avatar: {
+//     width: 48,
+//     height: 48,
+//     backgroundColor: Colors.gray[300],
+//     borderRadius: BorderRadius.full,
+//     marginRight: Spacing.md,
+//   },
+//   tripDriverDetails: {
+//     flex: 1,
+//   },
+//   driverName: {
+//     fontWeight: FontWeights.bold,
+//     color: Colors.gray[800],
+//     fontSize: FontSizes.base,
+//     marginBottom: Spacing.xs,
+//   },
+//   driverMeta: {
+//     flexDirection: 'row',
+//     alignItems: 'center',
+//   },
+//   driverRating: {
+//     fontSize: FontSizes.sm,
+//     color: Colors.gray[600],
+//     marginLeft: Spacing.xs,
+//   },
+//   dot: {
+//     width: 4,
+//     height: 4,
+//     backgroundColor: Colors.gray[400],
+//     borderRadius: BorderRadius.full,
+//     marginHorizontal: Spacing.sm,
+//   },
+//   vehicleInfo: {
+//     fontSize: FontSizes.sm,
+//     color: Colors.gray[600],
+//   },
+//   headerBadges: {
+//     flexDirection: 'row',
+//     alignItems: 'center',
+//     gap: Spacing.xs,
+//   },
+//   bookedBadge: {
+//     flexDirection: 'row',
+//     alignItems: 'center',
+//     backgroundColor: Colors.primary + '15',
+//     borderRadius: BorderRadius.md,
+//     paddingHorizontal: Spacing.sm,
+//     paddingVertical: Spacing.xs,
+//     gap: 4,
+//   },
+//   bookedBadgeText: {
+//     color: Colors.primary,
+//     fontWeight: FontWeights.bold,
+//     fontSize: FontSizes.xs,
+//   },
+//   ongoingBadge: {
+//     flexDirection: 'row',
+//     alignItems: 'center',
+//     backgroundColor: Colors.success + '15',
+//     borderRadius: BorderRadius.md,
+//     paddingHorizontal: Spacing.sm,
+//     paddingVertical: Spacing.xs,
+//     gap: 4,
+//   },
+//   ongoingBadgeText: {
+//     color: Colors.success,
+//     fontWeight: FontWeights.bold,
+//     fontSize: FontSizes.xs,
+//   },
+//   priceBadge: {
+//     backgroundColor: 'rgba(46, 204, 113, 0.1)',
+//     paddingHorizontal: Spacing.md,
+//     paddingVertical: Spacing.xs,
+//     borderRadius: BorderRadius.full,
+//   },
+//   priceText: {
+//     color: Colors.success,
+//     fontWeight: FontWeights.bold,
+//     fontSize: FontSizes.sm,
+//   },
+//   freeBadge: {
+//     backgroundColor: Colors.success + '15',
+//     borderRadius: BorderRadius.md,
+//     paddingHorizontal: Spacing.sm,
+//     paddingVertical: Spacing.xs,
+//   },
+//   freeBadgeText: {
+//     color: Colors.success,
+//     fontWeight: FontWeights.bold,
+//     fontSize: FontSizes.base,
+//   },
+//   tripRoute: {
+//     marginBottom: Spacing.md,
+//   },
+//   routeRow: {
+//     flexDirection: 'row',
+//     alignItems: 'center',
+//     marginBottom: Spacing.sm,
+//   },
+//   routeText: {
+//     color: Colors.gray[700],
+//     marginLeft: Spacing.sm,
+//     flex: 1,
+//     fontSize: FontSizes.base,
+//   },
+//   timeContainer: {
+//     alignItems: 'flex-end',
+//   },
+//   routeDateLabel: {
+//     fontSize: FontSizes.xs,
+//     color: Colors.primary,
+//     fontWeight: FontWeights.medium,
+//     marginBottom: 2,
+//   },
+//   routeTime: {
+//     fontSize: FontSizes.sm,
+//     color: Colors.gray[500],
+//   },
+//   tripFooter: {
+//     flexDirection: 'row',
+//     alignItems: 'center',
+//     justifyContent: 'space-between',
+//     paddingTop: Spacing.md,
+//     borderTopWidth: 1,
+//     borderTopColor: Colors.gray[100],
+//   },
+//   tripFooterLeft: {
+//     flexDirection: 'row',
+//     alignItems: 'center',
+//   },
+//   seatsText: {
+//     fontSize: FontSizes.sm,
+//     color: Colors.gray[600],
+//     marginLeft: Spacing.xs,
+//   },
+//   reserveButton: {
+//     backgroundColor: Colors.primary,
+//     paddingHorizontal: Spacing.lg,
+//     paddingVertical: Spacing.sm,
+//     borderRadius: BorderRadius.md,
+//   },
+//   viewButton: {
+//     backgroundColor: Colors.secondary,
+//   },
+//   reserveButtonText: {
+//     color: Colors.white,
+//     fontWeight: FontWeights.semibold,
+//     fontSize: FontSizes.sm,
+//   },
+// });

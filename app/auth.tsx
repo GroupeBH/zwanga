@@ -5,7 +5,7 @@ import { useSendPhoneVerificationOtpMutation, useUploadKycMutation, useVerifyPho
 import { useLoginMutation, useRegisterMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated } from '@/store/selectors';
-import { setTokens, setUser } from '@/store/slices/authSlice';
+import { setTokens } from '@/store/slices/authSlice';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
@@ -163,6 +163,7 @@ export default function AuthScreen() {
     pin: mode === 'login' ? '🔐 Entrez votre code PIN' : '🔐 Créez votre code PIN',
     profile: '✨ Créez votre identité unique !',
     kyc: '🔒 Vérification d\'identité',
+    resetPin: '🔑 Réinitialisation du PIN',
   }[step];
 
   // Effects
@@ -204,9 +205,9 @@ export default function AuthScreen() {
     if (step === 'resetPin') {
       setStep('pin');
       setResetPinStep('otp');
-      setResetOtpCode(['', '', '', '', '']);
-      setResetNewPin(['', '', '', '']);
-      setResetNewPinConfirm(['', '', '', '']);
+      setResetOtpCode(null as unknown as string[]);
+      setResetNewPin('');
+      setResetNewPinConfirm('');
       return;
     }
     if (currentStepIndex > 0) {
@@ -218,8 +219,8 @@ export default function AuthScreen() {
     setStep('phone');
     setPhone('');
     setSmsCode(['', '', '', '', '']); // 5 chiffres
-    setPin(['', '', '', '']); // 4 chiffres
-    setPinConfirm(['', '', '', '']); // 4 chiffres
+    setPin(''); // 4 chiffres
+    setPinConfirm(''); // 4 chiffres
     setFirstName('');
     setLastName('');
     setEmail('');
@@ -425,8 +426,8 @@ export default function AuthScreen() {
     setStep('resetPin');
     setResetPinStep('otp');
     setResetOtpCode(['', '', '', '', '']);
-    setResetNewPin(['', '', '', '']);
-    setResetNewPinConfirm(['', '', '', '']);
+    setResetNewPin('');
+    setResetNewPinConfirm('');
     
     // Envoyer automatiquement l'OTP
     try {

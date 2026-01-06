@@ -46,6 +46,7 @@ export type ServerTrip = {
   arrivalCoordinates?: CoordinatesTuple;
   departureDate: string;
   availableSeats: number;
+  totalSeats?: number; // Nombre total de places (ajouté par le backend)
   pricePerSeat: number | string;
   isFree?: boolean;
   description?: string;
@@ -145,8 +146,8 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
       .reduce((total, booking) => total + (booking.seats ?? 0), 0) ?? 0;
 
   // Le nombre initial de places disponibles lors de la publication
-  // = places disponibles actuellement + places réservées et acceptées
-  const initialAvailableSeats = trip.availableSeats + acceptedBookedSeats;
+  // Si totalSeats est fourni par le backend, l'utiliser, sinon calculer
+  const totalSeats = trip.totalSeats ?? (trip.availableSeats + acceptedBookedSeats);
 
   return {
     id: trip.id,
@@ -186,7 +187,7 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     isFree: trip.isFree ?? Number(trip.pricePerSeat) === 0,
     availableSeats: trip.availableSeats,
     // totalSeats représente le nombre initial de places disponibles lors de la publication
-    totalSeats: Math.max(initialAvailableSeats, trip.availableSeats),
+    totalSeats: Math.max(totalSeats, trip.availableSeats),
     status: mapTripStatus(trip.status),
     passengers: mapPassengers(trip.bookings),
     currentLocation: trip.currentLocation ?? null,
@@ -231,7 +232,7 @@ type CreateTripPayload = {
   arrivalCoordinates: [number, number];
   departureDate: string;
   totalSeats: number;
-  availableSeats: number;
+  // availableSeats: number | null | undefined;
   pricePerSeat: number;
   isFree?: boolean;
   description?: string;

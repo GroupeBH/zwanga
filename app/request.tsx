@@ -7,8 +7,8 @@ import DateTimePicker, {
   DateTimePickerAndroid,
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
-import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -190,7 +190,7 @@ export default function RequestTripScreen() {
         title: 'Demande publiée !',
         message: 'Les chauffeurs seront bientôt notifiés de votre demande.',
         variant: 'success',
-        actions: [{ label: 'Fermer', variant: 'primary', onPress: () => router.back() }],
+        actions: [{ label: 'voir mes demandes', variant: 'primary', onPress: () => router.push('/my-requests') }],
       });
     } catch (error: any) {
       showDialog({

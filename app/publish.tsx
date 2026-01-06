@@ -449,10 +449,10 @@ export default function PublishScreen() {
 
   const handleNextStep = () => {
     // Check driver status first
-    if (!isDriver) {
-      setShowDriverRequiredModal(true);
-      return;
-    }
+    // if (!isDriver) {
+    //   setShowDriverRequiredModal(true);
+    //   return;
+    // }
 
     if (step === 'route') {
       if (!departureLocation || !arrivalLocation) {
@@ -554,11 +554,12 @@ export default function PublishScreen() {
         arrivalCoordinates: [arrivalLocation.longitude, arrivalLocation.latitude],
         departureDate: departureDate.toISOString(),
         totalSeats: seatsValue,
+        // availableSeats: seatsValue,
         pricePerSeat: priceValue,
         isFree: isFreeTrip,
         description: description.trim() || undefined,
         vehicleId: selectedVehicleId,
-      } as any).unwrap();
+      }).unwrap();
 
       resetForm();
       showDialog({
@@ -632,7 +633,7 @@ export default function PublishScreen() {
         </View>
       </View>
 
-      {!isIdentityVerified && (
+      {/* {!isIdentityVerified && (
         <View style={styles.identityWarningCard}>
           <View style={styles.identityWarningIcon}>
             <Ionicons name="shield" size={20} color={Colors.primary} />
@@ -651,7 +652,7 @@ export default function PublishScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      )}
+      )} */}
 
       <ScrollView
         style={styles.scrollView}

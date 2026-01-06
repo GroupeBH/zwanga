@@ -1,3 +1,4 @@
+import { OngoingTripBanner } from '@/components/OngoingTripBanner';
 import { DialogProvider } from '@/components/ui/DialogProvider';
 import { Colors } from '@/constants/styles';
 import { IdentityProvider } from '@/contexts/IdentityContext';
@@ -9,7 +10,6 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Provider } from 'react-redux';
 import { AuthGuard } from './AuthGuard';
 import { NotificationHandler } from './NotificationHandler';
-import { OngoingTripBanner } from './OngoingTripBanner';
 
 interface ReduxProviderProps {
   children: React.ReactNode;
@@ -66,6 +66,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.primary,
+  },
+  appContainer: {
+    flex: 1,
   },
 });
 

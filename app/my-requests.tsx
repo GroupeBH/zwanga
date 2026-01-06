@@ -1,6 +1,8 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
+import type { TripRequest } from '@/types';
+import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
@@ -16,8 +18,6 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
-import type { TripRequest } from '@/types';
 
 export default function MyTripRequestsScreen() {
   const router = useRouter();
@@ -29,21 +29,30 @@ export default function MyTripRequestsScreen() {
     refetch,
   } = useGetMyTripRequestsQuery();
 
+  console.log('[MyTripRequests] tripRequests:', tripRequests);
+
   const handleRequestPress = (requestId: string) => {
     router.push(`/request/${requestId}`);
   };
 
-  const renderTripRequestCard = ({ item, index }: { item: TripRequest; index: number }) => {
-    const statusConfig = {
-      pending: { label: 'En attente', color: Colors.warning, bg: Colors.warning + '15' },
-      offers_received: { label: 'Offres reçues', color: Colors.info, bg: Colors.info + '15' },
-      driver_selected: { label: 'Driver sélectionné', color: Colors.success, bg: Colors.success + '15' },
-      cancelled: { label: 'Annulée', color: Colors.danger, bg: Colors.danger + '15' },
-      expired: { label: 'Expirée', color: Colors.gray[500], bg: Colors.gray[200] },
-    }[item.status] || statusConfig.pending;
+  const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
+    pending: { label: 'En attente', color: Colors.warning, bg: Colors.warning + '15' },
+    offers_received: { label: 'Offres reçues', color: Colors.info, bg: Colors.info + '15' },
+    driver_selected: { label: 'Driver sélectionné', color: Colors.success, bg: Colors.success + '15' },
+    cancelled: { label: 'Annulée', color: Colors.danger, bg: Colors.danger + '15' },
+  };
 
-    const offersCount = item.offers?.length || 0;
-    const pendingOffersCount = item.offers?.filter((o) => o.status === 'pending').length || 0;
+  const renderTripRequestCard = ({ item, index }: { item: TripRequest; index: number }) => {
+    // Merge 'expired' into the local status config
+    const localStatusConfig = {
+      ...statusConfig,
+      expired: { label: 'Expirée', color: Colors.gray[500], bg: Colors.gray[200] },
+      // End of casting hell: make sure item.status is a keyof localStatusConfig
+    } as Record<keyof typeof statusConfig | 'expired', { label: string; color: string; bg: string }>;
+    const currentStatus = (localStatusConfig as any)[item.status] || statusConfig.pending;
+
+    const offersCount = item.offers?.length ?? 0;
+    const pendingOffersCount = item.offers?.filter((o: { status: string }) => o.status === 'pending').length ?? 0;
 
     const hasOffers = offersCount > 0;
     const hasPendingOffers = pendingOffersCount > 0;
@@ -60,9 +69,9 @@ export default function MyTripRequestsScreen() {
         >
           <View style={styles.requestHeader}>
             <View style={styles.statusBadgeContainer}>
-              <View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
-                <Text style={[styles.statusText, { color: statusConfig.color }]}>
-                  {statusConfig.label}
+              <View style={[styles.statusBadge, { backgroundColor: currentStatus.bg }]}>
+                <Text style={[styles.statusText, { color: currentStatus.color }]}>
+                  {currentStatus.label}
                 </Text>
               </View>
               {offersCount > 0 && (
@@ -113,12 +122,12 @@ export default function MyTripRequestsScreen() {
             )}
           </View>
 
-          {item.selectedDriver && (
+          {item.selectedDriverId && (
             <View style={styles.selectedDriverContainer}>
               <View style={styles.selectedDriverInfo}>
-                {item.selectedDriver.avatar ? (
+                {item.selectedDriverAvatar ? (
                   <Image
-                    source={{ uri: item.selectedDriver.avatar }}
+                    source={{ uri: item.selectedDriverAvatar }}
                     style={styles.selectedDriverAvatar}
                   />
                 ) : (
@@ -128,7 +137,7 @@ export default function MyTripRequestsScreen() {
                 )}
                 <View>
                   <Text style={styles.selectedDriverLabel}>Driver sélectionné</Text>
-                  <Text style={styles.selectedDriverName}>{item.selectedDriver.name}</Text>
+                  <Text style={styles.selectedDriverName}>{item.selectedDriverName}</Text>
                 </View>
               </View>
             </View>

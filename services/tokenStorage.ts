@@ -108,6 +108,9 @@ export async function getTokens(): Promise<{ accessToken: string | null; refresh
     // Récupérer les tokens individuellement pour gérer les erreurs séparément
     const accessToken = await getAccessToken();
     const refreshToken = await getRefreshToken();
+
+    // console.log('accessToken', accessToken);
+    // console.log('refreshToken', refreshToken);
     
     return { accessToken, refreshToken };
   } catch (error: any) {
@@ -152,11 +155,11 @@ export async function removeRefreshToken(): Promise<void> {
  */
 export async function clearTokens(): Promise<void> {
   try {
-    await Promise.all([
-      removeAccessToken(),
-      removeRefreshToken(),
-      removeFcmToken(),
-    ]);
+    // await Promise.all([
+    //   removeAccessToken(),
+    //   removeRefreshToken(),
+  
+    // ]);
   } catch (error) {
     console.error('Erreur lors de la suppression des tokens:', error);
   }

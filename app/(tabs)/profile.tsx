@@ -6,7 +6,7 @@ import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
 import { useGetMyDriverOffersQuery, useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
-import { useGetKycStatusQuery, useGetProfileSummaryQuery, useSendPhoneVerificationOtpMutation, useUpdatePinMutation, useUpdatePinWithOtpMutation, useUploadKycMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
+import { useGetKycStatusQuery, useGetProfileSummaryQuery, useSendPhoneVerificationOtpMutation, useUpdatePinMutation, useUpdatePinWithOtpMutation, useUpdateUserMutation, useUploadKycMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useDeleteVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
@@ -946,6 +946,7 @@ export default function ProfileScreen() {
   const [uploadKyc, { isLoading: uploadingKyc }] = useUploadKycMutation();
   const [updatePin, { isLoading: isUpdatingPin }] = useUpdatePinMutation();
   const [updatePinWithOtp, { isLoading: isUpdatingPinWithOtp }] = useUpdatePinWithOtpMutation();
+  const [updateUser, { isLoading: isUpdatingUser }] = useUpdateUserMutation();
   const [sendPhoneVerificationOtp] = useSendPhoneVerificationOtpMutation();
   const [verifyPhoneOtp] = useVerifyPhoneOtpMutation();
   const { data: myTripRequests = [] } = useGetMyTripRequestsQuery();
@@ -967,7 +968,7 @@ export default function ProfileScreen() {
   const isKycBusy = kycSubmitting || uploadingKyc;
   const isKycActionDisabled = isKycBusy || isKycApproved;
 
-  console.log("kycstatus:", kycStatus)
+  // console.log("kycstatus:", kycStatus)
   const userId = currentUser?.id ?? '';
   const { data: reviews } = useGetReviewsQuery(userId, {
     skip: !userId,
@@ -1200,6 +1201,40 @@ export default function ProfileScreen() {
       return;
     }
     setKycModalVisible(false);
+  };
+
+  const handleBecomeDriver = async () => {
+    try {
+      const formData = new FormData();
+      // Mettre à jour le rôle vers "driver"
+      formData.append('role', 'driver');
+      
+      await updateUser(formData).unwrap();
+      
+      showDialog({
+        variant: 'success',
+        title: 'Félicitations ! 🎉',
+        message: 'Votre compte conducteur a été activé avec succès. Vous pouvez maintenant publier des trajets et gagner de l\'argent.',
+        actions: [
+          {
+            label: 'Publier un trajet',
+            variant: 'primary',
+            onPress: () => router.push('/publish'),
+          },
+          {
+            label: 'Plus tard',
+            variant: 'ghost',
+          },
+        ],
+      });
+    } catch (error: any) {
+      console.error('Erreur lors de l\'activation du compte conducteur:', error);
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: error?.data?.message || 'Impossible d\'activer le compte conducteur. Veuillez réessayer.',
+      });
+    }
   };
 
   const buildKycFormData = (files?: Partial<KycCaptureResult>) => {
@@ -1715,6 +1750,7 @@ export default function ProfileScreen() {
             <Animated.View entering={FadeInDown.delay(200)}>
               <TouchableOpacity
                 style={styles.becomeDriverCard}
+                disabled={isUpdatingUser}
                 onPress={() => {
                   // Vérifier les prérequis et guider l'utilisateur
                   const hasVehicle = vehicleList.length > 0;
@@ -1743,11 +1779,8 @@ export default function ProfileScreen() {
                   } else if (!hasKyc) {
                     handleOpenKycModal();
                   } else {
-                    showDialog({
-                      variant: 'info',
-                      title: 'Félicitations !',
-                      message: 'Vous avez tous les prérequis pour devenir conducteur. Contactez le support pour activer votre compte conducteur.',
-                    });
+                    // Tous les prérequis sont remplis, activer le compte conducteur
+                    handleBecomeDriver();
                   }
                 }}
                 activeOpacity={0.8}
@@ -1801,7 +1834,11 @@ export default function ProfileScreen() {
                       </View>
                     </View>
                   </View>
-                  <Ionicons name="arrow-forward-circle" size={24} color={Colors.white} style={styles.becomeDriverArrow} />
+                  {isUpdatingUser ? (
+                    <ActivityIndicator size="small" color={Colors.white} style={styles.becomeDriverArrow} />
+                  ) : (
+                    <Ionicons name="arrow-forward-circle" size={24} color={Colors.white} style={styles.becomeDriverArrow} />
+                  )}
                 </LinearGradient>
               </TouchableOpacity>
             </Animated.View>

@@ -48,12 +48,26 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
     pollingInterval: 10000,
   });
 
+  // Fonction helper pour vérifier si un trajet est expiré
+  const isTripExpired = (trip: { departureTime?: string | null }): boolean => {
+    if (!trip.departureTime) return false;
+    const departureDate = new Date(trip.departureTime);
+    const now = new Date();
+    return departureDate < now;
+  };
+
   // Trouver un trajet en cours
   const ongoingTrip = useMemo(() => {
     if (!user) return null;
 
     // Chercher un trajet en cours comme conducteur
-    const driverOngoingTrip = myTrips?.find((trip) => trip.status === 'ongoing');
+    const driverOngoingTrip = myTrips?.find((trip) => {
+      // Exclure les trajets expirés
+      if (isTripExpired(trip)) {
+        return false;
+      }
+      return trip.status === 'ongoing';
+    });
     if (driverOngoingTrip) {
       return {
         trip: driverOngoingTrip,
@@ -74,6 +88,10 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
           return false;
         }
         if (booking.droppedOffConfirmedByPassenger === true) {
+          return false;
+        }
+        // Exclure les trajets expirés
+        if (booking.trip && isTripExpired(booking.trip)) {
           return false;
         }
         return true;
