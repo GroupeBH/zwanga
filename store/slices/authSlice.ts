@@ -50,14 +50,22 @@ export const initializeAuth = createAsyncThunk(
       
       // Décoder le payload du token
       const payload = decodeJWT(accessToken);
+      console.log("payload at initializeAuth", payload);
       
       if (!payload) {
-        console.warn('Token JWT invalide après rafraîchissement');
-        await clearTokens();
-        return null;
+        console.warn('[initializeAuth] Token JWT invalide - mais on garde les tokens pour éviter la déconnexion');
+        // NE PAS supprimer les tokens - ils pourraient être valides mais juste mal décodés
+        // L'utilisateur pourra toujours utiliser l'app, même si certaines infos ne sont pas disponibles
+        // Les tokens seront validés lors de la prochaine requête API
+        return {
+          accessToken,
+          refreshToken,
+          tokenPayload: null,
+          userInfo: null,
+        };
       }
       
-      console.log('Authentification initialisée avec succès');
+      console.log('[initializeAuth] Authentification initialisée avec succès');
       
       return {
         accessToken,
@@ -66,9 +74,12 @@ export const initializeAuth = createAsyncThunk(
         userInfo: parseUserInfo(payload),
       };
     } catch (error: any) {
-      // En cas d'erreur, considérer que l'utilisateur n'est pas connecté
-      console.error('Erreur lors de l\'initialisation de l\'auth:', error);
-      await clearTokens();
+      // En cas d'erreur, NE PAS supprimer les tokens automatiquement
+      // Cela pourrait être une erreur temporaire (réseau, etc.)
+      console.error('[initializeAuth] Erreur lors de l\'initialisation de l\'auth:', error);
+      console.warn('[initializeAuth] Erreur non critique - les tokens sont conservés dans SecureStore');
+      // Retourner null mais NE PAS supprimer les tokens
+      // L'utilisateur pourra toujours se reconnecter avec ses tokens existants
       return null;
     }
   }
@@ -80,7 +91,9 @@ const authSlice = createSlice({
   reducers: {
     setUser: (state, action: PayloadAction<any>) => {
       state.user = action.payload;
-      state.isAuthenticated = true;
+      // Ne mettre isAuthenticated = true que si on a des tokens
+      // Cela évite les problèmes de timing où setUser est appelé avant setTokens
+      state.isAuthenticated = !!(state.accessToken && state.refreshToken);
       state.error = null;
     },
     setTokens: (state, action: PayloadAction<{ accessToken: string; refreshToken: string }>) => {
@@ -184,6 +197,7 @@ function applyTokenDataToState(state: AuthState, accessToken: string) {
   const payload = decodeJWT(accessToken);
   state.tokenPayload = payload;
   const user = parseUserInfo(payload);
+  console.log("user from token", user);
   if (user) {
     state.user = user;
   }
