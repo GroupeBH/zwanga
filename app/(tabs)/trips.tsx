@@ -565,7 +565,7 @@ export default function TripsScreen() {
                         !canManageTrip(trip) && styles.ownerActionDisabled,
                       ]}
                       onPress={() => openDeleteModal(trip)}
-                      disabled={!canManageTrip(trip)}
+                      // disabled={!canManageTrip(trip)}
                     >
                       <Ionicons name="trash-outline" size={16} color={Colors.danger} />
                       <Text style={[styles.ownerActionText, styles.ownerActionDangerText]}>

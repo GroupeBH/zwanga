@@ -45,7 +45,8 @@ export const authApi = baseApi.injectEndpoints({
           
           console.log('[authApi] Tokens stored in SecureStore successfully');
           
-          // 2. Dispatcher dans Redux (après confirmation du stockage)
+          // 2. Dispatcher setTokens dans Redux EN PREMIER (CRITIQUE pour l'ordre)
+          // setTokens définit aussi isAuthenticated=true et met à jour l'utilisateur depuis le token
           dispatch(setTokens({ 
             accessToken: data.accessToken, 
             refreshToken: data.refreshToken 
@@ -53,13 +54,17 @@ export const authApi = baseApi.injectEndpoints({
           
           console.log('[authApi] Tokens dispatched to Redux');
           
-          // 3. Récupérer l'utilisateur
+          // 3. Récupérer l'utilisateur complet (si nécessaire) APRÈS setTokens
+          // setTokens a déjà mis à jour l'utilisateur depuis le token JWT, mais on peut
+          // récupérer les infos complètes depuis l'API si nécessaire
           if (!data.user) {
             const userResult = await dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true }));
             if (userResult.data) {
               dispatch(setUser(userResult.data));
             }
           } else {
+            // Si data.user existe, on le met à jour APRÈS setTokens
+            // pour avoir les infos complètes (setTokens a déjà mis les infos basiques du token)
             dispatch(setUser(data.user));
           }
         } catch (error) {
@@ -90,7 +95,8 @@ export const authApi = baseApi.injectEndpoints({
           
           console.log('[authApi] Tokens stored in SecureStore successfully');
           
-          // 2. Dispatcher dans Redux (après confirmation du stockage)
+          // 2. Dispatcher setTokens dans Redux EN PREMIER (CRITIQUE pour l'ordre)
+          // setTokens définit aussi isAuthenticated=true et met à jour l'utilisateur depuis le token
           dispatch(setTokens({ 
             accessToken: data.accessToken, 
             refreshToken: data.refreshToken 
@@ -98,13 +104,17 @@ export const authApi = baseApi.injectEndpoints({
           
           console.log('[authApi] Tokens dispatched to Redux');
           
-          // 3. Récupérer l'utilisateur
+          // 3. Récupérer l'utilisateur complet (si nécessaire) APRÈS setTokens
+          // setTokens a déjà mis à jour l'utilisateur depuis le token JWT, mais on peut
+          // récupérer les infos complètes depuis l'API si nécessaire
           if (!data.user) {
             const userResult = await dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true }));
             if (userResult.data) {
               dispatch(setUser(userResult.data));
             }
           } else {
+            // Si data.user existe, on le met à jour APRÈS setTokens
+            // pour avoir les infos complètes (setTokens a déjà mis les infos basiques du token)
             dispatch(setUser(data.user));
           }
         } catch (error) {

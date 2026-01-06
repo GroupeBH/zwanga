@@ -1,6 +1,7 @@
 import { Colors } from '@/constants/styles';
 import { clearStoredFcmToken, obtainFcmToken } from '@/services/pushNotifications';
 import { refreshAccessToken } from '@/services/tokenRefresh';
+import { getTokens } from '@/services/tokenStorage';
 import { useUpdateFcmTokenMutation } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
@@ -9,10 +10,10 @@ import {
   selectIsLoading,
   selectRefreshToken,
 } from '@/store/selectors';
-import { logout } from '@/store/slices/authSlice';
+import { logout, setTokens } from '@/store/slices/authSlice';
 import { isTokenExpired } from '@/utils/jwt';
 import { useRouter, useSegments } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 /**
@@ -30,6 +31,38 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const refreshToken = useAppSelector(selectRefreshToken);
   const [updateFcmTokenMutation] = useUpdateFcmTokenMutation();
   const inAuthGroup = segments[0] === 'auth';
+  const hasCheckedSecureStore = useRef(false);
+
+  // console.log("accessToken at auth guard", accessToken);
+  // console.log("refreshToken at auth guard", refreshToken);
+  // console.log("isAuthenticated", isAuthenticated);
+
+  // Vérifier SecureStore si Redux est vide (après un hot reload par exemple)
+  useEffect(() => {
+    if (isLoading || hasCheckedSecureStore.current) return;
+    
+    const checkSecureStore = async () => {
+      // Si Redux n'a pas de tokens mais qu'on n'est pas en train de charger
+      if (!accessToken && !refreshToken && !isAuthenticated) {
+        console.log('[AuthGuard] Redux vide - vérification SecureStore...');
+        const storedTokens = await getTokens();
+        console.log("storedTokens at auth guard", storedTokens);
+        
+        if (storedTokens.accessToken && storedTokens.refreshToken) {
+          console.log('[AuthGuard] Tokens trouvés dans SecureStore - chargement dans Redux');
+          // Charger directement les tokens dans Redux SANS appeler initializeAuth
+          // (qui pourrait supprimer les tokens via validateAndRefreshTokens)
+          dispatch(setTokens({
+            accessToken: storedTokens.accessToken!,
+            refreshToken: storedTokens.refreshToken!,
+          }));
+          hasCheckedSecureStore.current = true;
+        }
+      }
+    };
+    
+    checkSecureStore();
+  }, [isLoading, accessToken, refreshToken, isAuthenticated, dispatch]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -85,7 +118,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         }
       }
     };
-
+   
     enforceTokens();
   }, [
     accessToken,

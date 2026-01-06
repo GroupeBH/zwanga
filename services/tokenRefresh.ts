@@ -35,6 +35,9 @@ export async function validateAndRefreshTokens(): Promise<boolean> {
   try {
     const { accessToken, refreshToken } = await getTokens();
 
+    console.log("accessToken at validateAndRefreshTokens", accessToken);
+    console.log("refreshToken at validateAndRefreshTokens", refreshToken);
+
     // Pas de tokens = utilisateur non connecté
     if (!accessToken || !refreshToken) {
       console.log('Aucun token trouvé - utilisateur non connecté');

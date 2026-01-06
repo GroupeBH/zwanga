@@ -967,7 +967,7 @@ export default function ProfileScreen() {
   const isKycBusy = kycSubmitting || uploadingKyc;
   const isKycActionDisabled = isKycBusy || isKycApproved;
 
-  console.log("kycstatus:", kycStatus)
+  // console.log("kycstatus:", kycStatus)
   const userId = currentUser?.id ?? '';
   const { data: reviews } = useGetReviewsQuery(userId, {
     skip: !userId,
