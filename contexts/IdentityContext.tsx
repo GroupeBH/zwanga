@@ -35,7 +35,9 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     refetch,
   } = useGetKycStatusQuery(undefined, {
     skip: !user,
-    pollingInterval: 10_000, // Réduit à 10 secondes pour une mise à jour plus rapide
+    // Pas de polling : le statut KYC change rarement (seulement après upload/validation)
+    // RTK Query invalide automatiquement le cache via les tags après les mutations KYC
+    refetchOnMountOrArgChange: true, // Refetch seulement au montage ou si les args changent
   });
 
   // Utiliser uniquement le statut KYC de l'API comme source de vérité
