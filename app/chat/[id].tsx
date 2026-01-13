@@ -466,6 +466,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     borderTopWidth: 1,
     borderTopColor: Colors.gray[200],
+    paddingBottom: 50,
   },
   inputRow: {
     flexDirection: 'row',
