@@ -179,13 +179,16 @@ export default function PublishScreen() {
   ] as const;
 
   // Driver and Vehicle Management
-  const { data: profileSummary } = useGetProfileSummaryQuery();
+  const { data: profileSummary, refetch: refetchProfile } = useGetProfileSummaryQuery();
   const user = profileSummary?.user;
-  // Déterminer si l'utilisateur est conducteur basé sur le role
+  // Déterminer si l'utilisateur est conducteur basé sur le role ET isDriver
+  // Le backend peut avoir isDriver=true même si role='passenger' (transition)
   const isDriver = useMemo(() => {
     const role = user?.role;
-    return role === 'driver' || role === 'both';
-  }, [user?.role]);
+    const isDriverFlag = user?.isDriver;
+    // Vérifier à la fois le role et le flag isDriver du backend
+    return (role === 'driver' || role === 'both') || Boolean(isDriverFlag);
+  }, [user?.role, user?.isDriver]);
   const [showDriverRequiredModal, setShowDriverRequiredModal] = useState(false);
 
   const { 
@@ -426,7 +429,13 @@ export default function PublishScreen() {
         licensePlate: vehicleLicensePlate.trim(),
       }).unwrap();
 
+      // Refetch le profil utilisateur pour mettre à jour isDriver si nécessaire
+      // (le backend peut mettre isDriver=true après la création du premier véhicule)
+      await refetchProfile();
+      
+      // Refetch les véhicules (maintenant que isDriver peut être mis à jour)
       await refetchVehicles();
+      
       setSelectedVehicleId(newVehicle.id);
       setShowVehicleForm(false);
       setVehicleBrand('');
