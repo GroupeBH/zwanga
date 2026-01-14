@@ -39,13 +39,17 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
   // Récupérer les trajets de l'utilisateur (comme conducteur)
   const { data: myTrips } = useGetMyTripsQuery(undefined, {
     skip: !user,
-    pollingInterval: 10000,
+    // Pas de polling : les trajets en cours changent rarement de statut
+    // RTK Query invalide automatiquement le cache via les tags après startTrip, updateTrip, etc.
+    refetchOnMountOrArgChange: true, // Refetch seulement au montage ou si les args changent
   });
 
   // Récupérer les réservations de l'utilisateur (comme passager)
   const { data: myBookings } = useGetMyBookingsQuery(undefined, {
     skip: !user,
-    pollingInterval: 10000,
+    // Pas de polling : les réservations changent rarement de statut
+    // RTK Query invalide automatiquement le cache via les tags après acceptBooking, updateBookingStatus, etc.
+    refetchOnMountOrArgChange: true, // Refetch seulement au montage ou si les args changent
   });
 
   // Fonction helper pour vérifier si un trajet est expiré

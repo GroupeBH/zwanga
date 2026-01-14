@@ -1,3 +1,4 @@
+import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
@@ -8,13 +9,14 @@ import {
   useGetTripRequestByIdQuery,
   useRejectDriverOfferMutation,
   useStartTripFromRequestMutation,
+  useUpdateTripRequestMutation,
 } from '@/store/api/tripRequestApi';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import type { Vehicle } from '@/types';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
-import { getRouteCoordinates } from '@/utils/routeHelpers';
 import { createBecomeDriverAction, isDriverRequiredError } from '@/utils/errorHelpers';
+import { getRouteCoordinates } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -89,14 +91,35 @@ export default function TripRequestDetailsScreen() {
     skip: !currentUser?.isDriver,
   });
   
+  // Filtrer pour n'afficher que les véhicules actifs
+  const activeVehicles = useMemo(() => {
+    return vehicles.filter((vehicle) => vehicle.isActive === true);
+  }, [vehicles]);
+  
   const [createOffer, { isLoading: isCreatingOffer }] = useCreateDriverOfferMutation();
   const [acceptOffer, { isLoading: isAcceptingOffer }] = useAcceptDriverOfferMutation();
   const [rejectOffer, { isLoading: isRejectingOffer }] = useRejectDriverOfferMutation();
   const [cancelRequest, { isLoading: isCancelling }] = useCancelTripRequestMutation();
+  const [updateTripRequest, { isLoading: isUpdating }] = useUpdateTripRequestMutation();
   const [startTripFromRequest, { isLoading: isStartingTripFromRequest }] = useStartTripFromRequestMutation();
+
+  // États pour le formulaire de modification
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editDepartureLocation, setEditDepartureLocation] = useState<MapLocationSelection | null>(null);
+  const [editArrivalLocation, setEditArrivalLocation] = useState<MapLocationSelection | null>(null);
+  const [editDepartureDateMin, setEditDepartureDateMin] = useState<Date | null>(null);
+  const [editDepartureDateMax, setEditDepartureDateMax] = useState<Date | null>(null);
+  const [editNumberOfSeats, setEditNumberOfSeats] = useState('');
+  const [editMaxPricePerSeat, setEditMaxPricePerSeat] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editIosPickerModeMin, setEditIosPickerModeMin] = useState<'date' | 'time' | null>(null);
+  const [editIosPickerModeMax, setEditIosPickerModeMax] = useState<'date' | 'time' | null>(null);
+  const [editActivePicker, setEditActivePicker] = useState<'departure' | 'arrival' | null>(null);
+  const [editLocationPickerType, setEditLocationPickerType] = useState<'departure' | 'arrival' | null>(null);
 
   // États pour le formulaire d'offre
   const [showOfferForm, setShowOfferForm] = useState(false);
+  const [offerStep, setOfferStep] = useState<'details' | 'pricing' | 'preview'>('details');
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
   const [proposedDepartureDate, setProposedDepartureDate] = useState(() => {
     // Initialiser avec la date min de la demande ou maintenant
@@ -177,6 +200,15 @@ export default function TripRequestDetailsScreen() {
     [tripRequest, currentUser]
   );
 
+  // Vérifier si la demande peut être modifiée
+  const canEdit = useMemo(() => {
+    if (!isOwner || !tripRequest) return false;
+    // Ne peut pas modifier si une offre a été acceptée ou si un driver a été sélectionné
+    if (tripRequest.status === 'driver_selected' || tripRequest.selectedDriverId) return false;
+    // Ne peut modifier que si le statut est 'pending' ou 'offers_received'
+    return tripRequest.status === 'pending' || tripRequest.status === 'offers_received';
+  }, [isOwner, tripRequest]);
+
   const hasExistingOffer = useMemo(() => {
     if (!tripRequest?.offers || !currentUser) return false;
     return tripRequest.offers.some(
@@ -227,6 +259,73 @@ export default function TripRequestDetailsScreen() {
     next.setSeconds(0);
     next.setMilliseconds(0);
     return next;
+  };
+
+  // Fonctions pour les date pickers du formulaire de modification
+  const openEditDateOrTimePickerMin = (mode: 'date' | 'time') => {
+    if (!editDepartureDateMin) return;
+    if (Platform.OS === 'android') {
+      DateTimePickerAndroid.open({
+        mode,
+        value: editDepartureDateMin,
+        is24Hour: true,
+        minimumDate: mode === 'date' ? new Date() : undefined,
+        onChange: (_event: DateTimePickerEvent, selectedDate?: Date) => {
+          if (!selectedDate) return;
+          const newDate = mode === 'date' 
+            ? applyDatePart(selectedDate, editDepartureDateMin) 
+            : applyTimePart(selectedDate, editDepartureDateMin);
+          setEditDepartureDateMin(newDate);
+          if (mode === 'date' && editDepartureDateMax && newDate >= editDepartureDateMax) {
+            setEditDepartureDateMax(new Date(newDate.getTime() + 24 * 60 * 60 * 1000));
+          }
+        },
+      });
+    } else {
+      setEditIosPickerModeMin(mode);
+    }
+  };
+
+  const openEditDateOrTimePickerMax = (mode: 'date' | 'time') => {
+    if (!editDepartureDateMax) return;
+    if (Platform.OS === 'android') {
+      DateTimePickerAndroid.open({
+        mode,
+        value: editDepartureDateMax,
+        is24Hour: true,
+        minimumDate: mode === 'date' && editDepartureDateMin ? editDepartureDateMin : undefined,
+        onChange: (_event: DateTimePickerEvent, selectedDate?: Date) => {
+          if (!selectedDate) return;
+          const newDate = mode === 'date' 
+            ? applyDatePart(selectedDate, editDepartureDateMax) 
+            : applyTimePart(selectedDate, editDepartureDateMax);
+          setEditDepartureDateMax(newDate);
+        },
+      });
+    } else {
+      setEditIosPickerModeMax(mode);
+    }
+  };
+
+  const handleEditIosPickerChangeMin = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (!selectedDate || !editIosPickerModeMin || !editDepartureDateMin) return;
+    const newDate = editIosPickerModeMin === 'date' 
+      ? applyDatePart(selectedDate, editDepartureDateMin) 
+      : applyTimePart(selectedDate, editDepartureDateMin);
+    setEditDepartureDateMin(newDate);
+    if (editIosPickerModeMin === 'date' && editDepartureDateMax && newDate >= editDepartureDateMax) {
+      setEditDepartureDateMax(new Date(newDate.getTime() + 24 * 60 * 60 * 1000));
+    }
+    setEditIosPickerModeMin(null);
+  };
+
+  const handleEditIosPickerChangeMax = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (!selectedDate || !editIosPickerModeMax || !editDepartureDateMax) return;
+    const newDate = editIosPickerModeMax === 'date' 
+      ? applyDatePart(selectedDate, editDepartureDateMax) 
+      : applyTimePart(selectedDate, editDepartureDateMax);
+    setEditDepartureDateMax(newDate);
+    setEditIosPickerModeMax(null);
   };
 
   const openDateOrTimePicker = (mode: 'date' | 'time') => {
@@ -364,6 +463,7 @@ export default function TripRequestDetailsScreen() {
 
       // Fermer le modal et réinitialiser le formulaire
       setShowOfferForm(false);
+      setOfferStep('details');
       setPricePerSeat('');
       setAvailableSeats('');
       setMessage('');
@@ -517,6 +617,72 @@ export default function TripRequestDetailsScreen() {
     });
   };
 
+  // Initialiser le formulaire de modification avec les valeurs actuelles
+  const initializeEditForm = () => {
+    if (!tripRequest) return;
+    
+    setEditDepartureLocation({
+      title: tripRequest.departure.name,
+      address: tripRequest.departure.address || '',
+      latitude: tripRequest.departure.lat,
+      longitude: tripRequest.departure.lng,
+    });
+    
+    setEditArrivalLocation({
+      title: tripRequest.arrival.name,
+      address: tripRequest.arrival.address || '',
+      latitude: tripRequest.arrival.lat,
+      longitude: tripRequest.arrival.lng,
+    });
+    
+    setEditDepartureDateMin(new Date(tripRequest.departureDateMin));
+    setEditDepartureDateMax(new Date(tripRequest.departureDateMax));
+    setEditNumberOfSeats(tripRequest.numberOfSeats.toString());
+    setEditMaxPricePerSeat(tripRequest.maxPricePerSeat?.toString() || '');
+    setEditDescription(tripRequest.description || '');
+  };
+
+  const handleOpenEditForm = () => {
+    initializeEditForm();
+    setShowEditForm(true);
+  };
+
+  const handleUpdateRequest = async () => {
+    if (!id || !editDepartureLocation || !editArrivalLocation) return;
+
+    try {
+      await updateTripRequest({
+        id,
+        payload: {
+          departureLocation: editDepartureLocation.title,
+          departureCoordinates: [editDepartureLocation.longitude, editDepartureLocation.latitude],
+          arrivalLocation: editArrivalLocation.title,
+          arrivalCoordinates: [editArrivalLocation.longitude, editArrivalLocation.latitude],
+          departureDateMin: editDepartureDateMin?.toISOString() || tripRequest?.departureDateMin || '',
+          departureDateMax: editDepartureDateMax?.toISOString() || tripRequest?.departureDateMax || '',
+          numberOfSeats: parseInt(editNumberOfSeats) || tripRequest?.numberOfSeats || 1,
+          maxPricePerSeat: editMaxPricePerSeat ? parseFloat(editMaxPricePerSeat) : undefined,
+          description: editDescription.trim() || undefined,
+        },
+      }).unwrap();
+
+      setShowEditForm(false);
+      refetch();
+      
+      showDialog({
+        title: 'Demande modifiée',
+        message: 'Votre demande a été modifiée avec succès',
+        variant: 'success',
+      });
+    } catch (error: any) {
+      showDialog({
+        title: 'Erreur',
+        message: error?.data?.message || 'Impossible de modifier la demande',
+        variant: 'danger',
+      });
+    }
+  };
+
   const handleCancelRequest = async () => {
     if (!id) return;
 
@@ -644,20 +810,31 @@ export default function TripRequestDetailsScreen() {
             </Text>
           </View>
           {isOwner && tripRequest.status === 'pending' && (
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={handleCancelRequest}
-              disabled={isCancelling}
-            >
-              {isCancelling ? (
-                <ActivityIndicator size="small" color={Colors.danger} />
-              ) : (
-                <>
-                  <Ionicons name="close-circle-outline" size={18} color={Colors.danger} />
-                  <Text style={styles.cancelButtonText}>Annuler</Text>
-                </>
+            <View style={styles.ownerActions}>
+              {canEdit && (
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={handleOpenEditForm}
+                >
+                  <Ionicons name="create-outline" size={18} color={Colors.primary} />
+                  <Text style={styles.editButtonText}>Modifier</Text>
+                </TouchableOpacity>
               )}
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={handleCancelRequest}
+                disabled={isCancelling}
+              >
+                {isCancelling ? (
+                  <ActivityIndicator size="small" color={Colors.danger} />
+                ) : (
+                  <>
+                    <Ionicons name="close-circle-outline" size={18} color={Colors.danger} />
+                    <Text style={styles.cancelButtonText}>Annuler</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -1175,6 +1352,7 @@ export default function TripRequestDetailsScreen() {
                   checkIdentity('publish');
                   return;
                 }
+                setOfferStep('details');
                 setShowOfferForm(true);
               }}
             >
@@ -1192,83 +1370,141 @@ export default function TripRequestDetailsScreen() {
             transparent={true}
             onRequestClose={() => {
               setShowOfferForm(false);
+              setOfferStep('details');
               setPricePerSeat('');
               setAvailableSeats('');
               setMessage('');
               setSelectedVehicleId('');
             }}
           >
-            <TouchableOpacity
-              style={styles.modalOverlay}
-              activeOpacity={1}
-              onPress={() => {
-                setShowOfferForm(false);
-                setPricePerSeat('');
-                setAvailableSeats('');
-                setMessage('');
-                setSelectedVehicleId('');
-              }}
-            >
+            <View style={styles.modalOverlay}>
+              <TouchableOpacity
+                style={styles.modalBackdrop}
+                activeOpacity={1}
+                onPress={() => {
+                  setShowOfferForm(false);
+                  setOfferStep('details');
+                  setPricePerSeat('');
+                  setAvailableSeats('');
+                  setMessage('');
+                  setSelectedVehicleId('');
+                }}
+              />
               <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={{ flex: 1 }}
+                style={styles.modalKeyboardView}
               >
-                <TouchableOpacity
-                  activeOpacity={1}
-                  onPress={(e) => e.stopPropagation()}
-                  style={styles.modalContent}
-                >
-                  <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>Créer une offre</Text>
-                    <TouchableOpacity
-                      style={styles.modalCloseButton}
-                      onPress={() => {
-                        setShowOfferForm(false);
-                        setPricePerSeat('');
-                        setAvailableSeats('');
-                        setMessage('');
-                        setSelectedVehicleId('');
-                      }}
-                    >
-                      <Ionicons name="close" size={24} color={Colors.gray[600]} />
-                    </TouchableOpacity>
-                  </View>
-
-                  <ScrollView
-                    style={styles.modalScrollView}
-                    contentContainerStyle={styles.modalScrollContent}
-                    showsVerticalScrollIndicator={true}
-                    keyboardShouldPersistTaps="handled"
+                <SafeAreaView edges={['bottom']} style={styles.modalContent}>
+                  <TouchableOpacity
+                    activeOpacity={1}
+                    onPress={(e) => e.stopPropagation()}
+                    style={styles.modalContentInner}
                   >
-                  <View style={styles.offerFormCard}>
-                    {vehicles.length > 0 && (
-                      <View style={styles.formGroup}>
-                        <Text style={styles.formLabel}>Véhicule (optionnel)</Text>
-                        <View style={styles.vehicleSelector}>
-                          {vehicles.map((vehicle: Vehicle) => (
-                            <TouchableOpacity
-                              key={vehicle.id}
-                              style={[
-                                styles.vehicleOption,
-                                selectedVehicleId === vehicle.id && styles.vehicleOptionSelected,
-                              ]}
-                              onPress={() =>
-                                setSelectedVehicleId(
-                                  selectedVehicleId === vehicle.id ? '' : vehicle.id
-                                )
-                              }
-                            >
-                              <Text style={styles.vehicleOptionText}>
-                                {vehicle.brand} {vehicle.model} - {vehicle.licensePlate}
-                              </Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      </View>
-                    )}
+                    <View style={styles.modalHeader}>
+                      <Text style={styles.modalTitle}>Créer une offre</Text>
+                      <TouchableOpacity
+                        style={styles.modalCloseButton}
+                        onPress={() => {
+                          setShowOfferForm(false);
+                          setOfferStep('details');
+                          setPricePerSeat('');
+                          setAvailableSeats('');
+                          setMessage('');
+                          setSelectedVehicleId('');
+                        }}
+                      >
+                        <Ionicons name="close" size={24} color={Colors.gray[600]} />
+                      </TouchableOpacity>
+                    </View>
 
-                    <View style={styles.formGroup}>
-                      <Text style={styles.formLabel}>Date et heure de départ proposée *</Text>
+                    {/* Indicateur d'étapes */}
+                    <View style={styles.offerStepIndicator}>
+                      <View style={styles.offerStepContainer}>
+                        <View style={[styles.offerStepCircle, offerStep === 'details' && styles.offerStepCircleActive]}>
+                          {(offerStep === 'pricing' || offerStep === 'preview') ? (
+                            <Ionicons name="checkmark" size={16} color={Colors.white} />
+                          ) : (
+                            <Text style={[styles.offerStepNumber, offerStep === 'details' && styles.offerStepNumberActive]}>1</Text>
+                          )}
+                        </View>
+                        <Text style={[styles.offerStepLabel, offerStep === 'details' && styles.offerStepLabelActive]}>Détails</Text>
+                      </View>
+                      <View style={[styles.offerStepLine, (offerStep === 'pricing' || offerStep === 'preview') && styles.offerStepLineActive]} />
+                      <View style={styles.offerStepContainer}>
+                        <View style={[styles.offerStepCircle, offerStep === 'pricing' && styles.offerStepCircleActive]}>
+                          {offerStep === 'preview' ? (
+                            <Ionicons name="checkmark" size={16} color={Colors.white} />
+                          ) : (
+                            <Text style={[styles.offerStepNumber, offerStep === 'pricing' && styles.offerStepNumberActive]}>2</Text>
+                          )}
+                        </View>
+                        <Text style={[styles.offerStepLabel, offerStep === 'pricing' && styles.offerStepLabelActive]}>Tarification</Text>
+                      </View>
+                      <View style={[styles.offerStepLine, offerStep === 'preview' && styles.offerStepLineActive]} />
+                      <View style={styles.offerStepContainer}>
+                        <View style={[styles.offerStepCircle, offerStep === 'preview' && styles.offerStepCircleActive]}>
+                          <Text style={[styles.offerStepNumber, offerStep === 'preview' && styles.offerStepNumberActive]}>3</Text>
+                        </View>
+                        <Text style={[styles.offerStepLabel, offerStep === 'preview' && styles.offerStepLabelActive]}>Aperçu</Text>
+                      </View>
+                    </View>
+
+                    <ScrollView
+                      style={styles.modalScrollView}
+                      contentContainerStyle={styles.modalScrollContent}
+                      showsVerticalScrollIndicator={false}
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      <View style={styles.offerFormCard}>
+                        {offerStep === 'details' && (
+                          <>
+                            {activeVehicles.length > 0 && (
+                              <View style={styles.formGroup}>
+                                <Text style={styles.formLabel}>Véhicule (optionnel)</Text>
+                                <ScrollView
+                                  horizontal
+                                  showsHorizontalScrollIndicator={false}
+                                  style={styles.vehicleScrollView}
+                                  contentContainerStyle={styles.vehicleScrollContent}
+                                >
+                                  {activeVehicles.map((vehicle: Vehicle) => (
+                                    <TouchableOpacity
+                                      key={vehicle.id}
+                                      style={[
+                                        styles.vehicleCard,
+                                        selectedVehicleId === vehicle.id && styles.vehicleCardActive,
+                                      ]}
+                                      onPress={() =>
+                                        setSelectedVehicleId(
+                                          selectedVehicleId === vehicle.id ? '' : vehicle.id
+                                        )
+                                      }
+                                    >
+                                      <View style={styles.vehicleCardHeader}>
+                                        <Ionicons
+                                          name="car"
+                                          size={24}
+                                          color={selectedVehicleId === vehicle.id ? Colors.primary : Colors.gray[600]}
+                                        />
+                                        {selectedVehicleId === vehicle.id && (
+                                          <View style={styles.vehicleCardBadge}>
+                                            <Ionicons name="checkmark" size={14} color={Colors.white} />
+                                          </View>
+                                        )}
+                                      </View>
+                                      <Text style={styles.vehicleCardBrand}>{vehicle.brand}</Text>
+                                      <Text style={styles.vehicleCardModel}>{vehicle.model}</Text>
+                                      <Text style={styles.vehicleCardDetails}>
+                                        {vehicle.color} • {vehicle.licensePlate}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  ))}
+                                </ScrollView>
+                              </View>
+                            )}
+
+                            <View style={styles.formGroup}>
+                              <Text style={styles.formLabel}>Date et heure de départ proposée *</Text>
                       {tripRequest && (
                         <Text style={styles.formHelperText}>
                           Choisissez une date et heure entre le {formatDateWithRelativeLabel(tripRequest.departureDateMin, true)} et le {formatDateWithRelativeLabel(tripRequest.departureDateMax, true)}
@@ -1331,11 +1567,42 @@ export default function TripRequestDetailsScreen() {
                           </TouchableOpacity>
                         </View>
                       )}
-                    </View>
+                            </View>
 
-                    <View style={styles.formGroup}>
-                      <View style={styles.formLabelRow}>
-                        <Text style={styles.formLabel}>Prix par place (FC) *</Text>
+                            <View style={styles.formActions}>
+                              <TouchableOpacity
+                                style={styles.cancelFormButton}
+                                onPress={() => {
+                                  setShowOfferForm(false);
+                                  setOfferStep('details');
+                                  setSelectedVehicleId('');
+                                  setPricePerSeat('');
+                                  setAvailableSeats('');
+                                  setMessage('');
+                                }}
+                              >
+                                <Text style={styles.cancelFormButtonText}>Annuler</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.nextButton}
+                                onPress={() => {
+                                  if (proposedDepartureDate) {
+                                    setOfferStep('pricing');
+                                  }
+                                }}
+                              >
+                                <Text style={styles.nextButtonText}>Suivant</Text>
+                                <Ionicons name="arrow-forward" size={18} color={Colors.white} />
+                              </TouchableOpacity>
+                            </View>
+                          </>
+                        )}
+
+                        {offerStep === 'pricing' && (
+                          <>
+                            <View style={styles.formGroup}>
+                              <View style={styles.formLabelRow}>
+                                <Text style={styles.formLabel}>Prix par place (FC) *</Text>
                         {tripRequest.maxPricePerSeat && (
                           <View style={styles.priceHintContainer}>
                             <Ionicons name="information-circle-outline" size={16} color={Colors.info} />
@@ -1491,81 +1758,173 @@ export default function TripRequestDetailsScreen() {
                       />
                     </View>
 
-                    {/* Résumé de l'offre */}
-                    {pricePerSeat && availableSeats && parseFloat(pricePerSeat) > 0 && parseInt(availableSeats) > 0 && (
-                      <View style={styles.offerSummary}>
-                        <Text style={styles.offerSummaryTitle}>Résumé de votre offre</Text>
-                        <View style={styles.offerSummaryRow}>
-                          <Ionicons name="cash" size={20} color={Colors.primary} />
-                          <Text style={styles.offerSummaryText}>
-                            {parseFloat(pricePerSeat).toLocaleString('fr-FR')} FC × {availableSeats} place(s) ={' '}
-                            <Text style={styles.offerSummaryTotal}>
-                              {(parseFloat(pricePerSeat) * parseInt(availableSeats)).toLocaleString('fr-FR')} FC
-                            </Text>
-                          </Text>
-                        </View>
-                        <View style={styles.offerSummaryRow}>
-                          <Ionicons name="calendar" size={20} color={Colors.primary} />
-                          <Text style={styles.offerSummaryText}>
-                            {formatDateWithRelativeLabel(proposedDepartureDate.toISOString(), true)}
-                          </Text>
-                        </View>
-                      </View>
-                    )}
-
-                    <View style={styles.formActions}>
-                      <TouchableOpacity
-                        style={styles.cancelFormButton}
-                        onPress={() => {
-                          setShowOfferForm(false);
-                          setSelectedVehicleId('');
-                          setPricePerSeat('');
-                          setAvailableSeats('');
-                          setMessage('');
-                        }}
-                      >
-                        <Text style={styles.cancelFormButtonText}>Annuler</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.submitButton,
-                          (!pricePerSeat ||
-                            !availableSeats ||
-                            (tripRequest &&
-                              (parseFloat(pricePerSeat) <= 0 ||
-                                parseInt(availableSeats) < tripRequest.numberOfSeats ||
-                                (tripRequest.maxPricePerSeat &&
-                                  parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat))))
-                            ? styles.submitButtonDisabled
-                            : undefined,
-                        ]}
-                        onPress={handleCreateOffer}
-                        disabled={Boolean(
-                          isCreatingOffer ||
-                          !pricePerSeat ||
-                          !availableSeats ||
-                          (tripRequest &&
-                            (parseFloat(pricePerSeat) <= 0 ||
-                              parseInt(availableSeats) < tripRequest.numberOfSeats ||
-                              (tripRequest.maxPricePerSeat &&
-                                parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat)))
-                        )}
-                      >
-                        {isCreatingOffer ? (
-                          <ActivityIndicator size="small" color={Colors.white} />
-                        ) : (
-                          <>
-                            <Ionicons name="send" size={18} color={Colors.white} />
-                            <Text style={styles.submitButtonText}>Envoyer l'offre</Text>
+                            <View style={styles.formActions}>
+                              <TouchableOpacity
+                                style={styles.offerBackButton}
+                                onPress={() => setOfferStep('details')}
+                              >
+                                <Ionicons name="arrow-back" size={18} color={Colors.gray[700]} />
+                                <Text style={styles.offerBackButtonText}>Retour</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[
+                                  styles.nextButton,
+                                  (!pricePerSeat ||
+                                    !availableSeats ||
+                                    (tripRequest &&
+                                      (parseFloat(pricePerSeat) <= 0 ||
+                                        parseInt(availableSeats) < tripRequest.numberOfSeats ||
+                                        (tripRequest.maxPricePerSeat &&
+                                          parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat))))
+                                    ? styles.submitButtonDisabled
+                                    : undefined,
+                                ]}
+                                onPress={() => {
+                                  if (pricePerSeat && availableSeats && tripRequest &&
+                                    parseFloat(pricePerSeat) > 0 &&
+                                    parseInt(availableSeats) >= tripRequest.numberOfSeats &&
+                                    (!tripRequest.maxPricePerSeat || parseFloat(pricePerSeat) <= tripRequest.maxPricePerSeat)) {
+                                    setOfferStep('preview');
+                                  }
+                                }}
+                                disabled={Boolean(
+                                  !pricePerSeat ||
+                                    !availableSeats ||
+                                    (tripRequest &&
+                                      (parseFloat(pricePerSeat) <= 0 ||
+                                        parseInt(availableSeats) < tripRequest.numberOfSeats ||
+                                        (tripRequest.maxPricePerSeat &&
+                                          parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat)))
+                                )}
+                              >
+                                <Text style={styles.nextButtonText}>Suivant</Text>
+                                <Ionicons name="arrow-forward" size={18} color={Colors.white} />
+                              </TouchableOpacity>
+                            </View>
                           </>
                         )}
-                      </TouchableOpacity>
-                    </View>
-                    </View>
-                  </ScrollView>
-                </TouchableOpacity>
+
+                        {offerStep === 'preview' && (
+                          <>
+                            <View style={styles.previewContainer}>
+                              <Text style={styles.previewTitle}>Aperçu de votre offre</Text>
+                              
+                              {/* Informations du véhicule */}
+                              {selectedVehicleId && (
+                                <View style={styles.previewSection}>
+                                  <Text style={styles.previewSectionTitle}>Véhicule</Text>
+                                  {activeVehicles.find(v => v.id === selectedVehicleId) && (
+                                    <View style={styles.previewVehicleCard}>
+                                      <Ionicons name="car" size={24} color={Colors.primary} />
+                                      <View style={styles.previewVehicleInfo}>
+                                        <Text style={styles.previewVehicleBrand}>
+                                          {activeVehicles.find(v => v.id === selectedVehicleId)?.brand} {activeVehicles.find(v => v.id === selectedVehicleId)?.model}
+                                        </Text>
+                                        <Text style={styles.previewVehicleDetails}>
+                                          {activeVehicles.find(v => v.id === selectedVehicleId)?.color} • {activeVehicles.find(v => v.id === selectedVehicleId)?.licensePlate}
+                                        </Text>
+                                      </View>
+                                    </View>
+                                  )}
+                                </View>
+                              )}
+
+                              {/* Date et heure */}
+                              <View style={styles.previewSection}>
+                                <Text style={styles.previewSectionTitle}>Date et heure de départ</Text>
+                                <View style={styles.previewInfoCard}>
+                                  <Ionicons name="calendar" size={20} color={Colors.primary} />
+                                  <Text style={styles.previewInfoText}>
+                                    {formatDateWithRelativeLabel(proposedDepartureDate.toISOString(), true)}
+                                  </Text>
+                                </View>
+                              </View>
+
+                              {/* Prix et places */}
+                              <View style={styles.previewSection}>
+                                <Text style={styles.previewSectionTitle}>Tarification</Text>
+                                <View style={styles.previewInfoCard}>
+                                  <Ionicons name="cash" size={20} color={Colors.primary} />
+                                  <Text style={styles.previewInfoText}>
+                                    {parseFloat(pricePerSeat).toLocaleString('fr-FR')} FC par place
+                                  </Text>
+                                </View>
+                                <View style={styles.previewInfoCard}>
+                                  <Ionicons name="people" size={20} color={Colors.primary} />
+                                  <Text style={styles.previewInfoText}>
+                                    {availableSeats} place{parseInt(availableSeats) > 1 ? 's' : ''} disponible{parseInt(availableSeats) > 1 ? 's' : ''}
+                                  </Text>
+                                </View>
+                                <View style={styles.previewTotalCard}>
+                                  <Text style={styles.previewTotalLabel}>Total</Text>
+                                  <Text style={styles.previewTotalAmount}>
+                                    {(parseFloat(pricePerSeat) * parseInt(availableSeats)).toLocaleString('fr-FR')} FC
+                                  </Text>
+                                </View>
+                              </View>
+
+                              {/* Message */}
+                              {message && (
+                                <View style={styles.previewSection}>
+                                  <Text style={styles.previewSectionTitle}>Message</Text>
+                                  <View style={styles.previewMessageCard}>
+                                    <Text style={styles.previewMessageText}>{message}</Text>
+                                  </View>
+                                </View>
+                              )}
+                            </View>
+
+                            <View style={styles.formActions}>
+                              <TouchableOpacity
+                                style={styles.offerBackButton}
+                                onPress={() => setOfferStep('pricing')}
+                              >
+                                <Ionicons name="arrow-back" size={18} color={Colors.gray[700]} />
+                                <Text style={styles.offerBackButtonText}>Retour</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[
+                                  styles.submitButton,
+                                  (!pricePerSeat ||
+                                    !availableSeats ||
+                                    (tripRequest &&
+                                      (parseFloat(pricePerSeat) <= 0 ||
+                                        parseInt(availableSeats) < tripRequest.numberOfSeats ||
+                                        (tripRequest.maxPricePerSeat &&
+                                          parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat))))
+                                    ? styles.submitButtonDisabled
+                                    : undefined,
+                                ]}
+                                onPress={handleCreateOffer}
+                                disabled={Boolean(
+                                  isCreatingOffer ||
+                                    !pricePerSeat ||
+                                    !availableSeats ||
+                                    (tripRequest &&
+                                      (parseFloat(pricePerSeat) <= 0 ||
+                                        parseInt(availableSeats) < tripRequest.numberOfSeats ||
+                                        (tripRequest.maxPricePerSeat &&
+                                          parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat)))
+                                )}
+                              >
+                                {isCreatingOffer ? (
+                                  <ActivityIndicator size="small" color={Colors.white} />
+                                ) : (
+                                  <>
+                                    <Ionicons name="send" size={18} color={Colors.white} />
+                                    <Text style={styles.submitButtonText}>Envoyer l'offre</Text>
+                                  </>
+                                )}
+                              </TouchableOpacity>
+                            </View>
+                          </>
+                        )}
+                      </View>
+                    </ScrollView>
+                  </TouchableOpacity>
+                </SafeAreaView>
               </KeyboardAvoidingView>
-            </TouchableOpacity>
+            </View>
           </Modal>
         )}
 
@@ -1648,6 +2007,303 @@ export default function TripRequestDetailsScreen() {
             </View>
           </Modal>
         )}
+
+        {/* Modal de modification de la demande */}
+        {showEditForm && tripRequest && (
+          <Modal
+            visible={showEditForm}
+            animationType="slide"
+            transparent
+            onRequestClose={() => setShowEditForm(false)}
+          >
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={styles.modalOverlay}
+            >
+              <TouchableOpacity
+                style={styles.modalOverlay}
+                activeOpacity={1}
+                onPress={() => setShowEditForm(false)}
+              >
+                <TouchableOpacity
+                  activeOpacity={1}
+                  onPress={(e) => e.stopPropagation()}
+                  style={styles.modalContent}
+                >
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Modifier la demande</Text>
+                    <TouchableOpacity
+                      style={styles.modalCloseButton}
+                      onPress={() => setShowEditForm(false)}
+                    >
+                      <Ionicons name="close" size={24} color={Colors.gray[600]} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <ScrollView
+                    style={styles.modalScrollView}
+                    contentContainerStyle={styles.modalScrollContent}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {/* Sélection du lieu de départ */}
+                    <View style={styles.formGroup}>
+                      <Text style={styles.formLabel}>Lieu de départ *</Text>
+                      <TouchableOpacity
+                        style={styles.locationButton}
+                        onPress={() => {
+                          setEditLocationPickerType('departure');
+                          setEditActivePicker('departure');
+                        }}
+                      >
+                        <Ionicons name="location" size={20} color={Colors.primary} />
+                        <Text style={styles.locationButtonText}>
+                          {editDepartureLocation?.title || 'Sélectionner le lieu de départ'}
+                        </Text>
+                        <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Sélection du lieu d'arrivée */}
+                    <View style={styles.formGroup}>
+                      <Text style={styles.formLabel}>Lieu d'arrivée *</Text>
+                      <TouchableOpacity
+                        style={styles.locationButton}
+                        onPress={() => {
+                          setEditLocationPickerType('arrival');
+                          setEditActivePicker('arrival');
+                        }}
+                      >
+                        <Ionicons name="navigate" size={20} color={Colors.primary} />
+                        <Text style={styles.locationButtonText}>
+                          {editArrivalLocation?.title || "Sélectionner le lieu d'arrivée"}
+                        </Text>
+                        <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Date et heure de départ min */}
+                    <View style={styles.formGroup}>
+                      <Text style={styles.formLabel}>Date/heure de départ (min) *</Text>
+                      <View style={styles.dateTimeContainer}>
+                        <TouchableOpacity
+                          style={styles.dateTimeButton}
+                          onPress={() => openEditDateOrTimePickerMin('date')}
+                        >
+                          <Ionicons name="calendar-outline" size={20} color={Colors.primary} />
+                          <Text style={styles.dateTimeText}>
+                            {editDepartureDateMin
+                              ? editDepartureDateMin.toLocaleDateString('fr-FR', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric',
+                                })
+                              : 'Date'}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.dateTimeButton}
+                          onPress={() => openEditDateOrTimePickerMin('time')}
+                        >
+                          <Ionicons name="time-outline" size={20} color={Colors.primary} />
+                          <Text style={styles.dateTimeText}>
+                            {editDepartureDateMin
+                              ? editDepartureDateMin.toLocaleTimeString('fr-FR', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : 'Heure'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                      {Platform.OS === 'ios' && editIosPickerModeMin && editDepartureDateMin && (
+                        <View style={styles.iosPickerContainer}>
+                          <DateTimePicker
+                            value={editDepartureDateMin}
+                            mode={editIosPickerModeMin}
+                            display="spinner"
+                            onChange={handleEditIosPickerChangeMin}
+                            minimumDate={new Date()}
+                          />
+                          <TouchableOpacity
+                            style={styles.iosPickerCloseButton}
+                            onPress={() => setEditIosPickerModeMin(null)}
+                          >
+                            <Text style={styles.iosPickerCloseText}>Confirmer</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Date et heure de départ max */}
+                    <View style={styles.formGroup}>
+                      <Text style={styles.formLabel}>Date/heure de départ (max) *</Text>
+                      <View style={styles.dateTimeContainer}>
+                        <TouchableOpacity
+                          style={styles.dateTimeButton}
+                          onPress={() => openEditDateOrTimePickerMax('date')}
+                        >
+                          <Ionicons name="calendar-outline" size={20} color={Colors.primary} />
+                          <Text style={styles.dateTimeText}>
+                            {editDepartureDateMax
+                              ? editDepartureDateMax.toLocaleDateString('fr-FR', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric',
+                                })
+                              : 'Date'}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.dateTimeButton}
+                          onPress={() => openEditDateOrTimePickerMax('time')}
+                        >
+                          <Ionicons name="time-outline" size={20} color={Colors.primary} />
+                          <Text style={styles.dateTimeText}>
+                            {editDepartureDateMax
+                              ? editDepartureDateMax.toLocaleTimeString('fr-FR', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : 'Heure'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                      {Platform.OS === 'ios' && editIosPickerModeMax && editDepartureDateMax && (
+                        <View style={styles.iosPickerContainer}>
+                          <DateTimePicker
+                            value={editDepartureDateMax}
+                            mode={editIosPickerModeMax}
+                            display="spinner"
+                            onChange={handleEditIosPickerChangeMax}
+                            minimumDate={editDepartureDateMin || new Date()}
+                          />
+                          <TouchableOpacity
+                            style={styles.iosPickerCloseButton}
+                            onPress={() => setEditIosPickerModeMax(null)}
+                          >
+                            <Text style={styles.iosPickerCloseText}>Confirmer</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Nombre de places */}
+                    <View style={styles.formGroup}>
+                      <Text style={styles.formLabel}>Nombre de places *</Text>
+                      <TextInput
+                        style={styles.input}
+                        keyboardType="numeric"
+                        placeholder="Ex: 1"
+                        value={editNumberOfSeats}
+                        onChangeText={setEditNumberOfSeats}
+                      />
+                    </View>
+
+                    {/* Prix maximum par place */}
+                    <View style={styles.formGroup}>
+                      <Text style={styles.formLabel}>Prix maximum par place (FC)</Text>
+                      <TextInput
+                        style={styles.input}
+                        keyboardType="numeric"
+                        placeholder="Ex: 5000"
+                        value={editMaxPricePerSeat}
+                        onChangeText={setEditMaxPricePerSeat}
+                      />
+                    </View>
+
+                    {/* Description */}
+                    <View style={styles.formGroup}>
+                      <Text style={styles.formLabel}>Description (optionnel)</Text>
+                      <TextInput
+                        style={[styles.input, styles.textArea]}
+                        multiline
+                        numberOfLines={4}
+                        placeholder="Ajoutez des informations supplémentaires..."
+                        value={editDescription}
+                        onChangeText={setEditDescription}
+                      />
+                    </View>
+
+                    <View style={styles.formActions}>
+                      <TouchableOpacity
+                        style={styles.cancelFormButton}
+                        onPress={() => {
+                          setShowEditForm(false);
+                          setEditDepartureLocation(null);
+                          setEditArrivalLocation(null);
+                          setEditDepartureDateMin(null);
+                          setEditDepartureDateMax(null);
+                          setEditNumberOfSeats('');
+                          setEditMaxPricePerSeat('');
+                          setEditDescription('');
+                        }}
+                      >
+                        <Text style={styles.cancelFormButtonText}>Annuler</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.submitButton,
+                          (!editDepartureLocation ||
+                            !editArrivalLocation ||
+                            !editDepartureDateMin ||
+                            !editDepartureDateMax ||
+                            !editNumberOfSeats ||
+                            parseInt(editNumberOfSeats) <= 0)
+                            ? styles.submitButtonDisabled
+                            : undefined,
+                        ]}
+                        onPress={handleUpdateRequest}
+                        disabled={Boolean(
+                          isUpdating ||
+                            !editDepartureLocation ||
+                            !editArrivalLocation ||
+                            !editDepartureDateMin ||
+                            !editDepartureDateMax ||
+                            !editNumberOfSeats ||
+                            parseInt(editNumberOfSeats) <= 0
+                        )}
+                      >
+                        {isUpdating ? (
+                          <ActivityIndicator size="small" color={Colors.white} />
+                        ) : (
+                          <>
+                            <Ionicons name="checkmark" size={18} color={Colors.white} />
+                            <Text style={styles.submitButtonText}>Enregistrer</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </ScrollView>
+                </TouchableOpacity>
+              </TouchableOpacity>
+            </KeyboardAvoidingView>
+          </Modal>
+        )}
+
+        {/* Location Picker Modal pour la modification */}
+        {editLocationPickerType && (
+          <LocationPickerModal
+            visible={editActivePicker !== null}
+            onClose={() => {
+              setEditActivePicker(null);
+              setEditLocationPickerType(null);
+            }}
+            onSelect={(location) => {
+              if (editLocationPickerType === 'departure') {
+                setEditDepartureLocation(location);
+              } else {
+                setEditArrivalLocation(location);
+              }
+              setEditActivePicker(null);
+              setEditLocationPickerType(null);
+            }}
+            initialLocation={
+              editLocationPickerType === 'departure' ? editDepartureLocation : editArrivalLocation
+            }
+          />
+        )}
+
       </ScrollView>
     </SafeAreaView>
   );
@@ -1670,6 +2326,181 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: Spacing.xs,
+  },
+  // Styles pour le formulaire d'offre en deux étapes
+  offerStepIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[200],
+  },
+  offerStepContainer: {
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  offerStepCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[200],
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.gray[300],
+  },
+  offerStepCircleActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  offerStepNumber: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[600],
+  },
+  offerStepNumberActive: {
+    color: Colors.white,
+  },
+  offerStepLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    fontWeight: FontWeights.medium,
+  },
+  offerStepLabelActive: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  offerStepLine: {
+    flex: 1,
+    height: 2,
+    backgroundColor: Colors.gray[300],
+    marginHorizontal: Spacing.md,
+    maxWidth: 60,
+  },
+  offerStepLineActive: {
+    backgroundColor: Colors.primary,
+  },
+  nextButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+  },
+  nextButtonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.base,
+  },
+  offerBackButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.gray[100],
+    borderRadius: BorderRadius.md,
+  },
+  offerBackButtonText: {
+    color: Colors.gray[700],
+    fontWeight: FontWeights.medium,
+    fontSize: FontSizes.base,
+  },
+  // Styles pour la preview
+  previewContainer: {
+    gap: Spacing.lg,
+  },
+  previewTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: Spacing.sm,
+  },
+  previewSection: {
+    marginBottom: Spacing.lg,
+  },
+  previewSectionTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+    marginBottom: Spacing.md,
+  },
+  previewVehicleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    padding: Spacing.md,
+    backgroundColor: Colors.primary + '08',
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.primary + '20',
+  },
+  previewVehicleInfo: {
+    flex: 1,
+  },
+  previewVehicleBrand: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
+    marginBottom: Spacing.xs,
+  },
+  previewVehicleDetails: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  previewInfoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    padding: Spacing.md,
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.md,
+    marginBottom: Spacing.sm,
+  },
+  previewInfoText: {
+    flex: 1,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+    fontWeight: FontWeights.medium,
+  },
+  previewTotalCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: Spacing.md,
+    backgroundColor: Colors.primary + '10',
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary + '20',
+    marginTop: Spacing.sm,
+  },
+  previewTotalLabel: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+  },
+  previewTotalAmount: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+  },
+  previewMessageCard: {
+    padding: Spacing.md,
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+  },
+  previewMessageText: {
+    fontSize: FontSizes.base,
+    color: Colors.gray[700],
+    lineHeight: 22,
   },
   headerTitle: {
     fontSize: FontSizes.lg,
@@ -1703,6 +2534,23 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.semibold,
+  },
+  ownerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  editButtonText: {
+    fontSize: FontSizes.sm,
+    color: Colors.primary,
+    fontWeight: FontWeights.medium,
   },
   cancelButton: {
     flexDirection: 'row',
@@ -2073,23 +2921,62 @@ const styles = StyleSheet.create({
     color: Colors.gray[700],
     marginBottom: Spacing.sm,
   },
-  vehicleSelector: {
-    gap: Spacing.sm,
+  vehicleScrollView: {
+    marginHorizontal: -Spacing.lg,
   },
-  vehicleOption: {
+  vehicleScrollContent: {
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.md,
+  },
+  vehicleCard: {
+    width: 140,
     padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.gray[300],
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.gray[50],
+    backgroundColor: Colors.white,
+    borderWidth: 2,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.xl,
+    gap: Spacing.xs,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  vehicleOptionSelected: {
+  vehicleCardActive: {
     borderColor: Colors.primary,
-    backgroundColor: Colors.primary + '15',
+    backgroundColor: Colors.primary + '08',
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+    transform: [{ scale: 1.02 }],
   },
-  vehicleOptionText: {
+  vehicleCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  vehicleCardBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleCardBrand: {
     fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
     color: Colors.gray[900],
+  },
+  vehicleCardModel: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  vehicleCardDetails: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
   },
   datetimeButtons: {
     flexDirection: 'row',
@@ -2154,6 +3041,44 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
     marginTop: Spacing.xs,
     marginBottom: Spacing.sm,
+  },
+  locationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.white,
+    gap: Spacing.sm,
+  },
+  locationButtonText: {
+    flex: 1,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+    fontWeight: FontWeights.medium,
+  },
+  dateTimeContainer: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  dateTimeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.white,
+    gap: Spacing.sm,
+  },
+  dateTimeText: {
+    flex: 1,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+    fontWeight: FontWeights.medium,
   },
   input: {
     padding: Spacing.md,
@@ -2346,14 +3271,29 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalKeyboardView: {
+    flex: 1,
+    justifyContent: 'flex-end',
   },
   modalContent: {
     backgroundColor: Colors.white,
     borderTopLeftRadius: BorderRadius.xl,
     borderTopRightRadius: BorderRadius.xl,
-    maxHeight: '90%',
-    minHeight: '50%',
+    maxHeight: '95%',
+    minHeight: '75%',
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  modalContentInner: {
+    flex: 1,
   },
   modalHeader: {
     flexDirection: 'row',

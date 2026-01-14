@@ -1588,6 +1588,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: BorderRadius.md,
     gap: 6,
+    marginBottom: 40,
   },
   acceptButton: {
     backgroundColor: Colors.success,
@@ -1607,7 +1608,7 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: Colors.white,
     padding: Spacing.lg,
-    paddingBottom: 34, // Safe area
+    paddingBottom: 40, // Safe area
     borderTopWidth: 1,
     borderTopColor: Colors.gray[100],
     flexDirection: 'row',
