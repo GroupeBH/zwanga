@@ -104,6 +104,7 @@ export const baseApi = createApi({
     'Notification',
     'Vehicle',
     'TripRequest',
+    'MyTripRequests',
     'DriverOffer',
     'MyDriverOffers',
     'EmergencyContact',

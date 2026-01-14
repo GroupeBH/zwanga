@@ -199,6 +199,12 @@ export default function PublishScreen() {
   } = useGetVehiclesQuery(undefined, {
     skip: !isDriver,
   });
+  
+  // Filtrer pour n'afficher que les véhicules actifs
+  const activeVehicles = useMemo(() => {
+    return vehicles.filter((vehicle) => vehicle.isActive === true);
+  }, [vehicles]);
+  
   const [createVehicle, { isLoading: isCreatingVehicle }] = useCreateVehicleMutation();
 
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
@@ -813,7 +819,7 @@ export default function PublishScreen() {
                   <ActivityIndicator size="large" color={Colors.primary} />
                   <Text style={styles.vehicleLoadingText}>Chargement de vos véhicules...</Text>
                 </View>
-              ) : vehicles.length === 0 ? (
+              ) : activeVehicles.length === 0 ? (
                 <View style={styles.vehicleEmptyState}>
                   <Ionicons name="car-outline" size={48} color={Colors.gray[400]} />
                   <Text style={styles.vehicleEmptyTitle}>Aucun véhicule</Text>
@@ -836,7 +842,7 @@ export default function PublishScreen() {
                     style={styles.vehicleScrollView}
                     contentContainerStyle={styles.vehicleScrollContent}
                   >
-                    {vehicles.map((vehicle) => (
+                    {activeVehicles.map((vehicle) => (
                       <TouchableOpacity
                         key={vehicle.id}
                         style={[
