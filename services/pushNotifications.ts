@@ -167,15 +167,48 @@ export async function displayNotification(
 export function setupForegroundNotificationHandlers(
   onNotificationPress?: (data: Record<string, any>) => void,
 ): () => void {
-  // Handler pour les notifications reçues quand l'app est en foreground
-  // Note: onForegroundEvent n'existe pas dans certaines versions de Notifee
-  // On utilisera expo-notifications pour les notifications en foreground
-  // et Notifee pour les afficher et gérer les clics
-  
-  // Retourner une fonction de nettoyage (vide pour l'instant)
-  return () => {
-    // Nettoyage si nécessaire
-  };
+  if (isExpoGo) {
+    // Notifee n'est pas disponible dans Expo Go
+    return () => {};
+  }
+
+  try {
+    // Handler pour les notifications pressées en foreground avec Notifee
+    const unsubscribeForeground = notifee.onForegroundEvent(async ({ type, detail }) => {
+      console.log('[Notifee] Foreground event:', type, detail);
+      
+      if (type === 1) { // EventType.PRESS
+        // Notification pressée
+        const data = detail.notification?.data || {};
+        console.log('[Notifee] Notification pressée en foreground:', data);
+        
+        if (onNotificationPress) {
+          onNotificationPress(data);
+        }
+      } else if (type === 2) { // EventType.ACTION_PRESS
+        // Action pressée (si des actions sont définies)
+        const actionId = detail.pressAction?.id;
+        const data = detail.notification?.data || {};
+        console.log('[Notifee] Action pressée en foreground:', actionId, data);
+        
+        if (onNotificationPress) {
+          onNotificationPress(data);
+        }
+      }
+    });
+
+    // Retourner une fonction de nettoyage
+    return () => {
+      try {
+        unsubscribeForeground();
+      } catch (error) {
+        console.warn('Erreur lors du nettoyage du handler Notifee foreground:', error);
+      }
+    };
+  } catch (error) {
+    console.warn('Erreur lors de la configuration du handler Notifee foreground:', error);
+    return () => {};
+  }
 }
 
 /**
