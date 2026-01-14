@@ -20,14 +20,15 @@ export function NotificationHandler() {
   const { data: currentUser } = useGetCurrentUserQuery();
 
   useEffect(() => {
-    // Configurer le comportement des notifications
+    // Configurer le comportement des notifications expo-notifications
+    // Désactiver l'affichage automatique en foreground car on utilise Notifee
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
-        shouldShowAlert: true,
+        shouldShowAlert: false, // Désactivé car on utilise Notifee pour afficher
         shouldPlaySound: true,
         shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
+        shouldShowBanner: false, // Désactivé car on utilise Notifee pour afficher
+        shouldShowList: false, // Désactivé car on utilise Notifee pour afficher
       }),
     });
 
@@ -46,25 +47,23 @@ export function NotificationHandler() {
     };
 
     // Configurer les handlers Notifee pour les notifications en foreground
+    // Cela gère les clics sur les notifications affichées avec Notifee
     const cleanupNotifee = setupForegroundNotificationHandlers(handleNotificationPress);
-
-    // Handler pour les notifications reçues en background avec Notifee
-    // Note: onBackgroundEvent doit être appelé au niveau racine (hors composant React)
-    // Pour l'instant, on utilise expo-notifications pour gérer les notifications en background
-    // Les notifications affichées avec Notifee seront gérées par le handler de réponse d'expo-notifications
-
-    // Handler pour les notifications pressées en foreground (via expo-notifications)
-    // Les notifications affichées avec Notifee seront gérées par le handler de réponse
 
     // Handler pour les notifications reçues quand l'app est en foreground (expo-notifications)
     // Intercepter les notifications FCM et les afficher avec Notifee
+    // Notifee gérera ensuite les clics via onForegroundEvent
     const notificationListener = Notifications.addNotificationReceivedListener(async (notification) => {
+      console.log('[NotificationHandler] Notification reçue en foreground, affichage avec Notifee');
       // Traiter la notification et l'afficher avec Notifee
       await handleIncomingNotification(notification);
     });
 
-    // Handler pour les notifications pressées (expo-notifications)
+    // Handler pour les notifications pressées en background (expo-notifications)
+    // Ce handler est utilisé uniquement pour les notifications reçues en background
+    // Les notifications en foreground sont gérées par Notifee via onForegroundEvent
     const responseListener = Notifications.addNotificationResponseReceivedListener((response) => {
+      console.log('[NotificationHandler] Notification pressée en background (expo-notifications)');
       const data = response.notification.request.content.data || {};
       handleNotificationPress(data);
     });
