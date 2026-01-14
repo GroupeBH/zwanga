@@ -1,8 +1,8 @@
-import type { TripRequest, DriverOffer, DriverOfferWithTripRequest, DriverOfferStatus, TripRequestStatus, Trip } from '@/types';
+import type { DriverOffer, DriverOfferStatus, DriverOfferWithTripRequest, Trip, TripRequest, TripRequestStatus } from '@/types';
 import { baseApi } from './baseApi';
-import type { BaseEndpointBuilder } from './types';
 import type { ServerTrip } from './tripApi';
 import { mapServerTripToClient } from './tripApi';
+import type { BaseEndpointBuilder } from './types';
 
 type ServerTripRequest = {
   id: string;
@@ -337,7 +337,7 @@ export const tripRequestApi = baseApi.injectEndpoints({
         body: payload,
       }),
       transformResponse: (response: ServerTripRequest) => mapServerTripRequestToClient(response),
-      invalidatesTags: ['TripRequest'],
+      invalidatesTags: ['TripRequest', 'MyTripRequests'],
     }),
 
     // Récupérer toutes les demandes de trajet disponibles (pour les drivers)
@@ -373,6 +373,21 @@ export const tripRequestApi = baseApi.injectEndpoints({
       query: (id: string) => `/trip-requests/${id}`,
       transformResponse: (response: ServerTripRequest) => mapServerTripRequestToClient(response),
       providesTags: (_result, _error, id: string) => [{ type: 'TripRequest', id }],
+    }),
+
+    // Mettre à jour une demande de trajet
+    updateTripRequest: builder.mutation<TripRequest, { id: string; payload: Partial<CreateTripRequestPayload> }>({
+      query: ({ id, payload }: { id: string; payload: Partial<CreateTripRequestPayload> }) => ({
+        url: `/trip-requests/${id}`,
+        method: 'PUT',
+        body: payload,
+      }),
+      transformResponse: (response: ServerTripRequest) => mapServerTripRequestToClient(response),
+      invalidatesTags: (_result, _error, { id }: { id: string }) => [
+        { type: 'TripRequest', id },
+        'TripRequest',
+        'MyTripRequests',
+      ],
     }),
 
     // Annuler une demande de trajet
@@ -482,6 +497,7 @@ export const {
   useGetAvailableTripRequestsQuery,
   useGetMyTripRequestsQuery,
   useGetTripRequestByIdQuery,
+  useUpdateTripRequestMutation,
   useCancelTripRequestMutation,
   useCreateDriverOfferMutation,
   useGetMyDriverOffersQuery,
