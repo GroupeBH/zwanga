@@ -267,6 +267,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[200],
+    paddingTop: 50,
   },
   backButton: {
     padding: Spacing.xs,
@@ -285,6 +286,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollViewContent: {
+    paddingTop: Spacing.lg,
     paddingBottom: Spacing.xxl,
   },
   loaderContainer: {
