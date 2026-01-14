@@ -413,8 +413,10 @@ export const tripRequestApi = baseApi.injectEndpoints({
       transformResponse: (response: ServerDriverOffer) => mapServerDriverOfferToClient(response),
       invalidatesTags: (_result, _error, { tripRequestId }: { tripRequestId: string }) => [
         { type: 'TripRequest', id: tripRequestId },
-        'TripRequest',
+        // Ne pas invalider 'TripRequest' globalement pour éviter de refetch toutes les demandes
+        // Le backend devrait continuer à renvoyer les demandes tant qu'aucune offre n'est acceptée
         'DriverOffer',
+        'MyDriverOffers',
       ],
     }),
 

@@ -137,7 +137,7 @@ export default function TripRequestsScreen() {
               <Text style={styles.viewButtonText}>Voir détails</Text>
               <Ionicons name="arrow-forward" size={16} color={Colors.primary} />
             </TouchableOpacity>
-            {currentUser?.isDriver && (
+            {(currentUser?.role === 'driver' || currentUser?.role === 'both') && (
               <TouchableOpacity
                 style={styles.makeOfferButton}
                 onPress={() => handleRequestPress(item.id)}

@@ -984,14 +984,14 @@ export default function HomeScreen() {
 
             <TouchableOpacity
               style={[styles.quickActionCard, styles.listActionCard]}
-              onPress={() => router.push(currentUser?.isDriver ? '/requests' : '/my-requests')}
+              onPress={() => router.push((currentUser?.role === 'driver' || currentUser?.role === 'both') ? '/requests' : '/my-requests')}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: '#8B5CF6' }]}>
                 <Ionicons name="list" size={24} color={Colors.white} />
               </View>
               <Text style={styles.quickActionTitle}>Demandes</Text>
               <Text style={styles.quickActionSubtitle}>
-                {currentUser?.isDriver ? 'Offres' : 'Mes demandes'}
+                {(currentUser?.role === 'driver' || currentUser?.role === 'both') ? 'Offres' : 'Mes demandes'}
               </Text>
             </TouchableOpacity>
           </View>
