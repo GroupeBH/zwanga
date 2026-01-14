@@ -182,13 +182,11 @@ export default function PublishScreen() {
   const { data: profileSummary, refetch: refetchProfile } = useGetProfileSummaryQuery();
   const user = profileSummary?.user;
   // Déterminer si l'utilisateur est conducteur basé sur le role ET isDriver
-  // Le backend peut avoir isDriver=true même si role='passenger' (transition)
+  // Déterminer si l'utilisateur est conducteur basé uniquement sur le role
   const isDriver = useMemo(() => {
     const role = user?.role;
-    const isDriverFlag = user?.isDriver;
-    // Vérifier à la fois le role et le flag isDriver du backend
-    return (role === 'driver' || role === 'both') || Boolean(isDriverFlag);
-  }, [user?.role, user?.isDriver]);
+    return role === 'driver' || role === 'both';
+  }, [user?.role]);
   const [showDriverRequiredModal, setShowDriverRequiredModal] = useState(false);
 
   const { 

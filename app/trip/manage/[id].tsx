@@ -774,12 +774,20 @@ export default function ManageTripScreen() {
             bookings.map((booking) => (
               <View key={booking.id} style={styles.bookingCard}>
                 <View style={styles.bookingHeader}>
-                  <View style={styles.avatar}>
+                  <TouchableOpacity
+                    style={styles.avatar}
+                    onPress={() => router.push(`/passenger/${booking.passengerId}`)}
+                    activeOpacity={0.7}
+                  >
                     <Text style={{ color: Colors.white, fontWeight: 'bold' }}>
                       {(booking.passengerName || 'P').charAt(0)}
                     </Text>
-                  </View>
-                  <View style={styles.bookingInfo}>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.bookingInfo}
+                    onPress={() => router.push(`/passenger/${booking.passengerId}`)}
+                    activeOpacity={0.7}
+                  >
                     <Text style={styles.bookingName}>{booking.passengerName}</Text>
                     <Text style={styles.bookingMeta}>
                       {booking.numberOfSeats} place(s) • {(booking.numberOfSeats * (trip?.price ?? 0)).toLocaleString()} FC
@@ -792,11 +800,34 @@ export default function ManageTripScreen() {
                         </Text>
                       </View>
                     )}
-                  </View>
-                  <View style={[styles.statusBadge, { backgroundColor: BOOKING_STATUS_CONFIG[booking.status].background }]}>
-                    <Text style={[styles.statusBadgeText, { color: BOOKING_STATUS_CONFIG[booking.status].color }]}>
-                      {BOOKING_STATUS_CONFIG[booking.status].label}
-                    </Text>
+                  </TouchableOpacity>
+                  <View style={{ flexDirection: 'column', alignItems: 'flex-end', gap: Spacing.xs }}>
+                    <View style={[styles.statusBadge, { backgroundColor: BOOKING_STATUS_CONFIG[booking.status].background }]}>
+                      <Text style={[styles.statusBadgeText, { color: BOOKING_STATUS_CONFIG[booking.status].color }]}>
+                        {BOOKING_STATUS_CONFIG[booking.status].label}
+                      </Text>
+                    </View>
+                    {/* Bouton de notation dans la carte du passager */}
+                    {booking.status === 'accepted' && (
+                      (booking.droppedOff && booking.droppedOffConfirmedByPassenger) || 
+                      (trip.status === 'completed')
+                    ) && (
+                      <TouchableOpacity
+                        style={[styles.rateButtonInCard, { backgroundColor: Colors.secondary }]}
+                        onPress={() => router.push(`/rate/${trip.id}?passengerId=${booking.passengerId}`)}
+                      >
+                        <Ionicons name="star" size={14} color={Colors.white} />
+                        <Text style={[styles.rateButtonInCardText, { color: Colors.white }]}>Noter</Text>
+                      </TouchableOpacity>
+                    )}
+                    {/* Bouton pour voir le profil du passager */}
+                    <TouchableOpacity
+                      style={[styles.viewProfileButton]}
+                      onPress={() => router.push(`/passenger/${booking.passengerId}`)}
+                    >
+                      <Ionicons name="person-outline" size={14} color={Colors.primary} />
+                      <Text style={[styles.viewProfileButtonText, { color: Colors.primary }]}>Profil</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -1404,6 +1435,33 @@ const styles = StyleSheet.create({
   statusBadgeText: {
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
+  },
+  rateButtonInCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+    gap: 4,
+  },
+  rateButtonInCardText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+  },
+  viewProfileButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+  },
+  viewProfileButtonText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
   },
   itineraryContainer: {
     flexDirection: 'row',

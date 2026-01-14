@@ -1,18 +1,19 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, TextInput, ScrollView, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { useAppSelector } from '@/store/hooks';
-import { selectUser } from '@/store/selectors';
+import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useGetTripBookingsQuery } from '@/store/api/bookingApi';
 import { useCreateReviewMutation } from '@/store/api/reviewApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
-import { useGetTripBookingsQuery } from '@/store/api/bookingApi';
+import { useAppSelector } from '@/store/hooks';
+import { selectUser } from '@/store/selectors';
+import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type TabType = 'rate' | 'report';
+type RateTargetType = 'driver' | 'passenger';
 
 export default function RateScreen() {
   const router = useRouter();
@@ -22,28 +23,83 @@ export default function RateScreen() {
   const passengerIdParam = typeof params.passengerId === 'string' ? params.passengerId : null;
   const { data: trip } = useGetTripByIdQuery(tripId, { skip: !tripId });
   const isTripDriver = trip?.driverId === user?.id;
-  const { data: tripBookings } = useGetTripBookingsQuery(tripId, {
-    skip: !isTripDriver || !tripId,
+  // Charger les bookings - toujours charger pour le conducteur, et aussi pour les passagers
+  const { data: tripBookings, isLoading: bookingsLoading, error: bookingsError, refetch: refetchBookings } = useGetTripBookingsQuery(tripId, {
+    skip: !tripId,
   });
+  
+  // Déterminer si l'utilisateur est un passager du trajet
+  const isTripPassenger = useMemo(() => {
+    if (!tripBookings || !user?.id) return false;
+    return tripBookings.some(
+      (booking) => booking.passengerId === user.id && (booking.status === 'accepted' || booking.status === 'completed')
+    );
+  }, [tripBookings, user?.id]);
+
   const [activeTab, setActiveTab] = useState<TabType>('rate');
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [reportReason, setReportReason] = useState('');
   const [selectedPassenger, setSelectedPassenger] = useState<string | null>(passengerIdParam);
+  const [rateTargetType, setRateTargetType] = useState<RateTargetType>(
+    isTripDriver ? 'passenger' : passengerIdParam ? 'passenger' : 'driver'
+  );
   const { showDialog } = useDialog();
   const [createReview, { isLoading: isSubmittingReview }] = useCreateReviewMutation();
 
+  // Liste des passagers (excluant l'utilisateur actuel si c'est un passager)
   const passengers = useMemo(() => {
-    if (!tripBookings) return [];
-    return tripBookings
-      .filter((booking) => booking.status === 'completed' || booking.status === 'accepted')
-      .map((booking) => ({
-        id: booking.passengerId,
-        name: booking.passengerName ?? 'Passager',
-        seats: booking.numberOfSeats,
-      }));
-  }, [tripBookings]);
+    const result: Array<{ id: string; name: string; seats: number }> = [];
+    
+    // Pour le conducteur, utiliser les bookings en priorité (source la plus fiable)
+    // Si on a des bookings, les utiliser
+    if (tripBookings && tripBookings.length > 0) {
+      tripBookings
+        .filter((booking) => {
+          const isAccepted = booking.status === 'completed' || booking.status === 'accepted';
+          // Si l'utilisateur est un passager, exclure son propre booking
+          if (isTripPassenger && booking.passengerId === user?.id) return false;
+          // S'assurer que l'ID du passager est présent
+          if (!booking.passengerId) return false;
+          return isAccepted;
+        })
+        .forEach((booking) => {
+          // Éviter les doublons
+          if (!result.find(p => p.id === booking.passengerId)) {
+            result.push({
+              id: booking.passengerId,
+              name: booking.passengerName ?? 'Passager',
+              seats: booking.numberOfSeats,
+            });
+          }
+        });
+    }
+    
+    // Fallback : utiliser les passagers du trip si disponibles
+    // Pour le conducteur, utiliser ce fallback si les bookings ne sont pas encore chargés ou sont vides
+    if (trip?.passengers && trip.passengers.length > 0) {
+      trip.passengers
+        .filter((passenger) => {
+          // Si l'utilisateur est un passager, exclure son propre profil
+          if (isTripPassenger && passenger.id === user?.id) return false;
+          // S'assurer que l'ID est présent
+          if (!passenger.id) return false;
+          // Éviter les doublons avec les bookings déjà ajoutés
+          if (result.find(p => p.id === passenger.id)) return false;
+          return true;
+        })
+        .forEach((passenger) => {
+          result.push({
+            id: passenger.id,
+            name: passenger.name,
+            seats: 1, // On ne connaît pas le nombre de places depuis trip.passengers
+          });
+        });
+    }
+    
+    return result;
+  }, [tripBookings, trip?.passengers, isTripPassenger, user?.id]);
 
   // Pré-sélectionner le passager si un passengerId est fourni dans l'URL
   useEffect(() => {
@@ -51,18 +107,43 @@ export default function RateScreen() {
       const passengerExists = passengers.some(p => p.id === passengerIdParam);
       if (passengerExists && selectedPassenger !== passengerIdParam) {
         setSelectedPassenger(passengerIdParam);
+        setRateTargetType('passenger');
       }
     }
   }, [passengerIdParam, passengers, selectedPassenger]);
 
-  const rateTags = [
-    { id: 'punctual', label: 'Ponctuel', icon: 'time' },
-    { id: 'friendly', label: 'Sympathique', icon: 'happy' },
-    { id: 'clean', label: 'Véhicule propre', icon: 'sparkles' },
-    { id: 'safe', label: 'Conduite sûre', icon: 'shield-checkmark' },
-    { id: 'respectful', label: 'Respectueux', icon: 'heart' },
-    { id: 'professional', label: 'Professionnel', icon: 'briefcase' },
-  ];
+  // Debug: Afficher les passagers récupérés (uniquement en développement)
+  useEffect(() => {
+    if (__DEV__ && isTripDriver) {
+      console.log('Passagers récupérés pour notation:', passengers.map(p => ({ id: p.id, name: p.name })));
+      console.log('Bookings disponibles:', tripBookings?.length ?? 0);
+      console.log('Trip passengers disponibles:', trip?.passengers?.length ?? 0);
+    }
+  }, [passengers, tripBookings, trip?.passengers, isTripDriver]);
+
+  // Tags différents selon si on évalue un conducteur ou un passager
+  const rateTags = useMemo(() => {
+    const isRatingDriver = rateTargetType === 'driver';
+    return isRatingDriver
+      ? [
+          // Tags pour évaluer un conducteur
+          { id: 'punctual', label: 'Ponctuel', icon: 'time' },
+          { id: 'friendly', label: 'Sympathique', icon: 'happy' },
+          { id: 'clean', label: 'Véhicule propre', icon: 'sparkles' },
+          { id: 'safe', label: 'Conduite sûre', icon: 'shield-checkmark' },
+          { id: 'respectful', label: 'Respectueux', icon: 'heart' },
+          { id: 'professional', label: 'Professionnel', icon: 'briefcase' },
+        ]
+      : [
+          // Tags pour évaluer un passager
+          { id: 'punctual', label: 'Ponctuel', icon: 'time' },
+          { id: 'friendly', label: 'Sympathique', icon: 'happy' },
+          { id: 'respectful', label: 'Respectueux', icon: 'heart' },
+          { id: 'communicative', label: 'Bon communicant', icon: 'chatbubbles' },
+          { id: 'clean', label: 'Propre', icon: 'sparkles' },
+          { id: 'cooperative', label: 'Coopératif', icon: 'people' },
+        ];
+  }, [rateTargetType]);
 
   const reportReasons = [
     { id: 'dangerous', label: 'Conduite dangereuse', icon: 'warning' },
@@ -100,12 +181,40 @@ export default function RateScreen() {
       return;
     }
 
-    const targetUserId = isTripDriver ? selectedPassenger : trip.driverId;
+    // Déterminer l'utilisateur cible selon le type de notation
+    let targetUserId: string | null = null;
+    if (rateTargetType === 'driver') {
+      targetUserId = trip.driverId;
+    } else {
+      // Pour les passagers, s'assurer qu'un passager est sélectionné
+      if (!selectedPassenger) {
+        showDialog({
+          variant: 'warning',
+          title: 'Passager requis',
+          message: 'Sélectionnez le passager que vous souhaitez évaluer.',
+        });
+        return;
+      }
+      // Vérifier que le passager sélectionné existe dans la liste
+      const selectedPassengerExists = passengers.some(p => p.id === selectedPassenger);
+      if (!selectedPassengerExists) {
+        showDialog({
+          variant: 'warning',
+          title: 'Passager invalide',
+          message: 'Le passager sélectionné n\'est plus disponible. Veuillez en sélectionner un autre.',
+        });
+        return;
+      }
+      targetUserId = selectedPassenger;
+    }
+
     if (!targetUserId) {
       showDialog({
         variant: 'warning',
-        title: 'Passager requis',
-        message: 'Sélectionnez le passager que vous souhaitez évaluer.',
+        title: 'Sélection requise',
+        message: rateTargetType === 'driver' 
+          ? 'Impossible de trouver le conducteur.'
+          : 'Sélectionnez la personne que vous souhaitez évaluer.',
       });
       return;
     }
@@ -174,7 +283,13 @@ export default function RateScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.closeButton}>
             <Ionicons name="close" size={28} color={Colors.gray[900]} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Votre avis</Text>
+          <Text style={styles.headerTitle}>
+            {isTripDriver 
+              ? 'Évaluer un passager' 
+              : isTripPassenger 
+              ? 'Évaluer les intervenants'
+              : 'Votre avis'}
+          </Text>
         </View>
 
         {/* Tabs */}
@@ -212,16 +327,24 @@ export default function RateScreen() {
                 <View style={styles.driverAvatar} />
                 <View style={styles.driverDetails}>
                   <Text style={styles.driverName}>
-                    {isTripDriver ? 'Choisissez un passager' : trip?.driverName ?? 'Conducteur'}
+                    {isTripDriver 
+                      ? 'Choisissez un passager'
+                      : rateTargetType === 'driver'
+                      ? trip?.driverName ?? 'Conducteur'
+                      : selectedPassenger 
+                      ? passengers.find(p => p.id === selectedPassenger)?.name ?? 'Passager'
+                      : 'Choisissez qui évaluer'}
                   </Text>
                   <View style={styles.driverMeta}>
                     <Ionicons name="star" size={16} color={Colors.secondary} />
                     <Text style={styles.driverMetaText}>
                       {isTripDriver
                         ? 'Attribuez une note à vos passagers'
-                        : `${trip?.driverRating?.toFixed?.(1) ?? '—'} · ${
+                        : rateTargetType === 'driver'
+                        ? `${trip?.driverRating?.toFixed?.(1) ?? '—'} · ${
                             trip?.vehicleInfo ?? 'Véhicule à confirmer'
-                          }`}
+                          }`
+                        : 'Attribuez une note à ce passager'}
                     </Text>
                   </View>
                   {trip && (
@@ -231,26 +354,142 @@ export default function RateScreen() {
                   )}
                 </View>
               </View>
+              
+              {/* Sélection pour les passagers : conducteur ou autres passagers */}
+              {isTripPassenger && (
+                <View style={styles.dropSection}>
+                  <Text style={styles.dropLabel}>Qui souhaitez-vous évaluer ?</Text>
+                  
+                  {/* Option pour noter le conducteur */}
+                  <TouchableOpacity
+                    style={[
+                      styles.targetOption,
+                      rateTargetType === 'driver' && styles.targetOptionActive,
+                      { marginBottom: Spacing.sm }
+                    ]}
+                    onPress={() => {
+                      setRateTargetType('driver');
+                      setSelectedPassenger(null);
+                    }}
+                  >
+                    <Ionicons
+                      name="car"
+                      size={20}
+                      color={rateTargetType === 'driver' ? Colors.white : Colors.gray[600]}
+                    />
+                    <View style={styles.targetOptionContent}>
+                      <Text
+                        style={[
+                          styles.targetOptionText,
+                          rateTargetType === 'driver' && styles.targetOptionTextActive,
+                        ]}
+                      >
+                        {trip?.driverName ?? 'Conducteur'}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.targetOptionSubtext,
+                          rateTargetType === 'driver' && styles.targetOptionSubtextActive,
+                        ]}
+                      >
+                        Évaluer le conducteur
+                      </Text>
+                    </View>
+                    {rateTargetType === 'driver' && (
+                      <Ionicons name="checkmark-circle" size={20} color={Colors.white} />
+                    )}
+                  </TouchableOpacity>
+
+                  {/* Liste des autres passagers */}
+                  {passengers.length > 0 && (
+                    <>
+                      <Text style={[styles.dropLabel, { marginTop: Spacing.md, marginBottom: Spacing.sm }]}>
+                        Autres passagers
+                      </Text>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={styles.passengerChips}
+                      >
+                        {passengers.map((passenger) => {
+                          const active = rateTargetType === 'passenger' && selectedPassenger === passenger.id;
+                          return (
+                            <TouchableOpacity
+                              key={passenger.id}
+                              style={[styles.passengerChip, active && styles.passengerChipActive]}
+                              onPress={() => {
+                                setRateTargetType('passenger');
+                                setSelectedPassenger(passenger.id);
+                              }}
+                            >
+                              <Ionicons
+                                name="person"
+                                size={16}
+                                color={active ? Colors.white : Colors.gray[600]}
+                              />
+                              <Text
+                                style={[
+                                  styles.passengerChipText,
+                                  active && styles.passengerChipTextActive,
+                                ]}
+                              >
+                                {passenger.name}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+                    </>
+                  )}
+                </View>
+              )}
+
+              {/* Sélection pour le conducteur : liste des passagers */}
               {isTripDriver && (
                 <View style={styles.dropSection}>
                   <Text style={styles.dropLabel}>Sélectionner un passager</Text>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.passengerChips}
-                  >
-                    {passengers.length === 0 ? (
+                  {bookingsLoading ? (
+                    <View style={styles.loadingContainer}>
+                      <Text style={styles.emptyPassengerText}>Chargement des passagers...</Text>
+                    </View>
+                  ) : passengers.length === 0 ? (
+                    <View>
                       <Text style={styles.emptyPassengerText}>
-                        Aucun passager à évaluer pour ce trajet.
+                        {bookingsError 
+                          ? 'Impossible de charger les passagers. Veuillez réessayer.'
+                          : 'Aucun passager à évaluer pour ce trajet.'}
                       </Text>
-                    ) : (
-                      passengers.map((passenger) => {
-                        const active = selectedPassenger === passenger.id;
+                      {bookingsError && (
+                        <TouchableOpacity
+                          style={[styles.retryButton, { marginTop: Spacing.md }]}
+                          onPress={() => refetchBookings()}
+                        >
+                          <Ionicons name="refresh" size={16} color={Colors.primary} />
+                          <Text style={styles.retryButtonText}>Réessayer</Text>
+                        </TouchableOpacity>
+                      )}
+                      {bookingsError && trip?.passengers && trip.passengers.length > 0 && (
+                        <Text style={[styles.emptyPassengerText, { marginTop: Spacing.sm, fontSize: FontSizes.sm }]}>
+                          Utilisation des données du trajet comme alternative.
+                        </Text>
+                      )}
+                    </View>
+                  ) : (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      style={styles.passengerChips}
+                    >
+                      {passengers.map((passenger) => {
+                        const active = rateTargetType === 'passenger' && selectedPassenger === passenger.id;
                         return (
                           <TouchableOpacity
                             key={passenger.id}
                             style={[styles.passengerChip, active && styles.passengerChipActive]}
-                            onPress={() => setSelectedPassenger(passenger.id)}
+                            onPress={() => {
+                              setRateTargetType('passenger');
+                              setSelectedPassenger(passenger.id);
+                            }}
                           >
                             <Ionicons
                               name="person"
@@ -267,9 +506,9 @@ export default function RateScreen() {
                             </Text>
                           </TouchableOpacity>
                         );
-                      })
-                    )}
-                  </ScrollView>
+                      })}
+                    </ScrollView>
+                  )}
                 </View>
               )}
             </View>
@@ -277,9 +516,9 @@ export default function RateScreen() {
             {/* Étoiles */}
             <View style={styles.ratingContainer}>
               <Text style={styles.ratingTitle}>
-                {isTripDriver
-                  ? 'Comment s’est comporté ce passager ?'
-                  : "Comment s'est passé le trajet ?"}
+                {rateTargetType === 'driver'
+                  ? "Comment s'est passé le trajet avec ce conducteur ?"
+                  : "Comment s'est comporté ce passager ?"}
               </Text>
               <View style={styles.starsContainer}>
                 {[1, 2, 3, 4, 5].map((star) => (
@@ -305,7 +544,9 @@ export default function RateScreen() {
             {rating > 0 && (
               <View style={styles.tagsContainer}>
                 <Text style={styles.tagsTitle}>
-                  Qu'avez-vous particulièrement apprécié ?
+                  {rateTargetType === 'driver'
+                    ? 'Qu\'avez-vous particulièrement apprécié chez ce conducteur ?'
+                    : 'Qu\'avez-vous particulièrement apprécié chez ce passager ?'}
                 </Text>
                 <View style={styles.tagsList}>
                   {rateTags.map((tag) => {
@@ -597,10 +838,68 @@ const styles = StyleSheet.create({
   },
   emptyPassengerText: {
     color: Colors.gray[500],
+    textAlign: 'center',
+    paddingVertical: Spacing.md,
+  },
+  loadingContainer: {
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.gray[100],
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    marginTop: Spacing.sm,
+  },
+  retryButtonText: {
+    marginLeft: Spacing.xs,
+    color: Colors.primary,
+    fontWeight: FontWeights.medium,
+    fontSize: FontSizes.sm,
   },
   driverTrip: {
     color: Colors.gray[600],
     fontSize: FontSizes.base,
+  },
+  targetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 2,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
+  },
+  targetOptionActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  targetOptionContent: {
+    flex: 1,
+    marginLeft: Spacing.md,
+  },
+  targetOptionText: {
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[800],
+    fontSize: FontSizes.base,
+    marginBottom: Spacing.xs,
+  },
+  targetOptionTextActive: {
+    color: Colors.white,
+  },
+  targetOptionSubtext: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+  },
+  targetOptionSubtextActive: {
+    color: Colors.white,
+    opacity: 0.9,
   },
   ratingContainer: {
     alignItems: 'center',

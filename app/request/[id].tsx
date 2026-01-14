@@ -52,11 +52,12 @@ export default function TripRequestDetailsScreen() {
   const { data: currentUser } = useGetCurrentUserQuery();
   const { isIdentityVerified, checkIdentity } = useIdentityCheck();
   
-  // Déterminer si l'utilisateur est conducteur basé sur le role
+  // Helper pour vérifier si l'utilisateur est conducteur basé sur le role
   const isDriver = useMemo(() => {
     const role = currentUser?.role;
     return role === 'driver' || role === 'both';
   }, [currentUser?.role]);
+  
   const { data: tripRequest, isLoading, error, refetch, isError } = useGetTripRequestByIdQuery(id || '', {
     skip: !id,
   });
@@ -88,7 +89,7 @@ export default function TripRequestDetailsScreen() {
     }
   }, [id, error, tripRequest]);
   const { data: vehicles = [] } = useGetVehiclesQuery(undefined, {
-    skip: !currentUser?.isDriver,
+    skip: !(currentUser?.role === 'driver' || currentUser?.role === 'both'),
   });
   
   // Filtrer pour n'afficher que les véhicules actifs
@@ -216,15 +217,33 @@ export default function TripRequestDetailsScreen() {
     );
   }, [tripRequest, currentUser]);
 
+  // Vérifier s'il y a une offre acceptée
+  const hasAcceptedOffer = useMemo(() => {
+    if (!tripRequest?.offers) return false;
+    return tripRequest.offers.some((offer) => offer.status === 'accepted');
+  }, [tripRequest?.offers]);
+
   const canMakeOffer = useMemo(() => {
-    return (
-      currentUser?.isDriver &&
-      isIdentityVerified &&
-      !isOwner &&
-      tripRequest?.status === 'pending' &&
-      !hasExistingOffer
-    );
-  }, [currentUser, isIdentityVerified, isOwner, tripRequest, hasExistingOffer]);
+    const userRole = currentUser?.role;
+    if (!(userRole === 'driver' || userRole === 'both') || !isIdentityVerified || isOwner || hasExistingOffer) {
+      return false;
+    }
+
+    // Permettre l'envoi d'offres tant qu'aucune offre n'a été acceptée
+    // Vérifier d'abord le statut
+    const isRequestOpen = tripRequest?.status === 'pending' || tripRequest?.status === 'offers_received';
+    if (!isRequestOpen) {
+      return false;
+    }
+
+    // Vérifier aussi s'il y a déjà une offre acceptée (même si le statut n'est pas encore 'driver_selected')
+    // Cela correspond à la logique backend qui filtre les demandes avec des offres acceptées
+    if (hasAcceptedOffer) {
+      return false;
+    }
+
+    return true;
+  }, [currentUser, isIdentityVerified, isOwner, tripRequest, hasExistingOffer, hasAcceptedOffer]);
 
   const myOffer = useMemo(() => {
     if (!tripRequest?.offers || !currentUser) return null;
@@ -370,7 +389,8 @@ export default function TripRequestDetailsScreen() {
     if (!tripRequest || !id) return;
 
     // Vérifier que l'utilisateur est driver
-    if (!isDriver) {
+    const userRole = currentUser?.role;
+    if (!(userRole === 'driver' || userRole === 'both')) {
       showDialog({
         title: 'Devenir conducteur requis',
         message: 'Pour faire une offre sur une demande de trajet, vous devez être conducteur. Voulez-vous devenir conducteur ?',
@@ -479,7 +499,7 @@ export default function TripRequestDetailsScreen() {
             variant: 'primary',
             onPress: () => {
               refetch();
-              router.push('/my-offers');
+              router.push('/offers');
             }
           },
           { 
@@ -1325,40 +1345,77 @@ export default function TripRequestDetailsScreen() {
           </View>
         )}
 
-        {/* Bouton pour faire une offre (pour les drivers) */}
-        {canMakeOffer && (
+        {/* Bouton pour faire une offre (pour les drivers uniquement) */}
+        {!isOwner && (
           <View style={styles.section}>
-            <TouchableOpacity
-              style={styles.makeOfferButton}
-              onPress={() => {
-                // Vérifier à nouveau avant d'ouvrir le formulaire
-                if (!currentUser?.isDriver) {
-                  showDialog({
-                    title: 'Devenir conducteur requis',
-                    message: 'Pour faire une offre sur une demande de trajet, vous devez être conducteur. Voulez-vous devenir conducteur ?',
-                    variant: 'warning',
-                    actions: [
-                      { label: 'Annuler', variant: 'ghost' },
-                      { 
-                        label: 'Devenir conducteur', 
-                        variant: 'primary', 
-                        onPress: () => router.push('/publish') 
-                      },
-                    ],
-                  });
-                  return;
-                }
-                if (!isIdentityVerified) {
-                  checkIdentity('publish');
-                  return;
-                }
-                setOfferStep('details');
-                setShowOfferForm(true);
-              }}
-            >
-              <Ionicons name="add-circle-outline" size={24} color={Colors.white} />
-              <Text style={styles.makeOfferButtonText}>Faire une offre</Text>
-            </TouchableOpacity>
+            {canMakeOffer ? (
+              <TouchableOpacity
+                style={styles.makeOfferButton}
+                onPress={() => {
+                  // Vérifier à nouveau avant d'ouvrir le formulaire
+                  const userRole = currentUser?.role;
+                  if (!(userRole === 'driver' || userRole === 'both')) {
+                    showDialog({
+                      title: 'Conducteur requis',
+                      message: 'Seuls les conducteurs peuvent faire des offres sur les demandes de trajet. Activez votre compte conducteur pour proposer vos services.',
+                      variant: 'warning',
+                      actions: [
+                        { label: 'Annuler', variant: 'ghost' },
+                        { 
+                          label: 'Devenir conducteur', 
+                          variant: 'primary', 
+                          onPress: () => router.push('/publish') 
+                        },
+                      ],
+                    });
+                    return;
+                  }
+                  if (!isIdentityVerified) {
+                    checkIdentity('publish');
+                    return;
+                  }
+                  setOfferStep('details');
+                  setShowOfferForm(true);
+                }}
+              >
+                <Ionicons name="add-circle-outline" size={24} color={Colors.white} />
+                <Text style={styles.makeOfferButtonText}>Faire une offre (Conducteur)</Text>
+              </TouchableOpacity>
+            ) : !(currentUser?.role === 'driver' || currentUser?.role === 'both') ? (
+              <View style={styles.driverRequiredCard}>
+                <View style={styles.driverRequiredIconContainer}>
+                  <Ionicons name="car-outline" size={32} color={Colors.primary} />
+                </View>
+                <Text style={styles.driverRequiredTitle}>Conducteur requis</Text>
+                <Text style={styles.driverRequiredText}>
+                  Seuls les conducteurs peuvent faire des offres sur cette demande de trajet. Activez votre compte conducteur pour proposer vos services aux passagers.
+                </Text>
+                <TouchableOpacity
+                  style={styles.becomeDriverButton}
+                  onPress={() => router.push('/publish')}
+                >
+                  <Ionicons name="car" size={18} color={Colors.white} />
+                  <Text style={styles.becomeDriverButtonText}>Devenir conducteur</Text>
+                </TouchableOpacity>
+              </View>
+            ) : !isIdentityVerified ? (
+              <View style={styles.driverRequiredCard}>
+                <View style={styles.driverRequiredIconContainer}>
+                  <Ionicons name="shield-checkmark-outline" size={32} color={Colors.warning} />
+                </View>
+                <Text style={styles.driverRequiredTitle}>Vérification d'identité requise</Text>
+                <Text style={styles.driverRequiredText}>
+                  Vous devez compléter la vérification de votre identité (KYC) avant de pouvoir faire des offres.
+                </Text>
+                <TouchableOpacity
+                  style={styles.becomeDriverButton}
+                  onPress={() => checkIdentity('publish')}
+                >
+                  <Ionicons name="shield-checkmark" size={18} color={Colors.white} />
+                  <Text style={styles.becomeDriverButtonText}>Vérifier mon identité</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
         )}
 
@@ -2897,6 +2954,53 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   makeOfferButtonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.base,
+  },
+  driverRequiredCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+  },
+  driverRequiredIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  driverRequiredTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: Spacing.sm,
+    textAlign: 'center',
+  },
+  driverRequiredText: {
+    fontSize: FontSizes.base,
+    color: Colors.gray[600],
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: Spacing.lg,
+  },
+  becomeDriverButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.sm,
+    minWidth: 200,
+  },
+  becomeDriverButtonText: {
     color: Colors.white,
     fontWeight: FontWeights.bold,
     fontSize: FontSizes.base,
