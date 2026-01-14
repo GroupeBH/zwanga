@@ -55,14 +55,26 @@ export default function RateScreen() {
     }
   }, [passengerIdParam, passengers, selectedPassenger]);
 
-  const rateTags = [
-    { id: 'punctual', label: 'Ponctuel', icon: 'time' },
-    { id: 'friendly', label: 'Sympathique', icon: 'happy' },
-    { id: 'clean', label: 'Véhicule propre', icon: 'sparkles' },
-    { id: 'safe', label: 'Conduite sûre', icon: 'shield-checkmark' },
-    { id: 'respectful', label: 'Respectueux', icon: 'heart' },
-    { id: 'professional', label: 'Professionnel', icon: 'briefcase' },
-  ];
+  // Tags différents selon si on évalue un conducteur ou un passager
+  const rateTags = isTripDriver
+    ? [
+        // Tags pour évaluer un passager (par le conducteur)
+        { id: 'punctual', label: 'Ponctuel', icon: 'time' },
+        { id: 'friendly', label: 'Sympathique', icon: 'happy' },
+        { id: 'respectful', label: 'Respectueux', icon: 'heart' },
+        { id: 'communicative', label: 'Bon communicant', icon: 'chatbubbles' },
+        { id: 'clean', label: 'Propre', icon: 'sparkles' },
+        { id: 'cooperative', label: 'Coopératif', icon: 'people' },
+      ]
+    : [
+        // Tags pour évaluer un conducteur (par le passager)
+        { id: 'punctual', label: 'Ponctuel', icon: 'time' },
+        { id: 'friendly', label: 'Sympathique', icon: 'happy' },
+        { id: 'clean', label: 'Véhicule propre', icon: 'sparkles' },
+        { id: 'safe', label: 'Conduite sûre', icon: 'shield-checkmark' },
+        { id: 'respectful', label: 'Respectueux', icon: 'heart' },
+        { id: 'professional', label: 'Professionnel', icon: 'briefcase' },
+      ];
 
   const reportReasons = [
     { id: 'dangerous', label: 'Conduite dangereuse', icon: 'warning' },
@@ -174,7 +186,9 @@ export default function RateScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.closeButton}>
             <Ionicons name="close" size={28} color={Colors.gray[900]} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Votre avis</Text>
+          <Text style={styles.headerTitle}>
+            {isTripDriver ? 'Évaluer un passager' : 'Votre avis'}
+          </Text>
         </View>
 
         {/* Tabs */}
@@ -305,7 +319,9 @@ export default function RateScreen() {
             {rating > 0 && (
               <View style={styles.tagsContainer}>
                 <Text style={styles.tagsTitle}>
-                  Qu'avez-vous particulièrement apprécié ?
+                  {isTripDriver
+                    ? 'Qu\'avez-vous particulièrement apprécié chez ce passager ?'
+                    : 'Qu\'avez-vous particulièrement apprécié ?'}
                 </Text>
                 <View style={styles.tagsList}>
                   {rateTags.map((tag) => {

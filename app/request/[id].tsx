@@ -498,7 +498,7 @@ export default function TripRequestDetailsScreen() {
             variant: 'primary',
             onPress: () => {
               refetch();
-              router.push('/my-offers');
+              router.push('/offers');
             }
           },
           { 
