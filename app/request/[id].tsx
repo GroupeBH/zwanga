@@ -57,6 +57,7 @@ export default function TripRequestDetailsScreen() {
     const role = currentUser?.role;
     return role === 'driver' || role === 'both';
   }, [currentUser?.role]);
+  
   const { data: tripRequest, isLoading, error, refetch, isError } = useGetTripRequestByIdQuery(id || '', {
     skip: !id,
   });
