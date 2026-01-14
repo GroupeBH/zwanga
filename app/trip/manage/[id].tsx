@@ -854,6 +854,30 @@ export default function ManageTripScreen() {
                         <Text style={styles.actionText}>Déposer</Text>
                       </TouchableOpacity>
                     )}
+
+                    {/* Bouton d'évaluation pour les passagers déposés (même si le trajet est encore en cours) */}
+                    {booking.droppedOff && booking.droppedOffConfirmedByPassenger && (
+                      <TouchableOpacity
+                        style={[styles.actionButton, { backgroundColor: Colors.secondary, flex: 1 }]}
+                        onPress={() => router.push(`/rate/${trip.id}?passengerId=${booking.passengerId}`)}
+                      >
+                        <Ionicons name="star" size={18} color={Colors.white} />
+                        <Text style={[styles.actionText, { color: Colors.white }]}>Évaluer ce passager</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+
+                {/* Bouton d'évaluation pour les trajets complétés (si le passager n'a pas encore été évalué) */}
+                {trip.status === 'completed' && booking.status === 'accepted' && (!booking.droppedOff || !booking.droppedOffConfirmedByPassenger) && (
+                  <View style={styles.bookingFooter}>
+                    <TouchableOpacity
+                      style={[styles.actionButton, { backgroundColor: Colors.secondary, flex: 1 }]}
+                      onPress={() => router.push(`/rate/${trip.id}?passengerId=${booking.passengerId}`)}
+                    >
+                      <Ionicons name="star" size={18} color={Colors.white} />
+                      <Text style={[styles.actionText, { color: Colors.white }]}>Évaluer ce passager</Text>
+                    </TouchableOpacity>
                   </View>
                 )}
               </View>

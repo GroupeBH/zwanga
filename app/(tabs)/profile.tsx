@@ -1595,7 +1595,7 @@ export default function ProfileScreen() {
           {
             icon: 'briefcase-outline',
             label: 'Mes offres',
-            route: '/my-offers',
+            route: '/offers',
             badge: pendingOffersCount > 0 ? pendingOffersCount : acceptedOffersCount > 0 ? acceptedOffersCount : undefined,
             badgeColor: pendingOffersCount > 0 ? Colors.warning : acceptedOffersCount > 0 ? Colors.success : undefined,
           },
@@ -1730,7 +1730,7 @@ export default function ProfileScreen() {
           {isDriver && (
             <TouchableOpacity
               style={[styles.mainActionCard, { borderColor: Colors.info + '30' }]}
-              onPress={() => router.push('/my-offers')}
+              onPress={() => router.push('/offers')}
             >
               <View style={[styles.mainActionIcon, { backgroundColor: Colors.info + '15' }]}>
                 <Ionicons name="gift" size={24} color={Colors.info} />
