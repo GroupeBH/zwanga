@@ -738,7 +738,7 @@ export default function ManageTripScreen() {
               </View>
               <View>
                 <Text style={styles.statLabel}>Prix</Text>
-                <Text style={styles.statValue}>{trip.price} FCFA</Text>
+                <Text style={styles.statValue}>{trip.price} FC</Text>
               </View>
             </View>
           </View>
