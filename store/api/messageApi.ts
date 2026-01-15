@@ -32,6 +32,19 @@ type ConversationMessagesArgs = {
   conversationId: string;
 };
 
+type EditMessagePayload = {
+  messageId: string;
+  content: string;
+};
+
+type DeleteMessagePayload = {
+  messageId: string;
+};
+
+type DeleteConversationPayload = {
+  conversationId: string;
+};
+
 export const messageApi = baseApi.injectEndpoints({
   endpoints: (builder: BaseEndpointBuilder) => ({
     listConversations: builder.query<PaginatedResponse<Conversation>, ListParams | void>({
@@ -129,6 +142,31 @@ export const messageApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['Conversation'],
     }),
+
+    editConversationMessage: builder.mutation<Message, EditMessagePayload>({
+      query: ({ messageId, content }: EditMessagePayload) => ({
+        url: `/conversations/messages/${messageId}`,
+        method: 'PATCH',
+        body: { content },
+      }),
+      invalidatesTags: ['Conversation', 'Message'],
+    }),
+
+    deleteConversationMessage: builder.mutation<{ message: string }, DeleteMessagePayload>({
+      query: ({ messageId }: DeleteMessagePayload) => ({
+        url: `/conversations/messages/${messageId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Conversation', 'Message'],
+    }),
+
+    deleteConversation: builder.mutation<{ message: string }, DeleteConversationPayload>({
+      query: ({ conversationId }: DeleteConversationPayload) => ({
+        url: `/conversations/${conversationId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Conversation', 'Message'],
+    }),
   }),
 });
 
@@ -144,4 +182,7 @@ export const {
   useRemoveParticipantMutation,
   useGetBookingMessagesQuery,
   useMarkMessageAsReadMutation,
+  useEditConversationMessageMutation,
+  useDeleteConversationMessageMutation,
+  useDeleteConversationMutation,
 } = messageApi;

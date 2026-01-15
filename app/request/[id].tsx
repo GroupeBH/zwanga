@@ -618,7 +618,7 @@ export default function TripRequestDetailsScreen() {
                     variant: 'primary',
                     onPress: () => {
                       refetch();
-                      router.push(`/trip/${result.trip.id}`);
+                      router.push(`/trip/manage/${result.trip.id}`);
                     },
                   },
                   { label: 'OK', variant: 'ghost', onPress: () => refetch() },
@@ -635,6 +635,18 @@ export default function TripRequestDetailsScreen() {
         },
       ],
     });
+  };
+
+  const handleViewTrip = (tripId: string) => {
+    if (!tripId) return;
+
+    const isSelectedDriver =
+      !!currentUser?.id &&
+      !!tripRequest?.selectedDriverId &&
+      currentUser.id === tripRequest.selectedDriverId;
+
+    const targetRoute = isSelectedDriver ? `/trip/manage/${tripId}` as const : `/trip/${tripId}` as const;
+    router.push(targetRoute);
   };
 
   // Initialiser le formulaire de modification avec les valeurs actuelles
@@ -1097,7 +1109,7 @@ export default function TripRequestDetailsScreen() {
                   </View>
                   <TouchableOpacity
                     style={styles.viewTripButton}
-                    onPress={() => router.push(`/trip/${tripRequest.tripId}`)}
+                    onPress={() => handleViewTrip(tripRequest.tripId!)}
                   >
                     <Ionicons name="arrow-forward" size={18} color={Colors.primary} />
                     <Text style={styles.viewTripButtonText}>Voir le trajet</Text>
@@ -1333,7 +1345,7 @@ export default function TripRequestDetailsScreen() {
                   {tripRequest.tripId && (
                     <TouchableOpacity
                       style={styles.viewTripButton}
-                      onPress={() => router.push(`/trip/${tripRequest.tripId}`)}
+                  onPress={() => handleViewTrip(tripRequest.tripId!)}
                     >
                       <Ionicons name="car" size={18} color={Colors.primary} />
                       <Text style={styles.viewTripButtonText}>Voir le trajet</Text>
