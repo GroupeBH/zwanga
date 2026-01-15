@@ -1,6 +1,7 @@
+import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { chatSocket } from '@/services/chatSocket';
-import { messageApi, useGetConversationMessagesQuery, useGetConversationQuery, useMarkConversationAsReadMutation, useSendConversationMessageMutation } from '@/store/api/messageApi';
+import { messageApi, useDeleteConversationMessageMutation, useEditConversationMessageMutation, useGetConversationMessagesQuery, useGetConversationQuery, useMarkConversationAsReadMutation, useSendConversationMessageMutation } from '@/store/api/messageApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { addMessage as addMessageAction, markConversationMessagesRead, setMessages, upsertConversation } from '@/store/slices/messagesSlice';
@@ -15,10 +16,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 export default function ChatScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
+  const { showDialog } = useDialog();
   const { id, title: initialTitle } = useLocalSearchParams<{ id?: string; title?: string }>();
   const conversationId = typeof id === 'string' ? id : '';
   const scrollViewRef = useRef<ScrollView>(null);
   const [message, setMessage] = useState('');
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const user = useAppSelector(selectUser);
 
   const { data: conversation, isLoading: conversationLoading } = useGetConversationQuery(conversationId, {
@@ -30,6 +33,8 @@ export default function ChatScreen() {
   );
   const [sendMessageMutation, { isLoading: sending }] = useSendConversationMessageMutation();
   const [markConversationAsRead] = useMarkConversationAsReadMutation();
+  const [editMessageMutation] = useEditConversationMessageMutation();
+  const [deleteMessageMutation] = useDeleteConversationMessageMutation();
 
   const messages = messagesData ?? [];
 
@@ -105,6 +110,26 @@ export default function ChatScreen() {
     const content = message.trim();
     setMessage('');
 
+    // Mode édition
+    if (editingMessageId) {
+      try {
+        const updated = await editMessageMutation({ messageId: editingMessageId, content }).unwrap();
+        setEditingMessageId(null);
+        dispatch(
+          messageApi.util.updateQueryData('getConversationMessages', { conversationId }, (draft) => {
+            const index = draft.findIndex((m) => m.id === updated.id);
+            if (index !== -1) {
+              draft[index] = updated;
+            }
+          }),
+        );
+      } catch (error) {
+        console.warn('Erreur lors de la modification du message:', error);
+      }
+      return;
+    }
+
+    // Mode envoi normal
     try {
       const saved = await sendMessageMutation({ conversationId, content }).unwrap();
       dispatch(
@@ -165,8 +190,46 @@ export default function ChatScreen() {
     }, {});
   }, [messages]);
 
+  const handleEditMessage = (msg: Message) => {
+    if (msg.senderId !== user?.id) return;
+    setEditingMessageId(msg.id);
+    setMessage(msg.content);
+  };
+
+  const handleDeleteMessage = (msg: Message) => {
+    if (msg.senderId !== user?.id) return;
+
+    showDialog({
+      title: 'Supprimer le message',
+      message: 'Voulez-vous vraiment supprimer ce message ? Cette action est irréversible.',
+      variant: 'danger',
+      actions: [
+        { label: 'Annuler', variant: 'ghost' },
+        {
+          label: 'Supprimer',
+          variant: 'primary',
+          onPress: async () => {
+            try {
+              await deleteMessageMutation({ messageId: msg.id }).unwrap();
+              dispatch(
+                messageApi.util.updateQueryData('getConversationMessages', { conversationId }, (draft) => {
+                  const index = draft.findIndex((m) => m.id === msg.id);
+                  if (index !== -1) {
+                    draft.splice(index, 1);
+                  }
+                }),
+              );
+            } catch (error) {
+              console.warn('Erreur lors de la suppression du message:', error);
+            }
+          },
+        },
+      ],
+    });
+  };
+
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
@@ -207,14 +270,15 @@ export default function ChatScreen() {
       </View>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
-        keyboardVerticalOffset={0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
       >
         <ScrollView
           ref={scrollViewRef}
           style={styles.messagesContainer}
           contentContainerStyle={styles.messagesContent}
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           {messagesLoading && (
@@ -231,33 +295,52 @@ export default function ChatScreen() {
               {bucket.map((msg, index) => {
                 const isMe = msg.senderId === user?.id;
                 return (
-            <Animated.View
-              key={msg.id}
-              entering={FadeInDown.delay(index * 50)}
+                  <Animated.View
+                    key={msg.id}
+                    entering={FadeInDown.delay(index * 50)}
                     style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
-            >
-              <View
-                style={[
-                  styles.messageBubble,
-                        isMe ? styles.messageBubbleMe : styles.messageBubbleOther,
-                ]}
-              >
-                      <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{msg.content}</Text>
-                <View style={styles.messageFooter}>
-                        <Text style={[styles.messageTime, isMe && styles.messageTimeMe]}>
-                          {formatTime(msg.createdAt)}
-                  </Text>
-                        {isMe && (
-                    <Ionicons
-                            name={msg.isRead ? 'checkmark-done' : 'checkmark'}
-                      size={14}
-                      color={Colors.white}
-                      style={styles.checkIcon}
-                    />
-                  )}
-                </View>
-              </View>
-            </Animated.View>
+                  >
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onLongPress={() => {
+                        if (!isMe) return;
+                        showDialog({
+                          title: 'Message',
+                          actions: [
+                            { label: 'Annuler', variant: 'ghost' },
+                            { label: 'Modifier', onPress: () => handleEditMessage(msg) },
+                            {
+                              label: 'Supprimer',
+                              variant: 'primary',
+                              onPress: () => handleDeleteMessage(msg),
+                            },
+                          ],
+                        });
+                      }}
+                    >
+                      <View
+                        style={[
+                          styles.messageBubble,
+                          isMe ? styles.messageBubbleMe : styles.messageBubbleOther,
+                        ]}
+                      >
+                        <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{msg.content}</Text>
+                        <View style={styles.messageFooter}>
+                          <Text style={[styles.messageTime, isMe && styles.messageTimeMe]}>
+                            {formatTime(msg.createdAt)}
+                          </Text>
+                          {isMe && (
+                            <Ionicons
+                              name={msg.isRead ? 'checkmark-done' : 'checkmark'}
+                              size={14}
+                              color={Colors.white}
+                              style={styles.checkIcon}
+                            />
+                          )}
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  </Animated.View>
                 );
               })}
             </View>
@@ -466,7 +549,6 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     borderTopWidth: 1,
     borderTopColor: Colors.gray[200],
-    paddingBottom: 50,
   },
   inputRow: {
     flexDirection: 'row',

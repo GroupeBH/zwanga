@@ -1,5 +1,6 @@
+import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { useListConversationsQuery } from '@/store/api/messageApi';
+import { useDeleteConversationMutation, useListConversationsQuery } from '@/store/api/messageApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectConversations, selectUser } from '@/store/selectors';
 import { setConversations } from '@/store/slices/messagesSlice';
@@ -17,6 +18,8 @@ export default function MessagesScreen() {
   const [search, setSearch] = useState('');
   const { data, isLoading, isFetching } = useListConversationsQuery({ page: 1, limit: 50 });
   const router = useRouter();
+  const [deleteConversation] = useDeleteConversationMutation();
+  const { showDialog } = useDialog();
 
   useEffect(() => {
     if (data?.data) {
@@ -89,6 +92,31 @@ export default function MessagesScreen() {
     return 'Conversation';
   };
 
+  const handleDeleteConversation = (conversationId: string) => {
+    if (!conversationId) return;
+
+    showDialog({
+      title: 'Supprimer la conversation',
+      message:
+        'Voulez-vous vraiment supprimer cette conversation ? Elle disparaîtra de votre liste. Les messages pourront être définitivement supprimés si plus aucun participant ne la conserve.',
+      variant: 'danger',
+      actions: [
+        { label: 'Annuler', variant: 'ghost' },
+        {
+          label: 'Supprimer',
+          variant: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteConversation({ conversationId }).unwrap();
+            } catch (error) {
+              console.warn('[Messages] Failed to delete conversation', error);
+            }
+          },
+        },
+      ],
+    });
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
@@ -148,46 +176,55 @@ export default function MessagesScreen() {
                 key={conversation.id}
                 entering={FadeInDown.delay(index * 50)}
               >
-                <TouchableOpacity
-                  style={styles.conversationItem}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/chat/[id]',
-                      params: {
-                        id: conversation.id,
-                        title,
-                      },
-                    })
-                  }
-                >
-                  <View style={styles.avatarContainer}>
-                    <View style={styles.avatar} />
-                    <View style={styles.onlineBadge} />
-                  </View>
+                <View style={styles.conversationRow}>
+                  <TouchableOpacity
+                    style={styles.conversationItem}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/chat/[id]',
+                        params: {
+                          id: conversation.id,
+                          title,
+                        },
+                      })
+                    }
+                  >
+                    <View style={styles.avatarContainer}>
+                      <View style={styles.avatar} />
+                      <View style={styles.onlineBadge} />
+                    </View>
 
-                  <View style={styles.conversationContent}>
-                    <View style={styles.conversationHeader}>
-                      <Text style={styles.conversationName}>{title}</Text>
-                      <Text style={styles.conversationTime}>{timestamp}</Text>
+                    <View style={styles.conversationContent}>
+                      <View style={styles.conversationHeader}>
+                        <Text style={styles.conversationName}>{title}</Text>
+                        <Text style={styles.conversationTime}>{timestamp}</Text>
+                      </View>
+                      <View style={styles.conversationFooter}>
+                        <Text
+                          style={[
+                            styles.conversationMessage,
+                            (conversation.unreadCount ?? 0) > 0 && styles.conversationMessageUnread,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {subtitle}
+                        </Text>
+                        {(conversation.unreadCount ?? 0) > 0 && (
+                          <View style={styles.unreadBadge}>
+                            <Text style={styles.unreadBadgeText}>{conversation.unreadCount}</Text>
+                          </View>
+                        )}
+                      </View>
                     </View>
-                    <View style={styles.conversationFooter}>
-                      <Text
-                        style={[
-                          styles.conversationMessage,
-                          (conversation.unreadCount ?? 0) > 0 && styles.conversationMessageUnread,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {subtitle}
-                      </Text>
-                      {(conversation.unreadCount ?? 0) > 0 && (
-                        <View style={styles.unreadBadge}>
-                          <Text style={styles.unreadBadgeText}>{conversation.unreadCount}</Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                </TouchableOpacity>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.deleteConversationButton}
+                    onPress={() => handleDeleteConversation(conversation.id)}
+                  >
+                    <Ionicons name="trash-outline" size={20} color={Colors.danger} />
+                  </TouchableOpacity>
+                </View>
               </Animated.View>
             );
           })
@@ -250,6 +287,11 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingBottom: 120, // Increased for edge-to-edge
   },
+  conversationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   loadingBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -296,6 +338,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[100],
+    flex: 1,
   },
   avatarContainer: {
     position: 'relative',
@@ -363,5 +406,9 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
+  },
+  deleteConversationButton: {
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.lg,
   },
 });
