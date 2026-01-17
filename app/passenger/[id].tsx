@@ -5,10 +5,11 @@ import { useGetPublicUserInfoQuery } from '@/store/api/userApi';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -22,24 +23,42 @@ export default function PassengerDetailsScreen() {
   const params = useLocalSearchParams();
   const passengerId = typeof params.id === 'string' ? params.id : '';
 
-  const { data: passenger, isLoading: passengerLoading } = useGetPublicUserInfoQuery(passengerId, {
+  const { data: passenger, isLoading: passengerLoading, refetch: refetchPassenger } = useGetPublicUserInfoQuery(passengerId, {
     skip: !passengerId,
   });
 
-  const { data: reviews } = useGetReviewsQuery(passengerId, {
+  const { data: reviews, refetch: refetchReviews } = useGetReviewsQuery(passengerId, {
     skip: !passengerId,
   });
 
-  const { data: avgRatingData } = useGetAverageRatingQuery(passengerId, {
+  const { data: avgRatingData, refetch: refetchAvgRating } = useGetAverageRatingQuery(passengerId, {
     skip: !passengerId,
   });
 
   // Récupérer les réservations du passager pour calculer les statistiques
   // Note: On utilise getMyBookings pour l'utilisateur connecté, mais pour un autre passager,
   // on devrait idéalement avoir une API dédiée. Pour l'instant, on utilise les données disponibles.
-  const { data: myBookings } = useGetMyBookingsQuery(undefined, {
+  const { data: myBookings, refetch: refetchBookings } = useGetMyBookingsQuery(undefined, {
     skip: !passengerId,
   });
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refetchPassenger(),
+        refetchReviews(),
+        refetchAvgRating(),
+        refetchBookings(),
+      ]);
+    } catch (error) {
+      console.warn('Error refreshing passenger data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchPassenger, refetchReviews, refetchAvgRating, refetchBookings]);
 
   // Filtrer les réservations de ce passager spécifique
   const passengerBookings = useMemo(() => {
@@ -122,7 +141,13 @@ export default function PassengerDetailsScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollViewContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+        }
+      >
         {/* Informations principales */}
         <View style={styles.section}>
           <View style={styles.profileCard}>
