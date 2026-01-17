@@ -23,13 +23,14 @@ import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -103,6 +104,19 @@ export default function TripRequestDetailsScreen() {
   const [cancelRequest, { isLoading: isCancelling }] = useCancelTripRequestMutation();
   const [updateTripRequest, { isLoading: isUpdating }] = useUpdateTripRequestMutation();
   const [startTripFromRequest, { isLoading: isStartingTripFromRequest }] = useStartTripFromRequestMutation();
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refetch();
+    } catch (error) {
+      console.warn('Error refreshing trip request data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch]);
 
   // États pour le formulaire de modification
   const [showEditForm, setShowEditForm] = useState(false);
@@ -833,7 +847,12 @@ export default function TripRequestDetailsScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+        }
+      >
         {/* En-tête avec statut */}
         <View style={styles.statusCard}>
           <View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>

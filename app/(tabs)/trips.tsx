@@ -2,12 +2,13 @@ import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
+import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
 import {
   useDeleteTripMutation,
   useGetMyTripsQuery,
   useUpdateTripMutation,
 } from '@/store/api/tripApi';
-import type { Trip } from '@/types';
+import type { Booking, Trip } from '@/types';
 import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
@@ -32,19 +33,28 @@ import {
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-type TripTab = 'upcoming' | 'completed';
+type MainTab = 'published' | 'bookings';
+type SubTab = 'upcoming' | 'completed';
 
 export default function TripsScreen() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TripTab>('upcoming');
+  const [mainTab, setMainTab] = useState<MainTab>('published');
+  const [subTab, setSubTab] = useState<SubTab>('upcoming');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const {
     data: myTrips,
     isLoading: tripsLoading,
     isFetching: tripsFetching,
-    isError,
-    refetch,
+    isError: tripsError,
+    refetch: refetchTrips,
   } = useGetMyTripsQuery();
+  const {
+    data: myBookings,
+    isLoading: bookingsLoading,
+    isFetching: bookingsFetching,
+    isError: bookingsError,
+    refetch: refetchBookings,
+  } = useGetMyBookingsQuery();
   const [updateTripMutation, { isLoading: isSavingTrip }] = useUpdateTripMutation();
   const [deleteTripMutation, { isLoading: isDeletingTrip }] = useDeleteTripMutation();
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
@@ -143,15 +153,56 @@ export default function TripsScreen() {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await refetch();
+      await Promise.all([refetchTrips(), refetchBookings()]);
     } finally {
       setIsRefreshing(false);
     }
   };
 
-  const displayTrips = activeTab === 'upcoming' ? upcomingTrips : completedTrips;
-  const isEmpty = displayTrips.length === 0;
-  const showLoader = tripsLoading && trips.length === 0;
+  // Filtrer les réservations par statut (à venir / terminées)
+  const upcomingBookings = useMemo(() => {
+    const now = new Date();
+    return (myBookings ?? []).filter((booking) => {
+      if (booking.status === 'completed' || booking.status === 'rejected' || booking.status === 'cancelled') {
+        return false;
+      }
+      if (booking.trip?.departureTime) {
+        const departureDate = new Date(booking.trip.departureTime);
+        return departureDate >= now;
+      }
+      return booking.status === 'pending' || booking.status === 'accepted';
+    }).sort((a, b) => {
+      const dateA = new Date(a.trip?.departureTime || a.createdAt).getTime();
+      const dateB = new Date(b.trip?.departureTime || b.createdAt).getTime();
+      return dateB - dateA;
+    });
+  }, [myBookings]);
+
+  const completedBookingsList = useMemo(() => {
+    const now = new Date();
+    return (myBookings ?? []).filter((booking) => {
+      if (booking.status === 'completed' || booking.status === 'rejected' || booking.status === 'cancelled') {
+        return true;
+      }
+      if (booking.trip?.departureTime) {
+        const departureDate = new Date(booking.trip.departureTime);
+        return departureDate < now;
+      }
+      return false;
+    }).sort((a, b) => {
+      const dateA = new Date(a.trip?.departureTime || a.createdAt).getTime();
+      const dateB = new Date(b.trip?.departureTime || b.createdAt).getTime();
+      return dateB - dateA;
+    });
+  }, [myBookings]);
+
+  const displayTrips = subTab === 'upcoming' ? upcomingTrips : completedTrips;
+  const displayBookings = subTab === 'upcoming' ? upcomingBookings : completedBookingsList;
+  const displayData = mainTab === 'published' ? displayTrips : displayBookings;
+  const isEmpty = displayData.length === 0;
+  const showLoader = (mainTab === 'published' ? tripsLoading : bookingsLoading) && (mainTab === 'published' ? trips.length === 0 : (myBookings?.length ?? 0) === 0);
+  const isError = mainTab === 'published' ? tripsError : bookingsError;
+  const isFetching = mainTab === 'published' ? tripsFetching : bookingsFetching;
 
   const getDefaultFutureDate = () => {
     const base = new Date();
@@ -347,22 +398,48 @@ export default function TripsScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Mes trajets</Text>
 
-        {/* Tabs */}
-        <View style={styles.tabsContainer}>
+        {/* Main Tabs */}
+        <View style={styles.mainTabsContainer}>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'upcoming' && styles.tabActive]}
-            onPress={() => setActiveTab('upcoming')}
+            style={[styles.mainTab, mainTab === 'published' && styles.mainTabActive]}
+            onPress={() => {
+              setMainTab('published');
+              setSubTab('upcoming');
+            }}
           >
-            <Text style={[styles.tabText, activeTab === 'upcoming' && styles.tabTextActive]}>
-              À venir ({upcomingTrips.length})
+            <Text style={[styles.mainTabText, mainTab === 'published' && styles.mainTabTextActive]}>
+              Publiés ({trips.length})
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'completed' && styles.tabActive]}
-            onPress={() => setActiveTab('completed')}
+            style={[styles.mainTab, mainTab === 'bookings' && styles.mainTabActive]}
+            onPress={() => {
+              setMainTab('bookings');
+              setSubTab('upcoming');
+            }}
           >
-            <Text style={[styles.tabText, activeTab === 'completed' && styles.tabTextActive]}>
-              Terminés ({completedTrips.length})
+            <Text style={[styles.mainTabText, mainTab === 'bookings' && styles.mainTabTextActive]}>
+              Réservations ({myBookings?.length ?? 0})
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Sub Tabs */}
+        <View style={styles.subTabsContainer}>
+          <TouchableOpacity
+            style={[styles.subTab, subTab === 'upcoming' && styles.subTabActive]}
+            onPress={() => setSubTab('upcoming')}
+          >
+            <Text style={[styles.subTabText, subTab === 'upcoming' && styles.subTabTextActive]}>
+              À venir ({mainTab === 'published' ? upcomingTrips.length : upcomingBookings.length})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.subTab, subTab === 'completed' && styles.subTabActive]}
+            onPress={() => setSubTab('completed')}
+          >
+            <Text style={[styles.subTabText, subTab === 'completed' && styles.subTabTextActive]}>
+              Terminés ({mainTab === 'published' ? completedTrips.length : completedBookingsList.length})
             </Text>
           </TouchableOpacity>
         </View>
@@ -371,8 +448,10 @@ export default function TripsScreen() {
       {isError && (
         <View style={styles.errorBanner}>
           <Ionicons name="warning" size={16} color={Colors.white} />
-          <Text style={styles.errorText}>Impossible de charger les trajets. Réessayez.</Text>
-          <TouchableOpacity onPress={refetch}>
+          <Text style={styles.errorText}>
+            Impossible de charger les {mainTab === 'published' ? 'trajets' : 'réservations'}. Réessayez.
+          </Text>
+          <TouchableOpacity onPress={mainTab === 'published' ? refetchTrips : refetchBookings}>
             <Text style={styles.errorAction}>Rafraîchir</Text>
           </TouchableOpacity>
         </View>
@@ -402,7 +481,7 @@ export default function TripsScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={isRefreshing || tripsFetching}
+            refreshing={isRefreshing || isFetching}
             onRefresh={handleRefresh}
             tintColor={Colors.primary}
           />
@@ -411,22 +490,33 @@ export default function TripsScreen() {
         {showLoader && (
           <View style={styles.loaderContainer}>
             <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loaderText}>Chargement des trajets...</Text>
+            <Text style={styles.loaderText}>
+              Chargement des {mainTab === 'published' ? 'trajets' : 'réservations'}...
+            </Text>
           </View>
         )}
-        {displayTrips.length === 0 && !showLoader ? (
+        {displayData.length === 0 && !showLoader ? (
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIcon}>
-              <Ionicons name="car-outline" size={48} color={Colors.gray[500]} />
+              <Ionicons
+                name={mainTab === 'published' ? 'car-outline' : 'calendar-outline'}
+                size={48}
+                color={Colors.gray[500]}
+              />
             </View>
-            <Text style={styles.emptyTitle}>Aucun trajet</Text>
-            <Text style={styles.emptyText}>
-              {activeTab === 'upcoming'
-                ? 'Vous n\'avez pas de trajet à venir'
-                : 'Vous n\'avez pas encore terminé de trajet'
-              }
+            <Text style={styles.emptyTitle}>
+              {mainTab === 'published' ? 'Aucun trajet' : 'Aucune réservation'}
             </Text>
-            {activeTab === 'upcoming' && (
+            <Text style={styles.emptyText}>
+              {mainTab === 'published'
+                ? subTab === 'upcoming'
+                  ? 'Vous n\'avez pas de trajet à venir'
+                  : 'Vous n\'avez pas encore terminé de trajet'
+                : subTab === 'upcoming'
+                  ? 'Vous n\'avez pas de réservation à venir'
+                  : 'Vous n\'avez pas encore terminé de réservation'}
+            </Text>
+            {mainTab === 'published' && subTab === 'upcoming' && (
               <TouchableOpacity
                 style={styles.emptyButton}
                 onPress={() => router.push('/publish')}
@@ -436,7 +526,8 @@ export default function TripsScreen() {
             )}
           </View>
         ) : (
-          displayTrips.map((trip, index) => {
+          mainTab === 'published'
+            ? displayTrips.map((trip, index) => {
             const TripCardWithArrival = () => {
               const calculatedArrivalTime = useTripArrivalTime(trip);
               const arrivalTimeDisplay = calculatedArrivalTime
@@ -579,16 +670,147 @@ export default function TripsScreen() {
 
             return <TripCardWithArrival key={trip.id} />;
           })
+            : displayBookings.map((booking, index) => {
+                const trip = booking.trip;
+                if (!trip) return null;
+
+                const BookingCardWithArrival = () => {
+                  const calculatedArrivalTime = useTripArrivalTime(trip);
+                  const arrivalTimeDisplay = calculatedArrivalTime
+                    ? formatTime(calculatedArrivalTime.toISOString())
+                    : formatTime(trip.arrivalTime);
+
+                  const getBookingStatusConfig = () => {
+                    switch (booking.status) {
+                      case 'pending':
+                        return { bgColor: 'rgba(247, 184, 1, 0.1)', textColor: Colors.secondary, label: 'En attente' };
+                      case 'accepted':
+                        return { bgColor: 'rgba(46, 204, 113, 0.1)', textColor: Colors.success, label: 'Confirmée' };
+                      case 'rejected':
+                        return { bgColor: 'rgba(239, 68, 68, 0.1)', textColor: Colors.danger, label: 'Refusée' };
+                      case 'cancelled':
+                        return { bgColor: 'rgba(156, 163, 175, 0.1)', textColor: Colors.gray[600], label: 'Annulée' };
+                      case 'completed':
+                        return { bgColor: 'rgba(46, 204, 113, 0.1)', textColor: Colors.success, label: 'Terminée' };
+                      default:
+                        return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: booking.status };
+                    }
+                  };
+
+                  const statusConfig = getBookingStatusConfig();
+
+                  return (
+                    <Animated.View
+                      key={booking.id}
+                      entering={FadeInDown.delay(index * 100)}
+                      style={styles.tripCard}
+                    >
+                      {/* Header */}
+                      <View style={styles.tripHeader}>
+                        <View style={styles.tripDriverInfo}>
+                          {trip.driverAvatar ? (
+                            <Image source={{ uri: trip.driverAvatar }} style={styles.avatar} />
+                          ) : (
+                            <View style={styles.avatar} />
+                          )}
+                          <View style={styles.tripDriverDetails}>
+                            <Text style={styles.driverName}>{trip.driverName}</Text>
+                            <View style={styles.driverMeta}>
+                              <Ionicons name="star" size={14} color={Colors.secondary} />
+                              <Text style={styles.driverRating}>{trip.driverRating}</Text>
+                              {trip.vehicle || trip.vehicleInfo ? (
+                                <>
+                                  <View style={styles.dot} />
+                                  <Text style={styles.vehicleInfo}>
+                                    {trip.vehicle
+                                      ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
+                                      : trip.vehicleInfo}
+                                  </Text>
+                                </>
+                              ) : null}
+                            </View>
+                          </View>
+                        </View>
+                        <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
+                          <Text style={[styles.statusText, { color: statusConfig.textColor }]}>
+                            {statusConfig.label}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Route */}
+                      <View style={styles.routeContainer}>
+                        <View style={styles.routeRow}>
+                          <Ionicons name="location" size={16} color={Colors.success} />
+                          <Text style={styles.routeText}>{trip.departure.name}</Text>
+                          <View style={styles.timeContainer}>
+                            <Text style={styles.routeDateLabel}>
+                              {formatDateWithRelativeLabel(trip.departureTime, false)}
+                            </Text>
+                            <Text style={styles.routeTime}>{formatTime(trip.departureTime)}</Text>
+                          </View>
+                        </View>
+                        <View style={styles.routeDivider} />
+                        <View style={styles.routeRow}>
+                          <Ionicons name="navigate" size={16} color={Colors.primary} />
+                          <Text style={styles.routeText}>
+                            {booking.passengerDestination || trip.arrival.name}
+                          </Text>
+                          <View style={styles.timeContainer}>
+                            {calculatedArrivalTime && (
+                              <Text style={styles.routeDateLabel}>
+                                {formatDateWithRelativeLabel(calculatedArrivalTime.toISOString(), false)}
+                              </Text>
+                            )}
+                            <Text style={styles.routeTime}>{arrivalTimeDisplay}</Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* Info */}
+                      <View style={styles.tripFooter}>
+                        <View style={styles.tripFooterLeft}>
+                          <View style={styles.infoItem}>
+                            <Ionicons name="people" size={16} color={Colors.gray[600]} />
+                            <Text style={styles.infoText}>{booking.numberOfSeats} place{booking.numberOfSeats > 1 ? 's' : ''}</Text>
+                          </View>
+                          <View style={[styles.infoItem, { marginLeft: Spacing.lg }]}>
+                            <Ionicons name="cash" size={16} color={Colors.gray[600]} />
+                            {trip.price === 0 ? (
+                              <Text style={[styles.infoText, { color: Colors.success, fontWeight: FontWeights.bold }]}>
+                                Gratuit
+                              </Text>
+                            ) : (
+                              <Text style={styles.infoText}>{trip.price * booking.numberOfSeats} FC</Text>
+                            )}
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.detailsButton}
+                          onPress={() => router.push(`/trip/${trip.id}`)}
+                        >
+                          <Text style={styles.detailsButtonText}>Détails</Text>
+                          <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+                        </TouchableOpacity>
+                      </View>
+                    </Animated.View>
+                  );
+                };
+
+                return <BookingCardWithArrival key={booking.id} />;
+              })
         )}
       </ScrollView>
 
-      {/* FAB - Publier un trajet */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => router.push('/publish')}
-      >
-        <Ionicons name="add" size={32} color={Colors.white} />
-      </TouchableOpacity>
+      {/* FAB - Publier un trajet (seulement pour les trajets publiés) */}
+      {mainTab === 'published' && (
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => router.push('/publish')}
+        >
+          <Ionicons name="add" size={32} color={Colors.white} />
+        </TouchableOpacity>
+      )}
 
       <Modal transparent animationType="slide" visible={Boolean(editingTrip)}>
         <View style={styles.modalOverlay}>
@@ -758,28 +980,64 @@ const styles = StyleSheet.create({
     color: Colors.gray[800],
     marginBottom: Spacing.lg,
   },
-  tabsContainer: {
+  mainTabsContainer: {
     flexDirection: 'row',
-    backgroundColor: Colors.gray[100],
-    borderRadius: BorderRadius.md,
-    padding: 4,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.sm,
-  },
-  tabActive: {
     backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    padding: 2,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    ...CommonStyles.shadowSm,
   },
-  tabText: {
+  mainTab: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mainTabActive: {
+    backgroundColor: Colors.primary,
+  },
+  mainTabText: {
     textAlign: 'center',
-    fontWeight: FontWeights.semibold,
+    fontWeight: FontWeights.bold,
     color: Colors.gray[600],
     fontSize: FontSizes.base,
   },
-  tabTextActive: {
-    color: Colors.primary,
+  mainTabTextActive: {
+    color: Colors.white,
+  },
+  subTabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.sm,
+    padding: 2,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+  },
+  subTab: {
+    flex: 1,
+    paddingVertical: Spacing.xs + 2,
+    borderRadius: BorderRadius.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subTabActive: {
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+  },
+  subTabText: {
+    textAlign: 'center',
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[500],
+    fontSize: FontSizes.sm,
+  },
+  subTabTextActive: {
+    color: Colors.gray[800],
+    fontWeight: FontWeights.semibold,
   },
   scrollView: {
     flex: 1,
@@ -1198,3 +1456,4 @@ const styles = StyleSheet.create({
     ...CommonStyles.shadowLg,
   },
 });
+

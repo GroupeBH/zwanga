@@ -5,10 +5,11 @@ import { useGetPublicUserInfoQuery } from '@/store/api/userApi';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -22,27 +23,45 @@ export default function DriverDetailsScreen() {
   const params = useLocalSearchParams();
   const driverId = typeof params.id === 'string' ? params.id : '';
 
-  const { data: driver, isLoading: driverLoading } = useGetPublicUserInfoQuery(driverId, {
+  const { data: driver, isLoading: driverLoading, refetch: refetchDriver } = useGetPublicUserInfoQuery(driverId, {
     skip: !driverId,
   });
 
-  const { data: reviews } = useGetReviewsQuery(driverId, {
+  const { data: reviews, refetch: refetchReviews } = useGetReviewsQuery(driverId, {
     skip: !driverId,
   });
 
-  const { data: avgRatingData } = useGetAverageRatingQuery(driverId, {
+  const { data: avgRatingData, refetch: refetchAvgRating } = useGetAverageRatingQuery(driverId, {
     skip: !driverId,
   });
 
   // Récupérer les trajets du driver pour calculer les statistiques
   // Note: L'API peut ne pas supporter le filtre driverId, donc on récupère tous les trajets et on filtre côté client
   // Pour une meilleure performance, on pourrait créer une API dédiée
-  const { data: allTrips } = useGetTripsQuery(
+  const { data: allTrips, refetch: refetchTrips } = useGetTripsQuery(
     {},
     {
       skip: !driverId,
     }
   );
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refetchDriver(),
+        refetchReviews(),
+        refetchAvgRating(),
+        refetchTrips(),
+      ]);
+    } catch (error) {
+      console.warn('Error refreshing driver data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchDriver, refetchReviews, refetchAvgRating, refetchTrips]);
 
   const driverTrips = useMemo(() => {
     if (!allTrips) return [];
@@ -119,7 +138,13 @@ export default function DriverDetailsScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollViewContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+        }
+      >
         {/* Informations principales */}
         <View style={styles.section}>
           <View style={styles.profileCard}>

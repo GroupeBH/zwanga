@@ -17,10 +17,11 @@ import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
 import { calculateDistance, getRouteInfo, type RouteInfo } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -117,11 +118,18 @@ export default function ManageTripScreen() {
   const [contactModalVisible, setContactModalVisible] = useState(false);
   const [selectedPassengerPhone, setSelectedPassengerPhone] = useState<string | null>(null);
   const [selectedPassengerName, setSelectedPassengerName] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const refreshAll = () => {
-    refetchTrip();
-    refetchBookings();
-  };
+  const refreshAll = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([refetchTrip(), refetchBookings()]);
+    } catch (error) {
+      console.warn('Error refreshing trip data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchTrip, refetchBookings]);
 
   // Calculate coordinates for map
   const departureCoordinate = useMemo(
@@ -623,6 +631,9 @@ export default function ManageTripScreen() {
         style={styles.scrollView} 
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={refreshAll} tintColor={Colors.primary} />
+        }
       >
         {/* Visualisation Carte */}
         <TouchableOpacity

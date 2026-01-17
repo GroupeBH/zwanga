@@ -8,8 +8,8 @@ import { addMessage as addMessageAction, markConversationMessagesRead, setMessag
 import { Message } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -24,10 +24,10 @@ export default function ChatScreen() {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const user = useAppSelector(selectUser);
 
-  const { data: conversation, isLoading: conversationLoading } = useGetConversationQuery(conversationId, {
+  const { data: conversation, isLoading: conversationLoading, refetch: refetchConversation } = useGetConversationQuery(conversationId, {
     skip: !conversationId,
   });
-  const { data: messagesData, isLoading: messagesLoading } = useGetConversationMessagesQuery(
+  const { data: messagesData, isLoading: messagesLoading, refetch: refetchMessages } = useGetConversationMessagesQuery(
     { conversationId },
     { skip: !conversationId },
   );
@@ -37,6 +37,21 @@ export default function ChatScreen() {
   const [deleteMessageMutation] = useDeleteConversationMessageMutation();
 
   const messages = messagesData ?? [];
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refetchConversation(),
+        refetchMessages(),
+      ]);
+    } catch (error) {
+      console.warn('Error refreshing chat data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchConversation, refetchMessages]);
 
   useEffect(() => {
     if (conversation) {
@@ -280,6 +295,9 @@ export default function ChatScreen() {
           contentContainerStyle={styles.messagesContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+          }
         >
           {messagesLoading && (
             <View style={styles.loadingContainer}>

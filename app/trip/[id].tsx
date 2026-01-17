@@ -28,11 +28,12 @@ import { getRouteInfo, isPointOnRoute, splitRouteByProgress, type RouteInfo } fr
 import { shareTrip, shareTripViaWhatsApp } from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
   Modal,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -148,6 +149,7 @@ export default function TripDetailsScreen() {
   const {
     data: tripBookings,
     isLoading: tripBookingsLoading,
+    refetch: refetchTripBookings,
   } = useGetTripBookingsQuery(tripId, { skip: !tripId });
   const {
     lastKnownLocation,
@@ -217,6 +219,24 @@ export default function TripDetailsScreen() {
   const { data: driverAverageData } = useGetAverageRatingQuery(trip?.driverId ?? '', {
     skip: !trip?.driverId,
   });
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refetchTrip(),
+        refetchMyBookings(),
+        refetchTripBookings(),
+        refetchKycStatus(),
+      ]);
+    } catch (error) {
+      console.warn('Error refreshing trip data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchTrip, refetchMyBookings, refetchTripBookings, refetchKycStatus]);
   const driverReviewCount = driverReviews?.length ?? 0;
   const driverReviewAverage =
     driverAverageData?.averageRating ??
@@ -996,6 +1016,9 @@ export default function TripDetailsScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+        }
       >
         {/* Carte interactive */}
         <TouchableOpacity
