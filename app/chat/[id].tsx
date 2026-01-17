@@ -106,7 +106,6 @@ export default function ChatScreen() {
         }
       });
     };
-  }, [conversation?.bookingId, conversationId, dispatch, user?.id]);
 
     setupSocket();
 
@@ -314,9 +313,9 @@ export default function ChatScreen() {
               {bucket.map((msg, index) => {
                 const isMe = msg.senderId === user?.id;
                 return (
-                  <Animated.View
-                    key={msg.id}
-                    entering={FadeInDown.delay(index * 50)}
+            <Animated.View
+              key={msg.id}
+              entering={FadeInDown.delay(index * 50)}
                     style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
                   >
                     <TouchableOpacity
@@ -336,30 +335,30 @@ export default function ChatScreen() {
                           ],
                         });
                       }}
-                    >
-                      <View
-                        style={[
-                          styles.messageBubble,
-                          isMe ? styles.messageBubbleMe : styles.messageBubbleOther,
-                        ]}
-                      >
-                        <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{msg.content}</Text>
-                        <View style={styles.messageFooter}>
-                          <Text style={[styles.messageTime, isMe && styles.messageTimeMe]}>
-                            {formatTime(msg.createdAt)}
-                          </Text>
-                          {isMe && (
-                            <Ionicons
-                              name={msg.isRead ? 'checkmark-done' : 'checkmark'}
-                              size={14}
-                              color={Colors.white}
-                              style={styles.checkIcon}
-                            />
-                          )}
-                        </View>
-                      </View>
+            >
+              <View
+                style={[
+                  styles.messageBubble,
+                        isMe ? styles.messageBubbleMe : styles.messageBubbleOther,
+                ]}
+              >
+                      <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{msg.content}</Text>
+                <View style={styles.messageFooter}>
+                        <Text style={[styles.messageTime, isMe && styles.messageTimeMe]}>
+                          {formatTime(msg.createdAt)}
+                  </Text>
+                        {isMe && (
+                    <Ionicons
+                            name={msg.isRead ? 'checkmark-done' : 'checkmark'}
+                      size={14}
+                      color={Colors.white}
+                      style={styles.checkIcon}
+                    />
+                  )}
+                </View>
+              </View>
                     </TouchableOpacity>
-                  </Animated.View>
+            </Animated.View>
                 );
               })}
             </View>
