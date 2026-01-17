@@ -106,6 +106,7 @@ export default function ChatScreen() {
         }
       });
     };
+  }, [conversation?.bookingId, conversationId, dispatch, user?.id]);
 
     setupSocket();
 
