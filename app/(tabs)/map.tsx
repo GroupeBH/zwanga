@@ -28,6 +28,7 @@ import {
   Image,
   LayoutAnimation,
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -85,6 +86,7 @@ export default function MapScreen() {
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [routeCoordinatesCache, setRouteCoordinatesCache] = useState<Map<string, RouteCoordinates[]>>(new Map());
   const [loadingRoutes, setLoadingRoutes] = useState<Set<string>>(new Set());
+  const [refreshing, setRefreshing] = useState(false);
   
   // Limiter la taille du cache pour éviter les problèmes de mémoire (max 30 routes)
   const MAX_CACHE_SIZE = 30;
@@ -220,7 +222,16 @@ export default function MapScreen() {
   }, [trips.map(t => t.id).join(',')]); // Seulement recharger si les IDs des trajets changent
 
   const toggleMapExpansion = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    LayoutAnimation.configureNext({
+      duration: 300,
+      create: {
+        type: LayoutAnimation.Types.easeInEaseOut,
+        property: LayoutAnimation.Properties.opacity,
+      },
+      update: {
+        type: LayoutAnimation.Types.easeInEaseOut,
+      },
+    });
     setIsMapExpanded(!isMapExpanded);
   };
 
@@ -584,6 +595,24 @@ export default function MapScreen() {
     }
   };
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const params = buildSearchParams(activeSearchQuery || '');
+      const results = await triggerTripSearch(params).unwrap();
+      dispatch(setTrips(results));
+      if (results.length > 0) {
+        setTimeout(() => {
+          fitMapToTrips(results);
+        }, 300);
+      }
+    } catch (error: any) {
+      console.warn('Error refreshing trips:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [activeSearchQuery, triggerTripSearch, dispatch, fitMapToTrips]);
+
   const placeholder = useMemo(() => {
     if (searchMode === 'departure') {
       return 'Rechercher un point de départ';
@@ -678,6 +707,15 @@ export default function MapScreen() {
                     activeOpacity={0.7}
                   >
                     <View style={styles.driverMarkerWrapper}>
+                      {userDistance !== null && userDistance < 5 && (
+                        <View style={styles.distanceBadge}>
+                          <Text style={styles.distanceBadgeText}>
+                            {userDistance < 1
+                              ? `${Math.round(userDistance * 1000)}m`
+                              : `${userDistance.toFixed(1)}km`}
+                          </Text>
+                        </View>
+                      )}
                       <View style={styles.driverMarker}>
                         {trip.driverAvatar ? (
                           <Image 
@@ -698,27 +736,62 @@ export default function MapScreen() {
                       onPress={() => router.push(`/trip/${trip.id}`)}
                       activeOpacity={0.8}
                     >
-                      <Text style={styles.calloutTitle}>{trip.driverName}</Text>
-                      <Text style={styles.calloutSubtitle}>
+                      <View style={styles.calloutHeader}>
+                        {trip.driverAvatar ? (
+                          <Image
+                            source={{ uri: trip.driverAvatar }}
+                            style={styles.calloutAvatar}
+                          />
+                        ) : (
+                          <View style={styles.calloutAvatarPlaceholder}>
+                            <Text style={styles.calloutAvatarText}>
+                              {trip.driverName?.charAt(0)?.toUpperCase() || 'D'}
+                            </Text>
+                          </View>
+                        )}
+                        <View style={styles.calloutHeaderText}>
+                          <Text style={styles.calloutTitle}>{trip.driverName}</Text>
+                          {trip.driverRating && trip.driverRating > 0 && (
+                            <View style={styles.calloutRating}>
+                              <Ionicons name="star" size={12} color={Colors.secondary} />
+                              <Text style={styles.calloutRatingText}>{trip.driverRating.toFixed(1)}</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                      <Text style={styles.calloutSubtitle} numberOfLines={2}>
                         {trip.departure.name} ➜ {trip.arrival.name}
                       </Text>
-                      {userDistance !== null && (
-                        <Text style={styles.calloutDistance}>
-                          À{' '}
-                          {userDistance < 1
-                            ? `${Math.round(userDistance * 1000)} m`
-                            : `${userDistance.toFixed(1)} km`}{' '}
-                          du départ
-                        </Text>
-                      )}
+                      <View style={styles.calloutInfoRow}>
+                        {userDistance !== null && (
+                          <View style={styles.calloutInfoItem}>
+                            <Ionicons name="location" size={12} color={Colors.success} />
+                            <Text style={styles.calloutDistance}>
+                              {userDistance < 1
+                                ? `${Math.round(userDistance * 1000)} m`
+                                : `${userDistance.toFixed(1)} km`}
+                            </Text>
+                          </View>
+                        )}
+                        <View style={styles.calloutInfoItem}>
+                          <Ionicons name="people" size={12} color={Colors.gray[600]} />
+                          <Text style={styles.calloutSeats}>{trip.availableSeats} place(s)</Text>
+                        </View>
+                        {trip.price > 0 && (
+                          <View style={styles.calloutInfoItem}>
+                            <Ionicons name="cash" size={12} color={Colors.primary} />
+                            <Text style={styles.calloutPrice}>{trip.price} FC</Text>
+                          </View>
+                        )}
+                      </View>
                       <View style={styles.calloutDivider} />
                       <View style={styles.calloutFooter}>
                         <Text style={styles.calloutSchedule}>
-                          {formatTime(trip.departureTime)} • {trip.availableSeats} place(s)
+                          {formatDateWithRelativeLabel(trip.departureTime, false)} • {formatTime(trip.departureTime)}
                         </Text>
                         <View style={styles.calloutCta}>
-                          <Text style={styles.calloutCtaText}>Voir trajet</Text>
-                          <Ionicons name="chevron-forward" size={14} color={Colors.white} />
+                          <Text style={styles.calloutCtaText}>Voir</Text>
+                          <Ionicons name="chevron-forward" size={12} color={Colors.white} />
                         </View>
                       </View>
                     </TouchableOpacity>
@@ -983,34 +1056,69 @@ export default function MapScreen() {
       {!isMapExpanded && (
         <View style={styles.bottomSheet}>
           <View style={styles.sheetHeader}>
-            <View>
+            <View style={styles.sheetHeaderLeft}>
               <Text style={styles.sheetTitle}>Trajets à proximité</Text>
-              <Text style={styles.sheetSubtitle}>{trips.length} itinéraire(s) trouvé(s)</Text>
+              <View style={styles.sheetSubtitleRow}>
+                <Ionicons name="location" size={14} color={Colors.gray[500]} />
+                <Text style={styles.sheetSubtitle}>
+                  {trips.length} {trips.length === 1 ? 'itinéraire trouvé' : 'itinéraires trouvés'}
+                  {activeSearchQuery && ` • "${activeSearchQuery}"`}
+                </Text>
+              </View>
             </View>
-            {/* <TouchableOpacity style={styles.refreshButton} onPress={requestPermission}>
-              <Ionicons name="locate" size={20} color={Colors.primary} />
-            </TouchableOpacity> */}
+            {activeSearchQuery && (
+              <TouchableOpacity
+                style={styles.clearSearchButton}
+                onPress={clearSearchQuery}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close-circle" size={20} color={Colors.gray[500]} />
+              </TouchableOpacity>
+            )}
           </View>
 
           <ScrollView
             style={styles.sheetScroll}
             contentContainerStyle={styles.sheetContent}
             showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor={Colors.primary}
+                colors={[Colors.primary]}
+              />
+            }
           >
             {trips.length === 0 ? (
               <View style={styles.emptyState}>
-                <Ionicons name="map-outline" size={36} color={Colors.gray[400]} />
-                <Text style={styles.emptyTitle}>Aucun trajet autour de vous</Text>
+                <View style={styles.emptyIconContainer}>
+                  <Ionicons name="map-outline" size={48} color={Colors.gray[400]} />
+                </View>
+                <Text style={styles.emptyTitle}>Aucun trajet trouvé</Text>
                 <Text style={styles.emptyText}>
-                  Ajustez le rayon ou la recherche pour découvrir davantage d'options.
+                  {activeSearchQuery
+                    ? 'Aucun trajet ne correspond à votre recherche. Essayez de modifier les critères.'
+                    : 'Ajustez le rayon de recherche ou déplacez la carte pour découvrir davantage d\'options.'}
                 </Text>
-                <TouchableOpacity
-                  style={styles.createRequestButton}
-                  onPress={() => router.push('/request')}
-                >
-                  <Ionicons name="add-circle" size={20} color={Colors.white} />
-                  <Text style={styles.createRequestButtonText}>Créer une demande de trajet</Text>
-                </TouchableOpacity>
+                <View style={styles.emptyActions}>
+                  <TouchableOpacity
+                    style={styles.emptyActionButton}
+                    onPress={clearSearchQuery}
+                  >
+                    <Ionicons name="refresh" size={18} color={Colors.primary} />
+                    <Text style={styles.emptyActionButtonText}>Réinitialiser</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.emptyActionButton, styles.emptyActionButtonPrimary]}
+                    onPress={() => router.push('/request')}
+                  >
+                    <Ionicons name="add-circle" size={18} color={Colors.white} />
+                    <Text style={[styles.emptyActionButtonText, styles.emptyActionButtonTextPrimary]}>
+                      Créer une demande
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             ) : (
               trips.map((trip) => {
@@ -1111,8 +1219,18 @@ export default function MapScreen() {
 
       {!userCoords && permissionStatus === 'granted' && (
         <View style={styles.loadingIndicator}>
-          <ActivityIndicator color={Colors.primary} />
+          <ActivityIndicator size="small" color={Colors.primary} />
           <Text style={styles.loadingText}>Localisation en cours…</Text>
+        </View>
+      )}
+
+      {/* Loading overlay when searching */}
+      {isApplyingSearch && (
+        <View style={styles.searchingOverlay}>
+          <View style={styles.searchingCard}>
+            <ActivityIndicator size="small" color={Colors.primary} />
+            <Text style={styles.searchingText}>Recherche en cours...</Text>
+          </View>
         </View>
       )}
 
@@ -1326,6 +1444,25 @@ const styles = StyleSheet.create({
   driverMarkerWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  distanceBadge: {
+    position: 'absolute',
+    top: -24,
+    backgroundColor: Colors.success,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.sm,
+    zIndex: 10,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  distanceBadgeText: {
+    color: Colors.white,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
   },
   driverMarker: {
     width: 44,
@@ -1375,29 +1512,99 @@ const styles = StyleSheet.create({
   },
   calloutCard: {
     backgroundColor: Colors.white,
-    borderRadius: 12,
-    padding: Spacing.sm,
-    width: 220,
-    gap: 4,
+    borderRadius: 16,
+    padding: Spacing.md,
+    width: 260,
+    gap: Spacing.sm,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  calloutHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  calloutAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[200],
+  },
+  calloutAvatarPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calloutAvatarText: {
+    color: Colors.white,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+  },
+  calloutHeaderText: {
+    flex: 1,
   },
   calloutTitle: {
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
+    marginBottom: 2,
   },
-  calloutSubtitle: {
+  calloutRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  calloutRatingText: {
     fontSize: FontSizes.xs,
     color: Colors.gray[600],
+    fontWeight: FontWeights.medium,
+  },
+  calloutSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+    fontWeight: FontWeights.medium,
+    marginBottom: Spacing.xs,
+  },
+  calloutInfoRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  calloutInfoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.gray[50],
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.sm,
   },
   calloutDistance: {
     fontSize: FontSizes.xs,
     color: Colors.success,
+    fontWeight: FontWeights.semibold,
+  },
+  calloutSeats: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
     fontWeight: FontWeights.medium,
+  },
+  calloutPrice: {
+    fontSize: FontSizes.xs,
+    color: Colors.primary,
+    fontWeight: FontWeights.semibold,
   },
   calloutDivider: {
     height: 1,
     backgroundColor: Colors.gray[100],
-    marginVertical: 4,
+    marginVertical: Spacing.xs,
   },
   calloutFooter: {
     flexDirection: 'row',
@@ -1405,21 +1612,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   calloutSchedule: {
-    fontSize: 10,
-    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+    flex: 1,
   },
   calloutCta: {
     backgroundColor: Colors.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.md,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 4,
   },
   calloutCtaText: {
     color: Colors.white,
-    fontSize: 10,
+    fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
   },
   centerPinContainer: {
@@ -1540,15 +1748,27 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[100],
   },
+  sheetHeaderLeft: {
+    flex: 1,
+  },
   sheetTitle: {
     fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
+    marginBottom: Spacing.xs,
+  },
+  sheetSubtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
   },
   sheetSubtitle: {
     fontSize: FontSizes.sm,
     color: Colors.gray[500],
-    marginTop: 2,
+  },
+  clearSearchButton: {
+    padding: Spacing.xs,
+    marginLeft: Spacing.sm,
   },
   refreshButton: {
     padding: Spacing.sm,
@@ -1669,19 +1889,62 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     alignItems: 'center',
-    paddingVertical: Spacing.xl,
-    gap: Spacing.sm,
+    paddingVertical: Spacing.xxl,
+    gap: Spacing.md,
+  },
+  emptyIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.sm,
   },
   emptyTitle: {
-    fontSize: FontSizes.base,
+    fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
+    color: Colors.gray[900],
+    marginBottom: Spacing.xs,
   },
   emptyText: {
     color: Colors.gray[600],
     textAlign: 'center',
-    fontSize: FontSizes.sm,
-    marginBottom: Spacing.sm,
+    fontSize: FontSizes.base,
+    paddingHorizontal: Spacing.lg,
+    lineHeight: 20,
+    marginBottom: Spacing.lg,
+  },
+  emptyActions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    width: '100%',
+    paddingHorizontal: Spacing.lg,
+  },
+  emptyActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    gap: Spacing.xs,
+  },
+  emptyActionButtonPrimary: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  emptyActionButtonText: {
+    color: Colors.primary,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+  },
+  emptyActionButtonTextPrimary: {
+    color: Colors.white,
   },
   createRequestButton: {
     flexDirection: 'row',
@@ -1742,5 +2005,31 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: FontSizes.sm,
     color: Colors.gray[700],
+  },
+  searchingOverlay: {
+    position: 'absolute',
+    top: Platform.select({ ios: 100, android: 80 }),
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 30,
+  },
+  searchingCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  searchingText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+    fontWeight: FontWeights.medium,
   },
 });
