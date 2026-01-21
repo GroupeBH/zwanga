@@ -8,7 +8,7 @@ import { selectIsAuthenticated } from '@/store/selectors';
 import { setTokens } from '@/store/slices/authSlice';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -91,7 +91,9 @@ export default function AuthScreen() {
   const dispatch = useAppDispatch();
   const { showDialog } = useDialog();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
-  const [mode, setMode] = useState<AuthMode>('login');
+  const { mode: initialModeParam } = useLocalSearchParams<{ mode?: string }>();
+  const initialMode: AuthMode = initialModeParam === 'signup' ? 'signup' : 'login';
+  const [mode, setMode] = useState<AuthMode>(initialMode);
   const [step, setStep] = useState<AuthStep>('phone');
 
   // Form State

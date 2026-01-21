@@ -95,10 +95,6 @@ export default function DriverDetailsScreen() {
     return fullName || driver.name || 'Conducteur';
   }, [driver]);
 
-  console.log("driver vehicule:",  driverTrips
-    .filter((trip: any) => trip?.vehicle?.isActive)
-    .map((trip: any) => [trip?.vehicle?.id, trip?.vehicle!]))
-
   const driverPhone = driver?.phone ?? null;
 
   if (driverLoading) {

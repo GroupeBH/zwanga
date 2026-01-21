@@ -83,10 +83,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Aucun token disponible ET utilisateur non authentifié : rediriger vers /auth
+      // Aucun token disponible ET utilisateur non authentifié : rediriger vers l'écran d'entrée auth
       if (!accessToken && !refreshToken && !isAuthenticated) {
         if (!inAuthGroup) {
-          router.replace('/auth');
+          router.replace('/auth-entry');
         }
         return;
       }
@@ -95,7 +95,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       if (refreshToken && isTokenExpired(refreshToken)) {
         dispatch(logout());
         if (!inAuthGroup) {
-          router.replace('/auth');
+          router.replace('/auth-entry');
         }
         return;
       }
@@ -113,8 +113,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
           return;
         }
         if (!refreshed && !inAuthGroup && !isAuthenticated && !accessToken && !refreshToken) {
-          // Pas de tokens du tout - rediriger vers /auth
-          router.replace('/auth');
+          // Pas de tokens du tout - rediriger vers l'écran d'entrée auth
+          router.replace('/auth-entry');
         }
       }
     };
@@ -146,11 +146,11 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Si l'utilisateur n'est pas authentifié et qu'on n'est pas dans le groupe auth, rediriger vers /auth
+    // Si l'utilisateur n'est pas authentifié et qu'on n'est pas dans le groupe auth, rediriger vers l'écran d'entrée auth
     // Mais seulement si on n'a vraiment pas de tokens (pour éviter les redirections pendant la connexion)
     if (!isAuthenticated && !inAuthGroup && !accessToken && !refreshToken) {
-      console.log('[AuthGuard] Non authentifié et hors du groupe auth - redirection vers /auth');
-      router.replace('/auth');
+      console.log('[AuthGuard] Non authentifié et hors du groupe auth - redirection vers /auth-entry');
+      router.replace('/auth-entry');
     }
   }, [isAuthenticated, isLoading, segments, inAuthGroup, router, accessToken, refreshToken]);
 
