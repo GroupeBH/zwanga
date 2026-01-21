@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function AuthEntryScreen() {
@@ -15,6 +15,12 @@ export default function AuthEntryScreen() {
 
   const handleSignupPress = () => {
     router.push('/auth?mode=signup');
+  };
+
+  const handleOpenLegal = () => {
+    Linking.openURL('https://zwanga-admin.onrender.com/').catch((err) =>
+      console.warn('Unable to open legal URL', err),
+    );
   };
 
   return (
@@ -95,7 +101,7 @@ export default function AuthEntryScreen() {
             </View>
           </TouchableOpacity>
 
-          <Text style={styles.footerHint}>
+          <Text style={styles.footerHint} onPress={handleOpenLegal}>
             En continuant, vous acceptez nos conditions d&apos;utilisation et notre politique de confidentialité.
           </Text>
         </View>
