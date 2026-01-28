@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   subtitle: {
-    fontSize: FontSizes.md,
+    fontSize: FontSizes.base,
     color: 'rgba(226,232,240,0.9)',
     lineHeight: 22,
   },
@@ -207,7 +207,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   highlightTitle: {
-    fontSize: FontSizes.md,
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.semibold,
     color: Colors.white,
     marginBottom: 2,
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   secondaryButtonText: {
-    fontSize: FontSizes.md,
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.semibold,
     color: Colors.primary,
   },
