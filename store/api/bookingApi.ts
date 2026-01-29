@@ -25,8 +25,10 @@ type ServerBooking = {
   updatedAt: string;
   passenger?: ServerUser | null;
   trip?: ServerTrip | null;
+  passengerOrigin?: string | null;
+  passengerOriginPoint?: { type: string; coordinates: [number, number] } | null;
   passengerDestination?: string | null;
-  passengerDestinationCoordinates?: { latitude: number; longitude: number } | null;
+  passengerDestinationPoint?: { type: string; coordinates: [number, number] } | null;
   pickedUp?: boolean;
   pickedUpAt?: string | null;
   pickedUpConfirmedByPassenger?: boolean;
@@ -60,8 +62,14 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
   createdAt: booking.createdAt,
   updatedAt: booking.updatedAt,
   trip: booking.trip ? mapServerTripToClient(booking.trip) : undefined,
+  passengerOrigin: booking.passengerOrigin ?? undefined,
+  passengerOriginCoordinates: booking.passengerOriginPoint 
+    ? { latitude: booking.passengerOriginPoint.coordinates[1], longitude: booking.passengerOriginPoint.coordinates[0] }
+    : undefined,
   passengerDestination: booking.passengerDestination ?? undefined,
-  passengerDestinationCoordinates: booking.passengerDestinationCoordinates ?? undefined,
+  passengerDestinationCoordinates: booking.passengerDestinationPoint 
+    ? { latitude: booking.passengerDestinationPoint.coordinates[1], longitude: booking.passengerDestinationPoint.coordinates[0] }
+    : undefined,
   pickedUp: booking.pickedUp ?? false,
   pickedUpAt: booking.pickedUpAt ?? undefined,
   pickedUpConfirmedByPassenger: booking.pickedUpConfirmedByPassenger ?? false,
@@ -80,6 +88,8 @@ export const bookingApi = baseApi.injectEndpoints({
       {
         tripId: string;
         numberOfSeats: number;
+        passengerOrigin?: string;
+        passengerOriginCoordinates?: { latitude: number; longitude: number };
         passengerDestination?: string;
         passengerDestinationCoordinates?: { latitude: number; longitude: number };
       }

@@ -818,13 +818,13 @@ export default function ProfileScreen() {
             <View style={styles.headerStats}>
               <View style={styles.headerStatItem}>
                 <Ionicons name="star" size={16} color={Colors.secondary} />
-                <Text style={styles.headerStatValue}>{(currentUser?.rating ?? 0).toFixed(1)}</Text>
+                <Text style={styles.headerStatValue}>{reviewAverage.toFixed(1)}</Text>
                 <Text style={styles.headerStatLabel}>Note</Text>
               </View>
               <View style={styles.headerStatDivider} />
               <View style={styles.headerStatItem}>
                 <Ionicons name="car-outline" size={18} color={Colors.white} />
-                <Text style={styles.headerStatValue}>{currentUser?.totalTrips ?? 0}</Text>
+                <Text style={styles.headerStatValue}>{stats?.tripsAsDriver ?? currentUser?.totalTrips ?? 0}</Text>
                 <Text style={styles.headerStatLabel}>Trajets</Text>
               </View>
             </View>

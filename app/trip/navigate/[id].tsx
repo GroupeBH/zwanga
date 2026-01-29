@@ -401,17 +401,38 @@ export default function NavigationScreen() {
         }
       }
     } catch (error: any) {
-      console.error('[Navigation] Erreur lors de la récupération de l\'itinéraire:', error);
-      showDialog({
-        title: 'Erreur de navigation',
-        message: error?.data?.message || 'Impossible de charger l\'itinéraire. Vérifiez votre connexion internet.',
-        variant: 'danger',
-        icon: 'map-outline',
-        actions: [
-          { label: 'Réessayer', onPress: () => fetchRoute() },
-          { label: 'Fermer', variant: 'secondary' },
-        ],
-      });
+      // Vérifier si c'est une erreur "pas de route trouvée" (400)
+      const isNoRouteError = error?.status === 400 || error?.data?.statusCode === 400;
+      const isNetworkError = error?.status === 'FETCH_ERROR' || error?.error?.includes?.('Network');
+      
+      if (isNoRouteError) {
+        // Fallback: utiliser une ligne droite entre les points
+        console.warn('[Navigation] Pas de route trouvée, utilisation de ligne droite');
+        
+        // Créer une route simplifiée avec les waypoints
+        const fallbackPoints: Array<{ latitude: number; longitude: number }> = [
+          { latitude: currentLocation.coords.latitude, longitude: currentLocation.coords.longitude },
+        ];
+        
+        // Ajouter les waypoints non complétés
+        waypoints.filter(wp => !wp.completed).forEach(wp => {
+          fallbackPoints.push({ latitude: wp.location.lat, longitude: wp.location.lng });
+        });
+        
+        // Ajouter la destination finale
+        fallbackPoints.push({ latitude: trip.arrival.lat, longitude: trip.arrival.lng });
+        
+        setRouteCoordinates(fallbackPoints);
+        setTotalDistance('--');
+        setTotalDuration('--');
+        setSteps([]);
+      } else if (isNetworkError) {
+        // Erreur réseau - afficher un warning discret
+        console.warn('[Navigation] Erreur réseau, nouvelle tentative plus tard');
+      } else {
+        // Autres erreurs - log seulement
+        console.warn('[Navigation] Erreur itinéraire:', error?.data?.message || error?.message || 'Erreur inconnue');
+      }
     } finally {
       setIsLoadingRoute(false);
     }
