@@ -26,12 +26,13 @@ import {
   View,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type PublishStep = 'route' | 'details' | 'confirm';
 
 export default function PublishScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { isIdentityVerified } = useIdentityCheck();
   const [step, setStep] = useState<PublishStep>('route');
   const [createTrip, { isLoading: isPublishing }] = useCreateTripMutation();
@@ -674,7 +675,7 @@ export default function PublishScreen() {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollViewContent}
+        contentContainerStyle={[styles.scrollViewContent, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Étape 1: Itinéraire */}
@@ -952,7 +953,7 @@ export default function PublishScreen() {
               />
             </View>
 
-            <View style={styles.buttonRow}>
+            <View style={[styles.buttonRow, { paddingBottom: Math.max(insets.bottom, 16) }]}>
               <TouchableOpacity
                 style={[styles.button, styles.buttonSecondary]}
                 onPress={() => setStep('route')}
@@ -1058,7 +1059,7 @@ export default function PublishScreen() {
               </View>
             </View>
 
-            <View style={styles.buttonRow}>
+            <View style={[styles.buttonRow, { paddingBottom: Math.max(insets.bottom, 16) }]}>
               <TouchableOpacity
                 style={[styles.button, styles.buttonSecondary]}
                 onPress={() => setStep('details')}
@@ -1121,7 +1122,7 @@ export default function PublishScreen() {
             <Text style={styles.driverModalMessage}>
               Pour publier des trajets, vous devez d'abord activer votre compte conducteur et ajouter un véhicule dans votre profil.
             </Text>
-            <View style={styles.driverModalButtons}>
+            <View style={[styles.driverModalButtons, { paddingBottom: Math.max(insets.bottom, 0) }]}>
               <TouchableOpacity
                 style={[styles.driverModalButton, styles.driverModalButtonSecondary]}
                 onPress={() => {
@@ -1202,7 +1203,7 @@ export default function PublishScreen() {
               ))}
             </View>
 
-            <View style={styles.kycModalActions}>
+            <View style={[styles.kycModalActions, { paddingBottom: Math.max(insets.bottom, 0) }]}>
               <TouchableOpacity style={styles.kycPrimaryButton} onPress={handleStartKyc}>
                 <Text style={styles.kycPrimaryButtonText}>Commencer ma vérification</Text>
                 <Ionicons name="arrow-forward" size={18} color={Colors.white} />

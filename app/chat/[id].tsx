@@ -11,10 +11,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ChatScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const dispatch = useAppDispatch();
   const { showDialog } = useDialog();
   const { id, title: initialTitle } = useLocalSearchParams<{ id?: string; title?: string }>();
@@ -365,7 +366,7 @@ export default function ChatScreen() {
           ))}
         </ScrollView>
 
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 8) + 8 }]}>
           <View style={styles.inputRow}>
             <TouchableOpacity style={styles.inputButton}>
               <Ionicons name="add" size={24} color={Colors.gray[600]} />

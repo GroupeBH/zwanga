@@ -23,7 +23,7 @@ import {
   View,
 } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type RequestStep = 'route' | 'details' | 'confirm';
 
@@ -35,6 +35,7 @@ const STEPS: { id: RequestStep; label: string; icon: keyof typeof Ionicons.glyph
 
 export default function RequestTripScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [step, setStep] = useState<RequestStep>('route');
   const [createTripRequest, { isLoading: isCreating }] = useCreateTripRequestMutation();
   const { showDialog } = useDialog();
@@ -431,7 +432,7 @@ export default function RequestTripScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
         <TouchableOpacity
           onPress={step === 'confirm' ? handleCreateRequest : handleNextStep}
           disabled={isCreating}
@@ -480,7 +481,7 @@ export default function RequestTripScreen() {
                 onChange={iosPickerModeMin ? handleIosPickerChangeMin : handleIosPickerChangeMax}
               />
               <TouchableOpacity
-                style={styles.iosPickerCloseButton}
+                style={[styles.iosPickerCloseButton, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}
                 onPress={() => { setIosPickerModeMin(null); setIosPickerModeMax(null); }}
               >
                 <Text style={styles.iosPickerCloseText}>Terminer</Text>

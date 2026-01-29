@@ -31,7 +31,7 @@ import {
 } from 'react-native';
 import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
 type FeedbackState = { type: 'success' | 'error'; message: string } | null;
@@ -75,6 +75,7 @@ const BOOKING_STATUS_CONFIG: Record<
 export default function ManageTripScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
+  const insets = useSafeAreaInsets();
   const tripId = typeof id === 'string' ? id : '';
   const user = useAppSelector(selectUser);
   const { isIdentityVerified } = useIdentityCheck();
@@ -912,7 +913,7 @@ export default function ManageTripScreen() {
       </ScrollView>
 
       {/* Sticky Footer pour les actions du trajet */}
-      <View style={styles.stickyFooter}>
+      <View style={[styles.stickyFooter, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
         {trip.status === 'upcoming' && (
           <>
             <TouchableOpacity
@@ -996,7 +997,7 @@ export default function ManageTripScreen() {
 
       <Modal animationType="slide" transparent visible={rejectModalVisible}>
         <View style={styles.bookingModalOverlay}>
-          <View style={styles.bookingModalCard}>
+          <View style={[styles.bookingModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
             <Text style={styles.bookingModalTitle}>Refuser la réservation</Text>
             <Text style={styles.bookingModalDescription}>
               Expliquez brièvement au passager la raison du refus.
@@ -1182,7 +1183,7 @@ export default function ManageTripScreen() {
           activeOpacity={1}
           onPress={() => setContactModalVisible(false)}
         >
-          <Animated.View entering={FadeInDown} style={styles.contactModalCard} onStartShouldSetResponder={() => true}>
+          <Animated.View entering={FadeInDown} style={[styles.contactModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]} onStartShouldSetResponder={() => true}>
             <View style={styles.contactModalHeader}>
               <View style={styles.contactModalIconWrapper}>
                 <View style={styles.contactModalIconBadge}>
@@ -1657,7 +1658,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: BorderRadius.md,
     gap: 6,
-    marginBottom: 40,
   },
   acceptButton: {
     backgroundColor: Colors.success,
@@ -1677,7 +1677,7 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: Colors.white,
     padding: Spacing.lg,
-    paddingBottom: 40, // Safe area
+    // paddingBottom is set dynamically via useSafeAreaInsets
     borderTopWidth: 1,
     borderTopColor: Colors.gray[100],
     flexDirection: 'row',
@@ -1730,7 +1730,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
     padding: Spacing.xl,
-    paddingBottom: 40,
+    // paddingBottom est défini dynamiquement avec insets.bottom
   },
   bookingModalTitle: {
     fontSize: FontSizes.xl,
@@ -1877,7 +1877,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
     padding: Spacing.xl,
-    paddingBottom: 40,
+    // paddingBottom est défini dynamiquement avec insets.bottom
   },
   contactModalHeader: {
     alignItems: 'center',

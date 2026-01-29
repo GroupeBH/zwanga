@@ -35,12 +35,13 @@ import {
   View,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const dispatch = useAppDispatch();
   const user = useAppSelector(selectUser);
   const { changeProfilePhoto, isUploading } = useProfilePhoto();
@@ -1270,7 +1271,7 @@ export default function ProfileScreen() {
             keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
           >
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View style={styles.vehicleModalCard}>
+              <View style={[styles.vehicleModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
             <View style={styles.vehicleModalHeader}>
               <TouchableOpacity onPress={() => setVehicleModalVisible(false)}>
                 <Ionicons name="close" size={24} color={Colors.gray[500]} />
@@ -1369,7 +1370,7 @@ export default function ProfileScreen() {
         onRequestClose={() => setReviewsModalVisible(false)}
       >
         <View style={styles.reviewsModalOverlay}>
-          <Animated.View entering={FadeInDown} style={styles.reviewsModalCard}>
+          <Animated.View entering={FadeInDown} style={[styles.reviewsModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
             <View style={styles.reviewsModalHeader}>
               <Text style={styles.reviewsModalTitle}>Tous les avis</Text>
               <TouchableOpacity onPress={() => setReviewsModalVisible(false)}>

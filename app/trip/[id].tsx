@@ -49,7 +49,7 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const pointToLatLng = (point?: GeoPoint | null) => {
   if (!point?.coordinates || point.coordinates.length < 2) {
@@ -119,6 +119,7 @@ const BOOKING_STATUS_CONFIG: Record<
 export default function TripDetailsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const insets = useSafeAreaInsets();
   const tripId = typeof params.id === 'string' ? (params.id as string) : '';
   const trackParam = Array.isArray(params.track) ? params.track.includes('true') : params.track === 'true'; // Permet le suivi via lien partagé
 
@@ -1600,7 +1601,7 @@ export default function TripDetailsScreen() {
       </ScrollView>
 
       {/* Sticky Footer for Actions */}
-      <View style={styles.stickyFooter}>
+      <View style={[styles.stickyFooter, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
         {(() => {
           // Vérifier si le trajet est expiré (date de départ passée)
           const isExpired = trip?.departureTime && new Date(trip?.departureTime) < new Date();
@@ -1775,7 +1776,7 @@ export default function TripDetailsScreen() {
 
       <Modal animationType="fade" transparent visible={bookingModalVisible}>
         <View style={styles.bookingModalOverlay}>
-          <View style={styles.bookingModalCard}>
+          <View style={[styles.bookingModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
             <Text style={styles.bookingModalTitle}>Réserver ce trajet</Text>
             <Text style={styles.bookingModalDescription}>
               Choisissez le nombre de places à réserver.
@@ -1907,7 +1908,7 @@ export default function TripDetailsScreen() {
 
       <Modal animationType="fade" transparent visible={bookingSuccess.visible}>
         <View style={styles.feedbackModalOverlay}>
-          <View style={styles.feedbackModalCard}>
+          <View style={[styles.feedbackModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
             <View style={styles.feedbackModalIcon}>
               <Ionicons name="checkmark-circle" size={32} color={Colors.white} />
             </View>
@@ -1945,7 +1946,7 @@ export default function TripDetailsScreen() {
         onRequestClose={() => setReviewsModalVisible(false)}
       >
         <View style={styles.reviewsModalOverlay}>
-          <Animated.View entering={FadeInDown} style={styles.reviewsModalCard}>
+          <Animated.View entering={FadeInDown} style={[styles.reviewsModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
             <View style={styles.reviewsModalHeader}>
               <Text style={styles.reviewsModalTitle}>Avis sur {trip?.driverName}</Text>
               <TouchableOpacity onPress={() => setReviewsModalVisible(false)}>
@@ -1954,7 +1955,7 @@ export default function TripDetailsScreen() {
             </View>
             <ScrollView
               style={styles.reviewsModalContent}
-              contentContainerStyle={{ paddingBottom: Spacing.xl }}
+              contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 24 }}
               showsVerticalScrollIndicator={false}
             >
               {driverReviewCount === 0 ? (
@@ -2038,7 +2039,7 @@ export default function TripDetailsScreen() {
           activeOpacity={1}
           onPress={() => setContactModalVisible(false)}
         >
-          <Animated.View entering={FadeInDown} style={styles.contactModalCard} onStartShouldSetResponder={() => true}>
+          <Animated.View entering={FadeInDown} style={[styles.contactModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]} onStartShouldSetResponder={() => true}>
             <View style={styles.contactModalHeader}>
               <View style={styles.contactModalIconWrapper}>
                 <View style={styles.contactModalIconBadge}>
@@ -2123,7 +2124,7 @@ export default function TripDetailsScreen() {
           activeOpacity={1}
           onPress={() => setShareModalVisible(false)}
         >
-          <Animated.View entering={FadeInDown} style={styles.contactModalCard} onStartShouldSetResponder={() => true}>
+          <Animated.View entering={FadeInDown} style={[styles.contactModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]} onStartShouldSetResponder={() => true}>
             <View style={styles.contactModalHeader}>
               <View style={styles.contactModalIconWrapper}>
                 <View style={styles.contactModalIconBadge}>
@@ -2740,7 +2741,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,
-    paddingBottom: 34, // Safe area for iPhone home indicator
+    // paddingBottom is set dynamically via useSafeAreaInsets
     borderTopWidth: 1,
     borderTopColor: Colors.gray[100],
     elevation: 20,
@@ -2763,7 +2764,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
-    marginBottom: 40,
   },
   actionButtonText: {
     color: Colors.white,
@@ -2937,7 +2937,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     padding: Spacing.xl,
-    paddingBottom: 40,
+    // paddingBottom est défini dynamiquement avec insets.bottom
   },
   bookingModalTitle: {
     fontSize: 22,
@@ -3079,9 +3079,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     maxHeight: '85%',
-    minHeight: '50%', // Assure une hauteur minimale même sans contenu
+    minHeight: '50%',
     padding: Spacing.xl,
-    paddingBottom: Spacing.xxl, // Espace pour la barre de navigation
+    // paddingBottom est défini dynamiquement avec insets.bottom
   },
   reviewsModalHeader: {
     flexDirection: 'row',
@@ -3283,7 +3283,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderRadius: 32,
     padding: Spacing.xl,
-    paddingBottom: 40,
+    // paddingBottom est défini dynamiquement avec insets.bottom
   },
   contactModalHeader: {
     alignItems: 'center',

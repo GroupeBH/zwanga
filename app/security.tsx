@@ -17,7 +17,7 @@ import {
   Linking,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Contacts from 'expo-contacts';
 import {
   useGetEmergencyContactsQuery,
@@ -38,6 +38,7 @@ const MAX_CONTACTS = 5;
 
 export default function SecurityScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { showDialog } = useDialog();
   const { data: contacts = [], isLoading: isLoadingContacts, refetch } = useGetEmergencyContactsQuery();
   const [createContact, { isLoading: isCreating }] = useCreateEmergencyContactMutation();
@@ -446,7 +447,7 @@ export default function SecurityScreen() {
                 </View>
               </ScrollView>
 
-              <View style={styles.modalFooter}>
+              <View style={[styles.modalFooter, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
                 <TouchableOpacity
                   style={styles.cancelButton}
                   onPress={() => {
@@ -725,7 +726,7 @@ const styles = StyleSheet.create({
   modalFooter: {
     flexDirection: 'row',
     padding: Spacing.lg,
-    paddingBottom: Spacing.xl,
+    // paddingBottom est défini dynamiquement avec insets.bottom
     borderTopWidth: 1,
     borderTopColor: Colors.gray[200],
     gap: Spacing.md,
