@@ -127,6 +127,10 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
       return true;
     }
 
+    if (pathname?.includes(`/trip/navigate/${ongoingTrip.trip.id}`)) {
+      return true;
+    }
+
     return false;
   }, [pathname, ongoingTrip]);
 

@@ -79,7 +79,10 @@ export default function ManageTripScreen() {
   const tripId = typeof id === 'string' ? id : '';
   const user = useAppSelector(selectUser);
   const { isIdentityVerified } = useIdentityCheck();
+  
   // Polling intelligent basé sur le statut du trajet
+  const [pollingInterval, setPollingInterval] = useState<number>(0);
+  
   const {
     data: trip,
     isLoading: tripLoading,
@@ -87,15 +90,27 @@ export default function ManageTripScreen() {
     refetch: refetchTrip,
   } = useGetTripByIdQuery(tripId, { 
     skip: !tripId,
-    // Polling automatique pour le conducteur
-    pollingInterval: trip?.status === 'ongoing' 
-      ? 5000 // 5 secondes pour les trajets en cours
-      : trip?.status === 'upcoming'
-      ? 30000 // 30 secondes pour les trajets à venir
-      : 0, // Pas de polling pour les trajets terminés/annulés
+    pollingInterval,
     refetchOnFocus: true,
     refetchOnReconnect: true,
   });
+
+  // Mettre à jour l'intervalle de polling en fonction du statut du trajet
+  useEffect(() => {
+    if (!trip) {
+      setPollingInterval(0);
+      return;
+    }
+    
+    // Polling automatique pour le conducteur
+    if (trip.status === 'ongoing') {
+      setPollingInterval(5000); // 5 secondes pour les trajets en cours
+    } else if (trip.status === 'upcoming') {
+      setPollingInterval(30000); // 30 secondes pour les trajets à venir
+    } else {
+      setPollingInterval(0); // Pas de polling pour les trajets terminés/annulés
+    }
+  }, [trip?.status]);
   console.log("check owner", trip?.driverId, user?.id);
   const isOwner = useMemo(() => !!trip && !!user && trip.driverId === user.id, [trip, user]);
   const {
@@ -401,6 +416,23 @@ export default function ManageTripScreen() {
         },
       ],
     });
+  };
+
+  const handleOpenNavigation = () => {
+    if (!trip) return;
+
+    const { arrival } = trip;
+    if (!arrival || !arrival.lat || !arrival.lng) {
+      showDialog({
+        title: 'Erreur',
+        message: 'Les coordonnées de destination sont indisponibles.',
+        variant: 'danger',
+      });
+      return;
+    }
+
+    // Ouvrir l'écran de navigation intégré
+    router.push(`/trip/navigate/${trip.id}`);
   };
 
   const handleConfirmPickup = async (bookingId: string) => {
@@ -982,21 +1014,31 @@ export default function ManageTripScreen() {
         )}
 
         {trip.status === 'ongoing' && !canCompleteTrip && (
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={handlePauseTrip}
-            disabled={isPausingTrip}
-            activeOpacity={0.8}
-          >
-            {isPausingTrip ? (
-              <ActivityIndicator color={Colors.warning} />
-            ) : (
-              <>
-                <Ionicons name="pause" size={20} color={Colors.warning} />
-                <Text style={[styles.secondaryButtonText, { color: Colors.warning }]}>Interrompre</Text>
-              </>
-            )}
-          </TouchableOpacity>
+          <View style={styles.ongoingActionsRow}>
+            <TouchableOpacity
+              style={[styles.primaryButton, styles.navigationButton]}
+              onPress={handleOpenNavigation}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="navigate" size={20} color={Colors.white} />
+              <Text style={styles.primaryButtonText}>Navigation</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={handlePauseTrip}
+              disabled={isPausingTrip}
+              activeOpacity={0.8}
+            >
+              {isPausingTrip ? (
+                <ActivityIndicator color={Colors.warning} />
+              ) : (
+                <>
+                  <Ionicons name="pause" size={20} color={Colors.warning} />
+                  <Text style={[styles.secondaryButtonText, { color: Colors.warning }]}>Interrompre</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         )}
 
         {trip.status === 'completed' && (
@@ -1736,6 +1778,15 @@ const styles = StyleSheet.create({
   },
   completeTripButton: {
     backgroundColor: Colors.success,
+  },
+  ongoingActionsRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    width: '100%',
+  },
+  navigationButton: {
+    flex: 1,
+    backgroundColor: Colors.primary,
   },
   bookingModalOverlay: {
     flex: 1,
