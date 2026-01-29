@@ -1493,12 +1493,20 @@ export default function TripDetailsScreen() {
             <View style={styles.detailsList}>
               <View style={styles.detailRow}>
                 <View style={styles.detailLeft}>
-                  <Ionicons name="people" size={20} color={Colors.primary} />
+                  <Ionicons name="people" size={20} color={availableSeats <= 0 ? Colors.danger : Colors.primary} />
                   <Text style={styles.detailLabel}>Places disponibles</Text>
                 </View>
-                <Text style={styles.detailValue}>
-                  {trip?.availableSeats}/{trip?.totalSeats}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  {availableSeats <= 0 && (
+                    <Ionicons name="alert-circle" size={18} color={Colors.danger} />
+                  )}
+                  <Text style={[
+                    styles.detailValue,
+                    availableSeats <= 0 && { color: Colors.danger, fontWeight: FontWeights.bold }
+                  ]}>
+                    {availableSeats <= 0 ? 'Complet' : `${trip?.availableSeats}/${trip?.totalSeats}`}
+                  </Text>
+                </View>
               </View>
 
               <View style={styles.detailRow}>
@@ -1736,20 +1744,17 @@ export default function TripDetailsScreen() {
                       </View>
                     </View>
                   )
+                ) : availableSeats <= 0 ? (
+                  <View style={[styles.actionButton, styles.actionButtonDisabled]}>
+                    <Ionicons name="close-circle" size={20} color={Colors.white} />
+                    <Text style={styles.actionButtonText}>Complet • Plus de places disponibles</Text>
+                  </View>
                 ) : (
                   <TouchableOpacity
-                    style={[
-                      styles.actionButton,
-                      (availableSeats <= 0 || myBookingsLoading) && styles.actionButtonDisabled,
-                    ]}
+                    style={styles.actionButton}
                     onPress={openBookingModal}
-                    disabled={availableSeats <= 0 || myBookingsLoading}
                   >
-                    {myBookingsLoading ? (
-                      <ActivityIndicator color={Colors.white} />
-                    ) : (
-                      <Text style={styles.actionButtonText}>Réserver • {trip.price === 0 ? 'Gratuit' : `${trip.price} FC`}</Text>
-                    )}
+                    <Text style={styles.actionButtonText}>Réserver • {trip.price === 0 ? 'Gratuit' : `${trip.price} FC`}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -2766,8 +2771,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     height: 56,
     borderRadius: 18,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
     elevation: 4,
     shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 4 },
