@@ -1,7 +1,7 @@
 import type { FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import { API_BASE_URL } from '../../config/env';
 import { storeTokens } from '../../services/tokenStorage';
-import { setTokens, setUser } from '../../store/slices/authSlice';
+import { saveTokensAndUpdateState, setUser } from '../../store/slices/authSlice';
 import type { User } from '../../types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
@@ -38,33 +38,24 @@ export const authApi = baseApi.injectEndpoints({
         try {
           const { data } = await queryFulfilled;
           
-          console.log('[authApi] Login success - Storing tokens in SecureStore...');
+          console.log('[authApi] Login success - Saving tokens in SecureStore then updating state...');
           
-          // 1. Stocker les tokens dans SecureStore (PRIORITÉ)
-          await storeTokens(data.accessToken, data.refreshToken);
-          
-          console.log('[authApi] Tokens stored in SecureStore successfully');
-          
-          // 2. Dispatcher setTokens dans Redux EN PREMIER (CRITIQUE pour l'ordre)
-          // setTokens définit aussi isAuthenticated=true et met à jour l'utilisateur depuis le token
-          dispatch(setTokens({ 
+          // 1. Sauvegarder dans SecureStore puis mettre à jour le state Redux (séquentiellement)
+          await dispatch(saveTokensAndUpdateState({ 
             accessToken: data.accessToken, 
             refreshToken: data.refreshToken 
-          }));
+          })).unwrap();
           
-          console.log('[authApi] Tokens dispatched to Redux');
+          console.log('[authApi] Tokens saved and state updated successfully');
           
-          // 3. Récupérer l'utilisateur complet (si nécessaire) APRÈS setTokens
-          // setTokens a déjà mis à jour l'utilisateur depuis le token JWT, mais on peut
-          // récupérer les infos complètes depuis l'API si nécessaire
+          // 2. Récupérer l'utilisateur complet (si nécessaire) APRÈS la sauvegarde des tokens
           if (!data.user) {
             const userResult = await dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true }));
             if (userResult.data) {
               dispatch(setUser(userResult.data));
             }
           } else {
-            // Si data.user existe, on le met à jour APRÈS setTokens
-            // pour avoir les infos complètes (setTokens a déjà mis les infos basiques du token)
+            // Si data.user existe, on le met à jour
             dispatch(setUser(data.user));
           }
         } catch (error) {
@@ -88,39 +79,69 @@ export const authApi = baseApi.injectEndpoints({
         try {
           const { data } = await queryFulfilled;
           
-          console.log('[authApi] Registration success - Storing tokens in SecureStore...');
+          console.log('[authApi] Registration success - Saving tokens in SecureStore then updating state...');
           
-          // 1. Stocker les tokens dans SecureStore (PRIORITÉ)
-          await storeTokens(data.accessToken, data.refreshToken);
-          
-          console.log('[authApi] Tokens stored in SecureStore successfully');
-          
-          // 2. Dispatcher setTokens dans Redux EN PREMIER (CRITIQUE pour l'ordre)
-          // setTokens définit aussi isAuthenticated=true et met à jour l'utilisateur depuis le token
-          dispatch(setTokens({ 
+          // 1. Sauvegarder dans SecureStore puis mettre à jour le state Redux (séquentiellement)
+          await dispatch(saveTokensAndUpdateState({ 
             accessToken: data.accessToken, 
             refreshToken: data.refreshToken 
-          }));
+          })).unwrap();
           
-          console.log('[authApi] Tokens dispatched to Redux');
+          console.log('[authApi] Tokens saved and state updated successfully');
           
-          // 3. Récupérer l'utilisateur complet (si nécessaire) APRÈS setTokens
-          // setTokens a déjà mis à jour l'utilisateur depuis le token JWT, mais on peut
-          // récupérer les infos complètes depuis l'API si nécessaire
+          // 2. Récupérer l'utilisateur complet (si nécessaire) APRÈS la sauvegarde des tokens
           if (!data.user) {
             const userResult = await dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true }));
             if (userResult.data) {
               dispatch(setUser(userResult.data));
             }
           } else {
-            // Si data.user existe, on le met à jour APRÈS setTokens
-            // pour avoir les infos complètes (setTokens a déjà mis les infos basiques du token)
+            // Si data.user existe, on le met à jour
             dispatch(setUser(data.user));
           }
         } catch (error) {
           console.error('[authApi] Erreur lors du stockage des tokens après inscription:', error);
         }
       },
+    }),
+
+    // Google mobile (login ou signup)
+    googleMobile: builder.mutation<AuthResponse, { idToken: string; phone?: string }>({
+      query: (body) => ({
+        url: '/auth/google/mobile',
+        method: 'POST',
+        body,
+      }),
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+          
+          console.log('[authApi] Google mobile success - Saving tokens in SecureStore then updating state...');
+          
+          // 1. Sauvegarder dans SecureStore puis mettre à jour le state Redux (séquentiellement)
+          await dispatch(saveTokensAndUpdateState({ 
+            accessToken: data.accessToken, 
+            refreshToken: data.refreshToken 
+          })).unwrap();
+          
+          console.log('[authApi] Tokens saved and state updated successfully');
+
+          // 2. Récupérer l'utilisateur complet (si nécessaire) APRÈS la sauvegarde des tokens
+          if (!data.user) {
+            const userResult = await dispatch(
+              userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true }),
+            );
+            if (userResult.data) {
+              dispatch(setUser(userResult.data));
+            }
+          } else {
+            dispatch(setUser(data.user));
+          }
+        } catch (error) {
+          console.error('[authApi] Erreur lors du login Google mobile:', error);
+        }
+      },
+      invalidatesTags: ['User'],
     }),
 
     // Vérification du numéro de téléphone avec code SMS
@@ -140,6 +161,14 @@ export const authApi = baseApi.injectEndpoints({
         body: data,
       }),
       invalidatesTags: ['User'],
+    }),
+
+    // Déconnexion - invalide le refresh token côté serveur
+    logout: builder.mutation<{ message: string }, void>({
+      query: () => ({
+        url: '/auth/logout',
+        method: 'POST',
+      }),
     }),
 
     // Rafraîchir l'access token avec le refresh token
@@ -209,6 +238,8 @@ export const {
   useVerifyPhoneMutation,
   useVerifyKYCMutation,
   useRefreshTokenMutation,
+  useGoogleMobileMutation,
+  useLogoutMutation,
 } = authApi;
 
 

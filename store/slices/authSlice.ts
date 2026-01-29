@@ -1,6 +1,7 @@
 import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { validateAndRefreshTokens } from '../../services/tokenRefresh';
-import { clearTokens, getTokens } from '../../services/tokenStorage';
+import { clearTokens, getTokens, storeTokens } from '../../services/tokenStorage';
+import { authApi } from '../api/authApi';
 import type { User } from '../../types';
 import { decodeJWT } from '../../utils/jwt';
 
@@ -23,6 +24,65 @@ const initialState: AuthState = {
   refreshToken: null,
   tokenPayload: null,
 };
+
+/**
+ * Thunk pour effectuer une déconnexion complète
+ * - Invalide le refresh token côté serveur
+ * - Supprime tous les tokens du SecureStore (access, refresh, FCM)
+ * - Déconnecte de Google si l'utilisateur était connecté via Google
+ */
+export const performLogout = createAsyncThunk(
+  'auth/performLogout',
+  async (_, { dispatch }) => {
+    try {
+      // 1. Appeler le backend pour invalider le refresh token côté serveur
+      // On ne bloque pas si ça échoue (l'utilisateur peut être offline)
+      try {
+        await dispatch(authApi.endpoints.logout.initiate()).unwrap();
+        console.log('[performLogout] Refresh token invalidé côté serveur');
+      } catch (backendError) {
+        // Ignorer les erreurs backend (offline, token déjà invalide, etc.)
+        console.warn('[performLogout] Impossible d\'invalider le token côté serveur:', backendError);
+      }
+
+      // 2. Nettoyer le SecureStore (access token, refresh token, FCM token)
+      await clearTokens();
+      console.log('[performLogout] SecureStore nettoyé');
+
+      return true;
+    } catch (error) {
+      console.error('[performLogout] Erreur lors de la déconnexion:', error);
+      // Même en cas d'erreur, on veut quand même réinitialiser l'état Redux
+      return true;
+    }
+  }
+);
+
+/**
+ * Thunk pour sauvegarder les tokens dans SecureStore puis mettre à jour le state Redux
+ * Cette fonction garantit que les tokens sont d'abord sauvegardés dans SecureStore
+ * avant d'être propagés dans le state Redux
+ */
+export const saveTokensAndUpdateState = createAsyncThunk(
+  'auth/saveTokensAndUpdateState',
+  async (tokens: { accessToken: string; refreshToken: string }, { dispatch }) => {
+    try {
+      // 1. Sauvegarder d'abord dans SecureStore (séquentiellement)
+      console.log('[saveTokensAndUpdateState] Sauvegarde des tokens dans SecureStore...');
+      await storeTokens(tokens.accessToken, tokens.refreshToken);
+      console.log('[saveTokensAndUpdateState] Tokens sauvegardés dans SecureStore avec succès');
+
+      // 2. Ensuite, mettre à jour le state Redux
+      dispatch(setTokens(tokens));
+      console.log('[saveTokensAndUpdateState] State Redux mis à jour');
+
+      return tokens;
+    } catch (error) {
+      console.error('[saveTokensAndUpdateState] Erreur lors de la sauvegarde des tokens:', error);
+      throw error;
+    }
+  }
+);
 
 /**
  * Thunk pour initialiser l'authentification depuis SecureStore
@@ -113,14 +173,13 @@ const authSlice = createSlice({
       }
     },
     logout: (state) => {
+      // Réinitialiser l'état Redux (le nettoyage SecureStore est fait par performLogout)
       state.user = null;
       state.isAuthenticated = false;
       state.accessToken = null;
       state.refreshToken = null;
       state.tokenPayload = null;
       state.error = null;
-      // Nettoyer SecureStore
-      clearTokens().catch(console.error);
     },
     setLoading: (state, action: PayloadAction<boolean>) => {
       state.isLoading = action.payload;
@@ -162,6 +221,29 @@ const authSlice = createSlice({
         state.isLoading = false;
         state.error = action.error.message || 'Erreur lors de l\'initialisation';
         state.isAuthenticated = false;
+      })
+      // Gérer le logout complet via performLogout
+      .addCase(performLogout.fulfilled, (state) => {
+        state.user = null;
+        state.isAuthenticated = false;
+        state.accessToken = null;
+        state.refreshToken = null;
+        state.tokenPayload = null;
+        state.error = null;
+        state.isLoading = false;
+      })
+      .addCase(performLogout.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(performLogout.rejected, (state) => {
+        // Même en cas d'erreur, on déconnecte l'utilisateur
+        state.user = null;
+        state.isAuthenticated = false;
+        state.accessToken = null;
+        state.refreshToken = null;
+        state.tokenPayload = null;
+        state.error = null;
+        state.isLoading = false;
       });
   },
 });

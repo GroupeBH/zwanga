@@ -111,6 +111,9 @@ export interface Booking {
   createdAt: string;
   updatedAt: string;
   trip?: Trip;
+  // Point de récupération personnalisé du passager
+  passengerOrigin?: string | null;
+  passengerOriginCoordinates?: { latitude: number; longitude: number } | null;
   // Destination personnalisée du passager
   passengerDestination?: string | null;
   passengerDestinationCoordinates?: { latitude: number; longitude: number } | null;

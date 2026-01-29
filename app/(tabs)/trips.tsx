@@ -47,14 +47,26 @@ export default function TripsScreen() {
     isFetching: tripsFetching,
     isError: tripsError,
     refetch: refetchTrips,
-  } = useGetMyTripsQuery();
+  } = useGetMyTripsQuery(undefined, {
+    // Polling adaptatif : plus fréquent si des trajets sont en cours
+    pollingInterval: myTrips?.some(trip => trip.status === 'ongoing') ? 15000 : 60000,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
   const {
     data: myBookings,
     isLoading: bookingsLoading,
     isFetching: bookingsFetching,
     isError: bookingsError,
     refetch: refetchBookings,
-  } = useGetMyBookingsQuery();
+  } = useGetMyBookingsQuery(undefined, {
+    // Polling pour les réservations : plus fréquent si des trajets réservés sont en cours
+    pollingInterval: myBookings?.some(booking => 
+      booking.status === 'accepted' && booking.trip?.status === 'ongoing'
+    ) ? 15000 : 60000,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
   const [updateTripMutation, { isLoading: isSavingTrip }] = useUpdateTripMutation();
   const [deleteTripMutation, { isLoading: isDeletingTrip }] = useDeleteTripMutation();
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);

@@ -27,7 +27,12 @@ export default function MyTripRequestsScreen() {
     isLoading,
     isFetching,
     refetch,
-  } = useGetMyTripRequestsQuery();
+  } = useGetMyTripRequestsQuery(undefined, {
+    // Polling pour mes demandes de trajet
+    pollingInterval: 30000,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
 
   console.log('[MyTripRequests] tripRequests:', tripRequests);
 

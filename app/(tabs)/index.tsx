@@ -249,6 +249,15 @@ const styles = StyleSheet.create({
   },
   promoImage: {
     marginLeft: Spacing.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  promoCarImage: {
+    width: 90,
+    height: 70,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
   section: {
     paddingHorizontal: Spacing.xl,
@@ -539,7 +548,12 @@ export default function HomeScreen() {
     isLoading: tripsLoading,
     isError: tripsError,
     refetch: refetchTrips,
-  } = useGetTripsQuery(queryParams);
+  } = useGetTripsQuery(queryParams, {
+    // Polling toutes les 60 secondes pour maintenir la liste à jour
+    pollingInterval: 60000,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
 
   // console.log('remoteTrips', remoteTrips?.length);
   const { data: notificationsData } = useGetNotificationsQuery(undefined, {
@@ -938,7 +952,11 @@ export default function HomeScreen() {
               <Text style={styles.promoSubtitle}>Économisez sur vos trajets quotidiens avec le covoiturage.</Text>
             </View>
             <View style={styles.promoImage}>
-              <Ionicons name="shield-checkmark" size={40} color="rgba(255,255,255,0.3)" />
+              <Image
+                source={{ uri: 'https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?w=200&h=150&fit=crop&crop=center' }}
+                style={styles.promoCarImage}
+                resizeMode="cover"
+              />
             </View>
           </LinearGradient>
         </Animated.View>

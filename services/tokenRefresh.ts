@@ -1,13 +1,16 @@
 import { fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { API_BASE_URL } from '../config/env';
-import { logout, setTokens } from '../store/slices/authSlice';
+import { saveTokensAndUpdateState } from '../store/slices/authSlice';
 import { getStoreDispatch } from '../store/storeAccessor';
 import { isTokenExpired, isTokenExpiringSoon } from '../utils/jwt';
-import { clearTokens, getTokens, storeTokens } from './tokenStorage';
+import { getTokens } from './tokenStorage';
 
 /**
  * Service de rafraîchissement automatique des tokens JWT
  * Gère la vérification et le renouvellement des access tokens
+ * 
+ * IMPORTANT: Ce service ne déclenche JAMAIS de logout directement.
+ * La gestion du logout est centralisée dans AuthGuard pour éviter les race conditions.
  */
 
 let isRefreshing = false;
@@ -27,77 +30,39 @@ const refreshBaseQuery = fetchBaseQuery({
 });
 
 /**
- * Vérifie si les tokens sont valides et rafraîchit si nécessaire
- * @returns true si l'utilisateur est authentifié, false sinon
+ * Vérifie si les tokens existent et si le refresh token est valide.
+ * Appelé par initializeAuth dans authSlice au démarrage.
+ * 
+ * IMPORTANT: Cette fonction ne rafraîchit PAS les tokens.
+ * Le refresh est géré par :
+ * 1. proactiveTokenRefresh() dans AuthGuard (au démarrage et retour de l'app)
+ * 2. baseQueryWithReauth (sur erreur 401)
+ * 3. Le backend (après KYC validé ou PIN changé)
+ * 
+ * @returns true si l'utilisateur a des tokens avec un refresh token valide, false sinon
  */
 export async function validateAndRefreshTokens(): Promise<boolean> {
-
   try {
     const { accessToken, refreshToken } = await getTokens();
 
-    console.log("accessToken at validateAndRefreshTokens", accessToken);
-    console.log("refreshToken at validateAndRefreshTokens", refreshToken);
-
     // Pas de tokens = utilisateur non connecté
     if (!accessToken || !refreshToken) {
-      console.log('Aucun token trouvé - utilisateur non connecté');
+      console.log('[validateAndRefreshTokens] Aucun token trouvé');
       return false;
     }
 
-    // Vérifier l'access token
-    const accessTokenExpired = isTokenExpired(accessToken);
-    const accessTokenExpiringSoon = isTokenExpiringSoon(accessToken, 5);
-
-    // Si l'access token est valide et n'expire pas bientôt, tout est OK
-    if (!accessTokenExpired && !accessTokenExpiringSoon) {
-      console.log('Access token valide');
-      return true;
-    }
-
-    // L'access token est expiré ou expire bientôt, vérifier le refresh token
-    const refreshTokenExpired = isTokenExpired(refreshToken);
-
-    if (refreshTokenExpired) {
-      console.log('Refresh token expiré - déconnexion nécessaire');
-      // Nettoyer les tokens et déconnecter
-      await clearTokens();
-      getStoreDispatch()(logout());
+    // Vérifier si le refresh token est expiré
+    if (isTokenExpired(refreshToken)) {
+      console.log('[validateAndRefreshTokens] Refresh token expiré');
       return false;
     }
 
-    // Le refresh token est valide, rafraîchir l'access token
-    console.log('Rafraîchissement de l\'access token...');
-    const newAccessToken = await refreshAccessToken(refreshToken);
-
-    if (newAccessToken) {
-      console.log('Access token rafraîchi avec succès');
-      return true;
-    } else {
-      // Si refreshAccessToken retourne null, cela peut être dû à une erreur réseau
-      // Dans ce cas, on ne déconnecte pas l'utilisateur - il peut utiliser l'app en mode offline
-      // On retourne true pour indiquer que l'utilisateur reste authentifié avec ses tokens existants
-      console.log('Échec du rafraîchissement - peut-être offline, utilisateur reste connecté');
-      // Ne pas déconnecter - l'utilisateur peut continuer avec son access token actuel (même s'il est expiré)
-      // Les requêtes échoueront mais l'utilisateur ne sera pas déconnecté
-      return true; // Retourner true pour indiquer que l'utilisateur reste authentifié
-    }
+    // L'utilisateur a des tokens avec un refresh token valide
+    // Le proactiveTokenRefresh dans AuthGuard gérera le refresh si l'access token est expiré
+    console.log('[validateAndRefreshTokens] Tokens présents, refresh token valide');
+    return true;
   } catch (error: any) {
-    console.error('Erreur lors de la validation des tokens:', error);
-    
-    // Vérifier si c'est une erreur réseau
-    const isNetworkError = 
-      error?.name === 'TypeError' ||
-      error?.message?.toLowerCase().includes('network') ||
-      error?.message?.toLowerCase().includes('fetch');
-    
-    if (isNetworkError) {
-      console.warn('Erreur réseau détectée - utilisateur reste connecté en mode offline');
-      return true; // L'utilisateur reste authentifié
-    }
-    
-    // Pour les autres erreurs, déconnecter par sécurité
-    await clearTokens();
-    getStoreDispatch()(logout());
+    console.error('[validateAndRefreshTokens] Erreur:', error);
     return false;
   }
 }
@@ -192,22 +157,18 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
         throw new Error('Tokens manquants dans la réponse');
       }
 
-      // Stocker les nouveaux tokens
-      await storeTokens(data.accessToken, data.refreshToken);
-
-      // Mettre à jour Redux
-      getStoreDispatch()(setTokens({
+      // Sauvegarder dans SecureStore puis mettre à jour le state Redux (séquentiellement)
+      await getStoreDispatch()(saveTokensAndUpdateState({
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
-      }));
+      })).unwrap();
 
       console.log('Tokens rafraîchis et stockés');
       return data.accessToken;
     } catch (error: any) {
-      console.error('Erreur lors du rafraîchissement du token:');
+      console.error('[refreshAccessToken] Erreur lors du rafraîchissement du token:');
       console.error('  - Type:', error?.name || typeof error);
       console.error('  - Message:', error?.message);
-      console.error('  - Stack:', error?.stack);
       
       // Vérifier si c'est une erreur réseau (offline, pas de connexion, etc.)
       const isNetworkError = 
@@ -221,18 +182,15 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
         (result?.error && 'status' in result.error && result.error.status === 'FETCH_ERROR');
       
       if (isNetworkError) {
-        console.warn('  - Erreur réseau détectée - pas de déconnexion en mode offline');
-        // Ne pas déconnecter l'utilisateur en cas d'erreur réseau
-        // L'utilisateur reste connecté et peut continuer à utiliser l'app en mode offline
-        isRefreshing = false;
-        refreshPromise = null;
-        return null; // Retourner null mais sans déconnecter
+        console.warn('[refreshAccessToken] Erreur réseau - pas de déconnexion');
+        return null;
       }
       
-      // Pour les autres erreurs (401, 403, etc.), c'est une vraie erreur d'authentification
-      console.error('  - Erreur d\'authentification détectée - déconnexion');
-      await clearTokens();
-      getStoreDispatch()(logout());
+      // Pour les erreurs d'authentification (401, 403, etc.):
+      // Ne PAS déclencher de logout ici car cela peut être une race condition
+      // (ex: plusieurs requêtes parallèles essayent de refresh avec l'ancien token)
+      // Le AuthGuard gérera le logout si les tokens sont vraiment invalides
+      console.warn('[refreshAccessToken] Erreur d\'authentification - retourne null (logout géré par AuthGuard)');
       return null;
     } finally {
       isRefreshing = false;
@@ -244,68 +202,100 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
 }
 
 /**
- * Intercepteur pour rafraîchir automatiquement le token avant chaque requête
- * Retourne l'access token valide ou null
+ * Récupère l'access token actuel pour les requêtes API.
+ * 
+ * IMPORTANT: Cette fonction ne rafraîchit JAMAIS le token automatiquement.
+ * Elle retourne le token tel quel, même s'il est expiré.
+ * 
+ * Le refresh se produit UNIQUEMENT dans ces cas :
+ * 1. Erreur 401 reçue du serveur (géré par baseQueryWithReauth)
+ * 2. Retour dans l'app avec token expiré (géré par AuthGuard via proactiveTokenRefresh)
+ * 3. Actions spécifiques : KYC validé, PIN changé (le backend renvoie de nouveaux tokens)
+ * 
+ * @returns L'access token actuel ou null si aucun token
  */
 export async function getValidAccessToken(): Promise<string | null> {
+  try {
+    const { accessToken } = await getTokens();
+    // Retourner le token tel quel - le handler 401 gère les tokens expirés
+    return accessToken || null;
+  } catch (error) {
+    console.error('[getValidAccessToken] Erreur:', error);
+    return null;
+  }
+}
+
+/**
+ * Rafraîchissement proactif au retour dans l'app
+ * Appelé quand l'app revient au premier plan ou au démarrage
+ * Rafraîchit si le token expire dans moins de 1 jour (24h)
+ * 
+ * @returns true si les tokens sont valides, false sinon
+ */
+export async function proactiveTokenRefresh(): Promise<boolean> {
   try {
     const { accessToken, refreshToken } = await getTokens();
 
     if (!accessToken || !refreshToken) {
-      await clearTokens();
-      getStoreDispatch()(logout());
-      return null;
+      console.log('[proactiveTokenRefresh] Pas de tokens');
+      return false;
     }
 
-    // Si le token expire bientôt, le rafraîchir
-    if (isTokenExpiringSoon(accessToken, 5) || isTokenExpired(accessToken)) {
-      console.log('Access token expiré/expirant, rafraîchissement...');
+    // Vérifier si le refresh token est valide
+    if (isTokenExpired(refreshToken)) {
+      console.log('[proactiveTokenRefresh] Refresh token expiré');
+      return false;
+    }
+
+    // Si l'access token est expiré OU expire dans moins de 24h, rafraîchir
+    const HOURS_24_IN_MINUTES = 24 * 60;
+    if (isTokenExpired(accessToken) || isTokenExpiringSoon(accessToken, HOURS_24_IN_MINUTES)) {
+      console.log('[proactiveTokenRefresh] Token expiré ou expire dans <24h - rafraîchissement...');
       const newAccessToken = await refreshAccessToken(refreshToken);
-      return newAccessToken;
+      return !!newAccessToken;
     }
 
-    return accessToken;
+    console.log('[proactiveTokenRefresh] Token valide, pas besoin de rafraîchir');
+    return true;
   } catch (error) {
-    console.error('Erreur lors de la récupération du token valide:', error);
-    return null;
+    console.error('[proactiveTokenRefresh] Erreur:', error);
+    return false;
   }
 }
 
 /**
  * Gère une erreur 401 (Unauthorized) en tentant de rafraîchir le token
  * @returns true si le token a été rafraîchi, false sinon
+ * 
+ * NOTE: Ne déclenche PAS de logout - AuthGuard le gère.
  */
 export async function handle401Error(): Promise<boolean> {
-  console.log('Erreur 401 détectée, tentative de rafraîchissement...');
+  console.log('[handle401Error] Erreur 401 détectée...');
   const { accessToken, refreshToken } = await getTokens();
 
   if (!accessToken && !refreshToken) {
-    console.log('Tokens manquants, déconnexion requise');
-    await clearTokens();
-    getStoreDispatch()(logout());
+    console.log('[handle401Error] Tokens manquants - retourne false');
     return false;
   }
 
   if (!accessToken || !isTokenExpired(accessToken)) {
-    console.log('Access token encore valide, pas de refresh');
+    console.log('[handle401Error] Access token valide, pas de refresh');
     return false;
   }
 
   if (!refreshToken || isTokenExpired(refreshToken)) {
-    console.log('Refresh token expiré');
-    await clearTokens();
-    getStoreDispatch()(logout());
+    console.log('[handle401Error] Refresh token expiré - retourne false');
     return false;
   }
 
   const newAccessToken = await refreshAccessToken(refreshToken);
 
   if (newAccessToken) {
-    console.log('Token rafraîchi après 401');
+    console.log('[handle401Error] Token rafraîchi après 401');
     return true;
   }
 
-  console.log('Échec du rafraîchissement après 401');
+  console.log('[handle401Error] Échec du rafraîchissement - retourne false');
   return false;
 }
 

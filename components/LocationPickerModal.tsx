@@ -15,7 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import MapView, { Polyline, PROVIDER_GOOGLE, Region, MapPressEvent } from 'react-native-maps';
+import MapView, { MapPressEvent, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -118,6 +118,7 @@ export default function LocationPickerModal({
   const [isLocating, setIsLocating] = useState(false);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
   const geocodeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isUserInteractionRef = useRef(false);
   const lastMarkerUpdateRef = useRef<{ latitude: number; longitude: number } | null>(null);
@@ -201,13 +202,21 @@ export default function LocationPickerModal({
 
     setSearchQuery('');
     setSearchResults([]);
-    if (initialLocation) {
-      setSelectedLocation(initialLocation);
-      animateToCoordinate(initialLocation.latitude, initialLocation.longitude);
-      return;
-    }
+    
+    // Toujours récupérer la localisation de l'utilisateur au démarrage
+    // Si initialLocation existe, on l'utilise pour centrer la carte
+    // mais on récupère quand même la localisation actuelle en arrière-plan
+    const initializeLocation = async () => {
+      if (initialLocation) {
+        setSelectedLocation(initialLocation);
+        animateToCoordinate(initialLocation.latitude, initialLocation.longitude);
+      } else {
+        // Si pas d'initialLocation, récupérer la position actuelle
+        await requestUserLocation();
+      }
+    };
 
-    requestUserLocation();
+    initializeLocation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
@@ -296,14 +305,14 @@ export default function LocationPickerModal({
     }
   };
 
-  const requestUserLocation = async () => {
+  const requestUserLocation = async (setAsSelected: boolean = true, animate: boolean = true) => {
     try {
       setIsLocating(true);
       const { status } = await Location.requestForegroundPermissionsAsync();
       setPermissionStatus(status);
       if (status !== Location.PermissionStatus.GRANTED) {
         setIsLocating(false);
-        return;
+        return null;
       }
       const position = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
@@ -311,17 +320,25 @@ export default function LocationPickerModal({
 
       const snapped = snapPointToRoute(position.coords.latitude, position.coords.longitude);
 
-      animateToCoordinate(snapped.latitude, snapped.longitude);
+      if (animate) {
+        animateToCoordinate(snapped.latitude, snapped.longitude);
+      }
+      
       const [address] = await Location.reverseGeocodeAsync(snapped);
-      setSelectedLocation(
-        buildSelectionFromCoordinate(
-          snapped,
-          address,
-          'Ma position',
-        ),
+      const userLocation = buildSelectionFromCoordinate(
+        snapped,
+        address,
+        'Ma position',
       );
+      
+      if (setAsSelected) {
+        setSelectedLocation(userLocation);
+      }
+      
+      return userLocation;
     } catch (error) {
       console.warn('Impossible de récupérer la localisation utilisateur', error);
+      return null;
     } finally {
       setIsLocating(false);
     }
@@ -922,17 +939,43 @@ export default function LocationPickerModal({
     }
   }, [onClose, visible]);
 
-  const handleConfirm = useCallback(() => {
-    if (!selectedLocation) {
-      return;
+  const handleConfirm = useCallback(async () => {
+    try {
+      setIsConfirming(true);
+      
+      // Si aucune location n'est sélectionnée, essayer d'utiliser la position actuelle
+      let finalLocation = selectedLocation;
+      
+      if (!finalLocation) {
+        console.log('[LocationPickerModal] Aucune location sélectionnée, récupération de la position actuelle...');
+        // Essayer de récupérer la position actuelle de l'utilisateur
+        const userLocation = await requestUserLocation(false, false);
+        if (userLocation) {
+          finalLocation = userLocation;
+          console.log('[LocationPickerModal] Position actuelle récupérée:', userLocation);
+        }
+      }
+      
+      if (!finalLocation) {
+        // Si toujours pas de location, ne pas confirmer
+        console.warn('[LocationPickerModal] Impossible de confirmer: aucune location disponible');
+        return;
+      }
+      
+      const hasAddress = finalLocation.address && finalLocation.address.length > 0;
+      const selection: MapLocationSelection = {
+        ...finalLocation,
+        address: hasAddress ? finalLocation.address : finalLocation.title,
+      };
+      
+      console.log('[LocationPickerModal] Confirmation de la sélection:', selection);
+      onSelect(selection);
+      handleClose(); // Fermer le modal après la sélection
+    } catch (error) {
+      console.error('[LocationPickerModal] Erreur lors de la confirmation:', error);
+    } finally {
+      setIsConfirming(false);
     }
-    const hasAddress = selectedLocation.address && selectedLocation.address.length > 0;
-    const selection: MapLocationSelection = {
-      ...selectedLocation,
-      address: hasAddress ? selectedLocation.address : selectedLocation.title,
-    };
-    onSelect(selection);
-    handleClose(); // Fermer le modal après la sélection
   }, [selectedLocation, onSelect, handleClose]);
 
   const coordinateDisplay = useMemo(() => {
@@ -1131,7 +1174,7 @@ export default function LocationPickerModal({
         <View style={styles.modalActions}>
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={requestUserLocation}
+            onPress={() => requestUserLocation()}
             disabled={isLocating}
           >
             {isLocating ? (
@@ -1146,12 +1189,16 @@ export default function LocationPickerModal({
           <TouchableOpacity
             style={[
               styles.confirmButton,
-              !selectedLocation && styles.confirmButtonDisabled,
+              isConfirming && styles.confirmButtonDisabled,
             ]}
             onPress={handleConfirm}
-            disabled={!selectedLocation}
+            disabled={isConfirming}
           >
-            <Text style={styles.confirmButtonText}>Confirmer</Text>
+            {isConfirming ? (
+              <ActivityIndicator size="small" color={Colors.white} />
+            ) : (
+              <Text style={styles.confirmButtonText}>Confirmer</Text>
+            )}
           </TouchableOpacity>
         </View>
 

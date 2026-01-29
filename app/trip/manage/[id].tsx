@@ -14,7 +14,7 @@ import { selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
-import { calculateDistance, getRouteInfo, type RouteInfo } from '@/utils/routeHelpers';
+import { calculateDistance } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -29,9 +29,8 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
 type FeedbackState = { type: 'success' | 'error'; message: string } | null;
@@ -75,23 +74,57 @@ const BOOKING_STATUS_CONFIG: Record<
 export default function ManageTripScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
+  const insets = useSafeAreaInsets();
   const tripId = typeof id === 'string' ? id : '';
   const user = useAppSelector(selectUser);
   const { isIdentityVerified } = useIdentityCheck();
+  
+  // Polling intelligent basé sur le statut du trajet
+  const [pollingInterval, setPollingInterval] = useState<number>(0);
+  
   const {
     data: trip,
     isLoading: tripLoading,
     isFetching: tripFetching,
     refetch: refetchTrip,
-  } = useGetTripByIdQuery(tripId, { skip: !tripId });
-  console.log("check owner", trip?.driverId, user?.id);
+  } = useGetTripByIdQuery(tripId, { 
+    skip: !tripId,
+    pollingInterval,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
+
+  // Mettre à jour l'intervalle de polling en fonction du statut du trajet
+  // Note: polling réduit car la navigation gère le temps réel via WebSocket
+  useEffect(() => {
+    if (!trip) {
+      setPollingInterval(0);
+      return;
+    }
+    
+    // Polling léger - la navigation gère le temps réel pour les trajets en cours
+    if (trip.status === 'ongoing') {
+      setPollingInterval(60000); // 60 secondes - juste pour sync occasionnel
+    } else if (trip.status === 'upcoming') {
+      setPollingInterval(60000); // 60 secondes pour les trajets à venir
+    } else {
+      setPollingInterval(0); // Pas de polling pour les trajets terminés/annulés
+    }
+  }, [trip?.status]);
+
   const isOwner = useMemo(() => !!trip && !!user && trip.driverId === user.id, [trip, user]);
   const {
     data: bookings,
     isLoading: bookingsLoading,
     isFetching: bookingsFetching,
     refetch: refetchBookings,
-  } = useGetTripBookingsQuery(tripId, { skip: !tripId });
+  } = useGetTripBookingsQuery(tripId, { 
+    skip: !tripId,
+    // Polling réduit - utiliser le refresh manuel ou refetchOnFocus
+    pollingInterval: trip?.status === 'upcoming' ? 60000 : 0,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
   const [acceptBooking, { isLoading: isAccepting }] = useAcceptBookingMutation();
   const [rejectBooking, { isLoading: isRejecting }] = useRejectBookingMutation();
   const [updateTrip, { isLoading: isCancellingTrip }] = useUpdateTripMutation();
@@ -109,12 +142,6 @@ export default function ManageTripScreen() {
   const [rejectError, setRejectError] = useState('');
   const [targetBooking, setTargetBooking] = useState<Booking | null>(null);
   const [processingBookingId, setProcessingBookingId] = useState<string | null>(null);
-  const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }> | null>(null);
-  const [isLoadingRoute, setIsLoadingRoute] = useState(false);
-  const [mapModalVisible, setMapModalVisible] = useState(false);
-  const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
-  const [estimatedArrivalTime, setEstimatedArrivalTime] = useState<Date | null>(null);
-  const [calculatedArrivalTime, setCalculatedArrivalTime] = useState<Date | null>(null);
   const [contactModalVisible, setContactModalVisible] = useState(false);
   const [selectedPassengerPhone, setSelectedPassengerPhone] = useState<string | null>(null);
   const [selectedPassengerName, setSelectedPassengerName] = useState<string | null>(null);
@@ -131,15 +158,7 @@ export default function ManageTripScreen() {
     }
   }, [refetchTrip, refetchBookings]);
 
-  // Calculate coordinates for map
-  const departureCoordinate = useMemo(
-    () => trip ? {
-      latitude: trip.departure.lat,
-      longitude: trip.departure.lng,
-    } : null,
-    [trip?.departure.lat, trip?.departure.lng],
-  );
-
+  // Calculate arrival coordinate for canCompleteTrip
   const arrivalCoordinate = useMemo(
     () => trip ? {
       latitude: trip.arrival.lat,
@@ -147,131 +166,6 @@ export default function ManageTripScreen() {
     } : null,
     [trip?.arrival.lat, trip?.arrival.lng],
   );
-
-  // Load route coordinates and info when trip changes
-  useEffect(() => {
-    if (!trip || !departureCoordinate || !arrivalCoordinate) {
-      return;
-    }
-    setIsLoadingRoute(true);
-    getRouteInfo(departureCoordinate, arrivalCoordinate)
-      .then((info) => {
-        setRouteCoordinates(info.coordinates);
-        setRouteInfo(info);
-        
-        // Calculate arrival time based on departure time + route duration
-        if (info.duration > 0 && trip.departureTime) {
-          const departureDate = new Date(trip.departureTime);
-          const arrivalDate = new Date(departureDate.getTime() + info.duration * 1000);
-          setCalculatedArrivalTime(arrivalDate);
-        } else {
-          setCalculatedArrivalTime(null);
-        }
-        
-        setIsLoadingRoute(false);
-      })
-      .catch(() => {
-        // Fallback to straight line if route API fails
-        setRouteCoordinates([departureCoordinate, arrivalCoordinate]);
-        setCalculatedArrivalTime(null);
-        setIsLoadingRoute(false);
-      });
-  }, [departureCoordinate, arrivalCoordinate, trip?.id, trip?.departureTime]);
-
-  // Calculate estimated arrival time based on current position or trip progress
-  useEffect(() => {
-    if (!trip || !routeInfo || trip.status !== 'ongoing') {
-      setEstimatedArrivalTime(null);
-      return;
-    }
-
-    // Get current position from trip (if available)
-    const currentCoordinate = trip.currentLocation?.coordinates
-      ? {
-          latitude: trip.currentLocation.coordinates[1],
-          longitude: trip.currentLocation.coordinates[0],
-        }
-      : null;
-
-    if (!currentCoordinate) {
-      // Fallback: use progress to estimate remaining time
-      const progress = trip.progress || 0;
-      if (routeInfo.duration > 0 && typeof progress === 'number') {
-        const remainingProgress = (100 - Math.min(Math.max(progress, 0), 100)) / 100;
-        const remainingDurationSeconds = routeInfo.duration * remainingProgress;
-        const estimatedArrival = new Date(Date.now() + remainingDurationSeconds * 1000);
-        setEstimatedArrivalTime(estimatedArrival);
-      } else {
-        setEstimatedArrivalTime(null);
-      }
-      return;
-    }
-
-    let timeoutId: NodeJS.Timeout;
-    let isMounted = true;
-
-    const calculateETA = () => {
-      // Calculate remaining route from current position to destination
-      if (!currentCoordinate || !arrivalCoordinate) {
-        return;
-      }
-      getRouteInfo(currentCoordinate, arrivalCoordinate)
-        .then((remainingRouteInfo) => {
-          if (!isMounted) return;
-          const remainingDurationSeconds = remainingRouteInfo.duration;
-          const estimatedArrival = new Date(Date.now() + remainingDurationSeconds * 1000);
-          setEstimatedArrivalTime(estimatedArrival);
-        })
-        .catch(() => {
-          if (!isMounted) return;
-          // Fallback: use progress to estimate remaining time
-          const progress = trip.progress || 0;
-          if (routeInfo.duration > 0 && typeof progress === 'number') {
-            const remainingProgress = (100 - Math.min(Math.max(progress, 0), 100)) / 100;
-            const remainingDurationSeconds = routeInfo.duration * remainingProgress;
-            const estimatedArrival = new Date(Date.now() + remainingDurationSeconds * 1000);
-            setEstimatedArrivalTime(estimatedArrival);
-          } else {
-            setEstimatedArrivalTime(null);
-          }
-        });
-    };
-
-    // Debounce: wait 5 seconds after position change before calculating
-    timeoutId = setTimeout(calculateETA, 5000);
-
-    // Also calculate immediately if this is the first time
-    calculateETA();
-
-    return () => {
-      isMounted = false;
-      clearTimeout(timeoutId);
-    };
-  }, [trip?.status, trip?.currentLocation, trip?.progress, routeInfo, arrivalCoordinate]);
-
-  const mapRegion = useMemo(() => {
-    if (!departureCoordinate || !arrivalCoordinate) {
-      return {
-        latitude: -4.441931,
-        longitude: 15.266293,
-        latitudeDelta: 0.1,
-        longitudeDelta: 0.1,
-      };
-    }
-    const latitudeCenter = (departureCoordinate.latitude + arrivalCoordinate.latitude) / 2;
-    const longitudeCenter = (departureCoordinate.longitude + arrivalCoordinate.longitude) / 2;
-    const latitudeDelta =
-      Math.max(Math.abs(departureCoordinate.latitude - arrivalCoordinate.latitude), 0.05) * 1.6;
-    const longitudeDelta =
-      Math.max(Math.abs(departureCoordinate.longitude - arrivalCoordinate.longitude), 0.05) * 1.6;
-
-    return {
-      latitude: latitudeCenter,
-      longitude: longitudeCenter,
-      latitudeDelta,
-      longitudeDelta,
-    };
-  }, [arrivalCoordinate, departureCoordinate]);
 
   const showFeedback = (type: 'success' | 'error', message: string | string[]) => {
     setFeedback({
@@ -383,6 +277,23 @@ export default function ManageTripScreen() {
         },
       ],
     });
+  };
+
+  const handleOpenNavigation = () => {
+    if (!trip) return;
+
+    const { arrival } = trip;
+    if (!arrival || !arrival.lat || !arrival.lng) {
+      showDialog({
+        title: 'Erreur',
+        message: 'Les coordonnées de destination sont indisponibles.',
+        variant: 'danger',
+      });
+      return;
+    }
+
+    // Ouvrir l'écran de navigation intégré
+    router.push(`/trip/navigate/${trip.id}`);
   };
 
   const handleConfirmPickup = async (bookingId: string) => {
@@ -635,72 +546,6 @@ export default function ManageTripScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={refreshAll} tintColor={Colors.primary} />
         }
       >
-        {/* Visualisation Carte */}
-        <TouchableOpacity
-          style={styles.mapCard}
-          onPress={() => setMapModalVisible(true)}
-          activeOpacity={0.9}
-        >
-          <View style={styles.mapPreview}>
-            <MapView
-              provider={PROVIDER_GOOGLE}
-              style={styles.mapView}
-              initialRegion={mapRegion}
-              scrollEnabled={false}
-              zoomEnabled={false}
-              pitchEnabled={false}
-              rotateEnabled={false}
-            >
-              {/* Route polyline */}
-              {routeCoordinates && routeCoordinates.length > 0 ? (
-                <Polyline
-                  coordinates={routeCoordinates}
-                  strokeColor={Colors.primary}
-                  strokeWidth={4}
-                />
-              ) : (
-                <Polyline
-                  coordinates={[departureCoordinate!, arrivalCoordinate!]}
-                  strokeColor={Colors.primary}
-                  strokeWidth={4}
-                  lineDashPattern={[5, 5]}
-                />
-              )}
-
-              <Marker coordinate={departureCoordinate!}>
-                <View style={[styles.markerStartCircle, { width: 24, height: 24, borderRadius: 12 }]}>
-                  <Ionicons name="location" size={14} color={Colors.white} />
-                </View>
-              </Marker>
-
-              <Marker coordinate={arrivalCoordinate!}>
-                <View style={[styles.markerEndCircle, { width: 24, height: 24, borderRadius: 12 }]}>
-                  <Ionicons name="navigate" size={14} color={Colors.white} />
-                </View>
-              </Marker>
-
-              {/* Position actuelle du conducteur si en cours */}
-              {trip.status === 'ongoing' && trip.currentLocation?.coordinates && (
-                <Marker
-                  coordinate={{
-                    latitude: trip.currentLocation.coordinates[1],
-                    longitude: trip.currentLocation.coordinates[0],
-                  }}
-                >
-                  <View style={[styles.markerStartCircle, { backgroundColor: Colors.info, width: 20, height: 20, borderRadius: 10 }]}>
-                    <Ionicons name="car-sport" size={12} color={Colors.white} />
-                  </View>
-                </Marker>
-              )}
-            </MapView>
-
-            <View style={styles.mapBadge}>
-              <Ionicons name="expand" size={12} color={Colors.white} />
-              <Text style={styles.mapBadgeText}>Agrandir</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-
         {/* Résumé du trajet */}
         <View style={styles.summaryCard}>
           <View style={styles.summaryHeader}>
@@ -754,14 +599,6 @@ export default function ManageTripScreen() {
             </View>
           </View>
 
-          {trip.status === 'ongoing' && estimatedArrivalTime && (
-            <View style={styles.etaContainer}>
-              <Ionicons name="navigate" size={18} color={Colors.secondary} />
-              <Text style={styles.etaText}>
-                Arrivée estimée : <Text style={styles.etaHighlight}>{formatTime(estimatedArrivalTime.toISOString())}</Text>
-              </Text>
-            </View>
-          )}
         </View>
 
         {/* Liste des passagers */}
@@ -773,12 +610,14 @@ export default function ManageTripScreen() {
                 {bookings?.length || 0} réservation(s) au total
               </Text>
             </View>
-            <TouchableOpacity 
-              style={styles.actionIconButton}
-              onPress={() => setMapModalVisible(true)}
-            >
-              <Ionicons name="map" size={20} color={Colors.primary} />
-            </TouchableOpacity>
+            {(trip.status === 'upcoming' || trip.status === 'ongoing') && (
+              <TouchableOpacity 
+                style={styles.actionIconButton}
+                onPress={handleOpenNavigation}
+              >
+                <Ionicons name="navigate" size={20} color={Colors.primary} />
+              </TouchableOpacity>
+            )}
           </View>
 
           {bookings && bookings.length > 0 ? (
@@ -912,24 +751,34 @@ export default function ManageTripScreen() {
       </ScrollView>
 
       {/* Sticky Footer pour les actions du trajet */}
-      <View style={styles.stickyFooter}>
+      <View style={[styles.stickyFooter, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
         {trip.status === 'upcoming' && (
           <>
-            <TouchableOpacity
-              style={[styles.primaryButton, styles.startTripButton]}
-              onPress={handleStartTrip}
-              disabled={isStartingTrip}
-              activeOpacity={0.8}
-            >
-              {isStartingTrip ? (
-                <ActivityIndicator color={Colors.white} />
-              ) : (
-                <>
-                  <Ionicons name="play" size={20} color={Colors.white} />
-                  <Text style={styles.primaryButtonText}>Démarrer</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            <View style={styles.upcomingActionsRow}>
+              <TouchableOpacity
+                style={[styles.primaryButton, styles.startTripButton, { flex: 1 }]}
+                onPress={handleStartTrip}
+                disabled={isStartingTrip}
+                activeOpacity={0.8}
+              >
+                {isStartingTrip ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <>
+                    <Ionicons name="play" size={20} color={Colors.white} />
+                    <Text style={styles.primaryButtonText}>Démarrer</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButton, styles.navigationButton, { flex: 1 }]}
+                onPress={handleOpenNavigation}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="navigate" size={20} color={Colors.white} />
+                <Text style={styles.primaryButtonText}>Navigation</Text>
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity
               style={styles.secondaryButton}
               onPress={handleCancelTrip}
@@ -964,21 +813,31 @@ export default function ManageTripScreen() {
         )}
 
         {trip.status === 'ongoing' && !canCompleteTrip && (
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={handlePauseTrip}
-            disabled={isPausingTrip}
-            activeOpacity={0.8}
-          >
-            {isPausingTrip ? (
-              <ActivityIndicator color={Colors.warning} />
-            ) : (
-              <>
-                <Ionicons name="pause" size={20} color={Colors.warning} />
-                <Text style={[styles.secondaryButtonText, { color: Colors.warning }]}>Interrompre</Text>
-              </>
-            )}
-          </TouchableOpacity>
+          <View style={styles.ongoingActionsRow}>
+            <TouchableOpacity
+              style={[styles.primaryButton, styles.navigationButton]}
+              onPress={handleOpenNavigation}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="navigate" size={20} color={Colors.white} />
+              <Text style={styles.primaryButtonText}>Navigation</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={handlePauseTrip}
+              disabled={isPausingTrip}
+              activeOpacity={0.8}
+            >
+              {isPausingTrip ? (
+                <ActivityIndicator color={Colors.warning} />
+              ) : (
+                <>
+                  <Ionicons name="pause" size={20} color={Colors.warning} />
+                  <Text style={[styles.secondaryButtonText, { color: Colors.warning }]}>Interrompre</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         )}
 
         {trip.status === 'completed' && (
@@ -996,7 +855,7 @@ export default function ManageTripScreen() {
 
       <Modal animationType="slide" transparent visible={rejectModalVisible}>
         <View style={styles.bookingModalOverlay}>
-          <View style={styles.bookingModalCard}>
+          <View style={[styles.bookingModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
             <Text style={styles.bookingModalTitle}>Refuser la réservation</Text>
             <Text style={styles.bookingModalDescription}>
               Expliquez brièvement au passager la raison du refus.
@@ -1038,137 +897,6 @@ export default function ManageTripScreen() {
         </View>
       </Modal>
 
-      {/* Map Modal */}
-      {departureCoordinate && arrivalCoordinate && (
-        <Modal visible={mapModalVisible} animationType="fade" transparent onRequestClose={() => setMapModalVisible(false)}>
-          <View style={styles.mapModalOverlay}>
-            <View style={styles.mapModalContent}>
-              <MapView
-                provider={PROVIDER_GOOGLE}
-                style={styles.fullscreenMap}
-                initialRegion={mapRegion}
-              >
-                {/* Route polyline */}
-                {routeCoordinates && routeCoordinates.length > 0 ? (
-                  <Polyline
-                    coordinates={routeCoordinates}
-                    strokeColor={Colors.primary}
-                    strokeWidth={5}
-                  />
-                ) : (
-                  <Polyline
-                    coordinates={[departureCoordinate, arrivalCoordinate]}
-                    strokeColor={Colors.primary}
-                    strokeWidth={5}
-                  />
-                )}
-
-                <Marker
-                  coordinate={departureCoordinate}
-                >
-                  <View style={styles.markerStartCircle}>
-                    <Ionicons name="location" size={20} color={Colors.white} />
-                  </View>
-                  <Callout>
-                    <View>
-                      <Text style={{ fontWeight: 'bold' }}>Départ</Text>
-                      <Text>{trip.departure.address}</Text>
-                    </View>
-                  </Callout>
-                </Marker>
-
-                <Marker
-                  coordinate={arrivalCoordinate}
-                >
-                  <View style={styles.markerEndCircle}>
-                    <Ionicons name="navigate" size={20} color={Colors.white} />
-                  </View>
-                  <Callout>
-                    <View>
-                      <Text style={{ fontWeight: 'bold' }}>Arrivée</Text>
-                      <Text>{trip.arrival.address}</Text>
-                    </View>
-                  </Callout>
-                </Marker>
-
-                {/* Localisations des passagers non récupérés (trajet lancé) */}
-                {trip.status === 'ongoing' &&
-                  bookings
-                    ?.filter(
-                      (booking) =>
-                        booking.status === 'accepted' &&
-                        !booking.pickedUp &&
-                        (booking as any).passengerCurrentLocation &&
-                        (booking as any).passengerCurrentLocation.latitude &&
-                        (booking as any).passengerCurrentLocation.longitude,
-                    )
-                    .map((booking) => {
-                      const currentLoc = (booking as any).passengerCurrentLocation;
-                      return (
-                        <Marker
-                          key={`passenger-location-fullscreen-${booking.id}`}
-                          coordinate={{
-                            latitude: currentLoc.latitude,
-                            longitude: currentLoc.longitude,
-                          }}
-                        >
-                          <Callout>
-                            <View style={styles.passengerLocationCallout}>
-                              <Text style={styles.passengerLocationCalloutName}>
-                                {booking.passengerName || 'Passager'}
-                              </Text>
-                              <Text style={styles.passengerLocationCalloutText}>
-                                En attente de récupération
-                              </Text>
-                            </View>
-                          </Callout>
-                          <View style={styles.markerPassengerLocationCircle}>
-                            <Ionicons name="person-circle" size={20} color={Colors.secondary} />
-                          </View>
-                        </Marker>
-                      );
-                    })}
-
-                {/* Destinations des passagers */}
-                {bookings
-                  ?.filter(
-                    (booking) =>
-                      booking.status === 'accepted' &&
-                      booking.passengerDestinationCoordinates &&
-                      booking.passengerDestinationCoordinates.latitude &&
-                      booking.passengerDestinationCoordinates.longitude,
-                  )
-                  .map((booking) => {
-                    const destCoords = booking.passengerDestinationCoordinates!;
-                    return (
-                      <Marker
-                        key={`passenger-dest-fullscreen-${booking.id}`}
-                        coordinate={{
-                          latitude: destCoords.latitude,
-                          longitude: destCoords.longitude,
-                        }}
-                      >
-                        <View style={styles.markerPassengerDestCircle}>
-                          <Ionicons name="person" size={16} color={Colors.white} />
-                        </View>
-                        <Callout>
-                          <View>
-                            <Text style={{ fontWeight: 'bold' }}>{booking.passengerDestination || booking.passengerName || 'Destination passager'}</Text>
-                            <Text>{booking.passengerName || 'Passager'}</Text>
-                          </View>
-                        </Callout>
-                      </Marker>
-                    );
-                  })}
-              </MapView>
-
-              <TouchableOpacity style={styles.closeMapButton} onPress={() => setMapModalVisible(false)}>
-                <Ionicons name="close" size={24} color={Colors.white} />
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-      )}
 
       {/* Contact Modal pour les passagers */}
       <Modal
@@ -1182,7 +910,7 @@ export default function ManageTripScreen() {
           activeOpacity={1}
           onPress={() => setContactModalVisible(false)}
         >
-          <Animated.View entering={FadeInDown} style={styles.contactModalCard} onStartShouldSetResponder={() => true}>
+          <Animated.View entering={FadeInDown} style={[styles.contactModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]} onStartShouldSetResponder={() => true}>
             <View style={styles.contactModalHeader}>
               <View style={styles.contactModalIconWrapper}>
                 <View style={styles.contactModalIconBadge}>
@@ -1384,37 +1112,6 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     paddingBottom: 100, // Space for sticky footer
   },
-  mapCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
-    marginBottom: Spacing.md,
-    ...CommonStyles.shadowSm,
-  },
-  mapPreview: {
-    height: 180,
-    width: '100%',
-  },
-  mapView: {
-    flex: 1,
-  },
-  mapBadge: {
-    position: 'absolute',
-    bottom: Spacing.sm,
-    right: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 4,
-    borderRadius: BorderRadius.full,
-    gap: 4,
-  },
-  mapBadgeText: {
-    color: Colors.white,
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.medium,
-  },
   summaryCard: {
     backgroundColor: Colors.white,
     borderRadius: BorderRadius.xl,
@@ -1547,22 +1244,6 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
-  etaContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.secondary + '10',
-    padding: Spacing.sm,
-    borderRadius: BorderRadius.md,
-    gap: Spacing.sm,
-  },
-  etaText: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[700],
-  },
-  etaHighlight: {
-    fontWeight: FontWeights.bold,
-    color: Colors.secondary,
-  },
   sectionCard: {
     backgroundColor: Colors.white,
     borderRadius: BorderRadius.xl,
@@ -1657,7 +1338,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: BorderRadius.md,
     gap: 6,
-    marginBottom: 40,
   },
   acceptButton: {
     backgroundColor: Colors.success,
@@ -1677,7 +1357,7 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: Colors.white,
     padding: Spacing.lg,
-    paddingBottom: 40, // Safe area
+    // paddingBottom is set dynamically via useSafeAreaInsets
     borderTopWidth: 1,
     borderTopColor: Colors.gray[100],
     flexDirection: 'row',
@@ -1720,6 +1400,21 @@ const styles = StyleSheet.create({
   completeTripButton: {
     backgroundColor: Colors.success,
   },
+  ongoingActionsRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    width: '100%',
+  },
+  upcomingActionsRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    width: '100%',
+    marginBottom: Spacing.sm,
+  },
+  navigationButton: {
+    flex: 1,
+    backgroundColor: Colors.primary,
+  },
   bookingModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -1730,7 +1425,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
     padding: Spacing.xl,
-    paddingBottom: 40,
+    // paddingBottom est défini dynamiquement avec insets.bottom
   },
   bookingModalTitle: {
     fontSize: FontSizes.xl,
@@ -1787,86 +1482,6 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
   },
-  mapModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-  },
-  mapModalContent: {
-    flex: 1,
-    backgroundColor: Colors.white,
-  },
-  fullscreenMap: {
-    flex: 1,
-  },
-  closeMapButton: {
-    position: 'absolute',
-    top: 50,
-    right: 20,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  markerStartCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: Colors.white,
-    ...CommonStyles.shadowMd,
-  },
-  markerEndCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.secondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: Colors.white,
-    ...CommonStyles.shadowMd,
-  },
-  markerPassengerLocationCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: Colors.secondary,
-    ...CommonStyles.shadowSm,
-  },
-  markerPassengerDestCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: Colors.white,
-    ...CommonStyles.shadowSm,
-  },
-  passengerLocationCallout: {
-    padding: Spacing.sm,
-    width: 150,
-  },
-  passengerLocationCalloutName: {
-    fontWeight: 'bold',
-    fontSize: FontSizes.sm,
-    color: Colors.gray[900],
-  },
-  passengerLocationCalloutText: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[600],
-    marginTop: 2,
-  },
   contactModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -1877,7 +1492,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
     padding: Spacing.xl,
-    paddingBottom: 40,
+    // paddingBottom est défini dynamiquement avec insets.bottom
   },
   contactModalHeader: {
     alignItems: 'center',

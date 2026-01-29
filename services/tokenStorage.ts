@@ -155,11 +155,12 @@ export async function removeRefreshToken(): Promise<void> {
  */
 export async function clearTokens(): Promise<void> {
   try {
-    // await Promise.all([
-    //   removeAccessToken(),
-    //   removeRefreshToken(),
-  
-    // ]);
+    await Promise.all([
+      removeAccessToken(),
+      removeRefreshToken(),
+      removeFcmToken(),
+    ]);
+    console.log('Tous les tokens ont été supprimés du SecureStore');
   } catch (error) {
     console.error('Erreur lors de la suppression des tokens:', error);
   }

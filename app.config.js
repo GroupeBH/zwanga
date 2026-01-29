@@ -59,6 +59,14 @@ module.exports = {
       blockedPermissions: [
         'android.permission.ACTIVITY_RECOGNITION',
       ],
+      // Permissions pour la localisation (incluant arrière-plan pour la navigation)
+      permissions: [
+        'ACCESS_COARSE_LOCATION',
+        'ACCESS_FINE_LOCATION',
+        'ACCESS_BACKGROUND_LOCATION',
+        'FOREGROUND_SERVICE',
+        'FOREGROUND_SERVICE_LOCATION',
+      ],
     },
 
     web: {
@@ -94,6 +102,22 @@ module.exports = {
     plugins: [
       'expo-router',
       'expo-maps',
+      [
+        'expo-location',
+        {
+          locationAlwaysAndWhenInUsePermission: 'Zwanga utilise votre position pour la navigation GPS même en arrière-plan.',
+          locationAlwaysPermission: 'Zwanga a besoin de votre position en arrière-plan pour continuer la navigation.',
+          locationWhenInUsePermission: 'Zwanga utilise votre position pour afficher les trajets à proximité et la navigation.',
+          isAndroidBackgroundLocationEnabled: true,
+          isAndroidForegroundServiceEnabled: true,
+        },
+      ],
+      [
+        '@react-native-google-signin/google-signin',
+        {
+          iosUrlScheme: process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME,
+        },
+      ],
       [
         "expo-notifications",
         {

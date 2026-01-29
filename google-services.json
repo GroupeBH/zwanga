@@ -12,7 +12,20 @@
           "package_name": "com.zwanga"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "754065251959-ocq7783a8ebcnoqrgspsuhjbmntt3qv3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.zwanga",
+            "certificate_hash": "3f65d59c03fc58af0d954f22b856f07ac4dbedf9"
+          }
+        },
+        {
+          "client_id": "754065251959-scmvdlel13lf7kpbg3tdmevl7hj0299s.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAxflVfDNLbDdzmJ8InvBDq-2pYaFg1agM"
@@ -20,7 +33,20 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "754065251959-scmvdlel13lf7kpbg3tdmevl7hj0299s.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "754065251959-chelbj9aa06c2ifbpnmcot2mt6p61rkp.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.biso.zwanga",
+                "app_store_id": "6756211830"
+              }
+            }
+          ]
         }
       }
     }

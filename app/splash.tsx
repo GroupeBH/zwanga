@@ -35,12 +35,12 @@ export default function SplashScreen() {
           } else if (isAuthenticated) {
             router.replace('/(tabs)');
           } else {
-            router.replace('/auth');
+            router.replace('/auth-entry');
           }
         }, 1800);
       } catch (error) {
         console.error('Error checking first launch:', error);
-        setTimeout(() => router.replace('/auth'), 1800);
+        setTimeout(() => router.replace('/auth-entry'), 1800);
       }
     };
 

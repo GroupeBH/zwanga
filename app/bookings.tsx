@@ -372,6 +372,17 @@ export default function BookingsScreen() {
             </TouchableOpacity>
           )}
 
+          {/* Bouton "Suivre le trajet" - Pour les réservations acceptées avec trajet en cours */}
+          {activeTab === 'active' && !isExpired && booking.status === 'accepted' && trip?.status === 'ongoing' && (
+            <TouchableOpacity
+              style={[styles.linkButton, styles.navigationButton]}
+              onPress={() => router.push(`/booking/navigate/${booking.id}`)}
+            >
+              <Ionicons name="navigate" size={16} color={Colors.white} />
+              <Text style={[styles.linkButtonText, styles.navigationButtonText]}>Suivre le trajet</Text>
+            </TouchableOpacity>
+          )}
+
           {/* Bouton "Appeler" - Seulement pour les réservations actives acceptées et non expirées */}
           {activeTab === 'active' && !isExpired && booking.status === 'accepted' && trip?.driver?.phone && 
            !(booking.pickedUp && !booking.pickedUpConfirmedByPassenger) &&
@@ -810,6 +821,12 @@ const styles = StyleSheet.create({
   },
   dangerButtonText: {
     color: Colors.danger,
+  },
+  navigationButton: {
+    backgroundColor: Colors.primary,
+  },
+  navigationButtonText: {
+    color: Colors.white,
   },
   confirmationBanner: {
     flexDirection: 'row',

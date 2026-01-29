@@ -127,6 +127,15 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
       return true;
     }
 
+    if (pathname?.includes(`/trip/navigate/${ongoingTrip.trip.id}`)) {
+      return true;
+    }
+
+    // Masquer sur la navigation passager
+    if (pathname?.startsWith('/booking/navigate/')) {
+      return true;
+    }
+
     return false;
   }, [pathname, ongoingTrip]);
 

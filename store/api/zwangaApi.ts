@@ -34,7 +34,10 @@ import './googleMapsApi';
 export {
   // Auth
   useLoginMutation,
-  useRegisterMutation, useVerifyKYCMutation, useVerifyPhoneMutation
+  useRegisterMutation,
+  useVerifyKYCMutation,
+  useVerifyPhoneMutation,
+  useGoogleMobileMutation,
 } from './authApi';
 
 export {

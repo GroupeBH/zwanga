@@ -39,6 +39,10 @@ export default function TripRequestsScreen() {
     refetch: refetchAvailable,
   } = useGetAvailableTripRequestsQuery(undefined, {
     skip: activeTab !== 'available',
+    // Polling pour les demandes disponibles (conducteurs)
+    pollingInterval: activeTab === 'available' ? 30000 : 0,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
   });
 
   // Query pour mes demandes (pour les passagers)
@@ -49,6 +53,10 @@ export default function TripRequestsScreen() {
     refetch: refetchMyRequests,
   } = useGetMyTripRequestsQuery(undefined, {
     skip: activeTab !== 'my-requests',
+    // Polling pour mes demandes (passagers)
+    pollingInterval: activeTab === 'my-requests' ? 30000 : 0,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
   });
 
   const handleRequestPress = (requestId: string) => {
@@ -161,8 +169,8 @@ export default function TripRequestsScreen() {
                 style={styles.makeOfferButton}
                 onPress={() => handleRequestPress(item.id)}
               >
-                <Ionicons name="add-circle" size={18} color={Colors.white} />
-                <Text style={styles.makeOfferButtonText}>Faire une offre</Text>
+                <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
+                <Text style={styles.makeOfferButtonText}>Accepter</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -294,7 +302,13 @@ export default function TripRequestsScreen() {
 
   const isLoading = activeTab === 'available' ? isLoadingAvailable : isLoadingMyRequests;
   const isFetching = activeTab === 'available' ? isFetchingAvailable : isFetchingMyRequests;
-  const currentData = activeTab === 'available' ? availableRequests : myRequests;
+  
+  // Filter out user's own requests from available requests
+  const filteredAvailableRequests = availableRequests.filter(
+    (request) => request.passengerId !== currentUser?.id
+  );
+  
+  const currentData = activeTab === 'available' ? filteredAvailableRequests : myRequests;
   const refetch = activeTab === 'available' ? refetchAvailable : refetchMyRequests;
 
   const renderContent = () => {

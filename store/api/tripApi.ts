@@ -258,6 +258,16 @@ export const tripApi = baseApi.injectEndpoints({
           ? [...result.map(({ id }) => ({ type: 'Trip' as const, id })), 'Trip']
           : ['Trip'],
     }),
+    getAllTrips: builder.query<Trip[], any>({
+      query: () => ({
+        url: '/trips/all-trips',
+      }),
+      transformResponse: (response: ServerTrip[]) => response.map(mapServerTripToClient),
+      providesTags: (result: Trip[] | undefined) =>
+        result
+          ? [...result.map(({ id }) => ({ type: 'Trip' as const, id })), 'Trip']
+          : ['Trip'],
+    }),
     getMyTrips: builder.query<Trip[], void>({
       query: () => ({
         url: '/trips/my-trips',
@@ -398,6 +408,7 @@ export const tripApi = baseApi.injectEndpoints({
 
 export const {
   useGetTripsQuery,
+  useGetAllTripsQuery,
   useLazyGetTripsQuery,
   useGetMyTripsQuery,
   useGetTripByIdQuery,

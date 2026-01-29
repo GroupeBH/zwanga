@@ -1,6 +1,6 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
-import { useGetTripsQuery } from '@/store/api/tripApi';
+import { useGetAllTripsQuery } from '@/store/api/tripApi';
 import { useGetPublicUserInfoQuery } from '@/store/api/userApi';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,14 +38,14 @@ export default function DriverDetailsScreen() {
   // Récupérer les trajets du driver pour calculer les statistiques
   // Note: L'API peut ne pas supporter le filtre driverId, donc on récupère tous les trajets et on filtre côté client
   // Pour une meilleure performance, on pourrait créer une API dédiée
-  const { data: allTrips, refetch: refetchTrips } = useGetTripsQuery(
-    {},
+  const { data: allTrips, refetch: refetchTrips } = useGetAllTripsQuery(
     {
-      skip: !driverId,
+      skip: !driver?.id,
     }
   );
 
   const [refreshing, setRefreshing] = useState(false);
+  console.log("driver's trips:", allTrips?.length)
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -69,8 +69,8 @@ export default function DriverDetailsScreen() {
   }, [allTrips, driverId]);
 
   const stats = useMemo(() => {
-    const totalTrips = driver?.totalTrips ?? driverTrips.length;
-    const completedTrips = driverTrips.filter((trip) => trip.status === 'completed').length;
+    const totalTrips = driverTrips?.length;
+    const completedTrips = driverTrips?.filter((trip) => trip.status === 'completed').length;
     return {
       totalTrips,
       completedTrips,
@@ -236,7 +236,7 @@ export default function DriverDetailsScreen() {
                 {Array.from(
                   new Map(
                     driverTrips
-                      .filter((trip) => trip.vehicle)
+                      .filter((trip) => trip?.vehicle?.isActive)
                       .map((trip) => [trip.vehicle!.id, trip.vehicle!])
                   ).values()
                 ).map((vehicle) => (
