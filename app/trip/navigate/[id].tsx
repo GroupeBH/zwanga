@@ -1,11 +1,13 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { trackingSocket } from '@/services/trackingSocket';
 import {
   useConfirmDropoffMutation,
   useConfirmPickupMutation,
   useGetTripBookingsQuery
 } from '@/store/api/bookingApi';
-import { useGetTripByIdQuery, useUpdateDriverLocationMutation } from '@/store/api/tripApi';
+import { TravelMode, useGetDirectionsMutation } from '@/store/api/googleMapsApi';
+import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import type { Booking } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -38,19 +40,6 @@ interface RouteStep {
   travel_mode: string;
 }
 
-interface DirectionsResponse {
-  routes: Array<{
-    legs: Array<{
-      distance: { text: string; value: number };
-      duration: { text: string; value: number };
-      steps: RouteStep[];
-      start_location: { lat: number; lng: number };
-      end_location: { lat: number; lng: number };
-    }>;
-    overview_polyline: { points: string };
-  }>;
-}
-
 interface Waypoint {
   id: string;
   type: 'pickup' | 'dropoff';
@@ -74,9 +63,9 @@ export default function NavigationScreen() {
 
   const { data: trip, isLoading } = useGetTripByIdQuery(tripId, { skip: !tripId });
   const { data: bookings, isLoading: bookingsLoading, refetch: refetchBookings } = useGetTripBookingsQuery(tripId, { skip: !tripId });
-  const [updateDriverLocation] = useUpdateDriverLocationMutation();
   const [confirmPickup, { isLoading: isConfirmingPickup }] = useConfirmPickupMutation();
   const [confirmDropoff, { isLoading: isConfirmingDropoff }] = useConfirmDropoffMutation();
+  const [getDirections] = useGetDirectionsMutation();
 
   const mapRef = useRef<MapView>(null);
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
@@ -88,9 +77,11 @@ export default function NavigationScreen() {
   const [totalDuration, setTotalDuration] = useState<string>('');
   const [isLoadingRoute, setIsLoadingRoute] = useState(true);
   const [heading, setHeading] = useState<number>(0);
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
   
-  // Modal pour les waypoints
+  // Modal et panneau pour les waypoints
   const [waypointModalVisible, setWaypointModalVisible] = useState(false);
+  const [passengersPanelVisible, setPassengersPanelVisible] = useState(false);
   const [activeWaypoint, setActiveWaypoint] = useState<Waypoint | null>(null);
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
   const [currentWaypointIndex, setCurrentWaypointIndex] = useState(0);
@@ -101,6 +92,37 @@ export default function NavigationScreen() {
   const lastRouteFetchTimeRef = useRef(0);
   const waypointsCountRef = useRef(0);
   const currentLocationRef = useRef<Location.LocationObject | null>(null);
+
+  // Connexion WebSocket pour le tracking temps réel
+  useEffect(() => {
+    if (!tripId) return;
+
+    // Rejoindre la room du trip pour le tracking temps réel
+    trackingSocket.joinTrip(tripId).then(() => {
+      setIsSocketConnected(true);
+      console.log('[Navigation] Connecté au tracking temps réel');
+    });
+
+    // Écouter les erreurs WebSocket
+    const unsubscribeError = trackingSocket.subscribeToErrors((message) => {
+      console.error('[Navigation] Erreur tracking:', message);
+    });
+
+    return () => {
+      // Quitter la room et se déconnecter proprement
+      trackingSocket.leaveTrip(tripId);
+      unsubscribeError();
+      setIsSocketConnected(false);
+      
+      // Nettoyage mémoire
+      setRouteCoordinates([]);
+      setSteps([]);
+      setWaypoints([]);
+      currentLocationRef.current = null;
+      
+      console.log('[Navigation] Déconnecté et mémoire nettoyée');
+    };
+  }, [tripId]);
 
   // Créer les waypoints à partir des bookings acceptés
   useEffect(() => {
@@ -210,18 +232,20 @@ export default function NavigationScreen() {
         });
         setCurrentLocation(location);
 
-      // Variables pour throttling des mises à jour
+      // Variables pour throttling des mises à jour (optimisé pour éviter les crashs)
       let lastStateUpdateTime = 0;
       let lastBackendUpdateTime = 0;
-      const STATE_UPDATE_INTERVAL = 5000; // Mise à jour du state toutes les 5 secondes
-      const BACKEND_UPDATE_INTERVAL = 10000; // Mise à jour backend toutes les 10 secondes
+      let lastStepCheckTime = 0;
+      const STATE_UPDATE_INTERVAL = 10000; // Mise à jour du state toutes les 10 secondes
+      const BACKEND_UPDATE_INTERVAL = 8000; // Mise à jour WebSocket toutes les 8 secondes
+      const STEP_CHECK_INTERVAL = 5000; // Vérification étapes toutes les 5 secondes
 
-      // S'abonner aux mises à jour de localisation en temps réel
+      // S'abonner aux mises à jour de localisation (fréquence réduite pour stabilité)
       const subscription = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.BestForNavigation,
-          timeInterval: 2000, // GPS update toutes les 2 secondes
-          distanceInterval: 10, // Ou tous les 10 mètres
+          accuracy: Location.Accuracy.Balanced, // Équilibre entre précision et batterie
+          timeInterval: 5000, // GPS update toutes les 5 secondes
+          distanceInterval: 20, // Ou tous les 20 mètres
         },
         (newLocation) => {
           const now = Date.now();
@@ -229,41 +253,37 @@ export default function NavigationScreen() {
           // Toujours stocker dans la ref pour les calculs internes
           currentLocationRef.current = newLocation;
           
-          // Mettre à jour le state seulement périodiquement (pour éviter trop de re-rendus)
+          // Mettre à jour le state très rarement (pour éviter les re-rendus)
           if (now - lastStateUpdateTime > STATE_UPDATE_INTERVAL) {
             lastStateUpdateTime = now;
             setCurrentLocation(newLocation);
             
-            // Mettre à jour le cap (heading)
+            // Mettre à jour le cap (heading) seulement s'il a changé significativement
             if (newLocation.coords.heading !== null && newLocation.coords.heading !== -1) {
-              setHeading(newLocation.coords.heading);
+              setHeading(prev => {
+                const diff = Math.abs(prev - newLocation.coords.heading!);
+                return diff > 15 ? newLocation.coords.heading! : prev; // Seuil de 15 degrés
+              });
             }
           }
 
-          // Mettre à jour la position du conducteur dans le backend (throttled)
+          // Mettre à jour la position du conducteur via WebSocket (throttled)
           if (tripId && now - lastBackendUpdateTime > BACKEND_UPDATE_INTERVAL) {
             lastBackendUpdateTime = now;
-            updateDriverLocation({
+            trackingSocket.updateDriverLocation(
               tripId,
-              coordinates: [newLocation.coords.longitude, newLocation.coords.latitude],
-            }).catch(err => console.error('Erreur mise à jour position:', err));
+              [newLocation.coords.longitude, newLocation.coords.latitude]
+            ).catch(() => {}); // Ignorer les erreurs silencieusement
           }
 
-          // Centrer la carte sur la position actuelle (smooth, pas de re-render)
-          if (mapRef.current) {
-            mapRef.current.animateCamera({
-              center: {
-                latitude: newLocation.coords.latitude,
-                longitude: newLocation.coords.longitude,
-              },
-              heading: newLocation.coords.heading || 0,
-              pitch: 60,
-              zoom: 18,
-            }, { duration: 800 });
-          }
+          // NOTE: Animation de caméra désactivée pour éviter les crashs mémoire
+          // L'utilisateur peut recentrer manuellement avec le bouton
 
-          // Calculer la distance à chaque étape et mettre à jour l'étape actuelle
-          updateCurrentStep(newLocation);
+          // Calculer la distance à chaque étape (throttled)
+          if (now - lastStepCheckTime > STEP_CHECK_INTERVAL) {
+            lastStepCheckTime = now;
+            updateCurrentStep(newLocation);
+          }
         }
       );
       locationSubscription.current = subscription;
@@ -314,47 +334,61 @@ export default function NavigationScreen() {
 
     setIsLoadingRoute(true);
     try {
-      const origin = `${currentLocation.coords.latitude},${currentLocation.coords.longitude}`;
-      const destination = `${trip.arrival.lat},${trip.arrival.lng}`;
-      const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
-
-      // Construire les waypoints non complétés pour l'API
+      // Construire les waypoints non complétés pour l'API backend
       const incompletWaypoints = waypoints.filter(wp => !wp.completed);
-      let waypointsParam = '';
-      
-      if (incompletWaypoints.length > 0) {
-        const waypointCoords = incompletWaypoints
-          .map(wp => `${wp.location.lat},${wp.location.lng}`)
-          .join('|');
-        waypointsParam = `&waypoints=optimize:true|${waypointCoords}`;
-      }
+      const waypointsForApi = incompletWaypoints.map(wp => ({
+        lat: wp.location.lat,
+        lng: wp.location.lng,
+      }));
 
-      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin}&destination=${destination}${waypointsParam}&key=${apiKey}&mode=driving&alternatives=false&language=fr`;
-      
-      const response = await fetch(url);
-      const data: DirectionsResponse = await response.json();
+      // Appel à l'API backend optimisée
+      const data = await getDirections({
+        origin: {
+          lat: currentLocation.coords.latitude,
+          lng: currentLocation.coords.longitude,
+        },
+        destination: {
+          lat: trip.arrival.lat,
+          lng: trip.arrival.lng,
+        },
+        waypoints: waypointsForApi.length > 0 ? waypointsForApi : undefined,
+        mode: TravelMode.DRIVING,
+        optimizeWaypoints: true,
+        language: 'fr',
+      }).unwrap();
 
       if (data.routes && data.routes.length > 0) {
         const route = data.routes[0];
 
         // Décoder le polyline
-        const points = decodePolyline(route.overview_polyline.points);
+        const points = decodePolyline(route.overviewPolyline);
         setRouteCoordinates(points);
 
         // Calculer la distance et durée totales
         let totalDist = 0;
         let totalDur = 0;
         route.legs.forEach(leg => {
-          totalDist += leg.distance.value;
-          totalDur += leg.duration.value;
+          totalDist += leg.distance; // déjà en mètres
+          totalDur += leg.duration; // déjà en secondes
         });
 
         setTotalDistance(`${(totalDist / 1000).toFixed(1)} km`);
         setTotalDuration(`${Math.round(totalDur / 60)} min`);
 
-        // Stocker les étapes du premier leg (segment actuel)
+        // Convertir et stocker les étapes du leg actuel
         if (route.legs.length > 0) {
-          setSteps(route.legs[currentLegIndex]?.steps || route.legs[0].steps);
+          const currentLeg = route.legs[currentLegIndex] || route.legs[0];
+          const convertedSteps: RouteStep[] = currentLeg.steps.map(step => ({
+            distance: { text: `${Math.round(step.distance)} m`, value: step.distance },
+            duration: { text: `${Math.round(step.duration / 60)} min`, value: step.duration },
+            html_instructions: step.htmlInstructions,
+            maneuver: '',
+            start_location: { lat: step.startLocation.lat, lng: step.startLocation.lng },
+            end_location: { lat: step.endLocation.lat, lng: step.endLocation.lng },
+            polyline: { points: step.polyline },
+            travel_mode: 'DRIVING',
+          }));
+          setSteps(convertedSteps);
           setCurrentStepIndex(0);
         }
 
@@ -366,11 +400,11 @@ export default function NavigationScreen() {
           });
         }
       }
-    } catch (error) {
-      console.error('Erreur lors de la récupération de l\'itinéraire:', error);
+    } catch (error: any) {
+      console.error('[Navigation] Erreur lors de la récupération de l\'itinéraire:', error);
       showDialog({
         title: 'Erreur de navigation',
-        message: 'Impossible de charger l\'itinéraire. Vérifiez votre connexion internet.',
+        message: error?.data?.message || 'Impossible de charger l\'itinéraire. Vérifiez votre connexion internet.',
         variant: 'danger',
         icon: 'map-outline',
         actions: [
@@ -465,6 +499,42 @@ export default function NavigationScreen() {
     }
   };
 
+  // Calculs pour les stats passagers (mémorisés)
+  const passengerStats = React.useMemo(() => {
+    const pickups = waypoints.filter(wp => wp.type === 'pickup');
+    const dropoffs = waypoints.filter(wp => wp.type === 'dropoff');
+    const pendingPickups = pickups.filter(wp => !wp.completed);
+    const pendingDropoffs = dropoffs.filter(wp => !wp.completed);
+    const completedPickups = pickups.filter(wp => wp.completed);
+    const completedDropoffs = dropoffs.filter(wp => wp.completed);
+    
+    // Passagers uniques
+    const uniquePassengers = new Map<string, { name: string; pickedUp: boolean; droppedOff: boolean }>();
+    waypoints.forEach(wp => {
+      const existing = uniquePassengers.get(wp.passenger.id);
+      if (!existing) {
+        uniquePassengers.set(wp.passenger.id, {
+          name: wp.passenger.name,
+          pickedUp: wp.type === 'pickup' ? wp.completed : false,
+          droppedOff: wp.type === 'dropoff' ? wp.completed : false,
+        });
+      } else {
+        if (wp.type === 'pickup') existing.pickedUp = wp.completed;
+        if (wp.type === 'dropoff') existing.droppedOff = wp.completed;
+      }
+    });
+    
+    return {
+      totalPassengers: uniquePassengers.size,
+      pendingPickups: pendingPickups.length,
+      pendingDropoffs: pendingDropoffs.length,
+      completedPickups: completedPickups.length,
+      completedDropoffs: completedDropoffs.length,
+      inVehicle: completedPickups.length - completedDropoffs.length,
+      passengers: Array.from(uniquePassengers.entries()).map(([id, data]) => ({ id, ...data })),
+    };
+  }, [waypoints]);
+
   // Confirmer le waypoint (récupération ou dépose du passager)
   const handleConfirmWaypoint = async () => {
     if (!activeWaypoint) return;
@@ -548,9 +618,9 @@ export default function NavigationScreen() {
     });
   };
 
-  // Décoder un polyline Google
+  // Décoder un polyline Google (avec simplification pour économiser la mémoire)
   const decodePolyline = (encoded: string): Array<{ latitude: number; longitude: number }> => {
-    const points: Array<{ latitude: number; longitude: number }> = [];
+    const allPoints: Array<{ latitude: number; longitude: number }> = [];
     let index = 0;
     const len = encoded.length;
     let lat = 0;
@@ -578,13 +648,29 @@ export default function NavigationScreen() {
       const dlng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
       lng += dlng;
 
-      points.push({
+      allPoints.push({
         latitude: lat / 1e5,
         longitude: lng / 1e5,
       });
     }
 
-    return points;
+    // Simplifier le polyline pour économiser la mémoire (max 200 points)
+    const maxPoints = 200;
+    if (allPoints.length <= maxPoints) {
+      return allPoints;
+    }
+    
+    const step = Math.ceil(allPoints.length / maxPoints);
+    const simplified: Array<{ latitude: number; longitude: number }> = [];
+    for (let i = 0; i < allPoints.length; i += step) {
+      simplified.push(allPoints[i]);
+    }
+    // Toujours inclure le dernier point
+    if (simplified[simplified.length - 1] !== allPoints[allPoints.length - 1]) {
+      simplified.push(allPoints[allPoints.length - 1]);
+    }
+    
+    return simplified;
   };
 
   // Nettoyer les balises HTML des instructions
@@ -657,7 +743,7 @@ export default function NavigationScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       
-      {/* Carte */}
+      {/* Carte (ultra-optimisée pour éviter les crashs) */}
       <MapView
         ref={mapRef}
         style={styles.map}
@@ -665,86 +751,74 @@ export default function NavigationScreen() {
         showsUserLocation={false}
         showsMyLocationButton={false}
         showsCompass={false}
-        showsTraffic={true}
-        mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
-        pitchEnabled={true}
-        rotateEnabled={true}
+        showsTraffic={false}
+        showsBuildings={false}
+        showsIndoors={false}
+        showsPointsOfInterest={false}
+        loadingEnabled={false}
+        mapType="standard"
+        minZoomLevel={12}
+        maxZoomLevel={18}
+        pitchEnabled={false}
+        rotateEnabled={false}
+        scrollEnabled={true}
+        zoomEnabled={true}
+        toolbarEnabled={false}
+        moveOnMarkerPress={false}
         initialRegion={{
           latitude: currentLocation?.coords?.latitude ?? trip?.departure?.lat ?? -4.4419,
           longitude: currentLocation?.coords?.longitude ?? trip?.departure?.lng ?? 15.2663,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
+          latitudeDelta: 0.02,
+          longitudeDelta: 0.02,
         }}
       >
-        {/* Itinéraire */}
+        {/* Itinéraire (simplifié) */}
         {routeCoordinates.length > 0 && (
           <Polyline
             coordinates={routeCoordinates}
-            strokeWidth={5}
+            strokeWidth={4}
             strokeColor={Colors.primary}
-            lineCap="round"
-            lineJoin="round"
           />
         )}
 
-        {/* Position actuelle du conducteur */}
-        {currentLocation && currentLocation.coords && currentLocation.coords.latitude && currentLocation.coords.longitude && (
+        {/* Position actuelle du conducteur - Marqueur natif simple */}
+        {currentLocation?.coords?.latitude && currentLocation?.coords?.longitude && (
           <Marker
             coordinate={{
               latitude: currentLocation.coords.latitude,
               longitude: currentLocation.coords.longitude,
             }}
             anchor={{ x: 0.5, y: 0.5 }}
-          >
-            <View style={styles.driverMarker}>
-              <View style={styles.driverMarkerInner}>
-                <Ionicons name="navigate" size={20} color="#FFFFFF" />
-              </View>
-            </View>
-          </Marker>
+            pinColor={Colors.primary}
+            title="Ma position"
+          />
         )}
 
-        {/* Waypoints (points de récupération et dépose) */}
-        {waypoints
-          .filter(wp => wp.location?.lat && wp.location?.lng)
-          .map((waypoint) => (
+        {/* Prochain waypoint uniquement (1 seul pour éviter les crashs) */}
+        {waypoints.length > 0 && currentWaypointIndex < waypoints.length && 
+         !waypoints[currentWaypointIndex].completed &&
+         waypoints[currentWaypointIndex].location?.lat && 
+         waypoints[currentWaypointIndex].location?.lng && (
           <Marker
-            key={waypoint.id}
             coordinate={{
-              latitude: waypoint.location.lat,
-              longitude: waypoint.location.lng,
+              latitude: waypoints[currentWaypointIndex].location.lat,
+              longitude: waypoints[currentWaypointIndex].location.lng,
             }}
-            title={`${waypoint.type === 'pickup' ? 'Récupérer' : 'Déposer'} ${waypoint.passenger.name}`}
-            description={waypoint.address || ''}
-          >
-            <View style={[
-              styles.waypointMarkerContainer,
-              waypoint.type === 'pickup' ? styles.pickupMarker : styles.dropoffMarker,
-              waypoint.completed ? styles.completedMarker : null,
-            ]}>
-              <Ionicons 
-                name={waypoint.completed ? 'checkmark' : (waypoint.type === 'pickup' ? 'person-add' : 'person-remove')} 
-                size={20} 
-                color="#FFFFFF" 
-              />
-            </View>
-          </Marker>
-        ))}
+            pinColor={waypoints[currentWaypointIndex].type === 'pickup' ? Colors.secondary : Colors.success}
+            title={`${waypoints[currentWaypointIndex].type === 'pickup' ? 'Récupérer' : 'Déposer'} ${waypoints[currentWaypointIndex].passenger.name}`}
+          />
+        )}
 
-        {/* Destination finale */}
+        {/* Destination finale - Marqueur natif simple */}
         {trip?.arrival?.lat && trip?.arrival?.lng && (
           <Marker
             coordinate={{
               latitude: trip.arrival.lat,
               longitude: trip.arrival.lng,
             }}
+            pinColor={Colors.success}
             title={trip.arrival.name || 'Destination'}
-            description={trip.arrival.address || ''}
-          >
-            <View style={styles.destinationMarker}>
-              <Ionicons name="flag" size={24} color="#FFFFFF" />
-            </View>
-          </Marker>
+          />
         )}
       </MapView>
 
@@ -758,53 +832,84 @@ export default function NavigationScreen() {
         </TouchableOpacity>
 
         <View style={styles.headerInfo}>
-          <Text style={styles.etaText}>{totalDuration}</Text>
+          <View style={styles.etaRow}>
+            <Text style={styles.etaText}>{totalDuration}</Text>
+            {/* Indicateur temps réel */}
+            <View style={[styles.liveIndicator, isSocketConnected && styles.liveIndicatorActive]}>
+              <View style={[styles.liveDot, isSocketConnected && styles.liveDotActive]} />
+              <Text style={[styles.liveText, isSocketConnected && styles.liveTextActive]}>
+                {isSocketConnected ? 'LIVE' : '...'}
+              </Text>
+            </View>
+          </View>
           <Text style={styles.distanceText}>{totalDistance}</Text>
         </View>
       </View>
 
-      {/* Prochain waypoint */}
-      {waypoints.length > 0 && currentWaypointIndex < waypoints.length && !waypoints[currentWaypointIndex].completed && (
-        <TouchableOpacity 
-          style={styles.waypointCard}
-          activeOpacity={0.9}
-          onPress={() => {
-            setActiveWaypoint(waypoints[currentWaypointIndex]);
-            setWaypointModalVisible(true);
-          }}
-        >
-          <View style={styles.waypointHeader}>
-            <View style={[
-              styles.waypointIcon,
-              { backgroundColor: waypoints[currentWaypointIndex].type === 'pickup' ? Colors.secondary : Colors.info }
-            ]}>
-              <Ionicons 
-                name={waypoints[currentWaypointIndex].type === 'pickup' ? 'person-add' : 'person-remove'} 
-                size={20} 
-                color={Colors.white} 
-              />
+      {/* Barre compacte des passagers */}
+      {waypoints.length > 0 && (
+        <View style={styles.passengersBar}>
+          {/* Stats des passagers */}
+          <TouchableOpacity 
+            style={styles.passengersStatsButton}
+            onPress={() => setPassengersPanelVisible(true)}
+          >
+            <View style={styles.passengersBadge}>
+              <Ionicons name="people" size={16} color={Colors.white} />
+              <Text style={styles.passengersBadgeText}>{passengerStats.totalPassengers}</Text>
             </View>
-            <View style={styles.waypointInfo}>
-              <Text style={styles.waypointTypeText}>
-                {waypoints[currentWaypointIndex].type === 'pickup' ? '📍 Récupérer' : '🏁 Déposer'}
-              </Text>
-              <Text style={styles.waypointPassengerText}>
-                {waypoints[currentWaypointIndex].passenger.name}
-              </Text>
-              <Text style={styles.waypointAddressText} numberOfLines={1}>
-                {waypoints[currentWaypointIndex].address}
-              </Text>
+            <View style={styles.passengersStatsInfo}>
+              {passengerStats.inVehicle > 0 && (
+                <View style={styles.inVehicleBadge}>
+                  <Ionicons name="car" size={12} color={Colors.white} />
+                  <Text style={styles.inVehicleText}>{passengerStats.inVehicle} à bord</Text>
+                </View>
+              )}
+              {passengerStats.pendingPickups > 0 && (
+                <Text style={styles.pendingText}>
+                  {passengerStats.pendingPickups} à récupérer
+                </Text>
+              )}
             </View>
-            <View style={styles.waypointActionButton}>
-              <Ionicons 
-                name="checkmark-circle" 
-                size={24} 
-                color={waypoints[currentWaypointIndex].type === 'pickup' ? Colors.secondary : Colors.success} 
-              />
-            </View>
-          </View>
-          <Text style={styles.waypointHint}>Appuyez pour confirmer</Text>
-        </TouchableOpacity>
+            <Ionicons name="chevron-up" size={20} color={Colors.gray[500]} />
+          </TouchableOpacity>
+
+          {/* Prochain waypoint compact */}
+          {currentWaypointIndex < waypoints.length && !waypoints[currentWaypointIndex].completed && (
+            <TouchableOpacity 
+              style={[
+                styles.nextWaypointCompact,
+                { borderLeftColor: waypoints[currentWaypointIndex].type === 'pickup' ? Colors.secondary : Colors.success }
+              ]}
+              activeOpacity={0.8}
+              onPress={() => {
+                setActiveWaypoint(waypoints[currentWaypointIndex]);
+                setWaypointModalVisible(true);
+              }}
+            >
+              <View style={styles.nextWaypointInfo}>
+                <Text style={styles.nextWaypointType}>
+                  {waypoints[currentWaypointIndex].type === 'pickup' ? '📍 Récupérer' : '🏁 Déposer'}
+                </Text>
+                <Text style={styles.nextWaypointName} numberOfLines={1}>
+                  {waypoints[currentWaypointIndex].passenger.name}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.quickConfirmButton,
+                  { backgroundColor: waypoints[currentWaypointIndex].type === 'pickup' ? Colors.secondary : Colors.success }
+                ]}
+                onPress={() => {
+                  setActiveWaypoint(waypoints[currentWaypointIndex]);
+                  setWaypointModalVisible(true);
+                }}
+              >
+                <Ionicons name="checkmark" size={20} color={Colors.white} />
+              </TouchableOpacity>
+            </TouchableOpacity>
+          )}
+        </View>
       )}
 
       {/* Instructions de navigation */}
@@ -863,15 +968,12 @@ export default function NavigationScreen() {
           onPress={() => {
             const loc = currentLocationRef.current || currentLocation;
             if (mapRef.current && loc) {
-              mapRef.current.animateCamera({
-                center: {
-                  latitude: loc.coords.latitude,
-                  longitude: loc.coords.longitude,
-                },
-                heading: heading,
-                pitch: 60,
-                zoom: 18,
-              }, { duration: 500 });
+              mapRef.current.animateToRegion({
+                latitude: loc.coords.latitude,
+                longitude: loc.coords.longitude,
+                latitudeDelta: 0.005,
+                longitudeDelta: 0.005,
+              }, 300);
             }
           }}
         >
@@ -955,6 +1057,128 @@ export default function NavigationScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Panneau des passagers */}
+      <Modal
+        visible={passengersPanelVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPassengersPanelVisible(false)}
+      >
+        <View style={styles.passengersPanelOverlay}>
+          <TouchableOpacity 
+            style={styles.passengersPanelBackdrop} 
+            activeOpacity={1}
+            onPress={() => setPassengersPanelVisible(false)}
+          />
+          <View style={[styles.passengersPanelContent, { paddingBottom: Math.max(insets.bottom, Spacing.lg) + Spacing.md }]}>
+            <View style={styles.passengersPanelHandle} />
+            
+            {/* Header */}
+            <View style={styles.passengersPanelHeader}>
+              <Text style={styles.passengersPanelTitle}>Passagers du trajet</Text>
+              <View style={styles.passengersPanelStats}>
+                <View style={styles.statBadge}>
+                  <Ionicons name="person-add" size={14} color={Colors.secondary} />
+                  <Text style={styles.statText}>{passengerStats.completedPickups}/{passengerStats.completedPickups + passengerStats.pendingPickups}</Text>
+                </View>
+                <View style={styles.statBadge}>
+                  <Ionicons name="car" size={14} color={Colors.primary} />
+                  <Text style={styles.statText}>{passengerStats.inVehicle}</Text>
+                </View>
+                <View style={styles.statBadge}>
+                  <Ionicons name="flag" size={14} color={Colors.success} />
+                  <Text style={styles.statText}>{passengerStats.completedDropoffs}/{passengerStats.completedDropoffs + passengerStats.pendingDropoffs}</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Liste des waypoints */}
+            <View style={styles.waypointsList}>
+              {waypoints.map((waypoint, index) => {
+                const isNext = index === currentWaypointIndex && !waypoint.completed;
+                return (
+                  <TouchableOpacity
+                    key={waypoint.id}
+                    style={[
+                      styles.waypointListItem,
+                      waypoint.completed && styles.waypointListItemCompleted,
+                      isNext && styles.waypointListItemNext,
+                    ]}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      if (!waypoint.completed) {
+                        setActiveWaypoint(waypoint);
+                        setPassengersPanelVisible(false);
+                        setWaypointModalVisible(true);
+                      }
+                    }}
+                    disabled={waypoint.completed}
+                  >
+                    <View style={[
+                      styles.waypointListIcon,
+                      { backgroundColor: waypoint.type === 'pickup' ? Colors.secondary : Colors.success },
+                      waypoint.completed && styles.waypointListIconCompleted,
+                    ]}>
+                      {waypoint.completed ? (
+                        <Ionicons name="checkmark" size={14} color={Colors.white} />
+                      ) : (
+                        <Ionicons 
+                          name={waypoint.type === 'pickup' ? 'person-add' : 'flag'} 
+                          size={14} 
+                          color={Colors.white} 
+                        />
+                      )}
+                    </View>
+                    
+                    <View style={styles.waypointListInfo}>
+                      <Text style={[
+                        styles.waypointListName,
+                        waypoint.completed && styles.waypointListNameCompleted,
+                      ]}>
+                        {waypoint.passenger.name}
+                      </Text>
+                      <Text style={styles.waypointListType}>
+                        {waypoint.type === 'pickup' ? 'Récupération' : 'Dépose'}
+                      </Text>
+                    </View>
+
+                    {!waypoint.completed && (
+                      <TouchableOpacity
+                        style={[
+                          styles.waypointListAction,
+                          { backgroundColor: waypoint.type === 'pickup' ? Colors.secondary : Colors.success }
+                        ]}
+                        onPress={() => {
+                          setActiveWaypoint(waypoint);
+                          setPassengersPanelVisible(false);
+                          setWaypointModalVisible(true);
+                        }}
+                      >
+                        <Ionicons name="checkmark" size={16} color={Colors.white} />
+                      </TouchableOpacity>
+                    )}
+
+                    {isNext && (
+                      <View style={styles.nextBadge}>
+                        <Text style={styles.nextBadgeText}>SUIVANT</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Bouton fermer */}
+            <TouchableOpacity
+              style={styles.closePanelButton}
+              onPress={() => setPassengersPanelVisible(false)}
+            >
+              <Text style={styles.closePanelButtonText}>Fermer</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -962,7 +1186,7 @@ export default function NavigationScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.black,
+    backgroundColor: Colors.gray[200],
   },
   loadingContainer: {
     flex: 1,
@@ -990,8 +1214,7 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.semibold,
   },
   map: {
-    width,
-    height,
+    ...StyleSheet.absoluteFillObject,
   },
   header: {
     position: 'absolute',
@@ -1020,10 +1243,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.lg,
   },
+  etaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
   etaText: {
     fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
     color: Colors.white,
+  },
+  liveIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    gap: 4,
+  },
+  liveIndicatorActive: {
+    backgroundColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.gray[400],
+  },
+  liveDotActive: {
+    backgroundColor: '#10B981',
+  },
+  liveText: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[400],
+  },
+  liveTextActive: {
+    color: '#10B981',
   },
   distanceText: {
     fontSize: FontSizes.base,
@@ -1031,7 +1288,7 @@ const styles = StyleSheet.create({
   },
   instructionCard: {
     position: 'absolute',
-    bottom: 32,
+    bottom: 52,
     left: Spacing.lg,
     right: Spacing.lg,
     backgroundColor: Colors.white,
@@ -1085,7 +1342,7 @@ const styles = StyleSheet.create({
   },
   loadingRouteCard: {
     position: 'absolute',
-    bottom: 32,
+    bottom: 52,
     left: Spacing.lg,
     right: Spacing.lg,
     backgroundColor: Colors.white,
@@ -1176,65 +1433,229 @@ const styles = StyleSheet.create({
   completedMarker: {
     backgroundColor: Colors.gray[400],
   },
-  waypointCard: {
+  // Barre compacte des passagers
+  passengersBar: {
     position: 'absolute',
-    bottom: 220,
-    left: Spacing.lg,
-    right: Spacing.lg,
+    top: 100,
+    left: Spacing.md,
+    right: Spacing.md,
+    gap: Spacing.sm,
+  },
+  passengersStatsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: Colors.white,
     borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
+    padding: Spacing.sm,
+    paddingHorizontal: Spacing.md,
     shadowColor: Colors.black,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.15,
     shadowRadius: 4,
     elevation: 4,
+    gap: Spacing.sm,
   },
-  waypointHeader: {
+  passengersBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    gap: 4,
+  },
+  passengersBadgeText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
+  },
+  passengersStatsInfo: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
   },
-  waypointIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.md,
-    justifyContent: 'center',
+  inVehicleBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: Colors.info,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+    gap: 2,
   },
-  waypointInfo: {
+  inVehicleText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+    color: Colors.white,
+  },
+  pendingText: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+  },
+  nextWaypointCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.sm,
+    paddingLeft: Spacing.md,
+    borderLeftWidth: 4,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+    gap: Spacing.sm,
+  },
+  nextWaypointInfo: {
     flex: 1,
   },
-  waypointTypeText: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[700],
+  nextWaypointType: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    fontWeight: FontWeights.medium,
   },
-  waypointPassengerText: {
+  nextWaypointName: {
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    marginTop: 2,
   },
-  waypointAddressText: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    marginTop: 2,
-  },
-  waypointActionButton: {
+  quickConfirmButton: {
     width: 40,
     height: 40,
     borderRadius: BorderRadius.full,
-    backgroundColor: Colors.gray[100],
     justifyContent: 'center',
     alignItems: 'center',
   },
-  waypointHint: {
+  // Panneau des passagers
+  passengersPanelOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  passengersPanelBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  passengersPanelContent: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    padding: Spacing.lg,
+    maxHeight: '70%',
+  },
+  passengersPanelHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.gray[300],
+    alignSelf: 'center',
+    marginBottom: Spacing.md,
+  },
+  passengersPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.md,
+  },
+  passengersPanelTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  passengersPanelStats: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  statBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.gray[100],
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+    gap: 4,
+  },
+  statText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+  },
+  waypointsList: {
+    gap: Spacing.xs,
+  },
+  waypointListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  waypointListItemCompleted: {
+    backgroundColor: Colors.gray[100],
+    opacity: 0.7,
+  },
+  waypointListItemNext: {
+    backgroundColor: Colors.primary + '15',
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  waypointListIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: BorderRadius.full,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  waypointListIconCompleted: {
+    backgroundColor: Colors.gray[400],
+  },
+  waypointListInfo: {
+    flex: 1,
+  },
+  waypointListName: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
+  },
+  waypointListNameCompleted: {
+    textDecorationLine: 'line-through',
+    color: Colors.gray[500],
+  },
+  waypointListType: {
     fontSize: FontSizes.xs,
     color: Colors.gray[500],
-    textAlign: 'center',
-    marginTop: Spacing.sm,
-    fontStyle: 'italic',
+  },
+  waypointListAction: {
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.full,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  nextBadge: {
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+  },
+  nextBadgeText: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
+  },
+  closePanelButton: {
+    marginTop: Spacing.md,
+    padding: Spacing.md,
+    backgroundColor: Colors.gray[100],
+    borderRadius: BorderRadius.lg,
+    alignItems: 'center',
+  },
+  closePanelButtonText: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
   },
   // Styles du modal de waypoint
   waypointModalOverlay: {
