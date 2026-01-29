@@ -326,6 +326,13 @@ type AcceptDriverOfferPayload = {
   offerId: string;
 };
 
+type AcceptTripRequestPayload = {
+  vehicleId?: string;
+  pricePerSeat: number;
+  departureDate?: string; // ISO string date
+  totalSeats: number;
+};
+
 export const tripRequestApi = baseApi.injectEndpoints({
   overrideExisting: true,
   endpoints: (builder: BaseEndpointBuilder) => ({
@@ -491,6 +498,33 @@ export const tripRequestApi = baseApi.injectEndpoints({
         'Booking',
       ],
     }),
+
+    // Accepter directement une demande de trajet (style Uber/Bolt)
+    // Crée automatiquement un trajet et une réservation pour le passager
+    acceptTripRequest: builder.mutation<
+      { trip: Trip; tripRequest: TripRequest },
+      { tripRequestId: string; payload: AcceptTripRequestPayload }
+    >({
+      query: ({ tripRequestId, payload }: { tripRequestId: string; payload: AcceptTripRequestPayload }) => ({
+        url: `/trip-requests/${tripRequestId}/accept`,
+        method: 'POST',
+        body: payload,
+      }),
+      transformResponse: (response: { trip: ServerTrip; tripRequest: ServerTripRequest }) => ({
+        trip: mapServerTripToClient(response.trip),
+        tripRequest: mapServerTripRequestToClient(response.tripRequest),
+      }),
+      invalidatesTags: (_result, _error, { tripRequestId }: { tripRequestId: string }) => [
+        { type: 'TripRequest', id: tripRequestId },
+        'TripRequest',
+        'MyTripRequests',
+        'Trip',
+        'MyTrips',
+        'Booking',
+        'DriverOffer',
+        'MyDriverOffers',
+      ],
+    }),
   }),
 });
 
@@ -506,5 +540,6 @@ export const {
   useAcceptDriverOfferMutation,
   useRejectDriverOfferMutation,
   useStartTripFromRequestMutation,
+  useAcceptTripRequestMutation,
 } = tripRequestApi;
 

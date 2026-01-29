@@ -473,9 +473,8 @@ export default function TripDetailsScreen() {
     setBookingSeats((prev) => {
       const current = parseInt(prev, 10);
       const fallback = Number.isNaN(current) ? 1 : current;
-      // Limiter à 2 places maximum par utilisateur et au nombre de places disponibles
-      const maxSeats = Math.min(2, seatLimit);
-      const next = Math.min(Math.max(fallback + delta, 1), maxSeats);
+      // Limiter au nombre de places disponibles
+      const next = Math.min(Math.max(fallback + delta, 1), seatLimit);
       return String(next);
     });
   };
@@ -491,14 +490,6 @@ export default function TripDetailsScreen() {
     }
 
     const seatsNum = parseInt(numericValue, 10);
-
-    // Vérifier si la valeur est supérieure à 2
-    if (seatsNum > 2) {
-      setBookingModalError('Un seul utilisateur ne peut pas réserver plus de deux places.');
-      // Limiter à 2 places maximum
-      setBookingSeats('2');
-      return;
-    }
 
     // Vérifier si la valeur dépasse les places disponibles
     if (seatsNum > seatLimit) {
@@ -523,11 +514,7 @@ export default function TripDetailsScreen() {
       setBookingModalError('Veuillez indiquer un nombre de places valide.');
       return;
     }
-    // Vérifier la limite de 2 places par utilisateur
-    if (seatsValue > 2) {
-      setBookingModalError('Un seul utilisateur ne peut pas réserver plus de deux places.');
-      return;
-    }
+    // Vérifier si le nombre de places dépasse les places disponibles
     if (seatsValue > seatLimit) {
       setBookingModalError(
         `Il reste seulement ${seatLimit} place${seatLimit > 1 ? 's' : ''} pour ce trajet.`,
@@ -1810,7 +1797,7 @@ export default function TripDetailsScreen() {
             </View>
 
             <Text style={styles.bookingModalHint}>
-              Maximum 2 places par utilisateur{seatLimit < 2 ? ` (${seatLimit} disponible${seatLimit > 1 ? 's' : ''})` : ''}
+              {seatLimit} place{seatLimit > 1 ? 's' : ''} disponible{seatLimit > 1 ? 's' : ''}
             </Text>
 
             {/* Destination du passager */}

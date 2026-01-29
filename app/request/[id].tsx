@@ -4,6 +4,7 @@ import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constan
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import {
   useAcceptDriverOfferMutation,
+  useAcceptTripRequestMutation,
   useCancelTripRequestMutation,
   useCreateDriverOfferMutation,
   useGetTripRequestByIdQuery,
@@ -104,6 +105,7 @@ export default function TripRequestDetailsScreen() {
   const [cancelRequest, { isLoading: isCancelling }] = useCancelTripRequestMutation();
   const [updateTripRequest, { isLoading: isUpdating }] = useUpdateTripRequestMutation();
   const [startTripFromRequest, { isLoading: isStartingTripFromRequest }] = useStartTripFromRequestMutation();
+  const [acceptTripRequest, { isLoading: isAcceptingTripRequest }] = useAcceptTripRequestMutation();
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -649,6 +651,111 @@ export default function TripRequestDetailsScreen() {
         },
       ],
     });
+  };
+
+  // Accepter directement la demande de trajet (nouveau flux style Uber/Bolt)
+  const handleAcceptTripRequest = async () => {
+    if (!tripRequest || !id) return;
+
+    // Valider les entrées
+    if (!pricePerSeat || parseFloat(pricePerSeat) < 0) {
+      showDialog({
+        title: 'Erreur',
+        message: 'Veuillez entrer un prix valide',
+        variant: 'danger',
+      });
+      return;
+    }
+
+    if (!availableSeats || parseInt(availableSeats) < tripRequest.numberOfSeats) {
+      showDialog({
+        title: 'Erreur',
+        message: `Vous devez proposer au moins ${tripRequest.numberOfSeats} place(s)`,
+        variant: 'danger',
+      });
+      return;
+    }
+
+    if (tripRequest.maxPricePerSeat && parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat) {
+      showDialog({
+        title: 'Erreur',
+        message: `Le prix ne doit pas dépasser ${tripRequest.maxPricePerSeat} FC par place`,
+        variant: 'danger',
+      });
+      return;
+    }
+
+    try {
+      // Construire le payload
+      const payload: {
+        pricePerSeat: number;
+        totalSeats: number;
+        vehicleId?: string;
+        departureDate?: string;
+      } = {
+        pricePerSeat: parseFloat(pricePerSeat),
+        totalSeats: parseInt(availableSeats),
+      };
+
+      // Ajouter vehicleId seulement s'il est défini et non vide
+      if (selectedVehicleId && selectedVehicleId.trim() !== '') {
+        payload.vehicleId = selectedVehicleId;
+      }
+
+      // Ajouter la date de départ proposée
+      if (proposedDepartureDate) {
+        payload.departureDate = proposedDepartureDate.toISOString();
+      }
+
+      const result = await acceptTripRequest({
+        tripRequestId: id,
+        payload,
+      }).unwrap();
+
+      // Fermer le modal et réinitialiser le formulaire
+      setShowOfferForm(false);
+      setOfferStep('details');
+      setPricePerSeat('');
+      setAvailableSeats('');
+      setMessage('');
+      setSelectedVehicleId('');
+
+      showDialog({
+        title: 'Demande acceptée !',
+        message: `Vous avez accepté cette demande de trajet. Un trajet a été créé automatiquement et le passager a été réservé.`,
+        variant: 'success',
+        actions: [
+          { 
+            label: 'Voir le trajet', 
+            variant: 'primary',
+            onPress: () => {
+              refetch();
+              router.push(`/trip/manage/${result.trip.id}`);
+            }
+          },
+          { 
+            label: 'OK', 
+            variant: 'ghost',
+            onPress: () => refetch() 
+          },
+        ],
+      });
+    } catch (error: any) {
+      const errorMessage = error?.data?.message || 'Impossible d\'accepter la demande';
+      const isDriverError = isDriverRequiredError(error);
+      
+      showDialog({
+        title: 'Erreur',
+        message: errorMessage,
+        variant: 'danger',
+        actions: isDriverError
+          ? [
+              { label: 'Fermer', variant: 'ghost' },
+              createBecomeDriverAction(router),
+            ]
+          : undefined,
+      });
+    }
   };
 
   const handleViewTrip = (tripId: string) => {
@@ -1376,7 +1483,7 @@ export default function TripRequestDetailsScreen() {
           </View>
         )}
 
-        {/* Bouton pour faire une offre (pour les drivers uniquement) */}
+        {/* Bouton pour accepter la demande (pour les drivers uniquement) */}
         {!isOwner && (
           <View style={styles.section}>
             {canMakeOffer ? (
@@ -1388,7 +1495,7 @@ export default function TripRequestDetailsScreen() {
                   if (!(userRole === 'driver' || userRole === 'both')) {
                     showDialog({
                       title: 'Conducteur requis',
-                      message: 'Seuls les conducteurs peuvent faire des offres sur les demandes de trajet. Activez votre compte conducteur pour proposer vos services.',
+                      message: 'Seuls les conducteurs peuvent accepter les demandes de trajet. Activez votre compte conducteur pour proposer vos services.',
                       variant: 'warning',
                       actions: [
                         { label: 'Annuler', variant: 'ghost' },
@@ -1409,8 +1516,8 @@ export default function TripRequestDetailsScreen() {
                   setShowOfferForm(true);
                 }}
               >
-                <Ionicons name="add-circle-outline" size={24} color={Colors.white} />
-                <Text style={styles.makeOfferButtonText}>Faire une offre (Conducteur)</Text>
+                <Ionicons name="checkmark-circle-outline" size={24} color={Colors.white} />
+                <Text style={styles.makeOfferButtonText}>Accepter cette demande</Text>
               </TouchableOpacity>
             ) : !(currentUser?.role === 'driver' || currentUser?.role === 'both') ? (
               <View style={styles.driverRequiredCard}>
@@ -1419,7 +1526,7 @@ export default function TripRequestDetailsScreen() {
                 </View>
                 <Text style={styles.driverRequiredTitle}>Conducteur requis</Text>
                 <Text style={styles.driverRequiredText}>
-                  Seuls les conducteurs peuvent faire des offres sur cette demande de trajet. Activez votre compte conducteur pour proposer vos services aux passagers.
+                  Seuls les conducteurs peuvent accepter les demandes de trajet. Activez votre compte conducteur pour proposer vos services aux passagers.
                 </Text>
                 <TouchableOpacity
                   style={styles.becomeDriverButton}
@@ -1436,7 +1543,7 @@ export default function TripRequestDetailsScreen() {
                 </View>
                 <Text style={styles.driverRequiredTitle}>Vérification d'identité requise</Text>
                 <Text style={styles.driverRequiredText}>
-                  Vous devez compléter la vérification de votre identité (KYC) avant de pouvoir faire des offres.
+                  Vous devez compléter la vérification de votre identité (KYC) avant de pouvoir accepter des demandes.
                 </Text>
                 <TouchableOpacity
                   style={styles.becomeDriverButton}
@@ -1489,7 +1596,7 @@ export default function TripRequestDetailsScreen() {
                     style={styles.modalContentInner}
                   >
                     <View style={styles.modalHeader}>
-                      <Text style={styles.modalTitle}>Créer une offre</Text>
+                      <Text style={styles.modalTitle}>Accepter la demande</Text>
                       <TouchableOpacity
                         style={styles.modalCloseButton}
                         onPress={() => {
@@ -1895,8 +2002,16 @@ export default function TripRequestDetailsScreen() {
                         {offerStep === 'preview' && (
                           <>
                             <View style={styles.previewContainer}>
-                              <Text style={styles.previewTitle}>Aperçu de votre offre</Text>
+                              <Text style={styles.previewTitle}>Confirmer l'acceptation</Text>
                               
+                              {/* Information importante */}
+                              <View style={styles.acceptanceNotice}>
+                                <Ionicons name="information-circle" size={24} color={Colors.info} />
+                                <Text style={styles.acceptanceNoticeText}>
+                                  En acceptant cette demande, un trajet sera créé automatiquement et le passager sera réservé.
+                                </Text>
+                              </View>
+
                               {/* Informations du véhicule */}
                               {selectedVehicleId && (
                                 <View style={styles.previewSection}>
@@ -1944,22 +2059,12 @@ export default function TripRequestDetailsScreen() {
                                   </Text>
                                 </View>
                                 <View style={styles.previewTotalCard}>
-                                  <Text style={styles.previewTotalLabel}>Total</Text>
+                                  <Text style={styles.previewTotalLabel}>Total estimé</Text>
                                   <Text style={styles.previewTotalAmount}>
-                                    {(parseFloat(pricePerSeat) * parseInt(availableSeats)).toLocaleString('fr-FR')} FC
+                                    {(parseFloat(pricePerSeat) * tripRequest.numberOfSeats).toLocaleString('fr-FR')} FC
                                   </Text>
                                 </View>
                               </View>
-
-                              {/* Message */}
-                              {message && (
-                                <View style={styles.previewSection}>
-                                  <Text style={styles.previewSectionTitle}>Message</Text>
-                                  <View style={styles.previewMessageCard}>
-                                    <Text style={styles.previewMessageText}>{message}</Text>
-                                  </View>
-                                </View>
-                              )}
                             </View>
 
                             <View style={styles.formActions}>
@@ -1983,9 +2088,9 @@ export default function TripRequestDetailsScreen() {
                                     ? styles.submitButtonDisabled
                                     : undefined,
                                 ]}
-                                onPress={handleCreateOffer}
+                                onPress={handleAcceptTripRequest}
                                 disabled={Boolean(
-                                  isCreatingOffer ||
+                                  isAcceptingTripRequest ||
                                     !pricePerSeat ||
                                     !availableSeats ||
                                     (tripRequest &&
@@ -1995,12 +2100,12 @@ export default function TripRequestDetailsScreen() {
                                           parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat)))
                                 )}
                               >
-                                {isCreatingOffer ? (
+                                {isAcceptingTripRequest ? (
                                   <ActivityIndicator size="small" color={Colors.white} />
                                 ) : (
                                   <>
-                                    <Ionicons name="send" size={18} color={Colors.white} />
-                                    <Text style={styles.submitButtonText}>Envoyer l'offre</Text>
+                                    <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
+                                    <Text style={styles.submitButtonText}>Accepter la demande</Text>
                                   </>
                                 )}
                               </TouchableOpacity>
@@ -2509,6 +2614,24 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
     marginBottom: Spacing.sm,
+  },
+  acceptanceNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.md,
+    padding: Spacing.md,
+    backgroundColor: Colors.info + '10',
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.info + '30',
+    marginBottom: Spacing.md,
+  },
+  acceptanceNoticeText: {
+    flex: 1,
+    fontSize: FontSizes.sm,
+    color: Colors.info,
+    lineHeight: 20,
+    fontWeight: FontWeights.medium,
   },
   previewSection: {
     marginBottom: Spacing.lg,
