@@ -41,12 +41,13 @@ import {
 } from 'react-native';
 import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TripRequestDetailsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
   const { showDialog } = useDialog();
+  const insets = useSafeAreaInsets();
   
   // Extraire l'ID correctement (peut être un tableau avec Expo Router)
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -60,17 +61,26 @@ export default function TripRequestDetailsScreen() {
     return role === 'driver' || role === 'both';
   }, [currentUser?.role]);
   
+  // État pour le polling interval dynamique
+  const [pollingInterval, setPollingInterval] = useState(30000);
+  
   const { data: tripRequest, isLoading, error, refetch, isError } = useGetTripRequestByIdQuery(id || '', {
     skip: !id,
-    // Polling intelligent basé sur le statut de la demande
-    pollingInterval: tripRequest?.status === 'pending' || tripRequest?.status === 'offers_received'
-      ? 30000 // 30 secondes pour les demandes actives
-      : tripRequest?.status === 'driver_selected'
-      ? 60000 // 60 secondes si driver sélectionné
-      : 0, // Pas de polling si annulé ou expiré
+    pollingInterval,
     refetchOnFocus: true,
     refetchOnReconnect: true,
   });
+
+  // Mettre à jour le polling interval en fonction du statut de la demande
+  React.useEffect(() => {
+    if (tripRequest?.status === 'pending' || tripRequest?.status === 'offers_received') {
+      setPollingInterval(30000); // 30 secondes pour les demandes actives
+    } else if (tripRequest?.status === 'driver_selected') {
+      setPollingInterval(60000); // 60 secondes si driver sélectionné
+    } else {
+      setPollingInterval(0); // Pas de polling si annulé ou expiré
+    }
+  }, [tripRequest?.status]);
 
   // Debug: Log pour voir ce qui se passe
   React.useEffect(() => {
@@ -144,7 +154,7 @@ export default function TripRequestDetailsScreen() {
 
   // États pour le formulaire d'offre
   const [showOfferForm, setShowOfferForm] = useState(false);
-  const [offerStep, setOfferStep] = useState<'details' | 'pricing' | 'preview'>('details');
+  const [offerStep, setOfferStep] = useState<'details' | 'preview'>('details');
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
   const [proposedDepartureDate, setProposedDepartureDate] = useState(() => {
     // Initialiser avec la date min de la demande ou maintenant
@@ -657,45 +667,13 @@ export default function TripRequestDetailsScreen() {
   const handleAcceptTripRequest = async () => {
     if (!tripRequest || !id) return;
 
-    // Valider les entrées
-    if (!pricePerSeat || parseFloat(pricePerSeat) < 0) {
-      showDialog({
-        title: 'Erreur',
-        message: 'Veuillez entrer un prix valide',
-        variant: 'danger',
-      });
-      return;
-    }
-
-    if (!availableSeats || parseInt(availableSeats) < tripRequest.numberOfSeats) {
-      showDialog({
-        title: 'Erreur',
-        message: `Vous devez proposer au moins ${tripRequest.numberOfSeats} place(s)`,
-        variant: 'danger',
-      });
-      return;
-    }
-
-    if (tripRequest.maxPricePerSeat && parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat) {
-      showDialog({
-        title: 'Erreur',
-        message: `Le prix ne doit pas dépasser ${tripRequest.maxPricePerSeat} FC par place`,
-        variant: 'danger',
-      });
-      return;
-    }
-
     try {
       // Construire le payload
       const payload: {
-        pricePerSeat: number;
-        totalSeats: number;
         vehicleId?: string;
         departureDate?: string;
-      } = {
-        pricePerSeat: parseFloat(pricePerSeat),
-        totalSeats: parseInt(availableSeats),
-      };
+        message?: string;
+      } = {};
 
       // Ajouter vehicleId seulement s'il est défini et non vide
       if (selectedVehicleId && selectedVehicleId.trim() !== '') {
@@ -705,6 +683,11 @@ export default function TripRequestDetailsScreen() {
       // Ajouter la date de départ proposée
       if (proposedDepartureDate) {
         payload.departureDate = proposedDepartureDate.toISOString();
+      }
+
+      // Ajouter le message s'il existe
+      if (message && message.trim() !== '') {
+        payload.message = message.trim();
       }
 
       const result = await acceptTripRequest({
@@ -1616,7 +1599,7 @@ export default function TripRequestDetailsScreen() {
                     <View style={styles.offerStepIndicator}>
                       <View style={styles.offerStepContainer}>
                         <View style={[styles.offerStepCircle, offerStep === 'details' && styles.offerStepCircleActive]}>
-                          {(offerStep === 'pricing' || offerStep === 'preview') ? (
+                          {offerStep === 'preview' ? (
                             <Ionicons name="checkmark" size={16} color={Colors.white} />
                           ) : (
                             <Text style={[styles.offerStepNumber, offerStep === 'details' && styles.offerStepNumberActive]}>1</Text>
@@ -1624,29 +1607,21 @@ export default function TripRequestDetailsScreen() {
                         </View>
                         <Text style={[styles.offerStepLabel, offerStep === 'details' && styles.offerStepLabelActive]}>Détails</Text>
                       </View>
-                      <View style={[styles.offerStepLine, (offerStep === 'pricing' || offerStep === 'preview') && styles.offerStepLineActive]} />
-                      <View style={styles.offerStepContainer}>
-                        <View style={[styles.offerStepCircle, offerStep === 'pricing' && styles.offerStepCircleActive]}>
-                          {offerStep === 'preview' ? (
-                            <Ionicons name="checkmark" size={16} color={Colors.white} />
-                          ) : (
-                            <Text style={[styles.offerStepNumber, offerStep === 'pricing' && styles.offerStepNumberActive]}>2</Text>
-                          )}
-                        </View>
-                        <Text style={[styles.offerStepLabel, offerStep === 'pricing' && styles.offerStepLabelActive]}>Tarification</Text>
-                      </View>
                       <View style={[styles.offerStepLine, offerStep === 'preview' && styles.offerStepLineActive]} />
                       <View style={styles.offerStepContainer}>
                         <View style={[styles.offerStepCircle, offerStep === 'preview' && styles.offerStepCircleActive]}>
-                          <Text style={[styles.offerStepNumber, offerStep === 'preview' && styles.offerStepNumberActive]}>3</Text>
+                          <Text style={[styles.offerStepNumber, offerStep === 'preview' && styles.offerStepNumberActive]}>2</Text>
                         </View>
-                        <Text style={[styles.offerStepLabel, offerStep === 'preview' && styles.offerStepLabelActive]}>Aperçu</Text>
+                        <Text style={[styles.offerStepLabel, offerStep === 'preview' && styles.offerStepLabelActive]}>Confirmation</Text>
                       </View>
                     </View>
 
                     <ScrollView
                       style={styles.modalScrollView}
-                      contentContainerStyle={styles.modalScrollContent}
+                      contentContainerStyle={[
+                        styles.modalScrollContent,
+                        { paddingBottom: Math.max(insets.bottom, 16) + 16 }
+                      ]}
                       showsVerticalScrollIndicator={false}
                       keyboardShouldPersistTaps="handled"
                     >
@@ -1764,6 +1739,18 @@ export default function TripRequestDetailsScreen() {
                       )}
                             </View>
 
+                            <View style={styles.formGroup}>
+                              <Text style={styles.formLabel}>Message (optionnel)</Text>
+                              <TextInput
+                                style={[styles.input, styles.textArea]}
+                                multiline
+                                numberOfLines={4}
+                                placeholder="Ajoutez un message pour le passager..."
+                                value={message}
+                                onChangeText={setMessage}
+                              />
+                            </View>
+
                             <View style={styles.formActions}>
                               <TouchableOpacity
                                 style={styles.cancelFormButton}
@@ -1782,215 +1769,9 @@ export default function TripRequestDetailsScreen() {
                                 style={styles.nextButton}
                                 onPress={() => {
                                   if (proposedDepartureDate) {
-                                    setOfferStep('pricing');
-                                  }
-                                }}
-                              >
-                                <Text style={styles.nextButtonText}>Suivant</Text>
-                                <Ionicons name="arrow-forward" size={18} color={Colors.white} />
-                              </TouchableOpacity>
-                            </View>
-                          </>
-                        )}
-
-                        {offerStep === 'pricing' && (
-                          <>
-                            <View style={styles.formGroup}>
-                              <View style={styles.formLabelRow}>
-                                <Text style={styles.formLabel}>Prix par place (FC) *</Text>
-                        {tripRequest.maxPricePerSeat && (
-                          <View style={styles.priceHintContainer}>
-                            <Ionicons name="information-circle-outline" size={16} color={Colors.info} />
-                            <Text style={styles.priceHintText}>
-                              Max: {tripRequest.maxPricePerSeat} FC
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                      {tripRequest.maxPricePerSeat && (
-                        <View style={styles.priceSuggestionsContainer}>
-                          <Text style={styles.priceSuggestionsLabel}>Suggestions :</Text>
-                          <View style={styles.priceSuggestions}>
-                            {[
-                              Math.round(tripRequest.maxPricePerSeat * 0.8),
-                              Math.round(tripRequest.maxPricePerSeat * 0.9),
-                              tripRequest.maxPricePerSeat,
-                            ].map((suggestedPrice) => (
-                              <TouchableOpacity
-                                key={suggestedPrice}
-                                style={[
-                                  styles.priceSuggestionButton,
-                                  pricePerSeat === suggestedPrice.toString() && styles.priceSuggestionButtonActive,
-                                ]}
-                                onPress={() => setPricePerSeat(suggestedPrice.toString())}
-                              >
-                                <Text
-                                  style={[
-                                    styles.priceSuggestionText,
-                                    pricePerSeat === suggestedPrice.toString() && styles.priceSuggestionTextActive,
-                                  ]}
-                                >
-                                  {suggestedPrice} FC
-                                </Text>
-                              </TouchableOpacity>
-                            ))}
-                          </View>
-                        </View>
-                      )}
-                      <TextInput
-                        style={[
-                          styles.input,
-                          pricePerSeat &&
-                            tripRequest.maxPricePerSeat &&
-                            parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat
-                            ? styles.inputError
-                            : undefined,
-                        ]}
-                        keyboardType="numeric"
-                        placeholder={tripRequest.maxPricePerSeat ? `Ex: ${Math.round(tripRequest.maxPricePerSeat * 0.9)}` : 'Ex: 5000'}
-                        value={pricePerSeat}
-                        onChangeText={setPricePerSeat}
-                      />
-                      {pricePerSeat &&
-                        tripRequest.maxPricePerSeat &&
-                        parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat && (
-                          <Text style={styles.errorText}>
-                            Le prix dépasse le maximum autorisé ({tripRequest.maxPricePerSeat} FC)
-                          </Text>
-                        )}
-                      {pricePerSeat && parseFloat(pricePerSeat) > 0 && tripRequest.maxPricePerSeat && (
-                        <View style={styles.priceComparisonContainer}>
-                          <View style={styles.priceComparisonBar}>
-                            <View
-                              style={[
-                                styles.priceComparisonFill,
-                                {
-                                  width: `${Math.min((parseFloat(pricePerSeat) / tripRequest.maxPricePerSeat) * 100, 100)}%`,
-                                  backgroundColor:
-                                    parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat
-                                      ? Colors.danger
-                                      : parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat * 0.9
-                                      ? Colors.warning
-                                      : Colors.success,
-                                },
-                              ]}
-                            />
-                          </View>
-                          <Text style={styles.priceComparisonText}>
-                            {Math.round((parseFloat(pricePerSeat) / tripRequest.maxPricePerSeat) * 100)}% du prix maximum
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-
-                    <View style={styles.formGroup}>
-                      <Text style={styles.formLabel}>
-                        Nombre de places disponibles *{tripRequest ? ` (min: ${tripRequest.numberOfSeats})` : ''}
-                      </Text>
-                      {tripRequest && (
-                        <View style={styles.seatsSuggestionsContainer}>
-                          {[tripRequest.numberOfSeats, tripRequest.numberOfSeats + 1, tripRequest.numberOfSeats + 2]
-                            .filter((s) => s <= 8)
-                            .map((suggestedSeats) => (
-                              <TouchableOpacity
-                                key={suggestedSeats}
-                                style={[
-                                  styles.seatsSuggestionButton,
-                                  availableSeats === suggestedSeats.toString() && styles.seatsSuggestionButtonActive,
-                                ]}
-                                onPress={() => setAvailableSeats(suggestedSeats.toString())}
-                              >
-                                <Ionicons
-                                  name="person"
-                                  size={16}
-                                  color={
-                                    availableSeats === suggestedSeats.toString() ? Colors.white : Colors.gray[600]
-                                  }
-                                />
-                                <Text
-                                  style={[
-                                    styles.seatsSuggestionText,
-                                    availableSeats === suggestedSeats.toString() && styles.seatsSuggestionTextActive,
-                                  ]}
-                                >
-                                  {suggestedSeats}
-                                </Text>
-                              </TouchableOpacity>
-                            ))}
-                        </View>
-                      )}
-                      <TextInput
-                        style={[
-                          styles.input,
-                          availableSeats &&
-                            tripRequest &&
-                            parseInt(availableSeats) < tripRequest.numberOfSeats &&
-                            styles.inputError,
-                        ]}
-                        keyboardType="numeric"
-                        placeholder={tripRequest ? `Ex: ${tripRequest.numberOfSeats}` : 'Ex: 1'}
-                        value={availableSeats}
-                        onChangeText={setAvailableSeats}
-                      />
-                      {availableSeats &&
-                        tripRequest &&
-                        parseInt(availableSeats) < tripRequest.numberOfSeats && (
-                          <Text style={styles.errorText}>
-                            Vous devez proposer au moins {tripRequest.numberOfSeats} place(s)
-                          </Text>
-                        )}
-                    </View>
-
-                    <View style={styles.formGroup}>
-                      <Text style={styles.formLabel}>Message (optionnel)</Text>
-                      <TextInput
-                        style={[styles.input, styles.textArea]}
-                        multiline
-                        numberOfLines={4}
-                        placeholder="Message pour le passager..."
-                        value={message}
-                        onChangeText={setMessage}
-                      />
-                    </View>
-
-                            <View style={styles.formActions}>
-                              <TouchableOpacity
-                                style={styles.offerBackButton}
-                                onPress={() => setOfferStep('details')}
-                              >
-                                <Ionicons name="arrow-back" size={18} color={Colors.gray[700]} />
-                                <Text style={styles.offerBackButtonText}>Retour</Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={[
-                                  styles.nextButton,
-                                  (!pricePerSeat ||
-                                    !availableSeats ||
-                                    (tripRequest &&
-                                      (parseFloat(pricePerSeat) <= 0 ||
-                                        parseInt(availableSeats) < tripRequest.numberOfSeats ||
-                                        (tripRequest.maxPricePerSeat &&
-                                          parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat))))
-                                    ? styles.submitButtonDisabled
-                                    : undefined,
-                                ]}
-                                onPress={() => {
-                                  if (pricePerSeat && availableSeats && tripRequest &&
-                                    parseFloat(pricePerSeat) > 0 &&
-                                    parseInt(availableSeats) >= tripRequest.numberOfSeats &&
-                                    (!tripRequest.maxPricePerSeat || parseFloat(pricePerSeat) <= tripRequest.maxPricePerSeat)) {
                                     setOfferStep('preview');
                                   }
                                 }}
-                                disabled={Boolean(
-                                  !pricePerSeat ||
-                                    !availableSeats ||
-                                    (tripRequest &&
-                                      (parseFloat(pricePerSeat) <= 0 ||
-                                        parseInt(availableSeats) < tripRequest.numberOfSeats ||
-                                        (tripRequest.maxPricePerSeat &&
-                                          parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat)))
-                                )}
                               >
                                 <Text style={styles.nextButtonText}>Suivant</Text>
                                 <Ionicons name="arrow-forward" size={18} color={Colors.white} />
@@ -1998,6 +1779,7 @@ export default function TripRequestDetailsScreen() {
                             </View>
                           </>
                         )}
+
 
                         {offerStep === 'preview' && (
                           <>
@@ -2043,69 +1825,37 @@ export default function TripRequestDetailsScreen() {
                                 </View>
                               </View>
 
-                              {/* Prix et places */}
-                              <View style={styles.previewSection}>
-                                <Text style={styles.previewSectionTitle}>Tarification</Text>
-                                <View style={styles.previewInfoCard}>
-                                  <Ionicons name="cash" size={20} color={Colors.primary} />
-                                  <Text style={styles.previewInfoText}>
-                                    {parseFloat(pricePerSeat).toLocaleString('fr-FR')} FC par place
-                                  </Text>
+                              {/* Message */}
+                              {message && (
+                                <View style={styles.previewSection}>
+                                  <Text style={styles.previewSectionTitle}>Message</Text>
+                                  <View style={styles.previewInfoCard}>
+                                    <Ionicons name="chatbox" size={20} color={Colors.primary} />
+                                    <Text style={styles.previewInfoText}>{message}</Text>
+                                  </View>
                                 </View>
-                                <View style={styles.previewInfoCard}>
-                                  <Ionicons name="people" size={20} color={Colors.primary} />
-                                  <Text style={styles.previewInfoText}>
-                                    {availableSeats} place{parseInt(availableSeats) > 1 ? 's' : ''} disponible{parseInt(availableSeats) > 1 ? 's' : ''}
-                                  </Text>
-                                </View>
-                                <View style={styles.previewTotalCard}>
-                                  <Text style={styles.previewTotalLabel}>Total estimé</Text>
-                                  <Text style={styles.previewTotalAmount}>
-                                    {(parseFloat(pricePerSeat) * tripRequest.numberOfSeats).toLocaleString('fr-FR')} FC
-                                  </Text>
-                                </View>
-                              </View>
+                              )}
                             </View>
 
                             <View style={styles.formActions}>
                               <TouchableOpacity
                                 style={styles.offerBackButton}
-                                onPress={() => setOfferStep('pricing')}
+                                onPress={() => setOfferStep('details')}
                               >
                                 <Ionicons name="arrow-back" size={18} color={Colors.gray[700]} />
                                 <Text style={styles.offerBackButtonText}>Retour</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
-                                style={[
-                                  styles.submitButton,
-                                  (!pricePerSeat ||
-                                    !availableSeats ||
-                                    (tripRequest &&
-                                      (parseFloat(pricePerSeat) <= 0 ||
-                                        parseInt(availableSeats) < tripRequest.numberOfSeats ||
-                                        (tripRequest.maxPricePerSeat &&
-                                          parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat))))
-                                    ? styles.submitButtonDisabled
-                                    : undefined,
-                                ]}
+                                style={styles.submitButton}
                                 onPress={handleAcceptTripRequest}
-                                disabled={Boolean(
-                                  isAcceptingTripRequest ||
-                                    !pricePerSeat ||
-                                    !availableSeats ||
-                                    (tripRequest &&
-                                      (parseFloat(pricePerSeat) <= 0 ||
-                                        parseInt(availableSeats) < tripRequest.numberOfSeats ||
-                                        (tripRequest.maxPricePerSeat &&
-                                          parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat)))
-                                )}
+                                disabled={isAcceptingTripRequest}
                               >
                                 {isAcceptingTripRequest ? (
                                   <ActivityIndicator size="small" color={Colors.white} />
                                 ) : (
                                   <>
                                     <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
-                                    <Text style={styles.submitButtonText}>Accepter la demande</Text>
+                                    <Text style={styles.submitButtonText}>Accepter</Text>
                                   </>
                                 )}
                               </TouchableOpacity>
@@ -2235,7 +1985,10 @@ export default function TripRequestDetailsScreen() {
 
                   <ScrollView
                     style={styles.modalScrollView}
-                    contentContainerStyle={styles.modalScrollContent}
+                    contentContainerStyle={[
+                      styles.modalScrollContent,
+                      { paddingBottom: Math.max(insets.bottom, 16) + 16 }
+                    ]}
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                   >
@@ -3542,8 +3295,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderTopLeftRadius: BorderRadius.xl,
     borderTopRightRadius: BorderRadius.xl,
-    maxHeight: '95%',
-    minHeight: '75%',
+    maxHeight: '100%',
+    minHeight: '95%',
     shadowColor: Colors.black,
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,

@@ -25,11 +25,12 @@ import {
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type RequestStep = 'route' | 'details' | 'confirm';
+type RequestStep = 'route' | 'datetime' | 'options' | 'confirm';
 
 const STEPS: { id: RequestStep; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { id: 'route', label: 'Trajet', icon: 'map' },
-  { id: 'details', label: 'Détails', icon: 'options' },
+  { id: 'datetime', label: 'Date', icon: 'time' },
+  { id: 'options', label: 'Options', icon: 'settings' },
   { id: 'confirm', label: 'Fin', icon: 'checkmark-circle' },
 ];
 
@@ -144,20 +145,22 @@ export default function RequestTripScreen() {
         });
         return;
       }
-      setStep('details');
-    } else if (step === 'details') {
-      if (!numberOfSeats || parseInt(numberOfSeats) < 1) {
+      setStep('datetime');
+    } else if (step === 'datetime') {
+      if (departureDateMin >= departureDateMax) {
         showDialog({
-          title: 'Places requises',
-          message: 'Combien de personnes voyagent avec vous ?',
+          title: 'Dates invalides',
+          message: 'L\'heure maximum doit être après l\'heure minimum.',
           variant: 'danger',
         });
         return;
       }
-      if (departureDateMin >= departureDateMax) {
+      setStep('options');
+    } else if (step === 'options') {
+      if (!numberOfSeats || parseInt(numberOfSeats) < 1) {
         showDialog({
-          title: 'Dates invalides',
-          message: 'Le délai maximum doit être après le départ minimum.',
+          title: 'Places requises',
+          message: 'Combien de personnes voyagent avec vous ?',
           variant: 'danger',
         });
         return;
@@ -167,8 +170,9 @@ export default function RequestTripScreen() {
   };
 
   const handleBack = () => {
-    if (step === 'details') setStep('route');
-    else if (step === 'confirm') setStep('details');
+    if (step === 'datetime') setStep('route');
+    else if (step === 'options') setStep('datetime');
+    else if (step === 'confirm') setStep('options');
     else router.back();
   };
 
@@ -293,83 +297,151 @@ export default function RequestTripScreen() {
             </Animated.View>
           )}
 
-          {step === 'details' && (
+          {step === 'datetime' && (
             <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.stepWrapper}>
-              <Text style={styles.sectionTitle}>Horaires et options</Text>
+              <Text style={styles.sectionTitle}>Quand partez-vous ?</Text>
               
-              <View style={styles.card}>
-                <Text style={styles.cardLabel}>QUAND VOULEZ-VOUS PARTIR ?</Text>
-                <View style={styles.timeRangeContainer}>
-                  <View style={styles.timeBox}>
-                    <Text style={styles.timeLabel}>AU PLUS TÔT</Text>
-                    <TouchableOpacity onPress={() => openDateOrTimePickerMin('time')} style={styles.timeValueBox}>
-                      <Text style={styles.timeValue}>
-                        {departureDateMin.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                  <Ionicons name="arrow-forward" size={20} color={Colors.gray[300]} style={{ marginTop: 25 }} />
-                  <View style={styles.timeBox}>
-                    <Text style={styles.timeLabel}>AU PLUS TARD</Text>
-                    <TouchableOpacity onPress={() => openDateOrTimePickerMax('time')} style={styles.timeValueBox}>
-                      <Text style={styles.timeValue}>
-                        {departureDateMax.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                      </Text>
-                    </TouchableOpacity>
+              <View style={styles.dateCard}>
+                <View style={styles.dateCardHeader}>
+                  <Ionicons name="calendar" size={24} color={Colors.primary} />
+                  <View style={styles.dateCardHeaderText}>
+                    <Text style={styles.dateCardTitle}>Choisir la date</Text>
+                    <Text style={styles.dateCardSubtitle}>Sélectionnez le jour de votre départ</Text>
                   </View>
                 </View>
-                <TouchableOpacity onPress={() => openDateOrTimePickerMin('date')} style={styles.dateSelector}>
-                  <Ionicons name="calendar-outline" size={20} color={Colors.primary} />
-                  <Text style={styles.dateText}>
-                    {departureDateMin.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                <TouchableOpacity onPress={() => openDateOrTimePickerMin('date')} style={styles.dateButton}>
+                  <View style={styles.dateButtonIcon}>
+                    <Ionicons name="calendar-outline" size={20} color={Colors.white} />
+                  </View>
+                  <Text style={styles.dateButtonText}>
+                    {departureDateMin.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                   </Text>
+                  <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.row}>
-                <View style={[styles.card, { flex: 1, marginRight: Spacing.sm }]}>
-                  <Text style={styles.cardLabel}>PLACES</Text>
-                  <View style={styles.counterContainer}>
-                    <TouchableOpacity 
-                      onPress={() => setNumberOfSeats(Math.max(1, parseInt(numberOfSeats) - 1).toString())}
-                      style={styles.counterBtn}
-                    >
-                      <Ionicons name="remove" size={20} color={Colors.gray[900]} />
-                    </TouchableOpacity>
-                    <Text style={styles.counterValue}>{numberOfSeats}</Text>
-                    <TouchableOpacity 
-                      onPress={() => setNumberOfSeats((parseInt(numberOfSeats) + 1).toString())}
-                      style={styles.counterBtn}
-                    >
-                      <Ionicons name="add" size={20} color={Colors.gray[900]} />
-                    </TouchableOpacity>
+              <View style={styles.timeRangeCard}>
+                <View style={styles.timeRangeHeader}>
+                  <Ionicons name="time" size={24} color={Colors.secondary} />
+                  <View style={styles.timeRangeHeaderText}>
+                    <Text style={styles.timeRangeTitle}>Plage horaire flexible</Text>
+                    <Text style={styles.timeRangeSubtitle}>Donnez une plage pour plus de choix</Text>
                   </View>
                 </View>
-                <View style={[styles.card, { flex: 1.5 }]}>
-                  <Text style={styles.cardLabel}>PRIX MAX (FACULTATIF)</Text>
-                  <View style={styles.priceInputContainer}>
-                    <TextInput
-                      style={styles.priceInput}
-                      value={maxPricePerSeat}
-                      onChangeText={setMaxPricePerSeat}
-                      keyboardType="number-pad"
-                      placeholder="FC"
-                    />
-                    <Text style={styles.currency}>FC</Text>
+                
+                <View style={styles.timeRangePicker}>
+                  <TouchableOpacity onPress={() => openDateOrTimePickerMin('time')} style={styles.timePickerBox}>
+                    <View style={styles.timePickerLabel}>
+                      <Ionicons name="time-outline" size={16} color={Colors.success} />
+                      <Text style={styles.timePickerLabelText}>Départ au plus tôt</Text>
+                    </View>
+                    <View style={styles.timePickerValue}>
+                      <Text style={styles.timePickerValueText}>
+                        {departureDateMin.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                      <Ionicons name="create-outline" size={18} color={Colors.gray[400]} />
+                    </View>
+                  </TouchableOpacity>
+
+                  <View style={styles.timeRangeArrow}>
+                    <Ionicons name="arrow-down" size={24} color={Colors.gray[300]} />
                   </View>
+
+                  <TouchableOpacity onPress={() => openDateOrTimePickerMax('time')} style={styles.timePickerBox}>
+                    <View style={styles.timePickerLabel}>
+                      <Ionicons name="time-outline" size={16} color={Colors.danger} />
+                      <Text style={styles.timePickerLabelText}>Départ au plus tard</Text>
+                    </View>
+                    <View style={styles.timePickerValue}>
+                      <Text style={styles.timePickerValueText}>
+                        {departureDateMax.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                      <Ionicons name="create-outline" size={18} color={Colors.gray[400]} />
+                    </View>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.timeDurationInfo}>
+                  <Ionicons name="information-circle" size={16} color={Colors.info} />
+                  <Text style={styles.timeDurationText}>
+                    Fenêtre de {Math.round((departureDateMax.getTime() - departureDateMin.getTime()) / (1000 * 60))} minutes
+                  </Text>
                 </View>
               </View>
 
+              <View style={styles.infoBox}>
+                <Ionicons name="bulb" size={20} color={Colors.warning} />
+                <Text style={styles.infoText}>
+                  Une plage horaire plus large augmente vos chances de trouver un conducteur rapidement.
+                </Text>
+              </View>
+            </Animated.View>
+          )}
+
+          {step === 'options' && (
+            <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.stepWrapper}>
+              <Text style={styles.sectionTitle}>Options de voyage</Text>
+
               <View style={styles.card}>
-                <Text style={styles.cardLabel}>NOTES POUR LE CHAUFFEUR</Text>
+                <View style={styles.optionHeader}>
+                  <Ionicons name="people" size={24} color={Colors.primary} />
+                  <Text style={styles.cardLabel}>NOMBRE DE PASSAGERS</Text>
+                </View>
+                <View style={styles.counterContainer}>
+                  <TouchableOpacity 
+                    onPress={() => setNumberOfSeats(Math.max(1, parseInt(numberOfSeats) - 1).toString())}
+                    style={styles.counterBtn}
+                  >
+                    <Ionicons name="remove" size={20} color={Colors.gray[900]} />
+                  </TouchableOpacity>
+                  <Text style={styles.counterValue}>{numberOfSeats}</Text>
+                  <TouchableOpacity 
+                    onPress={() => setNumberOfSeats((parseInt(numberOfSeats) + 1).toString())}
+                    style={styles.counterBtn}
+                  >
+                    <Ionicons name="add" size={20} color={Colors.gray[900]} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.optionHint}>
+                  {numberOfSeats} personne{parseInt(numberOfSeats) > 1 ? 's' : ''} (vous inclus)
+                </Text>
+              </View>
+
+              <View style={styles.card}>
+                <View style={styles.optionHeader}>
+                  <Ionicons name="cash" size={24} color={Colors.secondary} />
+                  <Text style={styles.cardLabel}>BUDGET MAXIMUM PAR PLACE</Text>
+                </View>
+                <View style={styles.priceInputContainer}>
+                  <TextInput
+                    style={styles.priceInput}
+                    value={maxPricePerSeat}
+                    onChangeText={setMaxPricePerSeat}
+                    keyboardType="number-pad"
+                    placeholder="Ex: 2000"
+                    placeholderTextColor={Colors.gray[400]}
+                  />
+                  <Text style={styles.currency}>FC</Text>
+                </View>
+                <Text style={styles.optionHint}>
+                  {maxPricePerSeat ? `Maximum ${maxPricePerSeat} FC par personne` : 'Facultatif - Laissez vide pour aucune limite'}
+                </Text>
+              </View>
+
+              <View style={styles.card}>
+                <View style={styles.optionHeader}>
+                  <Ionicons name="chatbubble-ellipses" size={24} color={Colors.info} />
+                  <Text style={styles.cardLabel}>INFORMATIONS SUPPLÉMENTAIRES</Text>
+                </View>
                 <TextInput
                   style={styles.textArea}
                   value={description}
                   onChangeText={setDescription}
                   multiline
-                  placeholder="Ex: Bagages volumineux, bébé à bord..."
+                  placeholder="Ex: Bagages volumineux, bébé à bord, préférence pour véhicule climatisé..."
                   placeholderTextColor={Colors.gray[400]}
                 />
+                <Text style={styles.optionHint}>Ces détails aideront les conducteurs à mieux répondre à votre demande</Text>
               </View>
             </Animated.View>
           )}
@@ -403,21 +475,50 @@ export default function RequestTripScreen() {
 
                   <View style={styles.summaryDivider} />
 
-                  <View style={styles.summaryGrid}>
-                    <View style={styles.gridItem}>
-                      <Text style={styles.gridLabel}>HEURE</Text>
-                      <Text style={styles.gridValue}>
-                        {departureDateMin.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                      </Text>
+                  <View style={styles.summaryDetailCard}>
+                    <View style={styles.summaryDetailRow}>
+                      <Ionicons name="calendar" size={18} color={Colors.primary} />
+                      <View style={styles.summaryDetailContent}>
+                        <Text style={styles.summaryDetailLabel}>Date de départ</Text>
+                        <Text style={styles.summaryDetailValue}>
+                          {departureDateMin.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                        </Text>
+                      </View>
                     </View>
-                    <View style={styles.gridItem}>
-                      <Text style={styles.gridLabel}>PLACES</Text>
-                      <Text style={styles.gridValue}>{numberOfSeats}</Text>
+                    <View style={styles.summaryDetailRow}>
+                      <Ionicons name="time" size={18} color={Colors.secondary} />
+                      <View style={styles.summaryDetailContent}>
+                        <Text style={styles.summaryDetailLabel}>Plage horaire</Text>
+                        <Text style={styles.summaryDetailValue}>
+                          {departureDateMin.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} - {departureDateMax.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                      </View>
                     </View>
-                    <View style={styles.gridItem}>
-                      <Text style={styles.gridLabel}>PRIX MAX</Text>
-                      <Text style={styles.gridValue}>{maxPricePerSeat || 'Libre'} {maxPricePerSeat ? 'FC' : ''}</Text>
+                    <View style={styles.summaryDetailRow}>
+                      <Ionicons name="people" size={18} color={Colors.success} />
+                      <View style={styles.summaryDetailContent}>
+                        <Text style={styles.summaryDetailLabel}>Passagers</Text>
+                        <Text style={styles.summaryDetailValue}>{numberOfSeats} personne{parseInt(numberOfSeats) > 1 ? 's' : ''}</Text>
+                      </View>
                     </View>
+                    {maxPricePerSeat && (
+                      <View style={styles.summaryDetailRow}>
+                        <Ionicons name="cash" size={18} color={Colors.info} />
+                        <View style={styles.summaryDetailContent}>
+                          <Text style={styles.summaryDetailLabel}>Budget maximum</Text>
+                          <Text style={styles.summaryDetailValue}>{maxPricePerSeat} FC / place</Text>
+                        </View>
+                      </View>
+                    )}
+                    {description && (
+                      <View style={styles.summaryDetailRow}>
+                        <Ionicons name="chatbubble-ellipses" size={18} color={Colors.warning} />
+                        <View style={styles.summaryDetailContent}>
+                          <Text style={styles.summaryDetailLabel}>Notes</Text>
+                          <Text style={styles.summaryDetailValue}>{description}</Text>
+                        </View>
+                      </View>
+                    )}
                   </View>
                 </View>
 
@@ -665,11 +766,10 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   cardLabel: {
-    fontSize: 10,
+    fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
-    color: Colors.gray[400],
-    letterSpacing: 1,
-    marginBottom: Spacing.md,
+    color: Colors.gray[600],
+    letterSpacing: 0.5,
   },
   timeRangeContainer: {
     flexDirection: 'row',
@@ -719,38 +819,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.xs,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.md,
+    marginTop: Spacing.sm,
   },
   counterBtn: {
-    width: 36,
-    height: 36,
+    width: 48,
+    height: 48,
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   counterValue: {
-    fontSize: FontSizes.lg,
+    fontSize: FontSizes.xxl,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
+    minWidth: 40,
+    textAlign: 'center',
   },
   priceInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.lg,
-    paddingHorizontal: Spacing.md,
-    height: 48,
+    borderRadius: BorderRadius.xl,
+    paddingHorizontal: Spacing.lg,
+    height: 64,
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
   },
   priceInput: {
     flex: 1,
-    fontSize: FontSizes.lg,
+    fontSize: FontSizes.xxl,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
@@ -762,12 +868,16 @@ const styles = StyleSheet.create({
   },
   textArea: {
     backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
     fontSize: FontSizes.base,
     color: Colors.gray[900],
-    minHeight: 80,
+    minHeight: 100,
     textAlignVertical: 'top',
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    lineHeight: 22,
   },
   summaryCard: {
     backgroundColor: Colors.white,
@@ -835,25 +945,7 @@ const styles = StyleSheet.create({
   summaryDivider: {
     height: 1,
     backgroundColor: Colors.gray[100],
-    marginVertical: Spacing.xl,
-  },
-  summaryGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  gridItem: {
-    flex: 1,
-  },
-  gridLabel: {
-    fontSize: 10,
-    color: Colors.gray[400],
-    fontWeight: FontWeights.bold,
-    marginBottom: 4,
-  },
-  gridValue: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
+    marginVertical: Spacing.lg,
   },
   summaryFooter: {
     backgroundColor: Colors.gray[50],
@@ -907,5 +999,177 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: FontWeights.bold,
     fontSize: FontSizes.base,
+  },
+  dateCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 15,
+    elevation: 3,
+  },
+  dateCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  dateCardHeaderText: {
+    marginLeft: Spacing.md,
+    flex: 1,
+  },
+  dateCardTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  dateCardSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+    marginTop: 2,
+  },
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary + '08',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1.5,
+    borderColor: Colors.primary + '20',
+  },
+  dateButtonIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  dateButtonText: {
+    flex: 1,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
+    textTransform: 'capitalize',
+  },
+  timeRangeCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 15,
+    elevation: 3,
+  },
+  timeRangeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  timeRangeHeaderText: {
+    marginLeft: Spacing.md,
+    flex: 1,
+  },
+  timeRangeTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  timeRangeSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+    marginTop: 2,
+  },
+  timeRangePicker: {
+    gap: Spacing.md,
+  },
+  timePickerBox: {
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+  },
+  timePickerLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  timePickerLabelText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginLeft: Spacing.xs,
+    fontWeight: FontWeights.medium,
+  },
+  timePickerValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  timePickerValueText: {
+    fontSize: FontSizes.xxl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  timeRangeArrow: {
+    alignSelf: 'center',
+    marginVertical: Spacing.xs,
+  },
+  timeDurationInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.md,
+    padding: Spacing.sm,
+    backgroundColor: Colors.info + '08',
+    borderRadius: BorderRadius.md,
+  },
+  timeDurationText: {
+    fontSize: FontSizes.sm,
+    color: Colors.info,
+    marginLeft: Spacing.xs,
+    fontWeight: FontWeights.medium,
+  },
+  optionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  optionHint: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+    marginTop: Spacing.sm,
+    fontStyle: 'italic',
+  },
+  summaryDetailCard: {
+    gap: Spacing.md,
+  },
+  summaryDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: Colors.gray[50],
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+  },
+  summaryDetailContent: {
+    marginLeft: Spacing.md,
+    flex: 1,
+  },
+  summaryDetailLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    fontWeight: FontWeights.semibold,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  summaryDetailValue: {
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+    fontWeight: FontWeights.semibold,
   },
 });

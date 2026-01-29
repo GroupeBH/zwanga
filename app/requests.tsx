@@ -169,8 +169,8 @@ export default function TripRequestsScreen() {
                 style={styles.makeOfferButton}
                 onPress={() => handleRequestPress(item.id)}
               >
-                <Ionicons name="add-circle" size={18} color={Colors.white} />
-                <Text style={styles.makeOfferButtonText}>Faire une offre</Text>
+                <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
+                <Text style={styles.makeOfferButtonText}>Accepter</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -302,7 +302,13 @@ export default function TripRequestsScreen() {
 
   const isLoading = activeTab === 'available' ? isLoadingAvailable : isLoadingMyRequests;
   const isFetching = activeTab === 'available' ? isFetchingAvailable : isFetchingMyRequests;
-  const currentData = activeTab === 'available' ? availableRequests : myRequests;
+  
+  // Filter out user's own requests from available requests
+  const filteredAvailableRequests = availableRequests.filter(
+    (request) => request.passengerId !== currentUser?.id
+  );
+  
+  const currentData = activeTab === 'available' ? filteredAvailableRequests : myRequests;
   const refetch = activeTab === 'available' ? refetchAvailable : refetchMyRequests;
 
   const renderContent = () => {

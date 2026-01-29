@@ -328,9 +328,8 @@ type AcceptDriverOfferPayload = {
 
 type AcceptTripRequestPayload = {
   vehicleId?: string;
-  pricePerSeat: number;
   departureDate?: string; // ISO string date
-  totalSeats: number;
+  message?: string;
 };
 
 export const tripRequestApi = baseApi.injectEndpoints({
