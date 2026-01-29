@@ -28,7 +28,7 @@ import {
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type PublishStep = 'route' | 'details' | 'confirm';
+type PublishStep = 'route' | 'datetime' | 'vehicle' | 'pricing' | 'confirm';
 
 export default function PublishScreen() {
   const router = useRouter();
@@ -486,29 +486,33 @@ export default function PublishScreen() {
         openKycModal();
         return;
       }
-      setStep('details');
-    } else if (step === 'details') {
+      setStep('datetime');
+    } else if (step === 'datetime') {
       if (!departureDateTime) {
         showDialog({
           variant: 'warning',
           title: 'Informations manquantes',
-          message: 'Merci de renseigner la date de départ.',
+          message: 'Merci de renseigner la date et l\'heure de départ.',
         });
         return;
       }
-      if (!isFreeTrip && !price) {
-        showDialog({
-          variant: 'warning',
-          title: 'Informations manquantes',
-          message: 'Merci de renseigner le prix ou de sélectionner "Gratuit".',
-        });
-        return;
-      }
+      setStep('vehicle');
+    } else if (step === 'vehicle') {
       if (!selectedVehicleId) {
         showDialog({
           variant: 'warning',
           title: 'Véhicule requis',
           message: 'Veuillez sélectionner un véhicule pour continuer.',
+        });
+        return;
+      }
+      setStep('pricing');
+    } else if (step === 'pricing') {
+      if (!isFreeTrip && !price) {
+        showDialog({
+          variant: 'warning',
+          title: 'Informations manquantes',
+          message: 'Merci de renseigner le prix ou de sélectionner "Gratuit".',
         });
         return;
       }
@@ -613,7 +617,25 @@ export default function PublishScreen() {
     }
   };
 
-  const progressWidth = step === 'route' ? '33%' : step === 'details' ? '66%' : '100%';
+  const getStepNumber = () => {
+    switch (step) {
+      case 'route': return 1;
+      case 'datetime': return 2;
+      case 'vehicle': return 3;
+      case 'pricing': return 4;
+      case 'confirm': return 5;
+      default: return 1;
+    }
+  };
+
+  const isStepCompleted = (checkStep: PublishStep) => {
+    const stepOrder: PublishStep[] = ['route', 'datetime', 'vehicle', 'pricing', 'confirm'];
+    const currentIndex = stepOrder.indexOf(step);
+    const checkIndex = stepOrder.indexOf(checkStep);
+    return checkIndex < currentIndex;
+  };
+
+  const isStepActive = (checkStep: PublishStep) => step === checkStep;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -625,7 +647,7 @@ export default function PublishScreen() {
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>Publier un trajet</Text>
           <Text style={styles.headerSubtitle}>
-            Étape {step === 'route' ? '1' : step === 'details' ? '2' : '3'}/3
+            Étape {getStepNumber()}/5
           </Text>
         </View>
       </View>
@@ -633,22 +655,80 @@ export default function PublishScreen() {
       {/* Step Indicator */}
       <View style={styles.stepIndicatorContainer}>
         <View style={styles.stepIndicatorRow}>
-          <View style={[styles.stepDot, step === 'route' && styles.stepDotActive, (step === 'details' || step === 'confirm') && styles.stepDotCompleted]}>
-            <Ionicons name={step === 'details' || step === 'confirm' ? "checkmark" : "map"} size={14} color={Colors.white} />
+          {/* Route */}
+          <View style={[
+            styles.stepDot,
+            isStepActive('route') && styles.stepDotActive,
+            isStepCompleted('route') && styles.stepDotCompleted
+          ]}>
+            <Ionicons 
+              name={isStepCompleted('route') ? "checkmark" : "map"} 
+              size={14} 
+              color={Colors.white} 
+            />
           </View>
-          <View style={[styles.stepLine, (step === 'details' || step === 'confirm') && styles.stepLineActive]} />
-          <View style={[styles.stepDot, step === 'details' && styles.stepDotActive, step === 'confirm' && styles.stepDotCompleted]}>
-            <Ionicons name={step === 'confirm' ? "checkmark" : "car"} size={14} color={step === 'details' || step === 'confirm' ? Colors.white : Colors.gray[400]} />
+          <View style={[styles.stepLine, isStepCompleted('datetime') && styles.stepLineActive]} />
+          
+          {/* DateTime */}
+          <View style={[
+            styles.stepDot,
+            isStepActive('datetime') && styles.stepDotActive,
+            isStepCompleted('datetime') && styles.stepDotCompleted
+          ]}>
+            <Ionicons 
+              name={isStepCompleted('datetime') ? "checkmark" : "time"} 
+              size={14} 
+              color={isStepActive('datetime') || isStepCompleted('datetime') ? Colors.white : Colors.gray[400]} 
+            />
           </View>
-          <View style={[styles.stepLine, step === 'confirm' && styles.stepLineActive]} />
-          <View style={[styles.stepDot, step === 'confirm' && styles.stepDotActive]}>
-            <Ionicons name="checkmark-done" size={14} color={step === 'confirm' ? Colors.white : Colors.gray[400]} />
+          <View style={[styles.stepLine, isStepCompleted('vehicle') && styles.stepLineActive]} />
+          
+          {/* Vehicle */}
+          <View style={[
+            styles.stepDot,
+            isStepActive('vehicle') && styles.stepDotActive,
+            isStepCompleted('vehicle') && styles.stepDotCompleted
+          ]}>
+            <Ionicons 
+              name={isStepCompleted('vehicle') ? "checkmark" : "car"} 
+              size={14} 
+              color={isStepActive('vehicle') || isStepCompleted('vehicle') ? Colors.white : Colors.gray[400]} 
+            />
+          </View>
+          <View style={[styles.stepLine, isStepCompleted('pricing') && styles.stepLineActive]} />
+          
+          {/* Pricing */}
+          <View style={[
+            styles.stepDot,
+            isStepActive('pricing') && styles.stepDotActive,
+            isStepCompleted('pricing') && styles.stepDotCompleted
+          ]}>
+            <Ionicons 
+              name={isStepCompleted('pricing') ? "checkmark" : "cash"} 
+              size={14} 
+              color={isStepActive('pricing') || isStepCompleted('pricing') ? Colors.white : Colors.gray[400]} 
+            />
+          </View>
+          <View style={[styles.stepLine, isStepCompleted('confirm') && styles.stepLineActive]} />
+          
+          {/* Confirm */}
+          <View style={[
+            styles.stepDot,
+            isStepActive('confirm') && styles.stepDotActive
+          ]}>
+            <Ionicons 
+              name="checkmark-done" 
+              size={14} 
+              color={isStepActive('confirm') ? Colors.white : Colors.gray[400]} 
+            />
           </View>
         </View>
         <View style={styles.stepLabelRow}>
-          <Text style={[styles.stepLabel, step === 'route' && styles.stepLabelActive]}>Route</Text>
-          <Text style={[styles.stepLabel, step === 'details' && styles.stepLabelActive]}>Détails</Text>
-          <Text style={[styles.stepLabel, step === 'confirm' && styles.stepLabelActive]}>Confirmer</Text>
+          <Text style={[styles.stepLabel, isStepActive('route') && styles.stepLabelActive]}>Route</Text>
+          <Text style={[styles.stepLabel, isStepActive('datetime') && styles.stepLabelActive]}>Date</Text>
+          <Text style={[styles.stepLabel, isStepActive('vehicle') && styles.stepLabelActive]}>Véhicule</Text>
+          <Text style={[styles.stepLabel, isStepActive('pricing') && styles.stepLabelActive]}>Détails</Text>
+          <Text style={[styles.stepLabel, isStepActive('confirm') && styles.stepLabelActive]}>Confirmer</Text>
         </View>
       </View>
 
@@ -759,13 +839,13 @@ export default function PublishScreen() {
           </Animated.View>
         )}
 
-        {/* Étape 2: Détails */}
-        {step === 'details' && (
+        {/* Étape 2: Date & Heure */}
+        {step === 'datetime' && (
           <Animated.View entering={FadeInDown} style={styles.stepContainer}>
-            <Text style={styles.sectionTitle}>Détails du trajet</Text>
+            <Text style={styles.sectionTitle}>Quand partez-vous ?</Text>
 
             <View style={styles.card}>
-              <Text style={styles.cardLabel}>QUAND PARTEZ-VOUS ?</Text>
+              <Text style={styles.cardLabel}>DATE ET HEURE DE DÉPART</Text>
               <View style={styles.datetimeButtons}>
                 <TouchableOpacity
                   style={styles.datetimeButton}
@@ -809,9 +889,34 @@ export default function PublishScreen() {
               )}
             </View>
 
-            {/* Vehicle Selection */}
+            <View style={styles.infoBox}>
+              <Ionicons name="information-circle-outline" size={20} color={Colors.info} />
+              <Text style={styles.infoText}>
+                Choisissez une date et une heure précises pour que les passagers puissent mieux planifier.
+              </Text>
+            </View>
+
+            <View style={[styles.buttonRow, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+              <TouchableOpacity
+                style={[styles.button, styles.buttonSecondary]}
+                onPress={() => setStep('route')}
+              >
+                <Text style={styles.buttonSecondaryText}>Retour</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.button, { flex: 1, marginLeft: Spacing.md }]} onPress={handleNextStep}>
+                <Text style={styles.buttonText}>Continuer</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        )}
+
+        {/* Étape 3: Véhicule */}
+        {step === 'vehicle' && (
+          <Animated.View entering={FadeInDown} style={styles.stepContainer}>
+            <Text style={styles.sectionTitle}>Votre véhicule</Text>
+
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Véhicule *</Text>
+              <Text style={styles.label}>Sélectionnez un véhicule *</Text>
 
               {isLoadingVehicles || isFetchingVehicles ? (
                 <View style={styles.vehicleLoadingState}>
@@ -883,6 +988,32 @@ export default function PublishScreen() {
 
             </View>
 
+            <View style={styles.infoBox}>
+              <Ionicons name="information-circle-outline" size={20} color={Colors.info} />
+              <Text style={styles.infoText}>
+                Les passagers pourront voir les détails de votre véhicule après avoir réservé.
+              </Text>
+            </View>
+
+            <View style={[styles.buttonRow, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+              <TouchableOpacity
+                style={[styles.button, styles.buttonSecondary]}
+                onPress={() => setStep('datetime')}
+              >
+                <Text style={styles.buttonSecondaryText}>Retour</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.button, { flex: 1, marginLeft: Spacing.md }]} onPress={handleNextStep}>
+                <Text style={styles.buttonText}>Continuer</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        )}
+
+        {/* Étape 4: Places & Prix */}
+        {step === 'pricing' && (
+          <Animated.View entering={FadeInDown} style={styles.stepContainer}>
+            <Text style={styles.sectionTitle}>Places et prix</Text>
+
             <View style={styles.row}>
               <View style={[styles.card, { flex: 1, marginRight: Spacing.sm }]}>
                 <Text style={styles.cardLabel}>PLACES</Text>
@@ -918,7 +1049,7 @@ export default function PublishScreen() {
             </View>
 
             <TouchableOpacity
-              style={[styles.card, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing.md }]}
+              style={[styles.card, styles.freeTripCard]}
               onPress={() => {
                 setIsFreeTrip(!isFreeTrip);
                 if (!isFreeTrip) {
@@ -927,11 +1058,11 @@ export default function PublishScreen() {
               }}
               activeOpacity={0.8}
             >
-              <View>
-                <Text style={{ fontSize: FontSizes.base, fontWeight: FontWeights.semibold, color: Colors.gray[900] }}>
+              <View style={styles.freeTripContent}>
+                <Text style={styles.freeTripTitle}>
                   Trajet gratuit
                 </Text>
-                <Text style={{ fontSize: FontSizes.sm, color: Colors.gray[500], marginTop: 2 }}>
+                <Text style={styles.freeTripSubtitle}>
                   Proposer ce trajet gratuitement aux passagers
                 </Text>
               </View>
@@ -953,10 +1084,17 @@ export default function PublishScreen() {
               />
             </View>
 
+            <View style={styles.infoBox}>
+              <Ionicons name="information-circle-outline" size={20} color={Colors.info} />
+              <Text style={styles.infoText}>
+                Les passagers verront ces informations avant de réserver leur place.
+              </Text>
+            </View>
+
             <View style={[styles.buttonRow, { paddingBottom: Math.max(insets.bottom, 16) }]}>
               <TouchableOpacity
                 style={[styles.button, styles.buttonSecondary]}
-                onPress={() => setStep('route')}
+                onPress={() => setStep('vehicle')}
               >
                 <Text style={styles.buttonSecondaryText}>Retour</Text>
               </TouchableOpacity>
@@ -967,7 +1105,7 @@ export default function PublishScreen() {
           </Animated.View>
         )}
 
-        {/* Étape 3: Confirmation */}
+        {/* Étape 5: Confirmation */}
         {step === 'confirm' && (
           <Animated.View entering={FadeInDown} style={styles.stepContainer}>
             <View style={styles.iconContainer}>
@@ -1062,7 +1200,7 @@ export default function PublishScreen() {
             <View style={[styles.buttonRow, { paddingBottom: Math.max(insets.bottom, 16) }]}>
               <TouchableOpacity
                 style={[styles.button, styles.buttonSecondary]}
-                onPress={() => setStep('details')}
+                onPress={() => setStep('pricing')}
               >
                 <Text style={styles.buttonSecondaryText}>Retour</Text>
               </TouchableOpacity>
@@ -1529,6 +1667,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
   },
+  freeTripCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.md,
+  },
+  freeTripContent: {
+    flex: 1,
+    marginRight: Spacing.md,
+  },
+  freeTripTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
+  },
+  freeTripSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+    marginTop: 2,
+  },
   toggleSwitch: {
     width: 44,
     height: 24,
@@ -1536,6 +1694,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[300],
     padding: 2,
     justifyContent: 'center',
+    flexShrink: 0,
   },
   toggleSwitchActive: {
     backgroundColor: Colors.success,
