@@ -39,6 +39,10 @@ export default function TripRequestsScreen() {
     refetch: refetchAvailable,
   } = useGetAvailableTripRequestsQuery(undefined, {
     skip: activeTab !== 'available',
+    // Polling pour les demandes disponibles (conducteurs)
+    pollingInterval: activeTab === 'available' ? 30000 : 0,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
   });
 
   // Query pour mes demandes (pour les passagers)
@@ -49,6 +53,10 @@ export default function TripRequestsScreen() {
     refetch: refetchMyRequests,
   } = useGetMyTripRequestsQuery(undefined, {
     skip: activeTab !== 'my-requests',
+    // Polling pour mes demandes (passagers)
+    pollingInterval: activeTab === 'my-requests' ? 30000 : 0,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
   });
 
   const handleRequestPress = (requestId: string) => {

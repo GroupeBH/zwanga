@@ -62,6 +62,14 @@ export default function TripRequestDetailsScreen() {
   
   const { data: tripRequest, isLoading, error, refetch, isError } = useGetTripRequestByIdQuery(id || '', {
     skip: !id,
+    // Polling intelligent basé sur le statut de la demande
+    pollingInterval: tripRequest?.status === 'pending' || tripRequest?.status === 'offers_received'
+      ? 30000 // 30 secondes pour les demandes actives
+      : tripRequest?.status === 'driver_selected'
+      ? 60000 // 60 secondes si driver sélectionné
+      : 0, // Pas de polling si annulé ou expiré
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
   });
 
   // Debug: Log pour voir ce qui se passe
@@ -507,20 +515,12 @@ export default function TripRequestDetailsScreen() {
 
       showDialog({
         title: 'Offre envoyée avec succès !',
-        message: `Votre offre de ${parseFloat(pricePerSeat).toLocaleString('fr-FR')} FC/place pour ${availableSeats} place(s) a été envoyée. Le passager sera notifié et pourra l'accepter. Vous pouvez suivre le statut de votre offre dans "Mes offres".`,
+        message: `Votre offre de ${parseFloat(pricePerSeat).toLocaleString('fr-FR')} FC/place pour ${availableSeats} place(s) a été envoyée. Le passager sera notifié et pourra l'accepter.`,
         variant: 'success',
         actions: [
           { 
-            label: 'Voir mes offres', 
-            variant: 'primary',
-            onPress: () => {
-              refetch();
-              router.push('/offers');
-            }
-          },
-          { 
             label: 'OK', 
-            variant: 'ghost',
+            variant: 'primary',
             onPress: () => refetch() 
           },
         ],

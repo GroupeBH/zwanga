@@ -736,13 +736,6 @@ export default function ProfileScreen() {
     ...(isDriver
       ? [
           { icon: 'list-outline', label: 'Demandes disponibles', route: '/requests' },
-          {
-            icon: 'briefcase-outline',
-            label: 'Mes offres',
-            route: '/offers',
-            badge: pendingOffersCount > 0 ? pendingOffersCount : acceptedOffersCount > 0 ? acceptedOffersCount : undefined,
-            badgeColor: pendingOffersCount > 0 ? Colors.warning : acceptedOffersCount > 0 ? Colors.success : undefined,
-          },
         ]
       : []),
     { icon: 'notifications-outline', label: 'Notifications', route: '/notifications' },
@@ -871,23 +864,6 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
           </TouchableOpacity>
 
-          {isDriver && (
-            <TouchableOpacity
-              style={[styles.mainActionCard, { borderColor: Colors.info + '30' }]}
-              onPress={() => router.push('/offers')}
-            >
-              <View style={[styles.mainActionIcon, { backgroundColor: Colors.info + '15' }]}>
-                <Ionicons name="gift" size={24} color={Colors.info} />
-              </View>
-              <View style={styles.mainActionContent}>
-                <Text style={styles.mainActionTitle}>Mes Offres</Text>
-                <Text style={styles.mainActionSubtitle} numberOfLines={1}>
-                  {offersStats.pendingOffers} en attente · {offersStats.acceptedOffers} acceptées
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
-            </TouchableOpacity>
-          )}
 
           {/* Section "Devenir conducteur" pour les passagers */}
           {!isDriver && (
@@ -944,37 +920,37 @@ export default function ProfileScreen() {
                       <Text style={styles.becomeDriverSubtitle}>
                         Gagnez de l'argent en proposant des trajets
                       </Text>
-                    </View>
-                    <View style={styles.becomeDriverProgress}>
-                      <View style={styles.becomeDriverProgressItem}>
-                        <Ionicons
-                          name={vehicleList.length > 0 ? 'checkmark-circle' : 'ellipse-outline'}
-                          size={16}
-                          color={vehicleList.length > 0 ? Colors.white : 'rgba(255,255,255,0.6)'}
-                        />
-                        <Text
-                          style={[
-                            styles.becomeDriverProgressText,
-                            vehicleList.length > 0 && styles.becomeDriverProgressTextCompleted,
-                          ]}
-                        >
-                          Véhicule
-                        </Text>
-                      </View>
-                      <View style={styles.becomeDriverProgressItem}>
-                        <Ionicons
-                          name={isKycApproved ? 'checkmark-circle' : 'ellipse-outline'}
-                          size={16}
-                          color={isKycApproved ? Colors.white : 'rgba(255,255,255,0.6)'}
-                        />
-                        <Text
-                          style={[
-                            styles.becomeDriverProgressText,
-                            isKycApproved && styles.becomeDriverProgressTextCompleted,
-                          ]}
-                        >
-                          KYC
-                        </Text>
+                      <View style={styles.becomeDriverProgress}>
+                        <View style={styles.becomeDriverProgressItem}>
+                          <Ionicons
+                            name={vehicleList.length > 0 ? 'checkmark-circle' : 'ellipse-outline'}
+                            size={16}
+                            color={vehicleList.length > 0 ? Colors.white : 'rgba(255,255,255,0.6)'}
+                          />
+                          <Text
+                            style={[
+                              styles.becomeDriverProgressText,
+                              vehicleList.length > 0 && styles.becomeDriverProgressTextCompleted,
+                            ]}
+                          >
+                            Véhicule
+                          </Text>
+                        </View>
+                        <View style={styles.becomeDriverProgressItem}>
+                          <Ionicons
+                            name={isKycApproved ? 'checkmark-circle' : 'ellipse-outline'}
+                            size={16}
+                            color={isKycApproved ? Colors.white : 'rgba(255,255,255,0.6)'}
+                          />
+                          <Text
+                            style={[
+                              styles.becomeDriverProgressText,
+                              isKycApproved && styles.becomeDriverProgressTextCompleted,
+                            ]}
+                          >
+                            KYC
+                          </Text>
+                        </View>
                       </View>
                     </View>
                   </View>
@@ -2378,13 +2354,14 @@ const styles = StyleSheet.create({
   becomeDriverGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Spacing.lg,
+    padding: Spacing.md,
+    paddingVertical: Spacing.lg,
     position: 'relative',
   },
   becomeDriverContent: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: Spacing.md,
   },
   becomeDriverIconContainer: {
@@ -2397,21 +2374,23 @@ const styles = StyleSheet.create({
   },
   becomeDriverTextContainer: {
     flex: 1,
+    justifyContent: 'center',
   },
   becomeDriverTitle: {
-    fontSize: FontSizes.lg,
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.white,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   becomeDriverSubtitle: {
     fontSize: FontSizes.xs,
     color: 'rgba(255, 255, 255, 0.9)',
+    marginBottom: Spacing.sm,
   },
   becomeDriverProgress: {
     flexDirection: 'row',
     gap: Spacing.md,
-    marginTop: Spacing.sm,
+    marginTop: 4,
   },
   becomeDriverProgressItem: {
     flexDirection: 'row',
