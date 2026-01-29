@@ -79,12 +79,23 @@ export default function ManageTripScreen() {
   const tripId = typeof id === 'string' ? id : '';
   const user = useAppSelector(selectUser);
   const { isIdentityVerified } = useIdentityCheck();
+  // Polling intelligent basé sur le statut du trajet
   const {
     data: trip,
     isLoading: tripLoading,
     isFetching: tripFetching,
     refetch: refetchTrip,
-  } = useGetTripByIdQuery(tripId, { skip: !tripId });
+  } = useGetTripByIdQuery(tripId, { 
+    skip: !tripId,
+    // Polling automatique pour le conducteur
+    pollingInterval: trip?.status === 'ongoing' 
+      ? 5000 // 5 secondes pour les trajets en cours
+      : trip?.status === 'upcoming'
+      ? 30000 // 30 secondes pour les trajets à venir
+      : 0, // Pas de polling pour les trajets terminés/annulés
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
   console.log("check owner", trip?.driverId, user?.id);
   const isOwner = useMemo(() => !!trip && !!user && trip.driverId === user.id, [trip, user]);
   const {
@@ -92,7 +103,13 @@ export default function ManageTripScreen() {
     isLoading: bookingsLoading,
     isFetching: bookingsFetching,
     refetch: refetchBookings,
-  } = useGetTripBookingsQuery(tripId, { skip: !tripId });
+  } = useGetTripBookingsQuery(tripId, { 
+    skip: !tripId,
+    // Polling pour les réservations du trajet géré par le conducteur
+    pollingInterval: trip?.status === 'ongoing' ? 10000 : trip?.status === 'upcoming' ? 30000 : 0,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
   const [acceptBooking, { isLoading: isAccepting }] = useAcceptBookingMutation();
   const [rejectBooking, { isLoading: isRejecting }] = useRejectBookingMutation();
   const [updateTrip, { isLoading: isCancellingTrip }] = useUpdateTripMutation();

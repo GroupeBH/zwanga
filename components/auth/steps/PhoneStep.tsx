@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
@@ -76,12 +76,16 @@ export function PhoneStep({
           style={[styles.googleButton, isGoogleLoading && { opacity: 0.7 }]}
           onPress={onGoogleAuth}
           disabled={isGoogleLoading}
+          activeOpacity={0.8}
         >
           {isGoogleLoading ? (
-            <ActivityIndicator color={Colors.gray[700]} />
+            <ActivityIndicator color="#4285F4" />
           ) : (
             <>
-              <Ionicons name="logo-google" size={20} color={Colors.gray[700]} />
+              <Image 
+                source={require('@/assets/images/google.png')} 
+                style={styles.googleIcon}
+              />
               <Text style={styles.googleButtonText}>
                 {mode === 'login' ? 'Continuer avec Google' : 'S\'inscrire avec Google'}
               </Text>

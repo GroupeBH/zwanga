@@ -64,23 +64,34 @@ export const authStyles = StyleSheet.create({
     color: Colors.primary,
   },
 
-  // Google auth
+  // Google auth - Style officiel Google
   googleButton: {
     marginTop: Spacing.md,
     height: 52,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: Colors.gray[300],
-    backgroundColor: Colors.white,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#dadce0',
+    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  googleIcon: {
+    width: 20,
+    height: 20,
+    resizeMode: 'contain',
   },
   googleButtonText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: Colors.gray[700],
+    fontWeight: '500',
+    color: '#3c4043',
+    letterSpacing: 0.25,
   },
   googleSignupCard: {
     marginTop: Spacing.lg,

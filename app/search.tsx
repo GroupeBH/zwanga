@@ -77,7 +77,12 @@ export default function SearchScreen() {
     data: remoteTrips,
     isLoading: queryLoading,
     isFetching: queryFetching,
-  } = useGetTripsQuery(queryParams);
+  } = useGetTripsQuery(queryParams, {
+    // Polling pour les résultats de recherche
+    pollingInterval: 60000,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
 
   // Recherche avec suggestions Mapbox pour le départ
   const searchDepartureSuggestions = useCallback(async (query: string) => {

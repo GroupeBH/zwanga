@@ -124,12 +124,23 @@ export default function TripDetailsScreen() {
   const trackParam = Array.isArray(params.track) ? params.track.includes('true') : params.track === 'true'; // Permet le suivi via lien partagé
 
   // Récupérer le trajet depuis l'API si pas dans le store
+  // Polling intelligent basé sur le statut du trajet
   const {
     data: tripFromApi,
     isLoading: tripLoading,
     isFetching: tripFetching,
     refetch: refetchTrip,
-  } = useGetTripByIdQuery(tripId, { skip: !tripId });
+  } = useGetTripByIdQuery(tripId, { 
+    skip: !tripId,
+    // Polling automatique basé sur le statut du trajet
+    pollingInterval: tripFromApi?.status === 'ongoing' 
+      ? 5000 // 5 secondes pour les trajets en cours
+      : tripFromApi?.status === 'upcoming'
+      ? 30000 // 30 secondes pour les trajets à venir
+      : 0, // Pas de polling pour les trajets terminés/annulés
+    refetchOnFocus: true, // Rafraîchir quand l'utilisateur revient dans l'app
+    refetchOnReconnect: true, // Rafraîchir après une reconnexion réseau
+  });
 
   // Utiliser le trajet de l'API en priorité, sinon celui du store
   const tripFromStore = useAppSelector((state) => selectTripById(tripId)(state));
@@ -146,12 +157,23 @@ export default function TripDetailsScreen() {
     isLoading: myBookingsLoading,
     isFetching: myBookingsFetching,
     refetch: refetchMyBookings,
-  } = useGetMyBookingsQuery();
+  } = useGetMyBookingsQuery(undefined, {
+    // Polling pour les réservations si le trajet est actif
+    pollingInterval: trip?.status === 'ongoing' ? 10000 : 0, // 10 secondes
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
   const {
     data: tripBookings,
     isLoading: tripBookingsLoading,
     refetch: refetchTripBookings,
-  } = useGetTripBookingsQuery(tripId, { skip: !tripId });
+  } = useGetTripBookingsQuery(tripId, { 
+    skip: !tripId,
+    // Polling pour les réservations du trajet
+    pollingInterval: trip?.status === 'ongoing' ? 10000 : trip?.status === 'upcoming' ? 30000 : 0,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
   const {
     lastKnownLocation,
     requestPermission: requestDriverLocationPermission,

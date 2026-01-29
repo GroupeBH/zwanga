@@ -548,7 +548,12 @@ export default function HomeScreen() {
     isLoading: tripsLoading,
     isError: tripsError,
     refetch: refetchTrips,
-  } = useGetTripsQuery(queryParams);
+  } = useGetTripsQuery(queryParams, {
+    // Polling toutes les 60 secondes pour maintenir la liste à jour
+    pollingInterval: 60000,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
 
   // console.log('remoteTrips', remoteTrips?.length);
   const { data: notificationsData } = useGetNotificationsQuery(undefined, {
