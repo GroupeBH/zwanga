@@ -181,6 +181,26 @@ export const handleNotificationNavigation = (
         }
       }
 
+      // Gérer les notifications de trajet en cours (notification permanente)
+      if (type === 'ongoing_trip') {
+        // Utiliser navigateTo si disponible (défini par ongoingTripNotification.ts)
+        const navigateTo = data?.navigateTo;
+        if (navigateTo) {
+          router.push(navigateTo);
+          return;
+        }
+        // Fallback: utiliser tripId et role
+        if (tripId) {
+          const role = data?.role;
+          if (role === 'driver') {
+            router.push(`/trip/manage/${tripId}`);
+          } else {
+            router.push(`/trip/${tripId}`);
+          }
+          return;
+        }
+      }
+
       // Gérer les notifications explicitement pour conducteurs
       if (isDriverNotification(type) && tripId) {
         router.push(`/trip/manage/${tripId}`);

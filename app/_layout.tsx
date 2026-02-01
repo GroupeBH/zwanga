@@ -5,8 +5,9 @@ import 'react-native-reanimated';
 
 import { ReduxProvider } from '@/components/ReduxProvider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-// Importer la tâche de fond pour qu'elle soit enregistrée au démarrage
+// Importer les handlers de fond pour qu'ils soient enregistrés au démarrage
 import '@/services/backgroundNotificationTask';
+import '@/services/notifeeBackgroundHandler';
 
 export const unstable_settings = {
   initialRouteName: 'splash',

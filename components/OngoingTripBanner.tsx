@@ -1,4 +1,8 @@
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import {
+  startOngoingTripTracking,
+  stopOngoingTripTracking,
+} from '@/services/ongoingTripNotification';
 import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
 import { useGetMyTripsQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
@@ -7,7 +11,7 @@ import { formatTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { usePathname, useRouter } from 'expo-router';
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Animated, {
   Easing,
@@ -110,6 +114,43 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
 
     return null;
   }, [myTrips, myBookings, user]);
+
+  // Ref pour suivre le trajet précédent
+  const previousTripIdRef = useRef<string | null>(null);
+
+  // Démarrer/arrêter le suivi de notification permanente
+  useEffect(() => {
+    const currentTripId = ongoingTrip?.trip.id ?? null;
+    
+    // Si le trajet a changé
+    if (currentTripId !== previousTripIdRef.current) {
+      // Arrêter le suivi précédent si nécessaire
+      if (previousTripIdRef.current) {
+        stopOngoingTripTracking();
+      }
+      
+      // Démarrer le nouveau suivi si un trajet est en cours
+      if (ongoingTrip) {
+        startOngoingTripTracking({
+          tripId: ongoingTrip.trip.id,
+          departure: ongoingTrip.trip.departure.name,
+          arrival: ongoingTrip.trip.arrival.name,
+          role: ongoingTrip.role,
+          departureTime: ongoingTrip.trip.departureTime,
+        });
+      }
+      
+      previousTripIdRef.current = currentTripId;
+    }
+
+    // Cleanup au démontage
+    return () => {
+      if (previousTripIdRef.current) {
+        stopOngoingTripTracking();
+        previousTripIdRef.current = null;
+      }
+    };
+  }, [ongoingTrip]);
 
   // Ne pas afficher sur certaines pages
   const shouldHide = useMemo(() => {
