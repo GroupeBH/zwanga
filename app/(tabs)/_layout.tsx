@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+// Animated import removed to fix Android crash with New Architecture
 
 export default function TabLayout() {
   const unreadMessagesCount = useAppSelector(selectUnreadMessagesCount);
@@ -84,16 +84,13 @@ export default function TabLayout() {
                 color={color} 
               />
               {unreadMessagesCount > 0 && (
-                <Animated.View 
-                  entering={FadeIn.duration(200).springify()}
-                  style={styles.badgeContainer}
-                >
+                <View style={styles.badgeContainer}>
                   <View style={styles.badge}>
                     <Text style={styles.badgeText}>
                       {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
                     </Text>
                   </View>
-                </Animated.View>
+                </View>
               )}
               {focused && <View style={styles.activeIndicator} />}
             </View>
