@@ -24,7 +24,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { AnimatedRegion, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
@@ -66,6 +66,7 @@ export default function NavigationScreen() {
   const [confirmPickup, { isLoading: isConfirmingPickup }] = useConfirmPickupMutation();
   const [confirmDropoff, { isLoading: isConfirmingDropoff }] = useConfirmDropoffMutation();
   const [getDirections] = useGetDirectionsMutation();
+  const isTripOngoing = trip?.status === 'ongoing';
 
   const mapRef = useRef<MapView>(null);
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
@@ -86,12 +87,23 @@ export default function NavigationScreen() {
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
   const [currentWaypointIndex, setCurrentWaypointIndex] = useState(0);
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
+  const [driverTracksViewChanges, setDriverTracksViewChanges] = useState(true);
+  const [destinationTracksViewChanges, setDestinationTracksViewChanges] = useState(true);
+  const driverPosition = useRef(
+    new AnimatedRegion({
+      latitude: trip?.departure?.lat ?? 0,
+      longitude: trip?.departure?.lng ?? 0,
+      latitudeDelta: 0,
+      longitudeDelta: 0,
+    })
+  ).current;
   
   // Refs pour éviter les re-rendus excessifs
   const routeFetchedRef = useRef(false);
   const lastRouteFetchTimeRef = useRef(0);
   const waypointsCountRef = useRef(0);
   const currentLocationRef = useRef<Location.LocationObject | null>(null);
+  const hasEnabled3DRef = useRef(false);
 
   // Connexion WebSocket pour le tracking temps réel
   useEffect(() => {
@@ -124,6 +136,31 @@ export default function NavigationScreen() {
     };
   }, [tripId]);
 
+  // Passer la carte en 3D lorsque la course est en cours
+  useEffect(() => {
+    if (!isTripOngoing) {
+      hasEnabled3DRef.current = false;
+      return;
+    }
+
+    if (hasEnabled3DRef.current || !mapRef.current || !currentLocationRef.current) {
+      return;
+    }
+
+    hasEnabled3DRef.current = true;
+    mapRef.current.animateCamera(
+      {
+        center: {
+          latitude: currentLocationRef.current.coords.latitude,
+          longitude: currentLocationRef.current.coords.longitude,
+        },
+        pitch: 60,
+        heading,
+        zoom: 17,
+      },
+      { duration: 800 }
+    );
+  }, [isTripOngoing, currentLocation, heading]);
   // Créer les waypoints à partir des bookings acceptés
   useEffect(() => {
     if (!bookings || !trip) return;
@@ -231,6 +268,12 @@ export default function NavigationScreen() {
           accuracy: Location.Accuracy.High,
         });
         setCurrentLocation(location);
+        driverPosition.setValue({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          latitudeDelta: 0,
+          longitudeDelta: 0,
+        });
 
       // Variables pour throttling des mises à jour (optimisé pour éviter les crashs)
       let lastStateUpdateTime = 0;
@@ -252,17 +295,39 @@ export default function NavigationScreen() {
           
           // Toujours stocker dans la ref pour les calculs internes
           currentLocationRef.current = newLocation;
+
+          // Animer le marqueur conducteur (interpolation)
+          driverPosition.timing({
+            latitude: newLocation.coords.latitude,
+            longitude: newLocation.coords.longitude,
+            duration: 4500,
+            useNativeDriver: false,
+          }).start();
           
           // Mettre à jour le state très rarement (pour éviter les re-rendus)
           if (now - lastStateUpdateTime > STATE_UPDATE_INTERVAL) {
             lastStateUpdateTime = now;
             setCurrentLocation(newLocation);
-            
+
             // Mettre à jour le cap (heading) seulement s'il a changé significativement
-            if (newLocation.coords.heading !== null && newLocation.coords.heading !== -1) {
+            if (
+              newLocation.coords.heading !== null &&
+              newLocation.coords.heading !== -1 &&
+              (newLocation.coords.speed ?? 0) > 0.5
+            ) {
               setHeading(prev => {
-                const diff = Math.abs(prev - newLocation.coords.heading!);
-                return diff > 15 ? newLocation.coords.heading! : prev; // Seuil de 15 degrés
+                const nextHeading = normalizeHeading(newLocation.coords.heading!);
+                const currentHeading = normalizeHeading(prev);
+                let delta = nextHeading - currentHeading;
+                if (delta > 180) delta -= 360;
+                if (delta < -180) delta += 360;
+
+                if (Math.abs(delta) < 8) {
+                  return prev;
+                }
+
+                const smoothedHeading = normalizeHeading(currentHeading + delta * 0.35);
+                return smoothedHeading;
               });
             }
           }
@@ -309,6 +374,31 @@ export default function NavigationScreen() {
     };
   }, [tripId]);
 
+  // Passer la carte en 3D lorsque la course est en cours
+  useEffect(() => {
+    if (!isTripOngoing) {
+      hasEnabled3DRef.current = false;
+      return;
+    }
+
+    if (hasEnabled3DRef.current || !mapRef.current || !currentLocationRef.current) {
+      return;
+    }
+
+    hasEnabled3DRef.current = true;
+    mapRef.current.animateCamera(
+      {
+        center: {
+          latitude: currentLocationRef.current.coords.latitude,
+          longitude: currentLocationRef.current.coords.longitude,
+        },
+        pitch: 60,
+        heading,
+        zoom: 17,
+      },
+      { duration: 800 }
+    );
+  }, [isTripOngoing, currentLocation, heading]);
   // Récupérer l'itinéraire depuis Google Directions API (une seule fois au démarrage et quand les waypoints changent)
   useEffect(() => {
     const now = Date.now();
@@ -481,6 +571,11 @@ export default function NavigationScreen() {
         playInstructionSound();
       }
     }
+  };
+
+  const normalizeHeading = (value: number) => {
+    const normalized = value % 360;
+    return normalized < 0 ? normalized + 360 : normalized;
   };
 
   // Calculer la distance entre deux points (en km)
@@ -780,8 +875,8 @@ export default function NavigationScreen() {
         mapType="standard"
         minZoomLevel={12}
         maxZoomLevel={18}
-        pitchEnabled={false}
-        rotateEnabled={false}
+        pitchEnabled={isTripOngoing}
+        rotateEnabled={isTripOngoing}
         scrollEnabled={true}
         zoomEnabled={true}
         toolbarEnabled={false}
@@ -802,17 +897,31 @@ export default function NavigationScreen() {
           />
         )}
 
-        {/* Position actuelle du conducteur - Marqueur natif simple */}
+        {/* Position actuelle du conducteur - Marqueur voiture */}
         {currentLocation?.coords?.latitude && currentLocation?.coords?.longitude && (
-          <Marker
-            coordinate={{
-              latitude: currentLocation.coords.latitude,
-              longitude: currentLocation.coords.longitude,
-            }}
+          <Marker.Animated
+            coordinate={driverPosition}
             anchor={{ x: 0.5, y: 0.5 }}
-            pinColor={Colors.primary}
             title="Ma position"
-          />
+            flat
+            rotation={heading}
+            tracksViewChanges={driverTracksViewChanges}
+          >
+            <View
+              style={styles.driverMarker}
+              onLayout={() => {
+                if (driverTracksViewChanges) {
+                  setDriverTracksViewChanges(false);
+                }
+              }}
+            >
+              <View style={styles.driverMarkerInner}>
+                <View style={styles.driverMarkerCar}>
+                  <Ionicons name="car" size={20} color={Colors.white} />
+                </View>
+              </View>
+            </View>
+          </Marker.Animated>
         )}
 
         {/* Prochain waypoint uniquement (1 seul pour éviter les crashs) */}
@@ -830,16 +939,31 @@ export default function NavigationScreen() {
           />
         )}
 
-        {/* Destination finale - Marqueur natif simple */}
+        {/* Destination finale - Marqueur arrivée */}
         {trip?.arrival?.lat && trip?.arrival?.lng && (
           <Marker
             coordinate={{
               latitude: trip.arrival.lat,
               longitude: trip.arrival.lng,
             }}
-            pinColor={Colors.success}
-            title={trip.arrival.name || 'Destination'}
-          />
+            anchor={{ x: 0.5, y: 1 }}
+            title={trip.arrival.name || 'Arrivée'}
+            tracksViewChanges={destinationTracksViewChanges}
+          >
+            <View
+              style={styles.destinationMarkerContainer}
+              onLayout={() => {
+                if (destinationTracksViewChanges) {
+                  setDestinationTracksViewChanges(false);
+                }
+              }}
+            >
+              <View style={styles.destinationMarkerBody}>
+                <Ionicons name="flag" size={22} color={Colors.white} />
+              </View>
+              <View style={styles.destinationMarkerTip} />
+            </View>
+          </Marker>
         )}
       </MapView>
 
@@ -1425,18 +1549,45 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  destinationMarker: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.full,
+  driverMarkerCar: {
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  destinationMarkerContainer: {
+    width: 60,
+    height: 60,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    backgroundColor: 'transparent',
+    paddingTop: 2,
+  },
+  destinationMarkerBody: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: Colors.success,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 2,
+    borderColor: Colors.white,
     shadowColor: Colors.black,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 4,
+  },
+  destinationMarkerTip: {
+    marginTop: 2,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 8,
+    borderRightWidth: 8,
+    borderTopWidth: 12,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: Colors.success,
   },
   waypointMarkerContainer: {
     width: 44,

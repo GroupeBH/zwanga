@@ -32,6 +32,7 @@ let notifee: NotifeeDefault | null = null;
 let AndroidImportanceEnum: typeof AndroidImportance | null = null;
 let AndroidCategoryEnum: typeof AndroidCategory | null = null;
 let AndroidVisibilityEnum: typeof AndroidVisibility | null = null;
+let canUseForegroundService = false;
 
 // Charger Notifee dynamiquement
 try {
@@ -40,6 +41,9 @@ try {
   AndroidImportanceEnum = notifeeModule.AndroidImportance;
   AndroidCategoryEnum = notifeeModule.AndroidCategory;
   AndroidVisibilityEnum = notifeeModule.AndroidVisibility;
+  canUseForegroundService =
+    typeof (notifeeModule as any).registerForegroundService === 'function' ||
+    typeof (notifee as any)?.registerForegroundService === 'function';
 } catch (error) {
   console.warn('[OngoingTripNotification] Notifee non disponible');
 }
@@ -109,7 +113,7 @@ async function showOngoingTripNotification(tripInfo: OngoingTripInfo): Promise<v
         ongoing: true, // Notification permanente non-dismissable
         autoCancel: false,
         // Foreground service pour garder la notification visible et prioritaire
-        asForegroundService: true,
+        asForegroundService: canUseForegroundService,
         pressAction: {
           id: 'ongoing-trip-press',
           launchActivity: 'default',
