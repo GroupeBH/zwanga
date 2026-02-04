@@ -263,17 +263,41 @@ export default function NavigationScreen() {
           console.log('Localisation en arrière-plan non disponible:', bgError);
         }
 
-        // Obtenir la position initiale
-        const location = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.High,
-        });
-        setCurrentLocation(location);
-        driverPosition.setValue({
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-          latitudeDelta: 0,
-          longitudeDelta: 0,
-        });
+        const hasServicesEnabled = await Location.hasServicesEnabledAsync();
+        if (!hasServicesEnabled) {
+          showDialog({
+            title: 'Localisation désactivée',
+            message: 'Activez les services de localisation pour démarrer la navigation.',
+            variant: 'warning',
+            icon: 'location-outline',
+            actions: [
+              { label: 'Retour', onPress: () => router.back() }
+            ],
+          });
+          return;
+        }
+
+        // Obtenir la position initiale (avec fallback)
+        let location: Location.LocationObject | null = null;
+        try {
+          location = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+          });
+        } catch (error) {
+          location = await Location.getLastKnownPositionAsync({});
+        }
+
+        if (location) {
+          setCurrentLocation(location);
+          driverPosition.setValue({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            latitudeDelta: 0,
+            longitudeDelta: 0,
+          });
+        } else {
+          console.warn('[Navigation] Position initiale indisponible, en attente du GPS');
+        }
 
       // Variables pour throttling des mises à jour (optimisé pour éviter les crashs)
       let lastStateUpdateTime = 0;
@@ -302,6 +326,9 @@ export default function NavigationScreen() {
             longitude: newLocation.coords.longitude,
             duration: 4500,
             useNativeDriver: false,
+            toValue: 0,
+            latitudeDelta: 0,
+            longitudeDelta: 0
           }).start();
           
           // Mettre à jour le state très rarement (pour éviter les re-rendus)
@@ -900,7 +927,7 @@ export default function NavigationScreen() {
         {/* Position actuelle du conducteur - Marqueur voiture */}
         {currentLocation?.coords?.latitude && currentLocation?.coords?.longitude && (
           <Marker.Animated
-            coordinate={driverPosition}
+            coordinate={driverPosition as unknown as { latitude: number; longitude: number }}
             anchor={{ x: 0.5, y: 0.5 }}
             title="Ma position"
             flat

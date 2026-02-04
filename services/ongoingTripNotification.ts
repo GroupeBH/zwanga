@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Service de notification permanente pour les trajets en cours
  * Similaire à WhatsApp pour les appels en cours
  * 
@@ -27,11 +27,13 @@ type NotifeeDefault = NotifeeModule['default'];
 type AndroidImportance = NotifeeModule['AndroidImportance'];
 type AndroidCategory = NotifeeModule['AndroidCategory'];
 type AndroidVisibility = NotifeeModule['AndroidVisibility'];
+type AndroidStyle = NotifeeModule['AndroidStyle'];
 
 let notifee: NotifeeDefault | null = null;
 let AndroidImportanceEnum: typeof AndroidImportance | null = null;
 let AndroidCategoryEnum: typeof AndroidCategory | null = null;
 let AndroidVisibilityEnum: typeof AndroidVisibility | null = null;
+let AndroidStyleEnum: typeof AndroidStyle | null = null;
 let canUseForegroundService = false;
 
 // Charger Notifee dynamiquement
@@ -41,6 +43,7 @@ try {
   AndroidImportanceEnum = notifeeModule.AndroidImportance;
   AndroidCategoryEnum = notifeeModule.AndroidCategory;
   AndroidVisibilityEnum = notifeeModule.AndroidVisibility;
+  AndroidStyleEnum = notifeeModule.AndroidStyle;
   canUseForegroundService =
     typeof (notifeeModule as any).registerForegroundService === 'function' ||
     typeof (notifee as any)?.registerForegroundService === 'function';
@@ -94,11 +97,17 @@ async function showOngoingTripNotification(tripInfo: OngoingTripInfo): Promise<v
     }
 
     const isDriver = tripInfo.role === 'driver';
-    const title = isDriver ? '🚗 Trajet en cours' : '🚌 Vous êtes en route';
+    const title = isDriver ? 'Trajet en cours' : 'Vous êtes en route';
     const body = `${tripInfo.departure} → ${tripInfo.arrival}`;
     const subtitle = isDriver 
       ? 'Vous conduisez ce trajet' 
       : 'Vous êtes passager sur ce trajet';
+    const androidStyle = AndroidStyleEnum
+      ? {
+          type: AndroidStyleEnum.BIGTEXT,
+          text: `${body}\n${subtitle}`,
+        }
+      : undefined;
 
     await notifee.displayNotification({
       id: ONGOING_TRIP_NOTIFICATION_ID,
@@ -110,8 +119,12 @@ async function showOngoingTripNotification(tripInfo: OngoingTripInfo): Promise<v
         importance: AndroidImportanceEnum.HIGH,
         category: AndroidCategoryEnum.NAVIGATION,
         visibility: AndroidVisibilityEnum.PUBLIC,
+        smallIcon: 'ic_notification',
+        largeIcon: 'ic_launcher',
+        colorized: true,
         ongoing: true, // Notification permanente non-dismissable
         autoCancel: false,
+        onlyAlertOnce: true,
         // Foreground service pour garder la notification visible et prioritaire
         asForegroundService: canUseForegroundService,
         pressAction: {
@@ -136,8 +149,10 @@ async function showOngoingTripNotification(tripInfo: OngoingTripInfo): Promise<v
         ],
         // Timestamp (pour afficher la durée)
         showTimestamp: true,
+        timestamp: Date.now(),
         chronometerDirection: 'up',
         showChronometer: true,
+        style: androidStyle,
       },
       ios: {
         categoryId: 'ongoing-trip',
