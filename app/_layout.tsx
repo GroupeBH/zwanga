@@ -8,6 +8,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 // Importer les handlers de fond pour qu'ils soient enregistrés au démarrage
 import '@/services/backgroundNotificationTask';
 import '@/services/notifeeBackgroundHandler';
+import '@/services/notifeeForegroundService';
 
 export const unstable_settings = {
   initialRouteName: 'splash',
