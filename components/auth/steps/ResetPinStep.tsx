@@ -4,10 +4,10 @@ import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
 import { authStyles as styles } from '../styles';
-import { ResetPinStep as ResetPinStepType } from '../types';
+import { ResetPinMode } from '../types';
 
 interface ResetPinStepProps {
-  resetPinStep: ResetPinStepType;
+  resetPinStep: ResetPinMode;
   otpCode: string[];
   otpInputRefs: React.MutableRefObject<Array<TextInput | null>>;
   newPin: string;
