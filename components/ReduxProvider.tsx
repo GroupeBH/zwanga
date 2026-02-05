@@ -1,4 +1,3 @@
-import { OngoingTripBanner } from '@/components/OngoingTripBanner';
 import { DialogProvider } from '@/components/ui/DialogProvider';
 import { Colors } from '@/constants/styles';
 import { IdentityProvider } from '@/contexts/IdentityContext';
@@ -19,7 +18,7 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Initialiser l'authentification depuis SecureStore au démarrage
+    // Initialiser l'authentification depuis SecureStore au demarrage
     const initializeStore = async () => {
       try {
         // Initialiser l'auth (charge les tokens depuis SecureStore)
@@ -34,28 +33,27 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
     initializeStore();
   }, []);
 
-  if (isLoading) {
-    // Écran de chargement pendant la restauration du state
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.white} />
-      </View>
-    );
-  }
-
   return (
     <Provider store={store}>
-      <NotificationHandler />
-      <AuthGuard>
-        <DialogProvider>
-          <TutorialProvider>
-            <IdentityProvider>
-              <OngoingTripBanner />
-              {children}
-            </IdentityProvider>
-          </TutorialProvider>
-        </DialogProvider>
-      </AuthGuard>
+      {isLoading ? (
+        // Ecran de chargement pendant la restauration du state
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.white} />
+        </View>
+      ) : (
+        <>
+          <NotificationHandler />
+          <AuthGuard>
+            <DialogProvider>
+              <TutorialProvider>
+                <IdentityProvider>
+                  {children}
+                </IdentityProvider>
+              </TutorialProvider>
+            </DialogProvider>
+          </AuthGuard>
+        </>
+      )}
     </Provider>
   );
 }

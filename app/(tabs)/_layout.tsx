@@ -1,6 +1,7 @@
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useAppSelector } from '@/store/hooks';
 import { selectUnreadMessagesCount } from '@/store/selectors';
+import { OngoingTripBanner } from '@/components/OngoingTripBanner';
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
@@ -11,109 +12,112 @@ export default function TabLayout() {
   const unreadMessagesCount = useAppSelector(selectUnreadMessagesCount);
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: Colors.gray[600],
-        headerShown: false,
-        tabBarStyle: [
-          styles.tabBar,
-          Platform.OS === 'ios' ? styles.tabBarIOS : styles.tabBarAndroid,
-        ],
-        tabBarLabelStyle: styles.tabBarLabel,
-        tabBarItemStyle: styles.tabBarItem,
-        tabBarHideOnKeyboard: true,
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Accueil',
-          tabBarIcon: ({ color, focused, size }) => (
-            <View style={styles.iconContainer}>
-              <Ionicons 
-                name={focused ? 'home' : 'home-outline'} 
-                size={size || 24} 
-                color={color} 
-              />
-              {focused && <View style={styles.activeIndicator} />}
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="trips"
-        options={{
-          title: 'Trajets',
-          tabBarIcon: ({ color, focused, size }) => (
-            <View style={styles.iconContainer}>
-              <Ionicons 
-                name={focused ? 'car' : 'car-outline'} 
-                size={size || 24} 
-                color={color} 
-              />
-              {focused && <View style={styles.activeIndicator} />}
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="map"
-        options={{
-          title: 'Carte',
-          tabBarIcon: ({ color, focused, size }) => (
-            <View style={styles.iconContainer}>
-              <Ionicons
-                name={focused ? 'map' : 'map-outline'}
-                size={size || 24}
-                color={color}
-              />
-              {focused && <View style={styles.activeIndicator} />}
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="messages"
-        options={{
-          title: 'Messages',
-          tabBarIcon: ({ color, focused, size }) => (
-            <View style={styles.iconContainer}>
-              <Ionicons 
-                name={focused ? 'chatbubbles' : 'chatbubbles-outline'} 
-                size={size || 24} 
-                color={color} 
-              />
-              {unreadMessagesCount > 0 && (
-                <View style={styles.badgeContainer}>
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>
-                      {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
-                    </Text>
+    <>
+      <Tabs
+        screenOptions={{
+          tabBarActiveTintColor: Colors.primary,
+          tabBarInactiveTintColor: Colors.gray[600],
+          headerShown: false,
+          tabBarStyle: [
+            styles.tabBar,
+            Platform.OS === 'ios' ? styles.tabBarIOS : styles.tabBarAndroid,
+          ],
+          tabBarLabelStyle: styles.tabBarLabel,
+          tabBarItemStyle: styles.tabBarItem,
+          tabBarHideOnKeyboard: true,
+        }}>
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: 'Accueil',
+            tabBarIcon: ({ color, focused, size }) => (
+              <View style={styles.iconContainer}>
+                <Ionicons 
+                  name={focused ? 'home' : 'home-outline'} 
+                  size={size || 24} 
+                  color={color} 
+                />
+                {focused && <View style={styles.activeIndicator} />}
+              </View>
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="trips"
+          options={{
+            title: 'Trajets',
+            tabBarIcon: ({ color, focused, size }) => (
+              <View style={styles.iconContainer}>
+                <Ionicons 
+                  name={focused ? 'car' : 'car-outline'} 
+                  size={size || 24} 
+                  color={color} 
+                />
+                {focused && <View style={styles.activeIndicator} />}
+              </View>
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="map"
+          options={{
+            title: 'Carte',
+            tabBarIcon: ({ color, focused, size }) => (
+              <View style={styles.iconContainer}>
+                <Ionicons
+                  name={focused ? 'map' : 'map-outline'}
+                  size={size || 24}
+                  color={color}
+                />
+                {focused && <View style={styles.activeIndicator} />}
+              </View>
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="messages"
+          options={{
+            title: 'Messages',
+            tabBarIcon: ({ color, focused, size }) => (
+              <View style={styles.iconContainer}>
+                <Ionicons 
+                  name={focused ? 'chatbubbles' : 'chatbubbles-outline'} 
+                  size={size || 24} 
+                  color={color} 
+                />
+                {unreadMessagesCount > 0 && (
+                  <View style={styles.badgeContainer}>
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>
+                        {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-              )}
-              {focused && <View style={styles.activeIndicator} />}
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profil',
-          tabBarIcon: ({ color, focused, size }) => (
-            <View style={styles.iconContainer}>
-              <Ionicons 
-                name={focused ? 'person' : 'person-outline'} 
-                size={size || 24} 
-                color={color} 
-              />
-              {focused && <View style={styles.activeIndicator} />}
-            </View>
-          ),
-        }}
-      />
-    </Tabs>
+                )}
+                {focused && <View style={styles.activeIndicator} />}
+              </View>
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: 'Profil',
+            tabBarIcon: ({ color, focused, size }) => (
+              <View style={styles.iconContainer}>
+                <Ionicons 
+                  name={focused ? 'person' : 'person-outline'} 
+                  size={size || 24} 
+                  color={color} 
+                />
+                {focused && <View style={styles.activeIndicator} />}
+              </View>
+            ),
+          }}
+        />
+      </Tabs>
+      <OngoingTripBanner />
+    </>
   );
 }
 

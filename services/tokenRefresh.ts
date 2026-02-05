@@ -1,9 +1,8 @@
 import { fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { API_BASE_URL } from '../config/env';
-import { saveTokensAndUpdateState } from '../store/slices/authSlice';
 import { getStoreDispatch } from '../store/storeAccessor';
 import { isTokenExpired, isTokenExpiringSoon } from '../utils/jwt';
-import { getTokens } from './tokenStorage';
+import { getTokens, storeTokens } from './tokenStorage';
 
 /**
  * Service de rafraîchissement automatique des tokens JWT
@@ -158,10 +157,18 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
       }
 
       // Sauvegarder dans SecureStore puis mettre à jour le state Redux (séquentiellement)
-      await getStoreDispatch()(saveTokensAndUpdateState({
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
-      })).unwrap();
+      await storeTokens(data.accessToken, data.refreshToken);
+      try {
+        getStoreDispatch()({
+          type: 'auth/setTokens',
+          payload: {
+            accessToken: data.accessToken,
+            refreshToken: data.refreshToken,
+          },
+        });
+      } catch (dispatchError) {
+        console.warn('[refreshAccessToken] Store non initialisé, tokens stockés uniquement dans SecureStore', dispatchError);
+      }
 
       console.log('Tokens rafraîchis et stockés');
       return data.accessToken;
