@@ -1,4 +1,3 @@
-import notifee from '@notifee/react-native';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
@@ -6,6 +5,23 @@ import { getStoredFcmToken, removeFcmToken, storeFcmToken } from './tokenStorage
 
 const DEFAULT_CHANNEL_ID = 'zwanga_default';
 const isExpoGo = Constants.appOwnership === 'expo';
+
+// Load Notifee dynamically to avoid startup crashes when native module is unavailable.
+type NotifeeModule = typeof import('@notifee/react-native');
+type NotifeeDefault = NotifeeModule['default'];
+
+let notifee: NotifeeDefault | null = null;
+let notifeeEventType: { PRESS?: number; ACTION_PRESS?: number } | null = null;
+
+try {
+  const notifeeModule = require('@notifee/react-native') as NotifeeModule & {
+    EventType?: { PRESS?: number; ACTION_PRESS?: number };
+  };
+  notifee = notifeeModule.default ?? (notifeeModule as unknown as NotifeeDefault);
+  notifeeEventType = notifeeModule.EventType ?? null;
+} catch (error) {
+  console.warn('[pushNotifications] Notifee unavailable, using expo-notifications fallback.');
+}
 
 export async function requestPushPermissions(): Promise<boolean> {
   try {
@@ -17,7 +33,7 @@ export async function requestPushPermissions(): Promise<boolean> {
     const { status } = await Notifications.requestPermissionsAsync();
     return status === 'granted';
   } catch (error) {
-    console.warn('Impossible de demander la permission push:', error);
+    console.warn('Cannot request push permission:', error);
     return false;
   }
 }
@@ -27,27 +43,36 @@ export async function ensureAndroidChannel(): Promise<void> {
     return;
   }
 
-  // Créer le canal avec Notifee pour les notifications en background
-  await notifee.createChannel({
-    id: DEFAULT_CHANNEL_ID,
-    name: 'Notifications Zwanga',
-    importance: 4, // AndroidImportance.HIGH
-    vibration: true,
-  });
+  // Notifee channel (optional)
+  if (notifee) {
+    try {
+      await notifee.createChannel({
+        id: DEFAULT_CHANNEL_ID,
+        name: 'Notifications Zwanga',
+        importance: 4, // AndroidImportance.HIGH
+        vibration: true,
+      });
+    } catch (error) {
+      console.warn('[pushNotifications] Failed to create Notifee channel:', error);
+    }
+  }
 
-  // Créer aussi le canal avec expo-notifications pour compatibilité
-  await Notifications.setNotificationChannelAsync(DEFAULT_CHANNEL_ID, {
-    name: 'Notifications Zwanga',
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
-    sound: 'default',
-  });
+  // Expo notifications channel (always attempted)
+  try {
+    await Notifications.setNotificationChannelAsync(DEFAULT_CHANNEL_ID, {
+      name: 'Notifications Zwanga',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      sound: 'default',
+    });
+  } catch (error) {
+    console.warn('[pushNotifications] Failed to create expo channel:', error);
+  }
 }
 
 async function getExpoProjectId(): Promise<string | undefined> {
   const expoConfig: any = Constants.expoConfig ?? Constants.manifest2?.extra;
   return (
-    // Try multiple fallbacks, handling types that may lack "extra"
     (
       (expoConfig?.extra && expoConfig.extra.eas?.projectId) ??
       expoConfig?.projectId ??
@@ -64,7 +89,7 @@ export async function obtainFcmToken(): Promise<string | null> {
 
   if (isExpoGo) {
     console.warn(
-      'Expo Go ne supporte pas les notifications push distantes depuis SDK 53. Utilisez un build de développement ou un build EAS.',
+      'Expo Go does not support remote push from SDK 53. Use a dev build or EAS build.',
     );
     return null;
   }
@@ -97,13 +122,13 @@ export async function obtainFcmToken(): Promise<string | null> {
     }
     return expoToken;
   } catch (error) {
-    console.warn('Erreur lors de la récupération du token push:', error);
+    console.warn('Error while retrieving push token:', error);
     return null;
   }
 }
 
 export function subscribeToFcmRefresh(): (() => void) | undefined {
-  console.warn('La mise à jour automatique du token n’est pas supportée sur Expo Go.');
+  console.warn('Automatic token refresh is not supported in Expo Go.');
   return undefined;
 }
 
@@ -112,7 +137,8 @@ export async function clearStoredFcmToken(): Promise<void> {
 }
 
 /**
- * Affiche une notification avec Notifee (fonctionne en background)
+ * Display a notification with Notifee when available.
+ * Fallback to expo-notifications local notification otherwise.
  */
 export async function displayNotification(
   title: string,
@@ -122,7 +148,19 @@ export async function displayNotification(
   try {
     await ensureAndroidChannel();
 
-    // Notifee utilise une structure différente pour les données
+    if (!notifee) {
+      const id = await Notifications.scheduleNotificationAsync({
+        content: {
+          title,
+          body,
+          data,
+          sound: 'default',
+        },
+        trigger: null,
+      });
+      return id;
+    }
+
     const notificationData: any = {
       title,
       body,
@@ -131,11 +169,7 @@ export async function displayNotification(
         pressAction: {
           id: 'default',
         },
-        // Utiliser l'icône de notification générée par Expo
-        // Expo génère automatiquement 'ic_notification' à partir de l'icône configurée dans app.config.js
-        // Cette icône est optimisée pour les notifications Android (monochrome, taille appropriée)
         smallIcon: 'ic_notification',
-        // Grande icône (optionnel) - utilise l'icône de l'app
         largeIcon: 'ic_launcher',
       },
       ios: {
@@ -143,98 +177,83 @@ export async function displayNotification(
       },
     };
 
-    // Ajouter les données personnalisées si disponibles
     if (data && Object.keys(data).length > 0) {
-      // Les données peuvent être passées via les propriétés de la notification
-      // ou stockées séparément pour être récupérées lors du clic
       notificationData.data = data;
     }
 
     const notificationId = await notifee.displayNotification(notificationData);
-
     return notificationId;
   } catch (error) {
-    console.warn('Erreur lors de l\'affichage de la notification:', error);
+    console.warn('Error while displaying notification:', error);
     return null;
   }
 }
 
 /**
- * Configure les handlers de notifications en foreground avec Notifee
- * Cette fonction doit être appelée au démarrage de l'application
- * Note: onBackgroundEvent doit être appelé au niveau racine (dans NotificationHandler.tsx)
+ * Configure foreground notification handlers with Notifee.
  */
 export function setupForegroundNotificationHandlers(
   onNotificationPress?: (data: Record<string, any>) => void,
 ): () => void {
-  if (isExpoGo) {
-    // Notifee n'est pas disponible dans Expo Go
+  if (isExpoGo || !notifee) {
     return () => {};
   }
 
   try {
-    // Handler pour les notifications pressées en foreground avec Notifee
     const unsubscribeForeground = notifee.onForegroundEvent(async ({ type, detail }) => {
       console.log('[Notifee] Foreground event:', type, detail);
-      
-      if (type === 1) { // EventType.PRESS
-        // Notification pressée
+
+      if (type === (notifeeEventType?.PRESS ?? 1)) {
         const data = detail.notification?.data || {};
-        console.log('[Notifee] Notification pressée en foreground:', data);
-        
+        console.log('[Notifee] Notification pressed in foreground:', data);
+
         if (onNotificationPress) {
           onNotificationPress(data);
         }
-      } else if (type === 2) { // EventType.ACTION_PRESS
-        // Action pressée (si des actions sont définies)
+      } else if (type === (notifeeEventType?.ACTION_PRESS ?? 2)) {
         const actionId = detail.pressAction?.id;
         const data = detail.notification?.data || {};
-        console.log('[Notifee] Action pressée en foreground:', actionId, data);
-        
+        console.log('[Notifee] Action pressed in foreground:', actionId, data);
+
         if (onNotificationPress) {
           onNotificationPress(data);
         }
       }
     });
 
-    // Retourner une fonction de nettoyage
     return () => {
       try {
         unsubscribeForeground();
       } catch (error) {
-        console.warn('Erreur lors du nettoyage du handler Notifee foreground:', error);
+        console.warn('Error while cleaning Notifee foreground handler:', error);
       }
     };
   } catch (error) {
-    console.warn('Erreur lors de la configuration du handler Notifee foreground:', error);
+    console.warn('Error while configuring Notifee foreground handler:', error);
     return () => {};
   }
 }
 
 /**
- * Traite une notification FCM reçue et l'affiche avec Notifee
- * Cette fonction doit être appelée quand une notification est reçue depuis FCM
+ * Process an incoming notification and display it.
  */
 export async function handleIncomingNotification(
   notification: Notifications.Notification,
 ): Promise<void> {
   try {
-    // Vérifier que la notification a une structure valide
     if (!notification || !notification.request || !notification.request.content) {
-      console.warn('Notification invalide reçue (structure manquante):', notification);
+      console.warn('Invalid notification payload:', notification);
       return;
     }
 
     const { title, body, data } = notification.request.content;
 
-    // Afficher la notification avec Notifee (fonctionne même en background)
     await displayNotification(
       title || 'Zwanga',
       body || '',
       data as Record<string, any>,
     );
   } catch (error) {
-    console.warn('Erreur lors du traitement de la notification entrante:', error);
+    console.warn('Error while processing incoming notification:', error);
   }
 }
-
