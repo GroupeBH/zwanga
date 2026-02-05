@@ -35,20 +35,28 @@ let AndroidCategoryEnum: typeof AndroidCategory | null = null;
 let AndroidVisibilityEnum: typeof AndroidVisibility | null = null;
 let AndroidStyleEnum: typeof AndroidStyle | null = null;
 let canUseForegroundService = false;
+let hasTriedLoadingNotifee = false;
 
-// Charger Notifee dynamiquement
-try {
-  const notifeeModule = require('@notifee/react-native') as NotifeeModule;
-  notifee = notifeeModule.default ?? (notifeeModule as unknown as NotifeeDefault);
-  AndroidImportanceEnum = notifeeModule.AndroidImportance;
-  AndroidCategoryEnum = notifeeModule.AndroidCategory;
-  AndroidVisibilityEnum = notifeeModule.AndroidVisibility;
-  AndroidStyleEnum = notifeeModule.AndroidStyle;
-  canUseForegroundService =
-    typeof (notifeeModule as any).registerForegroundService === 'function' ||
-    typeof (notifee as any)?.registerForegroundService === 'function';
-} catch (error) {
-  console.warn('[OngoingTripNotification] Notifee non disponible');
+function ensureNotifeeLoaded() {
+  if (hasTriedLoadingNotifee) {
+    return;
+  }
+
+  hasTriedLoadingNotifee = true;
+
+  try {
+    const notifeeModule = require('@notifee/react-native') as NotifeeModule;
+    notifee = notifeeModule.default ?? (notifeeModule as unknown as NotifeeDefault);
+    AndroidImportanceEnum = notifeeModule.AndroidImportance;
+    AndroidCategoryEnum = notifeeModule.AndroidCategory;
+    AndroidVisibilityEnum = notifeeModule.AndroidVisibility;
+    AndroidStyleEnum = notifeeModule.AndroidStyle;
+    canUseForegroundService =
+      typeof (notifeeModule as any).registerForegroundService === 'function' ||
+      typeof (notifee as any)?.registerForegroundService === 'function';
+  } catch (error) {
+    console.warn('[OngoingTripNotification] Notifee non disponible');
+  }
 }
 
 // État du service
@@ -61,6 +69,7 @@ let isNotificationShown = false;
  * Ce canal utilise une importance maximale pour les notifications heads-up
  */
 async function createOngoingTripChannel(): Promise<string | null> {
+  ensureNotifeeLoaded();
   if (!notifee || !AndroidImportanceEnum) return null;
 
   try {
@@ -84,6 +93,7 @@ async function createOngoingTripChannel(): Promise<string | null> {
  * Affiche la notification permanente de trajet en cours
  */
 async function showOngoingTripNotification(tripInfo: OngoingTripInfo): Promise<void> {
+  ensureNotifeeLoaded();
   if (!notifee || !AndroidCategoryEnum || !AndroidVisibilityEnum || !AndroidImportanceEnum) {
     console.warn('[OngoingTripNotification] Notifee non disponible');
     return;
@@ -182,6 +192,7 @@ async function showOngoingTripNotification(tripInfo: OngoingTripInfo): Promise<v
  * Masque la notification de trajet en cours
  */
 async function hideOngoingTripNotification(): Promise<void> {
+  ensureNotifeeLoaded();
   if (!notifee) return;
 
   try {

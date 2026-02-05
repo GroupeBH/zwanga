@@ -47,13 +47,20 @@ type AndroidImportanceEnum = NotifeeModule['AndroidImportance'];
 
 let notifeeInstance: NotifeeDefault | null = null;
 let androidImportanceEnum: AndroidImportanceEnum | undefined;
+let hasTriedLoadingNotifee = false;
 
-try {
-  const notifeeModule = require('@notifee/react-native') as NotifeeModule;
-  notifeeInstance = notifeeModule.default ?? (notifeeModule as unknown as NotifeeDefault);
-  androidImportanceEnum = notifeeModule.AndroidImportance;
-} catch (error) {
-  console.warn('[Notifee] Module not available. Notifications disabled in this environment.');
+function ensureAuthNotifeeLoaded() {
+  if (hasTriedLoadingNotifee) {
+    return;
+  }
+  hasTriedLoadingNotifee = true;
+  try {
+    const notifeeModule = require('@notifee/react-native') as NotifeeModule;
+    notifeeInstance = notifeeModule.default ?? (notifeeModule as unknown as NotifeeDefault);
+    androidImportanceEnum = notifeeModule.AndroidImportance;
+  } catch (error) {
+    console.warn('[Notifee] Module not available. Notifications disabled in this environment.');
+  }
 }
 
 export default function AuthScreen() {
@@ -611,6 +618,7 @@ export default function AuthScreen() {
 
   // Notifications
   const triggerSignupSuccessNotification = async (userName?: string) => {
+    ensureAuthNotifeeLoaded();
     if (!notifeeInstance) return;
     try {
       await notifeeInstance.requestPermission();

@@ -6,7 +6,7 @@ export type AuthMode = 'login' | 'signup';
 export type AuthStep = 'phone' | 'sms' | 'pin' | 'profile' | 'kyc' | 'resetPin';
 export type VehicleType = 'sedan' | 'suv' | 'van' | 'moto';
 export type GoogleSignupStep = 'phone' | 'otp';
-export type ResetPinStep = 'otp' | 'newPin';
+export type ResetPinMode = 'otp' | 'newPin';
 
 // Step sequences
 export const LOGIN_STEPS: AuthStep[] = ['phone', 'pin'];
