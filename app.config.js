@@ -6,6 +6,18 @@
 
 require('dotenv').config();
 
+// Public OAuth client IDs (safe to ship in the app).
+// Keep fallbacks so cloud builds still work even when .env is not uploaded.
+const GOOGLE_WEB_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+  '754065251959-scmvdlel13lf7kpbg3tdmevl7hj0299s.apps.googleusercontent.com';
+const GOOGLE_IOS_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
+  '754065251959-chelbj9aa06c2ifbpnmcot2mt6p61rkp.apps.googleusercontent.com';
+const GOOGLE_IOS_URL_SCHEME =
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME ||
+  'com.googleusercontent.apps.754065251959-chelbj9aa06c2ifbpnmcot2mt6p61rkp';
+
 module.exports = {
   expo: {
     name: 'zwanga',
@@ -94,6 +106,10 @@ module.exports = {
          'production'), // Par défaut, considérer comme production pour les builds
       // Google Maps API key
       EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
+      // Google Sign-In OAuth IDs
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: GOOGLE_WEB_CLIENT_ID,
+      EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: GOOGLE_IOS_CLIENT_ID,
+      EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME: GOOGLE_IOS_URL_SCHEME,
 
       secureStoreKeys: {
         access: process.env.EXPO_PUBLIC_SECURESTORE_ACCESS_KEY,
@@ -117,7 +133,7 @@ module.exports = {
       [
         '@react-native-google-signin/google-signin',
         {
-          iosUrlScheme: process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME,
+          iosUrlScheme: GOOGLE_IOS_URL_SCHEME,
         },
       ],
       [

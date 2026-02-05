@@ -4,6 +4,7 @@ import {
   isSuccessResponse,
   statusCodes,
 } from '@react-native-google-signin/google-signin';
+import Constants from 'expo-constants';
 
 export type GoogleAuthResult = {
   idToken: string;
@@ -14,10 +15,29 @@ export type GoogleAuthResult = {
   picture?: string;
 };
 
+const FALLBACK_GOOGLE_WEB_CLIENT_ID =
+  '754065251959-scmvdlel13lf7kpbg3tdmevl7hj0299s.apps.googleusercontent.com';
+const FALLBACK_GOOGLE_IOS_CLIENT_ID =
+  '754065251959-chelbj9aa06c2ifbpnmcot2mt6p61rkp.apps.googleusercontent.com';
+
 // Configure Google Sign-In (call this once at app startup)
 export function configureGoogleSignIn() {
-  const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
-  const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+  const extra =
+    ((Constants.expoConfig?.extra ?? Constants.manifest2?.extra) as Record<string, string | undefined> | undefined) ??
+    {};
+
+  const webClientId =
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+    extra.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+    FALLBACK_GOOGLE_WEB_CLIENT_ID;
+  const iosClientId =
+    process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
+    extra.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
+    FALLBACK_GOOGLE_IOS_CLIENT_ID;
+
+  if (!webClientId) {
+    throw new Error('Google Sign-In non configure: webClientId manquant');
+  }
 
   GoogleSignin.configure({
     webClientId, // Required for getting idToken
