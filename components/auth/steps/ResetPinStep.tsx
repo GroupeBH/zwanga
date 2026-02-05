@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, NativeSyntheticEvent, TextInputKeyPressEventData } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, NativeSyntheticEvent, TextInputKeyPressEventData, Platform } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
@@ -43,13 +43,43 @@ export function ResetPinStep({
 }: ResetPinStepProps) {
   const isOtpComplete = otpCode.join('').length === 5;
   const isPinValid = newPin.length === 4 && newPinConfirm.length === 4;
+  const otpAutoComplete = Platform.OS === 'android' ? 'sms-otp' : 'one-time-code';
 
   const handleOtpInputChange = (text: string, index: number) => {
-    const sanitized = text.replace(/\D/g, '').slice(0, 1);
+    const sanitized = text.replace(/\D/g, '');
+
+    if (!sanitized) {
+      const next = [...otpCode];
+      next[index] = '';
+      onOtpChange(next);
+      return;
+    }
+
+    if (sanitized.length >= otpCode.length) {
+      const full = sanitized.slice(0, otpCode.length).split('');
+      onOtpChange(full);
+      otpInputRefs.current[otpCode.length - 1]?.focus();
+      return;
+    }
+
+    if (sanitized.length > 1) {
+      const next = [...otpCode];
+      let cursor = index;
+      for (const digit of sanitized) {
+        if (cursor > otpCode.length - 1) break;
+        next[cursor] = digit;
+        cursor += 1;
+      }
+      onOtpChange(next);
+      const targetIndex = Math.min(cursor, otpCode.length - 1);
+      otpInputRefs.current[targetIndex]?.focus();
+      return;
+    }
+
     const next = [...otpCode];
-    next[index] = sanitized;
+    next[index] = sanitized.slice(0, 1);
     onOtpChange(next);
-    if (sanitized && index < otpCode.length - 1) {
+    if (index < otpCode.length - 1) {
       otpInputRefs.current[index + 1]?.focus();
     }
   };
@@ -91,7 +121,11 @@ export function ResetPinStep({
                   }}
                   style={[styles.smsInput, digit ? styles.smsInputFilled : null]}
                   keyboardType="number-pad"
-                  maxLength={1}
+                  maxLength={otpCode.length}
+                  autoComplete={otpAutoComplete as any}
+                  textContentType="oneTimeCode"
+                  importantForAutofill="yes"
+                  selectTextOnFocus
                   value={digit}
                   onChangeText={(text) => handleOtpInputChange(text, index)}
                   onKeyPress={(e) => handleOtpKeyPress(e, index)}
