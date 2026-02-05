@@ -33,493 +33,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 const RECENT_TRIPS_LIMIT = 15;
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.gray[50],
-  },
-  header: {
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.xl,
-    borderBottomLeftRadius: BorderRadius.xxl,
-    borderBottomRightRadius: BorderRadius.xxl,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  headerGradient: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-    zIndex: 1,
-  },
-  headerTopRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  expandButton: {
-    width: 40,
-    height: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  greeting: {
-    color: Colors.white,
-    opacity: 0.9,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.medium,
-    marginBottom: 2,
-  },
-  headerTitle: {
-    color: Colors.white,
-    fontSize: FontSizes.xxl,
-    fontWeight: FontWeights.bold,
-  },
-  notificationButton: {
-    width: 40,
-    height: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  notificationBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: Colors.danger,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-    borderWidth: 2,
-    borderColor: Colors.primary,
-  },
-  notificationBadgeText: {
-    color: Colors.white,
-    fontSize: 10,
-    fontWeight: FontWeights.bold,
-  },
-  searchCardContainer: {
-    marginTop: Spacing.sm,
-    overflow: 'hidden',
-  },
-  searchCard: {
-    backgroundColor: 'transparent',
-  },
-  advancedCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xxl,
-    padding: Spacing.lg,
-    ...CommonStyles.shadowLg,
-  },
-  advancedHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-  },
-  advancedTitle: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  advancedLocations: {
-    gap: 0,
-  },
-  advancedLocationButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Spacing.md,
-  },
-  advancedLocationIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: BorderRadius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.md,
-  },
-  advancedLocationContent: {
-    flex: 1,
-  },
-  advancedLocationLabel: {
-    fontSize: 10,
-    color: Colors.gray[500],
-    fontWeight: FontWeights.bold,
-    textTransform: 'uppercase',
-    marginBottom: 2,
-  },
-  advancedLocationTitle: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  advancedLocationSubtitle: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[500],
-  },
-  advancedLocationDivider: {
-    height: 20,
-    marginLeft: 22,
-    justifyContent: 'center',
-  },
-  locationLine: {
-    width: 2,
-    height: '100%',
-    backgroundColor: Colors.gray[200],
-    borderRadius: 1,
-  },
-  advancedButtons: {
-    flexDirection: 'row',
-    marginTop: Spacing.lg,
-    gap: Spacing.md,
-  },
-  button: {
-    height: 48,
-    borderRadius: BorderRadius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.lg,
-  },
-  buttonPrimary: {
-    backgroundColor: Colors.primary,
-  },
-  buttonSecondary: {
-    backgroundColor: Colors.gray[100],
-  },
-  buttonSecondaryText: {
-    color: Colors.gray[700],
-    fontWeight: FontWeights.bold,
-  },
-  buttonText: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.base,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollViewContent: {
-    paddingBottom: 100,
-  },
-  promoBanner: {
-    marginHorizontal: Spacing.xl,
-    marginTop: Spacing.xl,
-    marginBottom: Spacing.lg,
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
-    ...CommonStyles.shadowMd,
-  },
-  promoGradient: {
-    flexDirection: 'row',
-    padding: Spacing.lg,
-    alignItems: 'center',
-  },
-  promoContent: {
-    flex: 1,
-  },
-  promoTitle: {
-    color: Colors.white,
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    marginBottom: 4,
-  },
-  promoSubtitle: {
-    color: Colors.white,
-    opacity: 0.9,
-    fontSize: FontSizes.sm,
-  },
-  promoImage: {
-    marginLeft: Spacing.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  promoCarImage: {
-    width: 90,
-    height: 70,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  section: {
-    paddingHorizontal: Spacing.xl,
-    marginBottom: Spacing.xl,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  sectionTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  seeAllText: {
-    color: Colors.primary,
-    fontWeight: FontWeights.bold,
-  },
-  quickActions: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-  },
-  quickActionCard: {
-    flex: 1,
-    padding: Spacing.lg,
-    borderRadius: 10,
-    backgroundColor: Colors.white,
-    // borderWidth: 0.5,
-    // borderColor: Colors.gray[100],
-    // ...CommonStyles.shadowSm,
-  },
-  publishActionCard: {
-    backgroundColor: Colors.primary + '15',
-  },
-  searchActionCard: {
-    backgroundColor: '#3B82F615',
-  },
-  requestActionCard: {
-    backgroundColor: Colors.success + '15',
-  },
-  listActionCard: {
-    backgroundColor: '#8B5CF615',
-  },
-  quickActionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.md,
-  },
-  quickActionTitle: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  quickActionSubtitle: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
-    marginTop: 2,
-  },
-  tripCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xxl,
-    padding: Spacing.lg,
-    marginBottom: Spacing.md,
-    ...CommonStyles.shadowSm,
-  },
-  tripHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.md,
-  },
-  tripDriverInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.gray[200],
-    marginRight: Spacing.md,
-  },
-  tripDriverDetails: {
-    flex: 1,
-  },
-  driverName: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  driverMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  driverRating: {
-    fontSize: 12,
-    color: Colors.gray[600],
-    marginLeft: 4,
-  },
-  dot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: Colors.gray[400],
-    marginHorizontal: 6,
-  },
-  vehicleInfo: {
-    fontSize: 12,
-    color: Colors.gray[500],
-    flex: 1,
-  },
-  headerBadges: {
-    alignItems: 'flex-end',
-    gap: 4,
-  },
-  bookedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary + '15',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  bookedBadgeText: {
-    fontSize: 10,
-    fontWeight: FontWeights.bold,
-    color: Colors.primary,
-    marginLeft: 4,
-  },
-  ongoingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.success + '15',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  ongoingBadgeText: {
-    fontSize: 10,
-    fontWeight: FontWeights.bold,
-    color: Colors.success,
-    marginLeft: 4,
-  },
-  priceBadge: {
-    backgroundColor: Colors.success + '10',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: BorderRadius.full,
-  },
-  priceText: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.success,
-  },
-  freeBadge: {
-    backgroundColor: Colors.success + '15',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: BorderRadius.full,
-  },
-  freeBadgeText: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.success,
-  },
-  tripRoute: {
-    marginVertical: Spacing.md,
-    paddingLeft: 4,
-  },
-  routeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    marginVertical: 4,
-  },
-  routeText: {
-    flex: 1,
-    fontSize: FontSizes.base,
-    color: Colors.gray[800],
-  },
-  timeContainer: {
-    alignItems: 'flex-end',
-  },
-  routeDateLabel: {
-    fontSize: 10,
-    color: Colors.primary,
-    fontWeight: FontWeights.bold,
-  },
-  routeTime: {
-    fontSize: 12,
-    color: Colors.gray[500],
-    fontWeight: FontWeights.medium,
-  },
-  tripFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: Spacing.md,
-    paddingTop: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray[50],
-  },
-  tripFooterLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  seatsText: {
-    fontSize: 13,
-    color: Colors.gray[600],
-  },
-  reserveButton: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: BorderRadius.lg,
-  },
-  viewButton: {
-    backgroundColor: Colors.secondary,
-  },
-  reserveButtonText: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
-    fontSize: 14,
-  },
-  tripStateCard: {
-    padding: Spacing.xxl,
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xxl,
-  },
-  tripStateText: {
-    fontSize: FontSizes.base,
-    color: Colors.gray[800],
-    fontWeight: FontWeights.bold,
-    marginTop: Spacing.md,
-  },
-  tripStateSubText: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[500],
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  retryButton: {
-    marginTop: Spacing.lg,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.md,
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.lg,
-  },
-  retryButtonText: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
-  },
-});
-
 export default function HomeScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
@@ -1199,6 +712,493 @@ export default function HomeScreen() {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.gray[50],
+  },
+  header: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.xl,
+    borderBottomLeftRadius: BorderRadius.xxl,
+    borderBottomRightRadius: BorderRadius.xxl,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  headerGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+    zIndex: 1,
+  },
+  headerTopRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  expandButton: {
+    width: 40,
+    height: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  greeting: {
+    color: Colors.white,
+    opacity: 0.9,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+    marginBottom: 2,
+  },
+  headerTitle: {
+    color: Colors.white,
+    fontSize: FontSizes.xxl,
+    fontWeight: FontWeights.bold,
+  },
+  notificationButton: {
+    width: 40,
+    height: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: Colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+  },
+  notificationBadgeText: {
+    color: Colors.white,
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+  },
+  searchCardContainer: {
+    marginTop: Spacing.sm,
+    overflow: 'hidden',
+  },
+  searchCard: {
+    backgroundColor: 'transparent',
+  },
+  advancedCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xxl,
+    padding: Spacing.lg,
+    ...CommonStyles.shadowLg,
+  },
+  advancedHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  advancedTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  advancedLocations: {
+    gap: 0,
+  },
+  advancedLocationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+  },
+  advancedLocationIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  advancedLocationContent: {
+    flex: 1,
+  },
+  advancedLocationLabel: {
+    fontSize: 10,
+    color: Colors.gray[500],
+    fontWeight: FontWeights.bold,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  advancedLocationTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  advancedLocationSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+  },
+  advancedLocationDivider: {
+    height: 20,
+    marginLeft: 22,
+    justifyContent: 'center',
+  },
+  locationLine: {
+    width: 2,
+    height: '100%',
+    backgroundColor: Colors.gray[200],
+    borderRadius: 1,
+  },
+  advancedButtons: {
+    flexDirection: 'row',
+    marginTop: Spacing.lg,
+    gap: Spacing.md,
+  },
+  button: {
+    height: 48,
+    borderRadius: BorderRadius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+  },
+  buttonPrimary: {
+    backgroundColor: Colors.primary,
+  },
+  buttonSecondary: {
+    backgroundColor: Colors.gray[100],
+  },
+  buttonSecondaryText: {
+    color: Colors.gray[700],
+    fontWeight: FontWeights.bold,
+  },
+  buttonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.base,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollViewContent: {
+    paddingBottom: 100,
+  },
+  promoBanner: {
+    marginHorizontal: Spacing.xl,
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.lg,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+    ...CommonStyles.shadowMd,
+  },
+  promoGradient: {
+    flexDirection: 'row',
+    padding: Spacing.lg,
+    alignItems: 'center',
+  },
+  promoContent: {
+    flex: 1,
+  },
+  promoTitle: {
+    color: Colors.white,
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    marginBottom: 4,
+  },
+  promoSubtitle: {
+    color: Colors.white,
+    opacity: 0.9,
+    fontSize: FontSizes.sm,
+  },
+  promoImage: {
+    marginLeft: Spacing.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  promoCarImage: {
+    width: 90,
+    height: 70,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  section: {
+    paddingHorizontal: Spacing.xl,
+    marginBottom: Spacing.xl,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  sectionTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  seeAllText: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  quickActions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  quickActionCard: {
+    flex: 1,
+    padding: Spacing.lg,
+    borderRadius: 10,
+    backgroundColor: Colors.white,
+    // borderWidth: 0.5,
+    // borderColor: Colors.gray[100],
+    // ...CommonStyles.shadowSm,
+  },
+  publishActionCard: {
+    backgroundColor: Colors.primary + '15',
+  },
+  searchActionCard: {
+    backgroundColor: '#3B82F615',
+  },
+  requestActionCard: {
+    backgroundColor: Colors.success + '15',
+  },
+  listActionCard: {
+    backgroundColor: '#8B5CF615',
+  },
+  quickActionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  quickActionTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  quickActionSubtitle: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    marginTop: 2,
+  },
+  tripCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xxl,
+    padding: Spacing.lg,
+    marginBottom: Spacing.md,
+    ...CommonStyles.shadowSm,
+  },
+  tripHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.md,
+  },
+  tripDriverInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.gray[200],
+    marginRight: Spacing.md,
+  },
+  tripDriverDetails: {
+    flex: 1,
+  },
+  driverName: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  driverMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  driverRating: {
+    fontSize: 12,
+    color: Colors.gray[600],
+    marginLeft: 4,
+  },
+  dot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: Colors.gray[400],
+    marginHorizontal: 6,
+  },
+  vehicleInfo: {
+    fontSize: 12,
+    color: Colors.gray[500],
+    flex: 1,
+  },
+  headerBadges: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  bookedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary + '15',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  bookedBadgeText: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+    marginLeft: 4,
+  },
+  ongoingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.success + '15',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  ongoingBadgeText: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    color: Colors.success,
+    marginLeft: 4,
+  },
+  priceBadge: {
+    backgroundColor: Colors.success + '10',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+  },
+  priceText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.success,
+  },
+  freeBadge: {
+    backgroundColor: Colors.success + '15',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+  },
+  freeBadgeText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.success,
+  },
+  tripRoute: {
+    marginVertical: Spacing.md,
+    paddingLeft: 4,
+  },
+  routeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    marginVertical: 4,
+  },
+  routeText: {
+    flex: 1,
+    fontSize: FontSizes.base,
+    color: Colors.gray[800],
+  },
+  timeContainer: {
+    alignItems: 'flex-end',
+  },
+  routeDateLabel: {
+    fontSize: 10,
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  routeTime: {
+    fontSize: 12,
+    color: Colors.gray[500],
+    fontWeight: FontWeights.medium,
+  },
+  tripFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[50],
+  },
+  tripFooterLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  seatsText: {
+    fontSize: 13,
+    color: Colors.gray[600],
+  },
+  reserveButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.lg,
+  },
+  viewButton: {
+    backgroundColor: Colors.secondary,
+  },
+  reserveButtonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+    fontSize: 14,
+  },
+  tripStateCard: {
+    padding: Spacing.xxl,
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xxl,
+  },
+  tripStateText: {
+    fontSize: FontSizes.base,
+    color: Colors.gray[800],
+    fontWeight: FontWeights.bold,
+    marginTop: Spacing.md,
+  },
+  tripStateSubText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  retryButton: {
+    marginTop: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.lg,
+  },
+  retryButtonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+  },
+});
 
 // const styles = StyleSheet.create({
 //   container: {

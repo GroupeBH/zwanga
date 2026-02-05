@@ -1,4 +1,10 @@
 declare module '@notifee/react-native' {
+  export enum EventType {
+    PRESS = 1,
+    ACTION_PRESS = 2,
+    DISMISSED = 3,
+  }
+
   export enum AndroidImportance {
     DEFAULT = 3,
     HIGH = 4,
@@ -24,9 +30,25 @@ declare module '@notifee/react-native' {
     sound?: string;
   }
 
+  export interface Notification {
+    id?: string;
+    data?: Record<string, any>;
+  }
+
+  export interface ForegroundEventDetail {
+    notification?: Notification;
+    pressAction?: AndroidPressAction;
+  }
+
+  export interface ForegroundEvent {
+    type: EventType | number;
+    detail: ForegroundEventDetail;
+  }
+
   export interface DisplayNotificationOptions {
     title?: string;
     body?: string;
+    data?: Record<string, any>;
     android?: AndroidOptions;
     ios?: IOSOptions;
   }
@@ -35,6 +57,7 @@ declare module '@notifee/react-native' {
     requestPermission(): Promise<void>;
     createChannel(channel: AndroidChannel): Promise<string>;
     displayNotification(options: DisplayNotificationOptions): Promise<string>;
+    onForegroundEvent(listener: (event: ForegroundEvent) => void | Promise<void>): () => void;
   }
 
   const notifee: NotifeeModule;
