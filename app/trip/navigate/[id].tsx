@@ -87,6 +87,8 @@ export default function NavigationScreen() {
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
   const [currentWaypointIndex, setCurrentWaypointIndex] = useState(0);
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
+  const recalcRouteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef(true);
   const [driverTracksViewChanges, setDriverTracksViewChanges] = useState(true);
   const [destinationTracksViewChanges, setDestinationTracksViewChanges] = useState(true);
   const driverPosition = useRef(
@@ -105,12 +107,23 @@ export default function NavigationScreen() {
   const currentLocationRef = useRef<Location.LocationObject | null>(null);
   const hasEnabled3DRef = useRef(false);
 
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (recalcRouteTimeoutRef.current) {
+        clearTimeout(recalcRouteTimeoutRef.current);
+        recalcRouteTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   // Connexion WebSocket pour le tracking temps réel
   useEffect(() => {
     if (!tripId) return;
 
     // Rejoindre la room du trip pour le tracking temps réel
     trackingSocket.joinTrip(tripId).then(() => {
+      if (!isMountedRef.current) return;
       setIsSocketConnected(true);
       console.log('[Navigation] Connecté au tracking temps réel');
     });
@@ -124,43 +137,11 @@ export default function NavigationScreen() {
       // Quitter la room et se déconnecter proprement
       trackingSocket.leaveTrip(tripId);
       unsubscribeError();
-      setIsSocketConnected(false);
-      
-      // Nettoyage mémoire
-      setRouteCoordinates([]);
-      setSteps([]);
-      setWaypoints([]);
       currentLocationRef.current = null;
       
       console.log('[Navigation] Déconnecté et mémoire nettoyée');
     };
   }, [tripId]);
-
-  // Passer la carte en 3D lorsque la course est en cours
-  useEffect(() => {
-    if (!isTripOngoing) {
-      hasEnabled3DRef.current = false;
-      return;
-    }
-
-    if (hasEnabled3DRef.current || !mapRef.current || !currentLocationRef.current) {
-      return;
-    }
-
-    hasEnabled3DRef.current = true;
-    mapRef.current.animateCamera(
-      {
-        center: {
-          latitude: currentLocationRef.current.coords.latitude,
-          longitude: currentLocationRef.current.coords.longitude,
-        },
-        pitch: 60,
-        heading,
-        zoom: 17,
-      },
-      { duration: 800 }
-    );
-  }, [isTripOngoing, currentLocation, heading]);
   // Créer les waypoints à partir des bookings acceptés
   useEffect(() => {
     if (!bookings || !trip) return;
@@ -238,6 +219,7 @@ export default function NavigationScreen() {
     (async () => {
       try {
         const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
+        if (!isMountedRef.current) return;
         if (foregroundStatus !== 'granted') {
           showDialog({
             title: 'Permission refusée',
@@ -255,6 +237,7 @@ export default function NavigationScreen() {
         // Cette permission n'est pas toujours disponible/configurée
         try {
           const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
+          if (!isMountedRef.current) return;
           if (backgroundStatus !== 'granted') {
             console.log('Permission de localisation en arrière-plan non accordée - mode premier plan uniquement');
           }
@@ -264,6 +247,7 @@ export default function NavigationScreen() {
         }
 
         const hasServicesEnabled = await Location.hasServicesEnabledAsync();
+        if (!isMountedRef.current) return;
         if (!hasServicesEnabled) {
           showDialog({
             title: 'Localisation désactivée',
@@ -286,6 +270,7 @@ export default function NavigationScreen() {
         } catch (error) {
           location = await Location.getLastKnownPositionAsync({});
         }
+        if (!isMountedRef.current) return;
 
         if (location) {
           setCurrentLocation(location);
@@ -315,6 +300,7 @@ export default function NavigationScreen() {
           distanceInterval: 20, // Ou tous les 20 mètres
         },
         (newLocation) => {
+          if (!isMountedRef.current) return;
           const now = Date.now();
           
           // Toujours stocker dans la ref pour les calculs internes
@@ -381,6 +367,7 @@ export default function NavigationScreen() {
       locationSubscription.current = subscription;
       } catch (error) {
         console.error('Erreur lors de l\'initialisation de la localisation:', error);
+        if (!isMountedRef.current) return;
         showDialog({
           title: 'Erreur de localisation',
           message: 'Impossible d\'activer le GPS. Vérifiez que la localisation est activée sur votre appareil.',
@@ -397,6 +384,7 @@ export default function NavigationScreen() {
     return () => {
       if (locationSubscription.current) {
         locationSubscription.current.remove();
+        locationSubscription.current = null;
       }
     };
   }, [tripId]);
@@ -447,7 +435,7 @@ export default function NavigationScreen() {
   }, [currentLocation, trip, waypoints.length]);
 
   const fetchRoute = async () => {
-    if (!currentLocation || !trip) return;
+    if (!currentLocation || !trip || !isMountedRef.current) return;
 
     setIsLoadingRoute(true);
     try {
@@ -473,6 +461,7 @@ export default function NavigationScreen() {
         optimizeWaypoints: true,
         language: 'fr',
       }).unwrap();
+      if (!isMountedRef.current) return;
 
       if (data.routes && data.routes.length > 0) {
         const route = data.routes[0];
@@ -518,6 +507,7 @@ export default function NavigationScreen() {
         }
       }
     } catch (error: any) {
+      if (!isMountedRef.current) return;
       // Vérifier si c'est une erreur "pas de route trouvée" (400)
       const isNoRouteError = error?.status === 400 || error?.data?.statusCode === 400;
       const isNetworkError = error?.status === 'FETCH_ERROR' || error?.error?.includes?.('Network');
@@ -551,13 +541,15 @@ export default function NavigationScreen() {
         console.warn('[Navigation] Erreur itinéraire:', error?.data?.message || error?.message || 'Erreur inconnue');
       }
     } finally {
-      setIsLoadingRoute(false);
+      if (isMountedRef.current) {
+        setIsLoadingRoute(false);
+      }
     }
   };
 
   // Mettre à jour l'étape actuelle en fonction de la position
   const updateCurrentStep = (location: Location.LocationObject) => {
-    if (steps.length === 0) return;
+    if (!isMountedRef.current || steps.length === 0) return;
 
     const currentCoords = {
       latitude: location.coords.latitude,
@@ -680,7 +672,7 @@ export default function NavigationScreen() {
 
   // Confirmer le waypoint (récupération ou dépose du passager)
   const handleConfirmWaypoint = async () => {
-    if (!activeWaypoint) return;
+    if (!activeWaypoint || !isMountedRef.current) return;
     
     const bookingId = activeWaypoint.booking.id;
     
@@ -706,6 +698,7 @@ export default function NavigationScreen() {
       }
       
       // Rafraîchir les bookings pour mettre à jour l'état
+      if (!isMountedRef.current) return;
       refetchBookings();
       
       // Marquer le waypoint comme complété localement
@@ -725,9 +718,16 @@ export default function NavigationScreen() {
       playInstructionSound();
       
       // Recalculer l'itinéraire après confirmation d'un waypoint
-      setTimeout(() => forceRecalculateRoute(), 1000);
+      if (recalcRouteTimeoutRef.current) {
+        clearTimeout(recalcRouteTimeoutRef.current);
+      }
+      recalcRouteTimeoutRef.current = setTimeout(() => {
+        if (!isMountedRef.current) return;
+        forceRecalculateRoute();
+      }, 1000);
       
     } catch (error: any) {
+      if (!isMountedRef.current) return;
       const message = error?.data?.message || error?.message || 'Une erreur est survenue';
       showDialog({
         title: 'Erreur',
@@ -736,8 +736,10 @@ export default function NavigationScreen() {
         icon: 'alert-circle',
       });
     } finally {
-      setWaypointModalVisible(false);
-      setActiveWaypoint(null);
+      if (isMountedRef.current) {
+        setWaypointModalVisible(false);
+        setActiveWaypoint(null);
+      }
     }
   };
 
@@ -755,7 +757,20 @@ export default function NavigationScreen() {
       variant: 'warning',
       icon: 'exit-outline',
       actions: [
-        { label: 'Quitter', variant: 'primary', onPress: () => router.back() },
+        {
+          label: 'Quitter',
+          variant: 'primary',
+          onPress: () => {
+            if (recalcRouteTimeoutRef.current) {
+              clearTimeout(recalcRouteTimeoutRef.current);
+              recalcRouteTimeoutRef.current = null;
+            }
+            setWaypointModalVisible(false);
+            setPassengersPanelVisible(false);
+            setActiveWaypoint(null);
+            router.back();
+          },
+        },
         { label: 'Annuler', variant: 'secondary' },
       ],
     });
@@ -937,7 +952,7 @@ export default function NavigationScreen() {
             <View
               style={styles.driverMarker}
               onLayout={() => {
-                if (driverTracksViewChanges) {
+                if (isMountedRef.current && driverTracksViewChanges) {
                   setDriverTracksViewChanges(false);
                 }
               }}
@@ -980,7 +995,7 @@ export default function NavigationScreen() {
             <View
               style={styles.destinationMarkerContainer}
               onLayout={() => {
-                if (destinationTracksViewChanges) {
+                if (isMountedRef.current && destinationTracksViewChanges) {
                   setDestinationTracksViewChanges(false);
                 }
               }}
@@ -1155,7 +1170,7 @@ export default function NavigationScreen() {
 
       {/* Modal de waypoint stylisé */}
       <Modal
-        visible={waypointModalVisible}
+        visible={waypointModalVisible && Boolean(activeWaypoint)}
         transparent
         animationType="slide"
         onRequestClose={handleDismissWaypointModal}

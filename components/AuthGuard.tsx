@@ -1,6 +1,9 @@
 import { Colors } from '@/constants/styles';
 import { clearStoredFcmToken, obtainFcmToken } from '@/services/pushNotifications';
-import { proactiveTokenRefresh } from '@/services/tokenRefresh';
+import {
+  proactiveTokenRefresh,
+  validateAndRefreshTokens,
+} from '@/services/tokenRefresh';
 import { getTokens } from '@/services/tokenStorage';
 import { useUpdateFcmTokenMutation } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -17,9 +20,9 @@ import { useEffect, useRef } from 'react';
 import { ActivityIndicator, AppState, StyleSheet, View } from 'react-native';
 
 /**
- * Composant de protection des routes
- * Redirige vers /auth si l'utilisateur n'est pas authentifié
- * Redirige vers /(tabs) si l'utilisateur est authentifié et sur /auth
+ * Route guard:
+ * - redirects unauthenticated users to /auth-entry;
+ * - redirects authenticated users away from auth screens.
  */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -37,135 +40,149 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const isRedirectingAfterLogout = useRef(false);
   const hasCheckedTokensOnMount = useRef(false);
 
-  // Vérifier SecureStore si Redux est vide (après un hot reload par exemple)
+  // Validate SecureStore tokens before hydrating Redux (ex: hot reload).
   useEffect(() => {
     if (isLoading || hasCheckedSecureStore.current) return;
-    
+
     const checkSecureStore = async () => {
       if (!accessToken && !refreshToken && !isAuthenticated) {
-        console.log('[AuthGuard] Redux vide - vérification SecureStore...');
-        const storedTokens = await getTokens();
-        
-        if (storedTokens.accessToken && storedTokens.refreshToken) {
-          console.log('[AuthGuard] Tokens trouvés dans SecureStore - chargement dans Redux');
-          dispatch(setTokens({
-            accessToken: storedTokens.accessToken!,
-            refreshToken: storedTokens.refreshToken!,
-          }));
+        console.log('[AuthGuard] Redux empty - validating SecureStore session...');
+        try {
+          const hasValidSession = await validateAndRefreshTokens();
+          if (!hasValidSession) {
+            console.log('[AuthGuard] No valid session found in SecureStore');
+            return;
+          }
+
+          const storedTokens = await getTokens();
+          if (storedTokens.accessToken && storedTokens.refreshToken) {
+            console.log('[AuthGuard] Valid session found - hydrating Redux');
+            dispatch(
+              setTokens({
+                accessToken: storedTokens.accessToken,
+                refreshToken: storedTokens.refreshToken,
+              })
+            );
+          }
+        } finally {
           hasCheckedSecureStore.current = true;
         }
+      } else {
+        hasCheckedSecureStore.current = true;
       }
     };
-    
+
     checkSecureStore();
   }, [isLoading, accessToken, refreshToken, isAuthenticated, dispatch]);
 
-  // Rafraîchissement proactif au démarrage de l'app et au retour du background
-  // C'est le SEUL endroit où le refresh token est appelé automatiquement
-  // SAUF si une connexion/inscription vient d'avoir lieu (tokens frais)
+  // Proactive refresh on startup and on foreground.
   useEffect(() => {
     if (isLoading || !isAuthenticated || !refreshToken) return;
-    
-    // Helper pour vérifier si on vient de s'authentifier
+
     const justAuthenticated = () => {
-      const timeSinceAuth = lastAuthTime.current ? Date.now() - lastAuthTime.current : Infinity;
-      return timeSinceAuth < 5000; // 5 secondes de grâce après auth
+      const timeSinceAuth = lastAuthTime.current
+        ? Date.now() - lastAuthTime.current
+        : Infinity;
+      return timeSinceAuth < 5000;
     };
-    
-    // Vérifier au démarrage (une seule fois)
+
     if (!hasCheckedTokensOnMount.current) {
       hasCheckedTokensOnMount.current = true;
-      
-      // Skip si connexion/inscription récente - les tokens sont frais
+
       if (justAuthenticated()) {
-        console.log('[AuthGuard] Connexion/inscription récente - skip proactive refresh');
-        return;
+        console.log(
+          '[AuthGuard] Recent login/signup detected - skip startup proactive refresh'
+        );
+      } else {
+        console.log('[AuthGuard] Startup proactive token check...');
+        proactiveTokenRefresh().then((valid) => {
+          if (!valid) {
+            console.log('[AuthGuard] Invalid session at startup - local logout');
+            dispatch({ type: 'auth/logout' });
+          }
+        });
       }
-      
-      console.log('[AuthGuard] Vérification des tokens au démarrage...');
-      proactiveTokenRefresh().then((valid) => {
-        if (!valid && refreshToken && isTokenExpired(refreshToken)) {
-          console.log('[AuthGuard] Refresh token expiré au démarrage - logout');
-          dispatch(performLogout());
-        }
-      });
     }
-    
-    // Écouter les changements d'état de l'app (retour du background)
+
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
-        // Skip si connexion/inscription récente - les tokens sont frais
         if (justAuthenticated()) {
-          console.log('[AuthGuard] Connexion/inscription récente - skip refresh au retour');
+          console.log(
+            '[AuthGuard] Recent login/signup detected - skip foreground refresh'
+          );
           return;
         }
-        
-        console.log('[AuthGuard] App revenue au premier plan - vérification tokens...');
+
+        console.log('[AuthGuard] App foregrounded - proactive token check...');
         proactiveTokenRefresh().then((valid) => {
-          if (!valid && refreshToken && isTokenExpired(refreshToken)) {
-            console.log('[AuthGuard] Refresh token expiré après retour - logout');
-            dispatch(performLogout());
+          if (!valid) {
+            console.log('[AuthGuard] Invalid session after foreground - local logout');
+            dispatch({ type: 'auth/logout' });
           }
         });
       }
     });
-    
+
     return () => subscription.remove();
   }, [isLoading, isAuthenticated, refreshToken, dispatch]);
 
-  // Surveiller les authentifications réussies pour éviter les faux positifs de logout
+  // Detect successful auth to avoid false-positive logout races.
   useEffect(() => {
     if (isAuthenticated && accessToken && refreshToken) {
       lastAuthTime.current = Date.now();
-      console.log('[AuthGuard] Authentification réussie détectée');
+      console.log('[AuthGuard] Successful authentication detected');
     }
   }, [isAuthenticated, accessToken, refreshToken]);
 
-  // Vérification des tokens et redirections
+  // Token sanity and route enforcement.
   useEffect(() => {
     if (isLoading) return;
 
     const enforceTokens = async () => {
-      const timeSinceLastAuth = lastAuthTime.current ? Date.now() - lastAuthTime.current : Infinity;
+      const timeSinceLastAuth = lastAuthTime.current
+        ? Date.now() - lastAuthTime.current
+        : Infinity;
       const justAuthenticated = timeSinceLastAuth < 3000;
 
-      // Si l'utilisateur est authentifié et dans le groupe auth, le laisser compléter son inscription/KYC
       if (isAuthenticated && inAuthGroup) {
         return;
       }
 
-      // Si l'utilisateur est authentifié mais tokens pas encore propagés, attendre
       if (isAuthenticated && !accessToken && !refreshToken) {
         if (justAuthenticated) {
-          console.log('[AuthGuard] Authentification récente - attente propagation tokens...');
+          console.log('[AuthGuard] Recent auth, waiting token propagation...');
           return;
         }
-        console.log('[AuthGuard] Tokens non encore dans le store - attente...');
+        console.log('[AuthGuard] Authenticated but tokens missing in Redux');
         return;
       }
 
-      // Aucun token ET pas authentifié -> rediriger vers auth-entry
-      if (!accessToken && !refreshToken && !isAuthenticated && !justAuthenticated && !isLoggingOut.current) {
+      if (
+        !accessToken &&
+        !refreshToken &&
+        !isAuthenticated &&
+        !justAuthenticated &&
+        !isLoggingOut.current
+      ) {
         if (!inAuthGroup && !isRedirectingAfterLogout.current) {
           router.replace('/auth-entry');
         }
         return;
       }
 
-      // Refresh token expiré -> déconnexion complète
       if (refreshToken && isTokenExpired(refreshToken) && !justAuthenticated) {
         if (!isLoggingOut.current) {
           isLoggingOut.current = true;
           isRedirectingAfterLogout.current = true;
-          
+
           try {
             await dispatch(performLogout()).unwrap();
-            console.log('[AuthGuard] Logout terminé - redirection vers /auth-entry');
+            console.log('[AuthGuard] Logout done - redirecting to /auth-entry');
             if (!inAuthGroup) {
               router.replace('/auth-entry');
             }
           } catch (error) {
-            console.error('[AuthGuard] Erreur lors du logout:', error);
+            console.error('[AuthGuard] Logout error:', error);
             if (!inAuthGroup) {
               router.replace('/auth-entry');
             }
@@ -176,16 +193,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
             }, 1000);
           }
         }
-        return;
       }
-
-      // NOTE: On ne rafraîchit PAS ici pour un access token expiré.
-      // Le rafraîchissement se fait :
-      // 1. Via proactiveTokenRefresh au démarrage/retour de l'app
-      // 2. Via baseQueryWithReauth quand le serveur renvoie 401
-      // 3. Via le backend quand KYC validé ou PIN changé
     };
-   
+
     enforceTokens();
   }, [
     accessToken,
@@ -198,39 +208,43 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   ]);
 
   useEffect(() => {
-    // Attendre que le chargement soit terminé avant de rediriger
     if (isLoading) {
       return;
     }
 
-    // Déterminer si on est dans une route protégée (tabs)
-    console.log(`[AuthGuard] Check: Auth=${isAuthenticated}, InAuthGroup=${inAuthGroup}, Segments=${JSON.stringify(segments)}, AccessToken=${!!accessToken}, RefreshToken=${!!refreshToken}`);
+    console.log(
+      `[AuthGuard] Check: Auth=${isAuthenticated}, InAuthGroup=${inAuthGroup}, Segments=${JSON.stringify(
+        segments
+      )}, AccessToken=${!!accessToken}, RefreshToken=${!!refreshToken}`
+    );
 
-    // Si l'utilisateur est authentifié avec des tokens valides
     if (isAuthenticated && accessToken && refreshToken) {
-      // Si on est sur auth-entry et authentifié, rediriger vers l'écran d'accueil
       if (segments[0] === 'auth-entry') {
-        console.log('[AuthGuard] Authentifié sur auth-entry - redirection vers /(tabs)');
+        console.log('[AuthGuard] Authenticated on auth-entry - redirect /(tabs)');
         router.replace('/(tabs)');
         return;
       }
-      
-      // Si on est dans le groupe auth (sur la page /auth), rediriger vers l'écran d'accueil
-      // Cela permet de rediriger immédiatement après l'authentification réussie
+
       if (inAuthGroup && segments[0] === 'auth' && segments.length === 1) {
-        console.log('[AuthGuard] Authentifié sur /auth - redirection vers /(tabs)');
+        console.log('[AuthGuard] Authenticated on /auth - redirect /(tabs)');
         router.replace('/(tabs)');
         return;
       }
     }
 
-    // Si l'utilisateur n'est pas authentifié et qu'on n'est pas dans le groupe auth, rediriger vers l'écran d'entrée auth
-    // Mais seulement si on n'a vraiment pas de tokens (pour éviter les redirections pendant la connexion)
     if (!isAuthenticated && !inAuthGroup && !accessToken && !refreshToken) {
-      console.log('[AuthGuard] Non authentifié et hors du groupe auth - redirection vers /auth-entry');
+      console.log('[AuthGuard] Unauthenticated outside auth - redirect /auth-entry');
       router.replace('/auth-entry');
     }
-  }, [isAuthenticated, isLoading, segments, inAuthGroup, router, accessToken, refreshToken]);
+  }, [
+    isAuthenticated,
+    isLoading,
+    segments,
+    inAuthGroup,
+    router,
+    accessToken,
+    refreshToken,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -242,7 +256,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       try {
         await updateFcmTokenMutation({ fcmToken: token }).unwrap();
       } catch (error) {
-        console.warn('Impossible d\'envoyer le token FCM au serveur:', error);
+        console.warn('Unable to send FCM token to backend:', error);
       }
     };
 
@@ -265,7 +279,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     };
   }, [isAuthenticated, updateFcmTokenMutation]);
 
-  // Afficher un loader pendant le chargement initial
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -285,4 +298,3 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
   },
 });
-

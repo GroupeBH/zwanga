@@ -116,6 +116,13 @@ export default function PassengerNavigationScreen() {
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const routeFetchedRef = useRef(false);
   const lastRouteFetchRef = useRef<number>(0);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Coordonnées importantes
   // Le point de récupération peut être personnalisé par le passager
@@ -153,7 +160,7 @@ export default function PassengerNavigationScreen() {
 
   // Fonction pour récupérer la route
   const fetchRoute = useCallback(async () => {
-    if (!trip?.departure || !trip?.arrival) return;
+    if (!trip?.departure || !trip?.arrival || !isMountedRef.current) return;
     
     // Éviter les appels trop fréquents (minimum 30s entre les appels)
     const now = Date.now();
@@ -177,6 +184,7 @@ export default function PassengerNavigationScreen() {
         destination,
         mode: 'driving' as any,
       }).unwrap();
+      if (!isMountedRef.current) return;
       
       if (response.routes && response.routes.length > 0) {
         const route = response.routes[0];
@@ -211,6 +219,7 @@ export default function PassengerNavigationScreen() {
         routeFetchedRef.current = true;
       }
     } catch (error: any) {
+      if (!isMountedRef.current) return;
       const isNoRouteError = error?.status === 400 || error?.data?.statusCode === 400;
       
       if (isNoRouteError) {
@@ -232,7 +241,9 @@ export default function PassengerNavigationScreen() {
         console.warn('[PassengerNavigation] Erreur route:', error?.data?.message || error?.message || 'Erreur inconnue');
       }
     } finally {
-      setIsLoadingRoute(false);
+      if (isMountedRef.current) {
+        setIsLoadingRoute(false);
+      }
     }
   }, [trip?.departure, trip?.arrival, booking?.passengerOriginCoordinates, booking?.passengerDestinationCoordinates, getDirections]);
   
@@ -246,9 +257,11 @@ export default function PassengerNavigationScreen() {
   // Connexion WebSocket pour recevoir la position du conducteur
   useEffect(() => {
     if (!tripId) return;
+    setIsSocketConnected(false);
 
     // Rejoindre la room du trip pour recevoir les updates
     trackingSocket.joinTrip(tripId).then(() => {
+      if (!isMountedRef.current) return;
       setIsSocketConnected(true);
       // Demander la position actuelle du conducteur
       trackingSocket.requestDriverLocation(tripId);
@@ -256,6 +269,7 @@ export default function PassengerNavigationScreen() {
 
     // Écouter les mises à jour de position du conducteur
     const unsubscribeLocation = trackingSocket.subscribeToDriverLocation((payload: DriverLocationPayload) => {
+      if (!isMountedRef.current) return;
       if (payload.tripId === tripId && payload.coordinates) {
         setDriverLocation({
           latitude: payload.coordinates[1],
@@ -280,7 +294,6 @@ export default function PassengerNavigationScreen() {
       unsubscribeLocation();
       unsubscribeError();
       clearInterval(interval);
-      setIsSocketConnected(false);
     };
   }, [tripId]);
 
