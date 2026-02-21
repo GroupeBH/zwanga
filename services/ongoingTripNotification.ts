@@ -129,7 +129,7 @@ async function showOngoingTripNotification(tripInfo: OngoingTripInfo): Promise<v
         importance: AndroidImportanceEnum.HIGH,
         category: AndroidCategoryEnum.NAVIGATION,
         visibility: AndroidVisibilityEnum.PUBLIC,
-        smallIcon: 'ic_notification',
+        smallIcon: 'notification_icon',
         largeIcon: 'ic_launcher',
         colorized: true,
         ongoing: true, // Notification permanente non-dismissable

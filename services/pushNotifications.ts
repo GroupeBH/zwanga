@@ -189,7 +189,7 @@ export async function displayNotification(
         pressAction: {
           id: 'default',
         },
-        smallIcon: 'ic_notification',
+        smallIcon: 'notification_icon',
         largeIcon: 'ic_launcher',
       },
       ios: {

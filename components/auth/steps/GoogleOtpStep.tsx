@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, NativeSyntheticEvent, Platform, TextInputKeyPressEventData } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
@@ -29,14 +29,53 @@ export function GoogleOtpStep({
   isResending,
 }: GoogleOtpStepProps) {
   const isOtpComplete = otp.join('').length === 5;
+  const otpAutoComplete = Platform.OS === 'android' ? 'sms-otp' : 'one-time-code';
 
   const handleOtpInputChange = (text: string, index: number) => {
-    const sanitized = text.replace(/\D/g, '').slice(0, 1);
+    const sanitized = text.replace(/\D/g, '');
+
+    if (!sanitized) {
+      const next = [...otp];
+      next[index] = '';
+      onOtpChange(next);
+      return;
+    }
+
+    if (sanitized.length >= otp.length) {
+      const full = sanitized.slice(0, otp.length).split('');
+      onOtpChange(full);
+      otpRefs.current[otp.length - 1]?.focus();
+      return;
+    }
+
+    if (sanitized.length > 1) {
+      const next = [...otp];
+      let cursor = index;
+      for (const digit of sanitized) {
+        if (cursor > otp.length - 1) break;
+        next[cursor] = digit;
+        cursor += 1;
+      }
+      onOtpChange(next);
+      const targetIndex = Math.min(cursor, otp.length - 1);
+      otpRefs.current[targetIndex]?.focus();
+      return;
+    }
+
     const next = [...otp];
-    next[index] = sanitized;
+    next[index] = sanitized.slice(0, 1);
     onOtpChange(next);
-    if (sanitized && index < otp.length - 1) {
+    if (index < otp.length - 1) {
       otpRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpKeyPress = (
+    e: NativeSyntheticEvent<TextInputKeyPressEventData>,
+    index: number
+  ) => {
+    if (e.nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
+      otpRefs.current[index - 1]?.focus();
     }
   };
 
@@ -71,9 +110,14 @@ export function GoogleOtpStep({
               }}
               style={[styles.smsInput, digit ? styles.smsInputFilled : null]}
               keyboardType="number-pad"
-              maxLength={1}
+              maxLength={otp.length}
+              autoComplete={otpAutoComplete as any}
+              textContentType="oneTimeCode"
+              importantForAutofill="yes"
+              selectTextOnFocus
               value={digit}
               onChangeText={(text) => handleOtpInputChange(text, index)}
+              onKeyPress={(e) => handleOtpKeyPress(e, index)}
             />
           ))}
         </View>
@@ -98,7 +142,7 @@ export function GoogleOtpStep({
         </TouchableOpacity>
 
         <View style={styles.resendContainer}>
-          <Text style={styles.resendText}>Vous n'avez pas reçu le code ?</Text>
+          <Text style={styles.resendText}>Vous n&apos;avez pas reçu le code ?</Text>
           <TouchableOpacity
             onPress={onResend}
             disabled={isResending}

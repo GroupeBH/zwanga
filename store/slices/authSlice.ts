@@ -34,27 +34,27 @@ const initialState: AuthState = {
 export const performLogout = createAsyncThunk(
   'auth/performLogout',
   async (_, { dispatch }) => {
+    let backendLogoutSucceeded = false;
+
+    // 1. Appeler le backend pour invalider le refresh token côté serveur
+    // On ne bloque pas si ça échoue (l'utilisateur peut être offline)
     try {
-      // 1. Appeler le backend pour invalider le refresh token côté serveur
-      // On ne bloque pas si ça échoue (l'utilisateur peut être offline)
-      try {
-        await dispatch(authApi.endpoints.logout.initiate()).unwrap();
-        console.log('[performLogout] Refresh token invalidé côté serveur');
-      } catch (backendError) {
-        // Ignorer les erreurs backend (offline, token déjà invalide, etc.)
-        console.warn('[performLogout] Impossible d\'invalider le token côté serveur:', backendError);
-      }
-
-      // 2. Nettoyer le SecureStore (access token, refresh token, FCM token)
-      await clearTokens();
-      console.log('[performLogout] SecureStore nettoyé');
-
-      return true;
-    } catch (error) {
-      console.error('[performLogout] Erreur lors de la déconnexion:', error);
-      // Même en cas d'erreur, on veut quand même réinitialiser l'état Redux
-      return true;
+      await dispatch(authApi.endpoints.logout.initiate()).unwrap();
+      backendLogoutSucceeded = true;
+      console.log('[performLogout] Refresh token invalidé côté serveur');
+    } catch (backendError) {
+      // Ignorer les erreurs backend (offline, token déjà invalide, etc.)
+      console.warn('[performLogout] Impossible d\'invalider le token côté serveur:', backendError);
     }
+
+    // 2. Nettoyer les tokens dans SecureStore (access, refresh, FCM)
+    await clearTokens();
+    console.log('[performLogout] SecureStore nettoyé');
+
+    // 3. Nettoyer immédiatement l'auth Redux
+    dispatch({ type: 'auth/logout' });
+
+    return backendLogoutSucceeded;
   }
 );
 

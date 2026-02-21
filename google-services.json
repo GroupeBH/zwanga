@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "754065251959-dk1ihsq4phg4ijcjo6j0uq1a3i7j7b5d.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.zwanga",
+            "certificate_hash": "79d1405d6998b833eae33dabac87f3542c10d2c2"
+          }
+        },
+        {
           "client_id": "754065251959-ocq7783a8ebcnoqrgspsuhjbmntt3qv3.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

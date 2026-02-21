@@ -1,6 +1,6 @@
-import { getRefreshToken } from '../../services/tokenStorage';
+import { API_BASE_URL } from '../../config/env';
+import { getRefreshToken, storeTokens } from '../../services/tokenStorage';
 import type { FavoriteLocation, KycDocument, ProfileStats, ProfileSummary, User, UserRole, Vehicle } from '../../types';
-import { authApi } from './authApi';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 
@@ -119,11 +119,40 @@ export const userApi = baseApi.injectEndpoints({
           if (refreshToken) {
             // Trigger token refresh to get new JWT with updated KYC status
             // This ensures the access token immediately reflects the new KYC status
-            await dispatch(
-              authApi.endpoints.refreshToken.initiate({ refreshToken })
-            ).unwrap();
+            const normalizedBaseUrl = API_BASE_URL.endsWith('/')
+              ? API_BASE_URL.slice(0, -1)
+              : API_BASE_URL;
 
-            console.log('Tokens refreshed successfully after KYC upload');
+            const refreshResponse = await fetch(`${normalizedBaseUrl}/auth/refresh`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ refreshToken }),
+            });
+
+            if (refreshResponse.ok) {
+              const refreshedTokens = (await refreshResponse.json()) as {
+                accessToken?: string;
+                refreshToken?: string;
+              };
+
+              if (refreshedTokens.accessToken && refreshedTokens.refreshToken) {
+                await storeTokens(refreshedTokens.accessToken, refreshedTokens.refreshToken);
+                dispatch({
+                  type: 'auth/setTokens',
+                  payload: {
+                    accessToken: refreshedTokens.accessToken,
+                    refreshToken: refreshedTokens.refreshToken,
+                  },
+                });
+                console.log('Tokens refreshed successfully after KYC upload');
+              } else {
+                console.warn('Refresh response missing tokens after KYC upload');
+              }
+            } else {
+              console.warn('Token refresh failed after KYC upload:', refreshResponse.status);
+            }
 
             // Invalider les tags User et KycStatus pour forcer un refetch immédiat
             // Cela garantit que tous les composants utilisant ces données se mettent à jour
