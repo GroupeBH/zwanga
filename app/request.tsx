@@ -195,8 +195,9 @@ export default function RequestTripScreen() {
         title: 'Demande publiée !',
         message: 'Les chauffeurs seront bientôt notifiés de votre demande.',
         variant: 'success',
-        actions: [{ label: 'voir mes demandes', variant: 'primary', onPress: () => router.push('/my-requests') }],
+        actions: [{ label: 'Fermer', variant: 'primary' }],
       });
+      router.replace('/(tabs)');
     } catch (error: any) {
       showDialog({
         title: 'Erreur',
