@@ -442,6 +442,19 @@ export default function PassengerNavigationScreen() {
     });
   };
 
+  const handleReportDriver = () => {
+    if (!tripId || !booking?.id || !trip?.driverId) return;
+    router.push({
+      pathname: '/report',
+      params: {
+        tripId,
+        bookingId: booking.id,
+        reportedUserId: trip.driverId,
+        reportedUserName: trip.driverName || 'Conducteur',
+      },
+    });
+  };
+
   // État du trajet pour le passager
   const tripStatus = useMemo(() => {
     if (!booking || !trip) return 'loading';
@@ -726,6 +739,17 @@ export default function PassengerNavigationScreen() {
         {/* Boutons d'action */}
         {trip.status === 'ongoing' && (
           <View style={styles.actionButtons}>
+            {!booking.droppedOff && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.reportButton]}
+                onPress={handleReportDriver}
+                activeOpacity={0.9}
+              >
+                <Ionicons name="warning-outline" size={20} color={Colors.white} />
+                <Text style={styles.actionButtonText}>Signaler un probleme</Text>
+              </TouchableOpacity>
+            )}
+
             {!booking.pickedUp && (
               <TouchableOpacity
                 style={[styles.actionButton, styles.pickupButton]}
@@ -1064,6 +1088,10 @@ const styles = StyleSheet.create({
   },
   dropoffButton: {
     backgroundColor: Colors.success,
+  },
+  reportButton: {
+    backgroundColor: Colors.danger,
+    marginBottom: Spacing.sm,
   },
   actionButtonText: {
     color: Colors.white,
