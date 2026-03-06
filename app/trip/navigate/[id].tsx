@@ -749,6 +749,25 @@ export default function NavigationScreen() {
     setActiveWaypoint(null);
   };
 
+  const openReportForWaypoint = (waypoint: Waypoint) => {
+    if (!tripId) return;
+
+    router.push({
+      pathname: '/report',
+      params: {
+        tripId,
+        bookingId: waypoint.booking.id,
+        reportedUserId: waypoint.passenger.id,
+        reportedUserName: waypoint.passenger.name || 'Passager',
+      },
+    });
+  };
+
+  const handleReportPassenger = () => {
+    if (!activeWaypoint) return;
+    openReportForWaypoint(activeWaypoint);
+  };
+
   // Quitter la navigation
   const handleExitNavigation = () => {
     showDialog({
@@ -1241,6 +1260,15 @@ export default function NavigationScreen() {
                 )}
               </TouchableOpacity>
             </View>
+
+            <TouchableOpacity
+              style={styles.waypointModalReportButton}
+              onPress={handleReportPassenger}
+              activeOpacity={0.9}
+            >
+              <Ionicons name="warning-outline" size={18} color={Colors.white} />
+              <Text style={styles.waypointModalReportButtonText}>Signaler ce passager</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -1331,19 +1359,31 @@ export default function NavigationScreen() {
                     </View>
 
                     {!waypoint.completed && (
-                      <TouchableOpacity
-                        style={[
-                          styles.waypointListAction,
-                          { backgroundColor: waypoint.type === 'pickup' ? Colors.secondary : Colors.success }
-                        ]}
-                        onPress={() => {
-                          setActiveWaypoint(waypoint);
-                          setPassengersPanelVisible(false);
-                          setWaypointModalVisible(true);
-                        }}
-                      >
-                        <Ionicons name="checkmark" size={16} color={Colors.white} />
-                      </TouchableOpacity>
+                      <View style={styles.waypointListActions}>
+                        <TouchableOpacity
+                          style={[styles.waypointListAction, styles.waypointListReportAction]}
+                          onPress={(event) => {
+                            event.stopPropagation();
+                            openReportForWaypoint(waypoint);
+                          }}
+                        >
+                          <Ionicons name="warning-outline" size={16} color={Colors.white} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[
+                            styles.waypointListAction,
+                            { backgroundColor: waypoint.type === 'pickup' ? Colors.secondary : Colors.success }
+                          ]}
+                          onPress={(event) => {
+                            event.stopPropagation();
+                            setActiveWaypoint(waypoint);
+                            setPassengersPanelVisible(false);
+                            setWaypointModalVisible(true);
+                          }}
+                        >
+                          <Ionicons name="checkmark" size={16} color={Colors.white} />
+                        </TouchableOpacity>
+                      </View>
                     )}
 
                     {isNext && (
@@ -1848,6 +1888,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  waypointListActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  waypointListReportAction: {
+    backgroundColor: Colors.danger,
+  },
   nextBadge: {
     backgroundColor: Colors.primary,
     borderRadius: BorderRadius.sm,
@@ -1966,6 +2014,22 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   waypointModalPrimaryButtonText: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
+  },
+  waypointModalReportButton: {
+    marginTop: Spacing.md,
+    width: '100%',
+    height: 48,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.danger,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+  },
+  waypointModalReportButtonText: {
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.white,
