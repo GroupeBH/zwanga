@@ -11,6 +11,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+const BACKGROUND_DISCLOSURE_KEY = 'hasSeenBackgroundLocationDisclosure';
+
 export default function SplashScreen() {
   const router = useRouter();
   const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
@@ -29,9 +31,12 @@ export default function SplashScreen() {
     const checkFirstLaunch = async () => {
       try {
         const hasSeenOnboarding = await AsyncStorage.getItem('hasSeenOnboarding');
+        const hasSeenBackgroundDisclosure = await AsyncStorage.getItem(BACKGROUND_DISCLOSURE_KEY);
         setTimeout(async () => {
           if (!hasSeenOnboarding) {
             router.replace('/onboarding');
+          } else if (!hasSeenBackgroundDisclosure) {
+            router.replace('/background-location-disclosure');
           } else if (isAuthenticated) {
             router.replace('/(tabs)');
           } else {

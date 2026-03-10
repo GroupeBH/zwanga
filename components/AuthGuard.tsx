@@ -34,6 +34,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const refreshToken = useAppSelector(selectRefreshToken);
   const [updateFcmTokenMutation] = useUpdateFcmTokenMutation();
   const inAuthGroup = segments[0] === 'auth';
+  const currentSegment = segments[0];
+  const isPublicRoute =
+    currentSegment === 'splash' ||
+    currentSegment === 'onboarding' ||
+    currentSegment === 'auth-entry' ||
+    currentSegment === 'background-location-disclosure';
   const hasCheckedSecureStore = useRef(false);
   const isLoggingOut = useRef(false);
   const lastAuthTime = useRef<number | null>(null);
@@ -164,7 +170,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         !justAuthenticated &&
         !isLoggingOut.current
       ) {
-        if (!inAuthGroup && !isRedirectingAfterLogout.current) {
+        if (!inAuthGroup && !isPublicRoute && !isRedirectingAfterLogout.current) {
           router.replace('/auth-entry');
         }
         return;
@@ -205,6 +211,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     dispatch,
     router,
     inAuthGroup,
+    isPublicRoute,
   ]);
 
   useEffect(() => {
@@ -232,7 +239,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       }
     }
 
-    if (!isAuthenticated && !inAuthGroup && !accessToken && !refreshToken) {
+    if (!isAuthenticated && !inAuthGroup && !isPublicRoute && !accessToken && !refreshToken) {
       console.log('[AuthGuard] Unauthenticated outside auth - redirect /auth-entry');
       router.replace('/auth-entry');
     }
@@ -241,6 +248,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     isLoading,
     segments,
     inAuthGroup,
+    isPublicRoute,
     router,
     accessToken,
     refreshToken,

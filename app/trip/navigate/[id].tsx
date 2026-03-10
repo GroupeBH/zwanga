@@ -86,8 +86,10 @@ export default function NavigationScreen() {
   const [activeWaypoint, setActiveWaypoint] = useState<Waypoint | null>(null);
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
   const [currentWaypointIndex, setCurrentWaypointIndex] = useState(0);
+  const [backgroundDisclosureVisible, setBackgroundDisclosureVisible] = useState(false);
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const recalcRouteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const backgroundDisclosureResolverRef = useRef<((accepted: boolean) => void) | null>(null);
   const isMountedRef = useRef(true);
   const [driverTracksViewChanges, setDriverTracksViewChanges] = useState(true);
   const [destinationTracksViewChanges, setDestinationTracksViewChanges] = useState(true);
@@ -114,8 +116,26 @@ export default function NavigationScreen() {
         clearTimeout(recalcRouteTimeoutRef.current);
         recalcRouteTimeoutRef.current = null;
       }
+      if (backgroundDisclosureResolverRef.current) {
+        backgroundDisclosureResolverRef.current(false);
+        backgroundDisclosureResolverRef.current = null;
+      }
     };
   }, []);
+
+  const resolveBackgroundDisclosure = (accepted: boolean) => {
+    setBackgroundDisclosureVisible(false);
+    if (backgroundDisclosureResolverRef.current) {
+      backgroundDisclosureResolverRef.current(accepted);
+      backgroundDisclosureResolverRef.current = null;
+    }
+  };
+
+  const promptBackgroundDisclosure = () =>
+    new Promise<boolean>((resolve) => {
+      backgroundDisclosureResolverRef.current = resolve;
+      setBackgroundDisclosureVisible(true);
+    });
 
   // Connexion WebSocket pour le tracking temps réel
   useEffect(() => {
@@ -236,14 +256,26 @@ export default function NavigationScreen() {
         // Tenter de demander la permission de localisation en arrière-plan (optionnel)
         // Cette permission n'est pas toujours disponible/configurée
         try {
-          const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
+          const { status: backgroundPermissionStatus } = await Location.getBackgroundPermissionsAsync();
           if (!isMountedRef.current) return;
-          if (backgroundStatus !== 'granted') {
-            console.log('Permission de localisation en arrière-plan non accordée - mode premier plan uniquement');
+
+          if (backgroundPermissionStatus !== 'granted') {
+            const acceptedDisclosure = await promptBackgroundDisclosure();
+            if (!isMountedRef.current) return;
+
+            if (acceptedDisclosure) {
+              const { status: requestedBackgroundStatus } = await Location.requestBackgroundPermissionsAsync();
+              if (!isMountedRef.current) return;
+              if (requestedBackgroundStatus !== 'granted') {
+                console.log('Permission de localisation en arriere-plan non accordee - mode premier plan uniquement');
+              }
+            } else {
+              console.log('Disclosure arriere-plan refusee par l utilisateur - mode premier plan uniquement');
+            }
           }
         } catch (bgError) {
-          // La permission de localisation en arrière-plan n'est pas configurée dans le manifest
-          console.log('Localisation en arrière-plan non disponible:', bgError);
+          // La permission de localisation en arriere-plan n est pas disponible/configuree
+          console.log('Localisation en arriere-plan non disponible:', bgError);
         }
 
         const hasServicesEnabled = await Location.hasServicesEnabledAsync();
@@ -1153,7 +1185,7 @@ export default function NavigationScreen() {
       {isLoadingRoute && (
         <View style={styles.loadingRouteCard}>
           <ActivityIndicator size="small" color={Colors.primary} />
-          <Text style={styles.loadingRouteText}>Calcul de l'itinéraire...</Text>
+          <Text style={styles.loadingRouteText}>Calcul de l itineraire...</Text>
         </View>
       )}
 
@@ -1187,7 +1219,57 @@ export default function NavigationScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Modal de waypoint stylisé */}
+      {/* Disclosure localisation arriere-plan */}
+      <Modal
+        visible={backgroundDisclosureVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => resolveBackgroundDisclosure(false)}
+      >
+        <View style={styles.backgroundDisclosureOverlay}>
+          <View style={styles.backgroundDisclosureCard}>
+            <View style={styles.backgroundDisclosureIcon}>
+              <Ionicons name="location" size={24} color={Colors.primary} />
+            </View>
+            <Text style={styles.backgroundDisclosureTitle}>
+              Autorisation de localisation en arriere-plan
+            </Text>
+            <Text style={styles.backgroundDisclosureText}>
+              Zwanga collecte votre position meme quand l application est en arriere-plan pendant un trajet actif.
+            </Text>
+            <View style={styles.backgroundDisclosureList}>
+              <Text style={styles.backgroundDisclosureItem}>
+                - Suivre votre trajet en continu pour la navigation GPS.
+              </Text>
+              <Text style={styles.backgroundDisclosureItem}>
+                - Envoyer votre position au serveur et aux passagers du trajet en cours.
+              </Text>
+              <Text style={styles.backgroundDisclosureItem}>
+                - Arreter automatiquement le suivi a la fin du trajet.
+              </Text>
+            </View>
+            <Text style={styles.backgroundDisclosureFootnote}>
+              Vous pouvez continuer sans cette autorisation. Dans ce cas, le suivi fonctionne uniquement quand l application est ouverte.
+            </Text>
+            <View style={styles.backgroundDisclosureActions}>
+              <TouchableOpacity
+                style={styles.backgroundDisclosureSecondaryButton}
+                onPress={() => resolveBackgroundDisclosure(false)}
+              >
+                <Text style={styles.backgroundDisclosureSecondaryButtonText}>Pas maintenant</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.backgroundDisclosurePrimaryButton}
+                onPress={() => resolveBackgroundDisclosure(true)}
+              >
+                <Text style={styles.backgroundDisclosurePrimaryButtonText}>Continuer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de waypoint stylise */}
       <Modal
         visible={waypointModalVisible && Boolean(activeWaypoint)}
         transparent
@@ -1609,6 +1691,88 @@ const styles = StyleSheet.create({
   },
   floatingButtonDisabled: {
     opacity: 0.6,
+  },
+  backgroundDisclosureOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+  },
+  backgroundDisclosureCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    gap: Spacing.md,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  backgroundDisclosureIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '14',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+  },
+  backgroundDisclosureTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  backgroundDisclosureText: {
+    fontSize: FontSizes.sm,
+    lineHeight: 22,
+    color: Colors.gray[700],
+  },
+  backgroundDisclosureList: {
+    gap: Spacing.xs,
+  },
+  backgroundDisclosureItem: {
+    fontSize: FontSizes.sm,
+    lineHeight: 20,
+    color: Colors.gray[700],
+  },
+  backgroundDisclosureFootnote: {
+    fontSize: FontSizes.xs,
+    lineHeight: 18,
+    color: Colors.gray[600],
+  },
+  backgroundDisclosureActions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginTop: Spacing.xs,
+  },
+  backgroundDisclosureSecondaryButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backgroundDisclosureSecondaryButtonText: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+  },
+  backgroundDisclosurePrimaryButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backgroundDisclosurePrimaryButtonText: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
   },
   driverMarker: {
     width: 48,
