@@ -1,4 +1,5 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import {
@@ -281,6 +282,15 @@ export default function ManageTripScreen() {
 
   const handleOpenNavigation = () => {
     if (!trip) return;
+
+    if (trip.status !== 'ongoing') {
+      showDialog({
+        variant: 'info',
+        title: 'Navigation indisponible',
+        message: 'Demarrez d abord le trajet pour acceder a la navigation en direct.',
+      });
+      return;
+    }
 
     const { arrival } = trip;
     if (!arrival || !arrival.lat || !arrival.lng) {
@@ -600,6 +610,8 @@ export default function ManageTripScreen() {
           </View>
 
         </View>
+
+        <TripSecurityPanel tripId={trip.id} role="driver" tripStatus={trip.status} />
 
         {/* Liste des passagers */}
         <View style={styles.sectionCard}>

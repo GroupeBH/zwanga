@@ -130,6 +130,16 @@ export {
   useGetEmergencyContactsQuery,
   useUpdateEmergencyContactMutation,
   useDeleteEmergencyContactMutation,
+  useStartTripSecurityTrackingMutation,
+  useNotifyTripSecurityTrustedContactsMutation,
+  useConfirmTripSecurityParticipantMutation,
+  useUpdateTripSecurityConfigurationMutation,
+  useEscalateTripSecurityParticipantMutation,
+  useCancelTripSecurityTrackingMutation,
+  useGetTripSecurityParticipantQuery,
+  useGetTripSecurityParticipantHistoryQuery,
+  useGetTripSecurityTripParticipantsQuery,
+  useGetTripSecurityTripHistoryQuery,
   useCreateSafetyAlertMutation,
   useUpdateLocationMutation,
   useGetSafetyAlertsQuery,
@@ -158,4 +168,3 @@ export {
   useLazyPlacesSearchQuery,
   useGetDirectionsMutation,
 } from './googleMapsApi';
-

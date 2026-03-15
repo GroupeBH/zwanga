@@ -1,4 +1,5 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { trackingSocket, type DriverLocationPayload } from '@/services/trackingSocket';
 import {
@@ -13,6 +14,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    BackHandler,
     Dimensions,
     Platform,
     StatusBar,
@@ -99,6 +101,7 @@ export default function PassengerNavigationScreen() {
     skip: !tripId,
     pollingInterval: 30000,
   });
+  const isTripOngoing = trip?.status === 'ongoing';
 
   // Mutations pour confirmer pickup/dropoff
   const [confirmPickup, { isLoading: isConfirmingPickup }] = useConfirmPickupByPassengerMutation();
@@ -117,12 +120,56 @@ export default function PassengerNavigationScreen() {
   const routeFetchedRef = useRef(false);
   const lastRouteFetchRef = useRef<number>(0);
   const isMountedRef = useRef(true);
+  const exitNavigationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isExitingRef = useRef(false);
+
+  const navigateBackSafely = useCallback(() => {
+    if (isExitingRef.current) {
+      return;
+    }
+
+    isExitingRef.current = true;
+    setIsSocketConnected(false);
+    setIsLoadingRoute(false);
+    routeFetchedRef.current = false;
+    mapRef.current = null;
+
+    if (tripId) {
+      trackingSocket.leaveTrip(tripId);
+    }
+
+    if (exitNavigationTimeoutRef.current) {
+      clearTimeout(exitNavigationTimeoutRef.current);
+    }
+
+    exitNavigationTimeoutRef.current = setTimeout(() => {
+      if (!isMountedRef.current) {
+        return;
+      }
+      router.back();
+    }, 80);
+  }, [router, tripId]);
 
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
+      if (exitNavigationTimeoutRef.current) {
+        clearTimeout(exitNavigationTimeoutRef.current);
+        exitNavigationTimeoutRef.current = null;
+      }
     };
   }, []);
+
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      navigateBackSafely();
+      return true;
+    });
+
+    return () => {
+      backHandler.remove();
+    };
+  }, [navigateBackSafely]);
 
   // Coordonnées importantes
   // Le point de récupération peut être personnalisé par le passager
@@ -256,16 +303,28 @@ export default function PassengerNavigationScreen() {
 
   // Connexion WebSocket pour recevoir la position du conducteur
   useEffect(() => {
-    if (!tripId) return;
+    if (!tripId || !isTripOngoing) {
+      setIsSocketConnected(false);
+      return;
+    }
+
+    let isCancelled = false;
     setIsSocketConnected(false);
 
     // Rejoindre la room du trip pour recevoir les updates
-    trackingSocket.joinTrip(tripId).then(() => {
-      if (!isMountedRef.current) return;
-      setIsSocketConnected(true);
-      // Demander la position actuelle du conducteur
-      trackingSocket.requestDriverLocation(tripId);
-    });
+    trackingSocket
+      .joinTrip(tripId)
+      .then(() => {
+        if (!isMountedRef.current || isCancelled) return;
+        setIsSocketConnected(true);
+        // Demander la position actuelle du conducteur
+        trackingSocket.requestDriverLocation(tripId);
+      })
+      .catch((error) => {
+        if (!isMountedRef.current || isCancelled) return;
+        setIsSocketConnected(false);
+        console.warn('[PassengerNavigation] Connexion tracking impossible:', error);
+      });
 
     // Écouter les mises à jour de position du conducteur
     const unsubscribeLocation = trackingSocket.subscribeToDriverLocation((payload: DriverLocationPayload) => {
@@ -281,6 +340,7 @@ export default function PassengerNavigationScreen() {
 
     // Écouter les erreurs
     const unsubscribeError = trackingSocket.subscribeToErrors((message) => {
+      if (!isMountedRef.current || isCancelled) return;
       console.warn('[PassengerNavigation] Erreur tracking:', message);
     });
 
@@ -290,12 +350,13 @@ export default function PassengerNavigationScreen() {
     }, 10000);
 
     return () => {
+      isCancelled = true;
       trackingSocket.leaveTrip(tripId);
       unsubscribeLocation();
       unsubscribeError();
       clearInterval(interval);
     };
-  }, [tripId]);
+  }, [tripId, isTripOngoing]);
 
   // Calculer la région de la carte
   const mapRegion = useMemo(() => {
@@ -482,7 +543,7 @@ export default function PassengerNavigationScreen() {
         <StatusBar barStyle="dark-content" />
         <Ionicons name="alert-circle" size={64} color={Colors.danger} />
         <Text style={styles.errorText}>Réservation introuvable</Text>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backButton} onPress={navigateBackSafely}>
           <Text style={styles.backButtonText}>Retour</Text>
         </TouchableOpacity>
       </View>
@@ -599,7 +660,7 @@ export default function PassengerNavigationScreen() {
         entering={FadeInDown.duration(300)} 
         style={[styles.header, { paddingTop: insets.top + 8 }]}
       >
-        <TouchableOpacity style={styles.headerButton} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.headerButton} onPress={navigateBackSafely}>
           <Ionicons name="arrow-back" size={24} color={Colors.gray[800]} />
         </TouchableOpacity>
         
@@ -735,6 +796,13 @@ export default function PassengerNavigationScreen() {
             {booking.pickedUp && !booking.droppedOff && <View style={styles.currentIndicator} />}
           </View>
         </View>
+
+        <TripSecurityPanel
+          tripId={trip.id}
+          role="passenger"
+          bookingId={booking.id}
+          tripStatus={trip.status}
+        />
 
         {/* Boutons d'action */}
         {trip.status === 'ongoing' && (

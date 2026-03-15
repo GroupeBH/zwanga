@@ -139,10 +139,23 @@ export default function HomeScreen() {
 
     return [...filteredTrips]
       .sort((a, b) => {
-        // Trier par date de départ (les plus récents en premier)
-        const dateA = new Date(a.departureTime).getTime();
-        const dateB = new Date(b.departureTime).getTime();
-        return dateB - dateA; // dateB - dateA = du plus récent au plus ancien
+        // Trier par publication/modification la plus récente,
+        // puis par date de départ en fallback.
+        const recencyA = new Date(a.updatedAt || a.createdAt || a.departureTime).getTime();
+        const recencyB = new Date(b.updatedAt || b.createdAt || b.departureTime).getTime();
+
+        const safeRecencyA = Number.isFinite(recencyA) ? recencyA : 0;
+        const safeRecencyB = Number.isFinite(recencyB) ? recencyB : 0;
+
+        if (safeRecencyA !== safeRecencyB) {
+          return safeRecencyB - safeRecencyA;
+        }
+
+        const departureA = new Date(a.departureTime).getTime();
+        const departureB = new Date(b.departureTime).getTime();
+        const safeDepartureA = Number.isFinite(departureA) ? departureA : 0;
+        const safeDepartureB = Number.isFinite(departureB) ? departureB : 0;
+        return safeDepartureB - safeDepartureA;
       })
       .slice(0, RECENT_TRIPS_LIMIT);
   }, [baseTrips, currentUser?.id, completedBookingTripIds]);

@@ -327,8 +327,13 @@ export default function TripDetailsScreen() {
     );
   }, [myBookings, trip]);
   const hasAcceptedBooking = activeBooking?.status === 'accepted';
-  // Permettre le suivi si : conducteur, passager accepté, ou via lien partagé (track=true)
-  const canTrackTrip = Boolean(trip && user && (isTripDriver || hasAcceptedBooking || trackParam));
+  // Activer le suivi live uniquement pour un trajet en cours.
+  const canTrackTrip = Boolean(
+    trip &&
+    trip.status === 'ongoing' &&
+    user &&
+    (isTripDriver || hasAcceptedBooking || trackParam)
+  );
 
   useEffect(() => {
     if (!trip || !canTrackTrip) {
@@ -367,7 +372,7 @@ export default function TripDetailsScreen() {
       unsubscribeLocation();
       unsubscribeErrors();
     };
-  }, [trip?.id, canTrackTrip]);
+  }, [trip?.id, trip?.status, canTrackTrip]);
 
   useEffect(() => {
     if (!trip || !isTripDriver || trip.status !== 'ongoing') {

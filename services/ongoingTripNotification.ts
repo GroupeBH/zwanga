@@ -36,6 +36,9 @@ let AndroidVisibilityEnum: typeof AndroidVisibility | null = null;
 let AndroidStyleEnum: typeof AndroidStyle | null = null;
 let canUseForegroundService = false;
 let hasTriedLoadingNotifee = false;
+// Safety switch: keep ongoing notification without Android foreground service
+// to avoid ForegroundServiceDidNotStartInTimeException crashes.
+const ENABLE_ANDROID_FOREGROUND_SERVICE = false;
 
 function ensureNotifeeLoaded() {
   if (hasTriedLoadingNotifee) {
@@ -135,15 +138,10 @@ async function showOngoingTripNotification(tripInfo: OngoingTripInfo): Promise<v
         ongoing: true, // Notification permanente non-dismissable
         autoCancel: false,
         onlyAlertOnce: true,
-        // Foreground service pour garder la notification visible et prioritaire
-        asForegroundService: canUseForegroundService,
+        // Foreground service disabled for stability (production crash mitigation).
+        asForegroundService: ENABLE_ANDROID_FOREGROUND_SERVICE && canUseForegroundService,
         pressAction: {
           id: 'ongoing-trip-press',
-          launchActivity: 'default',
-        },
-        // Full screen action pour afficher en heads-up (comme un appel)
-        fullScreenAction: {
-          id: 'ongoing-trip-fullscreen',
           launchActivity: 'default',
         },
         // Couleur de la notification
@@ -196,8 +194,10 @@ async function hideOngoingTripNotification(): Promise<void> {
   if (!notifee) return;
 
   try {
-    // Arrêter le foreground service
-    await notifee.stopForegroundService();
+    // Arrêter le foreground service uniquement s'il est activé.
+    if (ENABLE_ANDROID_FOREGROUND_SERVICE) {
+      await notifee.stopForegroundService();
+    }
     // Annuler la notification
     await notifee.cancelNotification(ONGOING_TRIP_NOTIFICATION_ID);
     isNotificationShown = false;
@@ -213,7 +213,7 @@ async function hideOngoingTripNotification(): Promise<void> {
 function handleAppStateChange(nextAppState: AppStateStatus): void {
   if (!currentTripInfo) return;
 
-  if (nextAppState === 'background' || nextAppState === 'inactive') {
+  if (nextAppState === 'background') {
     // L'app passe en arrière-plan : afficher la notification
     if (!isNotificationShown) {
       showOngoingTripNotification(currentTripInfo);
