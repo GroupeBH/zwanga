@@ -8,7 +8,7 @@ import {
 import { useAppSelector } from '@/store/hooks';
 import { selectTrips } from '@/store/selectors';
 import type { Trip } from '@/types';
-import { formatTime, formatDateWithRelativeLabel, matchesDateFilter } from '@/utils/dateHelpers';
+import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { searchMapboxPlaces, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,9 +27,6 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-type FilterType = 'all' | 'car' | 'moto' | 'tricycle';
-type DateFilterType = 'all' | 'today' | 'tomorrow' | 'yesterday';
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -56,17 +53,8 @@ export default function SearchScreen() {
   const [activeSearchField, setActiveSearchField] = useState<'departure' | 'arrival' | null>(null);
   const departureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const arrivalTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [filter, setFilter] = useState<FilterType>('all');
-  const [dateFilter, setDateFilter] = useState<DateFilterType>('all');
-  const [showFilters, setShowFilters] = useState(false);
   const [queryParams, setQueryParams] = useState<TripSearchParams>({});
   const [advancedTrips, setAdvancedTrips] = useState<Trip[] | null>(null);
-  const [activeRadiusFilter, setActiveRadiusFilter] = useState<{
-    departureRadiusKm?: number;
-    arrivalRadiusKm?: number;
-    departureLabel?: string;
-    arrivalLabel?: string;
-  } | null>(null);
   const [advancedError, setAdvancedError] = useState<string | null>(null);
   const [lastAdvancedPayload, setLastAdvancedPayload] =
     useState<TripSearchByPointsPayload | null>(null);
@@ -217,9 +205,7 @@ export default function SearchScreen() {
     setDepartureSuggestions([]);
     setArrivalSuggestions([]);
     setActiveSearchField(null);
-    if (advancedTrips) {
-      return;
-    }
+    clearAdvancedFilter();
     setQueryParams({
       departureLocation: departure.trim() || undefined,
       arrivalLocation: arrival.trim() || undefined,
@@ -241,7 +227,6 @@ export default function SearchScreen() {
 
   const clearAdvancedFilter = () => {
     setAdvancedTrips(null);
-    setActiveRadiusFilter(null);
     setAdvancedError(null);
     setLastAdvancedPayload(null);
   };
@@ -272,32 +257,29 @@ export default function SearchScreen() {
     const arrLng = parseNumberParam(searchParams.arrivalLng);
     const depRadius = parseNumberParam(searchParams.departureRadiusKm);
     const arrRadius = parseNumberParam(searchParams.arrivalRadiusKm);
+    const hasDepartureCoordinates = depLat !== undefined && depLng !== undefined;
+    const hasArrivalCoordinates = arrLat !== undefined && arrLng !== undefined;
 
-    if (
-      mode === 'map' &&
-      depLat !== undefined &&
-      depLng !== undefined &&
-      arrLat !== undefined &&
-      arrLng !== undefined
-    ) {
+    if (mode === 'map' && (hasDepartureCoordinates || hasArrivalCoordinates)) {
       const payload = {
-        departureCoordinates: [depLng, depLat] as [number, number],
-        arrivalCoordinates: [arrLng, arrLat] as [number, number],
-        departureRadiusKm: depRadius ?? 10,
-        arrivalRadiusKm: arrRadius ?? 10,
+        ...(hasDepartureCoordinates
+          ? {
+              departureCoordinates: [depLng, depLat] as [number, number],
+              departureRadiusKm: depRadius ?? 50,
+            }
+          : {}),
+        ...(hasArrivalCoordinates
+          ? {
+              arrivalCoordinates: [arrLng, arrLat] as [number, number],
+              arrivalRadiusKm: arrRadius ?? 50,
+            }
+          : {}),
       };
 
-      setActiveRadiusFilter({
-        departureRadiusKm: payload.departureRadiusKm,
-        arrivalRadiusKm: payload.arrivalRadiusKm,
-        departureLabel: searchParams.departureLabel as string | undefined,
-        arrivalLabel: searchParams.arrivalLabel as string | undefined,
-      });
       setLastAdvancedPayload(payload);
       runAdvancedSearch(payload);
     } else {
       setAdvancedTrips(null);
-      setActiveRadiusFilter(null);
       setAdvancedError(null);
       setLastAdvancedPayload(null);
     }
@@ -324,11 +306,9 @@ export default function SearchScreen() {
 
   const filteredTrips = useMemo(() => {
     const filtered = baseTrips.filter((trip) => {
-      const matchesFilter = filter === 'all' || trip.vehicleType === filter;
-      const matchesDate = matchesDateFilter(trip.departureTime, dateFilter);
       const matchesDeparture = !departure || trip.departure.name.toLowerCase().includes(departure.toLowerCase());
       const matchesArrival = !arrival || trip.arrival.name.toLowerCase().includes(arrival.toLowerCase());
-      return matchesFilter && matchesDate && matchesDeparture && matchesArrival;
+      return matchesDeparture && matchesArrival;
     });
     
     // Trier par date de création (les plus récents en premier)
@@ -337,7 +317,7 @@ export default function SearchScreen() {
       const dateB = new Date(b.createdAt).getTime();
       return dateB - dateA; // dateB - dateA = du plus récent au plus ancien
     });
-  }, [baseTrips, filter, dateFilter, departure, arrival]);
+  }, [baseTrips, departure, arrival]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -354,7 +334,7 @@ export default function SearchScreen() {
         <View style={styles.searchBox}>
           <View style={styles.searchRowContainer}>
             <View style={styles.searchRow}>
-              <Ionicons name="search" size={18} color={Colors.gray[500]} />
+              <Ionicons name="location-outline" size={18} color={Colors.success} />
               <TextInput
                 style={styles.searchInput}
                 placeholder="Choisissez votre point de départ"
@@ -390,7 +370,7 @@ export default function SearchScreen() {
           <View style={styles.searchDivider} />
           <View style={styles.searchRowContainer}>
             <View style={[styles.searchRow, styles.searchRowLast]}>
-              <Ionicons name="search" size={18} color={Colors.gray[500]} />
+              <Ionicons name="flag-outline" size={18} color={Colors.primary} />
               <TextInput
                 style={styles.searchInput}
                 placeholder="Choisissez votre point d'arrivée"
@@ -498,129 +478,12 @@ export default function SearchScreen() {
           </View>
         )}
         <TouchableOpacity style={styles.searchButton} onPress={handleApplySearch}>
-          {activeRadiusFilter ? (
-            <Text style={styles.searchButtonText}>Filtrer la liste courante</Text>
-          ) : queryFetching ? (
+          {queryFetching ? (
             <ActivityIndicator color={Colors.white} />
           ) : (
             <Text style={styles.searchButtonText}>Rechercher</Text>
           )}
         </TouchableOpacity>
-
-        {activeRadiusFilter && (
-          <View style={styles.radiusCard}>
-            <View style={styles.radiusIcon}>
-              <Ionicons name="locate" size={20} color={Colors.primary} />
-            </View>
-            <View style={styles.radiusContent}>
-              <Text style={styles.radiusTitle}>Filtre carte actif</Text>
-              <Text style={styles.radiusSubtitle}>
-                Départ: {activeRadiusFilter.departureLabel ?? '—'} ({activeRadiusFilter.departureRadiusKm ?? 0} km){'\n'}
-                Arrivée: {activeRadiusFilter.arrivalLabel ?? '—'} ({activeRadiusFilter.arrivalRadiusKm ?? 0} km)
-              </Text>
-            </View>
-            <TouchableOpacity style={styles.radiusClear} onPress={clearAdvancedFilter}>
-              <Ionicons name="close" size={18} color={Colors.gray[700]} />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Filtres */}
-        <TouchableOpacity
-          style={styles.filterButton}
-          onPress={() => setShowFilters(!showFilters)}
-        >
-          <View style={styles.filterButtonLeft}>
-            <Ionicons name="filter" size={20} color={Colors.primary} />
-            <Text style={styles.filterText}>Filtres</Text>
-            {(filter !== 'all' || dateFilter !== 'all') && <View style={styles.filterDot} />}
-          </View>
-          <Ionicons
-            name={showFilters ? 'chevron-up' : 'chevron-down'}
-            size={20}
-            color={Colors.gray[600]}
-          />
-        </TouchableOpacity>
-
-        {showFilters && (
-          <Animated.View entering={FadeInDown} style={styles.filtersContainer}>
-            <View style={styles.filterSection}>
-              <Text style={styles.filterSectionTitle}>Type de véhicule</Text>
-              <View style={styles.filterRow}>
-                <TouchableOpacity
-                  style={[styles.filterTag, filter === 'all' && styles.filterTagActive]}
-                  onPress={() => setFilter('all')}
-                >
-                  <Text style={[styles.filterTagText, filter === 'all' && styles.filterTagTextActive]}>
-                    Tous
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterTag, filter === 'car' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
-                  onPress={() => setFilter('car')}
-                >
-                  <Text style={[styles.filterTagText, filter === 'car' && styles.filterTagTextActive]}>
-                    🚗 Voiture
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterTag, filter === 'moto' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
-                  onPress={() => setFilter('moto')}
-                >
-                  <Text style={[styles.filterTagText, filter === 'moto' && styles.filterTagTextActive]}>
-                    🏍️ Moto
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterTag, filter === 'tricycle' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
-                  onPress={() => setFilter('tricycle')}
-                >
-                  <Text style={[styles.filterTagText, filter === 'tricycle' && styles.filterTagTextActive]}>
-                    🛺 Keke
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.filterSection}>
-              <Text style={styles.filterSectionTitle}>Date de départ</Text>
-              <View style={styles.filterRow}>
-                <TouchableOpacity
-                  style={[styles.filterTag, dateFilter === 'all' && styles.filterTagActive]}
-                  onPress={() => setDateFilter('all')}
-                >
-                  <Text style={[styles.filterTagText, dateFilter === 'all' && styles.filterTagTextActive]}>
-                    Toutes
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterTag, dateFilter === 'today' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
-                  onPress={() => setDateFilter('today')}
-                >
-                  <Text style={[styles.filterTagText, dateFilter === 'today' && styles.filterTagTextActive]}>
-                    Aujourd'hui
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterTag, dateFilter === 'tomorrow' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
-                  onPress={() => setDateFilter('tomorrow')}
-                >
-                  <Text style={[styles.filterTagText, dateFilter === 'tomorrow' && styles.filterTagTextActive]}>
-                    Demain
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterTag, dateFilter === 'yesterday' && styles.filterTagActive, { marginLeft: Spacing.sm }]}
-                  onPress={() => setDateFilter('yesterday')}
-                >
-                  <Text style={[styles.filterTagText, dateFilter === 'yesterday' && styles.filterTagTextActive]}>
-                    Hier
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </Animated.View>
-        )}
       </View>
 
       {/* Résultats */}

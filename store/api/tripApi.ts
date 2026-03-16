@@ -199,11 +199,18 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
   };
 };
 
+const cleanObject = <T extends Record<string, unknown>>(value: T): Partial<T> => {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, current]) => current !== undefined && current !== null),
+  ) as Partial<T>;
+};
+
 /**
  * API trajets
  * Gère la création, recherche, réservation et gestion des trajets
  */
 export type TripSearchParams = {
+  keywords?: string;
   departureLocation?: string;
   arrivalLocation?: string;
   departureCoordinates?: [number, number];
@@ -213,10 +220,12 @@ export type TripSearchParams = {
   departureDate?: string;
   minSeats?: number;
   maxPrice?: number;
+  isFree?: boolean;
 };
 
 export type TripSearchByPointsPayload = {
-  departureCoordinates: [number, number] | null;
+  keywords?: string | null;
+  departureCoordinates?: [number, number] | null;
   arrivalCoordinates?: [number, number] | null;
   departureRadiusKm?: number | null;
   arrivalRadiusKm?: number | null;
@@ -250,7 +259,7 @@ export const tripApi = baseApi.injectEndpoints({
     getTrips: builder.query<Trip[], TripSearchParams>({
       query: (params: TripSearchParams) => ({
         url: '/trips',
-        params,
+        params: cleanObject(params),
       }),
       transformResponse: (response: ServerTrip[]) => response.map(mapServerTripToClient),
       providesTags: (result: Trip[] | undefined) =>
@@ -282,7 +291,7 @@ export const tripApi = baseApi.injectEndpoints({
       query: (body: TripSearchByPointsPayload) => ({
         url: '/trips/search/coordinates',
         method: 'POST',
-        body,
+        body: cleanObject(body),
       }),
       transformResponse: (response: ServerTrip[]) => response.map(mapServerTripToClient),
     }),

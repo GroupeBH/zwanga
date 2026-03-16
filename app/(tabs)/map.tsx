@@ -6,20 +6,16 @@ import { useUserLocation } from '@/hooks/useUserLocation';
 import { TripSearchParams, useLazyGetTripsQuery, useSearchTripsByCoordinatesMutation } from '@/store/api/tripApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
-  selectLocationRadius,
-  selectTripSearchMode,
+  selectAvailableTrips,
   selectTripSearchQuery,
-  selectTripsMatchingMapFilters,
   selectUserCoordinates,
-  selectVehicleFilter,
 } from '@/store/selectors';
-import { setRadiusKm, setSearchQuery, TripSearchMode } from '@/store/slices/locationSlice';
+import { setSearchQuery } from '@/store/slices/locationSlice';
 import { setTrips } from '@/store/slices/tripsSlice';
 import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { Ionicons } from '@expo/vector-icons';
-import MapView, { Marker, Polyline, Callout, PROVIDER_GOOGLE, Region } from 'react-native-maps';
-import Constants from 'expo-constants';
+import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -38,9 +34,61 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { searchGoogleMapsPlaces, getGoogleMapsPlaceDetails, type GoogleMapsSearchSuggestion } from '@/utils/googleMapsPlaces';
-import { getCachedRouteCoordinates, type RouteCoordinates } from '@/utils/googleMapsDirections';
 
 type LatLng = { latitude: number; longitude: number };
+
+const DEFAULT_REGION: Region = {
+  latitude: -4.441931,
+  longitude: 15.266293,
+  latitudeDelta: 0.2,
+  longitudeDelta: 0.2,
+};
+const DEFAULT_SEARCH_RADIUS_KM = 20;
+
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+
+const toValidLatLng = (latitude: unknown, longitude: unknown): LatLng | null => {
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
+
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return null;
+  }
+
+  return { latitude: lat, longitude: lng };
+};
+
+const isValidRegion = (region: Region | null | undefined): region is Region => {
+  if (!region) return false;
+  return (
+    isFiniteNumber(region.latitude) &&
+    isFiniteNumber(region.longitude) &&
+    isFiniteNumber(region.latitudeDelta) &&
+    isFiniteNumber(region.longitudeDelta) &&
+    region.latitude >= -90 &&
+    region.latitude <= 90 &&
+    region.longitude >= -180 &&
+    region.longitude <= 180 &&
+    region.latitudeDelta > 0 &&
+    region.longitudeDelta > 0
+  );
+};
+
+const buildRegionFromPoint = (
+  point: LatLng,
+  latitudeDelta: number = 0.1,
+  longitudeDelta: number = 0.1,
+): Region => ({
+  latitude: point.latitude,
+  longitude: point.longitude,
+  latitudeDelta,
+  longitudeDelta,
+});
 
 
 const toRadians = (value: number) => (value * Math.PI) / 180;
@@ -67,10 +115,7 @@ export default function MapScreen() {
   const [triggerTripSearch, { isFetching: isApplyingSearch }] = useLazyGetTripsQuery();
   const [searchByCoordinates, { isLoading: isSearchingArea }] = useSearchTripsByCoordinatesMutation();
   const userCoords = useAppSelector(selectUserCoordinates);
-  const trips = useAppSelector(selectTripsMatchingMapFilters);
-  const radiusKm = useAppSelector(selectLocationRadius);
-  const vehicleFilter = useAppSelector(selectVehicleFilter);
-  const searchMode = useAppSelector(selectTripSearchMode);
+  const trips = useAppSelector(selectAvailableTrips);
   const activeSearchQuery = useAppSelector(selectTripSearchQuery);
   const [search, setSearch] = useState(activeSearchQuery);
   const { shouldShow: shouldShowMapGuide, complete: completeMapGuide } =
@@ -80,17 +125,18 @@ export default function MapScreen() {
   const [isMapExpanded, setIsMapExpanded] = useState(false);
   const [mapRegion, setMapRegion] = useState<Region | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
+  const latestRegionRef = useRef<Region | null>(null);
+  const [isMapReady, setIsMapReady] = useState(false);
   const [isMapMoving, setIsMapMoving] = useState(false);
   const [googleMapsSuggestions, setGoogleMapsSuggestions] = useState<GoogleMapsSearchSuggestion[]>([]);
   const [googleMapsLoading, setGoogleMapsLoading] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [routeCoordinatesCache, setRouteCoordinatesCache] = useState<Map<string, RouteCoordinates[]>>(new Map());
-  const [loadingRoutes, setLoadingRoutes] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
+  const safeUserCoords = useMemo(
+    () => toValidLatLng(userCoords?.latitude, userCoords?.longitude),
+    [userCoords],
+  );
   
-  // Limiter la taille du cache pour éviter les problèmes de mémoire (max 30 routes)
-  const MAX_CACHE_SIZE = 30;
-
   // Ajuster la carte automatiquement quand des trajets sont trouvés après une recherche
   useEffect(() => {
     // Ne s'ajuster que si on a une recherche active (pas au chargement initial)
@@ -102,124 +148,7 @@ export default function MapScreen() {
       
       return () => clearTimeout(timeoutId);
     }
-  }, [trips.length, activeSearchQuery, fitMapToTrips]);
-
-  // Charger les itinéraires pour tous les trajets (limité pour éviter les problèmes de mémoire)
-  useEffect(() => {
-    const loadRoutes = async () => {
-      // Limiter le nombre de trajets pour lesquels on charge les routes (max 20)
-      const tripsToProcess = trips.slice(0, 20);
-      const tripsToLoad: Array<{
-        tripId: string;
-        start: RouteCoordinates;
-        end: RouteCoordinates;
-      }> = [];
-
-      // Identifier les trajets qui ont besoin d'un itinéraire
-      for (const trip of tripsToProcess) {
-        const departureCoords =
-          trip.departure?.lat && trip.departure?.lng
-            ? { latitude: trip.departure.lat, longitude: trip.departure.lng }
-            : null;
-        const arrivalCoords =
-          trip.arrival?.lat && trip.arrival?.lng
-            ? { latitude: trip.arrival.lat, longitude: trip.arrival.lng }
-            : null;
-
-        if (!departureCoords || !arrivalCoords) continue;
-
-        const cacheKey = `${trip.id}-route`;
-        
-        // Ne pas recharger si déjà en cache ou en cours de chargement
-        if (routeCoordinatesCache.has(cacheKey) || loadingRoutes.has(cacheKey)) {
-          continue;
-        }
-
-        tripsToLoad.push({
-          tripId: trip.id,
-          start: departureCoords,
-          end: arrivalCoords,
-        });
-      }
-
-      // Limiter le nombre de requêtes simultanées (max 5 à la fois)
-      const maxConcurrent = 5;
-      for (let i = 0; i < tripsToLoad.length; i += maxConcurrent) {
-        const batch = tripsToLoad.slice(i, i + maxConcurrent);
-        
-        await Promise.all(
-          batch.map(async ({ tripId, start, end }) => {
-            const cacheKey = `${tripId}-route`;
-            
-            setLoadingRoutes(prev => new Set(prev).add(cacheKey));
-
-            try {
-              const route = await getCachedRouteCoordinates(start, end);
-              
-              if (route && route.length > 0) {
-                setRouteCoordinatesCache(prev => {
-                  const newCache = new Map(prev);
-                  // Limiter la taille du cache
-                  if (newCache.size >= MAX_CACHE_SIZE) {
-                    // Supprimer le premier élément (FIFO)
-                    const firstKey = newCache.keys().next().value;
-                    if (firstKey) {
-                      newCache.delete(firstKey);
-                    }
-                  }
-                  newCache.set(cacheKey, route);
-                  return newCache;
-                });
-              } else {
-                // Fallback sur ligne droite si l'API échoue
-                setRouteCoordinatesCache(prev => {
-                  const newCache = new Map(prev);
-                  // Limiter la taille du cache
-                  if (newCache.size >= MAX_CACHE_SIZE) {
-                    const firstKey = newCache.keys().next().value;
-                    if (firstKey) {
-                      newCache.delete(firstKey);
-                    }
-                  }
-                  newCache.set(cacheKey, [start, end]);
-                  return newCache;
-                });
-              }
-            } catch (error) {
-              console.warn(`Error loading route for trip ${tripId}:`, error);
-              // Fallback sur ligne droite
-              setRouteCoordinatesCache(prev => {
-                const newCache = new Map(prev);
-                // Limiter la taille du cache
-                if (newCache.size >= MAX_CACHE_SIZE) {
-                  const firstKey = newCache.keys().next().value;
-                  if (firstKey) {
-                    newCache.delete(firstKey);
-                  }
-                }
-                newCache.set(cacheKey, [start, end]);
-                return newCache;
-              });
-            } finally {
-              setLoadingRoutes(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(cacheKey);
-                return newSet;
-              });
-            }
-          })
-        );
-
-        // Délai entre les batches pour éviter de surcharger l'API et la mémoire
-        if (i + maxConcurrent < tripsToLoad.length) {
-          await new Promise(resolve => setTimeout(resolve, 200));
-        }
-      }
-    };
-
-    loadRoutes();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trips.map(t => t.id).join(',')]); // Seulement recharger si les IDs des trajets changent
+  }, [trips, activeSearchQuery, fitMapToTrips]);
 
   const toggleMapExpansion = () => {
     LayoutAnimation.configureNext({
@@ -232,7 +161,13 @@ export default function MapScreen() {
         type: LayoutAnimation.Types.easeInEaseOut,
       },
     });
-    setIsMapExpanded(!isMapExpanded);
+    setIsMapExpanded((previous) => {
+      const next = !previous;
+      if (next && trips.length > 0) {
+        setTimeout(() => fitMapToTrips(trips), 250);
+      }
+      return next;
+    });
   };
 
   const centerOnUser = async () => {
@@ -241,19 +176,25 @@ export default function MapScreen() {
       return;
     }
 
-    if (userCoords && mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: userCoords.latitude,
-        longitude: userCoords.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }, 1000);
+    if (!safeUserCoords) {
+      showDialog({
+        variant: 'warning',
+        title: 'Position indisponible',
+        message: 'Nous recherchons encore votre position actuelle. Réessayez dans un instant.',
+      });
+      return;
     }
+
+    if (!mapRef.current || !isMapReady) {
+      return;
+    }
+
+    mapRef.current.animateToRegion(buildRegionFromPoint(safeUserCoords, 0.01, 0.01), 1000);
   };
 
   // Fonction pour ajuster la carte pour afficher tous les trajets
   const fitMapToTrips = useCallback((tripsToFit: typeof trips) => {
-    if (!mapRef.current || tripsToFit.length === 0) {
+    if (!mapRef.current || !isMapReady || tripsToFit.length === 0) {
       return;
     }
 
@@ -261,17 +202,9 @@ export default function MapScreen() {
     const coordinates: LatLng[] = [];
     
     tripsToFit.forEach((trip) => {
-      if (trip.departure?.lat && trip.departure?.lng) {
-        coordinates.push({
-          latitude: trip.departure.lat,
-          longitude: trip.departure.lng,
-        });
-      }
-      if (trip.arrival?.lat && trip.arrival?.lng) {
-        coordinates.push({
-          latitude: trip.arrival.lat,
-          longitude: trip.arrival.lng,
-        });
+      const destination = toValidLatLng(trip.arrival?.lat, trip.arrival?.lng);
+      if (destination) {
+        coordinates.push(destination);
       }
     });
 
@@ -287,6 +220,9 @@ export default function MapScreen() {
     const maxLat = Math.max(...latitudes);
     const minLng = Math.min(...longitudes);
     const maxLng = Math.max(...longitudes);
+    if (![minLat, maxLat, minLng, maxLng].every(Number.isFinite)) {
+      return;
+    }
 
     // Calculer le centre et les deltas avec padding
     const latDelta = maxLat - minLat;
@@ -303,18 +239,19 @@ export default function MapScreen() {
 
     const centerLat = (minLat + maxLat) / 2;
     const centerLng = (minLng + maxLng) / 2;
+    const nextRegion: Region = {
+      latitude: centerLat,
+      longitude: centerLng,
+      latitudeDelta: finalLatDelta,
+      longitudeDelta: finalLngDelta,
+    };
+    if (!isValidRegion(nextRegion)) {
+      return;
+    }
 
     // Animer vers la nouvelle région
-    mapRef.current.animateToRegion(
-      {
-        latitude: centerLat,
-        longitude: centerLng,
-        latitudeDelta: finalLatDelta,
-        longitudeDelta: finalLngDelta,
-      },
-      1000
-    );
-  }, []);
+    mapRef.current.animateToRegion(nextRegion, 1000);
+  }, [isMapReady]);
 
   useEffect(() => {
     setSearch(activeSearchQuery);
@@ -328,8 +265,10 @@ export default function MapScreen() {
 
   // Initialiser mapCenter avec initialRegion
   useEffect(() => {
-    if (initialRegion && !mapCenter) {
+    if (isValidRegion(initialRegion) && !mapCenter) {
       setMapCenter([initialRegion.longitude, initialRegion.latitude]);
+      setMapRegion(initialRegion);
+      latestRegionRef.current = initialRegion;
     }
   }, [initialRegion, mapCenter]);
 
@@ -339,61 +278,20 @@ export default function MapScreen() {
   };
 
   const initialRegion = useMemo(() => {
-    if (userCoords) {
-      return {
-        latitude: userCoords.latitude,
-        longitude: userCoords.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      };
+    if (safeUserCoords) {
+      return buildRegionFromPoint(safeUserCoords, 0.01, 0.01);
     }
 
-    if (trips.length > 0 && trips[0].departure?.lat && trips[0].departure?.lng) {
-      return {
-        latitude: trips[0].departure.lat,
-        longitude: trips[0].departure.lng,
-        latitudeDelta: 0.1,
-        longitudeDelta: 0.1,
-      };
+    const firstTripDestination = trips
+      .map((trip) => toValidLatLng(trip.arrival?.lat, trip.arrival?.lng))
+      .find((coords): coords is LatLng => Boolean(coords));
+
+    if (firstTripDestination) {
+      return buildRegionFromPoint(firstTripDestination, 0.1, 0.1);
     }
 
-    return {
-      latitude: -4.441931,
-      longitude: 15.266293,
-      latitudeDelta: 0.2,
-      longitudeDelta: 0.2,
-    };
-  }, [userCoords, trips]);
-
-  const renderPolyline = (
-    tripId: string,
-    color: string,
-    start: { latitude: number; longitude: number },
-    end: { latitude: number; longitude: number },
-  ) => {
-    const cacheKey = `${tripId}-route`;
-    const cachedRoute = routeCoordinatesCache.get(cacheKey);
-    const isLoading = loadingRoutes.has(cacheKey);
-
-    // Utiliser l'itinéraire depuis le cache s'il est disponible
-    const coordinatesToUse = cachedRoute && cachedRoute.length > 0 
-      ? cachedRoute 
-      : [start, end]; // Fallback sur ligne droite
-
-    const lineCoordinates = coordinatesToUse.map(coord => [coord.longitude, coord.latitude] as [number, number]);
-
-    return (
-      <Polyline
-        key={`${tripId}-polyline`}
-        coordinates={coordinatesToUse}
-        strokeColor={color}
-        strokeWidth={3}
-        lineDashPattern={isLoading || !cachedRoute || cachedRoute.length === 2 ? [2, 2] : undefined}
-        lineCap="round"
-        lineJoin="round"
-      />
-    );
-  };
+    return DEFAULT_REGION;
+  }, [safeUserCoords, trips]);
 
   // Recherche avec suggestions Mapbox en temps réel
   const searchMapboxSuggestions = useCallback(async (query: string) => {
@@ -407,35 +305,30 @@ export default function MapScreen() {
       // Valider les coordonnées de proximité avant de les utiliser
       let proximity: { longitude: number; latitude: number } | undefined = undefined;
       
-      if (userCoords && 
-          typeof userCoords.longitude === 'number' && 
-          typeof userCoords.latitude === 'number' &&
-          !isNaN(userCoords.longitude) && 
-          !isNaN(userCoords.latitude) &&
-          isFinite(userCoords.longitude) && 
-          isFinite(userCoords.latitude)) {
-        proximity = { longitude: userCoords.longitude, latitude: userCoords.latitude };
-      } else if (mapCenter && 
-                 Array.isArray(mapCenter) && 
-                 mapCenter.length === 2 &&
-                 typeof mapCenter[0] === 'number' && 
-                 typeof mapCenter[1] === 'number' &&
-                 !isNaN(mapCenter[0]) && 
-                 !isNaN(mapCenter[1]) &&
-                 isFinite(mapCenter[0]) && 
-                 isFinite(mapCenter[1])) {
-        proximity = { longitude: mapCenter[0], latitude: mapCenter[1] };
+      if (safeUserCoords) {
+        proximity = { longitude: safeUserCoords.longitude, latitude: safeUserCoords.latitude };
+      } else {
+        const validMapCenter =
+          mapCenter && mapCenter.length === 2
+            ? toValidLatLng(mapCenter[1], mapCenter[0])
+            : null;
+        if (validMapCenter) {
+          proximity = {
+            longitude: validMapCenter.longitude,
+            latitude: validMapCenter.latitude,
+          };
+        }
       }
       
       const suggestions = await searchGoogleMapsPlaces(query, proximity, 5);
       setGoogleMapsSuggestions(suggestions);
-    } catch (error) {
+    } catch {
       // Les erreurs sont déjà gérées dans searchMapboxPlaces
       setGoogleMapsSuggestions([]);
     } finally {
       setGoogleMapsLoading(false);
     }
-  }, [userCoords, mapCenter]);
+  }, [safeUserCoords, mapCenter]);
 
   // Debounce pour les suggestions Mapbox
   useEffect(() => {
@@ -495,7 +388,7 @@ export default function MapScreen() {
         }
       }).catch((error: any) => {
         const message =
-          error?.data?.message ?? error?.error ?? "Impossible d'appliquer le filtre pour le moment.";
+          error?.data?.message ?? error?.error ?? "Impossible d'appliquer la recherche pour le moment.";
         showDialog({
           variant: 'danger',
           title: 'Erreur de recherche',
@@ -522,7 +415,7 @@ export default function MapScreen() {
         }
       }).catch((error: any) => {
         const message =
-          error?.data?.message ?? error?.error ?? "Impossible d'appliquer le filtre pour le moment.";
+          error?.data?.message ?? error?.error ?? "Impossible d'appliquer la recherche pour le moment.";
         showDialog({
           variant: 'danger',
           title: 'Erreur de recherche',
@@ -534,22 +427,14 @@ export default function MapScreen() {
     }
   };
 
-  const buildSearchParams = (query: string): TripSearchParams => {
+  const buildSearchParams = useCallback((query: string): TripSearchParams => {
     const trimmed = query.trim();
     if (!trimmed) {
       return {};
     }
 
-    if (searchMode === 'departure') {
-      return { departureLocation: trimmed };
-    }
-
-    if (searchMode === 'arrival') {
-      return { arrivalLocation: trimmed };
-    }
-
-    return { departureLocation: trimmed };
-  };
+    return { keywords: trimmed };
+  }, []);
 
   const applySearchQuery = async () => {
     const trimmedQuery = (search ?? '').trim();
@@ -568,7 +453,7 @@ export default function MapScreen() {
       }
     } catch (error: any) {
       const message =
-        error?.data?.message ?? error?.error ?? "Impossible d'appliquer le filtre pour le moment.";
+        error?.data?.message ?? error?.error ?? "Impossible d'appliquer la recherche pour le moment.";
       showDialog({
         variant: 'danger',
         title: 'Erreur de recherche',
@@ -611,46 +496,12 @@ export default function MapScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [activeSearchQuery, triggerTripSearch, dispatch, fitMapToTrips]);
+  }, [activeSearchQuery, triggerTripSearch, dispatch, fitMapToTrips, buildSearchParams]);
 
-  const placeholder = useMemo(() => {
-    if (searchMode === 'departure') {
-      return 'Rechercher un point de départ';
-    }
-    if (searchMode === 'arrival') {
-      return 'Rechercher un point d’arrivée';
-    }
-    return 'Rechercher un départ ou une arrivée';
-  }, [searchMode]);
-
-  const searchModes: { key: TripSearchMode; label: string }[] = useMemo(
-    () => [
-      { key: 'all', label: 'Tous' },
-      { key: 'departure', label: 'Départ' },
-      { key: 'arrival', label: 'Arrivée' },
-    ],
-    [],
-  );
-
+  const placeholder = 'Rechercher un départ ou une arrivée';
   const isApplyDisabled = useMemo(() => {
     return ((search ?? '').trim() === (activeSearchQuery ?? '').trim()) || isApplyingSearch;
   }, [activeSearchQuery, isApplyingSearch, search]);
-
-  const getCoordinates = (center: any): [number, number] | null => {
-    if (!center) return null;
-    if (Array.isArray(center) && center.length === 2 && typeof center[0] === 'number' && typeof center[1] === 'number') {
-      return center as [number, number];
-    }
-    if (typeof center === 'object') {
-      const lng = center.lng ?? center.longitude ?? center[0];
-      const lat = center.lat ?? center.latitude ?? center[1];
-      if (typeof lng === 'number' && typeof lat === 'number') {
-        return [lng, lat];
-      }
-    }
-    return null;
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <MapView
@@ -658,33 +509,43 @@ export default function MapScreen() {
         provider={PROVIDER_GOOGLE}
         style={styles.map}
         initialRegion={initialRegion}
-        showsUserLocation={!!userCoords}
+        showsUserLocation={permissionStatus === 'granted'}
         showsCompass={false}
+        onMapReady={() => setIsMapReady(true)}
         onRegionChange={(region) => {
-          setMapRegion(region);
-          setMapCenter([region.longitude, region.latitude]);
-          setIsMapMoving(true);
+          if (!isValidRegion(region)) {
+            return;
+          }
+          latestRegionRef.current = region;
+          setIsMapMoving((previous) => (previous ? previous : true));
         }}
-        onRegionChangeComplete={() => setIsMapMoving(false)}
+        onRegionChangeComplete={(region) => {
+          if (isValidRegion(region)) {
+            latestRegionRef.current = region;
+            setMapRegion(region);
+            setMapCenter([region.longitude, region.latitude]);
+          }
+          setIsMapMoving(false);
+        }}
       >
 
         {trips.map((trip) => {
-          const departureCoords =
-            trip.departure?.lat && trip.departure?.lng
-              ? { latitude: trip.departure.lat, longitude: trip.departure.lng }
-              : null;
-          const arrivalCoords =
-            trip.arrival?.lat && trip.arrival?.lng
-              ? { latitude: trip.arrival.lat, longitude: trip.arrival.lng }
-              : null;
+          const destinationCoords = toValidLatLng(trip.arrival?.lat, trip.arrival?.lng);
+          if (!destinationCoords) {
+            return null;
+          }
 
           const userDistance =
-            userCoords && departureCoords
-              ? distanceInKm(
-                { latitude: departureCoords.latitude, longitude: departureCoords.longitude },
-                { latitude: userCoords.latitude, longitude: userCoords.longitude },
-              )
+            safeUserCoords && destinationCoords
+              ? distanceInKm(destinationCoords, safeUserCoords)
               : null;
+          const showDistanceBadge = userDistance !== null && userDistance < 5;
+          const distanceLabel =
+            showDistanceBadge && userDistance !== null
+              ? userDistance < 1
+                ? `${Math.round(userDistance * 1000)}m`
+                : `${userDistance.toFixed(1)}km`
+              : ' ';
 
           const driverInitials = trip.driverName
             ? trip.driverName
@@ -696,145 +557,56 @@ export default function MapScreen() {
             : 'DR';
 
           return (
-            <React.Fragment key={trip.id}>
-              {departureCoords && (
-                <Marker
-                  coordinate={departureCoords}
-                  anchor={{ x: 0.5, y: 1 }}
+            <Marker
+              key={`destination-${trip.id}`}
+              coordinate={destinationCoords}
+              anchor={{ x: 0.5, y: 1 }}
+              tracksViewChanges={Platform.OS === 'ios'}
+              onPress={() => router.push(`/trip/${trip.id}`)}
+            >
+              <View style={styles.driverMarkerWrapper}>
+                <View
+                  style={[
+                    styles.distanceBadge,
+                    !showDistanceBadge && styles.distanceBadgeHidden,
+                  ]}
                 >
-                  <TouchableOpacity
-                    onPress={() => router.push(`/trip/${trip.id}`)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.driverMarkerWrapper}>
-                      {userDistance !== null && userDistance < 5 && (
-                        <View style={styles.distanceBadge}>
-                          <Text style={styles.distanceBadgeText}>
-                            {userDistance < 1
-                              ? `${Math.round(userDistance * 1000)}m`
-                              : `${userDistance.toFixed(1)}km`}
-                          </Text>
-                        </View>
-                      )}
-                      <View style={styles.driverMarker}>
-                        {trip.driverAvatar ? (
-                          <Image 
-                            source={{ uri: trip.driverAvatar }} 
-                            style={styles.driverMarkerImage}
-                            resizeMode="cover"
-                          />
-                        ) : (
-                          <Text style={styles.driverMarkerInitials}>{driverInitials}</Text>
-                        )}
-                      </View>
-                      <View style={styles.driverMarkerHalo} />
-                    </View>
-                  </TouchableOpacity>
-                  <Callout>
-                    <TouchableOpacity
-                      style={styles.calloutCard}
-                      onPress={() => router.push(`/trip/${trip.id}`)}
-                      activeOpacity={0.8}
-                    >
-                      <View style={styles.calloutHeader}>
-                        {trip.driverAvatar ? (
-                          <Image
-                            source={{ uri: trip.driverAvatar }}
-                            style={styles.calloutAvatar}
-                          />
-                        ) : (
-                          <View style={styles.calloutAvatarPlaceholder}>
-                            <Text style={styles.calloutAvatarText}>
-                              {trip.driverName?.charAt(0)?.toUpperCase() || 'D'}
-                            </Text>
-                          </View>
-                        )}
-                        <View style={styles.calloutHeaderText}>
-                          <Text style={styles.calloutTitle}>{trip.driverName}</Text>
-                          {trip.driverRating && trip.driverRating > 0 && (
-                            <View style={styles.calloutRating}>
-                              <Ionicons name="star" size={12} color={Colors.secondary} />
-                              <Text style={styles.calloutRatingText}>{trip.driverRating.toFixed(1)}</Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
-                      <Text style={styles.calloutSubtitle} numberOfLines={2}>
-                        {trip.departure.name} ➜ {trip.arrival.name}
-                      </Text>
-                      <View style={styles.calloutInfoRow}>
-                        {userDistance !== null && (
-                          <View style={styles.calloutInfoItem}>
-                            <Ionicons name="location" size={12} color={Colors.success} />
-                            <Text style={styles.calloutDistance}>
-                              {userDistance < 1
-                                ? `${Math.round(userDistance * 1000)} m`
-                                : `${userDistance.toFixed(1)} km`}
-                            </Text>
-                          </View>
-                        )}
-                        <View style={styles.calloutInfoItem}>
-                          <Ionicons name="people" size={12} color={Colors.gray[600]} />
-                          <Text style={styles.calloutSeats}>{trip.availableSeats} place(s)</Text>
-                        </View>
-                        {trip.price > 0 && (
-                          <View style={styles.calloutInfoItem}>
-                            <Ionicons name="cash" size={12} color={Colors.primary} />
-                            <Text style={styles.calloutPrice}>{trip.price} FC</Text>
-                          </View>
-                        )}
-                      </View>
-                      <View style={styles.calloutDivider} />
-                      <View style={styles.calloutFooter}>
-                        <Text style={styles.calloutSchedule}>
-                          {formatDateWithRelativeLabel(trip.departureTime, false)} • {formatTime(trip.departureTime)}
-                        </Text>
-                        <View style={styles.calloutCta}>
-                          <Text style={styles.calloutCtaText}>Voir</Text>
-                          <Ionicons name="chevron-forward" size={12} color={Colors.white} />
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                  </Callout>
-                </Marker>
-              )}
-              {arrivalCoords && (
-                <Marker
-                  coordinate={arrivalCoords}
-                >
-                  <View
-                    style={[
-                      styles.arrivalMarker,
-                      { backgroundColor: Colors.secondary },
-                    ]}
-                  >
-                    <Ionicons name="navigate" size={16} color={Colors.white} />
-                  </View>
-                  <Callout>
-                    <View>
-                      <Text style={{ fontWeight: 'bold' }}>Arrivée: {trip.arrival.name}</Text>
-                    </View>
-                  </Callout>
-                </Marker>
-              )}
-              {departureCoords &&
-                arrivalCoords &&
-                renderPolyline(trip.id, Colors.primary, departureCoords, arrivalCoords)}
-            </React.Fragment>
+                  <Text style={styles.distanceBadgeText}>{distanceLabel}</Text>
+                </View>
+                <View style={styles.driverMarker}>
+                  {trip.driverAvatar ? (
+                    <Image
+                      source={{ uri: trip.driverAvatar }}
+                      style={styles.driverMarkerImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <Text style={styles.driverMarkerInitials}>{driverInitials}</Text>
+                  )}
+                </View>
+                <View style={styles.driverMarkerHalo} />
+              </View>
+            </Marker>
           );
         })}
       </MapView>
 
       {/* Center Pin for Drag-to-Search */}
-      <View style={styles.centerPinContainer} pointerEvents="none">
-        <View style={styles.centerPinHalo} />
-        <Ionicons name="location" size={36} color={Colors.primary} style={styles.centerPinIcon} />
-        <View style={styles.centerPinShadow} />
-      </View>
+      {isMapExpanded && (
+        <View style={styles.centerPinContainer} pointerEvents="none">
+          <View style={styles.centerPinHalo} />
+          <Ionicons name="location" size={36} color={Colors.primary} style={styles.centerPinIcon} />
+          <View style={styles.centerPinShadow} />
+        </View>
+      )}
 
       {!isMapExpanded && (
         <View pointerEvents="box-none" style={styles.topOverlay}>
           <View style={styles.searchCard}>
+            <Text style={styles.searchCardTitle}>Trouver un trajet</Text>
+            <Text style={styles.searchCardHint}>
+              Saisissez un lieu, ou passez en plein écran pour rechercher autour du centre de la carte.
+            </Text>
             <View style={styles.searchRow}>
               <Ionicons name="search" size={18} color={Colors.gray[500]} />
               <TextInput
@@ -887,9 +659,9 @@ export default function MapScreen() {
                   <ActivityIndicator size="small" color={Colors.white} />
                 ) : (
                   <>
-                    <Ionicons name="funnel" size={16} color={isApplyDisabled ? Colors.gray[400] : Colors.white} />
+                    <Ionicons name="search" size={16} color={isApplyDisabled ? Colors.gray[400] : Colors.white} />
                     <Text style={[styles.applyButtonText, isApplyDisabled && styles.applyButtonTextDisabled]}>
-                      Appliquer
+                      Rechercher
                     </Text>
                   </>
                 )}
@@ -949,29 +721,11 @@ export default function MapScreen() {
             </View> */}
           </View>
 
-          <View style={styles.radiusCard}>
-            <Text style={styles.radiusLabel}>Rayon de recherche: {radiusKm} km</Text>
-            <View style={styles.radiusButtons}>
-              {[5, 10, 20, 50].map((value) => (
-                <TouchableOpacity
-                  key={value}
-                  style={[
-                    styles.radiusButton,
-                    radiusKm === value && styles.radiusButtonActive,
-                  ]}
-                  onPress={() => dispatch(setRadiusKm(value))}
-                >
-                  <Text
-                    style={[
-                      styles.radiusButtonText,
-                      radiusKm === value && styles.radiusButtonTextActive,
-                    ]}
-                  >
-                    {value} km
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+          <View style={styles.mapGuideCard}>
+            <Ionicons name="information-circle" size={18} color={Colors.primary} />
+            <Text style={styles.mapGuideText}>
+              Appuyez sur « Agrandir la carte », déplacez la carte puis lancez « Rechercher ici ». Touchez un marqueur conducteur pour ouvrir le détail du trajet.
+            </Text>
           </View>
         </View>
       )}
@@ -979,15 +733,18 @@ export default function MapScreen() {
       {/* Map Controls: Expand & Location */}
       <View style={[styles.mapControls, isMapExpanded && styles.mapControlsExpanded]}>
         <TouchableOpacity
-          style={styles.controlButton}
+          style={[styles.expandButton, isMapExpanded && styles.expandButtonExpanded]}
           onPress={toggleMapExpansion}
           activeOpacity={0.8}
         >
           <Ionicons
             name={isMapExpanded ? "contract" : "expand"}
             size={20}
-            color={Colors.gray[800]}
+            color={isMapExpanded ? Colors.white : Colors.gray[800]}
           />
+          <Text style={[styles.expandButtonText, isMapExpanded && styles.expandButtonTextExpanded]}>
+            {isMapExpanded ? 'Reduire la carte' : 'Agrandir la carte'}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -1006,41 +763,47 @@ export default function MapScreen() {
           style={styles.searchHereButton}
           activeOpacity={0.8}
           onPress={async () => {
-            if (mapCenter && mapRegion) {
-              try {
-                // Convertir les coordonnées en format attendu par l'API: [longitude, latitude]
-                const departureCoordinates: [number, number] = [
-                  mapRegion.longitude,
-                  mapRegion.latitude,
-                ];
-                
-                const results = await searchByCoordinates({
-                  departureCoordinates,
-                  departureRadiusKm: radiusKm,
-                }).unwrap();
-                dispatch(setTrips(results));
+            const regionToSearch = latestRegionRef.current ?? mapRegion ?? initialRegion;
+            if (!isValidRegion(regionToSearch)) {
+              showDialog({
+                variant: 'warning',
+                title: 'Carte non prête',
+                message: 'Attendez un instant puis réessayez la recherche dans cette zone.',
+              });
+              return;
+            }
 
-                // Ajuster la carte pour afficher tous les trajets trouvés
-                if (results.length > 0) {
-                  setTimeout(() => {
-                    fitMapToTrips(results);
-                  }, 300);
-                }
+            try {
+              const departureCoordinates: [number, number] = [
+                regionToSearch.longitude,
+                regionToSearch.latitude,
+              ];
 
-                showDialog({
-                  variant: 'success',
-                  title: 'Recherche effectuée',
-                  message: `${results.length} trajet(s) trouvé(s) dans cette zone.`,
-                });
-              } catch (error: any) {
-                const message =
-                  error?.data?.message ?? error?.error ?? "Impossible de rechercher dans cette zone.";
-                showDialog({
-                  variant: 'danger',
-                  title: 'Erreur',
-                  message: Array.isArray(message) ? message.join('\n') : message,
-                });
+              const results = await searchByCoordinates({
+                departureCoordinates,
+                departureRadiusKm: DEFAULT_SEARCH_RADIUS_KM,
+              }).unwrap();
+              dispatch(setTrips(results));
+
+              if (results.length > 0) {
+                setTimeout(() => {
+                  fitMapToTrips(results);
+                }, 300);
               }
+
+              showDialog({
+                variant: 'success',
+                title: 'Recherche effectuée',
+                message: `${results.length} trajet(s) trouvé(s) dans cette zone.`,
+              });
+            } catch (error: any) {
+              const message =
+                error?.data?.message ?? error?.error ?? "Impossible de rechercher dans cette zone.";
+              showDialog({
+                variant: 'danger',
+                title: 'Erreur',
+                message: Array.isArray(message) ? message.join('\n') : message,
+              });
             }
           }}
           disabled={isSearchingArea}
@@ -1048,7 +811,7 @@ export default function MapScreen() {
           {isSearchingArea ? (
             <ActivityIndicator size="small" color={Colors.primary} />
           ) : (
-            <Text style={styles.searchHereText}>Rechercher dans cette zone</Text>
+            <Text style={styles.searchHereText}>Rechercher ici ({DEFAULT_SEARCH_RADIUS_KM} km)</Text>
           )}
         </TouchableOpacity>
       )}
@@ -1061,7 +824,7 @@ export default function MapScreen() {
               <View style={styles.sheetSubtitleRow}>
                 <Ionicons name="location" size={14} color={Colors.gray[500]} />
                 <Text style={styles.sheetSubtitle}>
-                  {trips.length} {trips.length === 1 ? 'itinéraire trouvé' : 'itinéraires trouvés'}
+                  {trips.length} {trips.length === 1 ? 'trajet trouvé' : 'trajets trouvés'}
                   {activeSearchQuery && ` • "${activeSearchQuery}"`}
                 </Text>
               </View>
@@ -1099,7 +862,7 @@ export default function MapScreen() {
                 <Text style={styles.emptyText}>
                   {activeSearchQuery
                     ? 'Aucun trajet ne correspond à votre recherche. Essayez de modifier les critères.'
-                    : 'Ajustez le rayon de recherche ou déplacez la carte pour découvrir davantage d\'options.'}
+                    : 'Déplacez la carte ou utilisez la recherche pour découvrir davantage d\'options.'}
                 </Text>
                 <View style={styles.emptyActions}>
                   <TouchableOpacity
@@ -1217,7 +980,7 @@ export default function MapScreen() {
         </View>
       )}
 
-      {!userCoords && permissionStatus === 'granted' && (
+      {!safeUserCoords && permissionStatus === 'granted' && (
         <View style={styles.loadingIndicator}>
           <ActivityIndicator size="small" color={Colors.primary} />
           <Text style={styles.loadingText}>Localisation en cours…</Text>
@@ -1269,6 +1032,16 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 6,
     gap: Spacing.md,
+  },
+  searchCardTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  searchCardHint: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginTop: -Spacing.xs,
   },
   searchRow: {
     flexDirection: 'row',
@@ -1441,19 +1214,41 @@ const styles = StyleSheet.create({
     color: Colors.black,
     fontWeight: FontWeights.bold,
   },
+  mapGuideCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+  },
+  mapGuideText: {
+    flex: 1,
+    color: Colors.gray[700],
+    fontSize: FontSizes.sm,
+    lineHeight: 18,
+  },
   driverMarkerWrapper: {
     alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
+    justifyContent: 'flex-start',
+    minWidth: 62,
+    minHeight: 80,
+    paddingTop: 22,
+    paddingBottom: 8,
   },
   distanceBadge: {
-    position: 'absolute',
-    top: -24,
     backgroundColor: Colors.success,
+    minWidth: 36,
+    minHeight: 18,
     paddingHorizontal: Spacing.xs,
     paddingVertical: 2,
     borderRadius: BorderRadius.sm,
-    zIndex: 10,
+    marginBottom: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: Colors.black,
     shadowOpacity: 0.2,
     shadowRadius: 4,
@@ -1463,6 +1258,9 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
+  },
+  distanceBadgeHidden: {
+    opacity: 0,
   },
   driverMarker: {
     width: 44,
@@ -1489,8 +1287,7 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   driverMarkerHalo: {
-    position: 'absolute',
-    bottom: -4,
+    marginTop: 5,
     width: 8,
     height: 8,
     borderRadius: 4,
@@ -1666,24 +1463,37 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: Spacing.lg,
     bottom: '48%', // Default position
-    gap: Spacing.md,
-    alignItems: 'center',
+    gap: Spacing.sm,
+    alignItems: 'flex-end',
     zIndex: 10,
   },
   mapControlsExpanded: {
     bottom: Spacing.xl,
   },
-  controlButton: {
-    width: 44,
-    height: 44,
+  expandButton: {
+    minHeight: 44,
     borderRadius: 22,
     backgroundColor: Colors.white,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
     shadowColor: Colors.black,
     shadowOpacity: 0.15,
     shadowRadius: 8,
     elevation: 4,
+  },
+  expandButtonExpanded: {
+    backgroundColor: Colors.primary,
+  },
+  expandButtonText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[900],
+    fontWeight: FontWeights.semibold,
+  },
+  expandButtonTextExpanded: {
+    color: Colors.white,
   },
   locationButton: {
     height: 40,
@@ -1728,7 +1538,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: '45%',
+    height: '58%',
     backgroundColor: Colors.white,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,

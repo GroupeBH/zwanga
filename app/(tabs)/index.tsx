@@ -50,8 +50,8 @@ export default function HomeScreen() {
   const [filterArrivalLocation, setFilterArrivalLocation] = useState<MapLocationSelection | null>(
     null,
   );
-  const [departureRadius, setDepartureRadius] = useState('10');
-  const [arrivalRadius, setArrivalRadius] = useState('10');
+  const [departureRadius, setDepartureRadius] = useState('50');
+  const [arrivalRadius, setArrivalRadius] = useState('50');
   const [minSeatsFilter, setMinSeatsFilter] = useState('');
   const [maxPriceFilter, setMaxPriceFilter] = useState('');
   const [showQuickFields, setShowQuickFields] = useState(false);
@@ -226,26 +226,35 @@ export default function HomeScreen() {
   };
 
   const handleAdvancedSearch = async () => {
-    if (!filterDepartureLocation || !filterArrivalLocation) {
+    const departureCoordinates = filterDepartureLocation
+      ? ([filterDepartureLocation.longitude, filterDepartureLocation.latitude] as [number, number])
+      : undefined;
+    const arrivalCoordinates = filterArrivalLocation
+      ? ([filterArrivalLocation.longitude, filterArrivalLocation.latitude] as [number, number])
+      : undefined;
+
+    if (!departureCoordinates && !arrivalCoordinates) {
       showDialog({
         variant: 'warning',
         title: 'Sélection requise',
-        message: 'Veuillez choisir les points de départ et d’arrivée.',
+        message: 'Choisissez au moins un point (départ ou arrivée) pour lancer la recherche.',
       });
       return;
     }
 
     const payload = {
-      departureCoordinates: [
-        filterDepartureLocation.longitude,
-        filterDepartureLocation.latitude,
-      ] as [number, number],
-      arrivalCoordinates: [filterArrivalLocation.longitude, filterArrivalLocation.latitude] as [
-        number,
-        number,
-      ],
-      departureRadiusKm: parseNumberInput(departureRadius) ?? 10,
-      arrivalRadiusKm: parseNumberInput(arrivalRadius) ?? 10,
+      ...(departureCoordinates
+        ? {
+            departureCoordinates,
+            departureRadiusKm: parseNumberInput(departureRadius) ?? 50,
+          }
+        : {}),
+      ...(arrivalCoordinates
+        ? {
+            arrivalCoordinates,
+            arrivalRadiusKm: parseNumberInput(arrivalRadius) ?? 50,
+          }
+        : {}),
       minSeats: parseNumberInput(minSeatsFilter),
       maxPrice: parseNumberInput(maxPriceFilter),
     };
@@ -257,14 +266,22 @@ export default function HomeScreen() {
         pathname: '/search',
         params: {
           mode: 'map',
-          departureLat: filterDepartureLocation.latitude.toString(),
-          departureLng: filterDepartureLocation.longitude.toString(),
-          arrivalLat: filterArrivalLocation.latitude.toString(),
-          arrivalLng: filterArrivalLocation.longitude.toString(),
-          departureRadiusKm: String(payload.departureRadiusKm ?? 10),
-          arrivalRadiusKm: String(payload.arrivalRadiusKm ?? 10),
-          departureLabel: filterDepartureLocation.title,
-          arrivalLabel: filterArrivalLocation.title,
+          ...(filterDepartureLocation
+            ? {
+                departureLat: filterDepartureLocation.latitude.toString(),
+                departureLng: filterDepartureLocation.longitude.toString(),
+                departureRadiusKm: String(payload.departureRadiusKm ?? 50),
+                departureLabel: filterDepartureLocation.title,
+              }
+            : {}),
+          ...(filterArrivalLocation
+            ? {
+                arrivalLat: filterArrivalLocation.latitude.toString(),
+                arrivalLng: filterArrivalLocation.longitude.toString(),
+                arrivalRadiusKm: String(payload.arrivalRadiusKm ?? 50),
+                arrivalLabel: filterArrivalLocation.title,
+              }
+            : {}),
         },
       });
     } catch (error: any) {
@@ -283,8 +300,8 @@ export default function HomeScreen() {
   const handleClearAdvancedFilters = () => {
     setFilterDepartureLocation(null);
     setFilterArrivalLocation(null);
-    setDepartureRadius('10');
-    setArrivalRadius('10');
+    setDepartureRadius('50');
+    setArrivalRadius('50');
     setMinSeatsFilter('');
     setMaxPriceFilter('');
   };
@@ -326,7 +343,7 @@ export default function HomeScreen() {
   };
 
   const unreadNotifications = notificationsData?.unreadCount ?? 0;
-  const hasLocationSelections = Boolean(filterDepartureLocation && filterArrivalLocation);
+  const hasLocationSelections = Boolean(filterDepartureLocation || filterArrivalLocation);
 
   const openNotifications = () => {
     router.push('/notifications');
@@ -474,7 +491,7 @@ export default function HomeScreen() {
             end={{ x: 1, y: 1 }}
           >
             <View style={styles.promoContent}>
-              <Text style={styles.promoTitle}>Voyagez l'esprit tranquille</Text>
+              <Text style={styles.promoTitle}>Voyagez l&apos;esprit tranquille</Text>
               <Text style={styles.promoSubtitle}>Économisez sur vos trajets quotidiens avec le covoiturage.</Text>
             </View>
             <View style={styles.promoImage}>

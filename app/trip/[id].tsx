@@ -207,6 +207,7 @@ export default function TripDetailsScreen() {
   const [showOriginPicker, setShowOriginPicker] = useState(false);
   const [passengerDestination, setPassengerDestination] = useState<MapLocationSelection | null>(null);
   const [showDestinationPicker, setShowDestinationPicker] = useState(false);
+  const [shouldAutofillPassengerOrigin, setShouldAutofillPassengerOrigin] = useState(false);
   const [isValidatingDestination, setIsValidatingDestination] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState<{ visible: boolean; seats: number }>({
     visible: false,
@@ -274,6 +275,7 @@ export default function TripDetailsScreen() {
 
   const refreshBookingLists = () => {
     refetchMyBookings();
+    refetchTripBookings();
   };
 
   useEffect(() => {
@@ -464,6 +466,32 @@ export default function TripDetailsScreen() {
   const passengerSecurityButtonLabel = canAccessTripSecurity
     ? 'Ouvrir la securite du trajet'
     : 'Connectez-vous pour la securite';
+  const defaultPassengerOriginSelection = useMemo<MapLocationSelection | null>(() => {
+    const latitude = Number(lastKnownLocation?.coords?.latitude);
+    const longitude = Number(lastKnownLocation?.coords?.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+    return {
+      title: 'Ma position actuelle',
+      address: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
+      latitude,
+      longitude,
+    };
+  }, [lastKnownLocation?.coords?.latitude, lastKnownLocation?.coords?.longitude]);
+  const defaultPassengerDestinationSelection = useMemo<MapLocationSelection | null>(() => {
+    const latitude = Number(trip?.arrival?.lat);
+    const longitude = Number(trip?.arrival?.lng);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+    return {
+      title: trip?.arrival?.name || 'Arrivee du trajet',
+      address: trip?.arrival?.address || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
+      latitude,
+      longitude,
+    };
+  }, [trip?.arrival?.address, trip?.arrival?.lat, trip?.arrival?.lng, trip?.arrival?.name]);
   const isKycApproved = kycStatus?.status === 'approved';
   const isKycPending = kycStatus?.status === 'pending';
   const isKycRejected = kycStatus?.status === 'rejected';
@@ -534,12 +562,17 @@ export default function TripDetailsScreen() {
     if (!ensureKycForBooking()) {
       return;
     }
+    const autoOrigin = defaultPassengerOriginSelection;
     setBookingSeats('1');
     setBookingModalError('');
-    setPassengerOrigin(null);
-    setPassengerDestination(null);
+    setPassengerOrigin(autoOrigin);
+    setPassengerDestination(defaultPassengerDestinationSelection);
+    setShouldAutofillPassengerOrigin(!autoOrigin);
     setBookingStep(1);
     setBookingModalVisible(true);
+    if (!autoOrigin) {
+      void requestDriverLocationPermission();
+    }
   };
 
   const openTripSecurityModal = () => {
@@ -563,7 +596,26 @@ export default function TripDetailsScreen() {
     }
     setBookingModalVisible(false);
     setBookingStep(1);
+    setShouldAutofillPassengerOrigin(false);
   };
+
+  useEffect(() => {
+    if (
+      !bookingModalVisible ||
+      !shouldAutofillPassengerOrigin ||
+      passengerOrigin ||
+      !defaultPassengerOriginSelection
+    ) {
+      return;
+    }
+    setPassengerOrigin(defaultPassengerOriginSelection);
+    setShouldAutofillPassengerOrigin(false);
+  }, [
+    bookingModalVisible,
+    shouldAutofillPassengerOrigin,
+    passengerOrigin,
+    defaultPassengerOriginSelection,
+  ]);
 
   const goToNextBookingStep = () => {
     if (bookingStep === 1) {
@@ -703,8 +755,22 @@ export default function TripDetailsScreen() {
       return;
     }
 
-    // Valider la destination si elle est fournie
-    if (passengerDestination) {
+    const tripArrivalLatitude = Number(trip.arrival?.lat);
+    const tripArrivalLongitude = Number(trip.arrival?.lng);
+    const hasTripArrivalCoordinates =
+      Number.isFinite(tripArrivalLatitude) && Number.isFinite(tripArrivalLongitude);
+    const isDefaultTripArrivalDestination = Boolean(
+      passengerDestination &&
+      hasTripArrivalCoordinates &&
+      Math.abs(passengerDestination.latitude - tripArrivalLatitude) < 0.000001 &&
+      Math.abs(passengerDestination.longitude - tripArrivalLongitude) < 0.000001,
+    );
+    const hasCustomPassengerDestination = Boolean(
+      passengerDestination && !isDefaultTripArrivalDestination,
+    );
+
+    // Valider la destination seulement si le passager a choisi une destination personnalisée
+    if (hasCustomPassengerDestination && passengerDestination) {
       setIsValidatingDestination(true);
       setBookingModalError('');
 
@@ -751,8 +817,10 @@ export default function TripDetailsScreen() {
             longitude: passengerOrigin.longitude,
           }
           : undefined,
-        passengerDestination: passengerDestination?.title || passengerDestination?.address,
-        passengerDestinationCoordinates: passengerDestination
+        passengerDestination: hasCustomPassengerDestination
+          ? passengerDestination?.title || passengerDestination?.address
+          : undefined,
+        passengerDestinationCoordinates: hasCustomPassengerDestination && passengerDestination
           ? {
             latitude: passengerDestination.latitude,
             longitude: passengerDestination.longitude,
@@ -763,6 +831,7 @@ export default function TripDetailsScreen() {
       setBookingModalError('');
       setPassengerOrigin(null);
       setPassengerDestination(null);
+      setShouldAutofillPassengerOrigin(false);
       setBookingStep(1);
       openBookingSuccessModal(seatsValue);
       refreshBookingLists();
@@ -1826,7 +1895,10 @@ export default function TripDetailsScreen() {
           const canBook = trip?.status !== 'completed' &&
             trip?.status !== 'cancelled' &&
             !isExpired &&
-            (trip?.status === 'upcoming' || (trip?.status === 'ongoing' && availableSeats > 0));
+            (
+              trip?.status === 'upcoming' ||
+              (trip?.status === 'ongoing' && (availableSeats > 0 || Boolean(activeBooking && activeBookingStatus)))
+            );
 
           if (canBook) {
             return (
@@ -1893,7 +1965,9 @@ export default function TripDetailsScreen() {
                             {isConfirmingPickup ? <ActivityIndicator size="small" color={Colors.white} /> : (
                               <>
                                 <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
-                                <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Confirmer</Text>
+                                <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>
+                                  Confirmer prise en charge
+                                </Text>
                               </>
                             )}
                           </TouchableOpacity>
@@ -2157,7 +2231,7 @@ export default function TripDetailsScreen() {
               <>
                 <Text style={styles.bookingModalTitle}>Point de récupération</Text>
                 <Text style={styles.bookingModalDescription}>
-                  Où souhaitez-vous être récupéré ?
+                  Votre position actuelle est utilisee automatiquement. Vous pouvez la modifier si besoin.
                 </Text>
 
                 <View style={styles.bookingDestinationSection}>
@@ -2183,13 +2257,14 @@ export default function TripDetailsScreen() {
                     >
                       {passengerOrigin
                         ? passengerOrigin.title || passengerOrigin.address
-                        : 'Sélectionner mon point de récupération'}
+                        : 'Utiliser ma position actuelle'}
                     </Text>
                     {passengerOrigin && (
                       <TouchableOpacity
                         onPress={(e) => {
                           e.stopPropagation();
                           setPassengerOrigin(null);
+                          setShouldAutofillPassengerOrigin(false);
                         }}
                         style={styles.bookingDestinationRemoveButton}
                       >
@@ -2198,7 +2273,7 @@ export default function TripDetailsScreen() {
                     )}
                   </TouchableOpacity>
                   <Text style={styles.bookingDestinationHint}>
-                    Si non défini, le point de départ du trajet sera utilisé : {trip?.departure?.address}
+                    Si indisponible, le depart du trajet sera utilise : {trip?.departure?.address}
                   </Text>
                 </View>
               </>
@@ -2209,7 +2284,7 @@ export default function TripDetailsScreen() {
               <>
                 <Text style={styles.bookingModalTitle}>Ma destination</Text>
                 <Text style={styles.bookingModalDescription}>
-                  Où souhaitez-vous descendre ?
+                  La destination du trajet est pre-remplie automatiquement. Modifiez-la si necessaire.
                 </Text>
 
                 <View style={styles.bookingDestinationSection}>
@@ -2250,7 +2325,7 @@ export default function TripDetailsScreen() {
                     )}
                   </TouchableOpacity>
                   <Text style={styles.bookingDestinationHint}>
-                    Si non défini, l'arrivée du trajet sera utilisée : {trip?.arrival?.address}
+                    Si vide, l'arrivee du trajet sera utilisee : {trip?.arrival?.address}
                   </Text>
                 </View>
 
@@ -2346,6 +2421,7 @@ export default function TripDetailsScreen() {
         onClose={() => setShowOriginPicker(false)}
         onSelect={(location) => {
           setPassengerOrigin(location);
+          setShouldAutofillPassengerOrigin(false);
           setShowOriginPicker(false);
           setBookingModalError('');
         }}

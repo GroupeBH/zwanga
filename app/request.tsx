@@ -274,7 +274,7 @@ export default function RequestTripScreen() {
                   >
                     <Text style={styles.locationLabel}>DÉPART</Text>
                     <Text style={styles.locationValue} numberOfLines={1}>
-                      {departureLocation?.title || 'Ma position actuelle'}
+                      {departureLocation?.title || 'Choisir le point de départ'}
                     </Text>
                   </TouchableOpacity>
                   <View style={styles.divider} />
