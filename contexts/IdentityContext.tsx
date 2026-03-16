@@ -12,7 +12,7 @@ import React, {
   type ReactNode,
 } from 'react';
 
-type IdentityAction = 'publish' | 'book' | 'manage';
+type IdentityAction = 'publish' | 'book' | 'manage' | 'request';
 
 interface IdentityContextValue {
   isIdentityVerified: boolean;
@@ -54,6 +54,8 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       const actionText =
         action === 'publish'
           ? 'publier ou gérer vos trajets'
+          : action === 'request'
+            ? 'demander un trajet'
           : action === 'manage'
             ? 'gérer vos trajets'
             : 'réserver un trajet ou contacter un conducteur';
@@ -61,7 +63,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
       showDialog({
         variant: 'warning',
         title: 'KYC requis',
-        message: `Pour ${actionText}, vous devez finaliser la vérification de votre identité (CNI + selfie).`,
+        message: `Pour ${actionText}, vous devez finaliser la vérification de votre identité (pièce d'identité + selfie).`,
         actions: [
           { label: 'Plus tard', variant: 'ghost' },
           { label: 'Compléter maintenant', variant: 'primary', onPress: () => router.push('/profile') },

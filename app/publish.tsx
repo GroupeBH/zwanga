@@ -174,7 +174,7 @@ export default function PublishScreen() {
   const isKycBusy = kycSubmitting || uploadingKyc;
 
   const kycChecklist = [
-    { icon: 'id-card', title: 'Carte nationale', subtitle: 'Recto-verso bien lisible' },
+    { icon: 'id-card', title: "Pièce d'identité", subtitle: 'Recto-verso bien lisible' },
     { icon: 'camera', title: 'Selfie sécurisé', subtitle: 'Prenez une photo nette de votre visage' },
     { icon: 'time', title: 'Validation express', subtitle: 'Moins de 24h en moyenne' },
   ] as const;
