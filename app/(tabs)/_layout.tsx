@@ -14,10 +14,12 @@ export default function TabLayout() {
   return (
     <>
       <Tabs
+        detachInactiveScreens={Platform.OS !== 'android'}
         screenOptions={{
           tabBarActiveTintColor: Colors.primary,
           tabBarInactiveTintColor: Colors.gray[600],
           headerShown: false,
+          freezeOnBlur: Platform.OS !== 'android',
           tabBarStyle: [
             styles.tabBar,
             Platform.OS === 'ios' ? styles.tabBarIOS : styles.tabBarAndroid,
@@ -72,12 +74,6 @@ export default function TabLayout() {
                 {focused && <View style={styles.activeIndicator} />}
               </View>
             ),
-          }}
-        />
-        <Tabs.Screen
-          name="map"
-          options={{
-            href: null,
           }}
         />
         <Tabs.Screen

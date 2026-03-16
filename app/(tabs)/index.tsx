@@ -28,7 +28,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import Animated, { FadeInDown, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const RECENT_TRIPS_LIMIT = 15;
@@ -495,7 +495,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Bannière de bienvenue/promo si premier lancement ou autre */}
-        <Animated.View entering={FadeInDown.delay(100)} style={styles.promoBanner}>
+        <View style={styles.promoBanner}>
           <LinearGradient
             colors={['#6366F1', '#8B5CF6']}
             style={styles.promoGradient}
@@ -514,7 +514,7 @@ export default function HomeScreen() {
               />
             </View>
           </LinearGradient>
-        </Animated.View>
+        </View>
 
         {/* Actions rapides */}
         <View style={styles.section}>
@@ -605,7 +605,7 @@ export default function HomeScreen() {
             </View>
           )}
 
-          {latestTrips.map((trip, index) => {
+          {latestTrips.map((trip) => {
             const TripCardWithArrival = () => {
               const calculatedArrivalTime = useTripArrivalTime(trip);
               const arrivalTimeDisplay = calculatedArrivalTime
@@ -616,11 +616,7 @@ export default function HomeScreen() {
               const hasDriverRating = Number.isFinite(parsedRating) && parsedRating > 0;
 
               return (
-                <Animated.View
-                  key={trip.id}
-                  entering={FadeInDown.delay(index * 100)}
-                  style={styles.tripCard}
-                >
+                <View key={trip.id} style={styles.tripCard}>
                   <View style={styles.tripHeader}>
                     <View style={styles.tripDriverInfo}>
                       {trip.driverAvatar ? (
@@ -734,7 +730,7 @@ export default function HomeScreen() {
                       </Text>
                     </TouchableOpacity>
                   </View>
-                </Animated.View>
+                </View>
               );
             };
 

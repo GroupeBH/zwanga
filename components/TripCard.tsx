@@ -6,7 +6,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 
 interface TripCardProps {
   trip: Trip;
@@ -16,7 +15,7 @@ interface TripCardProps {
   showDetailsButton?: boolean;
 }
 
-export function TripCard({ trip, index = 0, onPress, showReserveButton = false, showDetailsButton = true }: TripCardProps) {
+export function TripCard({ trip, onPress, showReserveButton = false, showDetailsButton = true }: TripCardProps) {
   const router = useRouter();
   const calculatedArrivalTime = useTripArrivalTime(trip);
 
@@ -33,10 +32,7 @@ export function TripCard({ trip, index = 0, onPress, showReserveButton = false, 
     : formatTime(trip.arrivalTime);
 
   return (
-    <Animated.View
-      entering={FadeInDown.delay(index * 100)}
-      style={styles.tripCard}
-    >
+    <View style={styles.tripCard}>
       <View style={styles.tripHeader}>
         <View style={styles.tripDriverInfo}>
           <View style={styles.avatar} />
@@ -115,7 +111,7 @@ export function TripCard({ trip, index = 0, onPress, showReserveButton = false, 
           </TouchableOpacity>
         )}
       </View>
-    </Animated.View>
+    </View>
   );
 }
 

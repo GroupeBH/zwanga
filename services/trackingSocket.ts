@@ -62,11 +62,11 @@ class TrackingSocketClient {
       });
 
       socket.on('connect', () => {
-        console.log('[TrackingSocket] connecté');
+        console.log('[TrackingSocket] connecte');
       });
 
       socket.on('disconnect', () => {
-        console.log('[TrackingSocket] déconnecté');
+        console.log('[TrackingSocket] deconnecte');
       });
 
       socket.on('driver_location', (payload: DriverLocationPayload) => {
@@ -126,5 +126,3 @@ class TrackingSocketClient {
 }
 
 export const trackingSocket = new TrackingSocketClient();
-
-

@@ -25,7 +25,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function SearchScreen() {
@@ -529,7 +528,7 @@ export default function SearchScreen() {
             </TouchableOpacity>
           </View>
         ) : (
-          filteredTrips.map((trip, index) => {
+          filteredTrips.map((trip) => {
             const TripCardWithArrival = () => {
               const calculatedArrivalTime = useTripArrivalTime(trip);
               const arrivalTimeDisplay = calculatedArrivalTime 
@@ -537,11 +536,7 @@ export default function SearchScreen() {
                 : formatTime(trip.arrivalTime);
 
               return (
-                <Animated.View
-                  key={trip.id}
-                  entering={FadeInDown.delay(index * 100)}
-                  style={styles.tripCard}
-                >
+                <View key={trip.id} style={styles.tripCard}>
                   <View style={styles.tripHeader}>
                     <View style={styles.tripDriverInfo}>
                       {trip.driverAvatar ? (
@@ -621,7 +616,7 @@ export default function SearchScreen() {
                       <Text style={styles.detailsButtonText}>Voir détails</Text>
                     </TouchableOpacity>
                   </View>
-                </Animated.View>
+                </View>
               );
             };
 

@@ -24,7 +24,7 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
         // Initialiser l'auth (charge les tokens depuis SecureStore)
         await store.dispatch(initializeAuth());
       } catch (error) {
-        console.error('Erreur lors de l\'initialisation du store:', error);
+        console.error("Erreur lors de l'initialisation du store:", error);
       } finally {
         setIsLoading(false);
       }
@@ -35,38 +35,40 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
 
   return (
     <Provider store={store}>
-      {isLoading ? (
-        // Ecran de chargement pendant la restauration du state
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.white} />
-        </View>
-      ) : (
-        <>
-          <NotificationHandler />
-          <AuthGuard>
-            <DialogProvider>
-              <TutorialProvider>
-                <IdentityProvider>
-                  {children}
-                </IdentityProvider>
-              </TutorialProvider>
-            </DialogProvider>
-          </AuthGuard>
-        </>
-      )}
+      <View style={styles.appContainer}>
+        {isLoading ? (
+          // Ecran de chargement pendant la restauration du state
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={Colors.white} />
+          </View>
+        ) : (
+          <View style={styles.appContent}>
+            <NotificationHandler />
+            <AuthGuard>
+              <DialogProvider>
+                <TutorialProvider>
+                  <IdentityProvider>{children}</IdentityProvider>
+                </TutorialProvider>
+              </DialogProvider>
+            </AuthGuard>
+          </View>
+        )}
+      </View>
     </Provider>
   );
 }
 
 const styles = StyleSheet.create({
+  appContainer: {
+    flex: 1,
+  },
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.primary,
   },
-  appContainer: {
+  appContent: {
     flex: 1,
   },
 });
-

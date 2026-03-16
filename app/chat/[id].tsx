@@ -11,7 +11,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ChatScreen() {
@@ -318,12 +317,11 @@ export default function ChatScreen() {
               <View style={styles.dateBadge}>
                 <Text style={styles.dateText}>{label}</Text>
           </View>
-              {bucket.map((msg, index) => {
+              {bucket.map((msg) => {
                 const isMe = msg.senderId === user?.id;
                 return (
-            <Animated.View
-              key={msg.id}
-              entering={FadeInDown.delay(index * 50)}
+                  <View
+                    key={msg.id}
                     style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
                   >
                     <TouchableOpacity
@@ -366,7 +364,7 @@ export default function ChatScreen() {
                 </View>
               </View>
                     </TouchableOpacity>
-            </Animated.View>
+                  </View>
                 );
               })}
             </View>

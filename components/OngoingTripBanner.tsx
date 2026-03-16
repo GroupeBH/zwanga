@@ -17,8 +17,6 @@ import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
-  withSequence,
   withSpring,
   withTiming
 } from 'react-native-reanimated';
@@ -38,7 +36,6 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
 
   // Animation values
   const translateY = useSharedValue(100);
-  const scale = useSharedValue(1);
 
   // Récupérer les trajets de l'utilisateur (comme conducteur)
   const { data: myTrips } = useGetMyTripsQuery(undefined, {
@@ -187,16 +184,6 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
         damping: 15,
         stiffness: 100,
       });
-
-      // Subtle pulse animation
-      scale.value = withRepeat(
-        withSequence(
-          withTiming(1.02, { duration: 2000, easing: Easing.inOut(Easing.ease) }),
-          withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.ease) })
-        ),
-        -1,
-        false
-      );
     } else {
       translateY.value = withTiming(100, {
         duration: 300,
@@ -206,10 +193,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
   }, [shouldHide, ongoingTrip]);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: translateY.value },
-      { scale: scale.value }
-    ],
+    transform: [{ translateY: translateY.value }],
   }));
 
   if (!ongoingTrip || shouldHide) {
