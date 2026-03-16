@@ -33,6 +33,8 @@ export interface TripDriverInfo {
   role?: UserRole;
   status?: string;
   isDriver?: boolean;
+  averageRating?: number | null;
+  totalRatings?: number;
 }
 
 export interface GeoPoint {

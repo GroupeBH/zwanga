@@ -10,7 +10,9 @@ type ServerUser = {
   lastName?: string;
   phone?: string;
   profilePicture?: string | null;
-  rating?: number;
+  rating?: number | null;
+  averageRating?: number | null;
+  totalRatings?: number;
   role?: string;
   status?: string;
   isDriver?: boolean;
@@ -77,6 +79,11 @@ const formatFullName = (user?: ServerUser | null) => {
   return fullName || 'Conducteur';
 };
 
+const resolveUserAverageRating = (user?: ServerUser | null): number => {
+  const parsed = Number(user?.averageRating ?? user?.rating);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+};
+
 const mapTripStatus = (status?: string): TripStatus => {
   switch ((status ?? '').toLowerCase()) {
     case 'pending':
@@ -109,7 +116,7 @@ const mapPassengers = (bookings?: ServerBooking[]): Trip['passengers'] => {
       id: passenger.id,
       name: formatFullName(passenger),
       avatar: passenger.profilePicture ?? undefined,
-      rating: passenger.rating ?? 4.5,
+      rating: resolveUserAverageRating(passenger),
       phone: passenger.phone ?? '',
     }));
 };
@@ -135,6 +142,7 @@ const mapServerVehicleToClient = (vehicle: ServerVehicle | null | undefined): Ve
 export const mapServerTripToClient = (trip: ServerTrip): Trip => {
   const departureCoords = fallbackCoordinate(trip.departureCoordinates);
   const arrivalCoords = fallbackCoordinate(trip.arrivalCoordinates);
+  const parsedDriverRating = resolveUserAverageRating(trip.driver);
   
   // Compter uniquement les réservations acceptées pour calculer le nombre initial de places
   const acceptedBookedSeats =
@@ -154,7 +162,7 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     driverId: trip.driverId,
     driverName: formatFullName(trip.driver),
     driverAvatar: trip.driver?.profilePicture ?? undefined,
-    driverRating: trip.driver?.rating ?? 4.9,
+    driverRating: Number.isFinite(parsedDriverRating) && parsedDriverRating > 0 ? parsedDriverRating : 0,
     driver: trip.driver
       ? {
           id: trip.driver.id,
@@ -165,6 +173,14 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
           role: trip.driver.role as any,
           status: trip.driver.status,
           isDriver: trip.driver.isDriver ?? false,
+          averageRating:
+            Number.isFinite(Number(trip.driver.averageRating))
+              ? Number(trip.driver.averageRating)
+              : undefined,
+          totalRatings:
+            Number.isFinite(Number(trip.driver.totalRatings))
+              ? Number(trip.driver.totalRatings)
+              : undefined,
         }
       : null,
     vehicleType: trip.vehicleType ?? 'car',

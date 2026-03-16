@@ -68,7 +68,7 @@ export default function HomeScreen() {
     refetchOnReconnect: true,
   });
 
-  // console.log('remoteTrips', remoteTrips?.length);
+  // console.log('remoteTrips', remoteTrips[0]);
   const { data: notificationsData } = useGetNotificationsQuery(undefined, {
     refetchOnMountOrArgChange: true,
   });
@@ -138,24 +138,36 @@ export default function HomeScreen() {
     });
 
     return [...filteredTrips]
-      .sort((a, b) => {
-        // Trier par publication/modification la plus récente,
-        // puis par date de départ en fallback.
-        const recencyA = new Date(a.updatedAt || a.createdAt || a.departureTime).getTime();
-        const recencyB = new Date(b.updatedAt || b.createdAt || b.departureTime).getTime();
-
-        const safeRecencyA = Number.isFinite(recencyA) ? recencyA : 0;
-        const safeRecencyB = Number.isFinite(recencyB) ? recencyB : 0;
-
-        if (safeRecencyA !== safeRecencyB) {
-          return safeRecencyB - safeRecencyA;
-        }
-
+      .sort((a: any, b: any) => {
         const departureA = new Date(a.departureTime).getTime();
         const departureB = new Date(b.departureTime).getTime();
-        const safeDepartureA = Number.isFinite(departureA) ? departureA : 0;
-        const safeDepartureB = Number.isFinite(departureB) ? departureB : 0;
-        return safeDepartureB - safeDepartureA;
+        const safeDepartureA = Number.isFinite(departureA) ? departureA : Number.MAX_SAFE_INTEGER;
+        const safeDepartureB = Number.isFinite(departureB) ? departureB : Number.MAX_SAFE_INTEGER;
+
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayStartTs = todayStart.getTime();
+        const tomorrowStartTs = todayStartTs + 24 * 60 * 60 * 1000;
+
+        const aIsToday = safeDepartureA >= todayStartTs && safeDepartureA < tomorrowStartTs;
+        const bIsToday = safeDepartureB >= todayStartTs && safeDepartureB < tomorrowStartTs;
+
+        // Prioriser les trajets d'aujourd'hui.
+        if (aIsToday !== bIsToday) {
+          return aIsToday ? -1 : 1;
+        }
+
+        // Trier du plus tôt au plus tard.
+        if (safeDepartureA !== safeDepartureB) {
+          return safeDepartureA - safeDepartureB;
+        }
+
+        // Fallback stable sur la dernière mise à jour/publication.
+        const recencyA = new Date(a.updatedAt || a.createdAt || a.departureTime).getTime();
+        const recencyB = new Date(b.updatedAt || b.createdAt || b.departureTime).getTime();
+        const safeRecencyA = Number.isFinite(recencyA) ? recencyA : 0;
+        const safeRecencyB = Number.isFinite(recencyB) ? recencyB : 0;
+        return safeRecencyB - safeRecencyA;
       })
       .slice(0, RECENT_TRIPS_LIMIT);
   }, [baseTrips, currentUser?.id, completedBookingTripIds]);
@@ -600,10 +612,8 @@ export default function HomeScreen() {
                 ? formatTime(calculatedArrivalTime.toISOString())
                 : formatTime(trip.arrivalTime);
 
-              const ratingValue =
-                typeof trip.driverRating === 'number'
-                  ? trip.driverRating
-                  : Number(trip.driverRating) || 4.9;
+              const parsedRating = Number(trip.driverRating);
+              const hasDriverRating = Number.isFinite(parsedRating) && parsedRating > 0;
 
               return (
                 <Animated.View
@@ -628,8 +638,19 @@ export default function HomeScreen() {
                           {trip?.driverName ?? ''}
                         </Text>
                         <View style={styles.driverMeta}>
-                          <Ionicons name="star" size={14} color={Colors.secondary} />
-                          <Text style={styles.driverRating}>{ratingValue.toFixed(1)}</Text>
+                          <Ionicons
+                            name={hasDriverRating ? "star" : "star-outline"}
+                            size={14}
+                            color={hasDriverRating ? Colors.secondary : Colors.gray[400]}
+                          />
+                          <Text
+                            style={[
+                              styles.driverRating,
+                              !hasDriverRating && styles.driverRatingPlaceholder,
+                            ]}
+                          >
+                            {hasDriverRating ? parsedRating.toFixed(1) : 'Nouveau'}
+                          </Text>
                           <View style={styles.dot} />
                           <Text style={styles.vehicleInfo} numberOfLines={1} ellipsizeMode="tail">
                             {trip?.vehicle
@@ -1072,6 +1093,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.gray[600],
     marginLeft: 4,
+  },
+  driverRatingPlaceholder: {
+    color: Colors.gray[500],
   },
   dot: {
     width: 3,
