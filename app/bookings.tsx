@@ -9,7 +9,7 @@ import {
 } from '@/store/api/bookingApi';
 import type { BookingStatus } from '@/types';
 import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
-import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
+import { openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
@@ -383,7 +383,7 @@ export default function BookingsScreen() {
             </TouchableOpacity>
           )}
 
-          {/* Bouton "Appeler" - Seulement pour les réservations actives acceptées et non expirées */}
+          {/* Bouton WhatsApp - Seulement pour les réservations actives acceptées et non expirées */}
           {activeTab === 'active' && !isExpired && booking.status === 'accepted' && trip?.driver?.phone && 
            !(booking.pickedUp && !booking.pickedUpConfirmedByPassenger) &&
            !(booking.droppedOff && !booking.droppedOffConfirmedByPassenger) && (
@@ -395,8 +395,8 @@ export default function BookingsScreen() {
                 setContactModalVisible(true);
               }}
             >
-              <Ionicons name="call" size={16} color={Colors.success} />
-              <Text style={[styles.linkButtonText, styles.callButtonText]}>Appeler</Text>
+              <Ionicons name="logo-whatsapp" size={16} color="#25D366" />
+              <Text style={[styles.linkButtonText, styles.callButtonText]}>WhatsApp</Text>
             </TouchableOpacity>
           )}
 
@@ -525,43 +525,18 @@ export default function BookingsScreen() {
             <View style={styles.contactModalHeader}>
               <View style={styles.contactModalIconWrapper}>
                 <View style={styles.contactModalIconBadge}>
-                  <Ionicons name="call" size={32} color={Colors.primary} />
+                  <Ionicons name="logo-whatsapp" size={32} color="#25D366" />
                 </View>
               </View>
               <Text style={styles.contactModalTitle}>
                 Contacter {selectedDriverName || 'le conducteur'}
               </Text>
               <Text style={styles.contactModalSubtitle}>
-                Choisissez comment contacter le conducteur
+                Contact via WhatsApp uniquement
               </Text>
             </View>
 
             <View style={styles.contactModalActions}>
-              <TouchableOpacity
-                style={[styles.contactModalButton, styles.contactModalButtonCall]}
-                onPress={async () => {
-                  setContactModalVisible(false);
-                  if (selectedDriverPhone) {
-                    await openPhoneCall(selectedDriverPhone, (errorMsg) => {
-                      showDialog({
-                        variant: 'danger',
-                        title: 'Erreur',
-                        message: errorMsg,
-                      });
-                    });
-                  }
-                }}
-              >
-                <View style={styles.contactModalButtonIcon}>
-                  <Ionicons name="call" size={24} color={Colors.success} />
-                </View>
-                <View style={styles.contactModalButtonContent}>
-                  <Text style={styles.contactModalButtonTitle}>Appeler</Text>
-                  <Text style={styles.contactModalButtonSubtitle}>Ouvrir l'application d'appel</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
-              </TouchableOpacity>
-
               <TouchableOpacity
                 style={[styles.contactModalButton, styles.contactModalButtonWhatsApp]}
                 onPress={async () => {

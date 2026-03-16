@@ -9,6 +9,7 @@ import {
 } from '@/store/api/bookingApi';
 import { useGetDirectionsMutation } from '@/store/api/googleMapsApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
+import { openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -710,16 +711,20 @@ export default function PassengerNavigationScreen() {
                 showDialog({
                   variant: 'info',
                   title: 'Contacter le conducteur',
-                  message: `Appeler ${trip.driverName || 'le conducteur'} ?`,
+                  message: `Ouvrir WhatsApp pour contacter ${trip.driverName || 'le conducteur'} ?`,
                   actions: [
                     { label: 'Annuler', variant: 'ghost' },
                     {
-                      label: 'Appeler',
+                      label: 'Ouvrir WhatsApp',
                       variant: 'primary',
-                      onPress: () => {
-                        // Import Linking si nécessaire
-                        import('react-native').then(({ Linking }) => {
-                          Linking.openURL(`tel:${trip.driver?.phone}`);
+                      onPress: async () => {
+                        // Ouvrir WhatsApp pour contacter le conducteur
+                        await openWhatsApp(trip.driver!.phone!, (errorMsg) => {
+                          showDialog({
+                            variant: 'danger',
+                            title: 'Erreur',
+                            message: errorMsg,
+                          });
                         });
                       },
                     },
@@ -727,7 +732,7 @@ export default function PassengerNavigationScreen() {
                 });
               }}
             >
-              <Ionicons name="call" size={20} color={Colors.success} />
+              <Ionicons name="logo-whatsapp" size={20} color="#25D366" />
             </TouchableOpacity>
           )}
         </View>

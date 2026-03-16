@@ -23,7 +23,7 @@ import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
 import type { BookingStatus, GeoPoint } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
-import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
+import { openWhatsApp } from '@/utils/phoneHelpers';
 import { getRouteInfo, isPointOnRoute, splitRouteByProgress, type RouteInfo } from '@/utils/routeHelpers';
 import { shareTrip, shareTripViaWhatsApp } from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
@@ -1654,17 +1654,17 @@ export default function TripDetailsScreen() {
                 }}
               >
                 <Ionicons
-                  name="call"
+                  name="logo-whatsapp"
                   size={18}
-                  color={driverPhone ? Colors.success : Colors.gray[300]}
+                  color={driverPhone ? '#25D366' : Colors.gray[300]}
                 />
                 <Text
                   style={[
                     styles.driverActionText,
-                    { color: driverPhone ? Colors.success : Colors.gray[400] },
+                    { color: driverPhone ? '#25D366' : Colors.gray[400] },
                   ]}
                 >
-                  Appeler
+                  WhatsApp
                 </Text>
               </TouchableOpacity>
             </View>
@@ -2008,8 +2008,8 @@ export default function TripDetailsScreen() {
                               style={[styles.bookingActionButton, styles.bookingActionCall]}
                               onPress={() => setContactModalVisible(true)}
                             >
-                              <Ionicons name="call" size={18} color={Colors.success} />
-                              <Text style={[styles.bookingActionText, styles.bookingActionCallText]}>Appeler</Text>
+                              <Ionicons name="logo-whatsapp" size={18} color={'#25D366'} />
+                              <Text style={[styles.bookingActionText, styles.bookingActionCallText]}>WhatsApp</Text>
                             </TouchableOpacity>
                           )}
 
@@ -2579,41 +2579,18 @@ export default function TripDetailsScreen() {
             <View style={styles.contactModalHeader}>
               <View style={styles.contactModalIconWrapper}>
                 <View style={styles.contactModalIconBadge}>
-                  <Ionicons name="call" size={32} color={Colors.primary} />
+                  <Ionicons name="logo-whatsapp" size={32} color="#25D366" />
                 </View>
               </View>
               <Text style={styles.contactModalTitle}>
                 Contacter {trip?.driverName || 'le conducteur'}
               </Text>
               <Text style={styles.contactModalSubtitle}>
-                Choisissez comment contacter le conducteur
+                Contact via WhatsApp uniquement
               </Text>
             </View>
 
             <View style={styles.contactModalActions}>
-              <TouchableOpacity
-                style={[styles.contactModalButton, styles.contactModalButtonCall]}
-                onPress={async () => {
-                  setContactModalVisible(false);
-                  await openPhoneCall(driverPhone!, (errorMsg) => {
-                    showDialog({
-                      variant: 'danger',
-                      title: 'Erreur',
-                      message: errorMsg,
-                    });
-                  });
-                }}
-              >
-                <View style={styles.contactModalButtonIcon}>
-                  <Ionicons name="call" size={24} color={Colors.success} />
-                </View>
-                <View style={styles.contactModalButtonContent}>
-                  <Text style={styles.contactModalButtonTitle}>Appeler</Text>
-                  <Text style={styles.contactModalButtonSubtitle}>Ouvrir l'application d'appel</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
-              </TouchableOpacity>
-
               <TouchableOpacity
                 style={[styles.contactModalButton, styles.contactModalButtonWhatsApp]}
                 onPress={async () => {

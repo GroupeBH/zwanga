@@ -14,7 +14,7 @@ import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
-import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
+import { openWhatsApp } from '@/utils/phoneHelpers';
 import { calculateDistance } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -926,43 +926,18 @@ export default function ManageTripScreen() {
             <View style={styles.contactModalHeader}>
               <View style={styles.contactModalIconWrapper}>
                 <View style={styles.contactModalIconBadge}>
-                  <Ionicons name="call" size={32} color={Colors.primary} />
+                  <Ionicons name="logo-whatsapp" size={32} color="#25D366" />
                 </View>
               </View>
               <Text style={styles.contactModalTitle}>
                 Contacter {selectedPassengerName || 'le passager'}
               </Text>
               <Text style={styles.contactModalSubtitle}>
-                Choisissez comment contacter le passager
+                Contact via WhatsApp uniquement
               </Text>
             </View>
 
             <View style={styles.contactModalActions}>
-              <TouchableOpacity
-                style={[styles.contactModalButton, styles.contactModalButtonCall]}
-                onPress={async () => {
-                  setContactModalVisible(false);
-                  if (selectedPassengerPhone) {
-                    await openPhoneCall(selectedPassengerPhone, (errorMsg) => {
-                      showDialog({
-                        variant: 'danger',
-                        title: 'Erreur',
-                        message: errorMsg,
-                      });
-                    });
-                  }
-                }}
-              >
-                <View style={styles.contactModalButtonIcon}>
-                  <Ionicons name="call" size={24} color={Colors.success} />
-                </View>
-                <View style={styles.contactModalButtonContent}>
-                  <Text style={styles.contactModalButtonTitle}>Appeler</Text>
-                  <Text style={styles.contactModalButtonSubtitle}>Ouvrir l'application d'appel</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
-              </TouchableOpacity>
-
               <TouchableOpacity
                 style={[styles.contactModalButton, styles.contactModalButtonWhatsApp]}
                 onPress={async () => {

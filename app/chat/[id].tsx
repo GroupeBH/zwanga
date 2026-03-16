@@ -6,10 +6,11 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { addMessage as addMessageAction, markConversationMessagesRead, setMessages, upsertConversation } from '@/store/slices/messagesSlice';
 import { Message } from '@/types';
+import { openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -266,16 +267,22 @@ export default function ChatScreen() {
           <TouchableOpacity
             style={styles.headerButton}
             disabled={!counterpart?.phone}
-            onPress={() => {
+            onPress={async () => {
               if (counterpart?.phone) {
-                Linking.openURL(`tel:${counterpart.phone}`);
+                await openWhatsApp(counterpart.phone, (errorMsg) => {
+                  showDialog({
+                    variant: 'danger',
+                    title: 'Erreur',
+                    message: errorMsg,
+                  });
+                });
               }
             }}
           >
             <Ionicons
-              name="call"
+              name="logo-whatsapp"
               size={20}
-              color={counterpart?.phone ? Colors.primary : Colors.gray[400]}
+              color={counterpart?.phone ? '#25D366' : Colors.gray[400]}
             />
           </TouchableOpacity>
 
