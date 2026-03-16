@@ -1,10 +1,10 @@
 import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardModal';
 import LocationPickerModal, { type MapLocationSelection } from '@/components/LocationPickerModal';
+import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
-import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackingSocket } from '@/services/trackingSocket';
 import {
@@ -147,7 +147,6 @@ export default function TripDetailsScreen() {
   const trip = tripFromApi || tripFromStore;
 
   const user = useAppSelector(selectUser);
-  const { checkIdentity, isIdentityVerified } = useIdentityCheck();
   const { showDialog } = useDialog();
   const driverPhone = trip?.driver?.phone ?? null;
   // console.log('driverPhone', driverPhone);
@@ -230,12 +229,15 @@ export default function TripDetailsScreen() {
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [contactModalVisible, setContactModalVisible] = useState(false);
   const [shareModalVisible, setShareModalVisible] = useState(false);
+  const [securityModalVisible, setSecurityModalVisible] = useState(false);
   const [kycFrontImage, setKycFrontImage] = useState<string | null>(null);
   const [kycBackImage, setKycBackImage] = useState<string | null>(null);
   const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
   const [kycSubmitting, setKycSubmitting] = useState(false);
   const {
     data: kycStatus,
+    isLoading: kycStatusLoading,
+    isFetching: kycStatusFetching,
     refetch: refetchKycStatus,
   } = useGetKycStatusQuery();
   const [uploadKyc, { isLoading: uploadingKyc }] = useUploadKycMutation();
@@ -430,14 +432,129 @@ export default function TripDetailsScreen() {
   const activeBookingStatus = activeBooking && activeBooking.status in BOOKING_STATUS_CONFIG
     ? BOOKING_STATUS_CONFIG[activeBooking.status as keyof typeof BOOKING_STATUS_CONFIG]
     : null;
+  const canAccessTripSecurity = Boolean(trip && user);
+  const tripSecurityRole: 'driver' | 'passenger' = isTripDriver ? 'driver' : 'passenger';
+  const tripSecurityBookingId = isTripDriver ? undefined : activeBooking?.id;
+  const tripVehicleIdentity = useMemo(() => {
+    if (!trip) return 'Informations vehicule indisponibles.';
+    if (trip.vehicle) {
+      const parts = [`${trip.vehicle.brand} ${trip.vehicle.model}`.trim()];
+      if (trip.vehicle.color) {
+        parts.push(trip.vehicle.color);
+      }
+      if (trip.vehicle.licensePlate) {
+        parts.push(`Plaque ${trip.vehicle.licensePlate}`);
+      }
+      return parts.filter(Boolean).join(' • ');
+    }
+    return trip.vehicleInfo || 'Informations vehicule indisponibles.';
+  }, [trip]);
+  const showPassengerVehicleReminder =
+    !isTripDriver &&
+    Boolean(activeBooking && (activeBooking.status === 'pending' || activeBooking.status === 'accepted'));
+  const showDriverVehicleReminder = isTripDriver && (trip?.status === 'upcoming' || trip?.status === 'ongoing');
+  const showPassengerSecurityAccess = !isTripDriver;
+  const passengerSecurityQuickHint = !activeBooking
+    ? 'Ajoutez vos proches de confiance maintenant pour preparer votre suivi.'
+    : activeBooking.status === 'pending'
+      ? 'Reservation en attente: vous pouvez deja choisir les proches a prevenir.'
+      : activeBooking.status === 'accepted'
+        ? 'Avant de monter, ouvrez la securite pour activer le suivi et prevenir vos proches.'
+        : 'Ouvrez la securite pour gerer vos proches et vos alertes de trajet.';
+  const passengerSecurityButtonLabel = canAccessTripSecurity
+    ? 'Ouvrir la securite du trajet'
+    : 'Connectez-vous pour la securite';
+  const isKycApproved = kycStatus?.status === 'approved';
+  const isKycPending = kycStatus?.status === 'pending';
+  const isKycRejected = kycStatus?.status === 'rejected';
+  const isKycStatusBusy = kycStatusLoading || kycStatusFetching;
+  const kycBookingLockLabel = isKycStatusBusy
+    ? 'Verification KYC en cours...'
+    : isKycPending
+      ? 'KYC en cours de verification'
+      : isKycRejected
+        ? 'KYC refuse - reprendre'
+        : 'KYC requis pour reserver';
+
+  const ensureKycForBooking = () => {
+    if (isKycApproved) {
+      return true;
+    }
+
+    if (isKycStatusBusy) {
+      showDialog({
+        variant: 'info',
+        title: 'Verification KYC en cours',
+        message: 'Nous verifions votre statut KYC. Reessayez dans quelques secondes.',
+      });
+      return false;
+    }
+
+    if (isKycPending) {
+      showDialog({
+        variant: 'info',
+        title: 'KYC en attente',
+        message:
+          'Vos documents sont en cours de verification. Vous pourrez reserver ce trajet apres validation du KYC.',
+        actions: [
+          { label: 'Compris', variant: 'ghost' },
+          { label: 'Voir mon statut', variant: 'primary', onPress: () => router.push('/profile') },
+        ],
+      });
+      return false;
+    }
+
+    if (isKycRejected) {
+      showDialog({
+        variant: 'warning',
+        title: 'KYC requis',
+        message:
+          'Votre verification KYC a ete rejetee. Merci de reprendre le parcours KYC pour reserver ce trajet.',
+        actions: [
+          { label: 'Plus tard', variant: 'ghost' },
+          { label: 'Reprendre KYC', variant: 'primary', onPress: () => setKycWizardVisible(true) },
+        ],
+      });
+      return false;
+    }
+
+    showDialog({
+      variant: 'warning',
+      title: 'KYC requis',
+      message: 'Pour reserver un trajet, vous devez verifier votre identite (piece + selfie).',
+      actions: [
+        { label: 'Plus tard', variant: 'ghost' },
+        { label: 'Commencer KYC', variant: 'primary', onPress: () => setKycWizardVisible(true) },
+      ],
+    });
+    return false;
+  };
+
   const openBookingModal = () => {
-    // KYC désactivé pour la réservation - permettre la réservation sans vérification
+    if (!ensureKycForBooking()) {
+      return;
+    }
     setBookingSeats('1');
     setBookingModalError('');
     setPassengerOrigin(null);
     setPassengerDestination(null);
     setBookingStep(1);
     setBookingModalVisible(true);
+  };
+
+  const openTripSecurityModal = () => {
+    if (!canAccessTripSecurity) {
+      showDialog({
+        variant: 'info',
+        title: 'Securite indisponible',
+        message: 'Connectez-vous pour gerer vos proches et le suivi securite.',
+      });
+      return;
+    }
+    void refetchTrip();
+    void refetchMyBookings();
+    void refetchTripBookings();
+    setSecurityModalVisible(true);
   };
 
   const closeBookingModal = () => {
@@ -567,6 +684,10 @@ export default function TripDetailsScreen() {
 
   const handleConfirmBooking = async () => {
     if (isBooking || !trip || isValidatingDestination) {
+      return;
+    }
+    if (!ensureKycForBooking()) {
+      setBookingModalError('Votre KYC doit etre valide avant de reserver ce trajet.');
       return;
     }
     const seatsValue = parseInt(bookingSeats, 10);
@@ -1060,12 +1181,25 @@ export default function TripDetailsScreen() {
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Détails du trajet</Text>
-          <TouchableOpacity
-            onPress={() => setShareModalVisible(true)}
-            style={styles.shareButton}
-          >
-            <Ionicons name="share-outline" size={24} color={Colors.primary} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              onPress={openTripSecurityModal}
+              style={[styles.shareButton, !canAccessTripSecurity && styles.shareButtonDisabled]}
+              disabled={!canAccessTripSecurity}
+            >
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={22}
+                color={canAccessTripSecurity ? Colors.primary : Colors.gray[400]}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setShareModalVisible(true)}
+              style={styles.shareButton}
+            >
+              <Ionicons name="share-outline" size={24} color={Colors.primary} />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -1547,6 +1681,53 @@ export default function TripDetailsScreen() {
           </View>
         </Animated.View>
 
+        {showPassengerSecurityAccess && (
+          <Animated.View entering={FadeInDown.delay(460)} style={styles.section}>
+            <View style={[styles.sectionCard, styles.passengerSecurityCard]}>
+              <View style={styles.passengerSecurityHeader}>
+                <View style={styles.passengerSecurityIconWrap}>
+                  <Ionicons name="shield-checkmark-outline" size={20} color={Colors.primary} />
+                </View>
+                <View style={styles.passengerSecurityHeaderCopy}>
+                  <Text style={styles.passengerSecurityTitle}>SECURITE PASSAGER</Text>
+                  <Text style={styles.passengerSecuritySubtitle}>
+                    Proches, suivi live et alerte en un seul endroit.
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.passengerSecurityHintText}>{passengerSecurityQuickHint}</Text>
+              <TouchableOpacity
+                style={[
+                  styles.passengerSecurityButton,
+                  !canAccessTripSecurity && styles.passengerSecurityButtonDisabled,
+                ]}
+                onPress={openTripSecurityModal}
+                disabled={!canAccessTripSecurity}
+                activeOpacity={0.9}
+              >
+                <Ionicons
+                  name="shield-checkmark"
+                  size={18}
+                  color={canAccessTripSecurity ? Colors.white : Colors.gray[500]}
+                />
+                <Text
+                  style={[
+                    styles.passengerSecurityButtonText,
+                    !canAccessTripSecurity && styles.passengerSecurityButtonTextDisabled,
+                  ]}
+                >
+                  {passengerSecurityButtonLabel}
+                </Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={canAccessTripSecurity ? Colors.white : Colors.gray[500]}
+                />
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        )}
+
         {/* Passagers */}
         {tripBookings && tripBookings.length > 0 && (
           <Animated.View entering={FadeInDown.delay(500)} style={styles.section}>
@@ -1594,6 +1775,42 @@ export default function TripDetailsScreen() {
                 {tripBookings.filter((booking) => booking.status === 'accepted').length === 0 && (
                   <Text style={styles.noPassengersText}>Aucun passager confirmé</Text>
                 )}
+              </View>
+            </View>
+          </Animated.View>
+        )}
+
+        {showPassengerVehicleReminder && (
+          <Animated.View entering={FadeInDown.delay(550)} style={styles.section}>
+            <View style={[styles.sectionCard, styles.securityReminderCard]}>
+              <View style={styles.securityReminderHeader}>
+                <Ionicons name="shield-checkmark" size={20} color={Colors.secondary} />
+                <Text style={styles.securityReminderTitle}>Verification avant embarquement</Text>
+              </View>
+              <Text style={styles.securityReminderText}>
+                Avant de monter, verifiez que le vehicule devant vous correspond exactement a celui du trajet.
+              </Text>
+              <View style={styles.securityReminderVehicleBox}>
+                <Text style={styles.securityReminderVehicleLabel}>Vehicule attendu</Text>
+                <Text style={styles.securityReminderVehicleValue}>{tripVehicleIdentity}</Text>
+              </View>
+            </View>
+          </Animated.View>
+        )}
+
+        {showDriverVehicleReminder && (
+          <Animated.View entering={FadeInDown.delay(560)} style={styles.section}>
+            <View style={[styles.sectionCard, styles.securityReminderCard]}>
+              <View style={styles.securityReminderHeader}>
+                <Ionicons name="car-sport" size={20} color={Colors.primary} />
+                <Text style={styles.securityReminderTitle}>Rappel securite conducteur</Text>
+              </View>
+              <Text style={styles.securityReminderText}>
+                Assurez-vous de conduire le vehicule indique ci-dessous. Si vous changez de vehicule, mettez a jour le trajet avant de recuperer un passager.
+              </Text>
+              <View style={styles.securityReminderVehicleBox}>
+                <Text style={styles.securityReminderVehicleLabel}>Vehicule declare</Text>
+                <Text style={styles.securityReminderVehicleValue}>{tripVehicleIdentity}</Text>
               </View>
             </View>
           </Animated.View>
@@ -1738,6 +1955,43 @@ export default function TripDetailsScreen() {
                             </TouchableOpacity>
                           )}
                       </View>
+                      {!isTripDriver && (
+                        <TouchableOpacity
+                          style={[
+                            styles.bookingSecurityQuickButton,
+                            !canAccessTripSecurity && styles.bookingSecurityQuickButtonDisabled,
+                          ]}
+                          onPress={openTripSecurityModal}
+                          disabled={!canAccessTripSecurity}
+                          activeOpacity={0.9}
+                        >
+                          <View style={styles.bookingSecurityQuickIcon}>
+                            <Ionicons
+                              name="shield-checkmark-outline"
+                              size={18}
+                              color={canAccessTripSecurity ? Colors.primary : Colors.gray[400]}
+                            />
+                          </View>
+                          <View style={styles.bookingSecurityQuickCopy}>
+                            <Text
+                              style={[
+                                styles.bookingSecurityQuickTitle,
+                                !canAccessTripSecurity && styles.bookingSecurityQuickTitleDisabled,
+                              ]}
+                            >
+                              Securite du trajet
+                            </Text>
+                            <Text style={styles.bookingSecurityQuickSubtitle}>
+                              Choisir proches, activer suivi, envoyer alerte
+                            </Text>
+                          </View>
+                          <Ionicons
+                            name="chevron-forward"
+                            size={18}
+                            color={canAccessTripSecurity ? Colors.primary : Colors.gray[400]}
+                          />
+                        </TouchableOpacity>
+                      )}
                     </View>
                   )
                 ) : availableSeats <= 0 ? (
@@ -1745,6 +1999,14 @@ export default function TripDetailsScreen() {
                     <Ionicons name="close-circle" size={20} color={Colors.white} />
                     <Text style={styles.actionButtonText}>Complet • Plus de places disponibles</Text>
                   </View>
+                ) : !isKycApproved ? (
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.actionButtonKycRequired]}
+                    onPress={ensureKycForBooking}
+                  >
+                    <Ionicons name="shield-checkmark-outline" size={20} color={Colors.white} />
+                    <Text style={styles.actionButtonText}>{kycBookingLockLabel}</Text>
+                  </TouchableOpacity>
                 ) : (
                   <TouchableOpacity
                     style={styles.actionButton}
@@ -1783,6 +2045,52 @@ export default function TripDetailsScreen() {
           return null;
         })()}
       </View>
+
+      <Modal
+        visible={securityModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSecurityModalVisible(false)}
+      >
+        <View style={styles.securityModalOverlay}>
+          <TouchableOpacity
+            style={styles.securityModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setSecurityModalVisible(false)}
+          />
+          <View
+            style={[
+              styles.securityModalContent,
+              { paddingBottom: Math.max(insets.bottom, 16) + 16 },
+            ]}
+          >
+            <View style={styles.securityModalHeader}>
+              <Text style={styles.securityModalTitle}>Securite du trajet</Text>
+              <TouchableOpacity
+                style={styles.securityModalCloseButton}
+                onPress={() => setSecurityModalVisible(false)}
+              >
+                <Ionicons name="close" size={22} color={Colors.gray[700]} />
+              </TouchableOpacity>
+            </View>
+            {trip ? (
+              <View style={styles.securityModalBody}>
+                <TripSecurityPanel
+                  tripId={trip.id}
+                  role={tripSecurityRole}
+                  tripStatus={trip.status}
+                  bookingId={tripSecurityBookingId}
+                />
+              </View>
+            ) : (
+              <View style={styles.securityModalLoading}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+                <Text style={styles.securityModalLoadingText}>Chargement securite...</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       <Modal animationType="fade" transparent visible={bookingModalVisible}>
         <View style={styles.bookingModalOverlay}>
@@ -2012,12 +2320,14 @@ export default function TripDetailsScreen() {
                 <TouchableOpacity
                   style={[styles.bookingModalButton, styles.bookingModalButtonPrimary]}
                   onPress={handleConfirmBooking}
-                  disabled={isBooking || isValidatingDestination}
+                  disabled={isBooking || isValidatingDestination || !isKycApproved || isKycStatusBusy}
                 >
                   {isBooking || isValidatingDestination ? (
                     <ActivityIndicator color={Colors.white} />
                   ) : (
-                    <Text style={styles.bookingModalButtonPrimaryText}>Confirmer</Text>
+                    <Text style={styles.bookingModalButtonPrimaryText}>
+                      {isKycApproved ? 'Confirmer' : 'KYC requis'}
+                    </Text>
                   )}
                 </TouchableOpacity>
               )}
@@ -2453,10 +2763,18 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
   shareButton: {
     padding: 8,
     backgroundColor: Colors.primary + '10',
     borderRadius: BorderRadius.full,
+  },
+  shareButtonDisabled: {
+    backgroundColor: Colors.gray[100],
   },
   scrollView: {
     flex: 1,
@@ -2706,6 +3024,107 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
     letterSpacing: 1,
   },
+  passengerSecurityCard: {
+    borderColor: Colors.primary + '35',
+    backgroundColor: Colors.primary + '08',
+  },
+  passengerSecurityHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  passengerSecurityIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.primary + '25',
+    marginRight: Spacing.sm,
+  },
+  passengerSecurityHeaderCopy: {
+    flex: 1,
+  },
+  passengerSecurityTitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[900],
+    fontWeight: FontWeights.bold,
+    letterSpacing: 0.4,
+  },
+  passengerSecuritySubtitle: {
+    marginTop: 2,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+  },
+  passengerSecurityHintText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+    lineHeight: 20,
+    marginBottom: Spacing.md,
+  },
+  passengerSecurityButton: {
+    minHeight: 50,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: Spacing.md,
+  },
+  passengerSecurityButtonDisabled: {
+    backgroundColor: Colors.gray[200],
+  },
+  passengerSecurityButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  passengerSecurityButtonTextDisabled: {
+    color: Colors.gray[600],
+  },
+  securityReminderCard: {
+    borderColor: Colors.secondary + '35',
+    backgroundColor: Colors.secondary + '08',
+  },
+  securityReminderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  securityReminderTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  securityReminderText: {
+    fontSize: FontSizes.sm,
+    lineHeight: 20,
+    color: Colors.gray[700],
+    marginBottom: Spacing.sm,
+  },
+  securityReminderVehicleBox: {
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.white,
+    padding: Spacing.sm,
+    gap: 2,
+  },
+  securityReminderVehicleLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    fontWeight: FontWeights.semibold,
+    textTransform: 'uppercase',
+  },
+  securityReminderVehicleValue: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[900],
+    fontWeight: FontWeights.semibold,
+  },
   routeContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -2927,6 +3346,11 @@ const styles = StyleSheet.create({
     elevation: 0,
     shadowOpacity: 0,
   },
+  actionButtonKycRequired: {
+    backgroundColor: Colors.gray[800],
+    shadowColor: Colors.gray[800],
+    shadowOpacity: 0.18,
+  },
   bookingCard: {
     backgroundColor: Colors.white,
   },
@@ -3019,6 +3443,48 @@ const styles = StyleSheet.create({
   bookingActionDangerText: {
     color: Colors.danger,
   },
+  bookingSecurityQuickButton: {
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary + '35',
+    borderRadius: 14,
+    backgroundColor: Colors.primary + '08',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  bookingSecurityQuickButtonDisabled: {
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[100],
+  },
+  bookingSecurityQuickIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
+  },
+  bookingSecurityQuickCopy: {
+    flex: 1,
+    marginHorizontal: Spacing.sm,
+  },
+  bookingSecurityQuickTitle: {
+    fontSize: 13,
+    color: Colors.gray[900],
+    fontWeight: FontWeights.bold,
+  },
+  bookingSecurityQuickTitleDisabled: {
+    color: Colors.gray[500],
+  },
+  bookingSecurityQuickSubtitle: {
+    marginTop: 2,
+    fontSize: 11,
+    color: Colors.gray[600],
+  },
   confirmationBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3085,6 +3551,54 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 12,
     color: Colors.gray[500],
+  },
+  securityModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  securityModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  securityModalContent: {
+    backgroundColor: Colors.gray[50],
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    height: '84%',
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.md,
+  },
+  securityModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
+  securityModalTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  securityModalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  securityModalBody: {
+    flex: 1,
+  },
+  securityModalLoading: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.xl,
+    gap: Spacing.sm,
+  },
+  securityModalLoadingText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
   },
   bookingModalOverlay: {
     flex: 1,
@@ -3721,3 +4235,4 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.xs,
   },
 });
+

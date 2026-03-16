@@ -1,4 +1,5 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { trackingSocket } from '@/services/trackingSocket';
 import {
@@ -88,6 +89,7 @@ export default function NavigationScreen() {
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
   const [currentWaypointIndex, setCurrentWaypointIndex] = useState(0);
   const [backgroundDisclosureVisible, setBackgroundDisclosureVisible] = useState(false);
+  const [securityModalVisible, setSecurityModalVisible] = useState(false);
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const recalcRouteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backgroundDisclosureResolverRef = useRef<((accepted: boolean) => void) | null>(null);
@@ -128,6 +130,7 @@ export default function NavigationScreen() {
     }
 
     setBackgroundDisclosureVisible(false);
+    setSecurityModalVisible(false);
     setWaypointModalVisible(false);
     setPassengersPanelVisible(false);
     setActiveWaypoint(null);
@@ -909,6 +912,10 @@ export default function NavigationScreen() {
 
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (securityModalVisible) {
+        setSecurityModalVisible(false);
+        return true;
+      }
       handleExitNavigation();
       return true;
     });
@@ -916,7 +923,7 @@ export default function NavigationScreen() {
     return () => {
       backHandler.remove();
     };
-  }, [handleExitNavigation]);
+  }, [handleExitNavigation, securityModalVisible]);
 
   // Décoder un polyline Google (avec simplification pour économiser la mémoire)
   const decodePolyline = (encoded: string): Array<{ latitude: number; longitude: number }> => {
@@ -1330,6 +1337,13 @@ export default function NavigationScreen() {
       {/* Boutons d'action flottants */}
       {isTripOngoing && (
       <View style={styles.floatingButtons}>
+        <TouchableOpacity
+          style={styles.floatingButton}
+          onPress={() => setSecurityModalVisible(true)}
+        >
+          <Ionicons name="shield-checkmark" size={22} color={Colors.primary} />
+        </TouchableOpacity>
+
         {/* Bouton recalculer l'itinéraire */}
         <TouchableOpacity
           style={[styles.floatingButton, isLoadingRoute && styles.floatingButtonDisabled]}
@@ -1405,6 +1419,48 @@ export default function NavigationScreen() {
                 <Text style={styles.backgroundDisclosurePrimaryButtonText}>Continuer</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={securityModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSecurityModalVisible(false)}
+      >
+        <View style={styles.securityModalOverlay}>
+          <TouchableOpacity
+            style={styles.securityModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setSecurityModalVisible(false)}
+          />
+          <View
+            style={[
+              styles.securityModalContent,
+              { paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.md },
+            ]}
+          >
+            <View style={styles.securityModalHeader}>
+              <Text style={styles.securityModalTitle}>Securite du trajet</Text>
+              <TouchableOpacity
+                style={styles.securityModalCloseButton}
+                onPress={() => setSecurityModalVisible(false)}
+              >
+                <Ionicons name="close" size={22} color={Colors.gray[700]} />
+              </TouchableOpacity>
+            </View>
+
+            {trip ? (
+              <View style={styles.securityModalBody}>
+                <TripSecurityPanel tripId={trip.id} role="driver" tripStatus={trip.status} />
+              </View>
+            ) : (
+              <View style={styles.securityModalLoading}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+                <Text style={styles.securityModalLoadingText}>Chargement securite...</Text>
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -1907,6 +1963,54 @@ const styles = StyleSheet.create({
   },
   floatingButtonDisabled: {
     opacity: 0.6,
+  },
+  securityModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  securityModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  securityModalContent: {
+    backgroundColor: Colors.gray[50],
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    height: '86%',
+    paddingTop: Spacing.md,
+    paddingHorizontal: Spacing.md,
+  },
+  securityModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
+  securityModalTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  securityModalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  securityModalBody: {
+    flex: 1,
+  },
+  securityModalLoading: {
+    paddingVertical: Spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+  },
+  securityModalLoadingText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
   },
   backgroundDisclosureOverlay: {
     flex: 1,
