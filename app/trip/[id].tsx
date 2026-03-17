@@ -457,12 +457,12 @@ export default function TripDetailsScreen() {
   const showDriverVehicleReminder = isTripDriver && (trip?.status === 'upcoming' || trip?.status === 'ongoing');
   const showPassengerSecurityAccess = !isTripDriver;
   const passengerSecurityQuickHint = !activeBooking
-    ? 'Ajoutez vos proches de confiance maintenant pour preparer votre suivi.'
+    ? 'Ajoutez d abord vos contacts dans Profil > Parametres > Securite, puis choisissez qui notifier pour ce trajet.'
     : activeBooking.status === 'pending'
-      ? 'Reservation en attente: vous pouvez deja choisir les proches a prevenir.'
+      ? 'Reservation en attente: preparez vos contacts d urgence puis selectionnez ceux a notifier des que disponible.'
       : activeBooking.status === 'accepted'
-        ? 'Avant de monter, ouvrez la securite pour activer le suivi et prevenir vos proches.'
-        : 'Ouvrez la securite pour gerer vos proches et vos alertes de trajet.';
+        ? 'Avant de monter, ouvrez la securite du trajet pour choisir les proches a notifier.'
+        : 'Ouvrez la securite du trajet pour ajuster qui est notifie.';
   const passengerSecurityButtonLabel = canAccessTripSecurity
     ? 'Ouvrir la securite du trajet'
     : 'Connectez-vous pour la securite';
@@ -588,6 +588,18 @@ export default function TripDetailsScreen() {
     void refetchMyBookings();
     void refetchTripBookings();
     setSecurityModalVisible(true);
+  };
+
+  const openEmergencyContacts = () => {
+    if (!user) {
+      showDialog({
+        variant: 'info',
+        title: 'Connexion requise',
+        message: 'Connectez-vous pour gerer vos contacts d urgence.',
+      });
+      return;
+    }
+    router.push('/security');
   };
 
   const closeBookingModal = () => {
@@ -1793,6 +1805,16 @@ export default function TripDetailsScreen() {
                   color={canAccessTripSecurity ? Colors.white : Colors.gray[500]}
                 />
               </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.passengerSecuritySecondaryButton}
+                onPress={openEmergencyContacts}
+                activeOpacity={0.9}
+              >
+                <Ionicons name="people-outline" size={16} color={Colors.primary} />
+                <Text style={styles.passengerSecuritySecondaryButtonText}>
+                  Ajouter ou gerer mes contacts d urgence
+                </Text>
+              </TouchableOpacity>
             </View>
           </Animated.View>
         )}
@@ -1881,6 +1903,16 @@ export default function TripDetailsScreen() {
                 <Text style={styles.securityReminderVehicleLabel}>Vehicule declare</Text>
                 <Text style={styles.securityReminderVehicleValue}>{tripVehicleIdentity}</Text>
               </View>
+              <TouchableOpacity
+                style={styles.driverSecurityActionButton}
+                onPress={openTripSecurityModal}
+                activeOpacity={0.9}
+              >
+                <Ionicons name="shield-checkmark-outline" size={16} color={Colors.primary} />
+                <Text style={styles.driverSecurityActionButtonText}>
+                  Choisir qui notifier sur ce trajet
+                </Text>
+              </TouchableOpacity>
             </View>
           </Animated.View>
         )}
@@ -2148,14 +2180,21 @@ export default function TripDetailsScreen() {
               </TouchableOpacity>
             </View>
             {trip ? (
-              <View style={styles.securityModalBody}>
+              <ScrollView
+                style={styles.securityModalBody}
+                contentContainerStyle={styles.securityModalBodyContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
                 <TripSecurityPanel
                   tripId={trip.id}
                   role={tripSecurityRole}
                   tripStatus={trip.status}
                   bookingId={tripSecurityBookingId}
+                  openSelectorByDefault={securityModalVisible}
+                  compact
                 />
-              </View>
+              </ScrollView>
             ) : (
               <View style={styles.securityModalLoading}>
                 <ActivityIndicator size="small" color={Colors.primary} />
@@ -3138,6 +3177,24 @@ const styles = StyleSheet.create({
   passengerSecurityButtonTextDisabled: {
     color: Colors.gray[600],
   },
+  passengerSecuritySecondaryButton: {
+    marginTop: Spacing.sm,
+    minHeight: 42,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary + '55',
+    backgroundColor: Colors.white,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.md,
+  },
+  passengerSecuritySecondaryButtonText: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
   securityReminderCard: {
     borderColor: Colors.secondary + '35',
     backgroundColor: Colors.secondary + '08',
@@ -3176,6 +3233,24 @@ const styles = StyleSheet.create({
   securityReminderVehicleValue: {
     fontSize: FontSizes.sm,
     color: Colors.gray[900],
+    fontWeight: FontWeights.semibold,
+  },
+  driverSecurityActionButton: {
+    marginTop: Spacing.sm,
+    minHeight: 40,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary + '55',
+    backgroundColor: Colors.white,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.md,
+  },
+  driverSecurityActionButtonText: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
     fontWeight: FontWeights.semibold,
   },
   routeContainer: {
@@ -3617,7 +3692,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
-    height: '84%',
+    height: '78%',
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.md,
   },
@@ -3642,6 +3717,9 @@ const styles = StyleSheet.create({
   },
   securityModalBody: {
     flex: 1,
+  },
+  securityModalBodyContent: {
+    paddingBottom: Spacing.sm,
   },
   securityModalLoading: {
     alignItems: 'center',

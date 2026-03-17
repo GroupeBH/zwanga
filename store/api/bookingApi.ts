@@ -37,6 +37,7 @@ type ServerBooking = {
   droppedOffAt?: string | null;
   droppedOffConfirmedByPassenger?: boolean;
   droppedOffConfirmedAt?: string | null;
+  safetyEmergencyContactIds?: string[] | null;
 };
 
 const formatPassengerName = (passenger?: ServerUser | null) => {
@@ -78,6 +79,7 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
   droppedOffAt: booking.droppedOffAt ?? undefined,
   droppedOffConfirmedByPassenger: booking.droppedOffConfirmedByPassenger ?? false,
   droppedOffConfirmedAt: booking.droppedOffConfirmedAt ?? undefined,
+  safetyEmergencyContactIds: booking.safetyEmergencyContactIds ?? [],
 });
 
 export const bookingApi = baseApi.injectEndpoints({
@@ -201,6 +203,17 @@ export const bookingApi = baseApi.injectEndpoints({
         body: { emergencyContactIds },
       }),
     }),
+    setBookingEmergencyContacts: builder.mutation<
+      WhatsAppNotificationData,
+      { bookingId: string; emergencyContactIds: string[] }
+    >({
+      query: ({ bookingId, emergencyContactIds }: { bookingId: string; emergencyContactIds: string[] }) => ({
+        url: `/bookings/${bookingId}/whatsapp-notification-data`,
+        method: 'POST',
+        body: { emergencyContactIds },
+      }),
+      invalidatesTags: (_result, _error, { bookingId }) => [{ type: 'Booking', id: bookingId }, 'Booking'],
+    }),
 
     // Confirmer la récupération du passager (par le driver)
     confirmPickup: builder.mutation<Booking, string>({
@@ -290,6 +303,7 @@ export const {
   useAcceptBookingMutation,
   useRejectBookingMutation,
   useGetWhatsAppNotificationDataMutation,
+  useSetBookingEmergencyContactsMutation,
   useConfirmPickupMutation,
   useConfirmPickupByPassengerMutation,
   useConfirmDropoffMutation,

@@ -147,6 +147,7 @@ export default function ManageTripScreen() {
   const [selectedPassengerPhone, setSelectedPassengerPhone] = useState<string | null>(null);
   const [selectedPassengerName, setSelectedPassengerName] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [securityModalVisible, setSecurityModalVisible] = useState(false);
 
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
@@ -158,6 +159,14 @@ export default function ManageTripScreen() {
       setRefreshing(false);
     }
   }, [refetchTrip, refetchBookings]);
+
+  const openTripSecurityModal = () => {
+    setSecurityModalVisible(true);
+  };
+
+  const closeTripSecurityModal = () => {
+    setSecurityModalVisible(false);
+  };
 
   // Calculate arrival coordinate for canCompleteTrip
   const arrivalCoordinate = useMemo(
@@ -436,7 +445,7 @@ export default function ManageTripScreen() {
     );
   }
 
-  if (tripLoading || tripFetching) {
+  if (!trip && (tripLoading || tripFetching)) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContent}>
@@ -611,7 +620,37 @@ export default function ManageTripScreen() {
 
         </View>
 
-        <TripSecurityPanel tripId={trip.id} role="driver" tripStatus={trip.status} />
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View>
+              <Text style={styles.sectionTitle}>Securite du trajet</Text>
+              <Text style={styles.sectionSubtitle}>
+                Choisissez clairement les proches a notifier pour ce trajet.
+              </Text>
+            </View>
+            <View style={styles.sectionIconBadge}>
+              <Ionicons name="shield-checkmark-outline" size={18} color={Colors.primary} />
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.securityQuickButton}
+            onPress={openTripSecurityModal}
+            activeOpacity={0.9}
+          >
+            <Ionicons name="people" size={18} color={Colors.white} />
+            <Text style={styles.securityQuickButtonText}>Choisir qui notifier</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.securitySecondaryButton}
+            onPress={() => router.push('/security')}
+            activeOpacity={0.9}
+          >
+            <Ionicons name="settings-outline" size={16} color={Colors.primary} />
+            <Text style={styles.securitySecondaryButtonText}>
+              Ajouter ou gerer mes contacts d urgence
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Liste des passagers */}
         <View style={styles.sectionCard}>
@@ -863,6 +902,51 @@ export default function ManageTripScreen() {
           </TouchableOpacity>
         )}
       </View>
+
+      <Modal
+        animationType="slide"
+        transparent
+        visible={securityModalVisible}
+        onRequestClose={closeTripSecurityModal}
+      >
+        <View style={styles.securityModalOverlay}>
+          <TouchableOpacity
+            style={styles.securityModalBackdrop}
+            activeOpacity={1}
+            onPress={closeTripSecurityModal}
+          />
+          <View
+            style={[
+              styles.securityModalContent,
+              { paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.md },
+            ]}
+          >
+            <View style={styles.securityModalHeader}>
+              <Text style={styles.securityModalTitle}>Securite du trajet</Text>
+              <TouchableOpacity
+                style={styles.securityModalCloseButton}
+                onPress={closeTripSecurityModal}
+              >
+                <Ionicons name="close" size={22} color={Colors.gray[700]} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={styles.securityModalBody}
+              contentContainerStyle={styles.securityModalBodyContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <TripSecurityPanel
+                tripId={trip.id}
+                role="driver"
+                tripStatus={trip.status}
+                openSelectorByDefault={securityModalVisible}
+                compact
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
 
       <Modal animationType="slide" transparent visible={rejectModalVisible}>
@@ -1254,6 +1338,48 @@ const styles = StyleSheet.create({
     color: Colors.gray[500],
     marginTop: 2,
   },
+  sectionIconBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  securityQuickButton: {
+    marginTop: Spacing.xs,
+    minHeight: 44,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: Spacing.md,
+  },
+  securityQuickButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+  },
+  securitySecondaryButton: {
+    marginTop: Spacing.sm,
+    minHeight: 42,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary + '50',
+    backgroundColor: Colors.white,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.md,
+  },
+  securitySecondaryButtonText: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
   actionIconButton: {
     width: 36,
     height: 36,
@@ -1350,6 +1476,47 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: Spacing.md,
     ...CommonStyles.shadowLg,
+  },
+  securityModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'flex-end',
+  },
+  securityModalBackdrop: {
+    flex: 1,
+  },
+  securityModalContent: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    height: '78%',
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.md,
+  },
+  securityModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
+  securityModalTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  securityModalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  securityModalBody: {
+    flex: 1,
+  },
+  securityModalBodyContent: {
+    paddingBottom: Spacing.sm,
   },
   primaryButton: {
     flex: 1,

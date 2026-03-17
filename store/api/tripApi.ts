@@ -60,6 +60,7 @@ export type ServerTrip = {
   currentLocation?: GeoPoint | null;
   lastLocationUpdateAt?: string | null;
   completedAt?: string | null;
+  driverSafetyEmergencyContactIds?: string[];
 };
 
 const fallbackCoordinate = (coords?: CoordinatesTuple): { lat: number; lng: number } | null => {
@@ -212,6 +213,9 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     vehicleId: trip.vehicleId ?? null,
     description: trip.description ?? null,
     vehicle: mapServerVehicleToClient(trip.vehicle),
+    driverSafetyEmergencyContactIds: Array.isArray(trip.driverSafetyEmergencyContactIds)
+      ? trip.driverSafetyEmergencyContactIds
+      : [],
   };
 };
 
@@ -266,6 +270,12 @@ type CreateTripPayload = {
 
 type UpdateTripRequest = Partial<CreateTripPayload> & {
   status?: TripStatus;
+};
+
+type DriverEmergencyContactsResponse = {
+  tripId: string;
+  emergencyContactIds: string[];
+  contacts: { id: string; name: string; phone: string }[];
 };
 
 export const tripApi = baseApi.injectEndpoints({
@@ -428,6 +438,22 @@ export const tripApi = baseApi.injectEndpoints({
         'Trip',
       ],
     }),
+    setDriverEmergencyContacts: builder.mutation<
+      DriverEmergencyContactsResponse,
+      { tripId: string; emergencyContactIds: string[] }
+    >({
+      query: ({ tripId, emergencyContactIds }) => ({
+        url: `/trips/${tripId}/driver-emergency-contacts`,
+        method: 'PUT',
+        body: { emergencyContactIds },
+      }),
+      invalidatesTags: (_result, _error, { tripId }) => [
+        { type: 'Trip', id: tripId },
+        { type: 'MyTrips', id: tripId },
+        'Trip',
+        'MyTrips',
+      ],
+    }),
   }),
 });
 
@@ -446,6 +472,7 @@ export const {
   usePauseTripMutation,
   useUpdateDriverLocationMutation,
   useGetDriverLocationQuery,
+  useSetDriverEmergencyContactsMutation,
 } = tripApi;
 
 

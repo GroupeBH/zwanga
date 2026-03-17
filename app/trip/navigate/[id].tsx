@@ -20,6 +20,7 @@ import {
   Dimensions,
   Modal,
   Platform,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -1452,9 +1453,20 @@ export default function NavigationScreen() {
             </View>
 
             {trip ? (
-              <View style={styles.securityModalBody}>
-                <TripSecurityPanel tripId={trip.id} role="driver" tripStatus={trip.status} />
-              </View>
+              <ScrollView
+                style={styles.securityModalBody}
+                contentContainerStyle={styles.securityModalBodyContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                <TripSecurityPanel
+                  tripId={trip.id}
+                  role="driver"
+                  tripStatus={trip.status}
+                  openSelectorByDefault={securityModalVisible}
+                  compact
+                />
+              </ScrollView>
             ) : (
               <View style={styles.securityModalLoading}>
                 <ActivityIndicator size="small" color={Colors.primary} />
@@ -1976,7 +1988,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
-    height: '86%',
+    height: '78%',
     paddingTop: Spacing.md,
     paddingHorizontal: Spacing.md,
   },
@@ -2001,6 +2013,9 @@ const styles = StyleSheet.create({
   },
   securityModalBody: {
     flex: 1,
+  },
+  securityModalBodyContent: {
+    paddingBottom: Spacing.sm,
   },
   securityModalLoading: {
     paddingVertical: Spacing.xl,

@@ -1,67 +1,40 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import {
-  useConfirmTripSecurityParticipantMutation,
-  useCreateEmergencyContactMutation,
-  useEscalateTripSecurityParticipantMutation,
-  useGetEmergencyContactsQuery,
-  useGetTripSecurityParticipantHistoryQuery,
-  useGetTripSecurityTripParticipantsQuery,
-  useNotifyTripSecurityTrustedContactsMutation,
-  useStartTripSecurityTrackingMutation,
-} from '@/store/api/safetyApi';
-import { useAppSelector } from '@/store/hooks';
-import { selectUser } from '@/store/selectors';
-import type {
-  TripSafetyStatus,
-  TripStatus,
-} from '@/types';
+  useGetBookingByIdQuery,
+  useSetBookingEmergencyContactsMutation,
+} from '@/store/api/bookingApi';
+import { useGetEmergencyContactsQuery } from '@/store/api/safetyApi';
+import {
+  useGetTripByIdQuery,
+  useSetDriverEmergencyContactsMutation,
+} from '@/store/api/tripApi';
+import type { TripStatus } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-
-type ContactActionMode = 'start' | 'notify' | 'manage';
 
 type TripSecurityPanelProps = {
   tripId: string;
   role: 'driver' | 'passenger';
   tripStatus: TripStatus;
   bookingId?: string;
+  openSelectorByDefault?: boolean;
+  compact?: boolean;
 };
-
-const STATUS_LABELS: Record<TripSafetyStatus, string> = {
-  pending: 'En attente',
-  boarded: 'Embarque',
-  in_transit: 'En cours',
-  dropped_off: 'Depose',
-  arrived: 'Arrive',
-  completed: 'Termine',
-  arrival_unconfirmed: 'Arrivee non confirmee',
-  dropoff_unconfirmed: 'Depot non confirme',
-  alerted_contacts: 'Signale aux proches',
-};
-
-const UNCONFIRMED_STATUSES: TripSafetyStatus[] = [
-  'arrival_unconfirmed',
-  'dropoff_unconfirmed',
-  'alerted_contacts',
-];
 
 const parseErrorMessage = (error: unknown, fallback: string): string => {
   if (!error || typeof error !== 'object') {
     return fallback;
   }
-
   const err = error as { data?: { message?: string | string[] }; error?: string };
   const apiMessage = err.data?.message ?? err.error;
   if (Array.isArray(apiMessage)) {
@@ -70,52 +43,7 @@ const parseErrorMessage = (error: unknown, fallback: string): string => {
   if (typeof apiMessage === 'string' && apiMessage.trim().length > 0) {
     return apiMessage;
   }
-
   return fallback;
-};
-
-const formatDateTime = (value: string | null | undefined): string => {
-  if (!value) return 'N/A';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return 'N/A';
-  }
-  return parsed.toLocaleString('fr-FR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
-
-const eventLabel = (type: string): string => {
-  const labels: Record<string, string> = {
-    tracking_created: 'Suivi cree',
-    boarded: 'Embarquement',
-    in_transit: 'Trajet en cours',
-    trusted_contacts_notified: 'Proches notifies',
-    status_changed: 'Changement de statut',
-    confirmation_received: 'Confirmation recue',
-    estimated_end_reached: 'Fin estimee atteinte',
-    auto_trip_end_detected: 'Fin detectee automatiquement',
-    reminder_sent: 'Relance envoyee',
-    escalation_triggered: 'Escalade declenchee',
-    late_confirmation: 'Confirmation tardive',
-    monitoring_cancelled: 'Suivi annule',
-  };
-  return labels[type] ?? type;
-};
-
-const notificationLabel = (type: string): string => {
-  const labels: Record<string, string> = {
-    boarding_shared: 'Partage embarquement',
-    reminder: 'Relance',
-    escalation: 'Escalade',
-    confirmation: 'Confirmation',
-    incident_signal: 'Incident potentiel',
-  };
-  return labels[type] ?? type;
 };
 
 function TripSecurityPanel({
@@ -123,625 +51,377 @@ function TripSecurityPanel({
   role,
   tripStatus,
   bookingId,
+  openSelectorByDefault = false,
+  compact = false,
 }: TripSecurityPanelProps) {
   const router = useRouter();
   const { showDialog } = useDialog();
-  const user = useAppSelector(selectUser);
 
-  const [contactModalVisible, setContactModalVisible] = useState(false);
-  const [contactActionMode, setContactActionMode] = useState<ContactActionMode>('start');
+  const [selectorVisible, setSelectorVisible] = useState(openSelectorByDefault);
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
-  const [historyModalVisible, setHistoryModalVisible] = useState(false);
-  const [showAddContactForm, setShowAddContactForm] = useState(false);
-  const [newContactName, setNewContactName] = useState('');
-  const [newContactPhone, setNewContactPhone] = useState('');
-  const [newContactRelationship, setNewContactRelationship] = useState('');
+  const [savedDriverSelectionOverride, setSavedDriverSelectionOverride] = useState<string[] | null>(null);
 
   const {
     data: emergencyContacts = [],
-    refetch: refetchEmergencyContacts,
+    isLoading: isLoadingContacts,
+    refetch: refetchContacts,
   } = useGetEmergencyContactsQuery(undefined, {
     refetchOnFocus: true,
     refetchOnReconnect: true,
   });
+
   const {
-    data: tripParticipants = [],
-    isFetching: isFetchingParticipants,
-    refetch: refetchParticipants,
-  } = useGetTripSecurityTripParticipantsQuery(tripId, {
-    skip: !tripId || !user?.id,
-    pollingInterval: tripStatus === 'ongoing' ? 15000 : 0,
+    data: trip,
+    refetch: refetchTrip,
+  } = useGetTripByIdQuery(tripId, {
+    skip: role !== 'driver' || !tripId,
     refetchOnFocus: true,
     refetchOnReconnect: true,
   });
 
-  const participant = useMemo(() => {
-    if (!user?.id) return null;
-    const ownParticipants = tripParticipants.filter((item) => item.userId === user.id);
-    if (role === 'driver') {
-      return ownParticipants.find((item) => item.role === 'driver') ?? null;
-    }
-    if (bookingId) {
-      return ownParticipants.find((item) => item.bookingId === bookingId) ?? null;
-    }
-    return ownParticipants.find((item) => item.role === 'passenger') ?? null;
-  }, [tripParticipants, user?.id, role, bookingId]);
-
   const {
-    data: participantHistory,
-    isFetching: isFetchingHistory,
-    refetch: refetchHistory,
-  } = useGetTripSecurityParticipantHistoryQuery(participant?.id ?? '', {
-    skip: !participant?.id || !historyModalVisible,
+    data: booking,
+    isLoading: isLoadingBooking,
+    refetch: refetchBooking,
+  } = useGetBookingByIdQuery(bookingId ?? '', {
+    skip: role !== 'passenger' || !bookingId,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
   });
 
-  const [startTracking, { isLoading: isStartingTracking }] = useStartTripSecurityTrackingMutation();
-  const [notifyTrustedContacts, { isLoading: isNotifyingContacts }] =
-    useNotifyTripSecurityTrustedContactsMutation();
-  const [confirmParticipant, { isLoading: isConfirmingArrival }] =
-    useConfirmTripSecurityParticipantMutation();
-  const [escalateParticipant, { isLoading: isEscalating }] =
-    useEscalateTripSecurityParticipantMutation();
-  const [createEmergencyContact, { isLoading: isAddingContact }] =
-    useCreateEmergencyContactMutation();
+  const [setDriverEmergencyContacts, { isLoading: isSavingDriverSelection }] =
+    useSetDriverEmergencyContactsMutation();
+  const [setBookingEmergencyContacts, { isLoading: isSavingBookingSelection }] =
+    useSetBookingEmergencyContactsMutation();
+
+  const isSaving = isSavingDriverSelection || isSavingBookingSelection;
 
   const activeContacts = useMemo(
     () => emergencyContacts.filter((contact) => contact.isActive),
     [emergencyContacts],
   );
-  const activeContactIds = useMemo(
-    () => activeContacts.map((contact) => contact.id),
-    [activeContacts],
-  );
-  const allActiveSelected =
-    activeContactIds.length > 0 &&
-    activeContactIds.every((contactId) => selectedContactIds.includes(contactId));
-  const selectedCount = selectedContactIds.length;
 
-  const isTrackingStarted = Boolean(participant);
-  const canStartFromContext = role === 'driver' || Boolean(bookingId || participant);
-  const canConfirm = Boolean(participant && participant.status !== 'completed');
-  const canEscalate = Boolean(participant && !participant.isEscalated && participant.status !== 'completed');
-  const isUnconfirmed = Boolean(participant && UNCONFIRMED_STATUSES.includes(participant.status));
-
-  const disableActions =
-    tripStatus === 'cancelled' ||
-    (tripStatus === 'completed' && !participant);
-
-  const resetAddContactForm = () => {
-    setShowAddContactForm(false);
-    setNewContactName('');
-    setNewContactPhone('');
-    setNewContactRelationship('');
-  };
-
-  const openContactModal = async (mode: ContactActionMode) => {
-    await refetchEmergencyContacts();
-    await refetchParticipants();
-
-    let defaults: string[] = [];
-    if (mode === 'notify' && participant?.trustedContacts?.length) {
-      const trustedContactIds = participant.trustedContacts.map(
-        (contact) => contact.emergencyContactId,
-      );
-      defaults = activeContactIds.filter((contactId) => trustedContactIds.includes(contactId));
-    } else if (mode === 'start') {
-      defaults = activeContactIds;
+  const savedSelectionIds = useMemo(() => {
+    if (role === 'driver') {
+      if (savedDriverSelectionOverride) {
+        return savedDriverSelectionOverride;
+      }
+      return trip?.driverSafetyEmergencyContactIds ?? [];
     }
-    setContactActionMode(mode);
+    return booking?.safetyEmergencyContactIds ?? [];
+  }, [
+    role,
+    trip?.driverSafetyEmergencyContactIds,
+    booking?.safetyEmergencyContactIds,
+    savedDriverSelectionOverride,
+  ]);
+
+  const savedSelectionContacts = useMemo(
+    () => activeContacts.filter((contact) => savedSelectionIds.includes(contact.id)),
+    [activeContacts, savedSelectionIds],
+  );
+
+  const isPassengerReadyForSelection = useMemo(() => {
+    if (role !== 'passenger') return true;
+    if (!bookingId || !booking) return false;
+    return booking.status === 'accepted';
+  }, [role, bookingId, booking]);
+
+  const passengerBlockingReason = useMemo(() => {
+    if (role !== 'passenger') return null;
+    if (!bookingId) return 'La selection sera disponible apres creation de reservation.';
+    if (!booking) return 'Chargement de votre reservation...';
+    if (booking.status === 'pending') {
+      return 'La selection sera active des que la reservation est acceptee.';
+    }
+    if (booking.status !== 'accepted') {
+      return `La reservation est ${booking.status}. La configuration n est plus editable.`;
+    }
+    return null;
+  }, [role, bookingId, booking]);
+
+  const openSelector = () => {
+    setSelectorVisible(true);
+    const saved = savedSelectionIds.filter((id) =>
+      activeContacts.some((contact) => contact.id === id),
+    );
+    const defaults = saved.length > 0 ? saved : activeContacts.map((contact) => contact.id);
     setSelectedContactIds(defaults);
-    resetAddContactForm();
-    setContactModalVisible(true);
   };
 
-  const toggleContactSelection = (contactId: string) => {
+  const handlePrimaryAction = () => {
+    if (selectorVisible) {
+      setSelectorVisible(false);
+      return;
+    }
+    openSelector();
+  };
+
+  useEffect(() => {
+    if (openSelectorByDefault) {
+      setSelectorVisible(true);
+    }
+  }, [openSelectorByDefault]);
+
+  useEffect(() => {
+    if (!selectorVisible) {
+      return;
+    }
+    void refetchContacts();
+  }, [selectorVisible, refetchContacts]);
+
+  useEffect(() => {
+    if (!selectorVisible || selectedContactIds.length > 0 || activeContacts.length === 0) {
+      return;
+    }
+    const saved = savedSelectionIds.filter((id) =>
+      activeContacts.some((contact) => contact.id === id),
+    );
+    setSelectedContactIds(saved.length > 0 ? saved : activeContacts.map((contact) => contact.id));
+  }, [selectorVisible, selectedContactIds.length, activeContacts, savedSelectionIds]);
+
+  const toggleContact = (contactId: string) => {
     setSelectedContactIds((current) =>
       current.includes(contactId)
-        ? current.filter((item) => item !== contactId)
+        ? current.filter((id) => id !== contactId)
         : [...current, contactId],
     );
   };
 
-  const selectAllContacts = () => {
-    setSelectedContactIds(activeContactIds);
+  const selectAll = () => {
+    setSelectedContactIds(activeContacts.map((contact) => contact.id));
   };
 
-  const clearSelectedContacts = () => {
+  const clearAll = () => {
     setSelectedContactIds([]);
   };
 
-  useEffect(() => {
-    if (contactModalVisible && activeContacts.length === 0) {
-      setShowAddContactForm(true);
-    }
-  }, [contactModalVisible, activeContacts.length]);
-
-  const handleStartOrNotify = async () => {
-    if (contactActionMode === 'manage') {
-      setContactModalVisible(false);
-      return;
-    }
-
-    if (contactActionMode === 'start' && !canStartFromContext) {
-      showDialog({
-        variant: 'info',
-        title: 'Suivi pas encore disponible',
-        message:
-          role === 'passenger'
-            ? 'Votre reservation n est pas encore acceptee. Ajoutez vos proches maintenant, puis activez le suivi des que la reservation passe en acceptee.'
-            : 'Ajoutez vos proches maintenant. Le suivi sera activable au demarrage du trajet.',
-      });
-      return;
-    }
-
+  const handleSaveSelection = async () => {
     if (selectedContactIds.length === 0) {
       showDialog({
         variant: 'warning',
         title: 'Selection requise',
-        message: 'Choisissez au moins un proche a prevenir.',
+        message: 'Choisissez au moins un contact a notifier.',
       });
       return;
     }
 
     try {
-      if (contactActionMode === 'start') {
-        await startTracking({
+      if (role === 'driver') {
+        await setDriverEmergencyContacts({
           tripId,
+          emergencyContactIds: selectedContactIds,
+        }).unwrap();
+
+        await refetchTrip();
+        setSavedDriverSelectionOverride(selectedContactIds);
+        showDialog({
+          variant: 'success',
+          title: 'Configuration enregistree',
+          message:
+            'Le backend notifiera automatiquement ces contacts au demarrage, a la recuperation, puis a la fin.',
+        });
+      } else {
+        if (!bookingId || !booking || booking.status !== 'accepted') {
+          showDialog({
+            variant: 'info',
+            title: 'Reservation non prete',
+            message:
+              'Cette selection sera possible quand la reservation sera acceptee.',
+          });
+          return;
+        }
+
+        await setBookingEmergencyContacts({
           bookingId,
-          action: role === 'driver' ? 'trip_started' : 'im_boarded',
-          trustedContactIds: selectedContactIds,
-          notifyTrustedContacts: true,
+          emergencyContactIds: selectedContactIds,
         }).unwrap();
-      } else if (participant) {
-        await notifyTrustedContacts({
-          participantId: participant.id,
-          payload: {
-            trustedContactIds: selectedContactIds,
-          },
-        }).unwrap();
+
+        await refetchBooking();
+        showDialog({
+          variant: 'success',
+          title: 'Configuration enregistree',
+          message:
+            'Le backend notifiera automatiquement ces contacts a la recuperation et a la depose.',
+        });
       }
 
-      setContactModalVisible(false);
-      await refetchParticipants();
-
-      showDialog({
-        variant: 'success',
-        title: contactActionMode === 'start' ? 'Suivi active' : 'Proches notifies',
-        message:
-          contactActionMode === 'start'
-            ? 'Le suivi securite est demarre et les proches ont ete notifies.'
-            : 'Les proches selectionnes ont ete notifies.',
-      });
+      setSelectorVisible(false);
     } catch (error) {
       showDialog({
         variant: 'danger',
-        title: 'Operation impossible',
+        title: 'Impossible d enregistrer',
         message: parseErrorMessage(error, 'Une erreur est survenue.'),
       });
     }
   };
 
-  const handleAddEmergencyContact = async () => {
-    const name = newContactName.trim();
-    const phone = newContactPhone.trim();
-    const relationship = newContactRelationship.trim();
+  const isContextLoading = role === 'passenger' ? isLoadingBooking : false;
+  const currentSelectionLabel =
+    savedSelectionContacts.length === 0
+      ? 'Aucun contact selectionne pour ce trajet.'
+      : `${savedSelectionContacts.length} contact(s) selectionne(s) pour ce trajet.`;
 
-    if (!name || !phone) {
-      showDialog({
-        variant: 'warning',
-        title: 'Informations manquantes',
-        message: 'Renseignez au minimum le nom complet et le numero de telephone du proche.',
-      });
-      return;
-    }
-
-    try {
-      const created = await createEmergencyContact({
-        name,
-        phone,
-        relationship: relationship || undefined,
-      }).unwrap();
-
-      await refetchEmergencyContacts();
-      setSelectedContactIds((current) =>
-        current.includes(created.id) ? current : [...current, created.id],
-      );
-      resetAddContactForm();
-
-      showDialog({
-        variant: 'success',
-        title: 'Proche ajoute',
-        message: `${created.name} est maintenant disponible pour le partage du trajet.`,
-      });
-    } catch (error) {
-      showDialog({
-        variant: 'danger',
-        title: 'Ajout impossible',
-        message: parseErrorMessage(error, 'Impossible d ajouter ce proche pour le moment.'),
-      });
-    }
-  };
-
-  const handleConfirm = () => {
-    if (!participant) {
-      showDialog({
-        variant: 'warning',
-        title: 'Suivi non demarre',
-        message: 'Demarrez d abord le suivi securite de votre trajet.',
-      });
-      return;
-    }
-
-    showDialog({
-      variant: 'info',
-      title: role === 'driver' ? 'Confirmer votre arrivee' : 'Confirmer votre depot',
-      message:
-        role === 'driver'
-          ? 'Confirmez-vous etre arrive et avoir termine votre trajet ?'
-          : 'Confirmez-vous avoir ete depose et etre arrive a destination ?',
-      actions: [
-        { label: 'Annuler', variant: 'ghost' },
-        {
-          label: 'Confirmer',
-          variant: 'primary',
-          onPress: async () => {
-            try {
-              await confirmParticipant({
-                participantId: participant.id,
-                payload: {
-                  outcome: role === 'driver' ? 'arrived' : 'dropped_off',
-                },
-              }).unwrap();
-              await refetchParticipants();
-              showDialog({
-                variant: 'success',
-                title: 'Confirmation enregistree',
-                message: 'Votre arrivee/depot a bien ete confirme.',
-              });
-            } catch (error) {
-              showDialog({
-                variant: 'danger',
-                title: 'Confirmation impossible',
-                message: parseErrorMessage(error, 'Impossible de confirmer pour le moment.'),
-              });
-            }
-          },
-        },
-      ],
-    });
-  };
-
-  const handleEscalate = () => {
-    if (!participant) return;
-
-    showDialog({
-      variant: 'warning',
-      title: 'Escalade manuelle',
-      message:
-        'Voulez-vous signaler un incident potentiel maintenant et notifier vos proches immediatement ?',
-      actions: [
-        { label: 'Annuler', variant: 'ghost' },
-        {
-          label: 'Signaler',
-          variant: 'primary',
-          onPress: async () => {
-            try {
-              await escalateParticipant({
-                participantId: participant.id,
-                payload: {
-                  reason: 'incident_potentiel',
-                },
-              }).unwrap();
-              await refetchParticipants();
-              showDialog({
-                variant: 'success',
-                title: 'Escalade envoyee',
-                message: 'Les proches de confiance ont ete alertes.',
-              });
-            } catch (error) {
-              showDialog({
-                variant: 'danger',
-                title: 'Escalade impossible',
-                message: parseErrorMessage(error, 'Impossible d envoyer l alerte pour le moment.'),
-              });
-            }
-          },
-        },
-      ],
-    });
-  };
-
-  const openHistory = async () => {
-    if (!participant) {
-      showDialog({
-        variant: 'warning',
-        title: 'Historique indisponible',
-        message: 'Le suivi securite doit etre demarre avant de consulter un historique.',
-      });
-      return;
-    }
-
-    setHistoryModalVisible(true);
-    await refetchHistory();
-  };
-
-  const statusText = participant ? STATUS_LABELS[participant.status] : 'Non demarre';
-  const isPassenger = role === 'passenger';
-  const passengerNeedsAcceptedBooking =
-    isPassenger && !isTrackingStarted && !canStartFromContext;
-  const primaryActionLabel = isTrackingStarted
-    ? 'Prevenir mes proches'
-    : !canStartFromContext
-      ? 'Ajouter mes proches'
-      : role === 'driver'
-        ? 'Demarrer le suivi'
-        : 'Je monte: demarrer le suivi';
-  const modalPrimaryActionLabel =
-    contactActionMode === 'start'
-      ? role === 'passenger'
-        ? 'Activer le suivi et prevenir'
-        : 'Demarrer le suivi et prevenir'
-      : 'Envoyer la notification';
+  const savedPreview = savedSelectionContacts.map((contact) => contact.name).slice(0, 3).join(', ');
+  const isPrimaryDisabled =
+    isContextLoading ||
+    (role === 'passenger' && !isPassengerReadyForSelection) ||
+    tripStatus === 'cancelled' ||
+    tripStatus === 'completed';
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, compact && styles.cardCompact]}>
       <View style={styles.headerRow}>
-        <View style={styles.headerInfo}>
-          <View style={styles.iconCircle}>
-            <Ionicons name="shield-checkmark-outline" size={18} color={Colors.primary} />
-          </View>
-          <View>
-            <Text style={styles.title}>Securite trajet</Text>
-            <Text style={styles.subtitle}>
-              {role === 'driver'
-                ? 'Suivi individuel conducteur'
-                : 'Suivi individuel passager'}
-            </Text>
-          </View>
+        <View style={styles.headerIconWrap}>
+          <Ionicons name="shield-checkmark-outline" size={18} color={Colors.primary} />
         </View>
-        <View
-          style={[
-            styles.statusBadge,
-            {
-              backgroundColor: isUnconfirmed
-                ? Colors.warning + '20'
-                : participant?.status === 'completed'
-                ? Colors.success + '20'
-                : Colors.gray[100],
-            },
-          ]}
-        >
-          <Text
-            style={[
-              styles.statusText,
-              {
-                color: isUnconfirmed
-                  ? Colors.warning
-                  : participant?.status === 'completed'
-                  ? Colors.success
-                  : Colors.gray[700],
-              },
-            ]}
-          >
-            {statusText}
+        <View style={styles.headerCopy}>
+          <Text style={styles.title}>Securite trajet</Text>
+          <Text style={styles.subtitle}>
+            {compact
+              ? 'Choisissez rapidement les proches a notifier pour ce trajet.'
+              : role === 'driver'
+              ? 'Choisissez les proches a notifier pour ce trajet conducteur, meme pendant la course.'
+              : 'Choisissez les proches a notifier pour cette reservation passager.'}
           </Text>
         </View>
       </View>
 
-      {participant ? (
-        <View style={styles.metaBlock}>
-          <Text style={styles.metaText}>
-            Derniere mise a jour: {formatDateTime(participant.updatedAt)}
-          </Text>
-          <Text style={styles.metaText}>Code suivi: {participant.trackingCode}</Text>
-          <Text style={styles.metaText}>
-            Relance: +{participant.reminderDelayMinutes} min | Escalade: +{participant.escalationDelayMinutes} min
-          </Text>
-        </View>
-      ) : (
-        <View style={styles.guidanceBlock}>
-          {isPassenger ? (
-            <>
-              <Text style={styles.description}>1. Ajoutez les proches qui doivent vous suivre.</Text>
-              <Text style={styles.description}>
-                2. Quand le conducteur accepte votre reservation, activez le suivi.
-              </Text>
-              <Text style={styles.description}>
-                3. Des que vous montez dans le vehicule, appuyez sur Je monte: demarrer le suivi.
-              </Text>
-              {passengerNeedsAcceptedBooking ? (
-                <Text style={styles.guidanceHint}>
-                  Votre reservation n est pas encore acceptee. Vous pouvez deja ajouter vos proches maintenant.
-                </Text>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <Text style={styles.description}>1. Choisissez vos proches de confiance.</Text>
-              <Text style={styles.description}>
-                2. Activez le suivi quand le trajet commence pour leur envoyer votre position.
-              </Text>
-            </>
-          )}
-        </View>
-      )}
-
-      {isPassenger ? (
-        <View style={[styles.noticeCard, styles.noticeCardWarning]}>
-          <View style={styles.noticeHeader}>
-            <Ionicons name="alert-circle-outline" size={18} color={Colors.warning} />
-            <Text style={styles.noticeTitle}>Rappel important pour passager</Text>
-          </View>
-          <Text style={styles.noticeText}>
-            Avant de monter, verifiez que le vehicule devant vous correspond bien au trajet. En cas de doute, ne montez pas et utilisez Signaler.
+      {!compact ? (
+        <View style={styles.flowCard}>
+          <Text style={styles.flowTitle}>Parcours simple</Text>
+          <Text style={styles.flowText}>1. Ajoutez vos contacts dans Profil {'>'} Parametres {'>'} Securite.</Text>
+          <Text style={styles.flowText}>2. Selectionnez ici qui doit suivre ce trajet.</Text>
+          <Text style={styles.flowText}>
+            3. Le backend envoie automatiquement les notifications WhatsApp aux etapes du trajet.
           </Text>
         </View>
       ) : null}
 
-      <View style={styles.actionsGrid}>
-        <TouchableOpacity
-          style={[styles.actionButton, disableActions && styles.actionButtonDisabled]}
-          onPress={() =>
-            openContactModal(
-              isTrackingStarted ? 'notify' : canStartFromContext ? 'start' : 'manage',
-            )
-          }
-          disabled={disableActions}
-          activeOpacity={0.85}
-        >
-          <View style={styles.actionIconWrap}>
-            {isStartingTracking || isNotifyingContacts ? (
-              <ActivityIndicator size="small" color={Colors.primary} />
-            ) : (
-              <Ionicons
-                name={isTrackingStarted ? 'send-outline' : 'checkmark-circle-outline'}
-                size={18}
-                color={Colors.primary}
-              />
-            )}
-          </View>
-          <Text style={styles.actionButtonText}>{primaryActionLabel}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionButton, (!canConfirm || disableActions) && styles.actionButtonDisabled]}
-          onPress={handleConfirm}
-          disabled={!canConfirm || disableActions || isConfirmingArrival}
-          activeOpacity={0.85}
-        >
-          <View style={styles.actionIconWrap}>
-            {isConfirmingArrival ? (
-              <ActivityIndicator size="small" color={Colors.primary} />
-            ) : (
-              <Ionicons name="flag-outline" size={18} color={Colors.primary} />
-            )}
-          </View>
-          <Text style={styles.actionButtonText}>
-            {role === 'driver' ? 'Je suis arrive' : 'Je suis depose'}
+      <View style={styles.selectionCard}>
+        <Text style={styles.selectionLabel}>{currentSelectionLabel}</Text>
+        {savedPreview ? <Text style={styles.selectionPreview}>{savedPreview}</Text> : null}
+        {role === 'driver' && tripStatus === 'ongoing' ? (
+          <Text style={styles.liveEditHint}>
+            Vous pouvez modifier cette selection a tout moment pendant le trajet.
           </Text>
-        </TouchableOpacity>
+        ) : null}
+      </View>
 
-        <TouchableOpacity style={styles.actionButton} onPress={openHistory} activeOpacity={0.85}>
-          <View style={styles.actionIconWrap}>
-            <Ionicons name="time-outline" size={18} color={Colors.primary} />
-          </View>
-          <Text style={styles.actionButtonText}>Historique</Text>
-        </TouchableOpacity>
+      {role === 'passenger' && passengerBlockingReason ? (
+        <View style={styles.warningCard}>
+          <Ionicons name="information-circle-outline" size={16} color={Colors.warning} />
+          <Text style={styles.warningText}>{passengerBlockingReason}</Text>
+        </View>
+      ) : null}
 
+      <View style={[styles.actionsRow, compact && styles.actionsRowCompact]}>
         <TouchableOpacity
-          style={[styles.actionButton, (!canEscalate || disableActions) && styles.actionButtonDisabled]}
-          onPress={handleEscalate}
-          disabled={!canEscalate || disableActions || isEscalating}
+          style={[styles.primaryButton, isPrimaryDisabled && styles.buttonDisabled]}
+          onPress={handlePrimaryAction}
+          disabled={isPrimaryDisabled}
           activeOpacity={0.85}
         >
-          <View style={styles.actionIconWrap}>
-            {isEscalating ? (
-              <ActivityIndicator size="small" color={Colors.primary} />
-            ) : (
-              <Ionicons name="alert-circle-outline" size={18} color={Colors.primary} />
-            )}
-          </View>
-          <Text style={styles.actionButtonText}>Signaler</Text>
-        </TouchableOpacity>
-      </View>
-      <Text style={styles.autoSyncText}>
-        {isFetchingParticipants ? 'Synchronisation en cours...' : 'Synchronisation automatique activee.'}
-      </Text>
-
-      <Modal
-        visible={contactModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setContactModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>
-              {contactActionMode === 'start'
-                ? 'Choisir qui recoit votre suivi'
-                : contactActionMode === 'manage'
-                ? 'Ajouter vos proches de confiance'
-                : 'Envoyer une mise a jour aux proches'}
-            </Text>
-            <Text style={styles.modalSubtitle}>
-              {contactActionMode === 'manage'
-                ? 'Ajoutez des proches maintenant. Vous pourrez activer le suivi des que votre reservation sera acceptee.'
-                : contactActionMode === 'start'
-                ? 'Selectionnez les proches a prevenir puis validez le bouton en bas.'
-                : 'Choisissez les proches qui doivent recevoir une mise a jour de votre trajet.'}
-            </Text>
-
-            <View style={styles.modalGuideCard}>
-              <Text style={styles.modalGuideTitle}>Etapes simples</Text>
-              <Text style={styles.modalGuideStep}>1. Selectionnez un ou plusieurs proches</Text>
-              <Text style={styles.modalGuideStep}>2. Ajoutez un proche si il manque dans la liste</Text>
-              <Text style={styles.modalGuideStep}>
-                3. Appuyez sur {modalPrimaryActionLabel} pour confirmer
+          {isContextLoading ? (
+            <ActivityIndicator size="small" color={Colors.white} />
+          ) : (
+            <>
+              <Ionicons name={selectorVisible ? 'chevron-up' : 'people'} size={16} color={Colors.white} />
+              <Text style={styles.primaryButtonText}>
+                {selectorVisible ? 'Masquer la selection' : 'Choisir qui notifier'}
               </Text>
-            </View>
+            </>
+          )}
+        </TouchableOpacity>
 
-            {activeContacts.length === 0 ? (
-              <View style={styles.emptyContactsBlock}>
-                <Ionicons name="people-outline" size={24} color={Colors.gray[400]} />
-                <Text style={styles.emptyContactsText}>
-                  Aucun proche enregistre pour le moment.
+        {!compact ? (
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => router.push('/security')}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="settings-outline" size={16} color={Colors.primary} />
+            <Text style={styles.secondaryButtonText}>Gerer mes contacts d urgence</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
+      {selectorVisible ? (
+        <View style={[styles.inlineSelectorCard, compact && styles.inlineSelectorCardCompact]}>
+          <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, compact && styles.modalTitleCompact]}>
+                Choisir les contacts a notifier
+              </Text>
+              <TouchableOpacity onPress={() => setSelectorVisible(false)}>
+                <Ionicons name="close" size={22} color={Colors.gray[700]} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.modalSubtitle, compact && styles.modalSubtitleCompact]}>
+              {role === 'driver'
+                ? 'Ces contacts seront utilises automatiquement au demarrage et a la fin de ce trajet.'
+                : 'Ces contacts seront utilises automatiquement a la recuperation et a la depose de ce passager.'}
+            </Text>
+
+            {isLoadingContacts ? (
+              <View style={styles.loadingState}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+                <Text style={styles.loadingText}>Chargement des contacts...</Text>
+              </View>
+            ) : activeContacts.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="people-outline" size={34} color={Colors.gray[400]} />
+                <Text style={styles.emptyTitle}>Aucun contact actif</Text>
+                <Text style={styles.emptyText}>
+                  Ajoutez d abord des contacts d urgence dans Profil {'>'} Parametres {'>'} Securite.
                 </Text>
                 <TouchableOpacity
-                  style={styles.emptyContactsPrimaryButton}
-                  onPress={() => setShowAddContactForm(true)}
-                  activeOpacity={0.85}
+                  style={styles.emptyButton}
+                  onPress={() => {
+                    setSelectorVisible(false);
+                    router.push('/security');
+                  }}
                 >
-                  <Text style={styles.emptyContactsPrimaryText}>Ajouter mon premier proche</Text>
+                  <Text style={styles.emptyButtonText}>Ouvrir Securite</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <>
-                <View style={styles.contactsToolsRow}>
-                  <TouchableOpacity
-                    style={styles.contactsToolButton}
-                    onPress={allActiveSelected ? clearSelectedContacts : selectAllContacts}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.contactsToolButtonText}>
-                      {allActiveSelected ? 'Tout deselectionner' : 'Tout selectionner'}
-                    </Text>
+                <View style={styles.toolsRow}>
+                  <TouchableOpacity style={styles.toolButton} onPress={selectAll}>
+                    <Text style={styles.toolButtonText}>Tout selectionner</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.contactsToolButton}
-                    onPress={clearSelectedContacts}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.contactsToolButtonText}>Vider</Text>
+                  <TouchableOpacity style={styles.toolButton} onPress={clearAll}>
+                    <Text style={styles.toolButtonText}>Tout vider</Text>
                   </TouchableOpacity>
-                  <Text style={styles.selectedCountText}>
-                    {selectedCount}/{activeContacts.length} proche(s) selectionne(s)
-                  </Text>
+                  <Text style={styles.selectedCount}>{selectedContactIds.length} choisis</Text>
                 </View>
 
-                <ScrollView style={styles.contactsList} showsVerticalScrollIndicator={false}>
+                <ScrollView style={[styles.list, compact && styles.listCompact]} showsVerticalScrollIndicator={false}>
                   {activeContacts.map((contact) => {
                     const selected = selectedContactIds.includes(contact.id);
                     return (
                       <TouchableOpacity
                         key={contact.id}
-                        style={[styles.contactRow, selected && styles.contactRowSelected]}
-                        onPress={() => toggleContactSelection(contact.id)}
+                        style={[
+                          styles.contactRow,
+                          compact && styles.contactRowCompact,
+                          selected && styles.contactRowSelected,
+                        ]}
+                        onPress={() => toggleContact(contact.id)}
                         activeOpacity={0.85}
                       >
                         <View style={styles.contactInfo}>
                           <Text style={styles.contactName}>{contact.name}</Text>
                           <Text style={styles.contactPhone}>{contact.phone}</Text>
-                        </View>
-                        <View style={styles.contactSelectionWrap}>
-                          {selected ? (
-                            <Text style={styles.contactSelectedChip}>Selectionne</Text>
+                          {!compact && contact.relationship ? (
+                            <Text style={styles.contactRelationship}>{contact.relationship}</Text>
                           ) : null}
-                          <Ionicons
-                            name={selected ? 'checkbox' : 'square-outline'}
-                            size={20}
-                            color={selected ? Colors.primary : Colors.gray[500]}
-                          />
                         </View>
+                        <Ionicons
+                          name={selected ? 'checkbox' : 'square-outline'}
+                          size={22}
+                          color={selected ? Colors.primary : Colors.gray[400]}
+                        />
                       </TouchableOpacity>
                     );
                   })}
@@ -749,179 +429,42 @@ function TripSecurityPanel({
               </>
             )}
 
-            <TouchableOpacity
-              style={styles.addContactToggleButton}
-              onPress={() => setShowAddContactForm((current) => !current)}
-              activeOpacity={0.85}
-            >
-              <Ionicons
-                name={showAddContactForm ? 'remove-circle-outline' : 'person-add-outline'}
-                size={18}
-                color={Colors.primary}
-              />
-              <Text style={styles.addContactToggleText}>
-                {showAddContactForm ? 'Fermer le formulaire' : 'Ajouter un proche maintenant'}
-              </Text>
-            </TouchableOpacity>
-
-            {showAddContactForm && (
-              <View style={styles.addContactForm}>
-                <TextInput
-                  style={styles.addContactInput}
-                  placeholder="Nom complet du proche"
-                  placeholderTextColor={Colors.gray[400]}
-                  value={newContactName}
-                  onChangeText={setNewContactName}
-                  editable={!isAddingContact}
-                />
-                <TextInput
-                  style={styles.addContactInput}
-                  placeholder="Numero de telephone (appel ou WhatsApp)"
-                  placeholderTextColor={Colors.gray[400]}
-                  value={newContactPhone}
-                  onChangeText={setNewContactPhone}
-                  keyboardType="phone-pad"
-                  editable={!isAddingContact}
-                />
-                <TextInput
-                  style={styles.addContactInput}
-                  placeholder="Lien avec vous (optionnel): soeur, ami, parent"
-                  placeholderTextColor={Colors.gray[400]}
-                  value={newContactRelationship}
-                  onChangeText={setNewContactRelationship}
-                  editable={!isAddingContact}
-                />
-                <TouchableOpacity
-                  style={[
-                    styles.addContactSubmitButton,
-                    isAddingContact && styles.modalButtonDisabled,
-                  ]}
-                  onPress={handleAddEmergencyContact}
-                  disabled={isAddingContact}
-                >
-                  {isAddingContact ? (
-                    <ActivityIndicator size="small" color={Colors.white} />
-                  ) : (
-                    <Text style={styles.addContactSubmitText}>Ajouter ce proche et le selectionner</Text>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.addContactManageButton}
-                  onPress={() => {
-                    setContactModalVisible(false);
-                    router.push('/security');
-                  }}
-                >
-                  <Text style={styles.addContactManageText}>Gerer tous mes proches</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
             <View style={styles.modalActions}>
               <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonSecondary]}
-                onPress={() => setContactModalVisible(false)}
+                style={[styles.modalButton, styles.modalSecondaryButton]}
+                onPress={() => setSelectorVisible(false)}
                 activeOpacity={0.85}
               >
-                <Text style={styles.modalButtonSecondaryText}>
-                  {contactActionMode === 'manage' ? 'Fermer' : 'Annuler'}
-                </Text>
+                <Text style={styles.modalSecondaryButtonText}>Annuler</Text>
               </TouchableOpacity>
-              {contactActionMode !== 'manage' && (
-                <TouchableOpacity
-                  style={[
-                    styles.modalButton,
-                    styles.modalButtonPrimary,
-                    (activeContacts.length === 0 ||
-                      selectedCount === 0 ||
-                      (contactActionMode === 'start' && !canStartFromContext)) &&
-                      styles.modalButtonDisabled,
-                  ]}
-                  onPress={handleStartOrNotify}
-                  disabled={
+              <TouchableOpacity
+                style={[
+                  styles.modalButton,
+                  styles.modalPrimaryButton,
+                  (isSaving ||
                     activeContacts.length === 0 ||
-                    selectedCount === 0 ||
-                    (contactActionMode === 'start' && !canStartFromContext) ||
-                    isStartingTracking ||
-                    isNotifyingContacts
-                  }
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.modalButtonPrimaryText}>
-                    {modalPrimaryActionLabel}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            {contactActionMode === 'start' && !canStartFromContext ? (
-              <View style={styles.modalWarningRow}>
-                <Ionicons name="information-circle-outline" size={16} color={Colors.warning} />
-                <Text style={styles.modalWarningText}>
-                  Votre reservation doit etre acceptee avant activation du suivi. Vous pouvez deja choisir et ajouter vos proches.
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={historyModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setHistoryModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.historyModalCard}>
-            <View style={styles.historyHeader}>
-              <Text style={styles.historyTitle}>Historique securite</Text>
-              <TouchableOpacity onPress={() => setHistoryModalVisible(false)}>
-                <Ionicons name="close" size={22} color={Colors.gray[700]} />
+                    selectedContactIds.length === 0 ||
+                    (role === 'passenger' && !isPassengerReadyForSelection)) &&
+                    styles.buttonDisabled,
+                ]}
+                onPress={handleSaveSelection}
+                disabled={
+                  isSaving ||
+                  activeContacts.length === 0 ||
+                  selectedContactIds.length === 0 ||
+                  (role === 'passenger' && !isPassengerReadyForSelection)
+                }
+                activeOpacity={0.85}
+              >
+                {isSaving ? (
+                  <ActivityIndicator size="small" color={Colors.white} />
+                ) : (
+                  <Text style={styles.modalPrimaryButtonText}>Enregistrer</Text>
+                )}
               </TouchableOpacity>
             </View>
-
-            {isFetchingHistory ? (
-              <View style={styles.historyLoading}>
-                <ActivityIndicator color={Colors.primary} />
-              </View>
-            ) : (
-              <ScrollView style={styles.historyContent} showsVerticalScrollIndicator={false}>
-                {participantHistory?.events?.length ? (
-                  <>
-                    <Text style={styles.historySectionTitle}>Evenements</Text>
-                    {participantHistory.events.map((event) => (
-                      <View key={event.id} style={styles.historyItem}>
-                        <Text style={styles.historyItemTitle}>{eventLabel(event.type)}</Text>
-                        <Text style={styles.historyItemDate}>{formatDateTime(event.occurredAt)}</Text>
-                      </View>
-                    ))}
-                  </>
-                ) : null}
-
-                {participantHistory?.notifications?.length ? (
-                  <>
-                    <Text style={styles.historySectionTitle}>Notifications</Text>
-                    {participantHistory.notifications.map((notification) => (
-                      <View key={notification.id} style={styles.historyItem}>
-                        <Text style={styles.historyItemTitle}>
-                          {notificationLabel(notification.notificationType)} ({notification.channel})
-                        </Text>
-                        <Text style={styles.historyItemDate}>
-                          {formatDateTime(notification.createdAt)} - {notification.status}
-                        </Text>
-                      </View>
-                    ))}
-                  </>
-                ) : null}
-
-                {!participantHistory?.events?.length && !participantHistory?.notifications?.length ? (
-                  <Text style={styles.noHistoryText}>Aucun historique disponible pour le moment.</Text>
-                ) : null}
-              </ScrollView>
-            )}
-          </View>
         </View>
-      </Modal>
+      ) : null}
     </View>
   );
 }
@@ -930,30 +473,29 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.white,
     borderRadius: BorderRadius.xl,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.gray[100],
+    padding: Spacing.md,
+  },
+  cardCompact: {
+    padding: Spacing.sm,
   },
   headerRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: Spacing.sm,
   },
-  headerInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  iconCircle: {
+  headerIconWrap: {
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: Colors.primary + '12',
+    backgroundColor: Colors.primary + '14',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.sm,
+  },
+  headerCopy: {
+    flex: 1,
   },
   title: {
     fontSize: FontSizes.base,
@@ -961,269 +503,252 @@ const styles = StyleSheet.create({
     color: Colors.gray[900],
   },
   subtitle: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
     marginTop: 2,
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: BorderRadius.full,
-    marginLeft: Spacing.sm,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: FontWeights.bold,
-  },
-  description: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    lineHeight: 18,
-    marginBottom: Spacing.xs,
-  },
-  guidanceBlock: {
-    marginBottom: Spacing.sm,
-  },
-  guidanceHint: {
-    marginTop: Spacing.xs,
     fontSize: FontSizes.xs,
-    color: Colors.gray[500],
+    color: Colors.gray[600],
+    lineHeight: 17,
   },
-  noticeCard: {
-    borderWidth: 1,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.sm,
+  flowCard: {
+    marginTop: Spacing.xs,
     marginBottom: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary + '0F',
+    padding: Spacing.sm,
   },
-  noticeCardWarning: {
-    borderColor: Colors.warning + '45',
-    backgroundColor: Colors.warning + '12',
-  },
-  noticeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
-  },
-  noticeTitle: {
+  flowTitle: {
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
+    marginBottom: 4,
   },
-  noticeText: {
+  flowText: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[700],
+    lineHeight: 17,
+    marginBottom: 2,
+  },
+  selectionCard: {
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.gray[50],
+    padding: Spacing.sm,
+  },
+  selectionLabel: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[800],
+    fontWeight: FontWeights.semibold,
+  },
+  selectionPreview: {
+    marginTop: 4,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+  },
+  liveEditHint: {
+    marginTop: 6,
+    fontSize: FontSizes.xs,
+    color: Colors.primary,
+    fontWeight: FontWeights.medium,
+  },
+  warningCard: {
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.warning + '55',
+    backgroundColor: Colors.warning + '12',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  warningText: {
+    flex: 1,
     fontSize: FontSizes.xs,
     lineHeight: 17,
     color: Colors.gray[700],
   },
-  metaBlock: {
-    marginBottom: Spacing.sm,
-    gap: 4,
+  actionsRow: {
+    marginTop: Spacing.sm,
+    gap: Spacing.xs,
   },
-  metaText: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
-  },
-  actionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+  actionsRowCompact: {
     marginTop: Spacing.xs,
-    gap: Spacing.sm,
   },
-  actionButton: {
-    width: '48%',
-    minHeight: 56,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.sm,
+  primaryButton: {
+    minHeight: 44,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
     flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.gray[50],
-  },
-  actionButtonDisabled: {
-    opacity: 0.5,
-  },
-  actionIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: Spacing.sm,
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
+    gap: 8,
+    paddingHorizontal: Spacing.md,
   },
-  actionButtonText: {
-    flex: 1,
+  primaryButtonText: {
+    color: Colors.white,
     fontSize: FontSizes.sm,
-    color: Colors.gray[800],
-    fontWeight: FontWeights.semibold,
-    lineHeight: 18,
+    fontWeight: FontWeights.bold,
   },
-  autoSyncText: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
-    textAlign: 'center',
-    marginTop: 2,
-  },
-  refreshRow: {
+  secondaryButton: {
+    minHeight: 42,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary + '45',
+    backgroundColor: Colors.white,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    marginTop: 2,
+    paddingHorizontal: Spacing.md,
   },
-  refreshText: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
+  secondaryButtonText: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
-    padding: Spacing.md,
+  buttonDisabled: {
+    opacity: 0.55,
   },
-  modalCard: {
+  inlineSelectorCard: {
+    marginTop: Spacing.sm,
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    maxHeight: '82%',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    maxHeight: 520,
+  },
+  inlineSelectorCardCompact: {
+    marginTop: Spacing.xs,
+    padding: Spacing.sm,
+    maxHeight: 390,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
   },
   modalTitle: {
     fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    marginBottom: 4,
+  },
+  modalTitleCompact: {
+    fontSize: FontSizes.base,
   },
   modalSubtitle: {
     fontSize: FontSizes.sm,
     color: Colors.gray[500],
-    marginBottom: Spacing.md,
-  },
-  modalGuideCard: {
-    borderWidth: 1,
-    borderColor: Colors.primary + '25',
-    backgroundColor: Colors.primary + '08',
-    borderRadius: BorderRadius.md,
-    padding: Spacing.sm,
     marginBottom: Spacing.sm,
+    lineHeight: 19,
   },
-  modalGuideTitle: {
+  modalSubtitleCompact: {
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+    marginBottom: Spacing.xs,
+  },
+  loadingState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.lg,
+  },
+  loadingText: {
+    marginTop: Spacing.xs,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.lg,
+  },
+  emptyTitle: {
+    marginTop: Spacing.sm,
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
     color: Colors.gray[800],
-    marginBottom: 4,
   },
-  modalGuideStep: {
+  emptyText: {
+    marginTop: 4,
+    textAlign: 'center',
     fontSize: FontSizes.xs,
-    color: Colors.gray[700],
+    color: Colors.gray[600],
     lineHeight: 17,
   },
-  contactsToolsRow: {
+  emptyButton: {
+    marginTop: Spacing.md,
+    minHeight: 38,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  emptyButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  toolsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.sm,
     gap: Spacing.xs,
+    marginBottom: Spacing.sm,
   },
-  contactsToolButton: {
-    minHeight: 34,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 7,
+  toolButton: {
+    minHeight: 32,
     borderRadius: BorderRadius.sm,
-    backgroundColor: Colors.white,
     borderWidth: 1,
     borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.sm,
   },
-  contactsToolButtonText: {
+  toolButtonText: {
     fontSize: FontSizes.xs,
-    fontWeight: FontWeights.semibold,
     color: Colors.gray[700],
+    fontWeight: FontWeights.semibold,
   },
-  selectedCountText: {
+  selectedCount: {
     marginLeft: 'auto',
     fontSize: FontSizes.xs,
     color: Colors.gray[500],
     fontWeight: FontWeights.semibold,
   },
-  addContactToggleButton: {
-    marginTop: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    minHeight: 40,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.primary + '45',
-    backgroundColor: Colors.primary + '12',
-    paddingHorizontal: Spacing.md,
+  list: {
+    maxHeight: 300,
   },
-  addContactToggleText: {
-    fontSize: FontSizes.sm,
-    color: Colors.primary,
-    fontWeight: FontWeights.semibold,
+  listCompact: {
+    maxHeight: 165,
   },
-  addContactForm: {
-    marginTop: Spacing.sm,
-    gap: Spacing.xs,
-  },
-  addContactInput: {
+  contactRow: {
     borderWidth: 1,
     borderColor: Colors.gray[200],
     borderRadius: BorderRadius.md,
     backgroundColor: Colors.white,
-    color: Colors.gray[900],
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.sm,
-    fontSize: FontSizes.sm,
-  },
-  addContactSubmitButton: {
-    marginTop: Spacing.xs,
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addContactSubmitText: {
-    color: Colors.white,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-  },
-  addContactManageButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 6,
-  },
-  addContactManageText: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[600],
-    fontWeight: FontWeights.medium,
-  },
-  contactsList: {
-    maxHeight: 280,
-  },
-  contactRow: {
+    marginBottom: Spacing.xs,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.md,
-    marginBottom: Spacing.xs,
-    backgroundColor: Colors.white,
+  },
+  contactRowCompact: {
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: Spacing.xs,
   },
   contactRowSelected: {
-    backgroundColor: Colors.primary + '12',
     borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '12',
   },
   contactInfo: {
     flex: 1,
+    marginRight: Spacing.sm,
   },
   contactName: {
     fontSize: FontSizes.base,
@@ -1231,163 +756,44 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.semibold,
   },
   contactPhone: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[500],
     marginTop: 2,
-  },
-  contactSelectionWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginLeft: Spacing.sm,
-  },
-  contactSelectedChip: {
-    fontSize: 10,
-    color: Colors.primary,
-    fontWeight: FontWeights.bold,
-    borderWidth: 1,
-    borderColor: Colors.primary + '45',
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    backgroundColor: Colors.primary + '10',
-    overflow: 'hidden',
-  },
-  emptyContactsBlock: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.lg,
-  },
-  emptyContactsText: {
-    textAlign: 'center',
-    color: Colors.gray[500],
-    marginTop: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  emptyContactsPrimaryButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-  },
-  emptyContactsPrimaryText: {
-    color: Colors.white,
     fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
+    color: Colors.gray[600],
   },
-  manageContactsButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-  },
-  manageContactsButtonText: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
+  contactRelationship: {
+    marginTop: 2,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
   },
   modalActions: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginTop: Spacing.md,
-  },
-  modalWarningRow: {
     marginTop: Spacing.sm,
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-    borderWidth: 1,
-    borderColor: Colors.warning + '35',
-    backgroundColor: Colors.warning + '12',
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-  },
-  modalWarningText: {
-    flex: 1,
-    fontSize: FontSizes.xs,
-    color: Colors.gray[700],
-    lineHeight: 17,
+    gap: Spacing.sm,
   },
   modalButton: {
     flex: 1,
+    minHeight: 44,
     borderRadius: BorderRadius.md,
-    minHeight: 46,
-    paddingVertical: Spacing.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalButtonPrimary: {
-    backgroundColor: Colors.primary,
-  },
-  modalButtonSecondary: {
-    backgroundColor: Colors.white,
+  modalSecondaryButton: {
     borderWidth: 1,
     borderColor: Colors.gray[300],
-  },
-  modalButtonDisabled: {
-    opacity: 0.55,
-  },
-  modalButtonPrimaryText: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
-  },
-  modalButtonSecondaryText: {
-    color: Colors.gray[700],
-    fontWeight: FontWeights.bold,
-  },
-  historyModalCard: {
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    maxHeight: '85%',
   },
-  historyHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  historyTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  historyLoading: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.lg,
-  },
-  historyContent: {
-    maxHeight: 420,
-  },
-  historySectionTitle: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    marginTop: Spacing.sm,
-    marginBottom: Spacing.xs,
-  },
-  historyItem: {
-    borderWidth: 1,
-    borderColor: Colors.gray[100],
-    borderRadius: BorderRadius.md,
-    padding: Spacing.sm,
-    marginBottom: Spacing.xs,
-  },
-  historyItemTitle: {
+  modalSecondaryButtonText: {
+    color: Colors.gray[700],
     fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[800],
+    fontWeight: FontWeights.bold,
   },
-  historyItemDate: {
-    marginTop: 2,
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
+  modalPrimaryButton: {
+    backgroundColor: Colors.primary,
   },
-  noHistoryText: {
-    textAlign: 'center',
-    color: Colors.gray[500],
-    marginTop: Spacing.md,
+  modalPrimaryButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
   },
 });
 

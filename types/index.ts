@@ -88,6 +88,7 @@ export interface Trip {
   vehicleId?: string | null; // ID du véhicule associé
   description?: string | null; // Description du trajet
   vehicle?: Vehicle; // Informations complètes du véhicule
+  driverSafetyEmergencyContactIds?: string[];
 }
 
 export interface Passenger {
@@ -129,6 +130,7 @@ export interface Booking {
   droppedOffAt?: string | null;
   droppedOffConfirmedByPassenger?: boolean;
   droppedOffConfirmedAt?: string | null;
+  safetyEmergencyContactIds?: string[];
 }
 
 export interface BasicUserInfo {
