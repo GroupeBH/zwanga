@@ -112,6 +112,9 @@ export const baseApi = createApi({
     'UserReport',
     'KycStatus',
     'FavoriteLocations',
+    'TripSafetyParticipant',
+    'TripSafetyHistory',
+    'TripSafetyTrip',
   ],
   endpoints: () => ({}),
 });

@@ -1,10 +1,10 @@
 import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardModal';
 import LocationPickerModal, { type MapLocationSelection } from '@/components/LocationPickerModal';
+import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
-import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackingSocket } from '@/services/trackingSocket';
 import {
@@ -23,7 +23,7 @@ import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
 import type { BookingStatus, GeoPoint } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
-import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
+import { openWhatsApp } from '@/utils/phoneHelpers';
 import { getRouteInfo, isPointOnRoute, splitRouteByProgress, type RouteInfo } from '@/utils/routeHelpers';
 import { shareTrip, shareTripViaWhatsApp } from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
@@ -147,7 +147,6 @@ export default function TripDetailsScreen() {
   const trip = tripFromApi || tripFromStore;
 
   const user = useAppSelector(selectUser);
-  const { checkIdentity, isIdentityVerified } = useIdentityCheck();
   const { showDialog } = useDialog();
   const driverPhone = trip?.driver?.phone ?? null;
   // console.log('driverPhone', driverPhone);
@@ -208,6 +207,7 @@ export default function TripDetailsScreen() {
   const [showOriginPicker, setShowOriginPicker] = useState(false);
   const [passengerDestination, setPassengerDestination] = useState<MapLocationSelection | null>(null);
   const [showDestinationPicker, setShowDestinationPicker] = useState(false);
+  const [shouldAutofillPassengerOrigin, setShouldAutofillPassengerOrigin] = useState(false);
   const [isValidatingDestination, setIsValidatingDestination] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState<{ visible: boolean; seats: number }>({
     visible: false,
@@ -230,12 +230,15 @@ export default function TripDetailsScreen() {
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [contactModalVisible, setContactModalVisible] = useState(false);
   const [shareModalVisible, setShareModalVisible] = useState(false);
+  const [securityModalVisible, setSecurityModalVisible] = useState(false);
   const [kycFrontImage, setKycFrontImage] = useState<string | null>(null);
   const [kycBackImage, setKycBackImage] = useState<string | null>(null);
   const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
   const [kycSubmitting, setKycSubmitting] = useState(false);
   const {
     data: kycStatus,
+    isLoading: kycStatusLoading,
+    isFetching: kycStatusFetching,
     refetch: refetchKycStatus,
   } = useGetKycStatusQuery();
   const [uploadKyc, { isLoading: uploadingKyc }] = useUploadKycMutation();
@@ -272,6 +275,7 @@ export default function TripDetailsScreen() {
 
   const refreshBookingLists = () => {
     refetchMyBookings();
+    refetchTripBookings();
   };
 
   useEffect(() => {
@@ -327,8 +331,13 @@ export default function TripDetailsScreen() {
     );
   }, [myBookings, trip]);
   const hasAcceptedBooking = activeBooking?.status === 'accepted';
-  // Permettre le suivi si : conducteur, passager accepté, ou via lien partagé (track=true)
-  const canTrackTrip = Boolean(trip && user && (isTripDriver || hasAcceptedBooking || trackParam));
+  // Activer le suivi live uniquement pour un trajet en cours.
+  const canTrackTrip = Boolean(
+    trip &&
+    trip.status === 'ongoing' &&
+    user &&
+    (isTripDriver || hasAcceptedBooking || trackParam)
+  );
 
   useEffect(() => {
     if (!trip || !canTrackTrip) {
@@ -367,7 +376,7 @@ export default function TripDetailsScreen() {
       unsubscribeLocation();
       unsubscribeErrors();
     };
-  }, [trip?.id, canTrackTrip]);
+  }, [trip?.id, trip?.status, canTrackTrip]);
 
   useEffect(() => {
     if (!trip || !isTripDriver || trip.status !== 'ongoing') {
@@ -425,14 +434,172 @@ export default function TripDetailsScreen() {
   const activeBookingStatus = activeBooking && activeBooking.status in BOOKING_STATUS_CONFIG
     ? BOOKING_STATUS_CONFIG[activeBooking.status as keyof typeof BOOKING_STATUS_CONFIG]
     : null;
+  const canAccessTripSecurity = Boolean(trip && user);
+  const tripSecurityRole: 'driver' | 'passenger' = isTripDriver ? 'driver' : 'passenger';
+  const tripSecurityBookingId = isTripDriver ? undefined : activeBooking?.id;
+  const tripVehicleIdentity = useMemo(() => {
+    if (!trip) return 'Informations vehicule indisponibles.';
+    if (trip.vehicle) {
+      const parts = [`${trip.vehicle.brand} ${trip.vehicle.model}`.trim()];
+      if (trip.vehicle.color) {
+        parts.push(trip.vehicle.color);
+      }
+      if (trip.vehicle.licensePlate) {
+        parts.push(`Plaque ${trip.vehicle.licensePlate}`);
+      }
+      return parts.filter(Boolean).join(' • ');
+    }
+    return trip.vehicleInfo || 'Informations vehicule indisponibles.';
+  }, [trip]);
+  const showPassengerVehicleReminder =
+    !isTripDriver &&
+    Boolean(activeBooking && (activeBooking.status === 'pending' || activeBooking.status === 'accepted'));
+  const showDriverVehicleReminder = isTripDriver && (trip?.status === 'upcoming' || trip?.status === 'ongoing');
+  const showPassengerSecurityAccess = !isTripDriver;
+  const passengerSecurityQuickHint = !activeBooking
+    ? 'Ajoutez d abord vos contacts dans Profil > Parametres > Securite, puis choisissez qui notifier pour ce trajet.'
+    : activeBooking.status === 'pending'
+      ? 'Reservation en attente: preparez vos contacts d urgence puis selectionnez ceux a notifier des que disponible.'
+      : activeBooking.status === 'accepted'
+        ? 'Avant de monter, ouvrez la securite du trajet pour choisir les proches a notifier.'
+        : 'Ouvrez la securite du trajet pour ajuster qui est notifie.';
+  const passengerSecurityButtonLabel = canAccessTripSecurity
+    ? 'Ouvrir la securite du trajet'
+    : 'Connectez-vous pour la securite';
+  const defaultPassengerOriginSelection = useMemo<MapLocationSelection | null>(() => {
+    const latitude = Number(lastKnownLocation?.coords?.latitude);
+    const longitude = Number(lastKnownLocation?.coords?.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+    return {
+      title: 'Ma position actuelle',
+      address: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
+      latitude,
+      longitude,
+    };
+  }, [lastKnownLocation?.coords?.latitude, lastKnownLocation?.coords?.longitude]);
+  const defaultPassengerDestinationSelection = useMemo<MapLocationSelection | null>(() => {
+    const latitude = Number(trip?.arrival?.lat);
+    const longitude = Number(trip?.arrival?.lng);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+    return {
+      title: trip?.arrival?.name || 'Arrivee du trajet',
+      address: trip?.arrival?.address || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
+      latitude,
+      longitude,
+    };
+  }, [trip?.arrival?.address, trip?.arrival?.lat, trip?.arrival?.lng, trip?.arrival?.name]);
+  const isKycApproved = kycStatus?.status === 'approved';
+  const isKycPending = kycStatus?.status === 'pending';
+  const isKycRejected = kycStatus?.status === 'rejected';
+  const isKycStatusBusy = kycStatusLoading || kycStatusFetching;
+  const kycBookingLockLabel = isKycStatusBusy
+    ? 'Verification KYC en cours...'
+    : isKycPending
+      ? 'KYC en cours de verification'
+      : isKycRejected
+        ? 'KYC refuse - reprendre'
+        : 'KYC requis pour reserver';
+
+  const ensureKycForBooking = () => {
+    if (isKycApproved) {
+      return true;
+    }
+
+    if (isKycStatusBusy) {
+      showDialog({
+        variant: 'info',
+        title: 'Verification KYC en cours',
+        message: 'Nous verifions votre statut KYC. Reessayez dans quelques secondes.',
+      });
+      return false;
+    }
+
+    if (isKycPending) {
+      showDialog({
+        variant: 'info',
+        title: 'KYC en attente',
+        message:
+          'Vos documents sont en cours de verification. Vous pourrez reserver ce trajet apres validation du KYC.',
+        actions: [
+          { label: 'Compris', variant: 'ghost' },
+          { label: 'Voir mon statut', variant: 'primary', onPress: () => router.push('/profile') },
+        ],
+      });
+      return false;
+    }
+
+    if (isKycRejected) {
+      showDialog({
+        variant: 'warning',
+        title: 'KYC requis',
+        message:
+          'Votre verification KYC a ete rejetee. Merci de reprendre le parcours KYC pour reserver ce trajet.',
+        actions: [
+          { label: 'Plus tard', variant: 'ghost' },
+          { label: 'Reprendre KYC', variant: 'primary', onPress: () => setKycWizardVisible(true) },
+        ],
+      });
+      return false;
+    }
+
+    showDialog({
+      variant: 'warning',
+      title: 'KYC requis',
+      message: 'Pour reserver un trajet, vous devez verifier votre identite (piece + selfie).',
+      actions: [
+        { label: 'Plus tard', variant: 'ghost' },
+        { label: 'Commencer KYC', variant: 'primary', onPress: () => setKycWizardVisible(true) },
+      ],
+    });
+    return false;
+  };
+
   const openBookingModal = () => {
-    // KYC désactivé pour la réservation - permettre la réservation sans vérification
+    if (!ensureKycForBooking()) {
+      return;
+    }
+    const autoOrigin = defaultPassengerOriginSelection;
     setBookingSeats('1');
     setBookingModalError('');
-    setPassengerOrigin(null);
-    setPassengerDestination(null);
+    setPassengerOrigin(autoOrigin);
+    setPassengerDestination(defaultPassengerDestinationSelection);
+    setShouldAutofillPassengerOrigin(!autoOrigin);
     setBookingStep(1);
     setBookingModalVisible(true);
+    if (!autoOrigin) {
+      void requestDriverLocationPermission();
+    }
+  };
+
+  const openTripSecurityModal = () => {
+    if (!canAccessTripSecurity) {
+      showDialog({
+        variant: 'info',
+        title: 'Securite indisponible',
+        message: 'Connectez-vous pour gerer vos proches et le suivi securite.',
+      });
+      return;
+    }
+    void refetchTrip();
+    void refetchMyBookings();
+    void refetchTripBookings();
+    setSecurityModalVisible(true);
+  };
+
+  const openEmergencyContacts = () => {
+    if (!user) {
+      showDialog({
+        variant: 'info',
+        title: 'Connexion requise',
+        message: 'Connectez-vous pour gerer vos contacts d urgence.',
+      });
+      return;
+    }
+    router.push('/security');
   };
 
   const closeBookingModal = () => {
@@ -441,7 +608,26 @@ export default function TripDetailsScreen() {
     }
     setBookingModalVisible(false);
     setBookingStep(1);
+    setShouldAutofillPassengerOrigin(false);
   };
+
+  useEffect(() => {
+    if (
+      !bookingModalVisible ||
+      !shouldAutofillPassengerOrigin ||
+      passengerOrigin ||
+      !defaultPassengerOriginSelection
+    ) {
+      return;
+    }
+    setPassengerOrigin(defaultPassengerOriginSelection);
+    setShouldAutofillPassengerOrigin(false);
+  }, [
+    bookingModalVisible,
+    shouldAutofillPassengerOrigin,
+    passengerOrigin,
+    defaultPassengerOriginSelection,
+  ]);
 
   const goToNextBookingStep = () => {
     if (bookingStep === 1) {
@@ -564,6 +750,10 @@ export default function TripDetailsScreen() {
     if (isBooking || !trip || isValidatingDestination) {
       return;
     }
+    if (!ensureKycForBooking()) {
+      setBookingModalError('Votre KYC doit etre valide avant de reserver ce trajet.');
+      return;
+    }
     const seatsValue = parseInt(bookingSeats, 10);
     if (Number.isNaN(seatsValue) || seatsValue <= 0) {
       setBookingModalError('Veuillez indiquer un nombre de places valide.');
@@ -577,8 +767,22 @@ export default function TripDetailsScreen() {
       return;
     }
 
-    // Valider la destination si elle est fournie
-    if (passengerDestination) {
+    const tripArrivalLatitude = Number(trip.arrival?.lat);
+    const tripArrivalLongitude = Number(trip.arrival?.lng);
+    const hasTripArrivalCoordinates =
+      Number.isFinite(tripArrivalLatitude) && Number.isFinite(tripArrivalLongitude);
+    const isDefaultTripArrivalDestination = Boolean(
+      passengerDestination &&
+      hasTripArrivalCoordinates &&
+      Math.abs(passengerDestination.latitude - tripArrivalLatitude) < 0.000001 &&
+      Math.abs(passengerDestination.longitude - tripArrivalLongitude) < 0.000001,
+    );
+    const hasCustomPassengerDestination = Boolean(
+      passengerDestination && !isDefaultTripArrivalDestination,
+    );
+
+    // Valider la destination seulement si le passager a choisi une destination personnalisée
+    if (hasCustomPassengerDestination && passengerDestination) {
       setIsValidatingDestination(true);
       setBookingModalError('');
 
@@ -625,8 +829,10 @@ export default function TripDetailsScreen() {
             longitude: passengerOrigin.longitude,
           }
           : undefined,
-        passengerDestination: passengerDestination?.title || passengerDestination?.address,
-        passengerDestinationCoordinates: passengerDestination
+        passengerDestination: hasCustomPassengerDestination
+          ? passengerDestination?.title || passengerDestination?.address
+          : undefined,
+        passengerDestinationCoordinates: hasCustomPassengerDestination && passengerDestination
           ? {
             latitude: passengerDestination.latitude,
             longitude: passengerDestination.longitude,
@@ -637,6 +843,7 @@ export default function TripDetailsScreen() {
       setBookingModalError('');
       setPassengerOrigin(null);
       setPassengerDestination(null);
+      setShouldAutofillPassengerOrigin(false);
       setBookingStep(1);
       openBookingSuccessModal(seatsValue);
       refreshBookingLists();
@@ -1055,12 +1262,25 @@ export default function TripDetailsScreen() {
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Détails du trajet</Text>
-          <TouchableOpacity
-            onPress={() => setShareModalVisible(true)}
-            style={styles.shareButton}
-          >
-            <Ionicons name="share-outline" size={24} color={Colors.primary} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              onPress={openTripSecurityModal}
+              style={[styles.shareButton, !canAccessTripSecurity && styles.shareButtonDisabled]}
+              disabled={!canAccessTripSecurity}
+            >
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={22}
+                color={canAccessTripSecurity ? Colors.primary : Colors.gray[400]}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setShareModalVisible(true)}
+              style={styles.shareButton}
+            >
+              <Ionicons name="share-outline" size={24} color={Colors.primary} />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -1446,17 +1666,17 @@ export default function TripDetailsScreen() {
                 }}
               >
                 <Ionicons
-                  name="call"
+                  name="logo-whatsapp"
                   size={18}
-                  color={driverPhone ? Colors.success : Colors.gray[300]}
+                  color={driverPhone ? '#25D366' : Colors.gray[300]}
                 />
                 <Text
                   style={[
                     styles.driverActionText,
-                    { color: driverPhone ? Colors.success : Colors.gray[400] },
+                    { color: driverPhone ? '#25D366' : Colors.gray[400] },
                   ]}
                 >
-                  Appeler
+                  WhatsApp
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1542,6 +1762,63 @@ export default function TripDetailsScreen() {
           </View>
         </Animated.View>
 
+        {showPassengerSecurityAccess && (
+          <Animated.View entering={FadeInDown.delay(460)} style={styles.section}>
+            <View style={[styles.sectionCard, styles.passengerSecurityCard]}>
+              <View style={styles.passengerSecurityHeader}>
+                <View style={styles.passengerSecurityIconWrap}>
+                  <Ionicons name="shield-checkmark-outline" size={20} color={Colors.primary} />
+                </View>
+                <View style={styles.passengerSecurityHeaderCopy}>
+                  <Text style={styles.passengerSecurityTitle}>SECURITE PASSAGER</Text>
+                  <Text style={styles.passengerSecuritySubtitle}>
+                    Proches, suivi live et alerte en un seul endroit.
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.passengerSecurityHintText}>{passengerSecurityQuickHint}</Text>
+              <TouchableOpacity
+                style={[
+                  styles.passengerSecurityButton,
+                  !canAccessTripSecurity && styles.passengerSecurityButtonDisabled,
+                ]}
+                onPress={openTripSecurityModal}
+                disabled={!canAccessTripSecurity}
+                activeOpacity={0.9}
+              >
+                <Ionicons
+                  name="shield-checkmark"
+                  size={18}
+                  color={canAccessTripSecurity ? Colors.white : Colors.gray[500]}
+                />
+                <Text
+                  style={[
+                    styles.passengerSecurityButtonText,
+                    !canAccessTripSecurity && styles.passengerSecurityButtonTextDisabled,
+                  ]}
+                >
+                  {passengerSecurityButtonLabel}
+                </Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={canAccessTripSecurity ? Colors.white : Colors.gray[500]}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.passengerSecuritySecondaryButton}
+                onPress={openEmergencyContacts}
+                activeOpacity={0.9}
+              >
+                <Ionicons name="people-outline" size={16} color={Colors.primary} />
+                <Text style={styles.passengerSecuritySecondaryButtonText}>
+                  Ajouter ou gerer mes contacts d urgence
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        )}
+
         {/* Passagers */}
         {tripBookings && tripBookings.length > 0 && (
           <Animated.View entering={FadeInDown.delay(500)} style={styles.section}>
@@ -1593,6 +1870,52 @@ export default function TripDetailsScreen() {
             </View>
           </Animated.View>
         )}
+
+        {showPassengerVehicleReminder && (
+          <Animated.View entering={FadeInDown.delay(550)} style={styles.section}>
+            <View style={[styles.sectionCard, styles.securityReminderCard]}>
+              <View style={styles.securityReminderHeader}>
+                <Ionicons name="shield-checkmark" size={20} color={Colors.secondary} />
+                <Text style={styles.securityReminderTitle}>Verification avant embarquement</Text>
+              </View>
+              <Text style={styles.securityReminderText}>
+                Avant de monter, verifiez que le vehicule devant vous correspond exactement a celui du trajet.
+              </Text>
+              <View style={styles.securityReminderVehicleBox}>
+                <Text style={styles.securityReminderVehicleLabel}>Vehicule attendu</Text>
+                <Text style={styles.securityReminderVehicleValue}>{tripVehicleIdentity}</Text>
+              </View>
+            </View>
+          </Animated.View>
+        )}
+
+        {showDriverVehicleReminder && (
+          <Animated.View entering={FadeInDown.delay(560)} style={styles.section}>
+            <View style={[styles.sectionCard, styles.securityReminderCard]}>
+              <View style={styles.securityReminderHeader}>
+                <Ionicons name="car-sport" size={20} color={Colors.primary} />
+                <Text style={styles.securityReminderTitle}>Rappel securite conducteur</Text>
+              </View>
+              <Text style={styles.securityReminderText}>
+                Assurez-vous de conduire le vehicule indique ci-dessous. Si vous changez de vehicule, mettez a jour le trajet avant de recuperer un passager.
+              </Text>
+              <View style={styles.securityReminderVehicleBox}>
+                <Text style={styles.securityReminderVehicleLabel}>Vehicule declare</Text>
+                <Text style={styles.securityReminderVehicleValue}>{tripVehicleIdentity}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.driverSecurityActionButton}
+                onPress={openTripSecurityModal}
+                activeOpacity={0.9}
+              >
+                <Ionicons name="shield-checkmark-outline" size={16} color={Colors.primary} />
+                <Text style={styles.driverSecurityActionButtonText}>
+                  Choisir qui notifier sur ce trajet
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        )}
       </ScrollView>
 
       {/* Sticky Footer for Actions */}
@@ -1604,7 +1927,10 @@ export default function TripDetailsScreen() {
           const canBook = trip?.status !== 'completed' &&
             trip?.status !== 'cancelled' &&
             !isExpired &&
-            (trip?.status === 'upcoming' || (trip?.status === 'ongoing' && availableSeats > 0));
+            (
+              trip?.status === 'upcoming' ||
+              (trip?.status === 'ongoing' && (availableSeats > 0 || Boolean(activeBooking && activeBookingStatus)))
+            );
 
           if (canBook) {
             return (
@@ -1671,7 +1997,9 @@ export default function TripDetailsScreen() {
                             {isConfirmingPickup ? <ActivityIndicator size="small" color={Colors.white} /> : (
                               <>
                                 <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
-                                <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Confirmer</Text>
+                                <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>
+                                  Confirmer prise en charge
+                                </Text>
                               </>
                             )}
                           </TouchableOpacity>
@@ -1712,8 +2040,8 @@ export default function TripDetailsScreen() {
                               style={[styles.bookingActionButton, styles.bookingActionCall]}
                               onPress={() => setContactModalVisible(true)}
                             >
-                              <Ionicons name="call" size={18} color={Colors.success} />
-                              <Text style={[styles.bookingActionText, styles.bookingActionCallText]}>Appeler</Text>
+                              <Ionicons name="logo-whatsapp" size={18} color={'#25D366'} />
+                              <Text style={[styles.bookingActionText, styles.bookingActionCallText]}>WhatsApp</Text>
                             </TouchableOpacity>
                           )}
 
@@ -1733,6 +2061,43 @@ export default function TripDetailsScreen() {
                             </TouchableOpacity>
                           )}
                       </View>
+                      {!isTripDriver && (
+                        <TouchableOpacity
+                          style={[
+                            styles.bookingSecurityQuickButton,
+                            !canAccessTripSecurity && styles.bookingSecurityQuickButtonDisabled,
+                          ]}
+                          onPress={openTripSecurityModal}
+                          disabled={!canAccessTripSecurity}
+                          activeOpacity={0.9}
+                        >
+                          <View style={styles.bookingSecurityQuickIcon}>
+                            <Ionicons
+                              name="shield-checkmark-outline"
+                              size={18}
+                              color={canAccessTripSecurity ? Colors.primary : Colors.gray[400]}
+                            />
+                          </View>
+                          <View style={styles.bookingSecurityQuickCopy}>
+                            <Text
+                              style={[
+                                styles.bookingSecurityQuickTitle,
+                                !canAccessTripSecurity && styles.bookingSecurityQuickTitleDisabled,
+                              ]}
+                            >
+                              Securite du trajet
+                            </Text>
+                            <Text style={styles.bookingSecurityQuickSubtitle}>
+                              Choisir proches, activer suivi, envoyer alerte
+                            </Text>
+                          </View>
+                          <Ionicons
+                            name="chevron-forward"
+                            size={18}
+                            color={canAccessTripSecurity ? Colors.primary : Colors.gray[400]}
+                          />
+                        </TouchableOpacity>
+                      )}
                     </View>
                   )
                 ) : availableSeats <= 0 ? (
@@ -1740,6 +2105,14 @@ export default function TripDetailsScreen() {
                     <Ionicons name="close-circle" size={20} color={Colors.white} />
                     <Text style={styles.actionButtonText}>Complet • Plus de places disponibles</Text>
                   </View>
+                ) : !isKycApproved ? (
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.actionButtonKycRequired]}
+                    onPress={ensureKycForBooking}
+                  >
+                    <Ionicons name="shield-checkmark-outline" size={20} color={Colors.white} />
+                    <Text style={styles.actionButtonText}>{kycBookingLockLabel}</Text>
+                  </TouchableOpacity>
                 ) : (
                   <TouchableOpacity
                     style={styles.actionButton}
@@ -1778,6 +2151,59 @@ export default function TripDetailsScreen() {
           return null;
         })()}
       </View>
+
+      <Modal
+        visible={securityModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSecurityModalVisible(false)}
+      >
+        <View style={styles.securityModalOverlay}>
+          <TouchableOpacity
+            style={styles.securityModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setSecurityModalVisible(false)}
+          />
+          <View
+            style={[
+              styles.securityModalContent,
+              { paddingBottom: Math.max(insets.bottom, 16) + 16 },
+            ]}
+          >
+            <View style={styles.securityModalHeader}>
+              <Text style={styles.securityModalTitle}>Securite du trajet</Text>
+              <TouchableOpacity
+                style={styles.securityModalCloseButton}
+                onPress={() => setSecurityModalVisible(false)}
+              >
+                <Ionicons name="close" size={22} color={Colors.gray[700]} />
+              </TouchableOpacity>
+            </View>
+            {trip ? (
+              <ScrollView
+                style={styles.securityModalBody}
+                contentContainerStyle={styles.securityModalBodyContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                <TripSecurityPanel
+                  tripId={trip.id}
+                  role={tripSecurityRole}
+                  tripStatus={trip.status}
+                  bookingId={tripSecurityBookingId}
+                  openSelectorByDefault={securityModalVisible}
+                  compact
+                />
+              </ScrollView>
+            ) : (
+              <View style={styles.securityModalLoading}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+                <Text style={styles.securityModalLoadingText}>Chargement securite...</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       <Modal animationType="fade" transparent visible={bookingModalVisible}>
         <View style={styles.bookingModalOverlay}>
@@ -1844,7 +2270,7 @@ export default function TripDetailsScreen() {
               <>
                 <Text style={styles.bookingModalTitle}>Point de récupération</Text>
                 <Text style={styles.bookingModalDescription}>
-                  Où souhaitez-vous être récupéré ?
+                  Votre position actuelle est utilisee automatiquement. Vous pouvez la modifier si besoin.
                 </Text>
 
                 <View style={styles.bookingDestinationSection}>
@@ -1870,13 +2296,14 @@ export default function TripDetailsScreen() {
                     >
                       {passengerOrigin
                         ? passengerOrigin.title || passengerOrigin.address
-                        : 'Sélectionner mon point de récupération'}
+                        : 'Utiliser ma position actuelle'}
                     </Text>
                     {passengerOrigin && (
                       <TouchableOpacity
                         onPress={(e) => {
                           e.stopPropagation();
                           setPassengerOrigin(null);
+                          setShouldAutofillPassengerOrigin(false);
                         }}
                         style={styles.bookingDestinationRemoveButton}
                       >
@@ -1885,7 +2312,7 @@ export default function TripDetailsScreen() {
                     )}
                   </TouchableOpacity>
                   <Text style={styles.bookingDestinationHint}>
-                    Si non défini, le point de départ du trajet sera utilisé : {trip?.departure?.address}
+                    Si indisponible, le depart du trajet sera utilise : {trip?.departure?.address}
                   </Text>
                 </View>
               </>
@@ -1896,7 +2323,7 @@ export default function TripDetailsScreen() {
               <>
                 <Text style={styles.bookingModalTitle}>Ma destination</Text>
                 <Text style={styles.bookingModalDescription}>
-                  Où souhaitez-vous descendre ?
+                  La destination du trajet est pre-remplie automatiquement. Modifiez-la si necessaire.
                 </Text>
 
                 <View style={styles.bookingDestinationSection}>
@@ -1937,7 +2364,7 @@ export default function TripDetailsScreen() {
                     )}
                   </TouchableOpacity>
                   <Text style={styles.bookingDestinationHint}>
-                    Si non défini, l'arrivée du trajet sera utilisée : {trip?.arrival?.address}
+                    Si vide, l'arrivee du trajet sera utilisee : {trip?.arrival?.address}
                   </Text>
                 </View>
 
@@ -2007,12 +2434,14 @@ export default function TripDetailsScreen() {
                 <TouchableOpacity
                   style={[styles.bookingModalButton, styles.bookingModalButtonPrimary]}
                   onPress={handleConfirmBooking}
-                  disabled={isBooking || isValidatingDestination}
+                  disabled={isBooking || isValidatingDestination || !isKycApproved || isKycStatusBusy}
                 >
                   {isBooking || isValidatingDestination ? (
                     <ActivityIndicator color={Colors.white} />
                   ) : (
-                    <Text style={styles.bookingModalButtonPrimaryText}>Confirmer</Text>
+                    <Text style={styles.bookingModalButtonPrimaryText}>
+                      {isKycApproved ? 'Confirmer' : 'KYC requis'}
+                    </Text>
                   )}
                 </TouchableOpacity>
               )}
@@ -2031,6 +2460,7 @@ export default function TripDetailsScreen() {
         onClose={() => setShowOriginPicker(false)}
         onSelect={(location) => {
           setPassengerOrigin(location);
+          setShouldAutofillPassengerOrigin(false);
           setShowOriginPicker(false);
           setBookingModalError('');
         }}
@@ -2188,41 +2618,18 @@ export default function TripDetailsScreen() {
             <View style={styles.contactModalHeader}>
               <View style={styles.contactModalIconWrapper}>
                 <View style={styles.contactModalIconBadge}>
-                  <Ionicons name="call" size={32} color={Colors.primary} />
+                  <Ionicons name="logo-whatsapp" size={32} color="#25D366" />
                 </View>
               </View>
               <Text style={styles.contactModalTitle}>
                 Contacter {trip?.driverName || 'le conducteur'}
               </Text>
               <Text style={styles.contactModalSubtitle}>
-                Choisissez comment contacter le conducteur
+                Contact via WhatsApp uniquement
               </Text>
             </View>
 
             <View style={styles.contactModalActions}>
-              <TouchableOpacity
-                style={[styles.contactModalButton, styles.contactModalButtonCall]}
-                onPress={async () => {
-                  setContactModalVisible(false);
-                  await openPhoneCall(driverPhone!, (errorMsg) => {
-                    showDialog({
-                      variant: 'danger',
-                      title: 'Erreur',
-                      message: errorMsg,
-                    });
-                  });
-                }}
-              >
-                <View style={styles.contactModalButtonIcon}>
-                  <Ionicons name="call" size={24} color={Colors.success} />
-                </View>
-                <View style={styles.contactModalButtonContent}>
-                  <Text style={styles.contactModalButtonTitle}>Appeler</Text>
-                  <Text style={styles.contactModalButtonSubtitle}>Ouvrir l'application d'appel</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
-              </TouchableOpacity>
-
               <TouchableOpacity
                 style={[styles.contactModalButton, styles.contactModalButtonWhatsApp]}
                 onPress={async () => {
@@ -2448,10 +2855,18 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
   shareButton: {
     padding: 8,
     backgroundColor: Colors.primary + '10',
     borderRadius: BorderRadius.full,
+  },
+  shareButtonDisabled: {
+    backgroundColor: Colors.gray[100],
   },
   scrollView: {
     flex: 1,
@@ -2701,6 +3116,143 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
     letterSpacing: 1,
   },
+  passengerSecurityCard: {
+    borderColor: Colors.primary + '35',
+    backgroundColor: Colors.primary + '08',
+  },
+  passengerSecurityHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  passengerSecurityIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.primary + '25',
+    marginRight: Spacing.sm,
+  },
+  passengerSecurityHeaderCopy: {
+    flex: 1,
+  },
+  passengerSecurityTitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[900],
+    fontWeight: FontWeights.bold,
+    letterSpacing: 0.4,
+  },
+  passengerSecuritySubtitle: {
+    marginTop: 2,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+  },
+  passengerSecurityHintText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+    lineHeight: 20,
+    marginBottom: Spacing.md,
+  },
+  passengerSecurityButton: {
+    minHeight: 50,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: Spacing.md,
+  },
+  passengerSecurityButtonDisabled: {
+    backgroundColor: Colors.gray[200],
+  },
+  passengerSecurityButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  passengerSecurityButtonTextDisabled: {
+    color: Colors.gray[600],
+  },
+  passengerSecuritySecondaryButton: {
+    marginTop: Spacing.sm,
+    minHeight: 42,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary + '55',
+    backgroundColor: Colors.white,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.md,
+  },
+  passengerSecuritySecondaryButtonText: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
+  securityReminderCard: {
+    borderColor: Colors.secondary + '35',
+    backgroundColor: Colors.secondary + '08',
+  },
+  securityReminderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  securityReminderTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  securityReminderText: {
+    fontSize: FontSizes.sm,
+    lineHeight: 20,
+    color: Colors.gray[700],
+    marginBottom: Spacing.sm,
+  },
+  securityReminderVehicleBox: {
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.white,
+    padding: Spacing.sm,
+    gap: 2,
+  },
+  securityReminderVehicleLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    fontWeight: FontWeights.semibold,
+    textTransform: 'uppercase',
+  },
+  securityReminderVehicleValue: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[900],
+    fontWeight: FontWeights.semibold,
+  },
+  driverSecurityActionButton: {
+    marginTop: Spacing.sm,
+    minHeight: 40,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary + '55',
+    backgroundColor: Colors.white,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.md,
+  },
+  driverSecurityActionButtonText: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
   routeContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -2922,6 +3474,11 @@ const styles = StyleSheet.create({
     elevation: 0,
     shadowOpacity: 0,
   },
+  actionButtonKycRequired: {
+    backgroundColor: Colors.gray[800],
+    shadowColor: Colors.gray[800],
+    shadowOpacity: 0.18,
+  },
   bookingCard: {
     backgroundColor: Colors.white,
   },
@@ -3014,6 +3571,48 @@ const styles = StyleSheet.create({
   bookingActionDangerText: {
     color: Colors.danger,
   },
+  bookingSecurityQuickButton: {
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary + '35',
+    borderRadius: 14,
+    backgroundColor: Colors.primary + '08',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  bookingSecurityQuickButtonDisabled: {
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[100],
+  },
+  bookingSecurityQuickIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
+  },
+  bookingSecurityQuickCopy: {
+    flex: 1,
+    marginHorizontal: Spacing.sm,
+  },
+  bookingSecurityQuickTitle: {
+    fontSize: 13,
+    color: Colors.gray[900],
+    fontWeight: FontWeights.bold,
+  },
+  bookingSecurityQuickTitleDisabled: {
+    color: Colors.gray[500],
+  },
+  bookingSecurityQuickSubtitle: {
+    marginTop: 2,
+    fontSize: 11,
+    color: Colors.gray[600],
+  },
   confirmationBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3080,6 +3679,57 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 12,
     color: Colors.gray[500],
+  },
+  securityModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  securityModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  securityModalContent: {
+    backgroundColor: Colors.gray[50],
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    height: '78%',
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.md,
+  },
+  securityModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
+  securityModalTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  securityModalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  securityModalBody: {
+    flex: 1,
+  },
+  securityModalBodyContent: {
+    paddingBottom: Spacing.sm,
+  },
+  securityModalLoading: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.xl,
+    gap: Spacing.sm,
+  },
+  securityModalLoadingText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
   },
   bookingModalOverlay: {
     flex: 1,
@@ -3716,3 +4366,4 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.xs,
   },
 });
+

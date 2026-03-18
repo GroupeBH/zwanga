@@ -13,7 +13,7 @@ import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -174,7 +174,7 @@ export default function PublishScreen() {
   const isKycBusy = kycSubmitting || uploadingKyc;
 
   const kycChecklist = [
-    { icon: 'id-card', title: 'Carte nationale', subtitle: 'Recto-verso bien lisible' },
+    { icon: 'id-card', title: "Pièce d'identité", subtitle: 'Recto-verso bien lisible' },
     { icon: 'camera', title: 'Selfie sécurisé', subtitle: 'Prenez une photo nette de votre visage' },
     { icon: 'time', title: 'Validation express', subtitle: 'Moins de 24h en moyenne' },
   ] as const;
@@ -212,6 +212,30 @@ export default function PublishScreen() {
   const [vehicleModel, setVehicleModel] = useState('');
   const [vehicleColor, setVehicleColor] = useState('');
   const [vehicleLicensePlate, setVehicleLicensePlate] = useState('');
+
+  useEffect(() => {
+    if (activeVehicles.length === 0) {
+      if (selectedVehicleId !== null) {
+        setSelectedVehicleId(null);
+      }
+      return;
+    }
+
+    const currentSelectionStillValid = selectedVehicleId
+      ? activeVehicles.some((vehicle) => vehicle.id === selectedVehicleId)
+      : false;
+
+    if (currentSelectionStillValid) {
+      return;
+    }
+
+    const preferredVehicleId =
+      user?.vehicle?.id && activeVehicles.some((vehicle) => vehicle.id === user.vehicle?.id)
+        ? user.vehicle.id
+        : activeVehicles[0].id;
+
+    setSelectedVehicleId(preferredVehicleId);
+  }, [activeVehicles, selectedVehicleId, user?.vehicle?.id]);
 
   const resetForm = () => {
     setStep('route');
@@ -918,6 +942,11 @@ export default function PublishScreen() {
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Sélectionnez un véhicule *</Text>
 
+              {activeVehicles.length > 0 && selectedVehicleId && (
+                <Text style={styles.vehicleDefaultHint}>
+                  Un vehicule actif est deja selectionne par defaut.
+                </Text>
+              )}
               {isLoadingVehicles || isFetchingVehicles ? (
                 <View style={styles.vehicleLoadingState}>
                   <ActivityIndicator size="large" color={Colors.primary} />
@@ -2223,6 +2252,11 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
     textAlign: 'center',
     marginTop: Spacing.sm,
+  },
+  vehicleDefaultHint: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    marginBottom: Spacing.sm,
   },
   vehicleEmptyState: {
     alignItems: 'center',

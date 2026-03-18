@@ -985,6 +985,10 @@ export default function LocationPickerModal({
     return `${selectedLocation.latitude.toFixed(5)}, ${selectedLocation.longitude.toFixed(5)}`;
   }, [selectedLocation]);
 
+  if (!visible) {
+    return null;
+  }
+
   return (
     <Modal animationType="slide" visible={visible} onRequestClose={handleClose}>
       <View style={styles.modalContainer}>

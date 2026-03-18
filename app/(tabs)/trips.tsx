@@ -30,7 +30,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type MainTab = 'published' | 'bookings';
@@ -539,7 +538,7 @@ export default function TripsScreen() {
           </View>
         ) : (
           mainTab === 'published'
-            ? displayTrips.map((trip, index) => {
+            ? displayTrips.map((trip) => {
             const TripCardWithArrival = () => {
               const calculatedArrivalTime = useTripArrivalTime(trip);
               const arrivalTimeDisplay = calculatedArrivalTime
@@ -549,11 +548,7 @@ export default function TripsScreen() {
               const statusConfig = getStatusConfig(trip);
 
               return (
-                <Animated.View
-                  key={trip.id}
-                  entering={FadeInDown.delay(index * 100)}
-                  style={styles.tripCard}
-                >
+                <View key={trip.id} style={styles.tripCard}>
                   {/* Header */}
                   <View style={styles.tripHeader}>
                     <View style={styles.tripDriverInfo}>
@@ -676,13 +671,13 @@ export default function TripsScreen() {
                       </Text>
                     </TouchableOpacity>
                   </View>
-                </Animated.View>
+                </View>
               );
             };
 
             return <TripCardWithArrival key={trip.id} />;
           })
-            : displayBookings.map((booking, index) => {
+            : displayBookings.map((booking) => {
                 const trip = booking.trip;
                 if (!trip) return null;
 
@@ -712,11 +707,7 @@ export default function TripsScreen() {
                   const statusConfig = getBookingStatusConfig();
 
                   return (
-                    <Animated.View
-                      key={booking.id}
-                      entering={FadeInDown.delay(index * 100)}
-                      style={styles.tripCard}
-                    >
+                    <View key={booking.id} style={styles.tripCard}>
                       {/* Header */}
                       <View style={styles.tripHeader}>
                         <View style={styles.tripDriverInfo}>
@@ -805,7 +796,7 @@ export default function TripsScreen() {
                           <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
                         </TouchableOpacity>
                       </View>
-                    </Animated.View>
+                    </View>
                   );
                 };
 
@@ -933,7 +924,7 @@ export default function TripsScreen() {
             </View>
             <Text style={styles.confirmTitle}>Supprimer ce trajet ?</Text>
             <Text style={styles.confirmText}>
-              Cette action est irréversible. Les passagers seront informés de l'annulation.
+              Cette action est irréversible. Les passagers seront informés de l&apos;annulation.
             </Text>
             <View style={styles.modalActions}>
               <TouchableOpacity

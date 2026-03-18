@@ -1,6 +1,7 @@
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useCreateTripRequestMutation } from '@/store/api/tripRequestApi';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
@@ -40,6 +41,7 @@ export default function RequestTripScreen() {
   const [step, setStep] = useState<RequestStep>('route');
   const [createTripRequest, { isLoading: isCreating }] = useCreateTripRequestMutation();
   const { showDialog } = useDialog();
+  const { isIdentityVerified, isChecking: isCheckingIdentity, checkIdentity } = useIdentityCheck();
 
   // États pour les étapes
   const [departureLocation, setDepartureLocation] = useState<MapLocationSelection | null>(null);
@@ -178,6 +180,14 @@ export default function RequestTripScreen() {
 
   const handleCreateRequest = async () => {
     if (!departureLocation || !arrivalLocation) return;
+
+    if (!isIdentityVerified) {
+      const canProceed = checkIdentity('request');
+      if (!canProceed) {
+        return;
+      }
+    }
+
     try {
       await createTripRequest({
         departureLocation: departureLocation.title,
@@ -274,7 +284,7 @@ export default function RequestTripScreen() {
                   >
                     <Text style={styles.locationLabel}>DÉPART</Text>
                     <Text style={styles.locationValue} numberOfLines={1}>
-                      {departureLocation?.title || 'Ma position actuelle'}
+                      {departureLocation?.title || 'Choisir le point de départ'}
                     </Text>
                   </TouchableOpacity>
                   <View style={styles.divider} />
@@ -536,12 +546,26 @@ export default function RequestTripScreen() {
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
         <TouchableOpacity
-          onPress={step === 'confirm' ? handleCreateRequest : handleNextStep}
-          disabled={isCreating}
+          onPress={
+            step === 'confirm'
+              ? isIdentityVerified
+                ? handleCreateRequest
+                : () => {
+                    checkIdentity('request');
+                  }
+              : handleNextStep
+          }
+          disabled={isCreating || (step === 'confirm' && isCheckingIdentity)}
           activeOpacity={0.8}
         >
           <LinearGradient
-            colors={step === 'confirm' ? [Colors.success, '#10b981'] : [Colors.primary, '#6366f1']}
+            colors={
+              step === 'confirm'
+                ? isIdentityVerified
+                  ? [Colors.success, '#10b981']
+                  : [Colors.warning, '#f59e0b']
+                : [Colors.primary, '#6366f1']
+            }
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.mainButton}
@@ -551,9 +575,25 @@ export default function RequestTripScreen() {
             ) : (
               <>
                 <Text style={styles.mainButtonText}>
-                  {step === 'confirm' ? 'Publier ma demande' : 'Continuer'}
+                  {step === 'confirm'
+                    ? isIdentityVerified
+                      ? 'Publier ma demande'
+                      : isCheckingIdentity
+                        ? 'Vérification KYC...'
+                        : 'KYC requis'
+                    : 'Continuer'}
                 </Text>
-                <Ionicons name={step === 'confirm' ? 'send' : 'arrow-forward'} size={20} color={Colors.white} />
+                <Ionicons
+                  name={
+                    step === 'confirm'
+                      ? isIdentityVerified
+                        ? 'send'
+                        : 'shield-checkmark-outline'
+                      : 'arrow-forward'
+                  }
+                  size={20}
+                  color={Colors.white}
+                />
               </>
             )}
           </LinearGradient>

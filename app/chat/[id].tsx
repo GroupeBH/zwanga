@@ -6,11 +6,11 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { addMessage as addMessageAction, markConversationMessagesRead, setMessages, upsertConversation } from '@/store/slices/messagesSlice';
 import { Message } from '@/types';
+import { openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ChatScreen() {
@@ -266,16 +266,22 @@ export default function ChatScreen() {
           <TouchableOpacity
             style={styles.headerButton}
             disabled={!counterpart?.phone}
-            onPress={() => {
+            onPress={async () => {
               if (counterpart?.phone) {
-                Linking.openURL(`tel:${counterpart.phone}`);
+                await openWhatsApp(counterpart.phone, (errorMsg) => {
+                  showDialog({
+                    variant: 'danger',
+                    title: 'Erreur',
+                    message: errorMsg,
+                  });
+                });
               }
             }}
           >
             <Ionicons
-              name="call"
+              name="logo-whatsapp"
               size={20}
-              color={counterpart?.phone ? Colors.primary : Colors.gray[400]}
+              color={counterpart?.phone ? '#25D366' : Colors.gray[400]}
             />
           </TouchableOpacity>
 
@@ -311,12 +317,11 @@ export default function ChatScreen() {
               <View style={styles.dateBadge}>
                 <Text style={styles.dateText}>{label}</Text>
           </View>
-              {bucket.map((msg, index) => {
+              {bucket.map((msg) => {
                 const isMe = msg.senderId === user?.id;
                 return (
-            <Animated.View
-              key={msg.id}
-              entering={FadeInDown.delay(index * 50)}
+                  <View
+                    key={msg.id}
                     style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
                   >
                     <TouchableOpacity
@@ -359,7 +364,7 @@ export default function ChatScreen() {
                 </View>
               </View>
                     </TouchableOpacity>
-            </Animated.View>
+                  </View>
                 );
               })}
             </View>

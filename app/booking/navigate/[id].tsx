@@ -2,9 +2,9 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { trackingSocket, type DriverLocationPayload } from '@/services/trackingSocket';
 import {
-    useConfirmDropoffByPassengerMutation,
-    useConfirmPickupByPassengerMutation,
-    useGetBookingByIdQuery,
+  useConfirmDropoffByPassengerMutation,
+  useConfirmPickupByPassengerMutation,
+  useGetBookingByIdQuery,
 } from '@/store/api/bookingApi';
 import { useGetDirectionsMutation } from '@/store/api/googleMapsApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
@@ -12,20 +12,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Dimensions,
-    Platform,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  BackHandler,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// Fonction pour décoder les polylines Google
+// Fonction pour decoder les polylines Google
 function decodePolyline(encoded: string): Array<{ latitude: number; longitude: number }> {
   const points: Array<{ latitude: number; longitude: number }> = [];
   let index = 0;
@@ -80,8 +80,6 @@ function decodePolyline(encoded: string): Array<{ latitude: number; longitude: n
   return points;
 }
 
-const { width, height } = Dimensions.get('window');
-
 export default function PassengerNavigationScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -89,16 +87,17 @@ export default function PassengerNavigationScreen() {
   const insets = useSafeAreaInsets();
   const bookingId = typeof id === 'string' ? id : '';
 
-  // Récupérer la réservation et le trajet
+  // Recuperer la reservation et le trajet
   const { data: booking, isLoading: bookingLoading, refetch: refetchBooking } = useGetBookingByIdQuery(bookingId, { 
     skip: !bookingId,
-    pollingInterval: 30000, // Polling léger pour sync
+    pollingInterval: 30000, // Polling leger pour sync
   });
   const tripId = booking?.tripId || '';
   const { data: trip, isLoading: tripLoading } = useGetTripByIdQuery(tripId, { 
     skip: !tripId,
     pollingInterval: 30000,
   });
+  const isTripOngoing = trip?.status === 'ongoing';
 
   // Mutations pour confirmer pickup/dropoff
   const [confirmPickup, { isLoading: isConfirmingPickup }] = useConfirmPickupByPassengerMutation();
@@ -114,9 +113,50 @@ export default function PassengerNavigationScreen() {
   const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }>>([]);
   const [routeInfo, setRouteInfo] = useState<{ distance: string; duration: string } | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
+  const [isMapExpanded, setIsMapExpanded] = useState(false);
   const routeFetchedRef = useRef(false);
   const lastRouteFetchRef = useRef<number>(0);
   const isMountedRef = useRef(true);
+  const isExitingRef = useRef(false);
+  const mapTopOffset = insets.top + 84;
+
+  const navigateBackSafely = useCallback(() => {
+    if (isExitingRef.current) {
+      return;
+    }
+
+    isExitingRef.current = true;
+    try {
+      setIsSocketConnected(false);
+      setIsLoadingRoute(false);
+      routeFetchedRef.current = false;
+
+      if (tripId) {
+        void trackingSocket.leaveTrip(tripId).catch((error) => {
+          console.warn('[PassengerNavigation] leaveTrip cleanup failed:', error);
+        });
+      }
+    } catch (error) {
+      console.warn('[PassengerNavigation] cleanup before back failed:', error);
+    }
+
+    try {
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace('/bookings');
+      }
+    } catch {
+      router.replace('/bookings');
+    } finally {
+      // If navigation fails for any reason, let the user retry the back action.
+      setTimeout(() => {
+        if (isMountedRef.current) {
+          isExitingRef.current = false;
+        }
+      }, 800);
+    }
+  }, [router, tripId]);
 
   useEffect(() => {
     return () => {
@@ -124,8 +164,19 @@ export default function PassengerNavigationScreen() {
     };
   }, []);
 
-  // Coordonnées importantes
-  // Le point de récupération peut être personnalisé par le passager
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      navigateBackSafely();
+      return true;
+    });
+
+    return () => {
+      backHandler.remove();
+    };
+  }, [navigateBackSafely]);
+
+  // Coordonnees importantes
+  // Le point de recuperation peut etre personnalise par le passager
   const pickupCoordinate = useMemo(() => {
     if (booking?.passengerOriginCoordinates) {
       return {
@@ -158,11 +209,11 @@ export default function PassengerNavigationScreen() {
     return null;
   }, [booking?.passengerDestinationCoordinates, trip?.arrival]);
 
-  // Fonction pour récupérer la route
+  // Fonction pour recuperer la route
   const fetchRoute = useCallback(async () => {
     if (!trip?.departure || !trip?.arrival || !isMountedRef.current) return;
     
-    // Éviter les appels trop fréquents (minimum 30s entre les appels)
+    // Eviter les appels trop frequents (minimum 30s entre les appels)
     const now = Date.now();
     if (now - lastRouteFetchRef.current < 30000 && routeFetchedRef.current) return;
     lastRouteFetchRef.current = now;
@@ -170,7 +221,7 @@ export default function PassengerNavigationScreen() {
     setIsLoadingRoute(true);
     
     try {
-      // Utiliser les coordonnées personnalisées du passager si disponibles
+      // Utiliser les coordonnees personnalisees du passager si disponibles
       const origin = booking?.passengerOriginCoordinates 
         ? { lat: booking.passengerOriginCoordinates.latitude, lng: booking.passengerOriginCoordinates.longitude }
         : { lat: trip.departure.lat, lng: trip.departure.lng };
@@ -189,7 +240,7 @@ export default function PassengerNavigationScreen() {
       if (response.routes && response.routes.length > 0) {
         const route = response.routes[0];
         
-        // Décoder la polyline
+        // Decoder la polyline
         if (route.overviewPolyline) {
           const decoded = decodePolyline(route.overviewPolyline);
           setRouteCoordinates(decoded);
@@ -206,7 +257,7 @@ export default function PassengerNavigationScreen() {
             ? `${distanceKm.toFixed(1)} km` 
             : `${totalDistance} m`;
           
-          // Formater la durée
+          // Formater la duree
           const hours = Math.floor(totalDuration / 3600);
           const minutes = Math.ceil((totalDuration % 3600) / 60);
           const durationStr = hours > 0 
@@ -224,7 +275,7 @@ export default function PassengerNavigationScreen() {
       
       if (isNoRouteError) {
         // Fallback: utiliser une ligne droite entre pickup et dropoff
-        console.warn('[PassengerNavigation] Pas de route trouvée, utilisation de ligne droite');
+        console.warn('[PassengerNavigation] Pas de route trouvee, utilisation de ligne droite');
         
         const origin = booking?.passengerOriginCoordinates 
           ? { latitude: booking.passengerOriginCoordinates.latitude, longitude: booking.passengerOriginCoordinates.longitude }
@@ -235,7 +286,7 @@ export default function PassengerNavigationScreen() {
           : { latitude: trip.arrival.lat, longitude: trip.arrival.lng };
         
         setRouteCoordinates([origin, destination]);
-        setRouteInfo(null); // Pas d'infos de distance/durée en fallback
+        setRouteInfo(null); // Pas d'infos de distance/duree en fallback
         routeFetchedRef.current = true;
       } else {
         console.warn('[PassengerNavigation] Erreur route:', error?.data?.message || error?.message || 'Erreur inconnue');
@@ -247,7 +298,7 @@ export default function PassengerNavigationScreen() {
     }
   }, [trip?.departure, trip?.arrival, booking?.passengerOriginCoordinates, booking?.passengerDestinationCoordinates, getDirections]);
   
-  // Récupérer la route au chargement
+  // Recuperer la route au chargement
   useEffect(() => {
     if (trip && !routeFetchedRef.current) {
       fetchRoute();
@@ -256,18 +307,30 @@ export default function PassengerNavigationScreen() {
 
   // Connexion WebSocket pour recevoir la position du conducteur
   useEffect(() => {
-    if (!tripId) return;
+    if (!tripId || !isTripOngoing) {
+      setIsSocketConnected(false);
+      return;
+    }
+
+    let isCancelled = false;
     setIsSocketConnected(false);
 
     // Rejoindre la room du trip pour recevoir les updates
-    trackingSocket.joinTrip(tripId).then(() => {
-      if (!isMountedRef.current) return;
-      setIsSocketConnected(true);
-      // Demander la position actuelle du conducteur
-      trackingSocket.requestDriverLocation(tripId);
-    });
+    trackingSocket
+      .joinTrip(tripId)
+      .then(() => {
+        if (!isMountedRef.current || isCancelled) return;
+        setIsSocketConnected(true);
+        // Demander la position actuelle du conducteur
+        trackingSocket.requestDriverLocation(tripId);
+      })
+      .catch((error) => {
+        if (!isMountedRef.current || isCancelled) return;
+        setIsSocketConnected(false);
+        console.warn('[PassengerNavigation] Connexion tracking impossible:', error);
+      });
 
-    // Écouter les mises à jour de position du conducteur
+    // Ecouter les mises a jour de position du conducteur
     const unsubscribeLocation = trackingSocket.subscribeToDriverLocation((payload: DriverLocationPayload) => {
       if (!isMountedRef.current) return;
       if (payload.tripId === tripId && payload.coordinates) {
@@ -279,8 +342,9 @@ export default function PassengerNavigationScreen() {
       }
     });
 
-    // Écouter les erreurs
+    // Ecouter les erreurs
     const unsubscribeError = trackingSocket.subscribeToErrors((message) => {
+      if (!isMountedRef.current || isCancelled) return;
       console.warn('[PassengerNavigation] Erreur tracking:', message);
     });
 
@@ -290,14 +354,15 @@ export default function PassengerNavigationScreen() {
     }, 10000);
 
     return () => {
+      isCancelled = true;
       trackingSocket.leaveTrip(tripId);
       unsubscribeLocation();
       unsubscribeError();
       clearInterval(interval);
     };
-  }, [tripId]);
+  }, [tripId, isTripOngoing]);
 
-  // Calculer la région de la carte
+  // Calculer la region de la carte
   const mapRegion = useMemo(() => {
     const points: Array<{ latitude: number; longitude: number }> = [];
     
@@ -359,20 +424,25 @@ export default function PassengerNavigationScreen() {
     
     if (coordinates.length >= 2) {
       mapRef.current.fitToCoordinates(coordinates, {
-        edgePadding: { top: 100, right: 50, bottom: 300, left: 50 },
+        edgePadding: {
+          top: mapTopOffset + 24,
+          right: 50,
+          bottom: isMapExpanded ? 120 : 300,
+          left: 50,
+        },
         animated: true,
       });
     }
-  }, [driverLocation, pickupCoordinate, dropoffCoordinate, routeCoordinates, booking?.pickedUp]);
+  }, [driverLocation, pickupCoordinate, dropoffCoordinate, routeCoordinates, booking?.pickedUp, mapTopOffset, isMapExpanded]);
 
-  // Confirmer la récupération
+  // Confirmer la recuperation
   const handleConfirmPickup = async () => {
     if (!booking) return;
-    
+
     showDialog({
       variant: 'info',
-      title: 'Confirmer la récupération',
-      message: 'Confirmez-vous que le conducteur vous a bien récupéré ?',
+      title: 'Confirmer la recuperation',
+      message: 'Confirmez-vous que le conducteur vous a bien recupere ?',
       actions: [
         { label: 'Annuler', variant: 'ghost' },
         {
@@ -383,7 +453,7 @@ export default function PassengerNavigationScreen() {
               await confirmPickup(booking.id).unwrap();
               showDialog({
                 variant: 'success',
-                title: 'Récupération confirmée',
+                title: 'Recuperation confirmee',
                 message: 'Bon trajet !',
               });
               refetchBooking();
@@ -391,7 +461,7 @@ export default function PassengerNavigationScreen() {
               showDialog({
                 variant: 'danger',
                 title: 'Erreur',
-                message: error?.data?.message || 'Impossible de confirmer la récupération.',
+                message: error?.data?.message || 'Impossible de confirmer la recuperation.',
               });
             }
           },
@@ -400,14 +470,14 @@ export default function PassengerNavigationScreen() {
     });
   };
 
-  // Confirmer la dépose
+  // Confirmer la depose
   const handleConfirmDropoff = async () => {
     if (!booking) return;
-    
+
     showDialog({
       variant: 'info',
-      title: 'Confirmer la dépose',
-      message: 'Confirmez-vous que vous êtes bien arrivé à destination ?',
+      title: 'Confirmer la depose',
+      message: 'Confirmez-vous que vous etes bien arrive a destination ?',
       actions: [
         { label: 'Annuler', variant: 'ghost' },
         {
@@ -418,11 +488,11 @@ export default function PassengerNavigationScreen() {
               await confirmDropoff(booking.id).unwrap();
               showDialog({
                 variant: 'success',
-                title: 'Trajet terminé',
-                message: 'Merci d\'avoir voyagé avec nous !',
+                title: 'Trajet termine',
+                message: 'Merci d\'avoir voyage avec nous !',
                 actions: [
                   {
-                    label: 'Évaluer le conducteur',
+                    label: 'Evaluer le conducteur',
                     variant: 'primary',
                     onPress: () => router.push(`/rate/${tripId}`),
                   },
@@ -433,7 +503,7 @@ export default function PassengerNavigationScreen() {
               showDialog({
                 variant: 'danger',
                 title: 'Erreur',
-                message: error?.data?.message || 'Impossible de confirmer la dépose.',
+                message: error?.data?.message || 'Impossible de confirmer la depose.',
               });
             }
           },
@@ -442,20 +512,7 @@ export default function PassengerNavigationScreen() {
     });
   };
 
-  const handleReportDriver = () => {
-    if (!tripId || !booking?.id || !trip?.driverId) return;
-    router.push({
-      pathname: '/report',
-      params: {
-        tripId,
-        bookingId: booking.id,
-        reportedUserId: trip.driverId,
-        reportedUserName: trip.driverName || 'Conducteur',
-      },
-    });
-  };
-
-  // État du trajet pour le passager
+  // Etat du trajet pour le passager
   const tripStatus = useMemo(() => {
     if (!booking || !trip) return 'loading';
     if (trip.status !== 'ongoing') return 'not_started';
@@ -481,8 +538,8 @@ export default function PassengerNavigationScreen() {
       <View style={styles.errorContainer}>
         <StatusBar barStyle="dark-content" />
         <Ionicons name="alert-circle" size={64} color={Colors.danger} />
-        <Text style={styles.errorText}>Réservation introuvable</Text>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <Text style={styles.errorText}>Reservation introuvable</Text>
+        <TouchableOpacity style={styles.backButton} onPress={navigateBackSafely}>
           <Text style={styles.backButtonText}>Retour</Text>
         </TouchableOpacity>
       </View>
@@ -497,7 +554,7 @@ export default function PassengerNavigationScreen() {
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
-        style={styles.map}
+        style={[styles.map, { top: mapTopOffset }]}
         initialRegion={mapRegion}
         mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
         showsUserLocation={true}
@@ -520,7 +577,7 @@ export default function PassengerNavigationScreen() {
           </Marker>
         )}
 
-        {/* Point de récupération */}
+        {/* Point de recuperation */}
         {pickupCoordinate && !booking.pickedUp && (
           <Marker coordinate={pickupCoordinate}>
             <View style={styles.pickupMarker}>
@@ -529,7 +586,7 @@ export default function PassengerNavigationScreen() {
           </Marker>
         )}
 
-        {/* Point de dépose */}
+        {/* Point de depose */}
         {dropoffCoordinate && (
           <Marker coordinate={dropoffCoordinate}>
             <View style={styles.dropoffMarker}>
@@ -538,7 +595,7 @@ export default function PassengerNavigationScreen() {
           </Marker>
         )}
 
-        {/* Route complète */}
+        {/* Route complete */}
         {routeCoordinates.length > 1 && (
           <Polyline
             coordinates={routeCoordinates}
@@ -562,12 +619,23 @@ export default function PassengerNavigationScreen() {
 
       {/* Boutons flottants */}
       <View style={[styles.floatingButtons, { top: insets.top + 70 }]}>
+        <TouchableOpacity
+          style={[styles.floatingButton, isMapExpanded && styles.floatingButtonActive]}
+          onPress={() => setIsMapExpanded((prev) => !prev)}
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name={isMapExpanded ? 'contract-outline' : 'expand-outline'}
+            size={22}
+            color={isMapExpanded ? Colors.primary : Colors.gray[700]}
+          />
+        </TouchableOpacity>
         <TouchableOpacity 
           style={styles.floatingButton} 
           onPress={fitToRoute}
           activeOpacity={0.8}
         >
-          <Ionicons name="expand-outline" size={22} color={Colors.gray[700]} />
+          <Ionicons name="map-outline" size={22} color={Colors.gray[700]} />
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.floatingButton} 
@@ -599,15 +667,15 @@ export default function PassengerNavigationScreen() {
         entering={FadeInDown.duration(300)} 
         style={[styles.header, { paddingTop: insets.top + 8 }]}
       >
-        <TouchableOpacity style={styles.headerButton} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.headerButton} onPress={navigateBackSafely}>
           <Ionicons name="arrow-back" size={24} color={Colors.gray[800]} />
         </TouchableOpacity>
         
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>
-            {tripStatus === 'waiting_pickup' ? 'En attente de récupération' : 
+            {tripStatus === 'waiting_pickup' ? 'En attente de recuperation' : 
              tripStatus === 'in_transit' ? 'En route' :
-             tripStatus === 'completed' ? 'Arrivé' : 'Suivi du trajet'}
+             tripStatus === 'completed' ? 'Arrive' : 'Suivi du trajet'}
           </Text>
           {isSocketConnected && (
             <View style={styles.liveIndicator}>
@@ -623,101 +691,12 @@ export default function PassengerNavigationScreen() {
       </Animated.View>
 
       {/* Info Card */}
+      {!isMapExpanded && (
       <Animated.View 
         entering={FadeInUp.duration(300).delay(100)} 
         style={[styles.infoCard, { paddingBottom: insets.bottom + 16 }]}
       >
-        {/* Conducteur */}
-        <View style={styles.driverInfo}>
-          <View style={styles.driverAvatar}>
-            <Text style={styles.driverAvatarText}>
-              {(trip.driverName || 'C').charAt(0).toUpperCase()}
-            </Text>
-          </View>
-          <View style={styles.driverDetails}>
-            <Text style={styles.driverName}>{trip.driverName || 'Conducteur'}</Text>
-            <Text style={styles.vehicleInfo}>
-              {trip.vehicle 
-                ? `${trip.vehicle.brand} ${trip.vehicle.model} • ${trip.vehicle.licensePlate}`
-                : trip.vehicleInfo}
-            </Text>
-          </View>
-          {trip.driver?.phone && (
-            <TouchableOpacity 
-              style={styles.callButton}
-              onPress={() => {
-                showDialog({
-                  variant: 'info',
-                  title: 'Contacter le conducteur',
-                  message: `Appeler ${trip.driverName || 'le conducteur'} ?`,
-                  actions: [
-                    { label: 'Annuler', variant: 'ghost' },
-                    {
-                      label: 'Appeler',
-                      variant: 'primary',
-                      onPress: () => {
-                        // Import Linking si nécessaire
-                        import('react-native').then(({ Linking }) => {
-                          Linking.openURL(`tel:${trip.driver?.phone}`);
-                        });
-                      },
-                    },
-                  ],
-                });
-              }}
-            >
-              <Ionicons name="call" size={20} color={Colors.success} />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Infos de route */}
-        {routeInfo && (
-          <View style={styles.routeStats}>
-            <View style={styles.routeStat}>
-              <Ionicons name="navigate-outline" size={18} color={Colors.primary} />
-              <Text style={styles.routeStatValue}>{routeInfo.distance}</Text>
-              <Text style={styles.routeStatLabel}>Distance</Text>
-            </View>
-            <View style={styles.routeStatDivider} />
-            <View style={styles.routeStat}>
-              <Ionicons name="time-outline" size={18} color={Colors.secondary} />
-              <Text style={styles.routeStatValue}>{routeInfo.duration}</Text>
-              <Text style={styles.routeStatLabel}>Durée estimée</Text>
-            </View>
-            {isSocketConnected && (
-              <>
-                <View style={styles.routeStatDivider} />
-                <View style={styles.routeStat}>
-                  <View style={styles.liveStatDot} />
-                  <Text style={[styles.routeStatValue, { color: Colors.success }]}>En direct</Text>
-                  <Text style={styles.routeStatLabel}>Tracking</Text>
-                </View>
-              </>
-            )}
-          </View>
-        )}
-        
-        {isLoadingRoute && !routeInfo && (
-          <View style={styles.routeLoadingRow}>
-            <ActivityIndicator size="small" color={Colors.primary} />
-            <Text style={styles.routeLoadingText}>Chargement de l'itinéraire...</Text>
-          </View>
-        )}
-
-        {/* Statut et dernière mise à jour */}
-        <View style={styles.statusRow}>
-          {lastUpdate && (
-            <Text style={styles.lastUpdateText}>
-              Position mise à jour : {lastUpdate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-            </Text>
-          )}
-          {!driverLocation && tripStatus !== 'not_started' && (
-            <Text style={styles.waitingText}>En attente de la position du conducteur...</Text>
-          )}
-        </View>
-
-        {/* Itinéraire simplifié */}
+        {/* Projection du trajet (compact) */}
         <View style={styles.routeInfo}>
           <View style={styles.routePoint}>
             <View style={[styles.routeDot, { backgroundColor: Colors.secondary }]} />
@@ -736,20 +715,53 @@ export default function PassengerNavigationScreen() {
           </View>
         </View>
 
+        {routeInfo && (
+          <View style={styles.routeStats}>
+            <View style={styles.routeStat}>
+              <Ionicons name="navigate-outline" size={18} color={Colors.primary} />
+              <Text style={styles.routeStatValue}>{routeInfo.distance}</Text>
+              <Text style={styles.routeStatLabel}>Distance</Text>
+            </View>
+            <View style={styles.routeStatDivider} />
+            <View style={styles.routeStat}>
+              <Ionicons name="time-outline" size={18} color={Colors.secondary} />
+              <Text style={styles.routeStatValue}>{routeInfo.duration}</Text>
+              <Text style={styles.routeStatLabel}>Projection</Text>
+            </View>
+            {isSocketConnected && (
+              <>
+                <View style={styles.routeStatDivider} />
+                <View style={styles.routeStat}>
+                  <View style={styles.liveStatDot} />
+                  <Text style={[styles.routeStatValue, { color: Colors.success }]}>En direct</Text>
+                  <Text style={styles.routeStatLabel}>Tracking</Text>
+                </View>
+              </>
+            )}
+          </View>
+        )}
+
+        {isLoadingRoute && !routeInfo && (
+          <View style={styles.routeLoadingRow}>
+            <ActivityIndicator size="small" color={Colors.primary} />
+            <Text style={styles.routeLoadingText}>Chargement de l&apos;itineraire...</Text>
+          </View>
+        )}
+
+        <View style={styles.statusRow}>
+          {lastUpdate && (
+            <Text style={styles.lastUpdateText}>
+              Position mise a jour : {lastUpdate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </Text>
+          )}
+          {!driverLocation && tripStatus !== 'not_started' && (
+            <Text style={styles.waitingText}>En attente de la position du conducteur...</Text>
+          )}
+        </View>
+
         {/* Boutons d'action */}
         {trip.status === 'ongoing' && (
           <View style={styles.actionButtons}>
-            {!booking.droppedOff && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.reportButton]}
-                onPress={handleReportDriver}
-                activeOpacity={0.9}
-              >
-                <Ionicons name="warning-outline" size={20} color={Colors.white} />
-                <Text style={styles.actionButtonText}>Signaler un probleme</Text>
-              </TouchableOpacity>
-            )}
-
             {!booking.pickedUp && (
               <TouchableOpacity
                 style={[styles.actionButton, styles.pickupButton]}
@@ -761,7 +773,7 @@ export default function PassengerNavigationScreen() {
                 ) : (
                   <>
                     <Ionicons name="checkmark-circle" size={20} color={Colors.white} />
-                    <Text style={styles.actionButtonText}>Je suis récupéré</Text>
+                    <Text style={styles.actionButtonText}>Je suis recupere(e)</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -778,7 +790,7 @@ export default function PassengerNavigationScreen() {
                 ) : (
                   <>
                     <Ionicons name="flag" size={20} color={Colors.white} />
-                    <Text style={styles.actionButtonText}>Je suis arrivé</Text>
+                    <Text style={styles.actionButtonText}>Je suis arrive(e)</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -787,7 +799,7 @@ export default function PassengerNavigationScreen() {
             {booking.droppedOff && (
               <View style={styles.completedBadge}>
                 <Ionicons name="checkmark-done" size={24} color={Colors.success} />
-                <Text style={styles.completedText}>Trajet terminé</Text>
+                <Text style={styles.completedText}>Trajet termine</Text>
               </View>
             )}
           </View>
@@ -796,10 +808,11 @@ export default function PassengerNavigationScreen() {
         {trip.status !== 'ongoing' && (
           <View style={styles.notStartedBadge}>
             <Ionicons name="time" size={20} color={Colors.secondary} />
-            <Text style={styles.notStartedText}>Le trajet n'a pas encore démarré</Text>
+            <Text style={styles.notStartedText}>Le trajet n&apos;a pas encore demarre</Text>
           </View>
         )}
       </Animated.View>
+      )}
     </View>
   );
 }
@@ -869,6 +882,11 @@ const styles = StyleSheet.create({
   },
   floatingButtonLoading: {
     opacity: 0.7,
+  },
+  floatingButtonActive: {
+    borderWidth: 1,
+    borderColor: Colors.primary + '33',
+    backgroundColor: Colors.primary + '10',
   },
   header: {
     position: 'absolute',

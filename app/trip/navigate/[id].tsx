@@ -1,4 +1,5 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { trackingSocket } from '@/services/trackingSocket';
 import {
@@ -12,12 +13,14 @@ import type { Booking } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   Dimensions,
   Modal,
   Platform,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -61,7 +64,7 @@ export default function NavigationScreen() {
   const insets = useSafeAreaInsets();
   const tripId = typeof id === 'string' ? id : '';
 
-  const { data: trip, isLoading } = useGetTripByIdQuery(tripId, { skip: !tripId });
+  const { data: trip, isLoading, isFetching: isTripFetching, refetch: refetchTrip } = useGetTripByIdQuery(tripId, { skip: !tripId });
   const { data: bookings, isLoading: bookingsLoading, refetch: refetchBookings } = useGetTripBookingsQuery(tripId, { skip: !tripId });
   const [confirmPickup, { isLoading: isConfirmingPickup }] = useConfirmPickupMutation();
   const [confirmDropoff, { isLoading: isConfirmingDropoff }] = useConfirmDropoffMutation();
@@ -87,10 +90,12 @@ export default function NavigationScreen() {
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
   const [currentWaypointIndex, setCurrentWaypointIndex] = useState(0);
   const [backgroundDisclosureVisible, setBackgroundDisclosureVisible] = useState(false);
+  const [securityModalVisible, setSecurityModalVisible] = useState(false);
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const recalcRouteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backgroundDisclosureResolverRef = useRef<((accepted: boolean) => void) | null>(null);
   const isMountedRef = useRef(true);
+  const isTripOngoingRef = useRef(false);
   const [driverTracksViewChanges, setDriverTracksViewChanges] = useState(true);
   const [destinationTracksViewChanges, setDestinationTracksViewChanges] = useState(true);
   const driverPosition = useRef(
@@ -108,10 +113,63 @@ export default function NavigationScreen() {
   const waypointsCountRef = useRef(0);
   const currentLocationRef = useRef<Location.LocationObject | null>(null);
   const hasEnabled3DRef = useRef(false);
+  const exitNavigationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isExitingRef = useRef(false);
+
+  const cleanupNavigationUi = useCallback(() => {
+    if (recalcRouteTimeoutRef.current) {
+      clearTimeout(recalcRouteTimeoutRef.current);
+      recalcRouteTimeoutRef.current = null;
+    }
+    if (locationSubscription.current) {
+      locationSubscription.current.remove();
+      locationSubscription.current = null;
+    }
+    if (backgroundDisclosureResolverRef.current) {
+      backgroundDisclosureResolverRef.current(false);
+      backgroundDisclosureResolverRef.current = null;
+    }
+
+    setBackgroundDisclosureVisible(false);
+    setSecurityModalVisible(false);
+    setWaypointModalVisible(false);
+    setPassengersPanelVisible(false);
+    setActiveWaypoint(null);
+  }, []);
+
+  const navigateBackSafely = useCallback(() => {
+    if (isExitingRef.current) {
+      return;
+    }
+
+    isExitingRef.current = true;
+    cleanupNavigationUi();
+    currentLocationRef.current = null;
+    mapRef.current = null;
+
+    if (tripId) {
+      trackingSocket.leaveTrip(tripId);
+    }
+
+    if (exitNavigationTimeoutRef.current) {
+      clearTimeout(exitNavigationTimeoutRef.current);
+    }
+
+    exitNavigationTimeoutRef.current = setTimeout(() => {
+      if (!isMountedRef.current) {
+        return;
+      }
+      router.back();
+    }, 80);
+  }, [cleanupNavigationUi, router, tripId]);
 
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
+      if (exitNavigationTimeoutRef.current) {
+        clearTimeout(exitNavigationTimeoutRef.current);
+        exitNavigationTimeoutRef.current = null;
+      }
       if (recalcRouteTimeoutRef.current) {
         clearTimeout(recalcRouteTimeoutRef.current);
         recalcRouteTimeoutRef.current = null;
@@ -122,6 +180,19 @@ export default function NavigationScreen() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    isTripOngoingRef.current = isTripOngoing;
+  }, [isTripOngoing]);
+
+  useEffect(() => {
+    if (isTripOngoing) {
+      return;
+    }
+    setWaypointModalVisible(false);
+    setPassengersPanelVisible(false);
+    setActiveWaypoint(null);
+  }, [isTripOngoing]);
 
   const resolveBackgroundDisclosure = (accepted: boolean) => {
     setBackgroundDisclosureVisible(false);
@@ -137,31 +208,45 @@ export default function NavigationScreen() {
       setBackgroundDisclosureVisible(true);
     });
 
-  // Connexion WebSocket pour le tracking temps réel
+  // Connexion WebSocket pour le tracking temps reel
   useEffect(() => {
-    if (!tripId) return;
+    if (!tripId || !isTripOngoing) {
+      setIsSocketConnected(false);
+      return;
+    }
 
-    // Rejoindre la room du trip pour le tracking temps réel
-    trackingSocket.joinTrip(tripId).then(() => {
-      if (!isMountedRef.current) return;
-      setIsSocketConnected(true);
-      console.log('[Navigation] Connecté au tracking temps réel');
-    });
+    let isCancelled = false;
 
-    // Écouter les erreurs WebSocket
+    // Rejoindre la room du trip pour le tracking temps reel
+    trackingSocket
+      .joinTrip(tripId)
+      .then(() => {
+        if (!isMountedRef.current || isCancelled) return;
+        setIsSocketConnected(true);
+        console.log('[Navigation] Connecte au tracking temps reel');
+      })
+      .catch((error) => {
+        if (!isMountedRef.current || isCancelled) return;
+        setIsSocketConnected(false);
+        console.warn('[Navigation] Connexion tracking impossible:', error);
+      });
+
+    // Ecouter les erreurs WebSocket
     const unsubscribeError = trackingSocket.subscribeToErrors((message) => {
-      console.error('[Navigation] Erreur tracking:', message);
+      if (!isMountedRef.current || isCancelled) return;
+      console.warn('[Navigation] Erreur tracking:', message);
     });
 
     return () => {
-      // Quitter la room et se déconnecter proprement
+      isCancelled = true;
+      // Quitter la room et se deconnecter proprement
       trackingSocket.leaveTrip(tripId);
       unsubscribeError();
       currentLocationRef.current = null;
-      
-      console.log('[Navigation] Déconnecté et mémoire nettoyée');
+
+      console.log('[Navigation] Deconnecte et memoire nettoyee');
     };
-  }, [tripId]);
+  }, [tripId, isTripOngoing]);
   // Créer les waypoints à partir des bookings acceptés
   useEffect(() => {
     if (!bookings || !trip) return;
@@ -236,6 +321,14 @@ export default function NavigationScreen() {
 
   // Demander les permissions de localisation
   useEffect(() => {
+    if (!tripId || !isTripOngoing) {
+      if (locationSubscription.current) {
+        locationSubscription.current.remove();
+        locationSubscription.current = null;
+      }
+      return;
+    }
+
     (async () => {
       try {
         const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
@@ -247,7 +340,7 @@ export default function NavigationScreen() {
             variant: 'warning',
             icon: 'location-outline',
             actions: [
-              { label: 'Retour', onPress: () => router.back() }
+              { label: 'Retour', onPress: navigateBackSafely }
             ],
           });
           return;
@@ -287,7 +380,7 @@ export default function NavigationScreen() {
             variant: 'warning',
             icon: 'location-outline',
             actions: [
-              { label: 'Retour', onPress: () => router.back() }
+              { label: 'Retour', onPress: navigateBackSafely }
             ],
           });
           return;
@@ -378,7 +471,7 @@ export default function NavigationScreen() {
           }
 
           // Mettre à jour la position du conducteur via WebSocket (throttled)
-          if (tripId && now - lastBackendUpdateTime > BACKEND_UPDATE_INTERVAL) {
+          if (tripId && isTripOngoingRef.current && now - lastBackendUpdateTime > BACKEND_UPDATE_INTERVAL) {
             lastBackendUpdateTime = now;
             trackingSocket.updateDriverLocation(
               tripId,
@@ -407,7 +500,7 @@ export default function NavigationScreen() {
           icon: 'location-outline',
           actions: [
             { label: 'Réessayer', onPress: () => router.replace(`/trip/navigate/${tripId}`) },
-            { label: 'Retour', variant: 'secondary', onPress: () => router.back() },
+            { label: 'Retour', variant: 'secondary', onPress: navigateBackSafely },
           ],
         });
       }
@@ -419,7 +512,7 @@ export default function NavigationScreen() {
         locationSubscription.current = null;
       }
     };
-  }, [tripId]);
+  }, [tripId, isTripOngoing, navigateBackSafely]);
 
   // Passer la carte en 3D lorsque la course est en cours
   useEffect(() => {
@@ -801,7 +894,7 @@ export default function NavigationScreen() {
   };
 
   // Quitter la navigation
-  const handleExitNavigation = () => {
+  const handleExitNavigation = useCallback(() => {
     showDialog({
       title: 'Quitter la navigation',
       message: 'Voulez-vous vraiment quitter la navigation GPS ?',
@@ -811,21 +904,27 @@ export default function NavigationScreen() {
         {
           label: 'Quitter',
           variant: 'primary',
-          onPress: () => {
-            if (recalcRouteTimeoutRef.current) {
-              clearTimeout(recalcRouteTimeoutRef.current);
-              recalcRouteTimeoutRef.current = null;
-            }
-            setWaypointModalVisible(false);
-            setPassengersPanelVisible(false);
-            setActiveWaypoint(null);
-            router.back();
-          },
+          onPress: navigateBackSafely,
         },
         { label: 'Annuler', variant: 'secondary' },
       ],
     });
-  };
+  }, [navigateBackSafely, showDialog]);
+
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (securityModalVisible) {
+        setSecurityModalVisible(false);
+        return true;
+      }
+      handleExitNavigation();
+      return true;
+    });
+
+    return () => {
+      backHandler.remove();
+    };
+  }, [handleExitNavigation, securityModalVisible]);
 
   // Décoder un polyline Google (avec simplification pour économiser la mémoire)
   const decodePolyline = (encoded: string): Array<{ latitude: number; longitude: number }> => {
@@ -938,7 +1037,7 @@ export default function NavigationScreen() {
         <Text style={styles.loadingText}>Coordonnées du trajet invalides</Text>
         <TouchableOpacity
           style={styles.backButtonAlt}
-          onPress={() => router.back()}
+          onPress={navigateBackSafely}
         >
           <Text style={styles.backButtonAltText}>Retour</Text>
         </TouchableOpacity>
@@ -970,8 +1069,8 @@ export default function NavigationScreen() {
         maxZoomLevel={18}
         pitchEnabled={isTripOngoing}
         rotateEnabled={isTripOngoing}
-        scrollEnabled={true}
-        zoomEnabled={true}
+        scrollEnabled={isTripOngoing}
+        zoomEnabled={isTripOngoing}
         toolbarEnabled={false}
         moveOnMarkerPress={false}
         initialRegion={{
@@ -1060,6 +1159,53 @@ export default function NavigationScreen() {
         )}
       </MapView>
 
+      {!isTripOngoing && (
+        <View style={styles.preStartOverlay}>
+          <View style={styles.preStartCard}>
+            <View style={styles.preStartIconWrap}>
+              <Ionicons
+                name={trip?.status === 'completed' ? 'flag' : trip?.status === 'cancelled' ? 'close-circle' : 'time-outline'}
+                size={26}
+                color={Colors.primary}
+              />
+            </View>
+            <Text style={styles.preStartTitle}>
+              {trip?.status === 'upcoming'
+                ? 'Trajet pas encore demarre'
+                : trip?.status === 'completed'
+                  ? 'Trajet termine'
+                  : trip?.status === 'cancelled'
+                    ? 'Trajet annule'
+                    : 'Navigation en pause'}
+            </Text>
+            <Text style={styles.preStartText}>
+              {trip?.status === 'upcoming'
+                ? 'Le trajet doit etre demarre avant d activer la navigation en direct.'
+                : 'La navigation en direct est disponible uniquement pour un trajet en cours.'}
+            </Text>
+            <View style={styles.preStartActions}>
+              <TouchableOpacity
+                style={[styles.preStartButton, styles.preStartButtonPrimary]}
+                onPress={() => refetchTrip()}
+                disabled={isTripFetching}
+              >
+                {isTripFetching ? (
+                  <ActivityIndicator size="small" color={Colors.white} />
+                ) : (
+                  <Text style={styles.preStartButtonPrimaryText}>Rafraichir</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.preStartButton, styles.preStartButtonSecondary]}
+                onPress={handleExitNavigation}
+              >
+                <Text style={styles.preStartButtonSecondaryText}>Fermer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
       {/* Header avec infos */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -1085,7 +1231,7 @@ export default function NavigationScreen() {
       </View>
 
       {/* Barre compacte des passagers */}
-      {waypoints.length > 0 && (
+      {isTripOngoing && waypoints.length > 0 && (
         <View style={styles.passengersBar}>
           {/* Stats des passagers */}
           <TouchableOpacity 
@@ -1151,7 +1297,7 @@ export default function NavigationScreen() {
       )}
 
       {/* Instructions de navigation */}
-      {!isLoadingRoute && currentStep && (
+      {isTripOngoing && !isLoadingRoute && currentStep && (
         <View style={styles.instructionCard}>
           <View style={styles.instructionHeader}>
             <View style={styles.maneuverIcon}>
@@ -1182,7 +1328,7 @@ export default function NavigationScreen() {
       )}
 
       {/* Loading route indicator */}
-      {isLoadingRoute && (
+      {isTripOngoing && isLoadingRoute && (
         <View style={styles.loadingRouteCard}>
           <ActivityIndicator size="small" color={Colors.primary} />
           <Text style={styles.loadingRouteText}>Calcul de l itineraire...</Text>
@@ -1190,7 +1336,15 @@ export default function NavigationScreen() {
       )}
 
       {/* Boutons d'action flottants */}
+      {isTripOngoing && (
       <View style={styles.floatingButtons}>
+        <TouchableOpacity
+          style={styles.floatingButton}
+          onPress={() => setSecurityModalVisible(true)}
+        >
+          <Ionicons name="shield-checkmark" size={22} color={Colors.primary} />
+        </TouchableOpacity>
+
         {/* Bouton recalculer l'itinéraire */}
         <TouchableOpacity
           style={[styles.floatingButton, isLoadingRoute && styles.floatingButtonDisabled]}
@@ -1218,6 +1372,7 @@ export default function NavigationScreen() {
           <Ionicons name="locate" size={24} color={Colors.primary} />
         </TouchableOpacity>
       </View>
+      )}
 
       {/* Disclosure localisation arriere-plan */}
       <Modal
@@ -1265,6 +1420,59 @@ export default function NavigationScreen() {
                 <Text style={styles.backgroundDisclosurePrimaryButtonText}>Continuer</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={securityModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSecurityModalVisible(false)}
+      >
+        <View style={styles.securityModalOverlay}>
+          <TouchableOpacity
+            style={styles.securityModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setSecurityModalVisible(false)}
+          />
+          <View
+            style={[
+              styles.securityModalContent,
+              { paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.md },
+            ]}
+          >
+            <View style={styles.securityModalHeader}>
+              <Text style={styles.securityModalTitle}>Securite du trajet</Text>
+              <TouchableOpacity
+                style={styles.securityModalCloseButton}
+                onPress={() => setSecurityModalVisible(false)}
+              >
+                <Ionicons name="close" size={22} color={Colors.gray[700]} />
+              </TouchableOpacity>
+            </View>
+
+            {trip ? (
+              <ScrollView
+                style={styles.securityModalBody}
+                contentContainerStyle={styles.securityModalBodyContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                <TripSecurityPanel
+                  tripId={trip.id}
+                  role="driver"
+                  tripStatus={trip.status}
+                  openSelectorByDefault={securityModalVisible}
+                  compact
+                />
+              </ScrollView>
+            ) : (
+              <View style={styles.securityModalLoading}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+                <Text style={styles.securityModalLoadingText}>Chargement securite...</Text>
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -1534,6 +1742,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: Spacing.lg,
     gap: Spacing.md,
+    zIndex: 40,
+    elevation: 40,
   },
   backButton: {
     width: 48,
@@ -1594,6 +1804,80 @@ const styles = StyleSheet.create({
   distanceText: {
     fontSize: FontSizes.base,
     color: Colors.gray[300],
+  },
+  preStartOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.38)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    zIndex: 30,
+  },
+  preStartCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    alignItems: 'center',
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 12,
+  },
+  preStartIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '1a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.sm,
+  },
+  preStartTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    textAlign: 'center',
+    marginBottom: Spacing.xs,
+  },
+  preStartText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  preStartActions: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
+  },
+  preStartButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: BorderRadius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  preStartButtonPrimary: {
+    backgroundColor: Colors.primary,
+  },
+  preStartButtonPrimaryText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  preStartButtonSecondary: {
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+  },
+  preStartButtonSecondaryText: {
+    color: Colors.gray[700],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
   },
   instructionCard: {
     position: 'absolute',
@@ -1691,6 +1975,57 @@ const styles = StyleSheet.create({
   },
   floatingButtonDisabled: {
     opacity: 0.6,
+  },
+  securityModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  securityModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  securityModalContent: {
+    backgroundColor: Colors.gray[50],
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    height: '78%',
+    paddingTop: Spacing.md,
+    paddingHorizontal: Spacing.md,
+  },
+  securityModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
+  securityModalTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  securityModalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  securityModalBody: {
+    flex: 1,
+  },
+  securityModalBodyContent: {
+    paddingBottom: Spacing.sm,
+  },
+  securityModalLoading: {
+    paddingVertical: Spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+  },
+  securityModalLoadingText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
   },
   backgroundDisclosureOverlay: {
     flex: 1,

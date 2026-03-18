@@ -10,7 +10,9 @@ type ServerUser = {
   lastName?: string;
   phone?: string;
   profilePicture?: string | null;
-  rating?: number;
+  rating?: number | null;
+  averageRating?: number | null;
+  totalRatings?: number;
   role?: string;
   status?: string;
   isDriver?: boolean;
@@ -58,6 +60,7 @@ export type ServerTrip = {
   currentLocation?: GeoPoint | null;
   lastLocationUpdateAt?: string | null;
   completedAt?: string | null;
+  driverSafetyEmergencyContactIds?: string[];
 };
 
 const fallbackCoordinate = (coords?: CoordinatesTuple): { lat: number; lng: number } | null => {
@@ -75,6 +78,11 @@ const formatFullName = (user?: ServerUser | null) => {
   if (!user) return 'Conducteur';
   const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
   return fullName || 'Conducteur';
+};
+
+const resolveUserAverageRating = (user?: ServerUser | null): number => {
+  const parsed = Number(user?.averageRating ?? user?.rating);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 };
 
 const mapTripStatus = (status?: string): TripStatus => {
@@ -109,7 +117,7 @@ const mapPassengers = (bookings?: ServerBooking[]): Trip['passengers'] => {
       id: passenger.id,
       name: formatFullName(passenger),
       avatar: passenger.profilePicture ?? undefined,
-      rating: passenger.rating ?? 4.5,
+      rating: resolveUserAverageRating(passenger),
       phone: passenger.phone ?? '',
     }));
 };
@@ -135,6 +143,7 @@ const mapServerVehicleToClient = (vehicle: ServerVehicle | null | undefined): Ve
 export const mapServerTripToClient = (trip: ServerTrip): Trip => {
   const departureCoords = fallbackCoordinate(trip.departureCoordinates);
   const arrivalCoords = fallbackCoordinate(trip.arrivalCoordinates);
+  const parsedDriverRating = resolveUserAverageRating(trip.driver);
   
   // Compter uniquement les réservations acceptées pour calculer le nombre initial de places
   const acceptedBookedSeats =
@@ -154,7 +163,7 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     driverId: trip.driverId,
     driverName: formatFullName(trip.driver),
     driverAvatar: trip.driver?.profilePicture ?? undefined,
-    driverRating: trip.driver?.rating ?? 4.9,
+    driverRating: Number.isFinite(parsedDriverRating) && parsedDriverRating > 0 ? parsedDriverRating : 0,
     driver: trip.driver
       ? {
           id: trip.driver.id,
@@ -165,6 +174,14 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
           role: trip.driver.role as any,
           status: trip.driver.status,
           isDriver: trip.driver.isDriver ?? false,
+          averageRating:
+            Number.isFinite(Number(trip.driver.averageRating))
+              ? Number(trip.driver.averageRating)
+              : undefined,
+          totalRatings:
+            Number.isFinite(Number(trip.driver.totalRatings))
+              ? Number(trip.driver.totalRatings)
+              : undefined,
         }
       : null,
     vehicleType: trip.vehicleType ?? 'car',
@@ -196,7 +213,16 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     vehicleId: trip.vehicleId ?? null,
     description: trip.description ?? null,
     vehicle: mapServerVehicleToClient(trip.vehicle),
+    driverSafetyEmergencyContactIds: Array.isArray(trip.driverSafetyEmergencyContactIds)
+      ? trip.driverSafetyEmergencyContactIds
+      : [],
   };
+};
+
+const cleanObject = <T extends Record<string, unknown>>(value: T): Partial<T> => {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, current]) => current !== undefined && current !== null),
+  ) as Partial<T>;
 };
 
 /**
@@ -204,6 +230,7 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
  * Gère la création, recherche, réservation et gestion des trajets
  */
 export type TripSearchParams = {
+  keywords?: string;
   departureLocation?: string;
   arrivalLocation?: string;
   departureCoordinates?: [number, number];
@@ -213,10 +240,12 @@ export type TripSearchParams = {
   departureDate?: string;
   minSeats?: number;
   maxPrice?: number;
+  isFree?: boolean;
 };
 
 export type TripSearchByPointsPayload = {
-  departureCoordinates: [number, number] | null;
+  keywords?: string | null;
+  departureCoordinates?: [number, number] | null;
   arrivalCoordinates?: [number, number] | null;
   departureRadiusKm?: number | null;
   arrivalRadiusKm?: number | null;
@@ -243,6 +272,12 @@ type UpdateTripRequest = Partial<CreateTripPayload> & {
   status?: TripStatus;
 };
 
+type DriverEmergencyContactsResponse = {
+  tripId: string;
+  emergencyContactIds: string[];
+  contacts: { id: string; name: string; phone: string }[];
+};
+
 export const tripApi = baseApi.injectEndpoints({
   overrideExisting: true,
   endpoints: (builder: BaseEndpointBuilder) => ({
@@ -250,7 +285,7 @@ export const tripApi = baseApi.injectEndpoints({
     getTrips: builder.query<Trip[], TripSearchParams>({
       query: (params: TripSearchParams) => ({
         url: '/trips',
-        params,
+        params: cleanObject(params),
       }),
       transformResponse: (response: ServerTrip[]) => response.map(mapServerTripToClient),
       providesTags: (result: Trip[] | undefined) =>
@@ -282,7 +317,7 @@ export const tripApi = baseApi.injectEndpoints({
       query: (body: TripSearchByPointsPayload) => ({
         url: '/trips/search/coordinates',
         method: 'POST',
-        body,
+        body: cleanObject(body),
       }),
       transformResponse: (response: ServerTrip[]) => response.map(mapServerTripToClient),
     }),
@@ -403,6 +438,22 @@ export const tripApi = baseApi.injectEndpoints({
         'Trip',
       ],
     }),
+    setDriverEmergencyContacts: builder.mutation<
+      DriverEmergencyContactsResponse,
+      { tripId: string; emergencyContactIds: string[] }
+    >({
+      query: ({ tripId, emergencyContactIds }) => ({
+        url: `/trips/${tripId}/driver-emergency-contacts`,
+        method: 'PUT',
+        body: { emergencyContactIds },
+      }),
+      invalidatesTags: (_result, _error, { tripId }) => [
+        { type: 'Trip', id: tripId },
+        { type: 'MyTrips', id: tripId },
+        'Trip',
+        'MyTrips',
+      ],
+    }),
   }),
 });
 
@@ -421,6 +472,7 @@ export const {
   usePauseTripMutation,
   useUpdateDriverLocationMutation,
   useGetDriverLocationQuery,
+  useSetDriverEmergencyContactsMutation,
 } = tripApi;
 
 

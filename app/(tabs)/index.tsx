@@ -28,7 +28,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import Animated, { FadeInDown, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const RECENT_TRIPS_LIMIT = 15;
@@ -50,8 +50,8 @@ export default function HomeScreen() {
   const [filterArrivalLocation, setFilterArrivalLocation] = useState<MapLocationSelection | null>(
     null,
   );
-  const [departureRadius, setDepartureRadius] = useState('10');
-  const [arrivalRadius, setArrivalRadius] = useState('10');
+  const [departureRadius, setDepartureRadius] = useState('50');
+  const [arrivalRadius, setArrivalRadius] = useState('50');
   const [minSeatsFilter, setMinSeatsFilter] = useState('');
   const [maxPriceFilter, setMaxPriceFilter] = useState('');
   const [showQuickFields, setShowQuickFields] = useState(false);
@@ -68,7 +68,7 @@ export default function HomeScreen() {
     refetchOnReconnect: true,
   });
 
-  // console.log('remoteTrips', remoteTrips?.length);
+  // console.log('remoteTrips', remoteTrips[0]);
   const { data: notificationsData } = useGetNotificationsQuery(undefined, {
     refetchOnMountOrArgChange: true,
   });
@@ -138,11 +138,36 @@ export default function HomeScreen() {
     });
 
     return [...filteredTrips]
-      .sort((a, b) => {
-        // Trier par date de départ (les plus récents en premier)
-        const dateA = new Date(a.departureTime).getTime();
-        const dateB = new Date(b.departureTime).getTime();
-        return dateB - dateA; // dateB - dateA = du plus récent au plus ancien
+      .sort((a: any, b: any) => {
+        const departureA = new Date(a.departureTime).getTime();
+        const departureB = new Date(b.departureTime).getTime();
+        const safeDepartureA = Number.isFinite(departureA) ? departureA : Number.MAX_SAFE_INTEGER;
+        const safeDepartureB = Number.isFinite(departureB) ? departureB : Number.MAX_SAFE_INTEGER;
+
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayStartTs = todayStart.getTime();
+        const tomorrowStartTs = todayStartTs + 24 * 60 * 60 * 1000;
+
+        const aIsToday = safeDepartureA >= todayStartTs && safeDepartureA < tomorrowStartTs;
+        const bIsToday = safeDepartureB >= todayStartTs && safeDepartureB < tomorrowStartTs;
+
+        // Prioriser les trajets d'aujourd'hui.
+        if (aIsToday !== bIsToday) {
+          return aIsToday ? -1 : 1;
+        }
+
+        // Trier du plus tôt au plus tard.
+        if (safeDepartureA !== safeDepartureB) {
+          return safeDepartureA - safeDepartureB;
+        }
+
+        // Fallback stable sur la dernière mise à jour/publication.
+        const recencyA = new Date(a.updatedAt || a.createdAt || a.departureTime).getTime();
+        const recencyB = new Date(b.updatedAt || b.createdAt || b.departureTime).getTime();
+        const safeRecencyA = Number.isFinite(recencyA) ? recencyA : 0;
+        const safeRecencyB = Number.isFinite(recencyB) ? recencyB : 0;
+        return safeRecencyB - safeRecencyA;
       })
       .slice(0, RECENT_TRIPS_LIMIT);
   }, [baseTrips, currentUser?.id, completedBookingTripIds]);
@@ -213,26 +238,35 @@ export default function HomeScreen() {
   };
 
   const handleAdvancedSearch = async () => {
-    if (!filterDepartureLocation || !filterArrivalLocation) {
+    const departureCoordinates = filterDepartureLocation
+      ? ([filterDepartureLocation.longitude, filterDepartureLocation.latitude] as [number, number])
+      : undefined;
+    const arrivalCoordinates = filterArrivalLocation
+      ? ([filterArrivalLocation.longitude, filterArrivalLocation.latitude] as [number, number])
+      : undefined;
+
+    if (!departureCoordinates && !arrivalCoordinates) {
       showDialog({
         variant: 'warning',
         title: 'Sélection requise',
-        message: 'Veuillez choisir les points de départ et d’arrivée.',
+        message: 'Choisissez au moins un point (départ ou arrivée) pour lancer la recherche.',
       });
       return;
     }
 
     const payload = {
-      departureCoordinates: [
-        filterDepartureLocation.longitude,
-        filterDepartureLocation.latitude,
-      ] as [number, number],
-      arrivalCoordinates: [filterArrivalLocation.longitude, filterArrivalLocation.latitude] as [
-        number,
-        number,
-      ],
-      departureRadiusKm: parseNumberInput(departureRadius) ?? 10,
-      arrivalRadiusKm: parseNumberInput(arrivalRadius) ?? 10,
+      ...(departureCoordinates
+        ? {
+            departureCoordinates,
+            departureRadiusKm: parseNumberInput(departureRadius) ?? 50,
+          }
+        : {}),
+      ...(arrivalCoordinates
+        ? {
+            arrivalCoordinates,
+            arrivalRadiusKm: parseNumberInput(arrivalRadius) ?? 50,
+          }
+        : {}),
       minSeats: parseNumberInput(minSeatsFilter),
       maxPrice: parseNumberInput(maxPriceFilter),
     };
@@ -244,14 +278,22 @@ export default function HomeScreen() {
         pathname: '/search',
         params: {
           mode: 'map',
-          departureLat: filterDepartureLocation.latitude.toString(),
-          departureLng: filterDepartureLocation.longitude.toString(),
-          arrivalLat: filterArrivalLocation.latitude.toString(),
-          arrivalLng: filterArrivalLocation.longitude.toString(),
-          departureRadiusKm: String(payload.departureRadiusKm ?? 10),
-          arrivalRadiusKm: String(payload.arrivalRadiusKm ?? 10),
-          departureLabel: filterDepartureLocation.title,
-          arrivalLabel: filterArrivalLocation.title,
+          ...(filterDepartureLocation
+            ? {
+                departureLat: filterDepartureLocation.latitude.toString(),
+                departureLng: filterDepartureLocation.longitude.toString(),
+                departureRadiusKm: String(payload.departureRadiusKm ?? 50),
+                departureLabel: filterDepartureLocation.title,
+              }
+            : {}),
+          ...(filterArrivalLocation
+            ? {
+                arrivalLat: filterArrivalLocation.latitude.toString(),
+                arrivalLng: filterArrivalLocation.longitude.toString(),
+                arrivalRadiusKm: String(payload.arrivalRadiusKm ?? 50),
+                arrivalLabel: filterArrivalLocation.title,
+              }
+            : {}),
         },
       });
     } catch (error: any) {
@@ -270,8 +312,8 @@ export default function HomeScreen() {
   const handleClearAdvancedFilters = () => {
     setFilterDepartureLocation(null);
     setFilterArrivalLocation(null);
-    setDepartureRadius('10');
-    setArrivalRadius('10');
+    setDepartureRadius('50');
+    setArrivalRadius('50');
     setMinSeatsFilter('');
     setMaxPriceFilter('');
   };
@@ -313,7 +355,7 @@ export default function HomeScreen() {
   };
 
   const unreadNotifications = notificationsData?.unreadCount ?? 0;
-  const hasLocationSelections = Boolean(filterDepartureLocation && filterArrivalLocation);
+  const hasLocationSelections = Boolean(filterDepartureLocation || filterArrivalLocation);
 
   const openNotifications = () => {
     router.push('/notifications');
@@ -453,7 +495,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Bannière de bienvenue/promo si premier lancement ou autre */}
-        <Animated.View entering={FadeInDown.delay(100)} style={styles.promoBanner}>
+        <View style={styles.promoBanner}>
           <LinearGradient
             colors={['#6366F1', '#8B5CF6']}
             style={styles.promoGradient}
@@ -461,7 +503,7 @@ export default function HomeScreen() {
             end={{ x: 1, y: 1 }}
           >
             <View style={styles.promoContent}>
-              <Text style={styles.promoTitle}>Voyagez l'esprit tranquille</Text>
+              <Text style={styles.promoTitle}>Voyagez l&apos;esprit tranquille</Text>
               <Text style={styles.promoSubtitle}>Économisez sur vos trajets quotidiens avec le covoiturage.</Text>
             </View>
             <View style={styles.promoImage}>
@@ -472,7 +514,7 @@ export default function HomeScreen() {
               />
             </View>
           </LinearGradient>
-        </Animated.View>
+        </View>
 
         {/* Actions rapides */}
         <View style={styles.section}>
@@ -563,24 +605,18 @@ export default function HomeScreen() {
             </View>
           )}
 
-          {latestTrips.map((trip, index) => {
+          {latestTrips.map((trip) => {
             const TripCardWithArrival = () => {
               const calculatedArrivalTime = useTripArrivalTime(trip);
               const arrivalTimeDisplay = calculatedArrivalTime
                 ? formatTime(calculatedArrivalTime.toISOString())
                 : formatTime(trip.arrivalTime);
 
-              const ratingValue =
-                typeof trip.driverRating === 'number'
-                  ? trip.driverRating
-                  : Number(trip.driverRating) || 4.9;
+              const parsedRating = Number(trip.driverRating);
+              const hasDriverRating = Number.isFinite(parsedRating) && parsedRating > 0;
 
               return (
-                <Animated.View
-                  key={trip.id}
-                  entering={FadeInDown.delay(index * 100)}
-                  style={styles.tripCard}
-                >
+                <View key={trip.id} style={styles.tripCard}>
                   <View style={styles.tripHeader}>
                     <View style={styles.tripDriverInfo}>
                       {trip.driverAvatar ? (
@@ -598,8 +634,19 @@ export default function HomeScreen() {
                           {trip?.driverName ?? ''}
                         </Text>
                         <View style={styles.driverMeta}>
-                          <Ionicons name="star" size={14} color={Colors.secondary} />
-                          <Text style={styles.driverRating}>{ratingValue.toFixed(1)}</Text>
+                          <Ionicons
+                            name={hasDriverRating ? "star" : "star-outline"}
+                            size={14}
+                            color={hasDriverRating ? Colors.secondary : Colors.gray[400]}
+                          />
+                          <Text
+                            style={[
+                              styles.driverRating,
+                              !hasDriverRating && styles.driverRatingPlaceholder,
+                            ]}
+                          >
+                            {hasDriverRating ? parsedRating.toFixed(1) : 'Nouveau'}
+                          </Text>
                           <View style={styles.dot} />
                           <Text style={styles.vehicleInfo} numberOfLines={1} ellipsizeMode="tail">
                             {trip?.vehicle
@@ -683,7 +730,7 @@ export default function HomeScreen() {
                       </Text>
                     </TouchableOpacity>
                   </View>
-                </Animated.View>
+                </View>
               );
             };
 
@@ -1042,6 +1089,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.gray[600],
     marginLeft: 4,
+  },
+  driverRatingPlaceholder: {
+    color: Colors.gray[500],
   },
   dot: {
     width: 3,

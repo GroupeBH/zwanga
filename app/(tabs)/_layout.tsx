@@ -14,10 +14,12 @@ export default function TabLayout() {
   return (
     <>
       <Tabs
+        detachInactiveScreens={Platform.OS !== 'android'}
         screenOptions={{
           tabBarActiveTintColor: Colors.primary,
           tabBarInactiveTintColor: Colors.gray[600],
           headerShown: false,
+          freezeOnBlur: Platform.OS !== 'android',
           tabBarStyle: [
             styles.tabBar,
             Platform.OS === 'ios' ? styles.tabBarIOS : styles.tabBarAndroid,
@@ -43,6 +45,22 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
+          name="search"
+          options={{
+            title: 'Recherche',
+            tabBarIcon: ({ color, focused, size }) => (
+              <View style={styles.iconContainer}>
+                <Ionicons
+                  name={focused ? 'search' : 'search-outline'}
+                  size={size || 24}
+                  color={color}
+                />
+                {focused && <View style={styles.activeIndicator} />}
+              </View>
+            ),
+          }}
+        />
+        <Tabs.Screen
           name="trips"
           options={{
             title: 'Trajets',
@@ -52,22 +70,6 @@ export default function TabLayout() {
                   name={focused ? 'car' : 'car-outline'} 
                   size={size || 24} 
                   color={color} 
-                />
-                {focused && <View style={styles.activeIndicator} />}
-              </View>
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="map"
-          options={{
-            title: 'Carte',
-            tabBarIcon: ({ color, focused, size }) => (
-              <View style={styles.iconContainer}>
-                <Ionicons
-                  name={focused ? 'map' : 'map-outline'}
-                  size={size || 24}
-                  color={color}
                 />
                 {focused && <View style={styles.activeIndicator} />}
               </View>

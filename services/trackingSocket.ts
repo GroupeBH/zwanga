@@ -24,6 +24,26 @@ class TrackingSocketClient {
   private locationListeners = new Set<LocationListener>();
   private errorListeners = new Set<ErrorListener>();
 
+  private notifyLocationListeners(payload: DriverLocationPayload) {
+    this.locationListeners.forEach((listener) => {
+      try {
+        listener(payload);
+      } catch (error) {
+        console.warn('[TrackingSocket] location listener error:', error);
+      }
+    });
+  }
+
+  private notifyErrorListeners(message: string) {
+    this.errorListeners.forEach((listener) => {
+      try {
+        listener(message);
+      } catch (error) {
+        console.warn('[TrackingSocket] error listener error:', error);
+      }
+    });
+  }
+
   private async connect(): Promise<Socket> {
     if (this.socket && this.socket.connected) {
       return this.socket;
@@ -42,20 +62,25 @@ class TrackingSocketClient {
       });
 
       socket.on('connect', () => {
-        console.log('[TrackingSocket] connecté');
+        console.log('[TrackingSocket] connecte');
       });
 
       socket.on('disconnect', () => {
-        console.log('[TrackingSocket] déconnecté');
+        console.log('[TrackingSocket] deconnecte');
       });
 
       socket.on('driver_location', (payload: DriverLocationPayload) => {
-        this.locationListeners.forEach((listener) => listener(payload));
+        this.notifyLocationListeners(payload);
       });
 
       socket.on('error', (payload: { message?: string }) => {
         const message = payload?.message ?? 'Erreur de suivi';
-        this.errorListeners.forEach((listener) => listener(message));
+        this.notifyErrorListeners(message);
+      });
+
+      socket.on('connect_error', (error: { message?: string }) => {
+        const message = error?.message ?? 'Connexion tracking impossible';
+        this.notifyErrorListeners(message);
       });
 
       this.socket = socket;
@@ -101,5 +126,3 @@ class TrackingSocketClient {
 }
 
 export const trackingSocket = new TrackingSocketClient();
-
-

@@ -6,6 +6,13 @@ import type {
   UserReport,
   ReportReason,
   ReportStatus,
+  TripSafetyChannel,
+  TripSafetyParticipant,
+  TripSafetyParticipantHistory,
+  TripSafetyTripHistory,
+  TripSecurityConfirmationOutcome,
+  TripSecurityStartAction,
+  TripSafetyNotificationDispatchStats,
 } from '@/types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
@@ -48,6 +55,67 @@ type ServerUserReport = {
   reviewedAt: string | null;
 };
 
+type ServerTripSafetyTrustedContact = {
+  id: string;
+  emergencyContactId: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  channels: TripSafetyChannel[];
+  lastNotifiedAt: string | null;
+};
+
+type ServerTripSafetyParticipant = {
+  id: string;
+  tripId: string;
+  bookingId: string | null;
+  userId: string;
+  role: 'driver' | 'passenger';
+  status:
+    | 'pending'
+    | 'boarded'
+    | 'in_transit'
+    | 'dropped_off'
+    | 'arrived'
+    | 'completed'
+    | 'arrival_unconfirmed'
+    | 'dropoff_unconfirmed'
+    | 'alerted_contacts';
+  startedAt: string | null;
+  boardedAt: string | null;
+  inTransitAt: string | null;
+  estimatedEndAt: string | null;
+  tripEndedDetectedAt: string | null;
+  droppedOffAt: string | null;
+  arrivedAt: string | null;
+  confirmedAt: string | null;
+  completedAt: string | null;
+  reminderSentAt: string | null;
+  reminderCount: number;
+  escalatedAt: string | null;
+  isEscalated: boolean;
+  reminderDelayMinutes: number;
+  escalationDelayMinutes: number;
+  notificationChannels: TripSafetyChannel[];
+  trackingCode: string;
+  cancelledAt: string | null;
+  trustedContacts: ServerTripSafetyTrustedContact[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ServerTripSafetyParticipantHistory = {
+  participant: ServerTripSafetyParticipant;
+  events: TripSafetyParticipantHistory['events'];
+  notifications: TripSafetyParticipantHistory['notifications'];
+};
+
+type ServerTripSafetyTripHistory = {
+  tripId: string;
+  participants: ServerTripSafetyParticipant[];
+  events: TripSafetyTripHistory['events'];
+};
+
 const mapServerEmergencyContact = (contact: ServerEmergencyContact): EmergencyContact => ({
   id: contact.id,
   name: contact.name,
@@ -84,6 +152,46 @@ const mapServerUserReport = (report: ServerUserReport): UserReport => ({
   bookingId: report.bookingId,
   createdAt: report.createdAt,
   reviewedAt: report.reviewedAt,
+});
+
+const mapServerTripSafetyParticipant = (
+  participant: ServerTripSafetyParticipant,
+): TripSafetyParticipant => ({
+  id: participant.id,
+  tripId: participant.tripId,
+  bookingId: participant.bookingId,
+  userId: participant.userId,
+  role: participant.role,
+  status: participant.status,
+  startedAt: participant.startedAt,
+  boardedAt: participant.boardedAt,
+  inTransitAt: participant.inTransitAt,
+  estimatedEndAt: participant.estimatedEndAt,
+  tripEndedDetectedAt: participant.tripEndedDetectedAt,
+  droppedOffAt: participant.droppedOffAt,
+  arrivedAt: participant.arrivedAt,
+  confirmedAt: participant.confirmedAt,
+  completedAt: participant.completedAt,
+  reminderSentAt: participant.reminderSentAt,
+  reminderCount: participant.reminderCount,
+  escalatedAt: participant.escalatedAt,
+  isEscalated: participant.isEscalated,
+  reminderDelayMinutes: participant.reminderDelayMinutes,
+  escalationDelayMinutes: participant.escalationDelayMinutes,
+  notificationChannels: participant.notificationChannels,
+  trackingCode: participant.trackingCode,
+  cancelledAt: participant.cancelledAt,
+  trustedContacts: (participant.trustedContacts ?? []).map((contact) => ({
+    id: contact.id,
+    emergencyContactId: contact.emergencyContactId,
+    name: contact.name,
+    phone: contact.phone,
+    email: contact.email,
+    channels: contact.channels,
+    lastNotifiedAt: contact.lastNotifiedAt,
+  })),
+  createdAt: participant.createdAt,
+  updatedAt: participant.updatedAt,
 });
 
 type CreateEmergencyContactPayload = {
@@ -132,6 +240,44 @@ type CreateUserReportPayload = {
 type UpdateReportStatusPayload = {
   status: 'under_review' | 'resolved' | 'dismissed';
   adminNotes?: string;
+};
+
+type StartTripSecurityPayload = {
+  tripId: string;
+  bookingId?: string;
+  action?: TripSecurityStartAction;
+  trustedContactIds?: string[];
+  estimatedEndAt?: string;
+  reminderDelayMinutes?: number;
+  escalationDelayMinutes?: number;
+  channels?: TripSafetyChannel[];
+  notifyTrustedContacts?: boolean;
+};
+
+type NotifyTripSecurityTrustedContactsPayload = {
+  trustedContactIds?: string[];
+  channels?: TripSafetyChannel[];
+  customMessage?: string;
+};
+
+type ConfirmTripSecurityPayload = {
+  outcome: TripSecurityConfirmationOutcome;
+  note?: string;
+};
+
+type UpdateTripSecurityConfigurationPayload = {
+  reminderDelayMinutes?: number;
+  escalationDelayMinutes?: number;
+  channels?: TripSafetyChannel[];
+};
+
+type ManualTripSecurityEscalationPayload = {
+  reason?: string;
+  channels?: TripSafetyChannel[];
+};
+
+type CancelTripSecurityPayload = {
+  reason?: string;
 };
 
 export const safetyApi = baseApi.injectEndpoints({
@@ -185,6 +331,197 @@ export const safetyApi = baseApi.injectEndpoints({
         method: 'DELETE',
       }),
       invalidatesTags: (_result, _error, id) => [{ type: 'EmergencyContact', id }],
+    }),
+
+    // ==================== Trip Security ====================
+
+    startTripSecurityTracking: builder.mutation<TripSafetyParticipant, StartTripSecurityPayload>({
+      query: (payload: StartTripSecurityPayload) => ({
+        url: '/safety/trip-security/start',
+        method: 'POST',
+        body: payload,
+      }),
+      transformResponse: (response: ServerTripSafetyParticipant) =>
+        mapServerTripSafetyParticipant(response),
+      invalidatesTags: (result) =>
+        result
+          ? [
+              { type: 'TripSafetyParticipant' as const, id: result.id },
+              { type: 'TripSafetyTrip' as const, id: result.tripId },
+            ]
+          : ['TripSafetyParticipant'],
+    }),
+
+    notifyTripSecurityTrustedContacts: builder.mutation<
+      { participant: TripSafetyParticipant; notificationStats: TripSafetyNotificationDispatchStats },
+      { participantId: string; payload: NotifyTripSecurityTrustedContactsPayload }
+    >({
+      query: ({
+        participantId,
+        payload,
+      }: {
+        participantId: string;
+        payload: NotifyTripSecurityTrustedContactsPayload;
+      }) => ({
+        url: `/safety/trip-security/${participantId}/notify-trusted-contacts`,
+        method: 'POST',
+        body: payload,
+      }),
+      transformResponse: (response: {
+        participant: ServerTripSafetyParticipant;
+        notificationStats: TripSafetyNotificationDispatchStats;
+      }) => ({
+        participant: mapServerTripSafetyParticipant(response.participant),
+        notificationStats: response.notificationStats,
+      }),
+      invalidatesTags: (_result, _error, { participantId }) => [
+        { type: 'TripSafetyParticipant', id: participantId },
+      ],
+    }),
+
+    confirmTripSecurityParticipant: builder.mutation<
+      TripSafetyParticipant,
+      { participantId: string; payload: ConfirmTripSecurityPayload }
+    >({
+      query: ({
+        participantId,
+        payload,
+      }: {
+        participantId: string;
+        payload: ConfirmTripSecurityPayload;
+      }) => ({
+        url: `/safety/trip-security/${participantId}/confirm`,
+        method: 'POST',
+        body: payload,
+      }),
+      transformResponse: (response: ServerTripSafetyParticipant) =>
+        mapServerTripSafetyParticipant(response),
+      invalidatesTags: (result, _error, { participantId }) => [
+        { type: 'TripSafetyParticipant', id: participantId },
+        ...(result ? [{ type: 'TripSafetyTrip' as const, id: result.tripId }] : []),
+      ],
+    }),
+
+    updateTripSecurityConfiguration: builder.mutation<
+      TripSafetyParticipant,
+      { participantId: string; payload: UpdateTripSecurityConfigurationPayload }
+    >({
+      query: ({
+        participantId,
+        payload,
+      }: {
+        participantId: string;
+        payload: UpdateTripSecurityConfigurationPayload;
+      }) => ({
+        url: `/safety/trip-security/${participantId}/configuration`,
+        method: 'PUT',
+        body: payload,
+      }),
+      transformResponse: (response: ServerTripSafetyParticipant) =>
+        mapServerTripSafetyParticipant(response),
+      invalidatesTags: (_result, _error, { participantId }) => [
+        { type: 'TripSafetyParticipant', id: participantId },
+      ],
+    }),
+
+    escalateTripSecurityParticipant: builder.mutation<
+      { participant: TripSafetyParticipant; notificationStats: TripSafetyNotificationDispatchStats },
+      { participantId: string; payload: ManualTripSecurityEscalationPayload }
+    >({
+      query: ({
+        participantId,
+        payload,
+      }: {
+        participantId: string;
+        payload: ManualTripSecurityEscalationPayload;
+      }) => ({
+        url: `/safety/trip-security/${participantId}/escalate`,
+        method: 'POST',
+        body: payload,
+      }),
+      transformResponse: (response: {
+        participant: ServerTripSafetyParticipant;
+        notificationStats: TripSafetyNotificationDispatchStats;
+      }) => ({
+        participant: mapServerTripSafetyParticipant(response.participant),
+        notificationStats: response.notificationStats,
+      }),
+      invalidatesTags: (_result, _error, { participantId }) => [
+        { type: 'TripSafetyParticipant', id: participantId },
+      ],
+    }),
+
+    cancelTripSecurityTracking: builder.mutation<
+      TripSafetyParticipant,
+      { participantId: string; payload?: CancelTripSecurityPayload }
+    >({
+      query: ({
+        participantId,
+        payload,
+      }: {
+        participantId: string;
+        payload?: CancelTripSecurityPayload;
+      }) => ({
+        url: `/safety/trip-security/${participantId}/cancel`,
+        method: 'POST',
+        body: payload ?? {},
+      }),
+      transformResponse: (response: ServerTripSafetyParticipant) =>
+        mapServerTripSafetyParticipant(response),
+      invalidatesTags: (result, _error, { participantId }) => [
+        { type: 'TripSafetyParticipant', id: participantId },
+        ...(result ? [{ type: 'TripSafetyTrip' as const, id: result.tripId }] : []),
+      ],
+    }),
+
+    getTripSecurityParticipant: builder.query<TripSafetyParticipant, string>({
+      query: (participantId: string) => `/safety/trip-security/participants/${participantId}`,
+      transformResponse: (response: ServerTripSafetyParticipant) =>
+        mapServerTripSafetyParticipant(response),
+      providesTags: (_result, _error, participantId) => [
+        { type: 'TripSafetyParticipant', id: participantId },
+      ],
+    }),
+
+    getTripSecurityParticipantHistory: builder.query<TripSafetyParticipantHistory, string>({
+      query: (participantId: string) =>
+        `/safety/trip-security/participants/${participantId}/history`,
+      transformResponse: (
+        response: ServerTripSafetyParticipantHistory,
+      ): TripSafetyParticipantHistory => ({
+        participant: mapServerTripSafetyParticipant(response.participant),
+        events: response.events,
+        notifications: response.notifications,
+      }),
+      providesTags: (_result, _error, participantId) => [
+        { type: 'TripSafetyHistory', id: participantId },
+      ],
+    }),
+
+    getTripSecurityTripParticipants: builder.query<TripSafetyParticipant[], string>({
+      query: (tripId: string) => `/safety/trip-security/trips/${tripId}`,
+      transformResponse: (response: ServerTripSafetyParticipant[]) =>
+        response.map(mapServerTripSafetyParticipant),
+      providesTags: (result, _error, tripId) =>
+        result
+          ? [
+              ...result.map((participant) => ({
+                type: 'TripSafetyParticipant' as const,
+                id: participant.id,
+              })),
+              { type: 'TripSafetyTrip' as const, id: tripId },
+            ]
+          : [{ type: 'TripSafetyTrip' as const, id: tripId }],
+    }),
+
+    getTripSecurityTripHistory: builder.query<TripSafetyTripHistory, string>({
+      query: (tripId: string) => `/safety/trip-security/trips/${tripId}/history`,
+      transformResponse: (response: ServerTripSafetyTripHistory): TripSafetyTripHistory => ({
+        tripId: response.tripId,
+        participants: response.participants.map(mapServerTripSafetyParticipant),
+        events: response.events,
+      }),
+      providesTags: (_result, _error, tripId) => [{ type: 'TripSafetyTrip', id: tripId }],
     }),
 
     // ==================== Safety Alerts ====================
@@ -289,6 +626,16 @@ export const {
   useGetEmergencyContactsQuery,
   useUpdateEmergencyContactMutation,
   useDeleteEmergencyContactMutation,
+  useStartTripSecurityTrackingMutation,
+  useNotifyTripSecurityTrustedContactsMutation,
+  useConfirmTripSecurityParticipantMutation,
+  useUpdateTripSecurityConfigurationMutation,
+  useEscalateTripSecurityParticipantMutation,
+  useCancelTripSecurityTrackingMutation,
+  useGetTripSecurityParticipantQuery,
+  useGetTripSecurityParticipantHistoryQuery,
+  useGetTripSecurityTripParticipantsQuery,
+  useGetTripSecurityTripHistoryQuery,
   useCreateSafetyAlertMutation,
   useUpdateLocationMutation,
   useGetSafetyAlertsQuery,

@@ -27,13 +27,6 @@ import {
 } from '@/store/api/safetyApi';
 import type { EmergencyContact } from '@/types';
 
-type EmergencyContact = {
-  id: string;
-  name: string;
-  phone: string;
-  relationship?: string;
-};
-
 const MAX_CONTACTS = 5;
 
 export default function SecurityScreen() {
@@ -51,6 +44,7 @@ export default function SecurityScreen() {
     phone: '',
     relationship: '',
   });
+  const remainingContacts = Math.max(0, MAX_CONTACTS - contacts.length);
 
   const loading = isLoadingContacts || isCreating || isUpdating || isDeleting;
 
@@ -88,11 +82,11 @@ export default function SecurityScreen() {
         return;
       }
 
-      const { data } = await Contacts.pickContactAsync();
-      if (data && data.phoneNumbers && data.phoneNumbers.length > 0) {
-        const phoneNumber = data.phoneNumbers[0].number.replace(/\s/g, '');
+      const pickedContact = await Contacts.presentContactPickerAsync();
+      if (pickedContact && pickedContact.phoneNumbers && pickedContact.phoneNumbers.length > 0) {
+        const phoneNumber = pickedContact.phoneNumbers[0].number.replace(/\s/g, '');
         setFormData({
-          name: data.name || '',
+          name: pickedContact.name || '',
           phone: phoneNumber,
           relationship: formData.relationship,
         });
@@ -264,13 +258,79 @@ export default function SecurityScreen() {
           contentContainerStyle={styles.scrollViewContent}
           showsVerticalScrollIndicator={false}
         >
+          {/* Section Demarrage rapide */}
+          <Animated.View entering={FadeInDown.delay(40)} style={styles.section}>
+            <View style={styles.quickStartCard}>
+              <View style={styles.quickStartHeader}>
+                <View style={styles.quickStartIconWrap}>
+                  <Ionicons name="shield-checkmark-outline" size={22} color={Colors.primary} />
+                </View>
+                <View style={styles.quickStartHeaderCopy}>
+                  <Text style={styles.quickStartTitle}>Protection trajet en 3 etapes</Text>
+                  <Text style={styles.quickStartSubtitle}>
+                    Ajoutez vos proches ici, puis choisissez qui notifier pendant le trajet.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.quickStartSteps}>
+                <View style={styles.quickStartStepRow}>
+                  <View style={styles.quickStartStepBullet}>
+                    <Text style={styles.quickStartStepBulletText}>1</Text>
+                  </View>
+                  <Text style={styles.quickStartStepText}>
+                    Ajoutez vos contacts d urgence dans cette page.
+                  </Text>
+                </View>
+                <View style={styles.quickStartStepRow}>
+                  <View style={styles.quickStartStepBullet}>
+                    <Text style={styles.quickStartStepBulletText}>2</Text>
+                  </View>
+                  <Text style={styles.quickStartStepText}>
+                    Pendant un trajet, choisissez simplement ceux a notifier.
+                  </Text>
+                </View>
+                <View style={styles.quickStartStepRow}>
+                  <View style={styles.quickStartStepBullet}>
+                    <Text style={styles.quickStartStepBulletText}>3</Text>
+                  </View>
+                  <Text style={styles.quickStartStepText}>
+                    Le backend gere ensuite les notifications automatiques selon les etapes du trajet.
+                  </Text>
+                </View>
+              </View>
+
+              {contacts.length < MAX_CONTACTS ? (
+                <TouchableOpacity
+                  style={styles.quickStartButton}
+                  onPress={openAddModal}
+                  disabled={loading}
+                >
+                  <Ionicons name="add-circle" size={18} color={Colors.white} />
+                  <Text style={styles.quickStartButtonText}>
+                    {contacts.length === 0
+                      ? 'Ajouter mon premier contact d urgence'
+                      : 'Ajouter un autre contact d urgence'}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.quickStartLimitBadge}>
+                  <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
+                  <Text style={styles.quickStartLimitText}>
+                    Limite atteinte ({MAX_CONTACTS} contacts)
+                  </Text>
+                </View>
+              )}
+            </View>
+          </Animated.View>
+
           {/* Section Contacts d'urgence */}
           <Animated.View entering={FadeInDown.delay(100)} style={styles.section}>
             <View style={styles.sectionHeader}>
               <View>
-                <Text style={styles.sectionTitle}>Contacts d'urgence</Text>
+                <Text style={styles.sectionTitle}>Contacts d urgence</Text>
                 <Text style={styles.sectionSubtitle}>
-                  Ajoutez jusqu'à {MAX_CONTACTS} personnes à contacter en cas d'urgence
+                  Selectionnables ensuite pendant le suivi d un trajet ({remainingContacts} place(s) restante(s))
                 </Text>
               </View>
             </View>
@@ -279,10 +339,18 @@ export default function SecurityScreen() {
               {contacts.length === 0 ? (
                 <View style={styles.emptyState}>
                   <Ionicons name="people-outline" size={48} color={Colors.gray[400]} />
-                  <Text style={styles.emptyText}>Aucun contact d'urgence</Text>
+                  <Text style={styles.emptyText}>Aucun contact d urgence</Text>
                   <Text style={styles.emptySubtext}>
-                    Ajoutez des contacts pour qu'ils soient notifiés en cas de problème
+                    Commencez par ajouter au moins 1 proche. Vous pourrez ensuite le selectionner sur chaque trajet.
                   </Text>
+                  <TouchableOpacity
+                    style={styles.emptyPrimaryButton}
+                    onPress={openAddModal}
+                    disabled={loading}
+                  >
+                    <Ionicons name="add-circle" size={18} color={Colors.white} />
+                    <Text style={styles.emptyPrimaryButtonText}>Ajouter un contact d urgence</Text>
+                  </TouchableOpacity>
                 </View>
               ) : (
                 contacts.map((contact, index) => (
@@ -328,7 +396,7 @@ export default function SecurityScreen() {
                   disabled={loading}
                 >
                   <Ionicons name="add-circle-outline" size={20} color={Colors.primary} />
-                  <Text style={styles.addButtonText}>Ajouter un contact</Text>
+                  <Text style={styles.addButtonText}>Ajouter un contact d urgence</Text>
                 </TouchableOpacity>
               )}
 
@@ -347,10 +415,10 @@ export default function SecurityScreen() {
           <Animated.View entering={FadeInDown.delay(200)} style={styles.section}>
             <View style={styles.infoCard}>
               <Ionicons name="shield-checkmark-outline" size={24} color={Colors.primary} />
-              <Text style={styles.infoTitle}>Pourquoi ajouter des contacts d'urgence ?</Text>
+              <Text style={styles.infoTitle}>Pourquoi ajouter des contacts d urgence ?</Text>
               <Text style={styles.infoText}>
-                En cas de problème pendant un trajet, vos contacts d'urgence seront automatiquement
-                notifiés avec votre position et les détails de la situation.
+                Les proches ajoutes ici sont proposes quand vous choisissez qui notifier sur un trajet.
+                Une fois selectionnes, le backend gere automatiquement les notifications de securite.
               </Text>
             </View>
           </Animated.View>
@@ -394,6 +462,13 @@ export default function SecurityScreen() {
                 >
                   <Ionicons name="close" size={24} color={Colors.gray[600]} />
                 </TouchableOpacity>
+              </View>
+
+              <View style={styles.modalHintWrap}>
+                <Ionicons name="information-circle-outline" size={16} color={Colors.primary} />
+                <Text style={styles.modalHintText}>
+                  Ce contact sera ensuite disponible dans le choix Qui notifier sur ce trajet.
+                </Text>
               </View>
 
               <ScrollView
@@ -542,6 +617,105 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...CommonStyles.shadowSm,
   },
+  quickStartCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: Colors.primary + '26',
+    padding: Spacing.lg,
+    ...CommonStyles.shadowSm,
+  },
+  quickStartHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: Spacing.md,
+  },
+  quickStartIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary + '14',
+    marginRight: Spacing.sm,
+  },
+  quickStartHeaderCopy: {
+    flex: 1,
+  },
+  quickStartTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  quickStartSubtitle: {
+    marginTop: Spacing.xs,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    lineHeight: 19,
+  },
+  quickStartSteps: {
+    gap: Spacing.sm,
+  },
+  quickStartStepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  quickStartStepBullet: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    marginRight: Spacing.sm,
+    marginTop: 1,
+  },
+  quickStartStepBulletText: {
+    color: Colors.white,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  quickStartStepText: {
+    flex: 1,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+    lineHeight: 19,
+  },
+  quickStartButton: {
+    marginTop: Spacing.lg,
+    minHeight: 44,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: Spacing.md,
+  },
+  quickStartButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    textAlign: 'center',
+  },
+  quickStartLimitBadge: {
+    marginTop: Spacing.lg,
+    minHeight: 42,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.success + '44',
+    backgroundColor: Colors.success + '12',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.md,
+  },
+  quickStartLimitText: {
+    color: Colors.success,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
   emptyState: {
     padding: Spacing.xxl,
     alignItems: 'center',
@@ -558,6 +732,22 @@ const styles = StyleSheet.create({
     color: Colors.gray[500],
     marginTop: Spacing.xs,
     textAlign: 'center',
+  },
+  emptyPrimaryButton: {
+    marginTop: Spacing.lg,
+    minHeight: 42,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: Spacing.md,
+  },
+  emptyPrimaryButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
   },
   contactItem: {
     flexDirection: 'row',
@@ -682,6 +872,22 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
+  modalHintWrap: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    backgroundColor: Colors.primary + '10',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.primary + '22',
+  },
+  modalHintText: {
+    flex: 1,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[700],
+    lineHeight: 17,
+  },
   modalBody: {
     maxHeight: 400,
   },
@@ -761,4 +967,6 @@ const styles = StyleSheet.create({
     color: Colors.white,
   },
 });
+
+
 

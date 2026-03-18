@@ -27,6 +27,7 @@ module.exports = {
     icon: './assets/images/zwanga.png',
     scheme: 'zwanga',
     userInterfaceStyle: 'automatic',
+    // Required by react-native-reanimated v4 on Expo SDK 54 / RN 0.81
     newArchEnabled: true,
 
     ios: {

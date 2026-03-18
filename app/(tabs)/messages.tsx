@@ -8,7 +8,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function MessagesScreen() {
@@ -167,15 +166,12 @@ export default function MessagesScreen() {
             </Text>
           </View>
         ) : (
-          filteredConversations.map((conversation, index) => {
+          filteredConversations.map((conversation) => {
             const subtitle = conversation.lastMessage?.content ?? 'Conversation démarrée';
             const timestamp = formatTimestamp(conversation.lastMessage?.createdAt ?? conversation.lastMessageAt);
             const title = getConversationTitle(conversation);
             return (
-              <Animated.View
-                key={conversation.id}
-                entering={FadeInDown.delay(index * 50)}
-              >
+              <View key={conversation.id}>
                 <View style={styles.conversationRow}>
                   <TouchableOpacity
                     style={styles.conversationItem}
@@ -225,7 +221,7 @@ export default function MessagesScreen() {
                     <Ionicons name="trash-outline" size={20} color={Colors.danger} />
                   </TouchableOpacity>
                 </View>
-              </Animated.View>
+              </View>
             );
           })
         )}

@@ -7,7 +7,6 @@ import React, {
   type ReactNode,
 } from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 
@@ -107,7 +106,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       {children}
       <Modal visible={dialog?.visible ?? false} transparent animationType="fade" onRequestClose={hideDialog}>
         <View style={styles.overlay}>
-          <Animated.View entering={FadeInDown} exiting={FadeInUp} style={styles.card}>
+          <View style={styles.card}>
             <View style={[styles.iconWrapper, { backgroundColor: variantStyle.background }]}>
               <View style={[styles.iconBadge, { backgroundColor: variantStyle.accent }]}>
                 <Ionicons name={dialog?.icon ?? variantStyle.icon} size={28} color={Colors.white} />
@@ -139,7 +138,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                 </TouchableOpacity>
               ))}
             </View>
-          </Animated.View>
+          </View>
         </View>
       </Modal>
     </DialogContext.Provider>

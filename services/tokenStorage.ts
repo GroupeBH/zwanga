@@ -3,7 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 
 /**
  * Service de gestion des tokens JWT avec SecureStore
- * Stocke de manière sécurisée les accessToken et refreshToken
+ * + cache memoire pour limiter les lectures/dechiffrements repetes.
  */
 
 type SecureStoreKeyConfig = {
@@ -12,12 +12,17 @@ type SecureStoreKeyConfig = {
   fcm?: string;
 };
 
+type TokenPair = {
+  accessToken: string | null;
+  refreshToken: string | null;
+};
+
 const secureStoreKeys =
   ((Constants.expoConfig?.extra as { secureStoreKeys?: SecureStoreKeyConfig })?.secureStoreKeys ?? {});
 
 const sanitizeKey = (raw: string | undefined, fallback: string) => {
   const key = raw?.trim() || fallback;
-  // SecureStore n'accepte que des caractères alphanumériques, ".", "-", et "_"
+  // SecureStore accepte seulement [A-Za-z0-9._-]
   const sanitized = key.replace(/[^A-Za-z0-9._-]/g, '_');
   return sanitized.length > 0 ? sanitized : fallback;
 };
@@ -26,12 +31,76 @@ const ACCESS_TOKEN_KEY = sanitizeKey(secureStoreKeys.access, 'zwanga_accessToken
 const REFRESH_TOKEN_KEY = sanitizeKey(secureStoreKeys.refresh, 'zwanga_refreshToken');
 const FCM_TOKEN_KEY = sanitizeKey(secureStoreKeys.fcm, 'zwanga_fcmToken');
 
+// In-memory cache to avoid repeated SecureStore decryptions.
+let tokenCache: TokenPair = { accessToken: null, refreshToken: null };
+let tokensCacheHydrated = false;
+let tokensHydrationPromise: Promise<TokenPair> | null = null;
+
+let fcmTokenCache: string | null = null;
+let fcmCacheHydrated = false;
+let fcmHydrationPromise: Promise<string | null> | null = null;
+
+const readSecureItem = async (key: string, label: string): Promise<string | null> => {
+  try {
+    return await SecureStore.getItemAsync(key);
+  } catch (error: any) {
+    if (error?.message?.includes('Invalid key') || error?.message?.includes('not found')) {
+      return null;
+    }
+    console.error(`Erreur lors de la recuperation de ${label}:`, error);
+    return null;
+  }
+};
+
+const hydrateTokensCache = async (): Promise<TokenPair> => {
+  if (tokensCacheHydrated) {
+    return tokenCache;
+  }
+
+  if (!tokensHydrationPromise) {
+    tokensHydrationPromise = (async () => {
+      const [accessToken, refreshToken] = await Promise.all([
+        readSecureItem(ACCESS_TOKEN_KEY, 'l\'access token'),
+        readSecureItem(REFRESH_TOKEN_KEY, 'le refresh token'),
+      ]);
+
+      tokenCache = { accessToken, refreshToken };
+      tokensCacheHydrated = true;
+      return tokenCache;
+    })().finally(() => {
+      tokensHydrationPromise = null;
+    });
+  }
+
+  return tokensHydrationPromise;
+};
+
+const hydrateFcmCache = async (): Promise<string | null> => {
+  if (fcmCacheHydrated) {
+    return fcmTokenCache;
+  }
+
+  if (!fcmHydrationPromise) {
+    fcmHydrationPromise = (async () => {
+      fcmTokenCache = await readSecureItem(FCM_TOKEN_KEY, 'le token FCM');
+      fcmCacheHydrated = true;
+      return fcmTokenCache;
+    })().finally(() => {
+      fcmHydrationPromise = null;
+    });
+  }
+
+  return fcmHydrationPromise;
+};
+
 /**
- * Stocke l'access token de manière sécurisée
+ * Stocke l'access token de maniere securisee
  */
 export async function storeAccessToken(token: string): Promise<void> {
   try {
     await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, token);
+    tokenCache.accessToken = token;
+    tokensCacheHydrated = true;
   } catch (error) {
     console.error('Erreur lors du stockage de l\'access token:', error);
     throw error;
@@ -39,28 +108,21 @@ export async function storeAccessToken(token: string): Promise<void> {
 }
 
 /**
- * Récupère l'access token depuis le stockage sécurisé
+ * Recupere l'access token depuis le stockage securise
  */
 export async function getAccessToken(): Promise<string | null> {
-  try {
-    const token = await SecureStore.getItemAsync(ACCESS_TOKEN_KEY);
-    return token;
-  } catch (error: any) {
-    // Si l'erreur est due à une clé invalide ou un token inexistant, retourner null silencieusement
-    if (error?.message?.includes('Invalid key') || error?.message?.includes('not found')) {
-      return null;
-    }
-    console.error('Erreur lors de la récupération de l\'access token:', error);
-    return null;
-  }
+  const { accessToken } = await hydrateTokensCache();
+  return accessToken;
 }
 
 /**
- * Stocke le refresh token de manière sécurisée
+ * Stocke le refresh token de maniere securisee
  */
 export async function storeRefreshToken(token: string): Promise<void> {
   try {
     await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token);
+    tokenCache.refreshToken = token;
+    tokensCacheHydrated = true;
   } catch (error) {
     console.error('Erreur lors du stockage du refresh token:', error);
     throw error;
@@ -68,20 +130,11 @@ export async function storeRefreshToken(token: string): Promise<void> {
 }
 
 /**
- * Récupère le refresh token depuis le stockage sécurisé
+ * Recupere le refresh token depuis le stockage securise
  */
 export async function getRefreshToken(): Promise<string | null> {
-  try {
-    const token = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
-    return token;
-  } catch (error: any) {
-    // Si l'erreur est due à une clé invalide ou un token inexistant, retourner null silencieusement
-    if (error?.message?.includes('Invalid key') || error?.message?.includes('not found')) {
-      return null;
-    }
-    console.error('Erreur lors de la récupération du refresh token:', error);
-    return null;
-  }
+  const { refreshToken } = await hydrateTokensCache();
+  return refreshToken;
 }
 
 /**
@@ -90,9 +143,12 @@ export async function getRefreshToken(): Promise<string | null> {
 export async function storeTokens(accessToken: string, refreshToken: string): Promise<void> {
   try {
     await Promise.all([
-      storeAccessToken(accessToken),
-      storeRefreshToken(refreshToken),
+      SecureStore.setItemAsync(ACCESS_TOKEN_KEY, accessToken),
+      SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken),
     ]);
+
+    tokenCache = { accessToken, refreshToken };
+    tokensCacheHydrated = true;
   } catch (error) {
     console.error('Erreur lors du stockage des tokens:', error);
     throw error;
@@ -100,58 +156,52 @@ export async function storeTokens(accessToken: string, refreshToken: string): Pr
 }
 
 /**
- * Récupère les deux tokens (access et refresh)
- * Retourne null pour chaque token s'il n'existe pas (utilisateur non connecté)
+ * Recupere les deux tokens (access et refresh)
  */
-export async function getTokens(): Promise<{ accessToken: string | null; refreshToken: string | null }> {
+export async function getTokens(): Promise<TokenPair> {
   try {
-    // Récupérer les tokens individuellement pour gérer les erreurs séparément
-    const accessToken = await getAccessToken();
-    const refreshToken = await getRefreshToken();
-
-    // console.log('accessToken', accessToken);
-    // console.log('refreshToken', refreshToken);
-    
-    return { accessToken, refreshToken };
+    return await hydrateTokensCache();
   } catch (error: any) {
-    // En cas d'erreur, retourner null pour les deux tokens
-    // Cela signifie que l'utilisateur n'est pas connecté
-    console.error('Erreur lors de la récupération des tokens:', error);
+    console.error('Erreur lors de la recuperation des tokens:', error);
     return { accessToken: null, refreshToken: null };
   }
 }
 
 /**
- * Supprime l'access token du stockage sécurisé
+ * Supprime l'access token du stockage securise
  */
 export async function removeAccessToken(): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
   } catch (error: any) {
-    // Ignorer l'erreur si le token n'existe pas déjà
     if (!error?.message?.includes('not found')) {
       console.error('Erreur lors de la suppression de l\'access token:', error);
     }
+  } finally {
+    tokenCache.accessToken = null;
+    tokensCacheHydrated = true;
   }
 }
 
 /**
- * Supprime le refresh token du stockage sécurisé
+ * Supprime le refresh token du stockage securise
  */
 export async function removeRefreshToken(): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
   } catch (error: any) {
-    // Ignorer l'erreur si le token n'existe pas déjà
     if (!error?.message?.includes('not found')) {
       console.error('Erreur lors de la suppression du refresh token:', error);
     }
+  } finally {
+    tokenCache.refreshToken = null;
+    tokensCacheHydrated = true;
   }
 }
 
 /**
- * Supprime tous les tokens du stockage sécurisé
- * Vide complètement le SecureStore (access token, refresh token, FCM token)
+ * Supprime tous les tokens du stockage securise
+ * Vide completement le SecureStore (access token, refresh token, FCM token)
  */
 export async function clearTokens(): Promise<void> {
   try {
@@ -160,46 +210,49 @@ export async function clearTokens(): Promise<void> {
       removeRefreshToken(),
       removeFcmToken(),
     ]);
-    console.log('Tous les tokens ont été supprimés du SecureStore');
+    console.log('Tous les tokens ont ete supprimes du SecureStore');
   } catch (error) {
     console.error('Erreur lors de la suppression des tokens:', error);
+  } finally {
+    tokenCache = { accessToken: null, refreshToken: null };
+    tokensCacheHydrated = true;
+    fcmTokenCache = null;
+    fcmCacheHydrated = true;
   }
 }
 
 /**
- * Stocke le token FCM pour éviter les requêtes réseaux inutiles
+ * Stocke le token FCM pour eviter les requetes reseaux inutiles
  */
 export async function storeFcmToken(token: string): Promise<void> {
   try {
     await SecureStore.setItemAsync(FCM_TOKEN_KEY, token);
+    fcmTokenCache = token;
+    fcmCacheHydrated = true;
   } catch (error) {
     console.error('Erreur lors du stockage du token FCM:', error);
   }
 }
 
 /**
- * Récupère le token FCM sauvegardé
+ * Recupere le token FCM sauvegarde
  */
 export async function getStoredFcmToken(): Promise<string | null> {
-  try {
-    return await SecureStore.getItemAsync(FCM_TOKEN_KEY);
-  } catch (error: any) {
-    if (error?.message?.includes('Invalid key') || error?.message?.includes('not found')) {
-      return null;
-    }
-    console.error('Erreur lors de la récupération du token FCM:', error);
-    return null;
-  }
+  return hydrateFcmCache();
 }
 
 /**
- * Supprime le token FCM sauvegardé
+ * Supprime le token FCM sauvegarde
  */
 export async function removeFcmToken(): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(FCM_TOKEN_KEY);
-  } catch (error) {
-    console.error('Erreur lors de la suppression du token FCM:', error);
+  } catch (error: any) {
+    if (!error?.message?.includes('not found')) {
+      console.error('Erreur lors de la suppression du token FCM:', error);
+    }
+  } finally {
+    fcmTokenCache = null;
+    fcmCacheHydrated = true;
   }
 }
-
