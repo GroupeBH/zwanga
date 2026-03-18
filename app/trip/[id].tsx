@@ -158,7 +158,8 @@ export default function TripDetailsScreen() {
     refetch: refetchMyBookings,
   } = useGetMyBookingsQuery(undefined, {
     // Polling pour les réservations si le trajet est actif
-    pollingInterval: trip?.status === 'ongoing' ? 10000 : 0, // 10 secondes
+    pollingInterval: trip?.status === 'ongoing' ? 10000 : trip?.status === 'upcoming' ? 30000 : 0, // 10s en cours, 30s à venir
+    refetchOnMountOrArgChange: true,
     refetchOnFocus: true,
     refetchOnReconnect: true,
   });
@@ -330,6 +331,12 @@ export default function TripDetailsScreen() {
       ) ?? null
     );
   }, [myBookings, trip]);
+  const bookingForTrip = useMemo(() => {
+    if (!trip || !myBookings) {
+      return null;
+    }
+    return myBookings.find((booking: any) => booking.tripId === trip.id) ?? null;
+  }, [myBookings, trip]);
   const hasAcceptedBooking = activeBooking?.status === 'accepted';
   // Activer le suivi live uniquement pour un trajet en cours.
   const canTrackTrip = Boolean(
@@ -436,7 +443,7 @@ export default function TripDetailsScreen() {
     : null;
   const canAccessTripSecurity = Boolean(trip && user);
   const tripSecurityRole: 'driver' | 'passenger' = isTripDriver ? 'driver' : 'passenger';
-  const tripSecurityBookingId = isTripDriver ? undefined : activeBooking?.id;
+  const tripSecurityBookingId = isTripDriver ? undefined : (activeBooking?.id ?? bookingForTrip?.id);
   const tripVehicleIdentity = useMemo(() => {
     if (!trip) return 'Informations vehicule indisponibles.';
     if (trip.vehicle) {
@@ -3692,7 +3699,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
-    height: '78%',
+    height: '72%',
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.md,
   },

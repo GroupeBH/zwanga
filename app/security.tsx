@@ -445,9 +445,9 @@ export default function SecurityScreen() {
             }}
           />
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
             style={styles.keyboardAvoidingView}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+            keyboardVerticalOffset={Math.max(insets.top, 12)}
           >
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
@@ -475,6 +475,7 @@ export default function SecurityScreen() {
                 style={styles.modalBody}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
                 contentContainerStyle={styles.modalBodyContent}
               >
                 <View style={styles.formGroup}>
@@ -842,6 +843,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
+    paddingTop: Spacing.md,
   },
   modalOverlayTouchable: {
     position: 'absolute',
@@ -851,13 +853,14 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   keyboardAvoidingView: {
+    flex: 1,
     justifyContent: 'flex-end',
   },
   modalContent: {
     backgroundColor: Colors.white,
     borderTopLeftRadius: BorderRadius.xl,
     borderTopRightRadius: BorderRadius.xl,
-    maxHeight: '90%',
+    maxHeight: '92%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -889,7 +892,7 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   modalBody: {
-    maxHeight: 400,
+    maxHeight: 360,
   },
   modalBodyContent: {
     padding: Spacing.lg,

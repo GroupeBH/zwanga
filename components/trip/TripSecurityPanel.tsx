@@ -623,8 +623,8 @@ const styles = StyleSheet.create({
   },
   inlineSelectorCardCompact: {
     marginTop: Spacing.xs,
-    padding: Spacing.sm,
-    maxHeight: 390,
+    padding: Spacing.xs,
+    maxHeight: 330,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -724,7 +724,7 @@ const styles = StyleSheet.create({
     maxHeight: 300,
   },
   listCompact: {
-    maxHeight: 165,
+    maxHeight: 120,
   },
   contactRow: {
     borderWidth: 1,
