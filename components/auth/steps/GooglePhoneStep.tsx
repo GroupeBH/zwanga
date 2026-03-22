@@ -12,6 +12,7 @@ interface GooglePhoneStepProps {
   onSubmit: () => void;
   onCancel: () => void;
   isLoading: boolean;
+  submitLabel?: string;
 }
 
 export function GooglePhoneStep({
@@ -21,6 +22,7 @@ export function GooglePhoneStep({
   onSubmit,
   onCancel,
   isLoading,
+  submitLabel = 'Recevoir le code',
 }: GooglePhoneStepProps) {
   const isPhoneValid = phone.length >= 10;
 
@@ -70,7 +72,7 @@ export function GooglePhoneStep({
             <ActivityIndicator color="white" />
           ) : (
             <>
-              <Text style={styles.mainButtonText}>Recevoir le code</Text>
+              <Text style={styles.mainButtonText}>{submitLabel}</Text>
               <Ionicons name="arrow-forward" size={20} color="white" />
             </>
           )}

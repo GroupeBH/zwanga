@@ -1,5 +1,6 @@
 import { KycCaptureResult, KycWizardModal } from '@/components/KycWizardModal';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { isSignupOtpVerificationEnabled } from '@/config/env';
 import { configureGoogleSignIn, signInWithGoogle } from '@/services/googleAuth';
 import { useSendPhoneVerificationOtpMutation, useUploadKycMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
 import { useGoogleMobileMutation, useLoginMutation, useRegisterMutation } from '@/store/api/zwangaApi';
@@ -141,10 +142,14 @@ export default function AuthScreen() {
   // ============ COMPUTED VALUES ============
   const getStepSequence = () => {
     if (mode === 'login') return LOGIN_STEPS;
+    const signupSteps: AuthStep[] = isSignupOtpVerificationEnabled ? SIGNUP_STEPS : ['phone', 'pin', 'profile'];
+    const driverSignupSteps: AuthStep[] = isSignupOtpVerificationEnabled
+      ? ['phone', 'sms', 'pin', 'profile', 'kyc']
+      : ['phone', 'pin', 'profile', 'kyc'];
     if (googleIdToken && isGooglePhoneVerified) {
       return role === 'driver' ? ['profile', 'kyc'] : ['profile'];
     }
-    return role === 'driver' ? ['phone', 'sms', 'pin', 'profile', 'kyc'] : SIGNUP_STEPS;
+    return role === 'driver' ? driverSignupSteps : signupSteps;
   };
 
   const stepSequence = getStepSequence();
@@ -283,13 +288,27 @@ export default function AuthScreen() {
   };
 
   const handleSendGoogleOtp = async () => {
-    if (!googlePhone || googlePhone.length < 10) {
+    const normalizedPhone = googlePhone.trim();
+    if (!normalizedPhone || normalizedPhone.length < 10) {
       showDialog({ variant: 'warning', title: 'Numéro requis', message: 'Veuillez entrer un numéro valide.' });
+      return;
+    }
+    if (!isSignupOtpVerificationEnabled) {
+      setGooglePhone(normalizedPhone);
+      setPhone(normalizedPhone);
+      setGoogleOtp(['', '', '', '', '']);
+      setIsGooglePhoneVerified(true);
+      if (googleFirstName) setFirstName(googleFirstName);
+      if (googleLastName) setLastName(googleLastName);
+      if (googleEmail) setEmail(googleEmail);
+      setGoogleSignupStep('profile');
+      setStep('profile');
       return;
     }
     try {
       setIsSendingGoogleOtp(true);
-      await sendPhoneVerificationOtp({ phone: googlePhone, context: 'registration' }).unwrap();
+      await sendPhoneVerificationOtp({ phone: normalizedPhone, context: 'registration' }).unwrap();
+      setGooglePhone(normalizedPhone);
       setGoogleSignupStep('otp');
     } catch (error: any) {
       showDialog({ variant: 'danger', title: 'Erreur OTP', message: error?.data?.message || 'Impossible d\'envoyer le code' });
@@ -352,17 +371,23 @@ export default function AuthScreen() {
 
   // Phone Handlers
   const handlePhoneSubmit = async () => {
-    if (phone.length < 10) {
+    const normalizedPhone = phone.trim();
+    if (normalizedPhone.length < 10) {
       showDialog({ variant: 'danger', title: 'Numéro invalide', message: 'Veuillez entrer un numéro valide' });
       return;
     }
+    setPhone(normalizedPhone);
     if (mode === 'login') {
+      setStep('pin');
+      return;
+    }
+    if (!isSignupOtpVerificationEnabled) {
       setStep('pin');
       return;
     }
     try {
       setIsSendingOtp(true);
-      await sendPhoneVerificationOtp({ phone, context: 'registration' }).unwrap();
+      await sendPhoneVerificationOtp({ phone: normalizedPhone, context: 'registration' }).unwrap();
       setStep('sms');
       showDialog({ variant: 'success', title: 'Code envoyé', message: 'Un code de vérification a été envoyé.' });
     } catch (error: any) {
@@ -766,11 +791,12 @@ export default function AuthScreen() {
               onSubmit={handleSendGoogleOtp}
               onCancel={handleGoogleCancel}
               isLoading={isSendingGoogleOtp}
+              submitLabel={isSignupOtpVerificationEnabled ? 'Recevoir le code' : 'Continuer'}
             />
           )}
 
           {/* Google OTP Step */}
-          {isGoogleSignupActive && googleSignupStep === 'otp' && (
+          {isSignupOtpVerificationEnabled && isGoogleSignupActive && googleSignupStep === 'otp' && (
             <GoogleOtpStep
               phone={googlePhone}
               otp={googleOtp}
@@ -785,7 +811,7 @@ export default function AuthScreen() {
           )}
 
           {/* SMS Step */}
-          {step === 'sms' && (
+          {isSignupOtpVerificationEnabled && step === 'sms' && (
             <SmsStep
               mode={mode}
               phone={phone}
