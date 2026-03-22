@@ -10,6 +10,7 @@ import Constants from 'expo-constants';
 interface EnvConfig {
   apiUrl: string;
   env: 'development' | 'staging' | 'production';
+  enableSignupOtp: boolean;
 }
 
 /**
@@ -37,7 +38,7 @@ function getEnvConfig(): EnvConfig {
   // Si __DEV__ est false et que l'env détecté est 'development', c'est une erreur de configuration
   // On force donc 'production' pour garantir que l'OTP sera toujours requis
   if (!__DEV__ && env === 'development') {
-    console.warn('[env.ts] Warning: __DEV__ is false but env is "development". Forcing to "production" to ensure OTP is required.');
+    console.warn('[env.ts] Warning: __DEV__ is false but env is "development". Forcing to "production".');
     env = 'production';
   }
   
@@ -52,10 +53,17 @@ function getEnvConfig(): EnvConfig {
       isProduction: env === 'production',
     });
   }
+
+  const rawEnableSignupOtp =
+    extra.EXPO_PUBLIC_ENABLE_SIGNUP_OTP ??
+    process.env.EXPO_PUBLIC_ENABLE_SIGNUP_OTP ??
+    'false';
+  const enableSignupOtp = String(rawEnableSignupOtp).toLowerCase() === 'true';
   
   return {
     apiUrl,
     env,
+    enableSignupOtp,
   };
 }
 
@@ -70,6 +78,12 @@ export const isDevelopment = envConfig.env === 'development';
  * Vérifie si on est en mode production
  */
 export const isProduction = envConfig.env === 'production';
+
+/**
+ * Active/desactive la verification OTP pendant l'inscription.
+ * false => bypass OTP pour l'inscription classique et Google.
+ */
+export const isSignupOtpVerificationEnabled = envConfig.enableSignupOtp;
 
 /**
  * URL de base de l'API
