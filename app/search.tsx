@@ -5,9 +5,11 @@ import {
   useGetTripsQuery,
   useSearchTripsByCoordinatesMutation,
 } from '@/store/api/tripApi';
+import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
+import { useGetLandmarksQuery, type LandmarkPlace } from '@/store/api/googleMapsApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTrips } from '@/store/selectors';
-import type { Trip } from '@/types';
+import type { FavoriteLocation, Trip } from '@/types';
 import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { searchMapboxPlaces, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
@@ -27,6 +29,63 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+const FALLBACK_KINSHASA_LANDMARKS: LandmarkPlace[] = [
+  {
+    id: 'fallback-victoire',
+    name: 'Victoire',
+    query: 'Victoire, Kalamu, Kinshasa',
+    address: 'Avenue Victoire, Kalamu, Kinshasa',
+    commune: 'Kalamu',
+    category: 'rond-point',
+    keywords: ['victoire', 'kalamu'],
+  },
+  {
+    id: 'fallback-zando',
+    name: 'Zando',
+    query: 'Marche Central Zando, Gombe, Kinshasa',
+    address: 'Marche Central, Gombe, Kinshasa',
+    commune: 'Gombe',
+    category: 'marche',
+    keywords: ['zando', 'marche central'],
+  },
+  {
+    id: 'fallback-upn',
+    name: 'UPN',
+    query: 'Universite Pedagogique Nationale, Ngaliema, Kinshasa',
+    address: 'UPN, Ngaliema, Kinshasa',
+    commune: 'Ngaliema',
+    category: 'universite',
+    keywords: ['upn'],
+  },
+  {
+    id: 'fallback-ngaba',
+    name: 'Rond-point Ngaba',
+    query: 'Rond-point Ngaba, Ngaba, Kinshasa',
+    address: 'Rond-point Ngaba, Kinshasa',
+    commune: 'Ngaba',
+    category: 'rond-point',
+    keywords: ['ngaba'],
+  },
+  {
+    id: 'fallback-matonge',
+    name: 'Matonge',
+    query: 'Matonge, Kalamu, Kinshasa',
+    address: 'Matonge, Kalamu, Kinshasa',
+    commune: 'Kalamu',
+    category: 'quartier',
+    keywords: ['matonge'],
+  },
+  {
+    id: 'fallback-kintambo',
+    name: 'Kintambo Magasin',
+    query: 'Kintambo Magasin, Kintambo, Kinshasa',
+    address: 'Kintambo Magasin, Kinshasa',
+    commune: 'Kintambo',
+    category: 'quartier',
+    keywords: ['kintambo magasin'],
+  },
+];
+
 export default function SearchScreen() {
   const router = useRouter();
   const searchParams = useLocalSearchParams<{
@@ -43,6 +102,11 @@ export default function SearchScreen() {
     arrivalLabel?: string;
   }>();
   const storedTrips = useAppSelector(selectTrips);
+  const { data: favoriteLocations = [] } = useGetFavoriteLocationsQuery();
+  const { data: kinshasaLandmarks = [] } = useGetLandmarksQuery({
+    city: 'kinshasa',
+    limit: 8,
+  });
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
   const [departureSuggestions, setDepartureSuggestions] = useState<MapboxSearchSuggestion[]>([]);
@@ -59,6 +123,8 @@ export default function SearchScreen() {
     useState<TripSearchByPointsPayload | null>(null);
   const [searchTripsByCoordinates, { isLoading: isAdvancedSearching }] =
     useSearchTripsByCoordinatesMutation();
+  const landmarkShortcuts =
+    kinshasaLandmarks.length > 0 ? kinshasaLandmarks : FALLBACK_KINSHASA_LANDMARKS;
 
   const {
     data: remoteTrips,
@@ -209,6 +275,40 @@ export default function SearchScreen() {
       departureLocation: departure.trim() || undefined,
       arrivalLocation: arrival.trim() || undefined,
     });
+  };
+
+  const handleFavoriteLocationShortcut = (location: FavoriteLocation) => {
+    const value = location.address || location.name;
+
+    if (activeSearchField === 'arrival') {
+      setArrival(value);
+      setArrivalSuggestions([]);
+    } else if (activeSearchField === 'departure' || !departure.trim()) {
+      setDeparture(value);
+      setDepartureSuggestions([]);
+    } else {
+      setArrival(value);
+      setArrivalSuggestions([]);
+    }
+
+    setActiveSearchField(null);
+  };
+
+  const handleLandmarkShortcut = (landmark: LandmarkPlace) => {
+    const value = landmark.query || landmark.name;
+
+    if (activeSearchField === 'arrival') {
+      setArrival(value);
+      setArrivalSuggestions([]);
+    } else if (activeSearchField === 'departure' || !departure.trim()) {
+      setDeparture(value);
+      setDepartureSuggestions([]);
+    } else {
+      setArrival(value);
+      setArrivalSuggestions([]);
+    }
+
+    setActiveSearchField(null);
   };
 
   const runAdvancedSearch = async (payload: TripSearchByPointsPayload) => {
@@ -483,6 +583,70 @@ export default function SearchScreen() {
             <Text style={styles.searchButtonText}>Rechercher</Text>
           )}
         </TouchableOpacity>
+
+        <View style={styles.helperCard}>
+          <Ionicons name="bulb-outline" size={18} color={Colors.primary} />
+          <Text style={styles.helperText}>
+            Tapez un quartier, un marche, une ecole, une eglise ou utilisez un lieu favori.
+          </Text>
+        </View>
+
+        <View style={styles.favoriteShortcutsSection}>
+          <View style={styles.favoriteShortcutsHeader}>
+            <Text style={styles.favoriteShortcutsTitle}>Reperes de Kinshasa</Text>
+            <Text style={styles.favoriteShortcutsHint}>Choix rapides</Text>
+          </View>
+
+          <View style={styles.favoriteShortcutsRow}>
+            {landmarkShortcuts.map((landmark) => (
+              <TouchableOpacity
+                key={landmark.id}
+                style={styles.favoriteShortcutChip}
+                onPress={() => handleLandmarkShortcut(landmark)}
+              >
+                <Ionicons name="navigate" size={14} color={Colors.primary} />
+                <Text style={styles.favoriteShortcutText} numberOfLines={1}>
+                  {landmark.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {favoriteLocations.length > 0 && (
+          <View style={styles.favoriteShortcutsSection}>
+            <View style={styles.favoriteShortcutsHeader}>
+              <Text style={styles.favoriteShortcutsTitle}>Mes reperes</Text>
+              <TouchableOpacity onPress={() => router.push('/favorite-locations')}>
+                <Text style={styles.favoriteShortcutsLink}>Gerer</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.favoriteShortcutsRow}>
+              {favoriteLocations.slice(0, 6).map((location) => {
+                const icon =
+                  location.type === 'home'
+                    ? 'home'
+                    : location.type === 'work'
+                      ? 'briefcase'
+                      : 'location';
+
+                return (
+                  <TouchableOpacity
+                    key={location.id}
+                    style={styles.favoriteShortcutChip}
+                    onPress={() => handleFavoriteLocationShortcut(location)}
+                  >
+                    <Ionicons name={icon} size={14} color={Colors.primary} />
+                    <Text style={styles.favoriteShortcutText} numberOfLines={1}>
+                      {location.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
       </View>
 
       {/* Résultats */}
@@ -672,6 +836,67 @@ const styles = StyleSheet.create({
   searchButtonText: {
     color: Colors.white,
     fontWeight: FontWeights.bold,
+  },
+  helperCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    backgroundColor: Colors.primary + '10',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  helperText: {
+    flex: 1,
+    color: Colors.gray[700],
+    lineHeight: 18,
+    fontSize: FontSizes.sm,
+  },
+  favoriteShortcutsSection: {
+    marginBottom: Spacing.sm,
+  },
+  favoriteShortcutsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
+  favoriteShortcutsTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[700],
+  },
+  favoriteShortcutsLink: {
+    fontSize: FontSizes.sm,
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  favoriteShortcutsHint: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    fontWeight: FontWeights.medium,
+  },
+  favoriteShortcutsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  favoriteShortcutChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.primary + '20',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  favoriteShortcutText: {
+    maxWidth: 110,
+    color: Colors.gray[800],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
   },
   searchRowContainer: {
     position: 'relative',

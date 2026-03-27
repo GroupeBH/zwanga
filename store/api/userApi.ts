@@ -1,10 +1,12 @@
 import { API_BASE_URL } from '../../config/env';
 import { getRefreshToken, storeTokens } from '../../services/tokenStorage';
 import type { FavoriteLocation, KycDocument, ProfileStats, ProfileSummary, User, UserRole, Vehicle } from '../../types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 
 type ServerUser = Record<string, any>;
+const FAVORITE_LOCATION_NOTES_KEY = 'favorite_location_local_notes';
 
 const buildFullName = (user: ServerUser) => {
   const combined = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
@@ -50,6 +52,78 @@ const mapProfileSummary = (payload: { user: ServerUser; stats: ProfileStats }): 
   user: mapServerUser(payload.user),
   stats: payload.stats,
 });
+
+const loadFavoriteLocationNotes = async (): Promise<Record<string, string>> => {
+  try {
+    const storedNotes = await AsyncStorage.getItem(FAVORITE_LOCATION_NOTES_KEY);
+    return storedNotes ? (JSON.parse(storedNotes) as Record<string, string>) : {};
+  } catch (error) {
+    console.warn('[userApi] Impossible de charger les notes locales des lieux favoris:', error);
+    return {};
+  }
+};
+
+const saveFavoriteLocationNotes = async (notesById: Record<string, string>) => {
+  try {
+    await AsyncStorage.setItem(FAVORITE_LOCATION_NOTES_KEY, JSON.stringify(notesById));
+  } catch (error) {
+    console.warn('[userApi] Impossible de sauvegarder les notes locales des lieux favoris:', error);
+  }
+};
+
+const mergeFavoriteLocationNotes = async (
+  favoriteLocations: FavoriteLocation[],
+): Promise<FavoriteLocation[]> => {
+  const notesById = await loadFavoriteLocationNotes();
+
+  return favoriteLocations.map((location) => ({
+    ...location,
+    notes: notesById[location.id] ?? location.notes ?? null,
+  }));
+};
+
+const mergeFavoriteLocationNote = async (
+  favoriteLocation: FavoriteLocation | null,
+): Promise<FavoriteLocation | null> => {
+  if (!favoriteLocation) {
+    return null;
+  }
+
+  const [locationWithNotes] = await mergeFavoriteLocationNotes([favoriteLocation]);
+  return locationWithNotes;
+};
+
+const persistFavoriteLocationNote = async (
+  favoriteLocation: FavoriteLocation,
+  note?: string,
+): Promise<FavoriteLocation> => {
+  const normalizedNote = note?.trim();
+  const notesById = await loadFavoriteLocationNotes();
+
+  if (normalizedNote) {
+    notesById[favoriteLocation.id] = normalizedNote;
+  } else {
+    delete notesById[favoriteLocation.id];
+  }
+
+  await saveFavoriteLocationNotes(notesById);
+
+  return {
+    ...favoriteLocation,
+    notes: notesById[favoriteLocation.id] ?? favoriteLocation.notes ?? null,
+  };
+};
+
+const removeFavoriteLocationNote = async (favoriteLocationId: string) => {
+  const notesById = await loadFavoriteLocationNotes();
+
+  if (!(favoriteLocationId in notesById)) {
+    return;
+  }
+
+  delete notesById[favoriteLocationId];
+  await saveFavoriteLocationNotes(notesById);
+};
 
 /**
  * API utilisateurs
@@ -259,22 +333,50 @@ export const userApi = baseApi.injectEndpoints({
 
     // Récupérer tous les lieux favoris de l'utilisateur
     getFavoriteLocations: builder.query<FavoriteLocation[], void>({
-      query: () => '/favorite-places',
+      queryFn: async (_arg, _api, _extraOptions, baseQuery) => {
+        const result = await baseQuery('/favorite-places');
+
+        if (result.error) {
+          return { error: result.error } as any;
+        }
+
+        return {
+          data: await mergeFavoriteLocationNotes(result.data as FavoriteLocation[]),
+        } as any;
+      },
       providesTags: ['FavoriteLocations'],
     }),
 
     // Récupérer le lieu favori par défaut (optionnellement filtré par type)
     getDefaultFavoriteLocation: builder.query<FavoriteLocation | null, { type?: 'home' | 'work' | 'other' } | void>({
-      query: (params) => {
+      queryFn: async (params, _api, _extraOptions, baseQuery) => {
         const queryParams = params && params.type ? `?type=${params.type}` : '';
-        return `/favorite-places/default${queryParams}`;
+        const result = await baseQuery(`/favorite-places/default${queryParams}`);
+
+        if (result.error) {
+          return { error: result.error } as any;
+        }
+
+        return {
+          data: await mergeFavoriteLocationNote((result.data as FavoriteLocation | null) ?? null),
+        } as any;
       },
       providesTags: ['FavoriteLocations'],
     }),
 
     // Récupérer un lieu favori par ID
     getFavoriteLocationById: builder.query<FavoriteLocation, string>({
-      query: (id: string) => `/favorite-places/${id}`,
+      queryFn: async (id: string, _api, _extraOptions, baseQuery) => {
+        const result = await baseQuery(`/favorite-places/${id}`);
+
+        if (result.error) {
+          return { error: result.error } as any;
+        }
+
+        return {
+          data: await mergeFavoriteLocationNote(result.data as FavoriteLocation),
+        } as any;
+      },
       providesTags: (_result, _error, id) => [{ type: 'FavoriteLocations', id }],
     }),
 
@@ -287,11 +389,21 @@ export const userApi = baseApi.injectEndpoints({
       isDefault?: boolean;
       notes?: string;
     }>({
-      query: (data) => ({
-        url: '/favorite-places',
-        method: 'POST',
-        body: data,
-      }),
+      queryFn: async ({ notes, ...data }, _api, _extraOptions, baseQuery) => {
+        const result = await baseQuery({
+          url: '/favorite-places',
+          method: 'POST',
+          body: data,
+        });
+
+        if (result.error) {
+          return { error: result.error } as any;
+        }
+
+        return {
+          data: await persistFavoriteLocationNote(result.data as FavoriteLocation, notes),
+        } as any;
+      },
       invalidatesTags: ['FavoriteLocations'],
     }),
 
@@ -305,20 +417,40 @@ export const userApi = baseApi.injectEndpoints({
       isDefault?: boolean;
       notes?: string;
     }>({
-      query: ({ id, ...data }) => ({
-        url: `/favorite-places/${id}`,
-        method: 'PUT',
-        body: data,
-      }),
+      queryFn: async ({ id, notes, ...data }, _api, _extraOptions, baseQuery) => {
+        const result = await baseQuery({
+          url: `/favorite-places/${id}`,
+          method: 'PUT',
+          body: data,
+        });
+
+        if (result.error) {
+          return { error: result.error } as any;
+        }
+
+        return {
+          data: await persistFavoriteLocationNote(result.data as FavoriteLocation, notes),
+        } as any;
+      },
       invalidatesTags: (_result, _error, { id }) => [{ type: 'FavoriteLocations', id }, 'FavoriteLocations'],
     }),
 
     // Supprimer un lieu favori
     deleteFavoriteLocation: builder.mutation<{ message: string }, string>({
-      query: (id: string) => ({
-        url: `/favorite-places/${id}`,
-        method: 'DELETE',
-      }),
+      queryFn: async (id: string, _api, _extraOptions, baseQuery) => {
+        const result = await baseQuery({
+          url: `/favorite-places/${id}`,
+          method: 'DELETE',
+        });
+
+        if (result.error) {
+          return { error: result.error } as any;
+        }
+
+        await removeFavoriteLocationNote(id);
+
+        return { data: result.data as { message: string } } as any;
+      },
       invalidatesTags: (_result, _error, id) => [{ type: 'FavoriteLocations', id }, 'FavoriteLocations'],
     }),
   }),

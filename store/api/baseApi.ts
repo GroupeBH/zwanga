@@ -115,6 +115,8 @@ export const baseApi = createApi({
     'TripSafetyParticipant',
     'TripSafetyHistory',
     'TripSafetyTrip',
+    'SupportFaq',
+    'SupportTicket',
   ],
   endpoints: () => ({}),
 });

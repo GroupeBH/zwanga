@@ -4,7 +4,6 @@ import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constan
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import {
   useAcceptDriverOfferMutation,
-  useAcceptTripRequestMutation,
   useCancelTripRequestMutation,
   useCreateDriverOfferMutation,
   useGetTripRequestByIdQuery,
@@ -54,12 +53,6 @@ export default function TripRequestDetailsScreen() {
   
   const { data: currentUser } = useGetCurrentUserQuery();
   const { isIdentityVerified, checkIdentity } = useIdentityCheck();
-  
-  // Helper pour vérifier si l'utilisateur est conducteur basé sur le role
-  const isDriver = useMemo(() => {
-    const role = currentUser?.role;
-    return role === 'driver' || role === 'both';
-  }, [currentUser?.role]);
   
   // État pour le polling interval dynamique
   const [pollingInterval, setPollingInterval] = useState(30000);
@@ -123,7 +116,6 @@ export default function TripRequestDetailsScreen() {
   const [cancelRequest, { isLoading: isCancelling }] = useCancelTripRequestMutation();
   const [updateTripRequest, { isLoading: isUpdating }] = useUpdateTripRequestMutation();
   const [startTripFromRequest, { isLoading: isStartingTripFromRequest }] = useStartTripFromRequestMutation();
-  const [acceptTripRequest, { isLoading: isAcceptingTripRequest }] = useAcceptTripRequestMutation();
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -168,8 +160,8 @@ export default function TripRequestDetailsScreen() {
   const [availableSeats, setAvailableSeats] = useState('');
   const [message, setMessage] = useState('');
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
-  const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }> | null>(null);
-  const [isLoadingRoute, setIsLoadingRoute] = useState(false);
+  const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[] | null>(null);
+  const [, setIsLoadingRoute] = useState(false);
   const [mapModalVisible, setMapModalVisible] = useState(false);
 
   // Mettre à jour la date proposée quand la demande change
@@ -284,17 +276,51 @@ export default function TripRequestDetailsScreen() {
     return tripRequest.offers.find((offer) => offer.driverId === currentUser.id);
   }, [tripRequest, currentUser]);
 
-  const isSelectedDriver = useMemo(() => {
-    return tripRequest && currentUser && tripRequest.selectedDriverId === currentUser.id;
-  }, [tripRequest, currentUser]);
+  const minimumSeatsRequired = tripRequest?.numberOfSeats ?? 1;
 
-  const canStartTrip = useMemo(() => {
-    return (
-      isSelectedDriver &&
-      tripRequest?.status === 'driver_selected' &&
-      !tripRequest.tripId
-    );
-  }, [isSelectedDriver, tripRequest]);
+  const isOfferDraftValid = useMemo(() => {
+    if (!tripRequest) return false;
+
+    const parsedPrice = Number.parseFloat(pricePerSeat);
+    const parsedSeats = Number.parseInt(availableSeats, 10);
+
+    if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+      return false;
+    }
+
+    if (!Number.isFinite(parsedSeats) || parsedSeats < minimumSeatsRequired) {
+      return false;
+    }
+
+    if (tripRequest.maxPricePerSeat && parsedPrice > tripRequest.maxPricePerSeat) {
+      return false;
+    }
+
+    return true;
+  }, [availableSeats, minimumSeatsRequired, pricePerSeat, tripRequest]);
+
+  const resetOfferForm = useCallback(() => {
+    const minDate = tripRequest?.departureDateMin ? new Date(tripRequest.departureDateMin) : new Date();
+    const currentDate = new Date();
+
+    setOfferStep('details');
+    setSelectedVehicleId('');
+    setPricePerSeat('');
+    setAvailableSeats(tripRequest ? String(tripRequest.numberOfSeats) : '');
+    setMessage('');
+    setIosPickerMode(null);
+    setProposedDepartureDate(minDate > currentDate ? minDate : currentDate);
+  }, [tripRequest]);
+
+  const closeOfferForm = useCallback(() => {
+    setShowOfferForm(false);
+    resetOfferForm();
+  }, [resetOfferForm]);
+
+  const openOfferForm = useCallback(() => {
+    resetOfferForm();
+    setShowOfferForm(true);
+  }, [resetOfferForm]);
 
   // Fonctions pour appliquer uniquement la date ou l'heure
   const applyDatePart = (date: Date, currentDate: Date) => {
@@ -427,7 +453,7 @@ export default function TripRequestDetailsScreen() {
     if (!(userRole === 'driver' || userRole === 'both')) {
       showDialog({
         title: 'Devenir conducteur requis',
-        message: 'Pour faire une offre sur une demande de trajet, vous devez être conducteur. Voulez-vous devenir conducteur ?',
+        message: 'Pour faire une proposition sur une demande de covoiturage, vous devez être conducteur. Voulez-vous devenir conducteur ?',
         variant: 'warning',
         actions: [
           { label: 'Annuler', variant: 'ghost' },
@@ -462,16 +488,16 @@ export default function TripRequestDetailsScreen() {
     if (!pricePerSeat || parseFloat(pricePerSeat) <= 0) {
       showDialog({
         title: 'Erreur',
-        message: 'Veuillez entrer un prix valide',
+        message: 'Veuillez entrer une participation valide par place.',
         variant: 'danger',
       });
       return;
     }
 
-    if (!availableSeats || parseInt(availableSeats) < tripRequest.numberOfSeats) {
+    if (!availableSeats || parseInt(availableSeats, 10) < tripRequest.numberOfSeats) {
       showDialog({
         title: 'Erreur',
-        message: `Vous devez proposer au moins ${tripRequest.numberOfSeats} place(s)`,
+        message: `Vous devez proposer au moins ${tripRequest.numberOfSeats} place(s).`,
         variant: 'danger',
       });
       return;
@@ -480,7 +506,7 @@ export default function TripRequestDetailsScreen() {
     if (tripRequest.maxPricePerSeat && parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat) {
       showDialog({
         title: 'Erreur',
-        message: `Le prix ne doit pas dépasser ${tripRequest.maxPricePerSeat} FC par place`,
+        message: `La participation ne doit pas dépasser ${tripRequest.maxPricePerSeat} FC par place.`,
         variant: 'danger',
       });
       return;
@@ -497,7 +523,7 @@ export default function TripRequestDetailsScreen() {
       } = {
         proposedDepartureDate: proposedDepartureDate.toISOString(),
         pricePerSeat: parseFloat(pricePerSeat),
-        availableSeats: parseInt(availableSeats),
+        availableSeats: parseInt(availableSeats, 10),
       };
 
       // Ajouter vehicleId seulement s'il est défini et non vide
@@ -516,16 +542,11 @@ export default function TripRequestDetailsScreen() {
       }).unwrap();
 
       // Fermer le modal et réinitialiser le formulaire
-      setShowOfferForm(false);
-      setOfferStep('details');
-      setPricePerSeat('');
-      setAvailableSeats('');
-      setMessage('');
-      setSelectedVehicleId('');
+      closeOfferForm();
 
       showDialog({
-        title: 'Offre envoyée avec succès !',
-        message: `Votre offre de ${parseFloat(pricePerSeat).toLocaleString('fr-FR')} FC/place pour ${availableSeats} place(s) a été envoyée. Le passager sera notifié et pourra l'accepter.`,
+        title: 'Proposition envoyée',
+        message: `Votre proposition de ${parseFloat(pricePerSeat).toLocaleString('fr-FR')} FC/place pour ${availableSeats} place(s) a été envoyée. Le demandeur pourra la choisir si elle lui convient.`,
         variant: 'success',
         actions: [
           { 
@@ -536,7 +557,7 @@ export default function TripRequestDetailsScreen() {
         ],
       });
     } catch (error: any) {
-      const message = error?.data?.message || 'Impossible de créer l\'offre';
+      const message = error?.data?.message || 'Impossible de créer la proposition.';
       const isDriverError = isDriverRequiredError(error);
       
       showDialog({
@@ -563,15 +584,15 @@ export default function TripRequestDetailsScreen() {
       }).unwrap();
 
       showDialog({
-        title: 'Offre acceptée',
-        message: 'Vous avez sélectionné ce driver pour votre trajet',
+        title: 'Proposition retenue',
+        message: 'Vous avez choisi cette proposition de covoiturage.',
         variant: 'success',
         actions: [{ label: 'OK', onPress: () => refetch() }],
       });
     } catch (error: any) {
       showDialog({
         title: 'Erreur',
-        message: error?.data?.message || 'Impossible d\'accepter l\'offre',
+        message: error?.data?.message || 'Impossible de retenir cette proposition.',
         variant: 'danger',
       });
     }
@@ -581,8 +602,8 @@ export default function TripRequestDetailsScreen() {
     if (!tripRequest || !id) return;
 
     showDialog({
-      title: 'Rejeter l\'offre',
-      message: 'Êtes-vous sûr de vouloir rejeter cette offre ?',
+      title: 'Rejeter la proposition',
+      message: 'Êtes-vous sûr de vouloir rejeter cette proposition ?',
       variant: 'warning',
       actions: [
         {
@@ -601,15 +622,15 @@ export default function TripRequestDetailsScreen() {
               }).unwrap();
 
               showDialog({
-                title: 'Offre rejetée',
-                message: 'L\'offre a été rejetée avec succès',
+                title: 'Proposition rejetée',
+                message: 'La proposition a été rejetée avec succès.',
                 variant: 'success',
                 actions: [{ label: 'OK', onPress: () => refetch() }],
               });
             } catch (error: any) {
               showDialog({
                 title: 'Erreur',
-                message: error?.data?.message || 'Impossible de rejeter l\'offre',
+                message: error?.data?.message || 'Impossible de rejeter cette proposition.',
                 variant: 'danger',
               });
             }
@@ -661,84 +682,6 @@ export default function TripRequestDetailsScreen() {
         },
       ],
     });
-  };
-
-  // Accepter directement la demande de trajet (nouveau flux style Uber/Bolt)
-  const handleAcceptTripRequest = async () => {
-    if (!tripRequest || !id) return;
-
-    try {
-      // Construire le payload
-      const payload: {
-        vehicleId?: string;
-        departureDate?: string;
-        message?: string;
-      } = {};
-
-      // Ajouter vehicleId seulement s'il est défini et non vide
-      if (selectedVehicleId && selectedVehicleId.trim() !== '') {
-        payload.vehicleId = selectedVehicleId;
-      }
-
-      // Ajouter la date de départ proposée
-      if (proposedDepartureDate) {
-        payload.departureDate = proposedDepartureDate.toISOString();
-      }
-
-      // Ajouter le message s'il existe
-      if (message && message.trim() !== '') {
-        payload.message = message.trim();
-      }
-
-      const result = await acceptTripRequest({
-        tripRequestId: id,
-        payload,
-      }).unwrap();
-
-      // Fermer le modal et réinitialiser le formulaire
-      setShowOfferForm(false);
-      setOfferStep('details');
-      setPricePerSeat('');
-      setAvailableSeats('');
-      setMessage('');
-      setSelectedVehicleId('');
-
-      showDialog({
-        title: 'Demande acceptée !',
-        message: `Vous avez accepté cette demande de trajet. Un trajet a été créé automatiquement et le passager a été réservé.`,
-        variant: 'success',
-        actions: [
-          { 
-            label: 'Voir le trajet', 
-            variant: 'primary',
-            onPress: () => {
-              refetch();
-              router.push(`/trip/manage/${result.trip.id}`);
-            }
-          },
-          { 
-            label: 'OK', 
-            variant: 'ghost',
-            onPress: () => refetch() 
-          },
-        ],
-      });
-    } catch (error: any) {
-      const errorMessage = error?.data?.message || 'Impossible d\'accepter la demande';
-      const isDriverError = isDriverRequiredError(error);
-      
-      showDialog({
-        title: 'Erreur',
-        message: errorMessage,
-        variant: 'danger',
-        actions: isDriverError
-          ? [
-              { label: 'Fermer', variant: 'ghost' },
-              createBecomeDriverAction(router),
-            ]
-          : undefined,
-      });
-    }
   };
 
   const handleViewTrip = (tripId: string) => {
@@ -911,7 +854,7 @@ export default function TripRequestDetailsScreen() {
           <Ionicons name="document-text-outline" size={64} color={Colors.gray[400]} />
           <Text style={styles.emptyTitle}>Demande introuvable</Text>
           <Text style={styles.emptyText}>
-            La demande de trajet que vous recherchez n'existe pas ou n'est plus disponible.
+            La demande de trajet que vous recherchez n&apos;existe pas ou n&apos;est plus disponible.
           </Text>
         </View>
       </SafeAreaView>
@@ -920,8 +863,8 @@ export default function TripRequestDetailsScreen() {
 
   const statusConfigMap = {
     pending: { label: 'En attente', color: Colors.warning, bg: Colors.warning + '15' },
-    offers_received: { label: 'Offres reçues', color: Colors.info, bg: Colors.info + '15' },
-    driver_selected: { label: 'Driver sélectionné', color: Colors.success, bg: Colors.success + '15' },
+    offers_received: { label: 'Propositions reçues', color: Colors.info, bg: Colors.info + '15' },
+    driver_selected: { label: 'Conducteur choisi', color: Colors.success, bg: Colors.success + '15' },
     cancelled: { label: 'Annulée', color: Colors.danger, bg: Colors.danger + '15' },
     expired: { label: 'Expirée', color: Colors.gray[500], bg: Colors.gray[200] },
   };
@@ -1174,7 +1117,7 @@ export default function TripRequestDetailsScreen() {
             <View style={styles.sectionHeaderWithBadge}>
               <View style={styles.sectionTitleContainer}>
                 <Ionicons name="checkmark-circle" size={24} color={Colors.success} />
-                <Text style={styles.sectionTitle}>Driver sélectionné</Text>
+                <Text style={styles.sectionTitle}>Conducteur choisi</Text>
               </View>
             </View>
             <View style={[styles.offerCard, styles.offerCardAccepted]}>
@@ -1236,7 +1179,7 @@ export default function TripRequestDetailsScreen() {
               <View style={styles.sectionTitleContainer}>
                 <Ionicons name="checkmark-circle" size={24} color={Colors.info} />
                 <Text style={styles.sectionTitle}>
-                  Offres reçues
+                  Propositions reçues
                 </Text>
               </View>
               {tripRequest.offers && tripRequest.offers.length > 0 && (
@@ -1251,9 +1194,9 @@ export default function TripRequestDetailsScreen() {
                 <View style={styles.noOffersIconContainer}>
                   <Ionicons name="hourglass-outline" size={48} color={Colors.gray[400]} />
                 </View>
-                <Text style={styles.noOffersTitle}>Aucune offre pour le moment</Text>
+                <Text style={styles.noOffersTitle}>Aucune proposition pour le moment</Text>
                 <Text style={styles.noOffersText}>
-                  Les drivers verront votre demande et pourront vous faire des offres. Elles apparaîtront ici dès qu'elles seront reçues.
+                  Les conducteurs intéressés verront votre demande et pourront vous envoyer une proposition. Elles apparaîtront ici dès leur arrivée.
                 </Text>
               </View>
             ) : (
@@ -1295,7 +1238,7 @@ export default function TripRequestDetailsScreen() {
                   </View>
                   {offer.status === 'accepted' && (
                     <View style={[styles.statusBadge, { backgroundColor: Colors.success + '15' }]}>
-                      <Text style={[styles.statusText, { color: Colors.success }]}>Acceptée</Text>
+                      <Text style={[styles.statusText, { color: Colors.success }]}>Retenue</Text>
                     </View>
                   )}
                 </View>
@@ -1353,7 +1296,7 @@ export default function TripRequestDetailsScreen() {
                       ) : (
                         <>
                           <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
-                          <Text style={styles.acceptButtonText}>Accepter</Text>
+                          <Text style={styles.acceptButtonText}>Choisir</Text>
                         </>
                       )}
                     </TouchableOpacity>
@@ -1372,7 +1315,7 @@ export default function TripRequestDetailsScreen() {
           <View style={styles.section}>
             <View style={styles.sectionTitleContainer}>
               <Ionicons name="star" size={24} color={Colors.secondary} />
-              <Text style={styles.sectionTitle}>Votre offre</Text>
+              <Text style={styles.sectionTitle}>Votre proposition</Text>
             </View>
             <View style={[
               styles.offerCard,
@@ -1381,7 +1324,7 @@ export default function TripRequestDetailsScreen() {
             ]}>
               <View style={styles.offerHeader}>
                 <View>
-                  <Text style={styles.driverName}>Statut de votre offre</Text>
+                  <Text style={styles.driverName}>Statut de votre proposition</Text>
                   <View style={styles.ratingRow}>
                     <Text style={styles.ratingText}>
                       {formatDateWithRelativeLabel(myOffer.proposedDepartureDate, true)}
@@ -1411,7 +1354,7 @@ export default function TripRequestDetailsScreen() {
                     },
                   ]}>
                     {myOffer.status === 'accepted'
-                      ? 'Acceptée'
+                      ? 'Retenue'
                       : myOffer.status === 'rejected'
                       ? 'Rejetée'
                       : 'En attente'}
@@ -1433,7 +1376,7 @@ export default function TripRequestDetailsScreen() {
                 <View style={styles.successMessage}>
                   <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
                   <Text style={styles.successMessageText}>
-                    Félicitations ! Votre offre a été acceptée. {tripRequest.tripId ? 'Le trajet a déjà été créé.' : 'Vous pouvez maintenant démarrer le trajet.'}
+                    Félicitations ! Votre proposition a été retenue. {tripRequest.tripId ? 'Le trajet a déjà été créé.' : 'Vous pouvez maintenant démarrer le trajet.'}
                   </Text>
                   {!tripRequest.tripId && (
                     <TouchableOpacity
@@ -1466,7 +1409,7 @@ export default function TripRequestDetailsScreen() {
           </View>
         )}
 
-        {/* Bouton pour accepter la demande (pour les drivers uniquement) */}
+        {/* Bouton pour faire une proposition (pour les conducteurs uniquement) */}
         {!isOwner && (
           <View style={styles.section}>
             {canMakeOffer ? (
@@ -1478,7 +1421,7 @@ export default function TripRequestDetailsScreen() {
                   if (!(userRole === 'driver' || userRole === 'both')) {
                     showDialog({
                       title: 'Conducteur requis',
-                      message: 'Seuls les conducteurs peuvent accepter les demandes de trajet. Activez votre compte conducteur pour proposer vos services.',
+                      message: 'Seuls les conducteurs peuvent proposer un covoiturage sur cette demande. Activez votre compte conducteur pour proposer vos places.',
                       variant: 'warning',
                       actions: [
                         { label: 'Annuler', variant: 'ghost' },
@@ -1495,12 +1438,11 @@ export default function TripRequestDetailsScreen() {
                     checkIdentity('publish');
                     return;
                   }
-                  setOfferStep('details');
-                  setShowOfferForm(true);
+                  openOfferForm();
                 }}
               >
                 <Ionicons name="checkmark-circle-outline" size={24} color={Colors.white} />
-                <Text style={styles.makeOfferButtonText}>Accepter cette demande</Text>
+                <Text style={styles.makeOfferButtonText}>Faire une proposition</Text>
               </TouchableOpacity>
             ) : !(currentUser?.role === 'driver' || currentUser?.role === 'both') ? (
               <View style={styles.driverRequiredCard}>
@@ -1509,7 +1451,7 @@ export default function TripRequestDetailsScreen() {
                 </View>
                 <Text style={styles.driverRequiredTitle}>Conducteur requis</Text>
                 <Text style={styles.driverRequiredText}>
-                  Seuls les conducteurs peuvent accepter les demandes de trajet. Activez votre compte conducteur pour proposer vos services aux passagers.
+                  Seuls les conducteurs peuvent proposer un covoiturage sur cette demande. Activez votre compte conducteur pour proposer vos places.
                 </Text>
                 <TouchableOpacity
                   style={styles.becomeDriverButton}
@@ -1524,9 +1466,9 @@ export default function TripRequestDetailsScreen() {
                 <View style={styles.driverRequiredIconContainer}>
                   <Ionicons name="shield-checkmark-outline" size={32} color={Colors.warning} />
                 </View>
-                <Text style={styles.driverRequiredTitle}>Vérification d'identité requise</Text>
+                <Text style={styles.driverRequiredTitle}>Vérification d&apos;identité requise</Text>
                 <Text style={styles.driverRequiredText}>
-                  Vous devez compléter la vérification de votre identité (KYC) avant de pouvoir accepter des demandes.
+                  Vous devez compléter la vérification de votre identité (KYC) avant de pouvoir proposer un covoiturage.
                 </Text>
                 <TouchableOpacity
                   style={styles.becomeDriverButton}
@@ -1546,27 +1488,13 @@ export default function TripRequestDetailsScreen() {
             visible={showOfferForm}
             animationType="slide"
             transparent={true}
-            onRequestClose={() => {
-              setShowOfferForm(false);
-              setOfferStep('details');
-              setPricePerSeat('');
-              setAvailableSeats('');
-              setMessage('');
-              setSelectedVehicleId('');
-            }}
+            onRequestClose={closeOfferForm}
           >
             <View style={styles.modalOverlay}>
               <TouchableOpacity
                 style={styles.modalBackdrop}
                 activeOpacity={1}
-                onPress={() => {
-                  setShowOfferForm(false);
-                  setOfferStep('details');
-                  setPricePerSeat('');
-                  setAvailableSeats('');
-                  setMessage('');
-                  setSelectedVehicleId('');
-                }}
+                onPress={closeOfferForm}
               />
               <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -1579,17 +1507,10 @@ export default function TripRequestDetailsScreen() {
                     style={styles.modalContentInner}
                   >
                     <View style={styles.modalHeader}>
-                      <Text style={styles.modalTitle}>Accepter la demande</Text>
+                      <Text style={styles.modalTitle}>Faire une proposition</Text>
                       <TouchableOpacity
                         style={styles.modalCloseButton}
-                        onPress={() => {
-                          setShowOfferForm(false);
-                          setOfferStep('details');
-                          setPricePerSeat('');
-                          setAvailableSeats('');
-                          setMessage('');
-                          setSelectedVehicleId('');
-                        }}
+                        onPress={closeOfferForm}
                       >
                         <Ionicons name="close" size={24} color={Colors.gray[600]} />
                       </TouchableOpacity>
@@ -1673,70 +1594,107 @@ export default function TripRequestDetailsScreen() {
                               </View>
                             )}
 
+                            <View style={styles.acceptanceNotice}>
+                              <Ionicons name="information-circle" size={24} color={Colors.info} />
+                              <Text style={styles.acceptanceNoticeText}>
+                                Le demandeur a publié un besoin. Vous proposez votre horaire, vos places et votre participation par place. Rien n&apos;est confirmé tant qu&apos;il n&apos;a pas choisi votre proposition.
+                              </Text>
+                            </View>
+
                             <View style={styles.formGroup}>
-                              <Text style={styles.formLabel}>Date et heure de départ proposée *</Text>
-                      {tripRequest && (
-                        <Text style={styles.formHelperText}>
-                          Choisissez une date et heure entre le {formatDateWithRelativeLabel(tripRequest.departureDateMin, true)} et le {formatDateWithRelativeLabel(tripRequest.departureDateMax, true)}
-                        </Text>
-                      )}
-                      <View style={styles.datetimeButtons}>
-                        <TouchableOpacity
-                          style={styles.datetimeButton}
-                          onPress={() => openDateOrTimePicker('date')}
-                        >
-                          <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.primary + '15' }]}>
-                            <Ionicons name="calendar" size={20} color={Colors.primary} />
-                          </View>
-                          <View style={styles.datetimeButtonContent}>
-                            <Text style={styles.datetimeButtonLabel}>Date</Text>
-                            <Text style={styles.datetimeButtonValue}>
-                              {proposedDepartureDate.toLocaleDateString('fr-FR', {
-                                weekday: 'short',
-                                day: 'numeric',
-                                month: 'short',
-                              })}
-                            </Text>
-                          </View>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.datetimeButton}
-                          onPress={() => openDateOrTimePicker('time')}
-                        >
-                          <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.success + '15' }]}>
-                            <Ionicons name="time" size={20} color={Colors.success} />
-                          </View>
-                          <View style={styles.datetimeButtonContent}>
-                            <Text style={styles.datetimeButtonLabel}>Heure</Text>
-                            <Text style={styles.datetimeButtonValue}>
-                              {proposedDepartureDate.toLocaleTimeString('fr-FR', {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </Text>
-                          </View>
-                        </TouchableOpacity>
-                      </View>
-                      {Platform.OS === 'ios' && iosPickerMode && (
-                        <View style={styles.iosPickerContainer}>
-                          {tripRequest && (
-                            <DateTimePicker
-                              value={proposedDepartureDate}
-                              mode={iosPickerMode}
-                              display="spinner"
-                              onChange={handleIosPickerChange}
-                              minimumDate={new Date(tripRequest.departureDateMin)}
-                              maximumDate={new Date(tripRequest.departureDateMax)}
-                            />
-                          )}
-                          <TouchableOpacity
-                            style={styles.iosPickerCloseButton}
-                            onPress={() => setIosPickerMode(null)}
-                          >
-                            <Text style={styles.iosPickerCloseText}>Confirmer</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
+                              <Text style={styles.formLabel}>Date et heure de départ proposées *</Text>
+                              {tripRequest && (
+                                <Text style={styles.formHelperText}>
+                                  Choisissez une date et une heure entre le {formatDateWithRelativeLabel(tripRequest.departureDateMin, true)} et le {formatDateWithRelativeLabel(tripRequest.departureDateMax, true)}
+                                </Text>
+                              )}
+                              <View style={styles.datetimeButtons}>
+                                <TouchableOpacity
+                                  style={styles.datetimeButton}
+                                  onPress={() => openDateOrTimePicker('date')}
+                                >
+                                  <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.primary + '15' }]}>
+                                    <Ionicons name="calendar" size={20} color={Colors.primary} />
+                                  </View>
+                                  <View style={styles.datetimeButtonContent}>
+                                    <Text style={styles.datetimeButtonLabel}>Date</Text>
+                                    <Text style={styles.datetimeButtonValue}>
+                                      {proposedDepartureDate.toLocaleDateString('fr-FR', {
+                                        weekday: 'short',
+                                        day: 'numeric',
+                                        month: 'short',
+                                      })}
+                                    </Text>
+                                  </View>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.datetimeButton}
+                                  onPress={() => openDateOrTimePicker('time')}
+                                >
+                                  <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.success + '15' }]}>
+                                    <Ionicons name="time" size={20} color={Colors.success} />
+                                  </View>
+                                  <View style={styles.datetimeButtonContent}>
+                                    <Text style={styles.datetimeButtonLabel}>Heure</Text>
+                                    <Text style={styles.datetimeButtonValue}>
+                                      {proposedDepartureDate.toLocaleTimeString('fr-FR', {
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                      })}
+                                    </Text>
+                                  </View>
+                                </TouchableOpacity>
+                              </View>
+                              {Platform.OS === 'ios' && iosPickerMode && (
+                                <View style={styles.iosPickerContainer}>
+                                  {tripRequest && (
+                                    <DateTimePicker
+                                      value={proposedDepartureDate}
+                                      mode={iosPickerMode}
+                                      display="spinner"
+                                      onChange={handleIosPickerChange}
+                                      minimumDate={new Date(tripRequest.departureDateMin)}
+                                      maximumDate={new Date(tripRequest.departureDateMax)}
+                                    />
+                                  )}
+                                  <TouchableOpacity
+                                    style={styles.iosPickerCloseButton}
+                                    onPress={() => setIosPickerMode(null)}
+                                  >
+                                    <Text style={styles.iosPickerCloseText}>Confirmer</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              )}
+                            </View>
+
+                            <View style={styles.formGroup}>
+                              <Text style={styles.formLabel}>Places proposées *</Text>
+                              <Text style={styles.formHelperText}>
+                                Cette demande concerne au moins {minimumSeatsRequired} place(s).
+                              </Text>
+                              <TextInput
+                                style={styles.input}
+                                keyboardType="number-pad"
+                                placeholder={`Au moins ${minimumSeatsRequired}`}
+                                value={availableSeats}
+                                onChangeText={setAvailableSeats}
+                              />
+                            </View>
+
+                            <View style={styles.formGroup}>
+                              <Text style={styles.formLabel}>Participation proposée par place *</Text>
+                              <Text style={styles.formHelperText}>
+                                {tripRequest.maxPricePerSeat
+                                  ? `Le demandeur a indiqué un budget maximum de ${tripRequest.maxPricePerSeat} FC par place.`
+                                  : 'Indiquez le montant demandé par place pour ce covoiturage.'}
+                              </Text>
+                              <TextInput
+                                style={styles.input}
+                                keyboardType="number-pad"
+                                placeholder="Ex: 2000"
+                                value={pricePerSeat}
+                                onChangeText={setPricePerSeat}
+                              />
                             </View>
 
                             <View style={styles.formGroup}>
@@ -1745,7 +1703,7 @@ export default function TripRequestDetailsScreen() {
                                 style={[styles.input, styles.textArea]}
                                 multiline
                                 numberOfLines={4}
-                                placeholder="Ajoutez un message pour le passager..."
+                                placeholder="Ajoutez un message pour rassurer ou préciser votre proposition..."
                                 value={message}
                                 onChangeText={setMessage}
                               />
@@ -1755,23 +1713,19 @@ export default function TripRequestDetailsScreen() {
                               <TouchableOpacity
                                 style={styles.cancelFormButton}
                                 onPress={() => {
-                                  setShowOfferForm(false);
-                                  setOfferStep('details');
-                                  setSelectedVehicleId('');
-                                  setPricePerSeat('');
-                                  setAvailableSeats('');
-                                  setMessage('');
+                                  closeOfferForm();
                                 }}
                               >
                                 <Text style={styles.cancelFormButtonText}>Annuler</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
-                                style={styles.nextButton}
+                                style={[styles.nextButton, !isOfferDraftValid && styles.submitButtonDisabled]}
                                 onPress={() => {
-                                  if (proposedDepartureDate) {
+                                  if (isOfferDraftValid) {
                                     setOfferStep('preview');
                                   }
                                 }}
+                                disabled={!isOfferDraftValid}
                               >
                                 <Text style={styles.nextButtonText}>Suivant</Text>
                                 <Ionicons name="arrow-forward" size={18} color={Colors.white} />
@@ -1784,13 +1738,13 @@ export default function TripRequestDetailsScreen() {
                         {offerStep === 'preview' && (
                           <>
                             <View style={styles.previewContainer}>
-                              <Text style={styles.previewTitle}>Confirmer l'acceptation</Text>
+                              <Text style={styles.previewTitle}>Confirmer votre proposition</Text>
                               
                               {/* Information importante */}
                               <View style={styles.acceptanceNotice}>
                                 <Ionicons name="information-circle" size={24} color={Colors.info} />
                                 <Text style={styles.acceptanceNoticeText}>
-                                  En acceptant cette demande, un trajet sera créé automatiquement et le passager sera réservé.
+                                  Votre proposition sera envoyée au demandeur. Un trajet ne sera créé que s&apos;il la retient.
                                 </Text>
                               </View>
 
@@ -1816,11 +1770,31 @@ export default function TripRequestDetailsScreen() {
 
                               {/* Date et heure */}
                               <View style={styles.previewSection}>
-                                <Text style={styles.previewSectionTitle}>Date et heure de départ</Text>
+                                <Text style={styles.previewSectionTitle}>Départ proposé</Text>
                                 <View style={styles.previewInfoCard}>
                                   <Ionicons name="calendar" size={20} color={Colors.primary} />
                                   <Text style={styles.previewInfoText}>
                                     {formatDateWithRelativeLabel(proposedDepartureDate.toISOString(), true)}
+                                  </Text>
+                                </View>
+                              </View>
+
+                              <View style={styles.previewSection}>
+                                <Text style={styles.previewSectionTitle}>Places proposées</Text>
+                                <View style={styles.previewInfoCard}>
+                                  <Ionicons name="people" size={20} color={Colors.primary} />
+                                  <Text style={styles.previewInfoText}>
+                                    {availableSeats} place(s)
+                                  </Text>
+                                </View>
+                              </View>
+
+                              <View style={styles.previewSection}>
+                                <Text style={styles.previewSectionTitle}>Participation proposée</Text>
+                                <View style={styles.previewTotalCard}>
+                                  <Text style={styles.previewTotalLabel}>Par place</Text>
+                                  <Text style={styles.previewTotalAmount}>
+                                    {Number.parseFloat(pricePerSeat || '0').toLocaleString('fr-FR')} FC
                                   </Text>
                                 </View>
                               </View>
@@ -1846,16 +1820,16 @@ export default function TripRequestDetailsScreen() {
                                 <Text style={styles.offerBackButtonText}>Retour</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
-                                style={styles.submitButton}
-                                onPress={handleAcceptTripRequest}
-                                disabled={isAcceptingTripRequest}
+                                style={[styles.submitButton, !isOfferDraftValid && styles.submitButtonDisabled]}
+                                onPress={handleCreateOffer}
+                                disabled={isCreatingOffer || !isOfferDraftValid}
                               >
-                                {isAcceptingTripRequest ? (
+                                {isCreatingOffer ? (
                                   <ActivityIndicator size="small" color={Colors.white} />
                                 ) : (
                                   <>
-                                    <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
-                                    <Text style={styles.submitButtonText}>Accepter</Text>
+                                    <Ionicons name="send" size={18} color={Colors.white} />
+                                    <Text style={styles.submitButtonText}>Envoyer la proposition</Text>
                                   </>
                                 )}
                               </TouchableOpacity>
@@ -2012,7 +1986,7 @@ export default function TripRequestDetailsScreen() {
 
                     {/* Sélection du lieu d'arrivée */}
                     <View style={styles.formGroup}>
-                      <Text style={styles.formLabel}>Lieu d'arrivée *</Text>
+                      <Text style={styles.formLabel}>Lieu d&apos;arrivée *</Text>
                       <TouchableOpacity
                         style={styles.locationButton}
                         onPress={() => {

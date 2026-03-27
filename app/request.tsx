@@ -3,14 +3,17 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useCreateTripRequestMutation } from '@/store/api/tripRequestApi';
+import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
+import type { FavoriteLocation } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
-  DateTimePickerEvent,
+  type DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import * as Location from 'expo-location';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -26,55 +29,149 @@ import {
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type RequestStep = 'route' | 'datetime' | 'options' | 'confirm';
+type TimePreset = 'now' | 'soon' | 'later' | 'tomorrow' | 'custom';
+type PickerTarget = 'departure' | 'arrival';
 
-const STEPS: { id: RequestStep; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { id: 'route', label: 'Trajet', icon: 'map' },
-  { id: 'datetime', label: 'Date', icon: 'time' },
-  { id: 'options', label: 'Options', icon: 'settings' },
-  { id: 'confirm', label: 'Fin', icon: 'checkmark-circle' },
+const TIME_PRESETS: {
+  id: TimePreset;
+  label: string;
+  caption: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}[] = [
+  { id: 'now', label: 'Maintenant', caption: 'Départ rapide', icon: 'flash' },
+  { id: 'soon', label: 'Dans 30 min', caption: 'Encore un peu', icon: 'time' },
+  { id: 'later', label: 'Plus tard', caption: "Aujourd'hui", icon: 'calendar-outline' },
+  { id: 'tomorrow', label: 'Demain matin', caption: 'Planifié', icon: 'sunny-outline' },
+  { id: 'custom', label: 'Je choisis', caption: 'Date et heure', icon: 'create-outline' },
 ];
+
+const FLEX_OPTIONS = [0, 30, 60, 120];
+
+function roundToStep(date: Date, step: number) {
+  const next = new Date(date);
+  next.setSeconds(0, 0);
+  const remainder = next.getMinutes() % step;
+  if (remainder) next.setMinutes(next.getMinutes() + (step - remainder));
+  return next;
+}
+
+function buildPresetWindow(preset: Exclude<TimePreset, 'custom'>) {
+  const now = new Date();
+  if (preset === 'now') return { min: roundToStep(new Date(now.getTime() + 5 * 60000), 5), flex: 40 };
+  if (preset === 'soon') return { min: roundToStep(new Date(now.getTime() + 30 * 60000), 10), flex: 60 };
+  if (preset === 'later') return { min: roundToStep(new Date(now.getTime() + 2 * 3600000), 15), flex: 90 };
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(7, 0, 0, 0);
+  return { min: tomorrow, flex: 180 };
+}
+
+function applyDatePart(date: Date, current: Date) {
+  const next = new Date(current);
+  next.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+  return next;
+}
+
+function applyTimePart(date: Date, current: Date) {
+  const next = new Date(current);
+  next.setHours(date.getHours(), date.getMinutes(), 0, 0);
+  return next;
+}
+
+function formatAddress(data?: Partial<Location.LocationGeocodedAddress>) {
+  if (!data) return '';
+  const street = [data.streetNumber, data.street].filter(Boolean).join(' ').trim();
+  return [data.name, street, data.district, data.city || data.subregion, data.region]
+    .map((value) => value?.toString().trim())
+    .filter(Boolean)
+    .join(', ');
+}
+
+function buildSelection(
+  coordinate: { latitude: number; longitude: number },
+  address?: Partial<Location.LocationGeocodedAddress>,
+): MapLocationSelection {
+  return {
+    title: address?.name || address?.street || 'Ma position',
+    address:
+      formatAddress(address) ||
+      `${coordinate.latitude.toFixed(5)}, ${coordinate.longitude.toFixed(5)}`,
+    latitude: coordinate.latitude,
+    longitude: coordinate.longitude,
+  };
+}
+
+function formatDateLabel(date: Date) {
+  return date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function formatTimeLabel(date: Date) {
+  return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function favoriteIcon(type: FavoriteLocation['type']) {
+  if (type === 'home') return 'home';
+  if (type === 'work') return 'briefcase';
+  return 'location';
+}
 
 export default function RequestTripScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [step, setStep] = useState<RequestStep>('route');
-  const [createTripRequest, { isLoading: isCreating }] = useCreateTripRequestMutation();
   const { showDialog } = useDialog();
   const { isIdentityVerified, isChecking: isCheckingIdentity, checkIdentity } = useIdentityCheck();
-
-  // États pour les étapes
+  const { data: favoriteLocations = [] } = useGetFavoriteLocationsQuery();
+  const [createTripRequest, { isLoading: isCreating }] = useCreateTripRequestMutation();
+  const [initialWindow] = useState(() => buildPresetWindow('now'));
   const [departureLocation, setDepartureLocation] = useState<MapLocationSelection | null>(null);
   const [arrivalLocation, setArrivalLocation] = useState<MapLocationSelection | null>(null);
-  const [departureDateMin, setDepartureDateMin] = useState(new Date());
-  const [departureDateMax, setDepartureDateMax] = useState(new Date(Date.now() + 24 * 60 * 60 * 1000));
-  const [iosPickerModeMin, setIosPickerModeMin] = useState<'date' | 'time' | null>(null);
-  const [iosPickerModeMax, setIosPickerModeMax] = useState<'date' | 'time' | null>(null);
-  const [numberOfSeats, setNumberOfSeats] = useState('1');
+  const [activePicker, setActivePicker] = useState<PickerTarget | null>(null);
+  const [timePreset, setTimePreset] = useState<TimePreset>('now');
+  const [departureDateMin, setDepartureDateMin] = useState(initialWindow.min);
+  const [flexibilityMinutes, setFlexibilityMinutes] = useState(initialWindow.flex);
+  const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
+  const [numberOfSeats, setNumberOfSeats] = useState(1);
   const [maxPricePerSeat, setMaxPricePerSeat] = useState('');
   const [description, setDescription] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
 
-  // Modals
-  const [activePicker, setActivePicker] = useState<'departure' | 'arrival' | null>(null);
+  const departureDateMax = useMemo(
+    () => new Date(departureDateMin.getTime() + flexibilityMinutes * 60000),
+    [departureDateMin, flexibilityMinutes],
+  );
 
-  const applyDatePart = (date: Date, currentDate: Date) => {
-    const next = new Date(currentDate);
-    next.setFullYear(date.getFullYear());
-    next.setMonth(date.getMonth());
-    next.setDate(date.getDate());
-    return next;
+  const routeSummary = useMemo(() => {
+    if (departureLocation && arrivalLocation) return `${departureLocation.title} → ${arrivalLocation.title}`;
+    if (departureLocation) return `Départ : ${departureLocation.title}`;
+    return 'Choisissez votre départ et votre destination';
+  }, [arrivalLocation, departureLocation]);
+
+  const timeSummary = useMemo(() => {
+    if (flexibilityMinutes === 0) return `${formatDateLabel(departureDateMin)} à ${formatTimeLabel(departureDateMin)}`;
+    return `${formatDateLabel(departureDateMin)} entre ${formatTimeLabel(departureDateMin)} et ${formatTimeLabel(departureDateMax)}`;
+  }, [departureDateMax, departureDateMin, flexibilityMinutes]);
+
+  const primaryLabel = !departureLocation
+    ? 'Choisir mon départ'
+    : !arrivalLocation
+      ? 'Choisir ma destination'
+      : !isIdentityVerified
+        ? isCheckingIdentity
+          ? 'Vérification en cours...'
+          : 'Continuer avec ma vérification'
+        : 'Publier ma demande';
+
+  const applyPreset = (preset: TimePreset) => {
+    setTimePreset(preset);
+    if (preset === 'custom') return;
+    const next = buildPresetWindow(preset);
+    setDepartureDateMin(next.min);
+    setFlexibilityMinutes(next.flex);
   };
 
-  const applyTimePart = (date: Date, currentDate: Date) => {
-    const next = new Date(currentDate);
-    next.setHours(date.getHours());
-    next.setMinutes(date.getMinutes());
-    next.setSeconds(0);
-    next.setMilliseconds(0);
-    return next;
-  };
-
-  const openDateOrTimePickerMin = (mode: 'date' | 'time') => {
+  const openCustomPicker = (mode: 'date' | 'time') => {
+    setTimePreset('custom');
     if (Platform.OS === 'android') {
       DateTimePickerAndroid.open({
         mode,
@@ -83,111 +180,84 @@ export default function RequestTripScreen() {
         minimumDate: mode === 'date' ? new Date() : undefined,
         onChange: (_event: DateTimePickerEvent, selectedDate?: Date) => {
           if (!selectedDate) return;
-          setDepartureDateMin(
-            mode === 'date' 
-              ? applyDatePart(selectedDate, departureDateMin) 
-              : applyTimePart(selectedDate, departureDateMin)
+          setDepartureDateMin((current) =>
+            mode === 'date' ? applyDatePart(selectedDate, current) : applyTimePart(selectedDate, current),
           );
-          if (mode === 'date' && selectedDate >= departureDateMax) {
-            setDepartureDateMax(new Date(selectedDate.getTime() + 24 * 60 * 60 * 1000));
-          }
         },
       });
-    } else {
-      setIosPickerModeMin(mode);
+      return;
     }
+    setIosPickerMode(mode);
   };
 
-  const openDateOrTimePickerMax = (mode: 'date' | 'time') => {
-    if (Platform.OS === 'android') {
-      DateTimePickerAndroid.open({
-        mode,
-        value: departureDateMax,
-        is24Hour: true,
-        minimumDate: mode === 'date' ? departureDateMin : undefined,
-        onChange: (_event: DateTimePickerEvent, selectedDate?: Date) => {
-          if (!selectedDate) return;
-          const newDate = mode === 'date' 
-            ? applyDatePart(selectedDate, departureDateMax) 
-            : applyTimePart(selectedDate, departureDateMax);
-          setDepartureDateMax(newDate);
-        },
+  const handleIosPickerChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (!selectedDate || !iosPickerMode) return;
+    setDepartureDateMin((current) =>
+      iosPickerMode === 'date' ? applyDatePart(selectedDate, current) : applyTimePart(selectedDate, current),
+    );
+  };
+
+  const handleUseCurrentLocation = async () => {
+    try {
+      setIsLocating(true);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== Location.PermissionStatus.GRANTED) {
+        showDialog({
+          title: 'Localisation non disponible',
+          message:
+            "Autorisez l'accès à la localisation si vous voulez partir d'ici. Sinon, choisissez un repère manuellement.",
+          variant: 'warning',
+        });
+        return;
+      }
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const coordinate = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+      const [address] = await Location.reverseGeocodeAsync(coordinate);
+      setDepartureLocation(buildSelection(coordinate, address));
+      if (!arrivalLocation) setTimeout(() => setActivePicker('arrival'), 150);
+    } catch (error) {
+      console.warn('Impossible de récupérer la position actuelle', error);
+      showDialog({
+        title: 'Position introuvable',
+        message: 'Choisissez simplement votre départ dans la recherche ou sur la carte.',
+        variant: 'danger',
       });
-    } else {
-      setIosPickerModeMax(mode);
+    } finally {
+      setIsLocating(false);
     }
   };
 
-  const handleIosPickerChangeMin = (_event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (!selectedDate || !iosPickerModeMin) return;
-    const newDate = iosPickerModeMin === 'date' 
-      ? applyDatePart(selectedDate, departureDateMin) 
-      : applyTimePart(selectedDate, departureDateMin);
-    setDepartureDateMin(newDate);
-    if (iosPickerModeMin === 'date' && newDate >= departureDateMax) {
-      setDepartureDateMax(newDate);
+  const validate = () => {
+    if (!departureLocation) return setActivePicker('departure'), false;
+    if (!arrivalLocation) return setActivePicker('arrival'), false;
+    if (
+      departureLocation.latitude === arrivalLocation.latitude &&
+      departureLocation.longitude === arrivalLocation.longitude
+    ) {
+      showDialog({
+        title: 'Trajet incomplet',
+        message: 'Choisissez deux lieux différents pour le départ et la destination.',
+        variant: 'warning',
+      });
+      return false;
     }
-  };
-
-  const handleIosPickerChangeMax = (_event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (!selectedDate || !iosPickerModeMax) return;
-    const newDate = iosPickerModeMax === 'date' 
-      ? applyDatePart(selectedDate, departureDateMax) 
-      : applyTimePart(selectedDate, departureDateMax);
-    setDepartureDateMax(newDate);
-  };
-
-  const handleNextStep = () => {
-    if (step === 'route') {
-      if (!departureLocation || !arrivalLocation) {
-        showDialog({
-          title: 'Destination requise',
-          message: 'Où allez-vous ? Sélectionnez vos points de départ et d\'arrivée.',
-          variant: 'danger',
-        });
-        return;
-      }
-      setStep('datetime');
-    } else if (step === 'datetime') {
-      if (departureDateMin >= departureDateMax) {
-        showDialog({
-          title: 'Dates invalides',
-          message: 'L\'heure maximum doit être après l\'heure minimum.',
-          variant: 'danger',
-        });
-        return;
-      }
-      setStep('options');
-    } else if (step === 'options') {
-      if (!numberOfSeats || parseInt(numberOfSeats) < 1) {
-        showDialog({
-          title: 'Places requises',
-          message: 'Combien de personnes voyagent avec vous ?',
-          variant: 'danger',
-        });
-        return;
-      }
-      setStep('confirm');
+    if (departureDateMin >= departureDateMax || departureDateMin.getTime() < Date.now() - 60000) {
+      showDialog({
+        title: 'Heure invalide',
+        message: 'Choisissez une heure de départ à venir.',
+        variant: 'warning',
+      });
+      return false;
     }
-  };
-
-  const handleBack = () => {
-    if (step === 'datetime') setStep('route');
-    else if (step === 'options') setStep('datetime');
-    else if (step === 'confirm') setStep('options');
-    else router.back();
+    return true;
   };
 
   const handleCreateRequest = async () => {
-    if (!departureLocation || !arrivalLocation) return;
-
+    if (!validate() || !departureLocation || !arrivalLocation) return;
     if (!isIdentityVerified) {
       const canProceed = checkIdentity('request');
-      if (!canProceed) {
-        return;
-      }
+      if (!canProceed) return;
     }
-
     try {
       await createTripRequest({
         departureLocation: departureLocation.title,
@@ -196,404 +266,237 @@ export default function RequestTripScreen() {
         arrivalCoordinates: [arrivalLocation.longitude, arrivalLocation.latitude],
         departureDateMin: departureDateMin.toISOString(),
         departureDateMax: departureDateMax.toISOString(),
-        numberOfSeats: parseInt(numberOfSeats),
+        numberOfSeats,
         maxPricePerSeat: maxPricePerSeat ? parseFloat(maxPricePerSeat) : undefined,
         description: description.trim() || undefined,
       }).unwrap();
-
       showDialog({
-        title: 'Demande publiée !',
-        message: 'Les chauffeurs seront bientôt notifiés de votre demande.',
+        title: 'Demande publiée',
+        message: 'Votre demande sera visible par les conducteurs qui peuvent vous proposer un covoiturage.',
         variant: 'success',
         actions: [{ label: 'Fermer', variant: 'primary' }],
       });
       router.replace('/(tabs)');
     } catch (error: any) {
       showDialog({
-        title: 'Erreur',
-        message: error?.data?.message || 'Impossible de créer la demande.',
+        title: 'Envoi impossible',
+        message: error?.data?.message || 'Impossible de créer la demande pour le moment.',
         variant: 'danger',
       });
     }
   };
 
-  const StepIndicator = () => (
-    <View style={styles.stepIndicatorContainer}>
-      {STEPS.map((s, idx) => {
-        const isActive = step === s.id;
-        const isCompleted = STEPS.findIndex(x => x.id === step) > idx;
-        return (
-          <React.Fragment key={s.id}>
-            <View style={styles.stepItem}>
-              <View style={[
-                styles.stepCircle,
-                isActive && styles.stepCircleActive,
-                isCompleted && styles.stepCircleCompleted
-              ]}>
-                {isCompleted ? (
-                  <Ionicons name="checkmark" size={16} color={Colors.white} />
-                ) : (
-                  <Ionicons name={s.icon} size={16} color={isActive ? Colors.primary : Colors.gray[400]} />
-                )}
-              </View>
-              <Text style={[styles.stepLabel, isActive && styles.stepLabelActive]}>{s.label}</Text>
-            </View>
-            {idx < STEPS.length - 1 && (
-              <View style={[styles.stepLine, isCompleted && styles.stepLineCompleted]} />
-            )}
-          </React.Fragment>
-        );
-      })}
-    </View>
-  );
+  const handlePrimaryAction = async () => {
+    if (!departureLocation) return setActivePicker('departure');
+    if (!arrivalLocation) return setActivePicker('arrival');
+    if (!isIdentityVerified) return void checkIdentity('request');
+    await handleCreateRequest();
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={28} color={Colors.gray[900]} />
+        <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
+          <Ionicons name="chevron-back" size={24} color={Colors.gray[900]} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Demander un trajet</Text>
-        <View style={{ width: 40 }} />
+        <Text style={styles.headerTitle}>Demande de covoiturage</Text>
+        <View style={styles.headerSpacer} />
       </View>
 
-      <StepIndicator />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <LinearGradient colors={['#0F766E', '#14B8A6']} style={styles.hero}>
+            <Text style={styles.heroPill}>Mode simple</Text>
+            <Text style={styles.heroTitle}>Dites-nous d&apos;où vous partez, où vous allez et quand.</Text>
+            <Text style={styles.heroSubtitle}>
+              Ensuite, des conducteurs pourront vous faire une proposition de covoiturage simple à comprendre.
+            </Text>
+          </LinearGradient>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardAvoidingView}
-      >
-        <ScrollView
-          contentContainerStyle={styles.contentContainer}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-          {step === 'route' && (
-            <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.stepWrapper}>
-              <Text style={styles.sectionTitle}>Votre itinéraire</Text>
-              <View style={styles.routeCard}>
-                <View style={styles.routeVisual}>
-                  <View style={styles.dotGreen} />
-                  <View style={styles.routeLine} />
-                  <View style={styles.dotBlue} />
-                </View>
-                <View style={styles.routeInputs}>
-                  <TouchableOpacity
-                    style={styles.locationSelector}
-                    onPress={() => setActivePicker('departure')}
-                  >
-                    <Text style={styles.locationLabel}>DÉPART</Text>
-                    <Text style={styles.locationValue} numberOfLines={1}>
-                      {departureLocation?.title || 'Choisir le point de départ'}
-                    </Text>
-                  </TouchableOpacity>
-                  <View style={styles.divider} />
-                  <TouchableOpacity
-                    style={styles.locationSelector}
-                    onPress={() => setActivePicker('arrival')}
-                  >
-                    <Text style={styles.locationLabel}>ARRIVÉE</Text>
-                    <Text style={[styles.locationValue, !arrivalLocation && { color: Colors.gray[400] }]} numberOfLines={1}>
-                      {arrivalLocation?.title || 'Où allez-vous ?'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+          <View style={styles.card}>
+            <View style={styles.cardHead}>
+              <View>
+                <Text style={styles.cardTitle}>Votre trajet</Text>
+                <Text style={styles.cardSubtitle}>Repère, quartier, marché, église ou rond-point.</Text>
               </View>
-              <View style={styles.infoBox}>
-                <Ionicons name="information-circle-outline" size={20} color={Colors.info} />
-                <Text style={styles.infoText}>
-                  Les trajets spontanés permettent aux drivers à proximité de vous proposer leurs services rapidement.
+              <TouchableOpacity style={styles.iconCircle} onPress={() => {
+                setDepartureLocation(arrivalLocation);
+                setArrivalLocation(departureLocation);
+              }}>
+                <Ionicons name="swap-vertical" size={18} color={Colors.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity style={styles.routeRow} onPress={() => setActivePicker('departure')}>
+              <View style={[styles.routeDot, { backgroundColor: Colors.success }]} />
+              <View style={styles.routeText}>
+                <Text style={styles.routeLabel}>Je pars de</Text>
+                <Text style={[styles.routeValue, !departureLocation && styles.placeholder]} numberOfLines={1}>
+                  {departureLocation?.title || 'Touchez pour choisir votre départ'}
+                </Text>
+                <Text style={styles.routeHint} numberOfLines={1}>
+                  {departureLocation?.address || 'Départ manuel ou ma position'}
                 </Text>
               </View>
-            </Animated.View>
-          )}
+              <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
+            </TouchableOpacity>
 
-          {step === 'datetime' && (
-            <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.stepWrapper}>
-              <Text style={styles.sectionTitle}>Quand partez-vous ?</Text>
-              
-              <View style={styles.dateCard}>
-                <View style={styles.dateCardHeader}>
-                  <Ionicons name="calendar" size={24} color={Colors.primary} />
-                  <View style={styles.dateCardHeaderText}>
-                    <Text style={styles.dateCardTitle}>Choisir la date</Text>
-                    <Text style={styles.dateCardSubtitle}>Sélectionnez le jour de votre départ</Text>
-                  </View>
-                </View>
-                <TouchableOpacity onPress={() => openDateOrTimePickerMin('date')} style={styles.dateButton}>
-                  <View style={styles.dateButtonIcon}>
-                    <Ionicons name="calendar-outline" size={20} color={Colors.white} />
-                  </View>
-                  <Text style={styles.dateButtonText}>
-                    {departureDateMin.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-                  </Text>
-                  <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+            <View style={styles.line} />
+
+            <TouchableOpacity style={styles.routeRow} onPress={() => setActivePicker('arrival')}>
+              <View style={[styles.routeDot, styles.squareDot]} />
+              <View style={styles.routeText}>
+                <Text style={styles.routeLabel}>Je vais vers</Text>
+                <Text style={[styles.routeValue, !arrivalLocation && styles.placeholder]} numberOfLines={1}>
+                  {arrivalLocation?.title || 'Touchez pour choisir votre destination'}
+                </Text>
+                <Text style={styles.routeHint} numberOfLines={1}>
+                  {arrivalLocation?.address || 'Les repères de Kinshasa sont proposés dans la recherche'}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
+            </TouchableOpacity>
+
+            <View style={styles.chipRow}>
+              <TouchableOpacity style={[styles.chip, styles.primaryChip]} onPress={handleUseCurrentLocation} disabled={isLocating}>
+                {isLocating ? <ActivityIndicator size="small" color={Colors.primary} /> : <Ionicons name="locate" size={16} color={Colors.primary} />}
+                <Text style={styles.chipText}>Partir d&apos;ici</Text>
+              </TouchableOpacity>
+              {favoriteLocations.slice(0, 3).map((location) => (
+                <TouchableOpacity
+                  key={location.id}
+                  style={styles.chip}
+                  onPress={() => {
+                    setDepartureLocation({
+                      title: location.name,
+                      address: location.address,
+                      latitude: location.coordinates.latitude,
+                      longitude: location.coordinates.longitude,
+                    });
+                    if (!arrivalLocation) setTimeout(() => setActivePicker('arrival'), 150);
+                  }}
+                >
+                  <Ionicons name={favoriteIcon(location.type)} size={16} color={Colors.primary} />
+                  <Text style={styles.chipText}>{location.name}</Text>
                 </TouchableOpacity>
-              </View>
+              ))}
+            </View>
+          </View>
 
-              <View style={styles.timeRangeCard}>
-                <View style={styles.timeRangeHeader}>
-                  <Ionicons name="time" size={24} color={Colors.secondary} />
-                  <View style={styles.timeRangeHeaderText}>
-                    <Text style={styles.timeRangeTitle}>Plage horaire flexible</Text>
-                    <Text style={styles.timeRangeSubtitle}>Donnez une plage pour plus de choix</Text>
-                  </View>
-                </View>
-                
-                <View style={styles.timeRangePicker}>
-                  <TouchableOpacity onPress={() => openDateOrTimePickerMin('time')} style={styles.timePickerBox}>
-                    <View style={styles.timePickerLabel}>
-                      <Ionicons name="time-outline" size={16} color={Colors.success} />
-                      <Text style={styles.timePickerLabelText}>Départ au plus tôt</Text>
-                    </View>
-                    <View style={styles.timePickerValue}>
-                      <Text style={styles.timePickerValueText}>
-                        {departureDateMin.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Quand voulez-vous partir ?</Text>
+            <View style={styles.presetGrid}>
+              {TIME_PRESETS.map((preset) => {
+                const active = timePreset === preset.id;
+                return (
+                  <TouchableOpacity key={preset.id} style={[styles.preset, active && styles.presetActive]} onPress={() => applyPreset(preset.id)}>
+                    <Ionicons name={preset.icon} size={18} color={active ? Colors.primary : Colors.gray[500]} />
+                    <Text style={[styles.presetLabel, active && styles.presetLabelActive]}>{preset.label}</Text>
+                    <Text style={styles.presetCaption}>{preset.caption}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.infoCard}>
+              <Ionicons name="time" size={18} color={Colors.secondary} />
+              <Text style={styles.infoCardText}>{timeSummary}</Text>
+            </View>
+
+            {timePreset === 'custom' && (
+              <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.customWrap}>
+                <TouchableOpacity style={styles.inputLike} onPress={() => openCustomPicker('date')}>
+                  <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
+                  <Text style={styles.inputLikeText}>{formatDateLabel(departureDateMin)}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.inputLike} onPress={() => openCustomPicker('time')}>
+                  <Ionicons name="time-outline" size={18} color={Colors.primary} />
+                  <Text style={styles.inputLikeText}>{formatTimeLabel(departureDateMin)}</Text>
+                </TouchableOpacity>
+                <View style={styles.chipRow}>
+                  {FLEX_OPTIONS.map((option) => (
+                    <TouchableOpacity
+                      key={option}
+                      style={[styles.chip, flexibilityMinutes === option && styles.flexChipActive]}
+                      onPress={() => setFlexibilityMinutes(option)}
+                    >
+                      <Text style={[styles.chipText, flexibilityMinutes === option && styles.flexChipTextActive]}>
+                        {option === 0 ? 'Exact' : option === 60 ? '1 h' : option === 120 ? '2 h' : `${option} min`}
                       </Text>
-                      <Ionicons name="create-outline" size={18} color={Colors.gray[400]} />
-                    </View>
-                  </TouchableOpacity>
-
-                  <View style={styles.timeRangeArrow}>
-                    <Ionicons name="arrow-down" size={24} color={Colors.gray[300]} />
-                  </View>
-
-                  <TouchableOpacity onPress={() => openDateOrTimePickerMax('time')} style={styles.timePickerBox}>
-                    <View style={styles.timePickerLabel}>
-                      <Ionicons name="time-outline" size={16} color={Colors.danger} />
-                      <Text style={styles.timePickerLabelText}>Départ au plus tard</Text>
-                    </View>
-                    <View style={styles.timePickerValue}>
-                      <Text style={styles.timePickerValueText}>
-                        {departureDateMax.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                      </Text>
-                      <Ionicons name="create-outline" size={18} color={Colors.gray[400]} />
-                    </View>
-                  </TouchableOpacity>
+                    </TouchableOpacity>
+                  ))}
                 </View>
+              </Animated.View>
+            )}
+          </View>
 
-                <View style={styles.timeDurationInfo}>
-                  <Ionicons name="information-circle" size={16} color={Colors.info} />
-                  <Text style={styles.timeDurationText}>
-                    Fenêtre de {Math.round((departureDateMax.getTime() - departureDateMin.getTime()) / (1000 * 60))} minutes
-                  </Text>
-                </View>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Combien de personnes ?</Text>
+            <View style={styles.counter}>
+              <TouchableOpacity style={styles.counterBtn} onPress={() => setNumberOfSeats((value) => Math.max(1, value - 1))}>
+                <Ionicons name="remove" size={20} color={Colors.gray[900]} />
+              </TouchableOpacity>
+              <View style={styles.counterText}>
+                <Text style={styles.counterValue}>{numberOfSeats}</Text>
+                <Text style={styles.counterLabel}>{numberOfSeats} personne{numberOfSeats > 1 ? 's' : ''}</Text>
               </View>
+              <TouchableOpacity style={styles.counterBtn} onPress={() => setNumberOfSeats((value) => value + 1)}>
+                <Ionicons name="add" size={20} color={Colors.gray[900]} />
+              </TouchableOpacity>
+            </View>
+          </View>
 
-              <View style={styles.infoBox}>
-                <Ionicons name="bulb" size={20} color={Colors.warning} />
-                <Text style={styles.infoText}>
-                  Une plage horaire plus large augmente vos chances de trouver un conducteur rapidement.
-                </Text>
+          <TouchableOpacity style={styles.cardHeadCompact} onPress={() => setShowAdvanced((value) => !value)}>
+            <View>
+              <Text style={styles.cardTitle}>Ajouter un budget ou une note</Text>
+              <Text style={styles.cardSubtitle}>Facultatif</Text>
+            </View>
+            <Ionicons name={showAdvanced ? 'chevron-up' : 'chevron-down'} size={20} color={Colors.gray[500]} />
+          </TouchableOpacity>
+
+          {showAdvanced && (
+            <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.card}>
+              <Text style={styles.smallLabel}>Budget indicatif maximum par place</Text>
+              <View style={styles.priceBox}>
+                <TextInput style={styles.priceInput} value={maxPricePerSeat} onChangeText={setMaxPricePerSeat} keyboardType="number-pad" placeholder="Ex: 2000" placeholderTextColor={Colors.gray[400]} />
+                <Text style={styles.currency}>FC</Text>
               </View>
+              <Text style={styles.smallLabel}>Petit message pour les conducteurs</Text>
+              <TextInput
+                style={styles.textArea}
+                value={description}
+                onChangeText={setDescription}
+                multiline
+                placeholder="Ex: J ai un bagage, je voyage avec un enfant..."
+                placeholderTextColor={Colors.gray[400]}
+              />
             </Animated.View>
           )}
 
-          {step === 'options' && (
-            <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.stepWrapper}>
-              <Text style={styles.sectionTitle}>Options de voyage</Text>
-
-              <View style={styles.card}>
-                <View style={styles.optionHeader}>
-                  <Ionicons name="people" size={24} color={Colors.primary} />
-                  <Text style={styles.cardLabel}>NOMBRE DE PASSAGERS</Text>
-                </View>
-                <View style={styles.counterContainer}>
-                  <TouchableOpacity 
-                    onPress={() => setNumberOfSeats(Math.max(1, parseInt(numberOfSeats) - 1).toString())}
-                    style={styles.counterBtn}
-                  >
-                    <Ionicons name="remove" size={20} color={Colors.gray[900]} />
-                  </TouchableOpacity>
-                  <Text style={styles.counterValue}>{numberOfSeats}</Text>
-                  <TouchableOpacity 
-                    onPress={() => setNumberOfSeats((parseInt(numberOfSeats) + 1).toString())}
-                    style={styles.counterBtn}
-                  >
-                    <Ionicons name="add" size={20} color={Colors.gray[900]} />
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.optionHint}>
-                  {numberOfSeats} personne{parseInt(numberOfSeats) > 1 ? 's' : ''} (vous inclus)
-                </Text>
-              </View>
-
-              <View style={styles.card}>
-                <View style={styles.optionHeader}>
-                  <Ionicons name="cash" size={24} color={Colors.secondary} />
-                  <Text style={styles.cardLabel}>BUDGET MAXIMUM PAR PLACE</Text>
-                </View>
-                <View style={styles.priceInputContainer}>
-                  <TextInput
-                    style={styles.priceInput}
-                    value={maxPricePerSeat}
-                    onChangeText={setMaxPricePerSeat}
-                    keyboardType="number-pad"
-                    placeholder="Ex: 2000"
-                    placeholderTextColor={Colors.gray[400]}
-                  />
-                  <Text style={styles.currency}>FC</Text>
-                </View>
-                <Text style={styles.optionHint}>
-                  {maxPricePerSeat ? `Maximum ${maxPricePerSeat} FC par personne` : 'Facultatif - Laissez vide pour aucune limite'}
-                </Text>
-              </View>
-
-              <View style={styles.card}>
-                <View style={styles.optionHeader}>
-                  <Ionicons name="chatbubble-ellipses" size={24} color={Colors.info} />
-                  <Text style={styles.cardLabel}>INFORMATIONS SUPPLÉMENTAIRES</Text>
-                </View>
-                <TextInput
-                  style={styles.textArea}
-                  value={description}
-                  onChangeText={setDescription}
-                  multiline
-                  placeholder="Ex: Bagages volumineux, bébé à bord, préférence pour véhicule climatisé..."
-                  placeholderTextColor={Colors.gray[400]}
-                />
-                <Text style={styles.optionHint}>Ces détails aideront les conducteurs à mieux répondre à votre demande</Text>
-              </View>
-            </Animated.View>
-          )}
-
-          {step === 'confirm' && (
-            <Animated.View entering={FadeIn} style={styles.stepWrapper}>
-              <Text style={styles.sectionTitle}>Résumé de votre demande</Text>
-              <View style={styles.summaryCard}>
-                <View style={styles.summaryHeader}>
-                  <LinearGradient
-                    colors={[Colors.primary, '#6366f1']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={styles.summaryHeaderGradient}
-                  >
-                    <Text style={styles.summaryHeaderText}>VOTRE TRAJET</Text>
-                    <Ionicons name="car-sport" size={24} color={Colors.white} />
-                  </LinearGradient>
-                </View>
-                
-                <View style={styles.summaryBody}>
-                  <View style={styles.summaryRow}>
-                    <View style={styles.summaryDotGreen} />
-                    <Text style={styles.summaryLocation} numberOfLines={2}>{departureLocation?.title}</Text>
-                  </View>
-                  <View style={styles.summaryLine} />
-                  <View style={styles.summaryRow}>
-                    <View style={styles.summaryDotBlue} />
-                    <Text style={styles.summaryLocation} numberOfLines={2}>{arrivalLocation?.title}</Text>
-                  </View>
-
-                  <View style={styles.summaryDivider} />
-
-                  <View style={styles.summaryDetailCard}>
-                    <View style={styles.summaryDetailRow}>
-                      <Ionicons name="calendar" size={18} color={Colors.primary} />
-                      <View style={styles.summaryDetailContent}>
-                        <Text style={styles.summaryDetailLabel}>Date de départ</Text>
-                        <Text style={styles.summaryDetailValue}>
-                          {departureDateMin.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={styles.summaryDetailRow}>
-                      <Ionicons name="time" size={18} color={Colors.secondary} />
-                      <View style={styles.summaryDetailContent}>
-                        <Text style={styles.summaryDetailLabel}>Plage horaire</Text>
-                        <Text style={styles.summaryDetailValue}>
-                          {departureDateMin.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} - {departureDateMax.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={styles.summaryDetailRow}>
-                      <Ionicons name="people" size={18} color={Colors.success} />
-                      <View style={styles.summaryDetailContent}>
-                        <Text style={styles.summaryDetailLabel}>Passagers</Text>
-                        <Text style={styles.summaryDetailValue}>{numberOfSeats} personne{parseInt(numberOfSeats) > 1 ? 's' : ''}</Text>
-                      </View>
-                    </View>
-                    {maxPricePerSeat && (
-                      <View style={styles.summaryDetailRow}>
-                        <Ionicons name="cash" size={18} color={Colors.info} />
-                        <View style={styles.summaryDetailContent}>
-                          <Text style={styles.summaryDetailLabel}>Budget maximum</Text>
-                          <Text style={styles.summaryDetailValue}>{maxPricePerSeat} FC / place</Text>
-                        </View>
-                      </View>
-                    )}
-                    {description && (
-                      <View style={styles.summaryDetailRow}>
-                        <Ionicons name="chatbubble-ellipses" size={18} color={Colors.warning} />
-                        <View style={styles.summaryDetailContent}>
-                          <Text style={styles.summaryDetailLabel}>Notes</Text>
-                          <Text style={styles.summaryDetailValue}>{description}</Text>
-                        </View>
-                      </View>
-                    )}
-                  </View>
-                </View>
-
-                <View style={styles.summaryFooter}>
-                  <Text style={styles.summaryFooterText}>
-                    En publiant cette demande, vous acceptez que les drivers à proximité puissent vous contacter.
-                  </Text>
-                </View>
-              </View>
-            </Animated.View>
-          )}
+          <View style={styles.summary}>
+            <Text style={styles.summaryTitle}>Resume rapide</Text>
+            <Text style={styles.summaryText}>{routeSummary}</Text>
+            <Text style={styles.summaryText}>{timeSummary}</Text>
+            <Text style={styles.summaryText}>{numberOfSeats} personne{numberOfSeats > 1 ? 's' : ''}</Text>
+            {maxPricePerSeat ? <Text style={styles.summaryText}>Maximum {maxPricePerSeat} FC / place</Text> : null}
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
-        <TouchableOpacity
-          onPress={
-            step === 'confirm'
-              ? isIdentityVerified
-                ? handleCreateRequest
-                : () => {
-                    checkIdentity('request');
-                  }
-              : handleNextStep
-          }
-          disabled={isCreating || (step === 'confirm' && isCheckingIdentity)}
-          activeOpacity={0.8}
-        >
+        <Text style={styles.footerTitle} numberOfLines={1}>{routeSummary}</Text>
+        <Text style={styles.footerText} numberOfLines={1}>{timeSummary}</Text>
+        <TouchableOpacity onPress={handlePrimaryAction} disabled={isCreating || isCheckingIdentity}>
           <LinearGradient
-            colors={
-              step === 'confirm'
-                ? isIdentityVerified
-                  ? [Colors.success, '#10b981']
-                  : [Colors.warning, '#f59e0b']
-                : [Colors.primary, '#6366f1']
-            }
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
+            colors={!departureLocation || !arrivalLocation ? [Colors.primary, '#2563EB'] : !isIdentityVerified ? [Colors.warning, '#F97316'] : [Colors.success, '#16A34A']}
             style={styles.mainButton}
           >
-            {isCreating ? (
+            {isCreating || isCheckingIdentity ? (
               <ActivityIndicator color={Colors.white} />
             ) : (
               <>
-                <Text style={styles.mainButtonText}>
-                  {step === 'confirm'
-                    ? isIdentityVerified
-                      ? 'Publier ma demande'
-                      : isCheckingIdentity
-                        ? 'Vérification KYC...'
-                        : 'KYC requis'
-                    : 'Continuer'}
-                </Text>
-                <Ionicons
-                  name={
-                    step === 'confirm'
-                      ? isIdentityVerified
-                        ? 'send'
-                        : 'shield-checkmark-outline'
-                      : 'arrow-forward'
-                  }
-                  size={20}
-                  color={Colors.white}
-                />
+                <Text style={styles.mainButtonText}>{primaryLabel}</Text>
+                <Ionicons name={!departureLocation || !arrivalLocation ? 'arrow-forward' : !isIdentityVerified ? 'shield-checkmark-outline' : 'send'} size={18} color={Colors.white} />
               </>
             )}
           </LinearGradient>
@@ -602,31 +505,29 @@ export default function RequestTripScreen() {
 
       <LocationPickerModal
         visible={activePicker !== null}
-        title={activePicker === 'departure' ? 'Lieu de départ' : 'Lieu d\'arrivée'}
+        title={activePicker === 'departure' ? 'Choisir le départ' : 'Choisir la destination'}
         initialLocation={activePicker === 'departure' ? departureLocation : arrivalLocation}
+        autoLocateOnOpen={false}
         onClose={() => setActivePicker(null)}
         onSelect={(location) => {
-          if (activePicker === 'departure') setDepartureLocation(location);
-          else setArrivalLocation(location);
+          const target = activePicker;
           setActivePicker(null);
+          if (target === 'departure') {
+            setDepartureLocation(location);
+            if (!arrivalLocation) setTimeout(() => setActivePicker('arrival'), 150);
+            return;
+          }
+          setArrivalLocation(location);
         }}
       />
 
-      {Platform.OS === 'ios' && (iosPickerModeMin || iosPickerModeMax) && (
+      {Platform.OS === 'ios' && iosPickerMode && (
         <Modal transparent animationType="slide">
-          <View style={styles.iosPickerOverlay}>
-            <View style={styles.iosPickerContainer}>
-              <DateTimePicker
-                value={iosPickerModeMin ? departureDateMin : departureDateMax}
-                mode={iosPickerModeMin || iosPickerModeMax || 'date'}
-                display="spinner"
-                onChange={iosPickerModeMin ? handleIosPickerChangeMin : handleIosPickerChangeMax}
-              />
-              <TouchableOpacity
-                style={[styles.iosPickerCloseButton, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}
-                onPress={() => { setIosPickerModeMin(null); setIosPickerModeMax(null); }}
-              >
-                <Text style={styles.iosPickerCloseText}>Terminer</Text>
+          <View style={styles.iosOverlay}>
+            <View style={styles.iosSheet}>
+              <DateTimePicker value={departureDateMin} mode={iosPickerMode} display="spinner" onChange={handleIosPickerChange} />
+              <TouchableOpacity style={[styles.iosDone, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]} onPress={() => setIosPickerMode(null)}>
+                <Text style={styles.iosDoneText}>Terminer</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -637,580 +538,67 @@ export default function RequestTripScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-    height: '100%',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-  },
-  backButton: {
-    padding: Spacing.xs,
-  },
-  headerTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  stepIndicatorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.md,
-    backgroundColor: Colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[100],
-  },
-  stepItem: {
-    alignItems: 'center',
-    zIndex: 1,
-  },
-  stepCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.gray[100],
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  stepCircleActive: {
-    backgroundColor: Colors.primary + '15',
-    borderColor: Colors.primary,
-  },
-  stepCircleCompleted: {
-    backgroundColor: Colors.primary,
-  },
-  stepLabel: {
-    fontSize: 10,
-    color: Colors.gray[400],
-    fontWeight: FontWeights.medium,
-    marginTop: 4,
-  },
-  stepLabelActive: {
-    color: Colors.primary,
-    fontWeight: FontWeights.bold,
-  },
-  stepLine: {
-    flex: 1,
-    height: 2,
-    backgroundColor: Colors.gray[100],
-    marginHorizontal: -8,
-    marginTop: -16,
-  },
-  stepLineCompleted: {
-    backgroundColor: Colors.primary,
-  },
-  keyboardAvoidingView: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: Spacing.lg,
-  },
-  stepWrapper: {
-    flex: 1,
-  },
-  sectionTitle: {
-    fontSize: FontSizes.xl,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    marginBottom: Spacing.lg,
-  },
-  routeCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    flexDirection: 'row',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 15,
-    elevation: 3,
-  },
-  routeVisual: {
-    width: 20,
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  dotGreen: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: Colors.success,
-  },
-  dotBlue: {
-    width: 10,
-    height: 10,
-    borderRadius: 2,
-    backgroundColor: Colors.primary,
-  },
-  routeLine: {
-    flex: 1,
-    width: 1,
-    backgroundColor: Colors.gray[200],
-    marginVertical: 4,
-  },
-  routeInputs: {
-    flex: 1,
-    marginLeft: Spacing.md,
-  },
-  locationSelector: {
-    paddingVertical: Spacing.xs,
-  },
-  locationLabel: {
-    fontSize: 10,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[400],
-    letterSpacing: 1,
-  },
-  locationValue: {
-    fontSize: FontSizes.base,
-    color: Colors.gray[900],
-    fontWeight: FontWeights.medium,
-    marginTop: 4,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: Colors.gray[100],
-    marginVertical: Spacing.md,
-  },
-  infoBox: {
-    flexDirection: 'row',
-    backgroundColor: Colors.info + '10',
-    padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
-    marginTop: Spacing.xl,
-    alignItems: 'center',
-  },
-  infoText: {
-    flex: 1,
-    marginLeft: Spacing.sm,
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    lineHeight: 18,
-  },
-  card: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    marginBottom: Spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 15,
-    elevation: 2,
-  },
-  cardLabel: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[600],
-    letterSpacing: 0.5,
-  },
-  timeRangeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.lg,
-  },
-  timeBox: {
-    flex: 1,
-  },
-  timeLabel: {
-    fontSize: 10,
-    color: Colors.gray[500],
-    marginBottom: 4,
-  },
-  timeValueBox: {
-    backgroundColor: Colors.gray[50],
-    padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
-    alignItems: 'center',
-  },
-  timeValue: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  dateSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary + '05',
-    padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.primary + '15',
-  },
-  dateText: {
-    marginLeft: Spacing.sm,
-    fontSize: FontSizes.base,
-    color: Colors.gray[800],
-    fontWeight: FontWeights.medium,
-    textTransform: 'capitalize',
-  },
-  row: {
-    flexDirection: 'row',
-  },
-  counterContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.md,
-    marginTop: Spacing.sm,
-  },
-  counterBtn: {
-    width: 48,
-    height: 48,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  counterValue: {
-    fontSize: FontSizes.xxl,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    minWidth: 40,
-    textAlign: 'center',
-  },
-  priceInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.xl,
-    paddingHorizontal: Spacing.lg,
-    height: 64,
-    marginTop: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.gray[100],
-  },
-  priceInput: {
-    flex: 1,
-    fontSize: FontSizes.xxl,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  currency: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[400],
-    marginLeft: 4,
-  },
-  textArea: {
-    backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    fontSize: FontSizes.base,
-    color: Colors.gray[900],
-    minHeight: 100,
-    textAlignVertical: 'top',
-    marginTop: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.gray[100],
-    lineHeight: 22,
-  },
-  summaryCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xxl,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 5,
-  },
-  summaryHeader: {
-    height: 60,
-  },
-  summaryHeaderGradient: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.xl,
-  },
-  summaryHeaderText: {
-    color: Colors.white,
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    letterSpacing: 2,
-  },
-  summaryBody: {
-    padding: Spacing.xl,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  summaryDotGreen: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: Colors.success,
-    borderWidth: 3,
-    borderColor: Colors.success + '30',
-  },
-  summaryDotBlue: {
-    width: 12,
-    height: 12,
-    borderRadius: 3,
-    backgroundColor: Colors.primary,
-    borderWidth: 3,
-    borderColor: Colors.primary + '30',
-  },
-  summaryLocation: {
-    marginLeft: Spacing.md,
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[900],
-    flex: 1,
-  },
-  summaryLine: {
-    width: 2,
-    height: 24,
-    backgroundColor: Colors.gray[100],
-    marginLeft: 5,
-    marginVertical: 4,
-  },
-  summaryDivider: {
-    height: 1,
-    backgroundColor: Colors.gray[100],
-    marginVertical: Spacing.lg,
-  },
-  summaryFooter: {
-    backgroundColor: Colors.gray[50],
-    padding: Spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray[100],
-  },
-  summaryFooterText: {
-    fontSize: 12,
-    color: Colors.gray[500],
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  footer: {
-    padding: Spacing.lg,
-    backgroundColor: Colors.white,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray[100],
-  },
-  mainButton: {
-    height: 56,
-    borderRadius: BorderRadius.xl,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-  },
-  mainButtonText: {
-    color: Colors.white,
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-  },
-  iosPickerOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  iosPickerContainer: {
-    backgroundColor: Colors.white,
-    borderTopLeftRadius: BorderRadius.xl,
-    borderTopRightRadius: BorderRadius.xl,
-    paddingTop: Spacing.md,
-  },
-  iosPickerCloseButton: {
-    padding: Spacing.lg,
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray[100],
-  },
-  iosPickerCloseText: {
-    color: Colors.primary,
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.base,
-  },
-  dateCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    marginBottom: Spacing.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 15,
-    elevation: 3,
-  },
-  dateCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-  },
-  dateCardHeaderText: {
-    marginLeft: Spacing.md,
-    flex: 1,
-  },
-  dateCardTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  dateCardSubtitle: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[500],
-    marginTop: 2,
-  },
-  dateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary + '08',
-    padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1.5,
-    borderColor: Colors.primary + '20',
-  },
-  dateButtonIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.md,
-  },
-  dateButtonText: {
-    flex: 1,
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[900],
-    textTransform: 'capitalize',
-  },
-  timeRangeCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    marginBottom: Spacing.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 15,
-    elevation: 3,
-  },
-  timeRangeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-  },
-  timeRangeHeaderText: {
-    marginLeft: Spacing.md,
-    flex: 1,
-  },
-  timeRangeTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  timeRangeSubtitle: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[500],
-    marginTop: 2,
-  },
-  timeRangePicker: {
-    gap: Spacing.md,
-  },
-  timePickerBox: {
-    backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.gray[100],
-  },
-  timePickerLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-  },
-  timePickerLabelText: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    marginLeft: Spacing.xs,
-    fontWeight: FontWeights.medium,
-  },
-  timePickerValue: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  timePickerValueText: {
-    fontSize: FontSizes.xxl,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  timeRangeArrow: {
-    alignSelf: 'center',
-    marginVertical: Spacing.xs,
-  },
-  timeDurationInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: Spacing.md,
-    padding: Spacing.sm,
-    backgroundColor: Colors.info + '08',
-    borderRadius: BorderRadius.md,
-  },
-  timeDurationText: {
-    fontSize: FontSizes.sm,
-    color: Colors.info,
-    marginLeft: Spacing.xs,
-    fontWeight: FontWeights.medium,
-  },
-  optionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  optionHint: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[500],
-    marginTop: Spacing.sm,
-    fontStyle: 'italic',
-  },
-  summaryDetailCard: {
-    gap: Spacing.md,
-  },
-  summaryDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: Colors.gray[50],
-    padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
-  },
-  summaryDetailContent: {
-    marginLeft: Spacing.md,
-    flex: 1,
-  },
-  summaryDetailLabel: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
-    fontWeight: FontWeights.semibold,
-    textTransform: 'uppercase',
-    marginBottom: 2,
-  },
-  summaryDetailValue: {
-    fontSize: FontSizes.base,
-    color: Colors.gray[900],
-    fontWeight: FontWeights.semibold,
-  },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  flex: { flex: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md },
+  headerButton: { width: 40, height: 40, borderRadius: BorderRadius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.white },
+  headerTitle: { fontSize: FontSizes.lg, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  headerSpacer: { width: 40, height: 40 },
+  content: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xxl, gap: Spacing.md },
+  hero: { borderRadius: BorderRadius.xxl, padding: Spacing.xl, gap: Spacing.sm },
+  heroPill: { alignSelf: 'flex-start', paddingHorizontal: Spacing.md, paddingVertical: 6, borderRadius: BorderRadius.full, backgroundColor: 'rgba(255,255,255,0.16)', color: Colors.white, fontWeight: FontWeights.semibold },
+  heroTitle: { fontSize: FontSizes.xxl, fontWeight: FontWeights.bold, color: Colors.white, lineHeight: 34 },
+  heroSubtitle: { fontSize: FontSizes.base, color: 'rgba(255,255,255,0.92)', lineHeight: 22 },
+  card: { backgroundColor: Colors.white, borderRadius: BorderRadius.xxl, padding: Spacing.lg, gap: Spacing.md, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.06, shadowRadius: 18, elevation: 3 },
+  cardHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.md },
+  cardHeadCompact: { backgroundColor: Colors.white, borderRadius: BorderRadius.xxl, padding: Spacing.lg, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cardTitle: { fontSize: FontSizes.lg, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  cardSubtitle: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[500] },
+  iconCircle: { width: 40, height: 40, borderRadius: BorderRadius.full, backgroundColor: `${Colors.primary}12`, alignItems: 'center', justifyContent: 'center' },
+  routeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  routeDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: Colors.primary },
+  squareDot: { borderRadius: 3 },
+  routeText: { flex: 1 },
+  routeLabel: { fontSize: FontSizes.xs, color: Colors.gray[500], textTransform: 'uppercase', fontWeight: FontWeights.bold, letterSpacing: 0.6 },
+  routeValue: { marginTop: 4, fontSize: FontSizes.base, fontWeight: FontWeights.semibold, color: Colors.gray[900] },
+  placeholder: { color: Colors.gray[400] },
+  routeHint: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[500] },
+  line: { height: 1, backgroundColor: Colors.gray[200], marginLeft: 26 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, backgroundColor: Colors.gray[100], borderRadius: BorderRadius.full, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
+  primaryChip: { backgroundColor: `${Colors.primary}12` },
+  chipText: { fontSize: FontSizes.sm, fontWeight: FontWeights.medium, color: Colors.gray[800] },
+  presetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  preset: { width: '48%', minWidth: 140, backgroundColor: Colors.gray[50], borderRadius: BorderRadius.xl, padding: Spacing.md, borderWidth: 1, borderColor: Colors.gray[100], gap: 6 },
+  presetActive: { backgroundColor: `${Colors.primary}10`, borderColor: Colors.primary },
+  presetLabel: { fontSize: FontSizes.base, fontWeight: FontWeights.semibold, color: Colors.gray[900] },
+  presetLabelActive: { color: Colors.primary },
+  presetCaption: { fontSize: FontSizes.sm, color: Colors.gray[500] },
+  infoCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.gray[50], borderRadius: BorderRadius.xl, padding: Spacing.md },
+  infoCardText: { flex: 1, fontSize: FontSizes.base, color: Colors.gray[900], fontWeight: FontWeights.semibold, lineHeight: 22 },
+  customWrap: { gap: Spacing.sm },
+  inputLike: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, borderRadius: BorderRadius.xl, backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[100], padding: Spacing.md },
+  inputLikeText: { fontSize: FontSizes.base, fontWeight: FontWeights.semibold, color: Colors.gray[900] },
+  counter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.gray[50], borderRadius: BorderRadius.xl, padding: Spacing.md },
+  counterBtn: { width: 48, height: 48, borderRadius: BorderRadius.lg, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
+  counterText: { alignItems: 'center', gap: 4 },
+  counterValue: { fontSize: FontSizes.xxl, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  counterLabel: { fontSize: FontSizes.sm, color: Colors.gray[500] },
+  smallLabel: { fontSize: FontSizes.sm, fontWeight: FontWeights.semibold, color: Colors.gray[600] },
+  priceBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.gray[50], borderRadius: BorderRadius.xl, paddingHorizontal: Spacing.lg, height: 60, borderWidth: 1, borderColor: Colors.gray[100] },
+  priceInput: { flex: 1, fontSize: FontSizes.xl, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  currency: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[500] },
+  textArea: { minHeight: 96, borderRadius: BorderRadius.xl, backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[100], padding: Spacing.md, fontSize: FontSizes.base, color: Colors.gray[900], textAlignVertical: 'top', lineHeight: 22 },
+  summary: { backgroundColor: Colors.white, borderRadius: BorderRadius.xxl, padding: Spacing.lg, gap: Spacing.xs },
+  summaryTitle: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  summaryText: { fontSize: FontSizes.sm, color: Colors.gray[600], lineHeight: 20 },
+  footer: { backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, gap: 4 },
+  footerTitle: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  footerText: { fontSize: FontSizes.sm, color: Colors.gray[500] },
+  mainButton: { minHeight: 56, borderRadius: BorderRadius.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, marginTop: Spacing.sm },
+  mainButtonText: { color: Colors.white, fontSize: FontSizes.base, fontWeight: FontWeights.bold },
+  iosOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.35)' },
+  iosSheet: { backgroundColor: Colors.white, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, paddingTop: Spacing.md },
+  iosDone: { padding: Spacing.lg, alignItems: 'center', borderTopWidth: 1, borderTopColor: Colors.gray[100] },
+  iosDoneText: { color: Colors.primary, fontWeight: FontWeights.bold, fontSize: FontSizes.base },
 });

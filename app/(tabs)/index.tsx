@@ -9,7 +9,7 @@ import {
   useGetTripsQuery,
   useSearchTripsByCoordinatesMutation,
 } from '@/store/api/tripApi';
-import { useGetCurrentUserQuery } from '@/store/api/userApi';
+import { useGetCurrentUserQuery, useGetFavoriteLocationsQuery } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectAvailableTrips, selectSavedLocations } from '@/store/selectors';
 import { addSavedLocation } from '@/store/slices/locationSlice';
@@ -33,11 +33,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 const RECENT_TRIPS_LIMIT = 15;
 
+type HomeQuickPlace = {
+  id: string;
+  title: string;
+  subtitle: string;
+  searchValue: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  accent: string;
+  badge: string;
+};
+
 export default function HomeScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { showDialog } = useDialog();
   const { data: currentUser } = useGetCurrentUserQuery();
+  const { data: favoriteLocations = [], isLoading: favoriteLocationsLoading } =
+    useGetFavoriteLocationsQuery();
   const storedTrips = useAppSelector(selectAvailableTrips);
   const savedLocations = useAppSelector(selectSavedLocations);
   const [queryParams, setQueryParams] = useState<TripSearchParams>({});
@@ -219,7 +231,6 @@ export default function HomeScreen() {
     }),
     [filterArrivalLocation],
   );
-
   const handleAdvancedLocationSelect = (selection: MapLocationSelection) => {
     if (activePicker === 'departure') {
       setFilterDepartureLocation(selection);
@@ -357,8 +368,75 @@ export default function HomeScreen() {
   const unreadNotifications = notificationsData?.unreadCount ?? 0;
   const hasLocationSelections = Boolean(filterDepartureLocation || filterArrivalLocation);
 
+  const quickPlaces = useMemo<HomeQuickPlace[]>(() => {
+    const favoritePlaceCards = favoriteLocations.map((location) => {
+      const typeMeta =
+        location.type === 'home'
+          ? {
+              title: 'Domicile',
+              icon: 'home' as const,
+              accent: Colors.primary,
+              badge: 'Favori',
+            }
+          : location.type === 'work'
+            ? {
+                title: 'Bureau',
+                icon: 'briefcase' as const,
+                accent: '#2563EB',
+                badge: 'Favori',
+              }
+            : {
+                title: location.name,
+                icon: 'location' as const,
+                accent: Colors.success,
+                badge: 'Repere',
+              };
+
+      return {
+        id: `favorite-${location.id}`,
+        title: location.name || typeMeta.title,
+        subtitle: location.notes || location.address,
+        searchValue: location.address || location.name,
+        icon: typeMeta.icon,
+        accent: typeMeta.accent,
+        badge: typeMeta.badge,
+      };
+    });
+
+    const savedPlaceCards = savedLocations.map((location) => ({
+      id: `saved-${location.id}`,
+      title: location.label,
+      subtitle: location.address,
+      searchValue: location.address || location.label,
+      icon: 'bookmark' as const,
+      accent: Colors.warningDark,
+      badge: 'Rapide',
+    }));
+
+    const mergedPlaces = [...favoritePlaceCards, ...savedPlaceCards];
+    const dedupedPlaces = mergedPlaces.filter(
+      (place, index, collection) =>
+        collection.findIndex(
+          (candidate) =>
+            candidate.title.toLowerCase() === place.title.toLowerCase() &&
+            candidate.searchValue.toLowerCase() === place.searchValue.toLowerCase(),
+        ) === index,
+    );
+
+    return dedupedPlaces.slice(0, 4);
+  }, [favoriteLocations, savedLocations]);
+
   const openNotifications = () => {
     router.push('/notifications');
+  };
+
+  const handleQuickPlacePress = (place: HomeQuickPlace) => {
+    router.push({
+      pathname: '/search',
+      params: {
+        departure: place.searchValue,
+      },
+    });
   };
 
   const animatedSearchCardStyle = useAnimatedStyle(() => ({
@@ -514,6 +592,74 @@ export default function HomeScreen() {
               />
             </View>
           </LinearGradient>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Mes lieux utiles</Text>
+            <TouchableOpacity onPress={() => router.push('/favorite-locations')}>
+              <Text style={styles.seeAllText}>Gerer</Text>
+            </TouchableOpacity>
+          </View>
+
+          {favoriteLocationsLoading && quickPlaces.length === 0 ? (
+            <View style={styles.quickPlacesStateCard}>
+              <ActivityIndicator color={Colors.primary} />
+              <Text style={styles.quickPlacesStateText}>Chargement de vos lieux favoris...</Text>
+            </View>
+          ) : quickPlaces.length > 0 ? (
+            <View style={styles.quickPlacesGrid}>
+              {quickPlaces.map((place) => (
+                <TouchableOpacity
+                  key={place.id}
+                  style={styles.quickPlaceCard}
+                  onPress={() => handleQuickPlacePress(place)}
+                >
+                  <View style={styles.quickPlaceHeader}>
+                    <View
+                      style={[
+                        styles.quickPlaceIcon,
+                        { backgroundColor: `${place.accent}18` },
+                      ]}
+                    >
+                      <Ionicons name={place.icon} size={18} color={place.accent} />
+                    </View>
+                    <View style={styles.quickPlaceBadge}>
+                      <Text style={styles.quickPlaceBadgeText}>{place.badge}</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.quickPlaceTitle} numberOfLines={1}>
+                    {place.title}
+                  </Text>
+                  <Text style={styles.quickPlaceSubtitle} numberOfLines={2}>
+                    {place.subtitle}
+                  </Text>
+
+                  <View style={styles.quickPlaceAction}>
+                    <Text style={styles.quickPlaceActionText}>Partir d&apos;ici</Text>
+                    <Ionicons name="arrow-forward" size={16} color={Colors.primary} />
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.quickPlacesEmptyCard}
+              onPress={() => router.push('/favorite-locations')}
+            >
+              <View style={styles.quickPlacesEmptyIcon}>
+                <Ionicons name="location-outline" size={22} color={Colors.primary} />
+              </View>
+              <View style={styles.quickPlacesEmptyContent}>
+                <Text style={styles.quickPlacesEmptyTitle}>Ajoutez vos repères utiles</Text>
+                <Text style={styles.quickPlacesEmptyText}>
+                  Enregistrez Domicile, Bureau ou un lieu connu pour lancer une recherche plus vite.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Actions rapides */}
@@ -1004,6 +1150,110 @@ const styles = StyleSheet.create({
   seeAllText: {
     color: Colors.primary,
     fontWeight: FontWeights.bold,
+  },
+  quickPlacesStateCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    alignItems: 'center',
+    gap: Spacing.sm,
+    ...CommonStyles.shadowSm,
+  },
+  quickPlacesStateText: {
+    color: Colors.gray[600],
+    textAlign: 'center',
+  },
+  quickPlacesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.md,
+  },
+  quickPlaceCard: {
+    width: '48%',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.md,
+    minHeight: 150,
+    justifyContent: 'space-between',
+    ...CommonStyles.shadowSm,
+  },
+  quickPlaceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  quickPlaceIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: BorderRadius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickPlaceBadge: {
+    backgroundColor: Colors.gray[100],
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+  },
+  quickPlaceBadgeText: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  quickPlaceTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: Spacing.xs,
+  },
+  quickPlaceSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    lineHeight: 18,
+    minHeight: 36,
+  },
+  quickPlaceAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginTop: Spacing.md,
+  },
+  quickPlaceActionText: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.sm,
+  },
+  quickPlacesEmptyCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    ...CommonStyles.shadowSm,
+  },
+  quickPlacesEmptyIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.primary + '12',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickPlacesEmptyContent: {
+    flex: 1,
+  },
+  quickPlacesEmptyTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: 4,
+  },
+  quickPlacesEmptyText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    lineHeight: 18,
   },
   quickActions: {
     flexDirection: 'row',

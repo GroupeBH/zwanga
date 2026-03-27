@@ -1,42 +1,93 @@
-import { BorderRadius, Colors, FontSizes, FontWeights, Spacing, CommonStyles } from '@/constants/styles';
-import React, { useEffect, useMemo, useState } from 'react';
+import { SupportTicketCard } from '@/components/support/SupportTicketCard';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  TextInput,
-  Linking,
-  StyleSheet,
-} from 'react-native';
+  buildApiErrorMessage,
+  buildQuickActions,
+  DEFAULT_SUPPORT_CONFIG,
+  DEFAULT_SUPPORT_EMAIL,
+  FAQ_LIMIT,
+  FAQ_HISTORY_KEY,
+  FAVORITE_CONTACT_KEY,
+  getFaqCategoryMeta,
+  LOCAL_FAQ_ENTRIES,
+  normalizeFaqCategory,
+  normalizeText,
+  SEARCH_HISTORY_KEY,
+  type SupportContactPreference,
+  TICKET_CATEGORIES,
+  TICKET_CATEGORY_LABELS,
+} from '@/components/support/supportData';
+import { styles } from '@/components/support/supportStyles';
+import { useDialog } from '@/components/ui/DialogProvider';
+import { Colors } from '@/constants/styles';
+import {
+  useCreateSupportTicketMutation,
+  useGetMySupportTicketsQuery,
+  useGetSupportConfigQuery,
+  useGetSupportFaqQuery,
+} from '@/store/api/supportApi';
+import type { SupportFaqEntry, SupportTicketCategory } from '@/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Linking,
+  Modal,
+  RefreshControl,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-
-interface FAQItem {
-  question: string;
-  answer: string;
-}
-
-interface FAQCategory {
-  title: string;
-  icon: string;
-  items: FAQItem[];
-}
-
-const FAVORITE_CONTACT_KEY = 'support_favorite_contact';
-const FAQ_HISTORY_KEY = 'support_faq_history';
-const SEARCH_HISTORY_KEY = 'support_search_history';
 
 export default function SupportScreen() {
   const router = useRouter();
+  const { showDialog } = useDialog();
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedIndex, setExpandedIndex] = useState<string | null>(null);
-  const [favoriteContact, setFavoriteContact] = useState<string>('call');
+  const [expandedFaqId, setExpandedFaqId] = useState<string | null>(null);
+  const [favoriteContact, setFavoriteContact] = useState<SupportContactPreference>('ticket');
   const [recentFaqs, setRecentFaqs] = useState<string[]>([]);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [showTicketModal, setShowTicketModal] = useState(false);
+  const [ticketSubject, setTicketSubject] = useState('');
+  const [ticketMessage, setTicketMessage] = useState('');
+  const [ticketCategory, setTicketCategory] = useState<SupportTicketCategory>('general');
+
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+
+  const {
+    data: supportConfigResponse,
+    isFetching: isConfigFetching,
+    refetch: refetchSupportConfig,
+  } = useGetSupportConfigQuery();
+
+  const supportConfig = supportConfigResponse ?? DEFAULT_SUPPORT_CONFIG;
+  const quickActions = useMemo(() => buildQuickActions(supportConfig), [supportConfig]);
+  const canCreateTicket = supportConfig.channels.ticket;
+
+  const {
+    data: faqResponse,
+    isFetching: isFaqFetching,
+    isError: isFaqError,
+    refetch: refetchFaq,
+  } = useGetSupportFaqQuery({
+    limit: FAQ_LIMIT,
+    locale: supportConfig.faq?.locale ?? supportConfig.locale,
+    audience: supportConfig.faq?.audience,
+  });
+
+  const {
+    data: ticketsResponse,
+    isLoading: isTicketsLoading,
+    isFetching: isTicketsFetching,
+    refetch: refetchTickets,
+  } = useGetMySupportTicketsQuery({ limit: 5 });
+
+  const [createSupportTicket, { isLoading: isCreatingTicket }] = useCreateSupportTicketMutation();
 
   useEffect(() => {
     (async () => {
@@ -46,44 +97,101 @@ export default function SupportScreen() {
           AsyncStorage.getItem(FAQ_HISTORY_KEY),
           AsyncStorage.getItem(SEARCH_HISTORY_KEY),
         ]);
-        if (favorite) {
+
+        if (
+          favorite === 'ticket' ||
+          favorite === 'email' ||
+          favorite === 'phone' ||
+          favorite === 'whatsapp'
+        ) {
           setFavoriteContact(favorite);
         }
+
         if (faqHistory) {
           setRecentFaqs(JSON.parse(faqHistory));
         }
+
         if (searchHistory) {
           setRecentSearches(JSON.parse(searchHistory));
         }
       } catch (error) {
-        console.warn('Impossible de charger les préférences d’aide:', error);
+        console.warn("Impossible de charger les préférences d'aide :", error);
       }
     })();
   }, []);
 
-  const persistFavoriteContact = async (key: string) => {
+  const faqEntries = useMemo(
+    () => (faqResponse?.data?.length ? faqResponse.data : LOCAL_FAQ_ENTRIES),
+    [faqResponse?.data],
+  );
+
+  const faqEntriesById = useMemo(
+    () => new Map(faqEntries.map((entry) => [entry.id, entry])),
+    [faqEntries],
+  );
+
+  const filteredFaqEntries = useMemo(() => {
+    const needle = normalizeText(deferredSearchQuery);
+    if (!needle) {
+      return faqEntries;
+    }
+
+    return faqEntries.filter((entry) =>
+      [entry.question, entry.answer, entry.category, entry.keywords].some((value) =>
+        normalizeText(value).includes(needle),
+      ),
+    );
+  }, [deferredSearchQuery, faqEntries]);
+
+  const groupedFaqEntries = useMemo(() => {
+    return filteredFaqEntries.reduce<Record<string, SupportFaqEntry[]>>((acc, entry) => {
+      const key = normalizeFaqCategory(entry.category);
+      if (!acc[key]) {
+        acc[key] = [];
+      }
+      acc[key].push(entry);
+      return acc;
+    }, {});
+  }, [filteredFaqEntries]);
+
+  const recentFaqEntries = useMemo(
+    () =>
+      recentFaqs
+        .map((faqId) => faqEntriesById.get(faqId))
+        .filter((entry): entry is SupportFaqEntry => Boolean(entry)),
+    [faqEntriesById, recentFaqs],
+  );
+
+  const myTickets = ticketsResponse?.data ?? [];
+  const hasActiveSearch = Boolean(searchQuery.trim());
+  const usesLocalFallback = isFaqError || !faqResponse?.data?.length;
+
+  const persistFavoriteContact = async (key: SupportContactPreference) => {
     try {
       setFavoriteContact(key);
       await AsyncStorage.setItem(FAVORITE_CONTACT_KEY, key);
     } catch (error) {
-      console.warn('Impossible de sauvegarder le contact favori:', error);
+      console.warn('Impossible de sauvegarder le canal favori:', error);
     }
   };
 
-  const persistFaqHistory = async (faqKey: string) => {
+  const persistFaqHistory = async (faqId: string) => {
     try {
       setRecentFaqs((prev) => {
-        const next = [faqKey, ...prev.filter((entry) => entry !== faqKey)].slice(0, 5);
+        const next = [faqId, ...prev.filter((entry) => entry !== faqId)].slice(0, 5);
         AsyncStorage.setItem(FAQ_HISTORY_KEY, JSON.stringify(next));
         return next;
       });
     } catch (error) {
-      console.warn('Impossible de sauvegarder l’historique FAQ:', error);
+      console.warn("Impossible de sauvegarder l'historique FAQ :", error);
     }
   };
 
   const persistSearchHistory = async (query: string) => {
-    if (!query.trim()) return;
+    if (!query.trim()) {
+      return;
+    }
+
     try {
       const normalized = query.trim();
       setRecentSearches((prev) => {
@@ -92,119 +200,199 @@ export default function SupportScreen() {
         return next;
       });
     } catch (error) {
-      console.warn('Impossible de sauvegarder l’historique de recherche:', error);
+      console.warn("Impossible de sauvegarder l'historique de recherche :", error);
     }
   };
 
-  const faqCategories: FAQCategory[] = [
-    {
-      title: 'Démarrage',
-      icon: 'rocket',
-      items: [
-        {
-          question: 'Comment créer un compte ?',
-          answer: 'Téléchargez l\'application, entrez votre numéro de téléphone, et suivez les étapes de vérification SMS et KYC.',
-        },
-        {
-          question: 'Qu\'est-ce que la vérification KYC ?',
-          answer: 'La vérification KYC (Know Your Customer) est un processus de sécurité qui vérifie votre identité pour protéger tous les utilisateurs.',
-        },
-        {
-          question: 'Dois-je être conducteur ou passager ?',
-          answer: 'Vous pouvez choisir les deux rôles ! Vous pouvez proposer des trajets en tant que conducteur et en rechercher en tant que passager.',
-        },
-      ],
-    },
-    {
-      title: 'Trajets',
-      icon: 'car',
-      items: [
-        {
-          question: 'Comment publier un trajet ?',
-          answer: 'Appuyez sur le bouton "Publier un trajet", indiquez votre itinéraire, l\'heure de départ, le nombre de places et le prix. C\'est tout !',
-        },
-        {
-          question: 'Comment rechercher un trajet ?',
-          answer: 'Utilisez la barre de recherche sur l\'écran d\'accueil, entrez votre départ et votre destination, puis parcourez les résultats.',
-        },
-        {
-          question: 'Puis-je annuler un trajet ?',
-          answer: 'Oui, vous pouvez annuler un trajet depuis les détails du trajet. Les passagers affectés seront notifiés.',
-        },
-        {
-          question: 'Comment fonctionne le suivi en temps réel ?',
-          answer: 'Une fois le trajet démarré, vous pouvez suivre la position du véhicule en temps réel sur la carte interactive.',
-        },
-      ],
-    },
-    {
-      title: 'Paiements',
-      icon: 'card',
-      items: [
-        {
-          question: 'Quels modes de paiement sont acceptés ?',
-          answer: 'Nous acceptons Orange Money, M-Pesa, Airtel Money et le paiement en espèces.',
-        },
-        {
-          question: 'Comment fonctionne l\'abonnement ?',
-          answer: 'L\'abonnement vous donne accès à des fonctionnalités premium et des réductions. Vous pouvez choisir un abonnement mensuel ou annuel.',
-        },
-        {
-          question: 'Puis-je obtenir un remboursement ?',
-          answer: 'Les remboursements sont possibles en cas d\'annulation par le conducteur. Contactez le support pour plus d\'informations.',
-        },
-      ],
-    },
-    {
-      title: 'Sécurité',
-      icon: 'shield-checkmark',
-      items: [
-        {
-          question: 'Comment ZWANGA assure ma sécurité ?',
-          answer: 'Tous les utilisateurs sont vérifiés via KYC. Nous offrons également un système d\'évaluation et la possibilité de signaler tout comportement inapproprié.',
-        },
-        {
-          question: 'Que faire en cas d\'urgence ?',
-          answer: 'Utilisez le bouton d\'urgence dans l\'application pour contacter immédiatement les autorités et notre équipe de support.',
-        },
-        {
-          question: 'Comment signaler un utilisateur ?',
-          answer: 'Après un trajet, vous pouvez évaluer et signaler un utilisateur si nécessaire. Toutes les signalisations sont examinées.',
-        },
-      ],
-    },
-    {
-      title: 'Compte & Profil',
-      icon: 'person',
-      items: [
-        {
-          question: 'Comment modifier mon profil ?',
-          answer: 'Allez dans Profil > Modifier le profil pour changer vos informations personnelles, photo et véhicule.',
-        },
-        {
-          question: 'Comment améliorer ma note ?',
-          answer: 'Soyez ponctuel, courtois et respectueux. Maintenez votre véhicule propre et conduisez prudemment.',
-        },
-        {
-          question: 'Puis-je supprimer mon compte ?',
-          answer: 'Oui, allez dans Paramètres > Compte > Supprimer le compte. Cette action est irréversible.',
-        },
-      ],
-    },
-  ];
+  const toggleExpand = (faqId: string) => {
+    const nextId = expandedFaqId === faqId ? null : faqId;
+    setExpandedFaqId(nextId);
 
-  const quickActions = [
-    { icon: 'call', label: 'Appeler', key: 'call', color: '#2ECC71', action: () => Linking.openURL('tel:+243123456789') },
-    { icon: 'mail', label: 'Email', key: 'mail', color: '#3498DB', action: () => Linking.openURL('mailto:support@zwanga.cd') },
-    { icon: 'logo-whatsapp', label: 'WhatsApp', key: 'whatsapp', color: '#25D366', action: () => Linking.openURL('whatsapp://send?phone=243123456789'), badge: 'Nouveau' },
-  ];
-
-  const toggleExpand = (categoryIndex: number, itemIndex: number) => {
-    const key = `${categoryIndex}-${itemIndex}`;
-    setExpandedIndex(expandedIndex === key ? null : key);
-    if (expandedIndex !== key) {
-      persistFaqHistory(key);
+    if (nextId) {
+      persistFaqHistory(faqId);
     }
+  };
+
+  const handleOpenEmail = async () => {
+    const email = supportConfig.contact.email || DEFAULT_SUPPORT_EMAIL;
+    const url = `mailto:${email}?subject=${encodeURIComponent('Support ZWANGA')}`;
+    await persistFavoriteContact('email');
+
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        showDialog({
+          variant: 'warning',
+          title: 'Email indisponible',
+          message: "Aucune application email n'est configurée sur cet appareil.",
+        });
+        return;
+      }
+
+      await Linking.openURL(url);
+    } catch {
+      showDialog({
+        variant: 'danger',
+        title: "Impossible d'ouvrir l'email",
+        message: "Réessayez plus tard ou créez plutôt un ticket dans l'application.",
+      });
+    }
+  };
+
+  const handleOpenPhone = async () => {
+    const phone = supportConfig.contact.phone?.trim();
+    if (!phone) {
+      showDialog({
+        variant: 'warning',
+        title: 'Numéro indisponible',
+        message: "Le numéro du support n'est pas encore disponible pour le moment.",
+      });
+      return;
+    }
+
+    await persistFavoriteContact('phone');
+
+    try {
+      const url = `tel:${phone.replace(/[^\d+]/g, '')}`;
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        showDialog({
+          variant: 'warning',
+          title: 'Appel indisponible',
+          message: 'Votre appareil ne permet pas de lancer un appel pour le moment.',
+        });
+        return;
+      }
+
+      await Linking.openURL(url);
+    } catch {
+      showDialog({
+        variant: 'danger',
+        title: "Impossible d'appeler",
+        message: 'Réessayez plus tard ou utilisez plutôt le ticket ou WhatsApp.',
+      });
+    }
+  };
+
+  const handleOpenWhatsApp = async () => {
+    const whatsapp = supportConfig.contact.whatsapp?.trim();
+    const normalizedNumber = whatsapp?.replace(/\D/g, '');
+
+    if (!normalizedNumber) {
+      showDialog({
+        variant: 'warning',
+        title: 'WhatsApp indisponible',
+        message: "Le contact WhatsApp du support n'est pas encore disponible.",
+      });
+      return;
+    }
+
+    await persistFavoriteContact('whatsapp');
+
+    try {
+      const text = encodeURIComponent("Bonjour, j'ai besoin d'aide sur ZWANGA.");
+      const url = `https://wa.me/${normalizedNumber}?text=${text}`;
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        showDialog({
+          variant: 'warning',
+          title: 'WhatsApp indisponible',
+          message: "WhatsApp n'est pas installé ou ne peut pas être ouvert sur cet appareil.",
+        });
+        return;
+      }
+
+      await Linking.openURL(url);
+    } catch {
+      showDialog({
+        variant: 'danger',
+        title: "Impossible d'ouvrir WhatsApp",
+        message: "Réessayez plus tard ou utilisez plutôt le ticket ou l'email.",
+      });
+    }
+  };
+
+  const handleQuickAction = async (actionKey: SupportContactPreference) => {
+    if (actionKey === 'ticket') {
+      await persistFavoriteContact('ticket');
+      setShowTicketModal(true);
+      return;
+    }
+
+    if (actionKey === 'phone') {
+      await handleOpenPhone();
+      return;
+    }
+
+    if (actionKey === 'whatsapp') {
+      await handleOpenWhatsApp();
+      return;
+    }
+
+    await handleOpenEmail();
+  };
+
+  const resetTicketForm = () => {
+    setTicketSubject('');
+    setTicketMessage('');
+    setTicketCategory('general');
+  };
+
+  const handleCloseTicketModal = () => {
+    setShowTicketModal(false);
+    resetTicketForm();
+  };
+
+  const handleSubmitTicket = async () => {
+    if (!ticketSubject.trim()) {
+      showDialog({
+        variant: 'warning',
+        title: 'Sujet requis',
+        message: 'Ajoutez un sujet simple pour aider le support à comprendre votre besoin.',
+      });
+      return;
+    }
+
+    if (!ticketMessage.trim()) {
+      showDialog({
+        variant: 'warning',
+        title: 'Message requis',
+        message: 'Expliquez en quelques phrases ce qui vous bloque.',
+      });
+      return;
+    }
+
+    try {
+      await createSupportTicket({
+        subject: ticketSubject.trim(),
+        message: ticketMessage.trim(),
+        category: ticketCategory,
+        priority: 'medium',
+      }).unwrap();
+
+      await persistFavoriteContact('ticket');
+      handleCloseTicketModal();
+      refetchTickets();
+
+      showDialog({
+        variant: 'success',
+        title: 'Ticket envoyé',
+        message: 'Votre demande a bien été envoyée. Vous retrouverez son statut dans cette page.',
+      });
+    } catch (error) {
+      showDialog({
+        variant: 'danger',
+        title: 'Envoi impossible',
+        message: buildApiErrorMessage(
+          error,
+          "Le ticket n'a pas pu être créé. Réessayez dans quelques instants.",
+        ),
+      });
+    }
+  };
+
+  const handleRefresh = async () => {
+    await Promise.allSettled([refetchSupportConfig(), refetchFaq(), refetchTickets()]);
   };
 
   return (
@@ -215,8 +403,25 @@ export default function SupportScreen() {
             <Ionicons name="arrow-back" size={22} color={Colors.gray[900]} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Aide & Support</Text>
-          <View style={styles.headerButton} />
+          {canCreateTicket ? (
+            <TouchableOpacity style={styles.headerButton} onPress={() => setShowTicketModal(true)}>
+              <Ionicons name="add" size={20} color={Colors.primary} />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.headerSpacer} />
+          )}
         </View>
+
+        <View style={styles.heroCard}>
+          <View style={styles.heroIcon}>
+            <Ionicons name="help-buoy" size={22} color={Colors.primary} />
+          </View>
+          <View style={styles.heroContent}>
+            <Text style={styles.heroTitle}>{supportConfig.title}</Text>
+            <Text style={styles.heroSubtitle}>{supportConfig.subtitle}</Text>
+          </View>
+        </View>
+
         <View style={styles.searchBar}>
           <Ionicons name="search" size={20} color={Colors.gray[500]} />
           <TextInput
@@ -226,6 +431,7 @@ export default function SupportScreen() {
             value={searchQuery}
             onChangeText={setSearchQuery}
             onSubmitEditing={() => persistSearchHistory(searchQuery)}
+            returnKeyType="search"
           />
         </View>
       </View>
@@ -234,67 +440,132 @@ export default function SupportScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={Boolean(isConfigFetching || isFaqFetching || isTicketsFetching)}
+            onRefresh={handleRefresh}
+            tintColor={Colors.primary}
+          />
+        }
       >
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>ACTIONS RAPIDES</Text>
-          <View style={styles.quickActionsRow}>
-            {quickActions.map((action, index) => (
-              <TouchableOpacity
-                key={action.key}
-                style={styles.quickActionCard}
-                onPress={() => {
-                  persistFavoriteContact(action.key);
-                  action.action();
-                }}
-              >
-                <View style={styles.quickActionIconWrapper}>
-                  <View
-                    style={[
-                      styles.quickActionIcon,
-                      { backgroundColor: `${action.color}20` },
-                    ]}
-                  >
-                    <Ionicons name={action.icon as any} size={24} color={action.color} />
-                  </View>
-                  {action.badge && (
-                    <View style={styles.quickActionBadge}>
-                      <Text style={styles.quickActionBadgeText}>{action.badge}</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={styles.quickActionLabel}>{action.label}</Text>
-                {favoriteContact === action.key && (
-                  <View style={styles.favoritePill}>
-                    <Text style={styles.favoritePillText}>Favori</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {recentFaqs.length > 0 && (
+        {(usesLocalFallback || isFaqFetching) && (
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>DERNIÈRES CONSULTATIONS</Text>
-            {recentFaqs.map((faqKey) => {
-              const [categoryIndex, itemIndex] = faqKey.split('-').map(Number);
-              const item = faqCategories[categoryIndex]?.items[itemIndex];
-              if (!item) return null;
-              return (
-                <TouchableOpacity
-                  key={faqKey}
-                  style={styles.historyItem}
-                  onPress={() => toggleExpand(categoryIndex, itemIndex)}
-                >
-                  <Ionicons name="time" size={16} color={Colors.gray[500]} />
-                  <Text style={styles.historyText}>{item.question}</Text>
-                </TouchableOpacity>
-              );
-            })}
+            <View
+              style={[
+                styles.infoBanner,
+                usesLocalFallback ? styles.infoBannerWarning : styles.infoBannerInfo,
+              ]}
+            >
+              <Ionicons
+                name={usesLocalFallback ? 'cloud-offline' : 'sync'}
+                size={18}
+                color={usesLocalFallback ? Colors.warningDark : Colors.infoDark}
+              />
+              <Text
+                style={[
+                  styles.infoBannerText,
+                  { color: usesLocalFallback ? Colors.warningDark : Colors.infoDark },
+                ]}
+              >
+                {usesLocalFallback
+                  ? "Le centre d'aide en ligne est indisponible. Les réponses locales restent accessibles."
+                  : "Le centre d'aide se met à jour."}
+              </Text>
+            </View>
           </View>
         )}
 
-        {recentSearches.length > 0 && (
+        {quickActions.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>ACTIONS RAPIDES</Text>
+            <View style={styles.quickActionsColumn}>
+              {quickActions.map((action, index) => (
+                <Animated.View key={action.key} entering={FadeInDown.delay(index * 80)}>
+                  <TouchableOpacity
+                    style={styles.quickActionCard}
+                    onPress={() => handleQuickAction(action.key)}
+                  >
+                    <View
+                      style={[
+                        styles.quickActionIcon,
+                        { backgroundColor: `${action.color}15` },
+                      ]}
+                    >
+                      <Ionicons name={action.icon} size={22} color={action.color} />
+                    </View>
+                    <View style={styles.quickActionContent}>
+                      <View style={styles.quickActionHeader}>
+                        <Text style={styles.quickActionLabel}>{action.label}</Text>
+                        {favoriteContact === action.key && (
+                          <View style={styles.favoritePill}>
+                            <Text style={styles.favoritePillText}>Favori</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.quickActionDescription}>{action.description}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
+                  </TouchableOpacity>
+                </Animated.View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {canCreateTicket && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionLabel}>MES DEMANDES</Text>
+              <TouchableOpacity onPress={() => setShowTicketModal(true)}>
+                <Text style={styles.sectionLink}>Nouveau ticket</Text>
+              </TouchableOpacity>
+            </View>
+
+            {isTicketsLoading ? (
+              <View style={styles.stateCard}>
+                <ActivityIndicator color={Colors.primary} />
+                <Text style={styles.stateCardText}>Chargement de vos demandes...</Text>
+              </View>
+            ) : myTickets.length > 0 ? (
+              <View style={styles.ticketList}>
+                {myTickets.map((ticket, index) => (
+                  <Animated.View key={ticket.id} entering={FadeInDown.delay(index * 90)}>
+                    <SupportTicketCard ticket={ticket} />
+                  </Animated.View>
+                ))}
+              </View>
+            ) : (
+              <View style={styles.stateCard}>
+                <Ionicons name="chatbubble-ellipses-outline" size={24} color={Colors.gray[500]} />
+                <Text style={styles.stateCardTitle}>Aucune demande en cours</Text>
+                <Text style={styles.stateCardText}>
+                  Si vous avez un souci de trajet, de paiement ou de compte, vous pouvez créer un ticket ici.
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {recentFaqEntries.length > 0 && !hasActiveSearch && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>DERNIÈRES CONSULTATIONS</Text>
+            <View style={styles.historyCard}>
+              {recentFaqEntries.map((entry) => (
+                <TouchableOpacity
+                  key={entry.id}
+                  style={styles.historyItem}
+                  onPress={() => toggleExpand(entry.id)}
+                >
+                  <Ionicons name="time" size={16} color={Colors.gray[500]} />
+                  <Text style={styles.historyText}>{entry.question}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {recentSearches.length > 0 && !hasActiveSearch && (
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>RECHERCHES RÉCENTES</Text>
             <View style={styles.chipRow}>
@@ -312,279 +583,192 @@ export default function SupportScreen() {
         )}
 
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>QUESTIONS FRÉQUENTES</Text>
-          {faqCategories.map((category, categoryIndex) => (
-            <Animated.View
-              key={category.title}
-              entering={FadeInDown.delay(categoryIndex * 80)}
-              style={styles.categoryContainer}
-            >
-              <View style={styles.categoryHeader}>
-                <View style={styles.categoryIcon}>
-                  <Ionicons name={category.icon as any} size={18} color={Colors.primary} />
-                </View>
-                <Text style={styles.categoryTitle}>{category.title}</Text>
-              </View>
-              <View style={styles.categoryCard}>
-                {category.items.map((item, itemIndex) => {
-                  const key = `${categoryIndex}-${itemIndex}`;
-                  const isExpanded = expandedIndex === key;
-                  return (
-                    <View key={item.question}>
-                      <TouchableOpacity
-                        style={[
-                          styles.faqRow,
-                          (itemIndex !== category.items.length - 1 || isExpanded) && styles.faqRowDivider,
-                        ]}
-                        onPress={() => toggleExpand(categoryIndex, itemIndex)}
-                      >
-                        <Text style={styles.faqQuestion}>{item.question}</Text>
-                        <Ionicons
-                          name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                          size={18}
-                          color={Colors.gray[500]}
-                        />
-                      </TouchableOpacity>
-                      {isExpanded && (
-                        <Animated.View entering={FadeInDown} style={styles.faqAnswerWrapper}>
-                          <Text style={styles.faqAnswer}>{item.answer}</Text>
-                        </Animated.View>
-                      )}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionLabel}>
+              {hasActiveSearch ? 'RÉSULTATS' : 'QUESTIONS FRÉQUENTES'}
+            </Text>
+            <Text style={styles.sectionCount}>
+              {filteredFaqEntries.length} réponse{filteredFaqEntries.length > 1 ? 's' : ''}
+            </Text>
+          </View>
+
+          {filteredFaqEntries.length === 0 ? (
+            <View style={styles.emptySearchCard}>
+              <Ionicons name="search-outline" size={28} color={Colors.gray[500]} />
+              <Text style={styles.emptySearchTitle}>Aucun résultat</Text>
+              <Text style={styles.emptySearchText}>
+                Essayez des mots simples comme trajet, paiement, compte ou sécurité.
+              </Text>
+            </View>
+          ) : (
+            Object.entries(groupedFaqEntries).map(([categoryKey, entries], categoryIndex) => {
+              const categoryMeta = getFaqCategoryMeta(categoryKey);
+
+              return (
+                <Animated.View
+                  key={categoryKey}
+                  entering={FadeInDown.delay(categoryIndex * 90)}
+                  style={styles.categoryContainer}
+                >
+                  <View style={styles.categoryHeader}>
+                    <View style={styles.categoryIcon}>
+                      <Ionicons name={categoryMeta.icon} size={18} color={Colors.primary} />
                     </View>
-                  );
-                })}
-              </View>
-            </Animated.View>
-          ))}
+                    <Text style={styles.categoryTitle}>{categoryMeta.title}</Text>
+                  </View>
+
+                  <View style={styles.categoryCard}>
+                    {entries.map((entry, entryIndex) => {
+                      const isExpanded = expandedFaqId === entry.id;
+
+                      return (
+                        <View key={entry.id}>
+                          <TouchableOpacity
+                            style={[
+                              styles.faqRow,
+                              (entryIndex !== entries.length - 1 || isExpanded) &&
+                                styles.faqRowDivider,
+                            ]}
+                            onPress={() => toggleExpand(entry.id)}
+                          >
+                            <Text style={styles.faqQuestion}>{entry.question}</Text>
+                            <Ionicons
+                              name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                              size={18}
+                              color={Colors.gray[500]}
+                            />
+                          </TouchableOpacity>
+
+                          {isExpanded && (
+                            <Animated.View entering={FadeInDown} style={styles.faqAnswerWrapper}>
+                              <Text style={styles.faqAnswer}>{entry.answer}</Text>
+                            </Animated.View>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                </Animated.View>
+              );
+            })
+          )}
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>HORAIRES DU SUPPORT</Text>
-          <View style={styles.scheduleCard}>
-            <View style={styles.scheduleHeader}>
-              <Ionicons name="time" size={20} color={Colors.info} />
-              <Text style={styles.scheduleTitle}>Disponibilités</Text>
+        {supportConfig.hours.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>HORAIRES DU SUPPORT</Text>
+            <View style={styles.scheduleCard}>
+              <View style={styles.scheduleHeader}>
+                <Ionicons name="time" size={20} color={Colors.info} />
+                <Text style={styles.scheduleTitle}>Disponibilités</Text>
+              </View>
+              {supportConfig.hours.map((entry) => (
+                <Text key={`${entry.label}-${entry.value}`} style={styles.scheduleRow}>
+                  {entry.label} : {entry.value}
+                </Text>
+              ))}
             </View>
-            <Text style={styles.scheduleRow}>Lundi - Vendredi : 8h00 - 20h00</Text>
-            <Text style={styles.scheduleRow}>Samedi : 9h00 - 18h00</Text>
-            <Text style={styles.scheduleRow}>Dimanche : 10h00 - 16h00</Text>
           </View>
-        </View>
+        )}
       </ScrollView>
+
+      {canCreateTicket && (
+        <Modal
+          visible={showTicketModal}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={handleCloseTicketModal}
+        >
+          <SafeAreaView style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={handleCloseTicketModal}>
+                <Ionicons name="close" size={24} color={Colors.gray[900]} />
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Créer un ticket</Text>
+              <View style={styles.modalSpacer} />
+            </View>
+
+            <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalContent}>
+              <View style={styles.formCard}>
+                <Text style={styles.formTitle}>Expliquez simplement votre besoin</Text>
+                <Text style={styles.formSubtitle}>
+                  Quelques mots suffisent. Nous utiliserons votre message pour vous répondre plus vite.
+                </Text>
+
+                <View style={styles.formSection}>
+                  <Text style={styles.inputLabel}>Sujet</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={ticketSubject}
+                    onChangeText={setTicketSubject}
+                    placeholder="Ex : mon paiement n'apparaît pas"
+                    placeholderTextColor={Colors.gray[400]}
+                  />
+                </View>
+
+                <View style={styles.formSection}>
+                  <Text style={styles.inputLabel}>Type de problème</Text>
+                  <View style={styles.typeGrid}>
+                    {TICKET_CATEGORIES.map((category) => {
+                      const isSelected = ticketCategory === category;
+
+                      return (
+                        <TouchableOpacity
+                          key={category}
+                          style={[styles.typeChip, isSelected && styles.typeChipActive]}
+                          onPress={() => setTicketCategory(category)}
+                        >
+                          <Text
+                            style={[
+                              styles.typeChipText,
+                              isSelected && styles.typeChipTextActive,
+                            ]}
+                          >
+                            {TICKET_CATEGORY_LABELS[category]}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={styles.formSection}>
+                  <Text style={styles.inputLabel}>Votre message</Text>
+                  <TextInput
+                    style={[styles.textInput, styles.textArea]}
+                    value={ticketMessage}
+                    onChangeText={setTicketMessage}
+                    placeholder="Décrivez ce qui se passe, quand cela arrive et ce que vous avez déjà essayé."
+                    placeholderTextColor={Colors.gray[400]}
+                    multiline
+                    numberOfLines={6}
+                    textAlignVertical="top"
+                  />
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.submitButton,
+                    (isCreatingTicket || !ticketSubject.trim() || !ticketMessage.trim()) &&
+                      styles.submitButtonDisabled,
+                  ]}
+                  disabled={isCreatingTicket || !ticketSubject.trim() || !ticketMessage.trim()}
+                  onPress={handleSubmitTicket}
+                >
+                  {isCreatingTicket ? (
+                    <ActivityIndicator color={Colors.white} />
+                  ) : (
+                    <>
+                      <Text style={styles.submitButtonText}>Envoyer ma demande</Text>
+                      <Ionicons name="send" size={18} color={Colors.white} />
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.gray[50],
-  },
-  header: {
-    backgroundColor: Colors.white,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[200],
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.md,
-  },
-  headerButton: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.gray[100],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.gray[100],
-    borderRadius: BorderRadius.xl,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    gap: Spacing.sm,
-  },
-  searchInput: {
-    flex: 1,
-    color: Colors.gray[900],
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: Spacing.xxl,
-  },
-  section: {
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
-  },
-  sectionLabel: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[500],
-    marginBottom: Spacing.sm,
-  },
-  quickActionsRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  quickActionCard: {
-    flex: 1,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.md,
-    alignItems: 'center',
-    ...CommonStyles.shadowSm,
-  },
-  quickActionIconWrapper: {
-    position: 'relative',
-    marginBottom: Spacing.xs,
-  },
-  quickActionIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickActionBadge: {
-    position: 'absolute',
-    top: -Spacing.xs,
-    right: -Spacing.xs,
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.xs,
-    paddingVertical: 2,
-  },
-  quickActionBadgeText: {
-    color: Colors.white,
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-  },
-  quickActionLabel: {
-    color: Colors.gray[800],
-    fontWeight: FontWeights.medium,
-  },
-  favoritePill: {
-    marginTop: Spacing.xs,
-    backgroundColor: Colors.primary + '20',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.full,
-  },
-  favoritePillText: {
-    color: Colors.primary,
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.semibold,
-  },
-  historyItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Spacing.xs,
-    gap: Spacing.xs,
-  },
-  historyText: {
-    color: Colors.gray[700],
-    flexShrink: 1,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-  },
-  chip: {
-    backgroundColor: Colors.gray[200],
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-  },
-  chipText: {
-    color: Colors.gray[600],
-    fontSize: FontSizes.sm,
-  },
-  categoryContainer: {
-    marginBottom: Spacing.md,
-  },
-  categoryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.xs,
-  },
-  categoryIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary + '15',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.sm,
-  },
-  categoryTitle: {
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    fontSize: FontSizes.base,
-  },
-  categoryCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    ...CommonStyles.shadowSm,
-    overflow: 'hidden',
-  },
-  faqRow: {
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  faqRowDivider: {
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[100],
-  },
-  faqQuestion: {
-    flex: 1,
-    color: Colors.gray[800],
-    fontWeight: FontWeights.medium,
-  },
-  faqAnswerWrapper: {
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.md,
-  },
-  faqAnswer: {
-    color: Colors.gray[600],
-    lineHeight: 20,
-  },
-  scheduleCard: {
-    backgroundColor: Colors.info + '10',
-    borderColor: Colors.info + '30',
-    borderWidth: 1,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-  },
-  scheduleHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.xs,
-    gap: Spacing.xs,
-  },
-  scheduleTitle: {
-    fontWeight: FontWeights.bold,
-    color: Colors.info,
-  },
-  scheduleRow: {
-    color: Colors.gray[700],
-  },
-});
-

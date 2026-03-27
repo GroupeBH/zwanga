@@ -129,13 +129,13 @@ function TripSecurityPanel({
 
   const passengerBlockingReason = useMemo(() => {
     if (role !== 'passenger') return null;
-    if (!bookingId) return 'La selection sera disponible apres creation de reservation.';
-    if (!booking) return 'Chargement de votre reservation...';
+    if (!bookingId) return 'La sélection sera disponible après création de réservation.';
+    if (!booking) return 'Chargement de votre réservation...';
     if (booking.status === 'pending') {
-      return 'La selection sera active des que la reservation est acceptee.';
+      return 'La sélection sera active dès que la réservation est acceptée.';
     }
     if (booking.status !== 'accepted') {
-      return `La reservation est ${booking.status}. La configuration n est plus editable.`;
+      return `La réservation est ${booking.status}. La configuration n'est plus modifiable.`;
     }
     return null;
   }, [role, bookingId, booking]);
@@ -200,8 +200,8 @@ function TripSecurityPanel({
     if (selectedContactIds.length === 0) {
       showDialog({
         variant: 'warning',
-        title: 'Selection requise',
-        message: 'Choisissez au moins un contact a notifier.',
+          title: 'Sélection requise',
+          message: 'Choisissez au moins un contact à notifier.',
       });
       return;
     }
@@ -217,17 +217,17 @@ function TripSecurityPanel({
         setSavedDriverSelectionOverride(selectedContactIds);
         showDialog({
           variant: 'success',
-          title: 'Configuration enregistree',
+          title: 'Configuration enregistrée',
           message:
-            'Le backend notifiera automatiquement ces contacts au demarrage, a la recuperation, puis a la fin.',
+            'Le backend notifiera automatiquement ces contacts au démarrage, à la récupération, puis à la fin.',
         });
       } else {
         if (!bookingId || !booking || booking.status !== 'accepted') {
           showDialog({
             variant: 'info',
-            title: 'Reservation non prete',
+            title: 'Réservation non prête',
             message:
-              'Cette selection sera possible quand la reservation sera acceptee.',
+              'Cette sélection sera possible quand la réservation sera acceptée.',
           });
           return;
         }
@@ -240,9 +240,9 @@ function TripSecurityPanel({
         await refetchBooking();
         showDialog({
           variant: 'success',
-          title: 'Configuration enregistree',
+          title: 'Configuration enregistrée',
           message:
-            'Le backend notifiera automatiquement ces contacts a la recuperation et a la depose.',
+            'Le backend notifiera automatiquement ces contacts à la récupération et à la dépose.',
         });
       }
 
@@ -250,7 +250,7 @@ function TripSecurityPanel({
     } catch (error) {
       showDialog({
         variant: 'danger',
-        title: 'Impossible d enregistrer',
+        title: "Impossible d'enregistrer",
         message: parseErrorMessage(error, 'Une erreur est survenue.'),
       });
     }
@@ -259,8 +259,8 @@ function TripSecurityPanel({
   const isContextLoading = role === 'passenger' ? isLoadingBooking : false;
   const currentSelectionLabel =
     savedSelectionContacts.length === 0
-      ? 'Aucun contact selectionne pour ce trajet.'
-      : `${savedSelectionContacts.length} contact(s) selectionne(s) pour ce trajet.`;
+      ? 'Aucun contact sélectionné pour ce trajet.'
+      : `${savedSelectionContacts.length} contact(s) sélectionné(s) pour ce trajet.`;
 
   const savedPreview = savedSelectionContacts.map((contact) => contact.name).slice(0, 3).join(', ');
   const isPrimaryDisabled =
@@ -276,13 +276,13 @@ function TripSecurityPanel({
           <Ionicons name="shield-checkmark-outline" size={18} color={Colors.primary} />
         </View>
         <View style={styles.headerCopy}>
-          <Text style={styles.title}>Securite trajet</Text>
+          <Text style={styles.title}>Sécurité trajet</Text>
           <Text style={styles.subtitle}>
             {compact
-              ? 'Choisissez rapidement les proches a notifier pour ce trajet.'
+              ? 'Choisissez rapidement les proches à notifier pour ce trajet.'
               : role === 'driver'
-              ? 'Choisissez les proches a notifier pour ce trajet conducteur, meme pendant la course.'
-              : 'Choisissez les proches a notifier pour cette reservation passager.'}
+              ? 'Choisissez les proches à notifier pour ce trajet conducteur, même pendant la course.'
+              : 'Choisissez les proches à notifier pour cette réservation passager.'}
           </Text>
         </View>
       </View>
@@ -290,10 +290,10 @@ function TripSecurityPanel({
       {!compact ? (
         <View style={styles.flowCard}>
           <Text style={styles.flowTitle}>Parcours simple</Text>
-          <Text style={styles.flowText}>1. Ajoutez vos contacts dans Profil {'>'} Parametres {'>'} Securite.</Text>
-          <Text style={styles.flowText}>2. Selectionnez ici qui doit suivre ce trajet.</Text>
+          <Text style={styles.flowText}>1. Ajoutez vos contacts dans Profil {'>'} Paramètres {'>'} Sécurité.</Text>
+          <Text style={styles.flowText}>2. Sélectionnez ici qui doit suivre ce trajet.</Text>
           <Text style={styles.flowText}>
-            3. Le backend envoie automatiquement les notifications WhatsApp aux etapes du trajet.
+            3. Le backend envoie automatiquement les notifications WhatsApp aux étapes du trajet.
           </Text>
         </View>
       ) : null}
@@ -303,7 +303,7 @@ function TripSecurityPanel({
         {savedPreview ? <Text style={styles.selectionPreview}>{savedPreview}</Text> : null}
         {role === 'driver' && tripStatus === 'ongoing' ? (
           <Text style={styles.liveEditHint}>
-            Vous pouvez modifier cette selection a tout moment pendant le trajet.
+            Vous pouvez modifier cette sélection à tout moment pendant le trajet.
           </Text>
         ) : null}
       </View>
@@ -328,7 +328,7 @@ function TripSecurityPanel({
             <>
               <Ionicons name={selectorVisible ? 'chevron-up' : 'people'} size={16} color={Colors.white} />
               <Text style={styles.primaryButtonText}>
-                {selectorVisible ? 'Masquer la selection' : 'Choisir qui notifier'}
+                {selectorVisible ? 'Masquer la sélection' : 'Choisir qui notifier'}
               </Text>
             </>
           )}
@@ -341,7 +341,7 @@ function TripSecurityPanel({
             activeOpacity={0.85}
           >
             <Ionicons name="settings-outline" size={16} color={Colors.primary} />
-            <Text style={styles.secondaryButtonText}>Gerer mes contacts d urgence</Text>
+            <Text style={styles.secondaryButtonText}>Gérer mes contacts d&apos;urgence</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -350,7 +350,7 @@ function TripSecurityPanel({
         <View style={[styles.inlineSelectorCard, compact && styles.inlineSelectorCardCompact]}>
           <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, compact && styles.modalTitleCompact]}>
-                Choisir les contacts a notifier
+                Choisir les contacts à notifier
               </Text>
               <TouchableOpacity onPress={() => setSelectorVisible(false)}>
                 <Ionicons name="close" size={22} color={Colors.gray[700]} />
@@ -358,8 +358,8 @@ function TripSecurityPanel({
             </View>
             <Text style={[styles.modalSubtitle, compact && styles.modalSubtitleCompact]}>
               {role === 'driver'
-                ? 'Ces contacts seront utilises automatiquement au demarrage et a la fin de ce trajet.'
-                : 'Ces contacts seront utilises automatiquement a la recuperation et a la depose de ce passager.'}
+                ? 'Ces contacts seront utilisés automatiquement au démarrage et à la fin de ce trajet.'
+                : 'Ces contacts seront utilisés automatiquement à la récupération et à la dépose de ce passager.'}
             </Text>
 
             {isLoadingContacts ? (
@@ -372,7 +372,7 @@ function TripSecurityPanel({
                 <Ionicons name="people-outline" size={34} color={Colors.gray[400]} />
                 <Text style={styles.emptyTitle}>Aucun contact actif</Text>
                 <Text style={styles.emptyText}>
-                  Ajoutez d abord des contacts d urgence dans Profil {'>'} Parametres {'>'} Securite.
+                  Ajoutez d&apos;abord des contacts d&apos;urgence dans Profil {'>'} Paramètres {'>'} Sécurité.
                 </Text>
                 <TouchableOpacity
                   style={styles.emptyButton}
@@ -381,17 +381,17 @@ function TripSecurityPanel({
                     router.push('/security');
                   }}
                 >
-                  <Text style={styles.emptyButtonText}>Ouvrir Securite</Text>
+                  <Text style={styles.emptyButtonText}>Ouvrir Sécurité</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <>
                 <View style={styles.toolsRow}>
                   <TouchableOpacity style={styles.toolButton} onPress={selectAll}>
-                    <Text style={styles.toolButtonText}>Tout selectionner</Text>
+                    <Text style={styles.toolButtonText}>Tout sélectionner</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.toolButton} onPress={clearAll}>
-                    <Text style={styles.toolButtonText}>Tout vider</Text>
+                    <Text style={styles.toolButtonText}>Vider tout</Text>
                   </TouchableOpacity>
                   <Text style={styles.selectedCount}>{selectedContactIds.length} choisis</Text>
                 </View>
