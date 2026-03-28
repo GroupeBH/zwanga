@@ -1,6 +1,7 @@
 export type UserRole = 'driver' | 'passenger' | 'both';
 export type VehicleType = 'car' | 'moto' | 'tricycle';
 export type TripStatus = 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
+export type RecurringTripStatus = 'active' | 'paused';
 export type BookingStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'completed' | 'expired';
 export type PaymentMethod = 'orange_money' | 'm_pesa' | 'airtel_money' | 'cash';
 
@@ -89,6 +90,30 @@ export interface Trip {
   description?: string | null; // Description du trajet
   vehicle?: Vehicle; // Informations complètes du véhicule
   driverSafetyEmergencyContactIds?: string[];
+  recurringTemplateId?: string | null;
+  recurringOccurrenceDate?: string | null;
+}
+
+export interface RecurringTripTemplate {
+  id: string;
+  driverId: string;
+  departure: Location;
+  arrival: Location;
+  departureTime: string;
+  weekdays: number[];
+  startDate: string;
+  endDate?: string | null;
+  totalSeats: number;
+  pricePerSeat: number;
+  isFree: boolean;
+  description?: string | null;
+  status: RecurringTripStatus;
+  vehicleId: string;
+  vehicle?: Vehicle | null;
+  nextOccurrenceDate?: string | null;
+  upcomingGeneratedTripsCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Passenger {
@@ -657,4 +682,5 @@ export interface NotificationsResponse {
 export interface MarkNotificationsResponse {
   updated: number;
 }
+
 

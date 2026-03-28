@@ -37,6 +37,7 @@ export default function RootLayout() {
             <Stack.Screen name="auth" options={{ headerShown: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="publish" options={{ headerShown: false, presentation: 'modal' }} />
+            <Stack.Screen name="recurring-trips" options={{ headerShown: false }} />
             <Stack.Screen name="request-create" options={{ headerShown: false, presentation: 'modal' }} />
             <Stack.Screen name="request/index" options={{ headerShown: false, presentation: 'modal' }} />
             <Stack.Screen name="request/[id]" options={{ headerShown: false }} />

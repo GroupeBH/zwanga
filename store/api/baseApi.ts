@@ -97,6 +97,7 @@ export const baseApi = createApi({
     'User',
     'Trip',
     'MyTrips',
+    'RecurringTrip',
     'Booking',
     'Message',
     'Conversation',

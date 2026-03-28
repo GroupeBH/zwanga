@@ -1,4 +1,12 @@
-import type { GeoPoint, Trip, TripStatus, Vehicle, VehicleType } from '../../types';
+import type {
+  GeoPoint,
+  RecurringTripStatus,
+  RecurringTripTemplate,
+  Trip,
+  TripStatus,
+  Vehicle,
+  VehicleType,
+} from '../../types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 
@@ -61,6 +69,32 @@ export type ServerTrip = {
   lastLocationUpdateAt?: string | null;
   completedAt?: string | null;
   driverSafetyEmergencyContactIds?: string[];
+  recurringTemplateId?: string | null;
+  recurringOccurrenceDate?: string | null;
+};
+
+export type ServerRecurringTripTemplate = {
+  id: string;
+  driverId: string;
+  departureLocation: string;
+  arrivalLocation: string;
+  departureCoordinates?: CoordinatesTuple;
+  arrivalCoordinates?: CoordinatesTuple;
+  departureTime: string;
+  weekdays: number[];
+  startDate: string;
+  endDate?: string | null;
+  totalSeats: number;
+  pricePerSeat: number | string;
+  isFree: boolean;
+  description?: string | null;
+  status: string;
+  vehicleId: string;
+  vehicle?: ServerVehicle | null;
+  nextOccurrenceDate?: string | null;
+  upcomingGeneratedTripsCount?: number;
+  createdAt: string;
+  updatedAt: string;
 };
 
 const fallbackCoordinate = (coords?: CoordinatesTuple): { lat: number; lng: number } | null => {
@@ -103,6 +137,10 @@ const mapTripStatus = (status?: string): TripStatus => {
     default:
       return 'upcoming';
   }
+};
+
+const mapRecurringTripStatus = (status?: string): RecurringTripStatus => {
+  return (status ?? '').toLowerCase() === 'paused' ? 'paused' : 'active';
 };
 
 const mapPassengers = (bookings?: ServerBooking[]): Trip['passengers'] => {
@@ -216,6 +254,47 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     driverSafetyEmergencyContactIds: Array.isArray(trip.driverSafetyEmergencyContactIds)
       ? trip.driverSafetyEmergencyContactIds
       : [],
+    recurringTemplateId: trip.recurringTemplateId ?? null,
+    recurringOccurrenceDate: trip.recurringOccurrenceDate ?? null,
+  };
+};
+
+const mapServerRecurringTripToClient = (
+  template: ServerRecurringTripTemplate,
+): RecurringTripTemplate => {
+  const departureCoords = fallbackCoordinate(template.departureCoordinates);
+  const arrivalCoords = fallbackCoordinate(template.arrivalCoordinates);
+
+  return {
+    id: template.id,
+    driverId: template.driverId,
+    departure: {
+      name: template.departureLocation,
+      address: template.departureLocation,
+      lat: departureCoords?.lat ?? 0,
+      lng: departureCoords?.lng ?? 0,
+    },
+    arrival: {
+      name: template.arrivalLocation,
+      address: template.arrivalLocation,
+      lat: arrivalCoords?.lat ?? 0,
+      lng: arrivalCoords?.lng ?? 0,
+    },
+    departureTime: template.departureTime,
+    weekdays: Array.isArray(template.weekdays) ? template.weekdays : [],
+    startDate: template.startDate,
+    endDate: template.endDate ?? null,
+    totalSeats: Number(template.totalSeats ?? 0),
+    pricePerSeat: Number(template.pricePerSeat ?? 0),
+    isFree: template.isFree ?? Number(template.pricePerSeat) === 0,
+    description: template.description ?? null,
+    status: mapRecurringTripStatus(template.status),
+    vehicleId: template.vehicleId,
+    vehicle: mapServerVehicleToClient(template.vehicle) ?? null,
+    nextOccurrenceDate: template.nextOccurrenceDate ?? null,
+    upcomingGeneratedTripsCount: Number(template.upcomingGeneratedTripsCount ?? 0),
+    createdAt: template.createdAt,
+    updatedAt: template.updatedAt,
   };
 };
 
@@ -268,6 +347,22 @@ type CreateTripPayload = {
   vehicleId?: string;
 };
 
+export type CreateRecurringTripPayload = {
+  departureLocation: string;
+  departureCoordinates: [number, number];
+  arrivalLocation: string;
+  arrivalCoordinates: [number, number];
+  startDate: string;
+  endDate?: string;
+  departureTime: string;
+  weekdays: number[];
+  totalSeats: number;
+  pricePerSeat: number;
+  isFree?: boolean;
+  description?: string;
+  vehicleId: string;
+};
+
 type UpdateTripRequest = Partial<CreateTripPayload> & {
   status?: TripStatus;
 };
@@ -313,6 +408,17 @@ export const tripApi = baseApi.injectEndpoints({
           ? [...result.map(({ id }) => ({ type: 'MyTrips' as const, id })), 'MyTrips']
           : ['MyTrips'],
     }),
+    getMyRecurringTrips: builder.query<RecurringTripTemplate[], void>({
+      query: () => ({
+        url: '/trips/recurring/my',
+      }),
+      transformResponse: (response: ServerRecurringTripTemplate[]) =>
+        response.map(mapServerRecurringTripToClient),
+      providesTags: (result) =>
+        result
+          ? [...result.map(({ id }) => ({ type: 'RecurringTrip' as const, id })), 'RecurringTrip']
+          : ['RecurringTrip'],
+    }),
     searchTripsByCoordinates: builder.mutation<Trip[], TripSearchByPointsPayload>({
       query: (body: TripSearchByPointsPayload) => ({
         url: '/trips/search/coordinates',
@@ -339,6 +445,44 @@ export const tripApi = baseApi.injectEndpoints({
       }),
       transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
       invalidatesTags: ['Trip', 'MyTrips'],
+    }),
+    createRecurringTrip: builder.mutation<RecurringTripTemplate, CreateRecurringTripPayload>({
+      query: (trip: CreateRecurringTripPayload) => ({
+        url: '/trips/recurring',
+        method: 'POST',
+        body: trip,
+      }),
+      transformResponse: (response: ServerRecurringTripTemplate) =>
+        mapServerRecurringTripToClient(response),
+      invalidatesTags: ['RecurringTrip', 'Trip', 'MyTrips'],
+    }),
+    pauseRecurringTrip: builder.mutation<RecurringTripTemplate, string>({
+      query: (id: string) => ({
+        url: `/trips/recurring/${id}/pause`,
+        method: 'PUT',
+      }),
+      transformResponse: (response: ServerRecurringTripTemplate) =>
+        mapServerRecurringTripToClient(response),
+      invalidatesTags: (_result, _error, id) => [
+        { type: 'RecurringTrip', id },
+        'RecurringTrip',
+        'Trip',
+        'MyTrips',
+      ],
+    }),
+    resumeRecurringTrip: builder.mutation<RecurringTripTemplate, string>({
+      query: (id: string) => ({
+        url: `/trips/recurring/${id}/resume`,
+        method: 'PUT',
+      }),
+      transformResponse: (response: ServerRecurringTripTemplate) =>
+        mapServerRecurringTripToClient(response),
+      invalidatesTags: (_result, _error, id) => [
+        { type: 'RecurringTrip', id },
+        'RecurringTrip',
+        'Trip',
+        'MyTrips',
+      ],
     }),
 
     // Mettre à jour un trajet existant
@@ -462,17 +606,22 @@ export const {
   useGetAllTripsQuery,
   useLazyGetTripsQuery,
   useGetMyTripsQuery,
+  useGetMyRecurringTripsQuery,
   useGetTripByIdQuery,
   useCreateTripMutation,
+  useCreateRecurringTripMutation,
   useUpdateTripMutation,
   useDeleteTripMutation,
   useBookTripMutation,
   useSearchTripsByCoordinatesMutation,
   useStartTripMutation,
   usePauseTripMutation,
+  usePauseRecurringTripMutation,
+  useResumeRecurringTripMutation,
   useUpdateDriverLocationMutation,
   useGetDriverLocationQuery,
   useSetDriverEmergencyContactsMutation,
 } = tripApi;
+
 
 

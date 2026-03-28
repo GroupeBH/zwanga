@@ -3,7 +3,7 @@ import LocationPickerModal, { MapLocationSelection } from '@/components/Location
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
-import { useCreateTripMutation } from '@/store/api/tripApi';
+import { useCreateRecurringTripMutation, useCreateTripMutation } from '@/store/api/tripApi';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { createBecomeDriverAction, isDriverRequiredError } from '@/utils/errorHelpers';
@@ -12,7 +12,7 @@ import DateTimePicker, {
   DateTimePickerAndroid,
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -33,12 +33,14 @@ const PUBLISH_STEP_ORDER: PublishStep[] = ['route', 'datetime', 'vehicle', 'pric
 
 export default function PublishScreen() {
   const router = useRouter();
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
   const insets = useSafeAreaInsets();
   const { isIdentityVerified } = useIdentityCheck();
   const [step, setStep] = useState<PublishStep>('route');
   const stepNumber = useMemo(() => PUBLISH_STEP_ORDER.indexOf(step) + 1, [step]);
   const stepEntering = Platform.OS === 'android' ? undefined : FadeInDown.duration(180);
   const [createTrip, { isLoading: isPublishing }] = useCreateTripMutation();
+  const [createRecurringTrip, { isLoading: isPublishingRecurring }] = useCreateRecurringTripMutation();
   const { showDialog } = useDialog();
 
   const [kycModalVisible, setKycModalVisible] = useState(false);
@@ -244,10 +246,14 @@ export default function PublishScreen() {
     setActiveLocationType(null);
     setDepartureDateTime(null);
     setIosPickerMode(null);
+    setIosPickerTarget('departure');
     setSeats('4');
     setIsFreeTrip(false);
     setPrice('');
     setDescription('');
+    setIsRecurringTrip(false);
+    setRecurringWeekdays([]);
+    setRecurringEndDate(null);
     setSelectedVehicleId(null);
     setShowVehicleForm(false);
     setVehicleBrand('');
@@ -262,10 +268,14 @@ export default function PublishScreen() {
   const [activeLocationType, setActiveLocationType] = useState<'departure' | 'arrival' | null>(null);
   const [departureDateTime, setDepartureDateTime] = useState<Date | null>(null);
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
+  const [iosPickerTarget, setIosPickerTarget] = useState<'departure' | 'recurringEndDate'>('departure');
   const [seats, setSeats] = useState('4');
   const [isFreeTrip, setIsFreeTrip] = useState(false);
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
+  const [isRecurringTrip, setIsRecurringTrip] = useState(false);
+  const [recurringWeekdays, setRecurringWeekdays] = useState<number[]>([]);
+  const [recurringEndDate, setRecurringEndDate] = useState<Date | null>(null);
 
   const departureSummary = useMemo(
     () => ({
@@ -286,6 +296,36 @@ export default function PublishScreen() {
     }),
     [arrivalLocation],
   );
+  const recurringWeekdayOptions = useMemo(
+    () => [
+      { value: 1, label: 'Lun' },
+      { value: 2, label: 'Mar' },
+      { value: 3, label: 'Mer' },
+      { value: 4, label: 'Jeu' },
+      { value: 5, label: 'Ven' },
+      { value: 6, label: 'Sam' },
+      { value: 7, label: 'Dim' },
+    ],
+    [],
+  );
+
+  const formatDateOnlyValue = (date: Date) => {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatTimeOnlyValue = (date: Date) => {
+    const hours = `${date.getHours()}`.padStart(2, '0');
+    const minutes = `${date.getMinutes()}`.padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
+  const toIsoWeekday = (date: Date) => {
+    const weekday = date.getDay();
+    return weekday === 0 ? 7 : weekday;
+  };
 
   const openLocationPicker = (type: 'departure' | 'arrival') => setActiveLocationType(type);
 
@@ -324,22 +364,44 @@ export default function PublishScreen() {
     return next;
   };
 
-  const openDateOrTimePicker = (mode: 'date' | 'time') => {
+  const openDateOrTimePicker = (
+    mode: 'date' | 'time',
+    target: 'departure' | 'recurringEndDate' = 'departure',
+  ) => {
     if (Platform.OS === 'android') {
-      const value = getBaseDateTime();
+      const value =
+        target === 'recurringEndDate'
+          ? recurringEndDate ?? departureDateTime ?? getBaseDateTime()
+          : getBaseDateTime();
       DateTimePickerAndroid.open({
         mode,
         value,
         is24Hour: true,
-        minimumDate: mode === 'date' ? new Date() : undefined,
+        minimumDate:
+          mode === 'date'
+            ? target === 'recurringEndDate'
+              ? departureDateTime ?? new Date()
+              : new Date()
+            : undefined,
         onChange: (_event: DateTimePickerEvent, selectedDate?: Date) => {
           if (!selectedDate) {
             return;
           }
-          setDepartureDateTime(mode === 'date' ? applyDatePart(selectedDate) : applyTimePart(selectedDate));
+
+          if (target === 'recurringEndDate') {
+            const nextEndDate = new Date(selectedDate);
+            nextEndDate.setHours(0, 0, 0, 0);
+            setRecurringEndDate(nextEndDate);
+            return;
+          }
+
+          setDepartureDateTime(
+            mode === 'date' ? applyDatePart(selectedDate) : applyTimePart(selectedDate),
+          );
         },
       });
     } else {
+      setIosPickerTarget(target);
       setIosPickerMode(mode);
     }
   };
@@ -348,12 +410,23 @@ export default function PublishScreen() {
     if (!selectedDate || !iosPickerMode) {
       return;
     }
+
+    if (iosPickerTarget === 'recurringEndDate') {
+      const nextEndDate = new Date(selectedDate);
+      nextEndDate.setHours(0, 0, 0, 0);
+      setRecurringEndDate(nextEndDate);
+      return;
+    }
+
     setDepartureDateTime(
       iosPickerMode === 'date' ? applyDatePart(selectedDate) : applyTimePart(selectedDate),
     );
   };
 
-  const closeIosPicker = () => setIosPickerMode(null);
+  const closeIosPicker = () => {
+    setIosPickerMode(null);
+    setIosPickerTarget('departure');
+  };
 
   const formatCoordinatePair = (latitude?: number, longitude?: number) => {
     if (
@@ -398,6 +471,58 @@ export default function PublishScreen() {
       timeStyle: 'short',
     }).format(departureDateTime);
   }, [departureDateTime]);
+  const formattedRecurringEndDate = useMemo(() => {
+    if (!recurringEndDate) {
+      return 'Aucune date de fin';
+    }
+    return new Intl.DateTimeFormat('fr-FR', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }).format(recurringEndDate);
+  }, [recurringEndDate]);
+
+  const recurringDaysSummary = useMemo(() => {
+    return recurringWeekdayOptions
+      .filter((option) => recurringWeekdays.includes(option.value))
+      .map((option) => option.label)
+      .join(', ');
+  }, [recurringWeekdayOptions, recurringWeekdays]);
+
+  const isSubmittingTrip = isPublishing || isPublishingRecurring;
+
+  const toggleRecurringTrip = () => {
+    setIsRecurringTrip((current) => {
+      const next = !current;
+      if (next && recurringWeekdays.length === 0) {
+        setRecurringWeekdays([toIsoWeekday(departureDateTime ?? new Date())]);
+      }
+      if (!next) {
+        setRecurringEndDate(null);
+      }
+      return next;
+    });
+  };
+
+  const toggleRecurringWeekday = (weekday: number) => {
+    setRecurringWeekdays((current) => {
+      if (current.includes(weekday)) {
+        return current.filter((value) => value !== weekday);
+      }
+      return [...current, weekday].sort((left, right) => left - right);
+    });
+  };
+
+  useEffect(() => {
+    if (mode !== 'recurring' || isRecurringTrip) {
+      return;
+    }
+
+    setIsRecurringTrip(true);
+    if (recurringWeekdays.length === 0) {
+      setRecurringWeekdays([toIsoWeekday(departureDateTime ?? new Date())]);
+    }
+  }, [mode, isRecurringTrip, recurringWeekdays.length, departureDateTime]);
 
   const handleCreateVehicle = async () => {
     if (!vehicleBrand.trim() || !vehicleModel.trim() || !vehicleColor.trim() || !vehicleLicensePlate.trim()) {
@@ -450,18 +575,12 @@ export default function PublishScreen() {
   };
 
   const handleNextStep = () => {
-    // Check driver status first
-    // if (!isDriver) {
-    //   setShowDriverRequiredModal(true);
-    //   return;
-    // }
-
     if (step === 'route') {
       if (!departureLocation || !arrivalLocation) {
         showDialog({
           variant: 'warning',
-          title: 'Itinéraire incomplet',
-          message: 'Veuillez sélectionner un point de départ et une destination.',
+          title: 'Itineraire incomplet',
+          message: 'Veuillez selectionner un point de depart et une destination.',
         });
         return;
       }
@@ -475,17 +594,37 @@ export default function PublishScreen() {
         showDialog({
           variant: 'warning',
           title: 'Informations manquantes',
-          message: 'Merci de renseigner la date et l\'heure de départ.',
+          message: 'Merci de renseigner la date et l heure de depart.',
         });
         return;
+      }
+      if (isRecurringTrip && recurringWeekdays.length === 0) {
+        showDialog({
+          variant: 'warning',
+          title: 'Jours manquants',
+          message: 'Selectionnez au moins un jour pour votre trajet recurrent.',
+        });
+        return;
+      }
+      if (isRecurringTrip && recurringEndDate) {
+        const startDate = new Date(departureDateTime);
+        startDate.setHours(0, 0, 0, 0);
+        if (recurringEndDate < startDate) {
+          showDialog({
+            variant: 'warning',
+            title: 'Date de fin invalide',
+            message: 'La date de fin doit etre posterieure au debut.',
+          });
+          return;
+        }
       }
       goToStep('vehicle');
     } else if (step === 'vehicle') {
       if (!selectedVehicleId) {
         showDialog({
           variant: 'warning',
-          title: 'Véhicule requis',
-          message: 'Veuillez sélectionner un véhicule pour continuer.',
+          title: 'Vehicule requis',
+          message: 'Veuillez selectionner un vehicule pour continuer.',
         });
         return;
       }
@@ -495,7 +634,7 @@ export default function PublishScreen() {
         showDialog({
           variant: 'warning',
           title: 'Informations manquantes',
-          message: 'Merci de renseigner le prix ou de sélectionner "Gratuit".',
+          message: 'Merci de renseigner le prix ou de selectionner Gratuit.',
         });
         return;
       }
@@ -504,13 +643,13 @@ export default function PublishScreen() {
   };
 
   const handlePublish = async () => {
-    if (isPublishing) return;
+    if (isSubmittingTrip) return;
 
     if (!departureLocation || !arrivalLocation) {
       showDialog({
         variant: 'warning',
-        title: 'Itinéraire incomplet',
-        message: 'Veuillez sélectionner vos points de départ et d’arrivée.',
+        title: 'Itineraire incomplet',
+        message: 'Veuillez selectionner vos points de depart et d arrivee.',
       });
       return;
     }
@@ -527,8 +666,17 @@ export default function PublishScreen() {
     ) {
       showDialog({
         variant: 'warning',
-        title: 'Vérification requise',
-        message: 'Veuillez vérifier les valeurs numériques et la date de départ.',
+        title: 'Verification requise',
+        message: 'Veuillez verifier les valeurs numeriques et la date de depart.',
+      });
+      return;
+    }
+
+    if (isRecurringTrip && recurringWeekdays.length === 0) {
+      showDialog({
+        variant: 'warning',
+        title: 'Jours manquants',
+        message: 'Selectionnez au moins un jour pour publier ce trajet recurrent.',
       });
       return;
     }
@@ -541,8 +689,8 @@ export default function PublishScreen() {
     if (!selectedVehicleId) {
       showDialog({
         variant: 'warning',
-        title: 'Véhicule requis',
-        message: 'Veuillez sélectionner un véhicule pour publier votre trajet.',
+        title: 'Vehicule requis',
+        message: 'Veuillez selectionner un vehicule pour publier votre trajet.',
       });
       return;
     }
@@ -553,39 +701,66 @@ export default function PublishScreen() {
     }
 
     try {
-      await createTrip({
-        departureLocation: departureLocation.title,
-        arrivalLocation: arrivalLocation.title,
-        departureCoordinates: [departureLocation.longitude, departureLocation.latitude],
-        arrivalCoordinates: [arrivalLocation.longitude, arrivalLocation.latitude],
-        departureDate: departureDate.toISOString(),
-        totalSeats: seatsValue,
-        // availableSeats: seatsValue,
-        pricePerSeat: priceValue,
-        isFree: isFreeTrip,
-        description: description.trim() || undefined,
-        vehicleId: selectedVehicleId,
-      }).unwrap();
+      if (isRecurringTrip) {
+        await createRecurringTrip({
+          departureLocation: departureLocation.title,
+          arrivalLocation: arrivalLocation.title,
+          departureCoordinates: [departureLocation.longitude, departureLocation.latitude],
+          arrivalCoordinates: [arrivalLocation.longitude, arrivalLocation.latitude],
+          startDate: formatDateOnlyValue(departureDate),
+          endDate: recurringEndDate ? formatDateOnlyValue(recurringEndDate) : undefined,
+          departureTime: formatTimeOnlyValue(departureDate),
+          weekdays: recurringWeekdays,
+          totalSeats: seatsValue,
+          pricePerSeat: priceValue,
+          isFree: isFreeTrip,
+          description: description.trim() || undefined,
+          vehicleId: selectedVehicleId,
+        }).unwrap();
+      } else {
+        await createTrip({
+          departureLocation: departureLocation.title,
+          arrivalLocation: arrivalLocation.title,
+          departureCoordinates: [departureLocation.longitude, departureLocation.latitude],
+          arrivalCoordinates: [arrivalLocation.longitude, arrivalLocation.latitude],
+          departureDate: departureDate.toISOString(),
+          totalSeats: seatsValue,
+          pricePerSeat: priceValue,
+          isFree: isFreeTrip,
+          description: description.trim() || undefined,
+          vehicleId: selectedVehicleId,
+        }).unwrap();
+      }
 
+      const publishedRecurring = isRecurringTrip;
       resetForm();
       showDialog({
         variant: 'success',
-        title: 'Trajet publié',
-        message: 'Votre trajet a été publié avec succès !',
+        title: publishedRecurring ? 'Trajet recurrent cree' : 'Trajet publie',
+        message: publishedRecurring
+          ? 'Les prochaines occurrences ont ete generees automatiquement.'
+          : 'Votre trajet a ete publie avec succes !',
         actions: [
-          { label: 'Publier un autre', variant: 'secondary', onPress: () => { } },
-          { label: 'Voir mes trajets', variant: 'primary', onPress: () => router.push('/trips') },
+          {
+            label: publishedRecurring ? 'Creer un autre' : 'Publier un autre',
+            variant: 'secondary',
+            onPress: () => { },
+          },
+          {
+            label: publishedRecurring ? 'Gerer mes recurrents' : 'Voir mes trajets',
+            variant: 'primary',
+            onPress: () => router.push(publishedRecurring ? '/recurring-trips' : '/trips'),
+          },
         ],
       });
     } catch (error: any) {
       const message =
         error?.data?.message ??
         error?.error ??
-        'Impossible de publier le trajet pour le moment. Veuillez réessayer.';
-      
-      // Vérifier si l'erreur est liée au fait que l'utilisateur n'est pas conducteur
+        'Impossible de publier le trajet pour le moment. Veuillez reessayer.';
+
       const isDriverError = isDriverRequiredError(error);
-      
+
       showDialog({
         variant: 'danger',
         title: 'Erreur',
@@ -856,11 +1031,21 @@ export default function PublishScreen() {
               {Platform.OS === 'ios' && iosPickerMode && (
                 <View style={styles.iosPickerContainer}>
                   <DateTimePicker
-                    value={getBaseDateTime()}
+                    value={
+                      iosPickerTarget === 'recurringEndDate'
+                        ? recurringEndDate ?? departureDateTime ?? getBaseDateTime()
+                        : getBaseDateTime()
+                    }
                     mode={iosPickerMode}
                     display="inline"
                     minuteInterval={5}
-                    minimumDate={iosPickerMode === 'date' ? new Date() : undefined}
+                    minimumDate={
+                      iosPickerMode === 'date'
+                        ? iosPickerTarget === 'recurringEndDate'
+                          ? departureDateTime ?? new Date()
+                          : new Date()
+                        : undefined
+                    }
                     onChange={handleIosPickerChange}
                   />
                   <TouchableOpacity style={styles.iosPickerCloseButton} onPress={closeIosPicker}>
@@ -869,6 +1054,83 @@ export default function PublishScreen() {
                 </View>
               )}
             </View>
+            <TouchableOpacity
+              style={[styles.card, styles.recurringToggleCard]}
+              onPress={toggleRecurringTrip}
+              activeOpacity={0.85}
+            >
+              <View style={styles.freeTripContent}>
+                <Text style={styles.freeTripTitle}>Trajet recurrent</Text>
+                <Text style={styles.freeTripSubtitle}>
+                  Repeter automatiquement ce trajet selon vos jours habituels
+                </Text>
+              </View>
+              <View style={[styles.toggleSwitch, isRecurringTrip && styles.toggleSwitchActive]}>
+                <View style={[styles.toggleThumb, isRecurringTrip && styles.toggleThumbActive]} />
+              </View>
+            </TouchableOpacity>
+
+            {isRecurringTrip && (
+              <View style={styles.card}>
+                <Text style={styles.cardLabel}>PLANIFICATION RECURRENTE</Text>
+                <Text style={styles.recurringSectionTitle}>Jours de repetition</Text>
+                <View style={styles.recurringDayRow}>
+                  {recurringWeekdayOptions.map((option) => {
+                    const isSelected = recurringWeekdays.includes(option.value);
+                    return (
+                      <TouchableOpacity
+                        key={option.value}
+                        style={[
+                          styles.recurringDayChip,
+                          isSelected && styles.recurringDayChipActive,
+                        ]}
+                        onPress={() => toggleRecurringWeekday(option.value)}
+                      >
+                        <Text
+                          style={[
+                            styles.recurringDayChipText,
+                            isSelected && styles.recurringDayChipTextActive,
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <View style={styles.recurringSummaryCard}>
+                  <Ionicons name="repeat" size={18} color={Colors.primary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.recurringSummaryLabel}>Resume</Text>
+                    <Text style={styles.recurringSummaryValue}>
+                      {recurringDaysSummary || 'Choisissez au moins un jour'} a {formattedTimeLabel}
+                    </Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.recurringEndDateButton}
+                  onPress={() => openDateOrTimePicker('date', 'recurringEndDate')}
+                >
+                  <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.gray[200] }]}>
+                    <Ionicons name="calendar-outline" size={18} color={Colors.gray[700]} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.datetimeButtonLabel}>Date de fin optionnelle</Text>
+                    <Text style={styles.datetimeButtonValue}>{formattedRecurringEndDate}</Text>
+                  </View>
+                  {recurringEndDate ? (
+                    <TouchableOpacity
+                      onPress={() => setRecurringEndDate(null)}
+                      style={styles.clearRecurringEndDateButton}
+                    >
+                      <Ionicons name="close" size={16} color={Colors.gray[600]} />
+                    </TouchableOpacity>
+                  ) : null}
+                </TouchableOpacity>
+              </View>
+            )}
 
             <View style={styles.infoBox}>
               <Ionicons name="information-circle-outline" size={20} color={Colors.info} />
@@ -1154,6 +1416,26 @@ export default function PublishScreen() {
                     </View>
                     <Text style={styles.confirmDetailValue}>{formattedFullDateTime}</Text>
                   </View>
+                  {isRecurringTrip ? (
+                    <>
+                      <View style={styles.confirmDetailRow}>
+                        <View style={styles.confirmDetailLeft}>
+                          <Ionicons name="repeat" size={18} color={Colors.gray[600]} />
+                          <Text style={styles.confirmDetailLabel}>Repetition</Text>
+                        </View>
+                        <Text style={styles.confirmDetailValue}>
+                          {recurringDaysSummary || 'A definir'}
+                        </Text>
+                      </View>
+                      <View style={styles.confirmDetailRow}>
+                        <View style={styles.confirmDetailLeft}>
+                          <Ionicons name="calendar-outline" size={18} color={Colors.gray[600]} />
+                          <Text style={styles.confirmDetailLabel}>Date de fin</Text>
+                        </View>
+                        <Text style={styles.confirmDetailValue}>{formattedRecurringEndDate}</Text>
+                      </View>
+                    </>
+                  ) : null}
                   <View style={styles.confirmDetailRow}>
                     <View style={styles.confirmDetailLeft}>
                       <Ionicons name="people" size={18} color={Colors.gray[600]} />
@@ -1171,7 +1453,7 @@ export default function PublishScreen() {
                     </Text>
                   </View>
                   {description ? (
-                    <View style={styles.confirmDetailRow}>
+                    <View style={[styles.confirmDetailRow, styles.confirmDetailRowMultiline]}>
                       <View style={styles.confirmDetailLeft}>
                         <Ionicons name="chatbox-ellipses" size={18} color={Colors.gray[600]} />
                         <Text style={styles.confirmDetailLabel}>Description</Text>
@@ -1194,16 +1476,20 @@ export default function PublishScreen() {
                 style={[
                   styles.button,
                   { flex: 1, marginLeft: Spacing.md },
-                  (isPublishing || !isIdentityVerified) && styles.buttonDisabled,
+                  (isSubmittingTrip || !isIdentityVerified) && styles.buttonDisabled,
                 ]}
                 onPress={handlePublish}
-                disabled={isPublishing || !isIdentityVerified}
+                disabled={isSubmittingTrip || !isIdentityVerified}
               >
-                {isPublishing ? (
+                {isSubmittingTrip ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
                   <Text style={styles.buttonText}>
-                    {isIdentityVerified ? 'Publier' : 'KYC requis'}
+                    {isIdentityVerified
+                      ? isRecurringTrip
+                        ? 'Creer le modele'
+                        : 'Publier'
+                      : 'KYC requis'}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -1659,6 +1945,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: Spacing.md,
   },
+  recurringToggleCard: {
+    borderWidth: 1,
+    borderColor: Colors.primary + '18',
+  },
   freeTripContent: {
     flex: 1,
     marginRight: Spacing.md,
@@ -1808,6 +2098,84 @@ const styles = StyleSheet.create({
   iosPickerCloseText: {
     color: Colors.primary,
     fontWeight: FontWeights.bold,
+  },
+  recurringSectionTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[800],
+    marginBottom: Spacing.sm,
+  },
+  recurringDayRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  recurringDayChip: {
+    minWidth: 44,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+    alignItems: 'center',
+  },
+  recurringDayChipActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '14',
+  },
+  recurringDayChipText: {
+    color: Colors.gray[700],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+  },
+  recurringDayChipTextActive: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  recurringSummaryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.primary + '08',
+    borderWidth: 1,
+    borderColor: Colors.primary + '14',
+    marginBottom: Spacing.md,
+  },
+  recurringSummaryLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  recurringSummaryValue: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
+    marginTop: 2,
+  },
+  recurringEndDateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+  },
+  clearRecurringEndDateButton: {
+    width: 30,
+    height: 30,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
   },
   locationCard: {
     backgroundColor: Colors.white,
@@ -1977,6 +2345,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: Spacing.sm,
+  },
+  confirmDetailRowMultiline: {
+    alignItems: 'flex-start',
   },
   confirmDetailLeft: {
     flexDirection: 'row',
@@ -2650,3 +3021,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
 });
+
+
+
+
