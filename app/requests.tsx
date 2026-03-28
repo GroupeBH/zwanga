@@ -1,4 +1,3 @@
-import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import {
   useGetAvailableTripRequestsQuery,
@@ -10,7 +9,7 @@ import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -28,7 +27,6 @@ type RequestTab = 'available' | 'my-requests';
 
 export default function TripRequestsScreen() {
   const router = useRouter();
-  const { showDialog } = useDialog();
   const { data: currentUser } = useGetCurrentUserQuery();
   const [activeTab, setActiveTab] = useState<RequestTab>('available');
 
@@ -59,6 +57,33 @@ export default function TripRequestsScreen() {
     refetchOnFocus: true,
     refetchOnReconnect: true,
   });
+
+  const filteredAvailableRequests = useMemo(
+    () => availableRequests.filter((request) => request.passengerId !== currentUser?.id),
+    [availableRequests, currentUser?.id]
+  );
+
+  const requestsCount = {
+    available: filteredAvailableRequests.length,
+    my: myRequests.length,
+  };
+
+  const activeTabMeta =
+    activeTab === 'available'
+      ? {
+          eyebrow: 'Demandes disponibles',
+          title: 'Demandes publiées par d’autres passagers',
+          description:
+            'Vous voyez ici uniquement les demandes créées par d’autres utilisateurs. Ouvrez-en une pour vérifier le trajet puis l’accepter.',
+          countLabel: `${requestsCount.available} disponible${requestsCount.available > 1 ? 's' : ''}`,
+        }
+      : {
+          eyebrow: 'Mes demandes',
+          title: 'Demandes que vous avez vous-même créées',
+          description:
+            'Retrouvez ici vos propres demandes, les réponses reçues et le suivi de votre prise en charge.',
+          countLabel: `${requestsCount.my} demande${requestsCount.my > 1 ? 's' : ''}`,
+        };
 
   const handleRequestPress = (requestId: string) => {
     router.push(getTripRequestDetailHref(requestId));
@@ -92,6 +117,7 @@ export default function TripRequestsScreen() {
                 </View>
               )}
               <View style={styles.passengerDetails}>
+                <Text style={styles.passengerLabel}>Publié par</Text>
                 <Text style={styles.passengerName}>{item.passengerName}</Text>
                 <Text style={styles.requestDate}>
                   {formatDateWithRelativeLabel(item.createdAt, false)}
@@ -162,7 +188,7 @@ export default function TripRequestsScreen() {
               style={styles.viewButton}
               onPress={() => handleRequestPress(item.id)}
             >
-              <Text style={styles.viewButtonText}>Voir détails</Text>
+              <Text style={styles.viewButtonText}>Voir la demande</Text>
               <Ionicons name="arrow-forward" size={16} color={Colors.primary} />
             </TouchableOpacity>
             {(currentUser?.role === 'driver' || currentUser?.role === 'both') && (
@@ -213,6 +239,9 @@ export default function TripRequestsScreen() {
         >
           <View style={styles.requestHeader}>
             <View style={styles.statusBadgeContainer}>
+              <View style={styles.ownerRequestPill}>
+                <Text style={styles.ownerRequestPillText}>Votre demande</Text>
+              </View>
               <View style={[styles.statusBadge, { backgroundColor: currentStatus.bg }]}>
                 <Text style={[styles.statusText, { color: currentStatus.color }]}>
                   {currentStatus.label}
@@ -292,7 +321,9 @@ export default function TripRequestsScreen() {
               style={styles.viewButton}
               onPress={() => handleRequestPress(item.id)}
             >
-              <Text style={styles.viewButtonText}>Voir détails</Text>
+              <Text style={styles.viewButtonText}>
+                {item.tripId ? 'Suivre la course' : 'Ouvrir la demande'}
+              </Text>
               <Ionicons name="arrow-forward" size={16} color={Colors.primary} />
             </TouchableOpacity>
           </View>
@@ -303,12 +334,7 @@ export default function TripRequestsScreen() {
 
   const isLoading = activeTab === 'available' ? isLoadingAvailable : isLoadingMyRequests;
   const isFetching = activeTab === 'available' ? isFetchingAvailable : isFetchingMyRequests;
-  
-  // Filter out user's own requests from available requests
-  const filteredAvailableRequests = availableRequests.filter(
-    (request) => request.passengerId !== currentUser?.id
-  );
-  
+
   const currentData = activeTab === 'available' ? filteredAvailableRequests : myRequests;
   const refetch = activeTab === 'available' ? refetchAvailable : refetchMyRequests;
 
@@ -329,12 +355,12 @@ export default function TripRequestsScreen() {
         <View style={styles.emptyContainer}>
           <Ionicons name="document-text-outline" size={64} color={Colors.gray[400]} />
           <Text style={styles.emptyTitle}>
-            {activeTab === 'available' ? 'Aucune demande disponible' : 'Aucune demande'}
+            {activeTab === 'available' ? 'Aucune demande disponible' : 'Aucune demande créée'}
           </Text>
           <Text style={styles.emptyText}>
             {activeTab === 'available'
-              ? "Il n'y a actuellement aucune demande de trajet en attente d'offres."
-              : "Vous n'avez pas encore créé de demande de trajet. Créez-en une pour que les conducteurs vous proposent leurs services."}
+              ? "Il n'y a pour le moment aucune demande publiée par d'autres passagers."
+              : "Vous n'avez pas encore publié de demande. Créez-en une pour recevoir des réponses de conducteurs."}
           </Text>
           {activeTab === 'my-requests' && (
             <TouchableOpacity
@@ -373,7 +399,7 @@ export default function TripRequestsScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Demandes</Text>
+        <Text style={styles.headerTitle}>Demandes de trajet</Text>
         {activeTab === 'my-requests' && (
           <TouchableOpacity
             style={styles.createButton}
@@ -391,6 +417,9 @@ export default function TripRequestsScreen() {
           style={[styles.tab, activeTab === 'available' && styles.tabActive]}
           onPress={() => setActiveTab('available')}
         >
+          <Text style={[styles.tabCount, activeTab === 'available' && styles.tabCountActive]}>
+            {requestsCount.available}
+          </Text>
           <Text style={[styles.tabText, activeTab === 'available' && styles.tabTextActive]}>
             Disponibles
           </Text>
@@ -399,10 +428,40 @@ export default function TripRequestsScreen() {
           style={[styles.tab, activeTab === 'my-requests' && styles.tabActive]}
           onPress={() => setActiveTab('my-requests')}
         >
+          <Text style={[styles.tabCount, activeTab === 'my-requests' && styles.tabCountActive]}>
+            {requestsCount.my}
+          </Text>
           <Text style={[styles.tabText, activeTab === 'my-requests' && styles.tabTextActive]}>
             Mes demandes
           </Text>
         </TouchableOpacity>
+      </View>
+
+      <View style={styles.contextCard}>
+        <View style={styles.contextCardHeader}>
+          <View style={styles.contextIconContainer}>
+            <Ionicons
+              name={activeTab === 'available' ? 'people-outline' : 'document-text-outline'}
+              size={20}
+              color={activeTab === 'available' ? Colors.info : Colors.primary}
+            />
+          </View>
+          <View style={styles.contextBadge}>
+            <Text style={styles.contextBadgeText}>{activeTabMeta.countLabel}</Text>
+          </View>
+        </View>
+        <Text style={styles.contextEyebrow}>{activeTabMeta.eyebrow}</Text>
+        <Text style={styles.contextTitle}>{activeTabMeta.title}</Text>
+        <Text style={styles.contextDescription}>{activeTabMeta.description}</Text>
+        {activeTab === 'my-requests' && (
+          <TouchableOpacity
+            style={styles.contextPrimaryButton}
+            onPress={() => router.push(getTripRequestCreateHref())}
+          >
+            <Ionicons name="add-circle-outline" size={18} color={Colors.white} />
+            <Text style={styles.contextPrimaryButtonText}>Créer une demande</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {renderContent()}
@@ -444,19 +503,31 @@ const styles = StyleSheet.create({
   tabsContainer: {
     flexDirection: 'row',
     backgroundColor: Colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[200],
-    paddingHorizontal: Spacing.md,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+    padding: Spacing.xs,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    gap: Spacing.xs,
   },
   tab: {
     flex: 1,
-    paddingVertical: Spacing.md,
+    paddingVertical: Spacing.sm,
     alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
+    borderRadius: BorderRadius.full,
+    gap: 2,
   },
   tabActive: {
-    borderBottomColor: Colors.primary,
+    backgroundColor: Colors.primary + '10',
+  },
+  tabCount: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[500],
+  },
+  tabCountActive: {
+    color: Colors.primary,
   },
   tabText: {
     fontSize: FontSizes.base,
@@ -466,6 +537,79 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: Colors.primary,
     fontWeight: FontWeights.bold,
+  },
+  contextCard: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.xxl,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  contextCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  contextIconContainer: {
+    width: 42,
+    height: 42,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  contextBadge: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '12',
+  },
+  contextBadgeText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+  },
+  contextEyebrow: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+    textTransform: 'uppercase',
+    marginBottom: Spacing.xs,
+  },
+  contextTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: Spacing.xs,
+  },
+  contextDescription: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    lineHeight: 20,
+  },
+  contextPrimaryButton: {
+    marginTop: Spacing.md,
+    minHeight: 46,
+    borderRadius: BorderRadius.xl,
+    backgroundColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+  },
+  contextPrimaryButtonText: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
   },
   loadingContainer: {
     flex: 1,
@@ -479,6 +623,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: Spacing.lg,
+    paddingTop: Spacing.sm,
   },
   requestCard: {
     backgroundColor: Colors.white,
@@ -531,11 +676,16 @@ const styles = StyleSheet.create({
   passengerDetails: {
     flex: 1,
   },
+  passengerLabel: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[500],
+    marginBottom: 2,
+  },
   passengerName: {
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    marginBottom: Spacing.xs,
   },
   requestDate: {
     fontSize: FontSizes.sm,
@@ -546,6 +696,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
     flex: 1,
+    flexWrap: 'wrap',
+  },
+  ownerRequestPill: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '10',
+  },
+  ownerRequestPillText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
   },
   statusBadge: {
     paddingHorizontal: Spacing.md,
