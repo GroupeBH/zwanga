@@ -4,6 +4,7 @@ import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } f
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
 import { useGetNotificationsQuery } from '@/store/api/notificationApi';
+import { useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
 import {
   TripSearchParams,
   useGetTripsQuery,
@@ -15,6 +16,7 @@ import { selectAvailableTrips, selectSavedLocations } from '@/store/selectors';
 import { addSavedLocation } from '@/store/slices/locationSlice';
 import { setTrips } from '@/store/slices/tripsSlice';
 import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
+import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -85,6 +87,12 @@ export default function HomeScreen() {
     refetchOnMountOrArgChange: true,
   });
   const { data: myBookings } = useGetMyBookingsQuery();
+  const { data: myTripRequests = [] } = useGetMyTripRequestsQuery(undefined, {
+    skip: !currentUser?.id,
+    pollingInterval: 30000,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
 
   useEffect(() => {
     if (remoteTrips) {
@@ -129,6 +137,76 @@ export default function HomeScreen() {
         .map((booking) => booking.tripId)
     );
   }, [myBookings, currentUser?.id]);
+
+  const activeTripRequest = useMemo(() => {
+    const statusPriority = {
+      driver_selected: 0,
+      offers_received: 1,
+      pending: 2,
+    } as const;
+
+    return [...myTripRequests]
+      .filter(
+        (request) =>
+          (request.status === 'pending' ||
+            request.status === 'offers_received' ||
+            request.status === 'driver_selected') &&
+          !request.tripId,
+      )
+      .sort((a, b) => {
+        const priorityA = statusPriority[a.status as keyof typeof statusPriority] ?? 99;
+        const priorityB = statusPriority[b.status as keyof typeof statusPriority] ?? 99;
+        if (priorityA !== priorityB) {
+          return priorityA - priorityB;
+        }
+
+        const updatedA = new Date(a.updatedAt || a.createdAt).getTime();
+        const updatedB = new Date(b.updatedAt || b.createdAt).getTime();
+        return updatedB - updatedA;
+      })[0] ?? null;
+  }, [myTripRequests]);
+
+  const activeTripRequestPendingOffers = useMemo(
+    () => activeTripRequest?.offers?.filter((offer) => offer.status === 'pending').length ?? 0,
+    [activeTripRequest],
+  );
+
+  const activeTripRequestStatus = useMemo(() => {
+    if (!activeTripRequest) return null;
+
+    if (activeTripRequest.status === 'driver_selected') {
+      return { label: 'Conducteur confirmé', color: Colors.success, bg: `${Colors.success}18` };
+    }
+    if (activeTripRequest.status === 'offers_received' || activeTripRequestPendingOffers > 0) {
+      return { label: 'Offres reçues', color: Colors.info, bg: `${Colors.info}18` };
+    }
+    return { label: 'Recherche en cours', color: Colors.primary, bg: `${Colors.primary}18` };
+  }, [activeTripRequest, activeTripRequestPendingOffers]);
+
+  const activeTripRequestHeadline = useMemo(() => {
+    if (!activeTripRequest) return '';
+    if (activeTripRequest.status === 'driver_selected') {
+      return activeTripRequest.selectedDriverName
+        ? `${activeTripRequest.selectedDriverName} prépare votre prise en charge`
+        : 'Votre conducteur est prêt pour la prise en charge';
+    }
+    if (activeTripRequestPendingOffers > 0) {
+      return `${activeTripRequestPendingOffers} proposition${activeTripRequestPendingOffers > 1 ? 's' : ''} à consulter`;
+    }
+    return 'Votre demande reste visible pour les conducteurs autour de vous';
+  }, [activeTripRequest, activeTripRequestPendingOffers]);
+
+  const requestsRoute = (
+    currentUser?.role === 'driver' || currentUser?.role === 'both' ? '/requests' : '/my-requests'
+  ) as const;
+  const requestsActionTitle =
+    currentUser?.role === 'driver' || currentUser?.role === 'both'
+      ? 'Voir les demandes'
+      : 'Mes demandes';
+  const requestsActionSubtitle =
+    currentUser?.role === 'driver' || currentUser?.role === 'both'
+      ? 'Trouver des passagers'
+      : 'Suivre mes courses';
 
   const baseTrips = remoteTrips ?? storedTrips ?? [];
   const latestTrips = useMemo(() => {
@@ -572,33 +650,198 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Bannière de bienvenue/promo si premier lancement ou autre */}
-        <View style={styles.promoBanner}>
-          <LinearGradient
-            colors={['#6366F1', '#8B5CF6']}
-            style={styles.promoGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <View style={styles.promoContent}>
-              <Text style={styles.promoTitle}>Voyagez l&apos;esprit tranquille</Text>
-              <Text style={styles.promoSubtitle}>Économisez sur vos trajets quotidiens avec le covoiturage.</Text>
-            </View>
-            <View style={styles.promoImage}>
-              <Image
-                source={{ uri: 'https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?w=200&h=150&fit=crop&crop=center' }}
-                style={styles.promoCarImage}
-                resizeMode="cover"
-              />
-            </View>
-          </LinearGradient>
+        <View style={styles.section}>
+          <View style={styles.quickActionsLead}>
+            <Text style={styles.quickActionsEyebrow}>Actions rapides</Text>
+            <Text style={styles.sectionTitle}>Choisissez votre prochaine action</Text>
+            <Text style={styles.quickActionsLeadText}>
+              Publiez si vous conduisez, trouvez un trajet si vous voyagez, ou gérez vos demandes sans chercher.
+            </Text>
+          </View>
+
+          <View style={styles.quickActionsPrimaryRow}>
+            <TouchableOpacity
+              activeOpacity={0.92}
+              style={[styles.quickActionPrimaryCard, styles.publishActionCard]}
+              onPress={() => router.push('/publish')}
+            >
+              <LinearGradient
+                colors={[Colors.primary, '#2563EB']}
+                style={styles.quickActionPrimaryGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <View style={styles.quickActionPrimaryTop}>
+                  <View style={styles.quickActionPrimaryIcon}>
+                    <Ionicons name="add" size={28} color={Colors.white} />
+                  </View>
+                  <View style={styles.quickActionPrimaryBadge}>
+                    <Text style={styles.quickActionPrimaryBadgeText}>Conducteur</Text>
+                  </View>
+                </View>
+                <Text style={styles.quickActionPrimaryTitle}>Publier un trajet</Text>
+                <Text style={styles.quickActionPrimarySubtitle}>
+                  Proposer mes places et recevoir des réservations.
+                </Text>
+                <View style={styles.quickActionPrimaryFooter}>
+                  <Text style={styles.quickActionPrimaryFooterText}>Commencer</Text>
+                  <Ionicons name="arrow-forward" size={18} color={Colors.white} />
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.92}
+              style={[styles.quickActionPrimaryCard, styles.searchActionCard]}
+              onPress={() => router.push('/search')}
+            >
+              <LinearGradient
+                colors={['#2563EB', '#0EA5E9']}
+                style={styles.quickActionPrimaryGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <View style={styles.quickActionPrimaryTop}>
+                  <View style={styles.quickActionPrimaryIcon}>
+                    <Ionicons name="search" size={24} color={Colors.white} />
+                  </View>
+                  <View style={styles.quickActionPrimaryBadge}>
+                    <Text style={styles.quickActionPrimaryBadgeText}>Passager</Text>
+                  </View>
+                </View>
+                <Text style={styles.quickActionPrimaryTitle}>Trouver un trajet</Text>
+                <Text style={styles.quickActionPrimarySubtitle}>
+                  Rechercher une place disponible pour voyager rapidement.
+                </Text>
+                <View style={styles.quickActionPrimaryFooter}>
+                  <Text style={styles.quickActionPrimaryFooterText}>Rechercher</Text>
+                  <Ionicons name="arrow-forward" size={18} color={Colors.white} />
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.quickActionsSecondaryRow}>
+            <TouchableOpacity
+              style={[styles.quickActionCard, styles.requestActionCard]}
+                onPress={() => router.push(getTripRequestCreateHref())}
+            >
+              <View style={styles.quickActionBadge}>
+                <Text style={styles.quickActionBadgeText}>Flexible</Text>
+              </View>
+              <View style={[styles.quickActionIcon, { backgroundColor: Colors.success }]}>
+                <Ionicons name="paper-plane" size={24} color={Colors.white} />
+              </View>
+              <Text style={styles.quickActionTitle}>Demander une course</Text>
+              <Text style={styles.quickActionSubtitle}>Créer un trajet sur mesure</Text>
+              <View style={styles.quickActionFooter}>
+                <Text style={styles.quickActionFooterText}>Ouvrir</Text>
+                <Ionicons name="arrow-forward" size={16} color={Colors.success} />
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.quickActionCard, styles.listActionCard]}
+              onPress={() => router.push(requestsRoute)}
+            >
+              <View style={styles.quickActionBadge}>
+                <Text style={styles.quickActionBadgeText}>Suivi</Text>
+              </View>
+              <View style={[styles.quickActionIcon, { backgroundColor: '#8B5CF6' }]}>
+                <Ionicons name="list" size={24} color={Colors.white} />
+              </View>
+              <Text style={styles.quickActionTitle}>{requestsActionTitle}</Text>
+              <Text style={styles.quickActionSubtitle}>{requestsActionSubtitle}</Text>
+              <View style={styles.quickActionFooter}>
+                <Text style={[styles.quickActionFooterText, { color: '#7C3AED' }]}>Voir</Text>
+                <Ionicons name="arrow-forward" size={16} color="#7C3AED" />
+              </View>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Mes lieux utiles</Text>
-            <TouchableOpacity onPress={() => router.push('/favorite-locations')}>
-              <Text style={styles.seeAllText}>Gerer</Text>
+        {activeTripRequest && activeTripRequestStatus && (
+          <View style={styles.section}>
+            <TouchableOpacity
+              activeOpacity={0.92}
+              style={styles.activeRequestCard}
+              onPress={() => router.push(getTripRequestDetailHref(activeTripRequest.id))}
+            >
+              <LinearGradient colors={['#FFF7ED', '#FFFFFF']} style={styles.activeRequestGradient}>
+                <View style={styles.activeRequestHeader}>
+                  <View style={styles.activeRequestPill}>
+                    <Ionicons name="paper-plane-outline" size={14} color={Colors.primary} />
+                    <Text style={styles.activeRequestPillText}>Demande en cours</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.activeRequestStatusBadge,
+                      { backgroundColor: activeTripRequestStatus.bg },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.activeRequestStatusText,
+                        { color: activeTripRequestStatus.color },
+                      ]}
+                    >
+                      {activeTripRequestStatus.label}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={styles.activeRequestTitle}>{activeTripRequestHeadline}</Text>
+                <Text style={styles.activeRequestRoute}>
+                  {activeTripRequest.departure.name} vers {activeTripRequest.arrival.name}
+                </Text>
+
+                <View style={styles.activeRequestMetaRow}>
+                  <View style={styles.activeRequestMetaChip}>
+                    <Ionicons name="time-outline" size={14} color={Colors.gray[600]} />
+                    <Text style={styles.activeRequestMetaText}>
+                      {formatDateWithRelativeLabel(activeTripRequest.departureDateMin, true)}
+                    </Text>
+                  </View>
+                  <View style={styles.activeRequestMetaChip}>
+                    <Ionicons
+                      name={activeTripRequestPendingOffers > 0 ? 'sparkles-outline' : 'cash-outline'}
+                      size={14}
+                      color={Colors.gray[600]}
+                    />
+                    <Text style={styles.activeRequestMetaText}>
+                      {activeTripRequestPendingOffers > 0
+                        ? `${activeTripRequestPendingOffers} offre${activeTripRequestPendingOffers > 1 ? 's' : ''}`
+                        : activeTripRequest.maxPricePerSeat
+                          ? `${activeTripRequest.maxPricePerSeat} FC max`
+                          : `${activeTripRequest.numberOfSeats} place${activeTripRequest.numberOfSeats > 1 ? 's' : ''}`}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.activeRequestFooter}>
+                  <Text style={styles.activeRequestFooterText}>Ouvrir ma demande</Text>
+                  <Ionicons name="arrow-forward" size={18} color={Colors.primary} />
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <View style={[styles.section, styles.quickPlacesSection]}>
+          <View style={styles.quickPlacesLead}>
+            <View style={styles.quickPlacesLeadCopy}>
+              <Text style={styles.quickPlacesEyebrow}>Départ rapide</Text>
+              <Text style={styles.sectionTitle}>Mes lieux utiles</Text>
+              <Text style={styles.quickPlacesLeadText}>
+                Retrouvez vos repères les plus utilisés et relancez une recherche en un geste.
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.quickPlacesManageButton}
+              onPress={() => router.push('/favorite-locations')}
+            >
+              <Ionicons name="options-outline" size={16} color={Colors.gray[800]} />
+              <Text style={styles.quickPlacesManageText}>Gérer</Text>
             </TouchableOpacity>
           </View>
 
@@ -612,7 +855,7 @@ export default function HomeScreen() {
               {quickPlaces.map((place) => (
                 <TouchableOpacity
                   key={place.id}
-                  style={styles.quickPlaceCard}
+                  style={[styles.quickPlaceCard, { borderColor: `${place.accent}22` }]}
                   onPress={() => handleQuickPlacePress(place)}
                 >
                   <View style={styles.quickPlaceHeader}>
@@ -629,16 +872,18 @@ export default function HomeScreen() {
                     </View>
                   </View>
 
-                  <Text style={styles.quickPlaceTitle} numberOfLines={1}>
-                    {place.title}
-                  </Text>
-                  <Text style={styles.quickPlaceSubtitle} numberOfLines={2}>
-                    {place.subtitle}
-                  </Text>
+                  <View style={styles.quickPlaceBody}>
+                    <Text style={styles.quickPlaceTitle} numberOfLines={1}>
+                      {place.title}
+                    </Text>
+                    <Text style={styles.quickPlaceSubtitle} numberOfLines={2}>
+                      {place.subtitle}
+                    </Text>
+                  </View>
 
-                  <View style={styles.quickPlaceAction}>
-                    <Text style={styles.quickPlaceActionText}>Partir d&apos;ici</Text>
-                    <Ionicons name="arrow-forward" size={16} color={Colors.primary} />
+                  <View style={[styles.quickPlaceAction, { backgroundColor: `${place.accent}12` }]}>
+                    <Text style={[styles.quickPlaceActionText, { color: place.accent }]}>Partir d&apos;ici</Text>
+                    <Ionicons name="arrow-forward" size={16} color={place.accent} />
                   </View>
                 </TouchableOpacity>
               ))}
@@ -660,60 +905,6 @@ export default function HomeScreen() {
               <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
             </TouchableOpacity>
           )}
-        </View>
-
-        {/* Actions rapides */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Que souhaitez-vous faire ?</Text>
-          <View style={styles.quickActions}>
-            <TouchableOpacity
-              style={[styles.quickActionCard, styles.publishActionCard]}
-              onPress={() => router.push('/publish')}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: Colors.primary }]}>
-                <Ionicons name="add" size={28} color={Colors.white} />
-              </View>
-              <Text style={styles.quickActionTitle}>Publier</Text>
-              <Text style={styles.quickActionSubtitle}>Je conduis</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.quickActionCard, styles.searchActionCard]}
-              onPress={() => router.push('/search')}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#3B82F6' }]}>
-                <Ionicons name="search" size={24} color={Colors.white} />
-              </View>
-              <Text style={styles.quickActionTitle}>Chercher</Text>
-              <Text style={styles.quickActionSubtitle}>Je voyage</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={[styles.quickActions, { marginTop: Spacing.md }]}>
-            <TouchableOpacity
-              style={[styles.quickActionCard, styles.requestActionCard]}
-              onPress={() => router.push('/request')}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: Colors.success }]}>
-                <Ionicons name="paper-plane" size={24} color={Colors.white} />
-              </View>
-              <Text style={styles.quickActionTitle}>Demander</Text>
-              <Text style={styles.quickActionSubtitle}>Trajet sur mesure</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.quickActionCard, styles.listActionCard]}
-              onPress={() => router.push('/requests')}
-            >
-              <View style={[styles.quickActionIcon, { backgroundColor: '#8B5CF6' }]}>
-                <Ionicons name="list" size={24} color={Colors.white} />
-              </View>
-              <Text style={styles.quickActionTitle}>Demandes</Text>
-              <Text style={styles.quickActionSubtitle}>
-                {(currentUser?.role === 'driver' || currentUser?.role === 'both') ? 'Offres' : 'Mes demandes'}
-              </Text>
-            </TouchableOpacity>
-          </View>
         </View>
 
 
@@ -1091,50 +1282,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollViewContent: {
+    paddingTop: Spacing.md,
     paddingBottom: 100,
-  },
-  promoBanner: {
-    marginHorizontal: Spacing.xl,
-    marginTop: Spacing.xl,
-    marginBottom: Spacing.lg,
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
-    ...CommonStyles.shadowMd,
-  },
-  promoGradient: {
-    flexDirection: 'row',
-    padding: Spacing.lg,
-    alignItems: 'center',
-  },
-  promoContent: {
-    flex: 1,
-  },
-  promoTitle: {
-    color: Colors.white,
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    marginBottom: 4,
-  },
-  promoSubtitle: {
-    color: Colors.white,
-    opacity: 0.9,
-    fontSize: FontSizes.sm,
-  },
-  promoImage: {
-    marginLeft: Spacing.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  promoCarImage: {
-    width: 90,
-    height: 70,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
   },
   section: {
     paddingHorizontal: Spacing.xl,
     marginBottom: Spacing.xl,
+  },
+  quickPlacesSection: {
+    paddingTop: Spacing.sm,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1151,13 +1307,55 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: FontWeights.bold,
   },
+  quickPlacesLead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  quickPlacesLeadCopy: {
+    flex: 1,
+  },
+  quickPlacesEyebrow: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
+  quickPlacesLeadText: {
+    marginTop: 6,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    lineHeight: 20,
+    maxWidth: 300,
+  },
+  quickPlacesManageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    backgroundColor: '#FFF8F3',
+    borderWidth: 1,
+    borderColor: Colors.primary + '12',
+  },
+  quickPlacesManageText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+  },
   quickPlacesStateCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
+    backgroundColor: '#FFF8F3',
+    borderRadius: BorderRadius.xxl,
     padding: Spacing.lg,
     alignItems: 'center',
     gap: Spacing.sm,
-    ...CommonStyles.shadowSm,
+    borderWidth: 1,
+    borderColor: Colors.primary + '12',
   },
   quickPlacesStateText: {
     color: Colors.gray[600],
@@ -1170,12 +1368,17 @@ const styles = StyleSheet.create({
   },
   quickPlaceCard: {
     width: '48%',
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.md,
-    minHeight: 150,
+    backgroundColor: '#FFF8F3',
+    borderRadius: BorderRadius.xxl,
+    padding: Spacing.lg,
+    minHeight: 168,
     justifyContent: 'space-between',
-    ...CommonStyles.shadowSm,
+    borderWidth: 1,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    elevation: 3,
   },
   quickPlaceHeader: {
     flexDirection: 'row',
@@ -1183,18 +1386,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.md,
   },
+  quickPlaceBody: {
+    flex: 1,
+  },
   quickPlaceIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: BorderRadius.lg,
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.xl,
     alignItems: 'center',
     justifyContent: 'center',
   },
   quickPlaceBadge: {
-    backgroundColor: Colors.gray[100],
+    backgroundColor: Colors.white,
     borderRadius: BorderRadius.full,
     paddingHorizontal: Spacing.sm,
-    paddingVertical: 4,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
   },
   quickPlaceBadgeText: {
     color: Colors.gray[600],
@@ -1210,28 +1418,32 @@ const styles = StyleSheet.create({
   quickPlaceSubtitle: {
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
-    lineHeight: 18,
-    minHeight: 36,
+    lineHeight: 19,
+    minHeight: 38,
   },
   quickPlaceAction: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: Spacing.xs,
     marginTop: Spacing.md,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
   },
   quickPlaceActionText: {
-    color: Colors.primary,
     fontWeight: FontWeights.bold,
     fontSize: FontSizes.sm,
   },
   quickPlacesEmptyCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
+    backgroundColor: '#FFF8F3',
+    borderRadius: BorderRadius.xxl,
     padding: Spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
-    ...CommonStyles.shadowSm,
+    borderWidth: 1,
+    borderColor: Colors.primary + '12',
   },
   quickPlacesEmptyIcon: {
     width: 44,
@@ -1255,6 +1467,96 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
     lineHeight: 18,
   },
+  quickActionsLead: {
+    marginBottom: Spacing.md,
+  },
+  quickActionsEyebrow: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
+  quickActionsLeadText: {
+    marginTop: 6,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    lineHeight: 20,
+    maxWidth: 320,
+  },
+  quickActionsPrimaryRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  quickActionsSecondaryRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    marginTop: Spacing.md,
+  },
+  quickActionPrimaryCard: {
+    flex: 1,
+    borderRadius: BorderRadius.xxl,
+    overflow: 'hidden',
+    borderWidth: 1,
+    ...CommonStyles.shadowMd,
+  },
+  quickActionPrimaryGradient: {
+    minHeight: 182,
+    padding: Spacing.md,
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  quickActionPrimaryTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  quickActionPrimaryIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: BorderRadius.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  quickActionPrimaryBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  quickActionPrimaryBadgeText: {
+    color: Colors.white,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    textTransform: 'uppercase',
+  },
+  quickActionPrimaryTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
+    lineHeight: 24,
+  },
+  quickActionPrimarySubtitle: {
+    fontSize: FontSizes.sm,
+    color: 'rgba(255,255,255,0.92)',
+    lineHeight: 20,
+  },
+  quickActionPrimaryFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.16)',
+  },
+  quickActionPrimaryFooterText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
+  },
   quickActions: {
     flexDirection: 'row',
     gap: Spacing.md,
@@ -1262,23 +1564,42 @@ const styles = StyleSheet.create({
   quickActionCard: {
     flex: 1,
     padding: Spacing.lg,
-    borderRadius: 10,
-    backgroundColor: Colors.white,
-    // borderWidth: 0.5,
-    // borderColor: Colors.gray[100],
-    // ...CommonStyles.shadowSm,
+    borderRadius: BorderRadius.xxl,
+    backgroundColor: '#FFFCF8',
+    minHeight: 164,
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    ...CommonStyles.shadowSm,
   },
   publishActionCard: {
-    backgroundColor: Colors.primary + '15',
+    borderColor: Colors.primary + '16',
   },
   searchActionCard: {
-    backgroundColor: '#3B82F615',
+    borderColor: '#3B82F620',
   },
   requestActionCard: {
-    backgroundColor: Colors.success + '15',
+    backgroundColor: '#F2FBF7',
+    borderColor: Colors.success + '18',
   },
   listActionCard: {
-    backgroundColor: '#8B5CF615',
+    backgroundColor: '#F7F4FF',
+    borderColor: '#8B5CF620',
+  },
+  quickActionBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    marginBottom: Spacing.md,
+  },
+  quickActionBadgeText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[700],
+    textTransform: 'uppercase',
   },
   quickActionIcon: {
     width: 48,
@@ -1292,11 +1613,111 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
+    lineHeight: 22,
   },
   quickActionSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginTop: 4,
+    lineHeight: 19,
+  },
+  quickActionFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: Spacing.md,
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[200],
+  },
+  quickActionFooterText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.success,
+  },
+  activeRequestCard: {
+    borderRadius: BorderRadius.xxl,
+    overflow: 'hidden',
+    ...CommonStyles.shadowSm,
+  },
+  activeRequestGradient: {
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.primary + '15',
+    gap: Spacing.md,
+  },
+  activeRequestHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  activeRequestPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '12',
+  },
+  activeRequestPillText: {
     fontSize: FontSizes.xs,
-    color: Colors.gray[500],
-    marginTop: 2,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+  },
+  activeRequestStatusBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+  },
+  activeRequestStatusText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  activeRequestTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  activeRequestRoute: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    lineHeight: 20,
+  },
+  activeRequestMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  activeRequestMetaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+  },
+  activeRequestMetaText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+    fontWeight: FontWeights.medium,
+  },
+  activeRequestFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[200],
+  },
+  activeRequestFooterText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
   },
   tripCard: {
     backgroundColor: Colors.white,

@@ -5,6 +5,7 @@ import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useCreateTripRequestMutation } from '@/store/api/tripRequestApi';
 import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
 import type { FavoriteLocation } from '@/types';
+import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -135,6 +136,7 @@ export default function RequestTripScreen() {
   const [description, setDescription] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  const [confirmationVisible, setConfirmationVisible] = useState(false);
 
   const departureDateMax = useMemo(
     () => new Date(departureDateMin.getTime() + flexibilityMinutes * 60000),
@@ -160,7 +162,7 @@ export default function RequestTripScreen() {
         ? isCheckingIdentity
           ? 'Vérification en cours...'
           : 'Continuer avec ma vérification'
-        : 'Publier ma demande';
+        : 'Valider ma demande';
 
   const applyPreset = (preset: TimePreset) => {
     setTimePreset(preset);
@@ -258,8 +260,17 @@ export default function RequestTripScreen() {
       const canProceed = checkIdentity('request');
       if (!canProceed) return;
     }
+    const parsedBudget = Number.parseFloat(maxPricePerSeat);
+    if (!Number.isFinite(parsedBudget) || parsedBudget <= 0) {
+      showDialog({
+        title: 'Budget requis',
+        message: "Indiquez le montant que vous avez prévu pour la course avant d'envoyer la demande.",
+        variant: 'warning',
+      });
+      return;
+    }
     try {
-      await createTripRequest({
+      const createdRequest = await createTripRequest({
         departureLocation: departureLocation.title,
         departureCoordinates: [departureLocation.longitude, departureLocation.latitude],
         arrivalLocation: arrivalLocation.title,
@@ -267,16 +278,11 @@ export default function RequestTripScreen() {
         departureDateMin: departureDateMin.toISOString(),
         departureDateMax: departureDateMax.toISOString(),
         numberOfSeats,
-        maxPricePerSeat: maxPricePerSeat ? parseFloat(maxPricePerSeat) : undefined,
+        maxPricePerSeat: parsedBudget,
         description: description.trim() || undefined,
       }).unwrap();
-      showDialog({
-        title: 'Demande publiée',
-        message: 'Votre demande sera visible par les conducteurs qui peuvent vous proposer un covoiturage.',
-        variant: 'success',
-        actions: [{ label: 'Fermer', variant: 'primary' }],
-      });
-      router.replace('/(tabs)');
+      setConfirmationVisible(false);
+      router.push(getTripRequestDetailHref(createdRequest.id));
     } catch (error: any) {
       showDialog({
         title: 'Envoi impossible',
@@ -290,7 +296,8 @@ export default function RequestTripScreen() {
     if (!departureLocation) return setActivePicker('departure');
     if (!arrivalLocation) return setActivePicker('arrival');
     if (!isIdentityVerified) return void checkIdentity('request');
-    await handleCreateRequest();
+    if (!validate()) return;
+    setConfirmationVisible(true);
   };
 
   return (
@@ -448,7 +455,7 @@ export default function RequestTripScreen() {
 
           <TouchableOpacity style={styles.cardHeadCompact} onPress={() => setShowAdvanced((value) => !value)}>
             <View>
-              <Text style={styles.cardTitle}>Ajouter un budget ou une note</Text>
+              <Text style={styles.cardTitle}>Ajouter une note</Text>
               <Text style={styles.cardSubtitle}>Facultatif</Text>
             </View>
             <Ionicons name={showAdvanced ? 'chevron-up' : 'chevron-down'} size={20} color={Colors.gray[500]} />
@@ -456,11 +463,6 @@ export default function RequestTripScreen() {
 
           {showAdvanced && (
             <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.card}>
-              <Text style={styles.smallLabel}>Budget indicatif maximum par place</Text>
-              <View style={styles.priceBox}>
-                <TextInput style={styles.priceInput} value={maxPricePerSeat} onChangeText={setMaxPricePerSeat} keyboardType="number-pad" placeholder="Ex: 2000" placeholderTextColor={Colors.gray[400]} />
-                <Text style={styles.currency}>FC</Text>
-              </View>
               <Text style={styles.smallLabel}>Petit message pour les conducteurs</Text>
               <TextInput
                 style={styles.textArea}
@@ -502,6 +504,114 @@ export default function RequestTripScreen() {
           </LinearGradient>
         </TouchableOpacity>
       </View>
+
+      <Modal visible={confirmationVisible} transparent animationType="fade" onRequestClose={() => setConfirmationVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.confirmOverlay}>
+          <TouchableOpacity style={styles.confirmBackdrop} activeOpacity={1} onPress={() => setConfirmationVisible(false)} />
+          <View style={[styles.confirmSheet, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
+            <View style={styles.confirmHandle} />
+            <View style={styles.confirmHeader}>
+              <View style={styles.confirmBadge}>
+                <Ionicons name="wallet-outline" size={20} color={Colors.primary} />
+              </View>
+              <View style={styles.confirmHeaderText}>
+                <Text style={styles.confirmTitle}>Finaliser la demande</Text>
+                <Text style={styles.confirmSubtitle}>
+                  Ajoutez votre budget et ajustez la prise en charge si besoin.
+                </Text>
+              </View>
+              <TouchableOpacity style={styles.confirmCloseButton} onPress={() => setConfirmationVisible(false)}>
+                <Ionicons name="close" size={20} color={Colors.gray[500]} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              contentContainerStyle={styles.confirmContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <LinearGradient colors={['#FFF7ED', '#FFFFFF']} style={styles.confirmHero}>
+                <Text style={styles.confirmHeroTitle}>{routeSummary}</Text>
+                <Text style={styles.confirmHeroText}>{timeSummary}</Text>
+              </LinearGradient>
+
+              <View style={[styles.confirmSection, styles.confirmPanel]}>
+                <Text style={styles.smallLabel}>Montant disponible pour la course</Text>
+                <View style={styles.priceBox}>
+                  <TextInput
+                    style={styles.priceInput}
+                    value={maxPricePerSeat}
+                    onChangeText={setMaxPricePerSeat}
+                    keyboardType="number-pad"
+                    placeholder="Ex: 2500"
+                    placeholderTextColor={Colors.gray[400]}
+                  />
+                  <Text style={styles.currency}>FC</Text>
+                </View>
+                <Text style={styles.confirmHelperText}>
+                  Ce montant sera envoyé comme budget maximum par place.
+                </Text>
+              </View>
+
+              <View style={[styles.confirmSection, styles.confirmPanel]}>
+                <View style={styles.confirmSectionHeader}>
+                  <Text style={styles.smallLabel}>Date et heure de prise en charge</Text>
+                  <Text style={styles.confirmOptionalText}>Optionnel</Text>
+                </View>
+                <View style={styles.confirmDateRow}>
+                  <TouchableOpacity style={styles.confirmDateButton} onPress={() => openCustomPicker('date')}>
+                    <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
+                    <View style={styles.confirmDateContent}>
+                      <Text style={styles.confirmDateLabel}>Date</Text>
+                      <Text style={styles.confirmDateValue}>{formatDateLabel(departureDateMin)}</Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.confirmDateButton} onPress={() => openCustomPicker('time')}>
+                    <Ionicons name="time-outline" size={18} color={Colors.primary} />
+                    <View style={styles.confirmDateContent}>
+                      <Text style={styles.confirmDateLabel}>Heure</Text>
+                      <Text style={styles.confirmDateValue}>{formatTimeLabel(departureDateMin)}</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.infoCard}>
+                  <Ionicons name="hourglass-outline" size={18} color={Colors.secondary} />
+                  <Text style={styles.infoCardText}>{timeSummary}</Text>
+                </View>
+              </View>
+
+              {description.trim().length > 0 && (
+                <View style={styles.confirmNoteCard}>
+                  <Ionicons name="chatbox-ellipses-outline" size={18} color={Colors.primary} />
+                  <Text style={styles.confirmNoteText}>{description.trim()}</Text>
+                </View>
+              )}
+            </ScrollView>
+
+            <View style={styles.confirmActions}>
+              <TouchableOpacity style={styles.confirmSecondaryButton} onPress={() => setConfirmationVisible(false)}>
+                <Text style={styles.confirmSecondaryButtonText}>Retour</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmPrimaryWrap}
+                onPress={handleCreateRequest}
+                disabled={isCreating}
+              >
+                <LinearGradient colors={[Colors.primary, Colors.primaryDark]} style={styles.confirmPrimaryButton}>
+                  {isCreating ? (
+                    <ActivityIndicator color={Colors.white} />
+                  ) : (
+                    <>
+                      <Text style={styles.confirmPrimaryButtonText}>Envoyer ma demande</Text>
+                      <Ionicons name="arrow-forward" size={18} color={Colors.white} />
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       <LocationPickerModal
         visible={activePicker !== null}
@@ -601,4 +711,36 @@ const styles = StyleSheet.create({
   iosSheet: { backgroundColor: Colors.white, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, paddingTop: Spacing.md },
   iosDone: { padding: Spacing.lg, alignItems: 'center', borderTopWidth: 1, borderTopColor: Colors.gray[100] },
   iosDoneText: { color: Colors.primary, fontWeight: FontWeights.bold, fontSize: FontSizes.base },
+  confirmOverlay: { flex: 1, justifyContent: 'flex-end' },
+  confirmBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,23,42,0.5)' },
+  confirmSheet: { backgroundColor: Colors.white, borderTopLeftRadius: BorderRadius.xxl, borderTopRightRadius: BorderRadius.xxl, paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, maxHeight: '92%', gap: Spacing.md, shadowColor: '#0F172A', shadowOffset: { width: 0, height: -10 }, shadowOpacity: 0.12, shadowRadius: 24, elevation: 10 },
+  confirmHandle: { alignSelf: 'center', width: 44, height: 4, borderRadius: BorderRadius.full, backgroundColor: Colors.gray[300] },
+  confirmHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm },
+  confirmBadge: { width: 44, height: 44, borderRadius: BorderRadius.full, backgroundColor: `${Colors.primary}12`, alignItems: 'center', justifyContent: 'center' },
+  confirmHeaderText: { flex: 1 },
+  confirmTitle: { fontSize: FontSizes.xl, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  confirmSubtitle: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[500], lineHeight: 18 },
+  confirmCloseButton: { width: 36, height: 36, borderRadius: BorderRadius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.gray[100] },
+  confirmContent: { gap: Spacing.md, paddingBottom: Spacing.sm },
+  confirmHero: { borderRadius: BorderRadius.xxl, padding: Spacing.lg, gap: Spacing.xs, borderWidth: 1, borderColor: `${Colors.primary}12` },
+  confirmHeroTitle: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  confirmHeroText: { fontSize: FontSizes.sm, color: Colors.gray[600], lineHeight: 20 },
+  confirmSection: { gap: Spacing.sm },
+  confirmPanel: { backgroundColor: '#FFFCF8', borderRadius: BorderRadius.xxl, padding: Spacing.md, borderWidth: 1, borderColor: Colors.gray[100] },
+  confirmHelperText: { fontSize: FontSizes.sm, color: Colors.gray[500], lineHeight: 18 },
+  confirmSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  confirmOptionalText: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[500], textTransform: 'uppercase' },
+  confirmDateRow: { flexDirection: 'row', gap: Spacing.sm },
+  confirmDateButton: { flex: 1, minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, borderRadius: BorderRadius.xl, backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[100], padding: Spacing.md },
+  confirmDateContent: { flex: 1 },
+  confirmDateLabel: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[500], textTransform: 'uppercase' },
+  confirmDateValue: { marginTop: 4, fontSize: FontSizes.sm, fontWeight: FontWeights.semibold, color: Colors.gray[900] },
+  confirmNoteCard: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm, borderRadius: BorderRadius.xl, backgroundColor: `${Colors.primary}08`, padding: Spacing.md },
+  confirmNoteText: { flex: 1, fontSize: FontSizes.sm, color: Colors.gray[700], lineHeight: 20 },
+  confirmActions: { flexDirection: 'row', gap: Spacing.md, paddingTop: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.gray[100] },
+  confirmSecondaryButton: { flex: 1, minHeight: 56, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.gray[200], alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.white },
+  confirmSecondaryButtonText: { fontSize: FontSizes.base, fontWeight: FontWeights.semibold, color: Colors.gray[700] },
+  confirmPrimaryWrap: { flex: 1 },
+  confirmPrimaryButton: { minHeight: 56, borderRadius: BorderRadius.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm },
+  confirmPrimaryButtonText: { color: Colors.white, fontSize: FontSizes.base, fontWeight: FontWeights.bold },
 });

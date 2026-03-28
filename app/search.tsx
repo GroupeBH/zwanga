@@ -11,6 +11,7 @@ import { useAppSelector } from '@/store/hooks';
 import { selectTrips } from '@/store/selectors';
 import type { FavoriteLocation, Trip } from '@/types';
 import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
+import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { searchMapboxPlaces, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
 import { Ionicons } from '@expo/vector-icons';
@@ -228,6 +229,15 @@ export default function SearchScreen() {
     setArrivalSuggestions([]);
     setActiveSearchField(null);
   };
+
+  const activeSuggestions = useMemo(
+    () => (activeSearchField === 'departure' ? departureSuggestions : arrivalSuggestions),
+    [activeSearchField, arrivalSuggestions, departureSuggestions],
+  );
+
+  const activeSuggestionQuery = activeSearchField === 'departure' ? departure : arrival;
+  const visibleSuggestions = useMemo(() => activeSuggestions.slice(0, 3), [activeSuggestions]);
+  const showSuggestionPanel = !!activeSearchField && visibleSuggestions.length > 0;
 
   // Fonction pour mettre en évidence le texte recherché
   const highlightText = (text: string, query: string) => {
@@ -504,28 +514,48 @@ export default function SearchScreen() {
           </View>
         </View>
         
-        {/* Suggestions affichées en dehors du searchBox pour éviter le chevauchement */}
-        {departureSuggestions.length > 0 && activeSearchField === 'departure' && (
+        {/* Suggestions affichées dans un panneau compact pour garder l'écran léger */}
+        {showSuggestionPanel && (
           <View style={styles.suggestionsContainerAbsolute}>
+            <View style={styles.suggestionsPanelHeader}>
+              <View style={styles.suggestionsPanelBadge}>
+                <Ionicons
+                  name={activeSearchField === 'departure' ? 'location-outline' : 'flag-outline'}
+                  size={14}
+                  color={Colors.primary}
+                />
+                <Text style={styles.suggestionsPanelBadgeText}>
+                  {activeSearchField === 'departure' ? 'Départ' : 'Arrivée'}
+                </Text>
+              </View>
+              <Text style={styles.suggestionsPanelHint}>Touchez une suggestion</Text>
+            </View>
             <FlatList
-              data={departureSuggestions}
+              data={visibleSuggestions}
               keyExtractor={(item, index) => `${item.id}-${index}`}
+              keyboardShouldPersistTaps="handled"
               renderItem={({ item, index }) => (
                 <TouchableOpacity
                   style={[
                     styles.suggestionRow,
-                    index === departureSuggestions.length - 1 && styles.suggestionRowLast,
+                    index === visibleSuggestions.length - 1 && styles.suggestionRowLast,
                   ]}
-                  onPress={() => handleDepartureSuggestionSelect(item)}
+                  onPress={() =>
+                    activeSearchField === 'departure'
+                      ? handleDepartureSuggestionSelect(item)
+                      : handleArrivalSuggestionSelect(item)
+                  }
                 >
-                  <Ionicons
-                    name={getPlaceIcon(item) as any}
-                    size={20}
-                    color={getPlaceIcon(item) === 'search' ? Colors.primary : Colors.gray[900]}
-                  />
+                  <View style={styles.suggestionIconBadge}>
+                    <Ionicons
+                      name={getPlaceIcon(item) as any}
+                      size={17}
+                      color={getPlaceIcon(item) === 'search' ? Colors.primary : Colors.gray[700]}
+                    />
+                  </View>
                   <View style={styles.suggestionContent}>
-                    <Text style={styles.suggestionTitle}>
-                      {highlightText(item.name, departure)}
+                    <Text style={styles.suggestionTitle} numberOfLines={1}>
+                      {highlightText(item.name, activeSuggestionQuery)}
                     </Text>
                     {item.fullAddress && (
                       <Text style={styles.suggestionSubtitle} numberOfLines={1}>
@@ -533,46 +563,10 @@ export default function SearchScreen() {
                       </Text>
                     )}
                   </View>
-                  <Ionicons name="arrow-up-left" size={16} color={Colors.primary} />
+                  <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
                 </TouchableOpacity>
               )}
-              scrollEnabled={false}
-            />
-          </View>
-        )}
-        
-        {arrivalSuggestions.length > 0 && activeSearchField === 'arrival' && (
-          <View style={styles.suggestionsContainerAbsolute}>
-            <FlatList
-              data={arrivalSuggestions}
-              keyExtractor={(item, index) => `${item.id}-${index}`}
-              renderItem={({ item, index }) => (
-                <TouchableOpacity
-                  style={[
-                    styles.suggestionRow,
-                    index === arrivalSuggestions.length - 1 && styles.suggestionRowLast,
-                  ]}
-                  onPress={() => handleArrivalSuggestionSelect(item)}
-                >
-                  <Ionicons
-                    name={getPlaceIcon(item) as any}
-                    size={20}
-                    color={getPlaceIcon(item) === 'search' ? Colors.primary : Colors.gray[900]}
-                  />
-                  <View style={styles.suggestionContent}>
-                    <Text style={styles.suggestionTitle}>
-                      {highlightText(item.name, arrival)}
-                    </Text>
-                    {item.fullAddress && (
-                      <Text style={styles.suggestionSubtitle} numberOfLines={1}>
-                        {item.fullAddress}
-                      </Text>
-                    )}
-                  </View>
-                  <Ionicons name="arrow-up-left" size={16} color={Colors.primary} />
-                </TouchableOpacity>
-              )}
-              scrollEnabled={false}
+              scrollEnabled={activeSuggestions.length > visibleSuggestions.length}
             />
           </View>
         )}
@@ -584,21 +578,47 @@ export default function SearchScreen() {
           )}
         </TouchableOpacity>
 
-        <View style={styles.helperCard}>
-          <Ionicons name="bulb-outline" size={18} color={Colors.primary} />
-          <Text style={styles.helperText}>
-            Tapez un quartier, un marche, une ecole, une eglise ou utilisez un lieu favori.
-          </Text>
-        </View>
-
         <View style={styles.favoriteShortcutsSection}>
           <View style={styles.favoriteShortcutsHeader}>
-            <Text style={styles.favoriteShortcutsTitle}>Reperes de Kinshasa</Text>
-            <Text style={styles.favoriteShortcutsHint}>Choix rapides</Text>
+            <View>
+              <Text style={styles.favoriteShortcutsTitle}>Acces rapides</Text>
+              <Text style={styles.favoriteShortcutsHint}>Choisissez un repere sans quitter les resultats</Text>
+            </View>
+            {favoriteLocations.length > 0 && (
+              <TouchableOpacity onPress={() => router.push('/favorite-locations')}>
+                <Text style={styles.favoriteShortcutsLink}>Gerer</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
-          <View style={styles.favoriteShortcutsRow}>
-            {landmarkShortcuts.map((landmark) => (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.favoriteShortcutsScroll}
+          >
+            {favoriteLocations.slice(0, 4).map((location) => {
+              const icon =
+                location.type === 'home'
+                  ? 'home'
+                  : location.type === 'work'
+                    ? 'briefcase'
+                    : 'location';
+
+              return (
+                <TouchableOpacity
+                  key={location.id}
+                  style={[styles.favoriteShortcutChip, styles.favoriteShortcutChipFavorite]}
+                  onPress={() => handleFavoriteLocationShortcut(location)}
+                >
+                  <Ionicons name={icon} size={14} color={Colors.primary} />
+                  <Text style={styles.favoriteShortcutText} numberOfLines={1}>
+                    {location.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+
+            {landmarkShortcuts.slice(0, 6).map((landmark) => (
               <TouchableOpacity
                 key={landmark.id}
                 style={styles.favoriteShortcutChip}
@@ -610,43 +630,8 @@ export default function SearchScreen() {
                 </Text>
               </TouchableOpacity>
             ))}
-          </View>
+          </ScrollView>
         </View>
-
-        {favoriteLocations.length > 0 && (
-          <View style={styles.favoriteShortcutsSection}>
-            <View style={styles.favoriteShortcutsHeader}>
-              <Text style={styles.favoriteShortcutsTitle}>Mes reperes</Text>
-              <TouchableOpacity onPress={() => router.push('/favorite-locations')}>
-                <Text style={styles.favoriteShortcutsLink}>Gerer</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.favoriteShortcutsRow}>
-              {favoriteLocations.slice(0, 6).map((location) => {
-                const icon =
-                  location.type === 'home'
-                    ? 'home'
-                    : location.type === 'work'
-                      ? 'briefcase'
-                      : 'location';
-
-                return (
-                  <TouchableOpacity
-                    key={location.id}
-                    style={styles.favoriteShortcutChip}
-                    onPress={() => handleFavoriteLocationShortcut(location)}
-                  >
-                    <Ionicons name={icon} size={14} color={Colors.primary} />
-                    <Text style={styles.favoriteShortcutText} numberOfLines={1}>
-                      {location.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-        )}
       </View>
 
       {/* Résultats */}
@@ -658,7 +643,7 @@ export default function SearchScreen() {
         {(queryLoading || isAdvancedSearching) && !filteredTrips.length ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loadingText}>Recherche des trajets…</Text>
+            <Text style={styles.loadingText}>Recherche des trajets...</Text>
           </View>
         ) : null}
 
@@ -685,7 +670,7 @@ export default function SearchScreen() {
             </Text>
             <TouchableOpacity
               style={styles.createRequestButton}
-              onPress={() => router.push('/request')}
+                onPress={() => router.push(getTripRequestCreateHref())}
             >
               <Ionicons name="add-circle" size={20} color={Colors.white} />
               <Text style={styles.createRequestButtonText}>Créer une demande de trajet</Text>
@@ -801,14 +786,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.lg,
-    paddingBottom: Spacing.md,
+    paddingBottom: Spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[200],
   },
   headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
   },
   backButton: {
     marginRight: Spacing.lg,
@@ -822,7 +807,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
     borderRadius: BorderRadius.xl,
     padding: Spacing.md,
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   searchButton: {
     backgroundColor: Colors.primary,
@@ -831,26 +816,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: Spacing.sm,
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   searchButtonText: {
     color: Colors.white,
     fontWeight: FontWeights.bold,
-  },
-  helperCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.sm,
-    backgroundColor: Colors.primary + '10',
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  helperText: {
-    flex: 1,
-    color: Colors.gray[700],
-    lineHeight: 18,
-    fontSize: FontSizes.sm,
   },
   favoriteShortcutsSection: {
     marginBottom: Spacing.sm,
@@ -875,11 +845,11 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.xs,
     color: Colors.gray[500],
     fontWeight: FontWeights.medium,
+    marginTop: 2,
   },
-  favoriteShortcutsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  favoriteShortcutsScroll: {
     gap: Spacing.sm,
+    paddingRight: Spacing.xl,
   },
   favoriteShortcutChip: {
     flexDirection: 'row',
@@ -890,10 +860,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.primary + '20',
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    paddingVertical: Spacing.sm - 2,
+  },
+  favoriteShortcutChipFavorite: {
+    backgroundColor: Colors.primary + '08',
   },
   favoriteShortcutText: {
-    maxWidth: 110,
+    maxWidth: 116,
     color: Colors.gray[800],
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.medium,
@@ -948,39 +921,78 @@ const styles = StyleSheet.create({
   },
   suggestionsContainerAbsolute: {
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.md,
-    marginTop: -Spacing.md,
+    borderRadius: BorderRadius.xl,
+    marginTop: -Spacing.sm,
     marginBottom: Spacing.md,
     marginHorizontal: Spacing.xl,
-    maxHeight: 300,
+    maxHeight: 240,
     zIndex: 1000,
     ...CommonStyles.shadowLg,
     borderWidth: 1,
     borderColor: Colors.gray[200],
   },
+  suggestionsPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+    gap: Spacing.sm,
+  },
+  suggestionsPanelBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '10',
+  },
+  suggestionsPanelBadgeText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+    textTransform: 'uppercase',
+  },
+  suggestionsPanelHint: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    fontWeight: FontWeights.medium,
+  },
   suggestionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
+    paddingVertical: Spacing.sm + 2,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[100],
   },
   suggestionRowLast: {
     borderBottomWidth: 0,
   },
+  suggestionIconBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.gray[100],
+  },
   suggestionContent: {
     flex: 1,
-    marginLeft: Spacing.md,
+    marginLeft: Spacing.sm,
   },
   suggestionTitle: {
-    fontSize: FontSizes.base,
+    fontSize: FontSizes.sm,
     color: Colors.gray[900],
-    fontWeight: FontWeights.medium,
-    marginBottom: Spacing.xs,
+    fontWeight: FontWeights.semibold,
   },
   suggestionSubtitle: {
-    fontSize: FontSizes.sm,
+    marginTop: 2,
+    fontSize: FontSizes.xs,
     color: Colors.gray[600],
   },
   filterButton: {

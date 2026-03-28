@@ -13,7 +13,7 @@ import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -29,12 +29,15 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type PublishStep = 'route' | 'datetime' | 'vehicle' | 'pricing' | 'confirm';
+const PUBLISH_STEP_ORDER: PublishStep[] = ['route', 'datetime', 'vehicle', 'pricing', 'confirm'];
 
 export default function PublishScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isIdentityVerified } = useIdentityCheck();
   const [step, setStep] = useState<PublishStep>('route');
+  const stepNumber = useMemo(() => PUBLISH_STEP_ORDER.indexOf(step) + 1, [step]);
+  const stepEntering = Platform.OS === 'android' ? undefined : FadeInDown.duration(180);
   const [createTrip, { isLoading: isPublishing }] = useCreateTripMutation();
   const { showDialog } = useDialog();
 
@@ -45,10 +48,7 @@ export default function PublishScreen() {
   const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
   const [kycSubmitting, setKycSubmitting] = useState(false);
 
-  const {
-    data: kycStatus,
-    refetch: refetchKycStatus,
-  } = useGetKycStatusQuery();
+  const { refetch: refetchKycStatus } = useGetKycStatusQuery();
   const [uploadKyc, { isLoading: uploadingKyc }] = useUploadKycMutation();
 
   const openKycModal = () => setKycModalVisible(true);
@@ -367,47 +367,6 @@ export default function PublishScreen() {
     return `${latitude.toFixed(5)} / ${longitude.toFixed(5)}`;
   };
 
-  const renderLocationCard = (
-    type: 'departure' | 'arrival',
-    summary: { title: string; address: string; latitude?: number; longitude?: number },
-  ) => {
-    const accentColor = type === 'departure' ? Colors.success : Colors.primary;
-    const hasSelection = type === 'departure' ? !!departureLocation : !!arrivalLocation;
-    const coords = formatCoordinatePair(summary.latitude, summary.longitude);
-    return (
-      <View style={styles.locationCard}>
-        <View style={styles.locationCardHeader}>
-          <Text style={styles.locationCardLabel}>
-            {type === 'departure' ? 'Point de départ *' : 'Destination *'}
-          </Text>
-          {hasSelection && (
-            <TouchableOpacity onPress={() => openLocationPicker(type)}>
-              <Text style={styles.locationCardAction}>Modifier</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        <View style={styles.locationCardContent}>
-          <Text style={styles.locationCardTitle}>{summary.title}</Text>
-          <Text style={styles.locationCardSubtitle}>{summary.address}</Text>
-          <Text style={styles.locationCardCoords}>
-            {coords ?? 'Coordonnées non définies'}
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={styles.locationCardButton}
-          onPress={() => openLocationPicker(type)}
-        >
-          <View style={[styles.locationCardButtonIcon, { backgroundColor: accentColor + '1A' }]}>
-            <Ionicons name="map" size={18} color={accentColor} />
-          </View>
-          <Text style={styles.locationCardButtonText}>
-            {hasSelection ? 'Mettre à jour sur la carte' : 'Choisir sur la carte'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-    );
-  };
-
   const formattedDateLabel = useMemo(() => {
     if (!departureDateTime) {
       return 'Choisir la date';
@@ -510,7 +469,7 @@ export default function PublishScreen() {
         openKycModal();
         return;
       }
-      setStep('datetime');
+      goToStep('datetime');
     } else if (step === 'datetime') {
       if (!departureDateTime) {
         showDialog({
@@ -520,7 +479,7 @@ export default function PublishScreen() {
         });
         return;
       }
-      setStep('vehicle');
+      goToStep('vehicle');
     } else if (step === 'vehicle') {
       if (!selectedVehicleId) {
         showDialog({
@@ -530,7 +489,7 @@ export default function PublishScreen() {
         });
         return;
       }
-      setStep('pricing');
+      goToStep('pricing');
     } else if (step === 'pricing') {
       if (!isFreeTrip && !price) {
         showDialog({
@@ -540,7 +499,7 @@ export default function PublishScreen() {
         });
         return;
       }
-      setStep('confirm');
+      goToStep('confirm');
     }
   };
 
@@ -642,24 +601,22 @@ export default function PublishScreen() {
   };
 
   const getStepNumber = () => {
-    switch (step) {
-      case 'route': return 1;
-      case 'datetime': return 2;
-      case 'vehicle': return 3;
-      case 'pricing': return 4;
-      case 'confirm': return 5;
-      default: return 1;
-    }
+    return stepNumber;
   };
 
   const isStepCompleted = (checkStep: PublishStep) => {
-    const stepOrder: PublishStep[] = ['route', 'datetime', 'vehicle', 'pricing', 'confirm'];
-    const currentIndex = stepOrder.indexOf(step);
-    const checkIndex = stepOrder.indexOf(checkStep);
+    const currentIndex = PUBLISH_STEP_ORDER.indexOf(step);
+    const checkIndex = PUBLISH_STEP_ORDER.indexOf(checkStep);
     return checkIndex < currentIndex;
   };
 
   const isStepActive = (checkStep: PublishStep) => step === checkStep;
+  const goToStep = (nextStep: PublishStep) => {
+    if (nextStep === step) return;
+    startTransition(() => {
+      setStep(nextStep);
+    });
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -784,7 +741,7 @@ export default function PublishScreen() {
       >
         {/* Étape 1: Itinéraire */}
         {step === 'route' && (
-          <Animated.View entering={FadeInDown} style={styles.stepContainer}>
+          <Animated.View entering={stepEntering} style={styles.stepContainer}>
             <Text style={styles.sectionTitle}>Votre itinéraire</Text>
 
             {/* Message KYC visible dans l'étape route */}
@@ -865,7 +822,7 @@ export default function PublishScreen() {
 
         {/* Étape 2: Date & Heure */}
         {step === 'datetime' && (
-          <Animated.View entering={FadeInDown} style={styles.stepContainer}>
+          <Animated.View entering={stepEntering} style={styles.stepContainer}>
             <Text style={styles.sectionTitle}>Quand partez-vous ?</Text>
 
             <View style={styles.card}>
@@ -923,7 +880,7 @@ export default function PublishScreen() {
             <View style={[styles.buttonRow, { paddingBottom: Math.max(insets.bottom, 16) }]}>
               <TouchableOpacity
                 style={[styles.button, styles.buttonSecondary]}
-                onPress={() => setStep('route')}
+                onPress={() => goToStep('route')}
               >
                 <Text style={styles.buttonSecondaryText}>Retour</Text>
               </TouchableOpacity>
@@ -936,7 +893,7 @@ export default function PublishScreen() {
 
         {/* Étape 3: Véhicule */}
         {step === 'vehicle' && (
-          <Animated.View entering={FadeInDown} style={styles.stepContainer}>
+          <Animated.View entering={stepEntering} style={styles.stepContainer}>
             <Text style={styles.sectionTitle}>Votre véhicule</Text>
 
             <View style={styles.inputGroup}>
@@ -1027,7 +984,7 @@ export default function PublishScreen() {
             <View style={[styles.buttonRow, { paddingBottom: Math.max(insets.bottom, 16) }]}>
               <TouchableOpacity
                 style={[styles.button, styles.buttonSecondary]}
-                onPress={() => setStep('datetime')}
+                onPress={() => goToStep('datetime')}
               >
                 <Text style={styles.buttonSecondaryText}>Retour</Text>
               </TouchableOpacity>
@@ -1040,7 +997,7 @@ export default function PublishScreen() {
 
         {/* Étape 4: Places & Prix */}
         {step === 'pricing' && (
-          <Animated.View entering={FadeInDown} style={styles.stepContainer}>
+          <Animated.View entering={stepEntering} style={styles.stepContainer}>
             <Text style={styles.sectionTitle}>Places et prix</Text>
 
             <View style={styles.row}>
@@ -1123,7 +1080,7 @@ export default function PublishScreen() {
             <View style={[styles.buttonRow, { paddingBottom: Math.max(insets.bottom, 16) }]}>
               <TouchableOpacity
                 style={[styles.button, styles.buttonSecondary]}
-                onPress={() => setStep('vehicle')}
+                onPress={() => goToStep('vehicle')}
               >
                 <Text style={styles.buttonSecondaryText}>Retour</Text>
               </TouchableOpacity>
@@ -1136,7 +1093,7 @@ export default function PublishScreen() {
 
         {/* Étape 5: Confirmation */}
         {step === 'confirm' && (
-          <Animated.View entering={FadeInDown} style={styles.stepContainer}>
+          <Animated.View entering={stepEntering} style={styles.stepContainer}>
             <View style={styles.iconContainer}>
               <View style={[styles.iconCircle, styles.iconCircleGreen]}>
                 <Ionicons name="checkmark-circle" size={40} color={Colors.success} />
@@ -1229,7 +1186,7 @@ export default function PublishScreen() {
             <View style={[styles.buttonRow, { paddingBottom: Math.max(insets.bottom, 16) }]}>
               <TouchableOpacity
                 style={[styles.button, styles.buttonSecondary]}
-                onPress={() => setStep('pricing')}
+                onPress={() => goToStep('pricing')}
               >
                 <Text style={styles.buttonSecondaryText}>Retour</Text>
               </TouchableOpacity>
@@ -1287,7 +1244,7 @@ export default function PublishScreen() {
             </View>
             <Text style={styles.driverModalTitle}>Compte conducteur requis</Text>
             <Text style={styles.driverModalMessage}>
-              Pour publier des trajets, vous devez d'abord activer votre compte conducteur et ajouter un véhicule dans votre profil.
+              Pour publier des trajets, vous devez d&apos;abord activer votre compte conducteur et ajouter un véhicule dans votre profil.
             </Text>
             <View style={[styles.driverModalButtons, { paddingBottom: Math.max(insets.bottom, 0) }]}>
               <TouchableOpacity
@@ -1462,7 +1419,7 @@ export default function PublishScreen() {
                 </View>
 
                 <View style={styles.vehicleFormInputGroup}>
-                  <Text style={styles.vehicleFormLabel}>Plaque d'immatriculation *</Text>
+                  <Text style={styles.vehicleFormLabel}>Plaque d&apos;immatriculation *</Text>
                   <TextInput
                     style={styles.vehicleFormInput}
                     placeholder="Ex: AB-123-CD"

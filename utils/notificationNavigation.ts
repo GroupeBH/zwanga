@@ -1,5 +1,6 @@
 import type { Router } from 'expo-router';
 import type { User } from '@/types';
+import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 
 /**
  * Fonction helper pour extraire l'ID du trip-request depuis différentes structures de données
@@ -229,16 +230,12 @@ export const handleNotificationNavigation = (
       if (isTripRequestType) {
         console.log('[notificationNavigation] Notification de demande de trajet détectée, requestId:', requestId);
         if (requestId) {
-          console.log('[notificationNavigation] Navigation vers /request/' + requestId);
+          console.log('[notificationNavigation] Navigation vers /request-details/' + requestId);
           try {
-            router.push({
-              pathname: '/request/[id]',
-              params: { id: requestId },
-            });
+            router.push(getTripRequestDetailHref(requestId));
           } catch (error) {
             console.error('[notificationNavigation] Erreur lors de la navigation:', error);
-            // Fallback avec le format direct
-            router.push(`/request/${requestId}`);
+            router.push(getTripRequestDetailHref(requestId));
           }
           return;
         } else if (tripId) {
@@ -265,16 +262,12 @@ export const handleNotificationNavigation = (
       // Ré-extraire l'ID au cas où il n'aurait pas été trouvé précédemment
       const fallbackRequestId = requestId || extractTripRequestId(data);
       if (fallbackRequestId) {
-        console.log('[notificationNavigation] Fallback: Navigation vers /request/' + fallbackRequestId);
+        console.log('[notificationNavigation] Fallback: Navigation vers /request-details/' + fallbackRequestId);
         try {
-          router.push({
-            pathname: '/request/[id]',
-            params: { id: fallbackRequestId },
-          });
+          router.push(getTripRequestDetailHref(fallbackRequestId));
         } catch (error) {
           console.error('[notificationNavigation] Erreur lors de la navigation (fallback):', error);
-          // Fallback avec le format direct
-          router.push(`/request/${fallbackRequestId}`);
+          router.push(getTripRequestDetailHref(fallbackRequestId));
         }
         return;
       }

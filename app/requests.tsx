@@ -7,6 +7,7 @@ import {
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import type { TripRequest } from '@/types';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
+import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
@@ -60,7 +61,7 @@ export default function TripRequestsScreen() {
   });
 
   const handleRequestPress = (requestId: string) => {
-    router.push(`/request/${requestId}`);
+    router.push(getTripRequestDetailHref(requestId));
   };
 
   // Rendre une carte de demande disponible (pour les drivers)
@@ -68,7 +69,7 @@ export default function TripRequestsScreen() {
     const statusConfigMap: Record<string, { label: string; color: string; bg: string }> = {
       pending: { label: 'En attente', color: Colors.warning, bg: Colors.warning + '15' },
       offers_received: { label: 'Offres reçues', color: Colors.info, bg: Colors.info + '15' },
-      driver_selected: { label: 'Driver sélectionné', color: Colors.success, bg: Colors.success + '15' },
+      driver_selected: { label: 'Conducteur sélectionné', color: Colors.success, bg: Colors.success + '15' },
       cancelled: { label: 'Annulée', color: Colors.danger, bg: Colors.danger + '15' },
       expired: { label: 'Expirée', color: Colors.gray[500], bg: Colors.gray[200] },
     };
@@ -184,7 +185,7 @@ export default function TripRequestsScreen() {
     const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
       pending: { label: 'En attente', color: Colors.warning, bg: Colors.warning + '15' },
       offers_received: { label: 'Offres reçues', color: Colors.info, bg: Colors.info + '15' },
-      driver_selected: { label: 'Driver sélectionné', color: Colors.success, bg: Colors.success + '15' },
+      driver_selected: { label: 'Conducteur sélectionné', color: Colors.success, bg: Colors.success + '15' },
       cancelled: { label: 'Annulée', color: Colors.danger, bg: Colors.danger + '15' },
       expired: { label: 'Expirée', color: Colors.gray[500], bg: Colors.gray[200] },
     };
@@ -279,7 +280,7 @@ export default function TripRequestsScreen() {
                   </View>
                 )}
                 <View>
-                  <Text style={styles.selectedDriverLabel}>Driver sélectionné</Text>
+                  <Text style={styles.selectedDriverLabel}>Conducteur sélectionné</Text>
                   <Text style={styles.selectedDriverName}>{item.selectedDriverName}</Text>
                 </View>
               </View>
@@ -333,12 +334,12 @@ export default function TripRequestsScreen() {
           <Text style={styles.emptyText}>
             {activeTab === 'available'
               ? "Il n'y a actuellement aucune demande de trajet en attente d'offres."
-              : "Vous n'avez pas encore créé de demande de trajet. Créez-en une pour que les drivers vous proposent leurs services."}
+              : "Vous n'avez pas encore créé de demande de trajet. Créez-en une pour que les conducteurs vous proposent leurs services."}
           </Text>
           {activeTab === 'my-requests' && (
             <TouchableOpacity
               style={styles.createRequestButton}
-              onPress={() => router.push('/request')}
+                onPress={() => router.push(getTripRequestCreateHref())}
             >
               <Ionicons name="add-circle" size={20} color={Colors.white} />
               <Text style={styles.createRequestButtonText}>Créer une demande</Text>
@@ -376,7 +377,7 @@ export default function TripRequestsScreen() {
         {activeTab === 'my-requests' && (
           <TouchableOpacity
             style={styles.createButton}
-            onPress={() => router.push('/request')}
+                onPress={() => router.push(getTripRequestCreateHref())}
           >
             <Ionicons name="add-circle" size={24} color={Colors.primary} />
           </TouchableOpacity>

@@ -1,6 +1,6 @@
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import {
   useAcceptDriverOfferMutation,
@@ -17,11 +17,13 @@ import type { Vehicle } from '@/types';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { createBecomeDriverAction, isDriverRequiredError } from '@/utils/errorHelpers';
 import { getRouteCoordinates } from '@/utils/routeHelpers';
+import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -50,6 +52,7 @@ export default function TripRequestDetailsScreen() {
   
   // Extraire l'ID correctement (peut être un tableau avec Expo Router)
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  const isCreateRouteAlias = id === 'index';
   
   const { data: currentUser } = useGetCurrentUserQuery();
   const { isIdentityVerified, checkIdentity } = useIdentityCheck();
@@ -58,11 +61,17 @@ export default function TripRequestDetailsScreen() {
   const [pollingInterval, setPollingInterval] = useState(30000);
   
   const { data: tripRequest, isLoading, error, refetch, isError } = useGetTripRequestByIdQuery(id || '', {
-    skip: !id,
+    skip: !id || isCreateRouteAlias,
     pollingInterval,
     refetchOnFocus: true,
     refetchOnReconnect: true,
   });
+
+  useEffect(() => {
+    if (isCreateRouteAlias) {
+      router.replace(getTripRequestCreateHref());
+    }
+  }, [isCreateRouteAlias, router]);
 
   // Mettre à jour le polling interval en fonction du statut de la demande
   React.useEffect(() => {
@@ -77,7 +86,7 @@ export default function TripRequestDetailsScreen() {
 
   // Debug: Log pour voir ce qui se passe
   React.useEffect(() => {
-    if (id) {
+    if (id && !isCreateRouteAlias) {
       console.log('[TripRequestDetails] Loading trip request with ID:', id);
     }
     if (error) {
@@ -87,11 +96,11 @@ export default function TripRequestDetailsScreen() {
     if (tripRequest) {
       console.log('[TripRequestDetails] Trip request loaded:', tripRequest.id);
     }
-  }, [id, error, tripRequest]);
+  }, [id, error, tripRequest, isCreateRouteAlias]);
 
   // Debug: Log pour voir ce qui se passe
   React.useEffect(() => {
-    if (id) {
+    if (id && !isCreateRouteAlias) {
       console.log('[TripRequestDetails] Loading trip request with ID:', id);
     }
     if (error) {
@@ -100,7 +109,7 @@ export default function TripRequestDetailsScreen() {
     if (tripRequest) {
       console.log('[TripRequestDetails] Trip request loaded:', tripRequest.id);
     }
-  }, [id, error, tripRequest]);
+  }, [id, error, tripRequest, isCreateRouteAlias]);
   const { data: vehicles = [] } = useGetVehiclesQuery(undefined, {
     skip: !(currentUser?.role === 'driver' || currentUser?.role === 'both'),
   });
@@ -863,12 +872,133 @@ export default function TripRequestDetailsScreen() {
 
   const statusConfigMap = {
     pending: { label: 'En attente', color: Colors.warning, bg: Colors.warning + '15' },
-    offers_received: { label: 'Propositions reçues', color: Colors.info, bg: Colors.info + '15' },
+    offers_received: { label: 'Réponses reçues', color: Colors.info, bg: Colors.info + '15' },
     driver_selected: { label: 'Conducteur choisi', color: Colors.success, bg: Colors.success + '15' },
     cancelled: { label: 'Annulée', color: Colors.danger, bg: Colors.danger + '15' },
     expired: { label: 'Expirée', color: Colors.gray[500], bg: Colors.gray[200] },
   };
   const statusConfig = statusConfigMap[tripRequest.status] || statusConfigMap.pending;
+
+  const pendingOffersCount = tripRequest.offers?.filter((offer) => offer.status === 'pending').length ?? 0;
+  const heroStepIndex =
+    tripRequest.tripId
+      ? 3
+      : tripRequest.status === 'driver_selected'
+        ? 2
+        : tripRequest.status === 'offers_received' || pendingOffersCount > 0
+          ? 1
+          : tripRequest.status === 'pending'
+            ? 0
+            : -1;
+  const heroSteps = ['Demande', 'Réponses', 'Conducteur', 'Départ'];
+  const ownerHero = (() => {
+    if (tripRequest.tripId) {
+      return {
+        colors: ['#0F766E', '#14B8A6'] as const,
+        title: 'Votre course est prête',
+        subtitle: 'Le trajet a déjà été créé. Vous pouvez maintenant suivre la course en direct.',
+      };
+    }
+    if (tripRequest.status === 'driver_selected') {
+      return {
+        colors: ['#166534', '#22C55E'] as const,
+        title: tripRequest.selectedDriverName
+          ? `${tripRequest.selectedDriverName} prépare votre prise en charge`
+          : 'Votre conducteur a été confirmé',
+        subtitle: 'Restez disponible, la prise en charge va bientôt commencer.',
+      };
+    }
+    if (tripRequest.status === 'offers_received' || pendingOffersCount > 0) {
+      return {
+        colors: ['#0F766E', '#0EA5E9'] as const,
+        title:
+          pendingOffersCount > 1
+            ? `${pendingOffersCount} conducteurs ont répondu`
+            : 'Un conducteur a répondu',
+        subtitle: "Le conducteur retenu apparaîtra ici dès qu'il sera confirmé.",
+      };
+    }
+    if (tripRequest.status === 'cancelled') {
+      return {
+        colors: ['#7F1D1D', '#DC2626'] as const,
+        title: 'Votre demande est annulée',
+        subtitle: "Cette demande n'est plus visible pour les conducteurs.",
+      };
+    }
+    if (tripRequest.status === 'expired') {
+      return {
+        colors: ['#374151', '#6B7280'] as const,
+        title: 'Votre demande a expiré',
+        subtitle: "Aucun conducteur ne s'est positionné à temps. Vous pouvez relancer une nouvelle demande.",
+      };
+    }
+    return {
+      colors: ['#111827', Colors.primary] as const,
+      title: 'Nous cherchons un conducteur',
+      subtitle: 'Votre demande circule déjà auprès des conducteurs disponibles autour de votre trajet.',
+    };
+  })();
+  const ownerHeroHintMessage =
+    pendingOffersCount > 0
+      ? 'Les réponses arrivent. Le conducteur retenu apparaîtra ici.'
+      : "Vous serez alerté dès qu'un conducteur se manifeste.";
+  const isDriverRole = currentUser?.role === 'driver' || currentUser?.role === 'both';
+  const driverHero = (() => {
+    if (myOffer?.status === 'accepted' && tripRequest.tripId) {
+      return {
+        colors: ['#0F766E', '#14B8A6'] as const,
+        badge: 'Retenu',
+        title: 'Vous avez été retenu pour cette course',
+        subtitle: 'Le trajet est déjà prêt. Ouvrez-le pour suivre la course ou guider votre prise en charge.',
+      };
+    }
+    if (myOffer?.status === 'accepted') {
+      return {
+        colors: ['#166534', '#22C55E'] as const,
+        badge: 'Confirmé',
+        title: 'Votre proposition a été choisie',
+        subtitle: 'Vous pouvez maintenant démarrer le trajet pour prendre le passager en charge.',
+      };
+    }
+    if (myOffer?.status === 'pending') {
+      return {
+        colors: ['#0F766E', '#0EA5E9'] as const,
+        badge: 'En attente',
+        title: 'Votre proposition attend la décision du passager',
+        subtitle: 'Gardez un œil sur cette demande. Vous serez notifié dès qu\'une réponse arrive.',
+      };
+    }
+    if (myOffer?.status === 'rejected') {
+      return {
+        colors: ['#374151', '#6B7280'] as const,
+        badge: 'Clôturé',
+        title: 'Votre proposition n\'a pas été retenue',
+        subtitle: 'Vous pouvez consulter d\'autres demandes disponibles depuis l\'accueil ou la liste des demandes.',
+      };
+    }
+    if (!isDriverRole) {
+      return {
+        colors: ['#111827', '#334155'] as const,
+        badge: 'Profil',
+        title: 'Activez votre profil conducteur',
+        subtitle: 'Cette demande est ouverte, mais votre compte doit devenir conducteur pour envoyer une proposition.',
+      };
+    }
+    if (!isIdentityVerified) {
+      return {
+        colors: ['#92400E', '#F59E0B'] as const,
+        badge: 'KYC',
+        title: 'Vérifiez votre identité pour répondre',
+        subtitle: 'Une vérification rapide est nécessaire avant d\'envoyer une proposition au passager.',
+      };
+    }
+    return {
+      colors: ['#111827', Colors.primary] as const,
+      badge: statusConfig.label,
+      title: 'Une course attend votre offre',
+      subtitle: 'Analysez les besoins du passager puis proposez votre heure et votre tarif.',
+    };
+  })();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -887,88 +1017,251 @@ export default function TripRequestDetailsScreen() {
         }
       >
         {/* En-tête avec statut */}
-        <View style={styles.statusCard}>
-          <View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
-            <Text style={[styles.statusText, { color: statusConfig.color }]}>
-              {statusConfig.label}
-            </Text>
-          </View>
-          {isOwner && tripRequest.status === 'pending' && (
-            <View style={styles.ownerActions}>
-              {canEdit && (
-                <TouchableOpacity
-                  style={styles.editButton}
-                  onPress={handleOpenEditForm}
-                >
-                  <Ionicons name="create-outline" size={18} color={Colors.primary} />
-                  <Text style={styles.editButtonText}>Modifier</Text>
-                </TouchableOpacity>
+        {isOwner ? (
+          <LinearGradient colors={ownerHero.colors} style={styles.ownerHeroCard}>
+            <View style={styles.ownerHeroTopRow}>
+              <View style={styles.ownerHeroStatusBadge}>
+                <Text style={styles.ownerHeroStatusText}>{statusConfig.label}</Text>
+              </View>
+              {pendingOffersCount > 0 && !tripRequest.tripId && (
+                <View style={styles.ownerHeroCounter}>
+                  <Ionicons name="sparkles-outline" size={14} color={Colors.white} />
+                  <Text style={styles.ownerHeroCounterText}>
+                    {pendingOffersCount} réponse{pendingOffersCount > 1 ? 's' : ''}
+                  </Text>
+                </View>
               )}
+            </View>
+
+            <Text style={styles.ownerHeroTitle}>{ownerHero.title}</Text>
+            <Text style={styles.ownerHeroSubtitle}>{ownerHero.subtitle}</Text>
+
+            <View style={styles.ownerHeroRouteCard}>
+              <View style={styles.ownerHeroRouteRow}>
+                <View style={[styles.ownerHeroRouteDot, { backgroundColor: Colors.success }]} />
+                <View style={styles.ownerHeroRouteInfo}>
+                  <Text style={styles.ownerHeroRouteLabel}>Départ</Text>
+                  <Text style={styles.ownerHeroRouteText}>{tripRequest.departure.name}</Text>
+                </View>
+              </View>
+              <View style={styles.ownerHeroRouteLine} />
+              <View style={styles.ownerHeroRouteRow}>
+                <View style={[styles.ownerHeroRouteDot, styles.ownerHeroRouteSquare]} />
+                <View style={styles.ownerHeroRouteInfo}>
+                  <Text style={styles.ownerHeroRouteLabel}>Destination</Text>
+                  <Text style={styles.ownerHeroRouteText}>{tripRequest.arrival.name}</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.ownerHeroMetaRow}>
+              <View style={styles.ownerHeroMetaChip}>
+                <Ionicons name="time-outline" size={14} color={Colors.white} />
+                <Text style={styles.ownerHeroMetaText}>
+                  {formatDateWithRelativeLabel(tripRequest.departureDateMin, true)}
+                </Text>
+              </View>
+              <View style={styles.ownerHeroMetaChip}>
+                <Ionicons name="people-outline" size={14} color={Colors.white} />
+                <Text style={styles.ownerHeroMetaText}>
+                  {tripRequest.numberOfSeats} place{tripRequest.numberOfSeats > 1 ? 's' : ''}
+                </Text>
+              </View>
+              {(tripRequest.selectedPricePerSeat || tripRequest.maxPricePerSeat) && (
+                <View style={styles.ownerHeroMetaChip}>
+                  <Ionicons name="cash-outline" size={14} color={Colors.white} />
+                  <Text style={styles.ownerHeroMetaText}>
+                    {tripRequest.selectedPricePerSeat || tripRequest.maxPricePerSeat} FC
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.ownerHeroSteps}>
+              {heroSteps.map((step, index) => {
+                const active = heroStepIndex >= index;
+                return (
+                  <View key={step} style={styles.ownerHeroStep}>
+                    <View
+                      style={[
+                        styles.ownerHeroStepDot,
+                        active && styles.ownerHeroStepDotActive,
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.ownerHeroStepText,
+                        active && styles.ownerHeroStepTextActive,
+                      ]}
+                    >
+                      {step}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+
+            {tripRequest.tripId ? (
               <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={handleCancelRequest}
-                disabled={isCancelling}
+                style={styles.ownerHeroPrimaryButton}
+                onPress={() => handleViewTrip(tripRequest.tripId!)}
               >
-                {isCancelling ? (
-                  <ActivityIndicator size="small" color={Colors.danger} />
+                <Ionicons name="navigate-outline" size={18} color={Colors.gray[900]} />
+                <Text style={styles.ownerHeroPrimaryButtonText}>Suivre la course</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.ownerHeroHintRow}>
+                <Ionicons name="notifications-outline" size={16} color={Colors.white} />
+                <Text style={styles.ownerHeroHintText}>{ownerHeroHintMessage}</Text>
+              </View>
+            )}
+
+            {tripRequest.status === 'pending' && (
+              <View style={styles.ownerHeroActions}>
+                {canEdit && (
+                  <TouchableOpacity style={styles.ownerHeroGhostButton} onPress={handleOpenEditForm}>
+                    <Ionicons name="create-outline" size={16} color={Colors.white} />
+                    <Text style={styles.ownerHeroGhostButtonText}>Modifier</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={[styles.ownerHeroGhostButton, styles.ownerHeroGhostButtonDanger]}
+                  onPress={handleCancelRequest}
+                  disabled={isCancelling}
+                >
+                  {isCancelling ? (
+                    <ActivityIndicator size="small" color={Colors.white} />
+                  ) : (
+                    <>
+                      <Ionicons name="close-circle-outline" size={16} color={Colors.white} />
+                      <Text style={styles.ownerHeroGhostButtonText}>Annuler</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+          </LinearGradient>
+        ) : (
+          <LinearGradient colors={driverHero.colors} style={styles.ownerHeroCard}>
+            <View style={styles.ownerHeroTopRow}>
+              <View style={styles.ownerHeroStatusBadge}>
+                <Text style={styles.ownerHeroStatusText}>{driverHero.badge}</Text>
+              </View>
+              {!!myOffer?.pricePerSeat && (
+                <View style={styles.ownerHeroCounter}>
+                  <Ionicons name="cash-outline" size={14} color={Colors.white} />
+                  <Text style={styles.ownerHeroCounterText}>{myOffer.pricePerSeat} FC</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.driverHeroPassengerRow}>
+              {tripRequest.passengerAvatar ? (
+                <Image source={{ uri: tripRequest.passengerAvatar }} style={styles.driverHeroAvatar} />
+              ) : (
+                <View style={styles.driverHeroAvatar}>
+                  <Ionicons name="person" size={18} color={Colors.white} />
+                </View>
+              )}
+              <View style={styles.driverHeroPassengerInfo}>
+                <Text style={styles.driverHeroPassengerLabel}>Passager</Text>
+                <Text style={styles.driverHeroPassengerName}>{tripRequest.passengerName}</Text>
+              </View>
+            </View>
+
+            <Text style={styles.ownerHeroTitle}>{driverHero.title}</Text>
+            <Text style={styles.ownerHeroSubtitle}>{driverHero.subtitle}</Text>
+
+            <View style={styles.ownerHeroRouteCard}>
+              <View style={styles.ownerHeroRouteRow}>
+                <View style={[styles.ownerHeroRouteDot, { backgroundColor: Colors.success }]} />
+                <View style={styles.ownerHeroRouteInfo}>
+                  <Text style={styles.ownerHeroRouteLabel}>Départ</Text>
+                  <Text style={styles.ownerHeroRouteText}>{tripRequest.departure.name}</Text>
+                </View>
+              </View>
+              <View style={styles.ownerHeroRouteLine} />
+              <View style={styles.ownerHeroRouteRow}>
+                <View style={[styles.ownerHeroRouteDot, styles.ownerHeroRouteSquare]} />
+                <View style={styles.ownerHeroRouteInfo}>
+                  <Text style={styles.ownerHeroRouteLabel}>Destination</Text>
+                  <Text style={styles.ownerHeroRouteText}>{tripRequest.arrival.name}</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.ownerHeroMetaRow}>
+              <View style={styles.ownerHeroMetaChip}>
+                <Ionicons name="time-outline" size={14} color={Colors.white} />
+                <Text style={styles.ownerHeroMetaText}>
+                  {formatDateWithRelativeLabel(tripRequest.departureDateMin, true)}
+                </Text>
+              </View>
+              <View style={styles.ownerHeroMetaChip}>
+                <Ionicons name="people-outline" size={14} color={Colors.white} />
+                <Text style={styles.ownerHeroMetaText}>
+                  {tripRequest.numberOfSeats} place{tripRequest.numberOfSeats > 1 ? 's' : ''}
+                </Text>
+              </View>
+              {tripRequest.maxPricePerSeat && (
+                <View style={styles.ownerHeroMetaChip}>
+                  <Ionicons name="wallet-outline" size={14} color={Colors.white} />
+                  <Text style={styles.ownerHeroMetaText}>{tripRequest.maxPricePerSeat} FC max</Text>
+                </View>
+              )}
+            </View>
+
+            {tripRequest.tripId && myOffer?.status === 'accepted' ? (
+              <TouchableOpacity
+                style={styles.ownerHeroPrimaryButton}
+                onPress={() => handleViewTrip(tripRequest.tripId!)}
+              >
+                <Ionicons name="navigate-outline" size={18} color={Colors.gray[900]} />
+                <Text style={styles.ownerHeroPrimaryButtonText}>Ouvrir le trajet</Text>
+              </TouchableOpacity>
+            ) : myOffer?.status === 'accepted' ? (
+              <TouchableOpacity
+                style={styles.ownerHeroPrimaryButton}
+                onPress={handleStartTripFromRequest}
+                disabled={isStartingTripFromRequest}
+              >
+                {isStartingTripFromRequest ? (
+                  <ActivityIndicator size="small" color={Colors.gray[900]} />
                 ) : (
                   <>
-                    <Ionicons name="close-circle-outline" size={18} color={Colors.danger} />
-                    <Text style={styles.cancelButtonText}>Annuler</Text>
+                    <Ionicons name="play-circle-outline" size={18} color={Colors.gray[900]} />
+                    <Text style={styles.ownerHeroPrimaryButtonText}>Démarrer le trajet</Text>
                   </>
                 )}
               </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
-        {/* Informations passager */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Passager</Text>
-          <View style={styles.passengerCard}>
-            {tripRequest.passengerAvatar ? (
-              <Image
-                source={{ uri: tripRequest.passengerAvatar }}
-                style={styles.avatar}
-              />
+            ) : canMakeOffer ? (
+              <TouchableOpacity style={styles.ownerHeroPrimaryButton} onPress={openOfferForm}>
+                <Ionicons name="send-outline" size={18} color={Colors.gray[900]} />
+                <Text style={styles.ownerHeroPrimaryButtonText}>Faire une proposition</Text>
+              </TouchableOpacity>
+            ) : !isDriverRole ? (
+              <TouchableOpacity style={styles.ownerHeroPrimaryButton} onPress={() => router.push('/publish')}>
+                <Ionicons name="car-outline" size={18} color={Colors.gray[900]} />
+                <Text style={styles.ownerHeroPrimaryButtonText}>Devenir conducteur</Text>
+              </TouchableOpacity>
+            ) : !isIdentityVerified ? (
+              <TouchableOpacity style={styles.ownerHeroPrimaryButton} onPress={() => checkIdentity('publish')}>
+                <Ionicons name="shield-checkmark-outline" size={18} color={Colors.gray[900]} />
+                <Text style={styles.ownerHeroPrimaryButtonText}>Vérifier mon identité</Text>
+              </TouchableOpacity>
             ) : (
-              <View style={styles.avatar}>
-                <Ionicons name="person" size={24} color={Colors.gray[500]} />
+              <View style={styles.ownerHeroHintRow}>
+                <Ionicons name="information-circle-outline" size={16} color={Colors.white} />
+                <Text style={styles.ownerHeroHintText}>
+                  Faites défiler pour consulter tout le détail de la demande et votre proposition.
+                </Text>
               </View>
             )}
-            <View style={styles.passengerInfo}>
-              <Text style={styles.passengerName}>{tripRequest.passengerName}</Text>
-              <Text style={styles.passengerDate}>
-                Demandé le {formatDateWithRelativeLabel(tripRequest.createdAt, false)}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Itinéraire */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Itinéraire</Text>
-          <View style={styles.routeCard}>
-            <View style={styles.routeRow}>
-              <Ionicons name="location" size={20} color={Colors.success} />
-              <View style={styles.routeInfo}>
-                <Text style={styles.routeLabel}>Départ</Text>
-                <Text style={styles.routeText}>{tripRequest.departure.name}</Text>
-              </View>
-            </View>
-            <View style={styles.routeDivider} />
-            <View style={styles.routeRow}>
-              <Ionicons name="navigate" size={20} color={Colors.primary} />
-              <View style={styles.routeInfo}>
-                <Text style={styles.routeLabel}>Destination</Text>
-                <Text style={styles.routeText}>{tripRequest.arrival.name}</Text>
-              </View>
-            </View>
-          </View>
-        </View>
+          </LinearGradient>
+        )}
 
         {/* Carte du trajet */}
-        {tripRequest.departure.lat && tripRequest.departure.lng && tripRequest.arrival.lat && tripRequest.arrival.lng && (
+        {false && tripRequest.departure.lat && tripRequest.departure.lng && tripRequest.arrival.lat && tripRequest.arrival.lng && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Carte du trajet</Text>
             <View style={styles.mapCard}>
@@ -1060,10 +1353,20 @@ export default function TripRequestDetailsScreen() {
           </View>
         )}
 
-        {/* Détails */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Détails</Text>
+        {false && (
+          <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Informations utiles</Text>
           <View style={styles.detailsCard}>
+            <View style={styles.detailRow}>
+              <Ionicons name="radio-outline" size={20} color={Colors.gray[600]} />
+              <View style={styles.detailInfo}>
+                <Text style={styles.detailLabel}>Demande publiée</Text>
+                <Text style={styles.detailValue}>
+                  {formatDateWithRelativeLabel(tripRequest.createdAt, false)}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.detailDivider} />
             <View style={styles.detailRow}>
               <Ionicons name="calendar-outline" size={20} color={Colors.gray[600]} />
               <View style={styles.detailInfo}>
@@ -1109,15 +1412,32 @@ export default function TripRequestDetailsScreen() {
               </>
             )}
           </View>
-        </View>
+          </View>
+        )}
+
+        {tripRequest.description && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Note du passager</Text>
+            <View style={styles.detailsCard}>
+              <View style={styles.detailRow}>
+                <Ionicons name="document-text-outline" size={20} color={Colors.gray[600]} />
+                <View style={styles.detailInfo}>
+                  <Text style={styles.detailValue}>{tripRequest.description}</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Driver sélectionné et trajet créé (pour le propriétaire) */}
-        {isOwner && tripRequest.status === 'driver_selected' && tripRequest.selectedDriverId && (
+        {isOwner && (tripRequest.selectedDriverId || tripRequest.tripId) && (
           <View style={styles.section}>
             <View style={styles.sectionHeaderWithBadge}>
               <View style={styles.sectionTitleContainer}>
                 <Ionicons name="checkmark-circle" size={24} color={Colors.success} />
-                <Text style={styles.sectionTitle}>Conducteur choisi</Text>
+                <Text style={styles.sectionTitle}>
+                  {tripRequest.tripId ? 'Course en cours' : 'Conducteur choisi'}
+                </Text>
               </View>
             </View>
             <View style={[styles.offerCard, styles.offerCardAccepted]}>
@@ -1134,7 +1454,9 @@ export default function TripRequestDetailsScreen() {
                     </View>
                   )}
                   <View>
-                    <Text style={styles.driverName}>{tripRequest.selectedDriverName}</Text>
+                    <Text style={styles.driverName}>
+                      {tripRequest.selectedDriverName || 'Conducteur confirmé'}
+                    </Text>
                     {tripRequest.selectedVehicle && (
                       <Text style={styles.ratingText}>
                         {tripRequest.selectedVehicle.brand} {tripRequest.selectedVehicle.model}
@@ -1156,7 +1478,7 @@ export default function TripRequestDetailsScreen() {
                   <View style={styles.tripCreatedInfo}>
                     <Ionicons name="car" size={20} color={Colors.primary} />
                     <Text style={styles.tripCreatedText}>
-                      Le trajet a été créé et démarré. Vous pouvez suivre votre trajet en temps réel.
+                      Le conducteur a déjà lancé le trajet. Vous pouvez suivre la course en temps réel.
                     </Text>
                   </View>
                   <TouchableOpacity
@@ -1173,7 +1495,7 @@ export default function TripRequestDetailsScreen() {
         )}
 
         {/* Offres reçues (pour le propriétaire) */}
-        {isOwner && (
+        {false && isOwner && (
           <View style={styles.section}>
             <View style={styles.sectionHeaderWithBadge}>
               <View style={styles.sectionTitleContainer}>
@@ -1372,7 +1694,7 @@ export default function TripRequestDetailsScreen() {
                   <Text style={styles.messageText}>{myOffer.message}</Text>
                 </View>
               )}
-              {tripRequest.status === 'driver_selected' && myOffer.status === 'accepted' && (
+              {myOffer.status === 'accepted' && (tripRequest.status === 'driver_selected' || !!tripRequest.tripId) && (
                 <View style={styles.successMessage}>
                   <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
                   <Text style={styles.successMessageText}>
@@ -1409,42 +1731,10 @@ export default function TripRequestDetailsScreen() {
           </View>
         )}
 
-        {/* Bouton pour faire une proposition (pour les conducteurs uniquement) */}
-        {!isOwner && (
+        {/* Aide contextuelle pour les conducteurs non éligibles */}
+        {!isOwner && !myOffer && !canMakeOffer && (
           <View style={styles.section}>
-            {canMakeOffer ? (
-              <TouchableOpacity
-                style={styles.makeOfferButton}
-                onPress={() => {
-                  // Vérifier à nouveau avant d'ouvrir le formulaire
-                  const userRole = currentUser?.role;
-                  if (!(userRole === 'driver' || userRole === 'both')) {
-                    showDialog({
-                      title: 'Conducteur requis',
-                      message: 'Seuls les conducteurs peuvent proposer un covoiturage sur cette demande. Activez votre compte conducteur pour proposer vos places.',
-                      variant: 'warning',
-                      actions: [
-                        { label: 'Annuler', variant: 'ghost' },
-                        { 
-                          label: 'Devenir conducteur', 
-                          variant: 'primary', 
-                          onPress: () => router.push('/publish') 
-                        },
-                      ],
-                    });
-                    return;
-                  }
-                  if (!isIdentityVerified) {
-                    checkIdentity('publish');
-                    return;
-                  }
-                  openOfferForm();
-                }}
-              >
-                <Ionicons name="checkmark-circle-outline" size={24} color={Colors.white} />
-                <Text style={styles.makeOfferButtonText}>Faire une proposition</Text>
-              </TouchableOpacity>
-            ) : !(currentUser?.role === 'driver' || currentUser?.role === 'both') ? (
+            {!(currentUser?.role === 'driver' || currentUser?.role === 'both') ? (
               <View style={styles.driverRequiredCard}>
                 <View style={styles.driverRequiredIconContainer}>
                   <Ionicons name="car-outline" size={32} color={Colors.primary} />
@@ -2458,6 +2748,229 @@ const styles = StyleSheet.create({
   content: {
     padding: Spacing.lg,
   },
+  ownerHeroCard: {
+    borderRadius: BorderRadius.xxl,
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+    gap: Spacing.md,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 6,
+  },
+  ownerHeroTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  ownerHeroStatusBadge: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  ownerHeroStatusText: {
+    color: Colors.white,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  ownerHeroCounter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  ownerHeroCounterText: {
+    color: Colors.white,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  ownerHeroTitle: {
+    fontSize: FontSizes.xxl,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
+    lineHeight: 30,
+  },
+  ownerHeroSubtitle: {
+    fontSize: FontSizes.sm,
+    color: 'rgba(255,255,255,0.92)',
+    lineHeight: 20,
+  },
+  ownerHeroRouteCard: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.md,
+  },
+  ownerHeroRouteRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  ownerHeroRouteDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginTop: 5,
+    backgroundColor: Colors.white,
+  },
+  ownerHeroRouteSquare: {
+    borderRadius: 3,
+    backgroundColor: Colors.white,
+  },
+  ownerHeroRouteInfo: {
+    flex: 1,
+    marginLeft: Spacing.md,
+  },
+  ownerHeroRouteLabel: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: 'rgba(255,255,255,0.72)',
+    textTransform: 'uppercase',
+  },
+  ownerHeroRouteText: {
+    marginTop: 4,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.white,
+  },
+  ownerHeroRouteLine: {
+    width: 1,
+    height: 18,
+    backgroundColor: 'rgba(255,255,255,0.24)',
+    marginLeft: 5,
+    marginVertical: 6,
+  },
+  ownerHeroMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  ownerHeroMetaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  ownerHeroMetaText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+  },
+  ownerHeroSteps: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  ownerHeroStep: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+  },
+  ownerHeroStepDot: {
+    width: '100%',
+    height: 4,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  ownerHeroStepDotActive: {
+    backgroundColor: Colors.white,
+  },
+  ownerHeroStepText: {
+    fontSize: FontSizes.xs,
+    color: 'rgba(255,255,255,0.68)',
+    fontWeight: FontWeights.medium,
+  },
+  ownerHeroStepTextActive: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+  },
+  ownerHeroPrimaryButton: {
+    minHeight: 52,
+    borderRadius: BorderRadius.xl,
+    backgroundColor: Colors.white,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+  },
+  ownerHeroPrimaryButtonText: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+  },
+  ownerHeroHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+  },
+  ownerHeroHintText: {
+    flex: 1,
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: FontSizes.sm,
+    lineHeight: 20,
+  },
+  ownerHeroActions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  ownerHeroGhostButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+  },
+  ownerHeroGhostButtonDanger: {
+    backgroundColor: 'rgba(239,68,68,0.16)',
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  ownerHeroGhostButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  driverHeroPassengerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  driverHeroAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  driverHeroPassengerInfo: {
+    flex: 1,
+  },
+  driverHeroPassengerLabel: {
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    textTransform: 'uppercase',
+  },
+  driverHeroPassengerName: {
+    marginTop: 2,
+    color: Colors.white,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+  },
   statusCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2510,9 +3023,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: Spacing.md,
-    paddingBottom: Spacing.sm,
-    borderBottomWidth: 2,
-    borderBottomColor: Colors.info + '30',
+    gap: Spacing.sm,
   },
   sectionTitleContainer: {
     flexDirection: 'row',
@@ -2584,9 +3095,12 @@ const styles = StyleSheet.create({
     marginLeft: 28,
   },
   detailsCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
+    backgroundColor: '#FFFCF8',
+    borderRadius: BorderRadius.xxl,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.primary + '12',
+    ...CommonStyles.shadowSm,
   },
   detailRow: {
     flexDirection: 'row',
@@ -2613,22 +3127,22 @@ const styles = StyleSheet.create({
   },
   detailDivider: {
     height: 1,
-    backgroundColor: Colors.gray[200],
+    backgroundColor: Colors.gray[100],
     marginVertical: Spacing.md,
     marginLeft: 28,
   },
   offerCard: {
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
+    borderRadius: BorderRadius.xxl,
+    padding: Spacing.lg,
     marginBottom: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.gray[200],
     shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
   },
   offerCardPending: {
     borderColor: Colors.info,
@@ -2719,9 +3233,11 @@ const styles = StyleSheet.create({
   },
   messageContainer: {
     marginTop: Spacing.sm,
-    padding: Spacing.sm,
+    padding: Spacing.md,
     backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
   },
   messageText: {
     fontSize: FontSizes.sm,
@@ -2738,7 +3254,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: BorderRadius.md,
+    minHeight: 48,
+    borderRadius: BorderRadius.xl,
     paddingVertical: Spacing.sm,
     gap: Spacing.sm,
   },
@@ -2762,10 +3279,12 @@ const styles = StyleSheet.create({
   },
   successMessage: {
     backgroundColor: Colors.success + '15',
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
     marginTop: Spacing.md,
     gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.success + '20',
   },
   successMessageText: {
     fontSize: FontSizes.sm,
@@ -2778,11 +3297,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.success,
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.xl,
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.md,
     marginTop: Spacing.sm,
     gap: Spacing.xs,
+    minHeight: 46,
   },
   startTripButtonText: {
     color: Colors.white,
@@ -2794,7 +3314,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.xl,
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.md,
     marginTop: Spacing.sm,
@@ -2840,12 +3360,13 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
   },
   driverRequiredCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
+    backgroundColor: '#FFFCF8',
+    borderRadius: BorderRadius.xxl,
     padding: Spacing.lg,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Colors.gray[200],
+    borderColor: Colors.primary + '12',
+    ...CommonStyles.shadowSm,
   },
   driverRequiredIconContainer: {
     width: 64,
@@ -2875,7 +3396,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.xl,
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.lg,
     gap: Spacing.sm,
@@ -3336,13 +3857,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
   },
   noOffersContainer: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
+    backgroundColor: '#FFFCF8',
+    borderRadius: BorderRadius.xxl,
     padding: Spacing.xl,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: Colors.gray[200],
-    borderStyle: 'dashed',
+    borderWidth: 1,
+    borderColor: Colors.info + '18',
+    ...CommonStyles.shadowSm,
   },
   noOffersIconContainer: {
     width: 80,
@@ -3383,9 +3904,11 @@ const styles = StyleSheet.create({
   },
   mapCard: {
     height: 220,
-    borderRadius: BorderRadius.lg,
+    borderRadius: BorderRadius.xxl,
     overflow: 'hidden',
     backgroundColor: Colors.gray[200],
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
     shadowColor: Colors.black,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -3477,4 +4000,3 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
-

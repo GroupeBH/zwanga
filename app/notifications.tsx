@@ -10,6 +10,7 @@ import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import type { Notification } from '@/types';
 import { formatDateTime, formatRelativeTime } from '@/utils/dateHelpers';
 import { handleNotificationNavigation } from '@/utils/notificationNavigation';
+import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
@@ -409,7 +410,7 @@ export default function NotificationsScreen() {
             ) {
               const modalRequestId = extractTripRequestId(data);
               if (modalRequestId) {
-                router.push(`/request/${modalRequestId}`);
+                router.push(getTripRequestDetailHref(modalRequestId));
               }
                             } else if ((type === 'rate' || type === 'review') && tripId) {
                               router.push(`/rate/${tripId}`);
@@ -430,7 +431,7 @@ export default function NotificationsScreen() {
                             // Priorité 2 : Fallback selon les IDs disponibles
                             // Vérifier requestId AVANT tripId pour éviter de naviguer vers un trajet au lieu d'une demande
                             else if (requestId) {
-                              router.push(`/request/${requestId}`);
+                              router.push(getTripRequestDetailHref(requestId));
                             } else if (tripId) {
                               router.push(getTripUrl(tripId, data, type) as any);
                             } else if (conversationId) {
