@@ -96,6 +96,7 @@ module.exports = {
         'ACCESS_BACKGROUND_LOCATION',
         'FOREGROUND_SERVICE',
         'FOREGROUND_SERVICE_LOCATION',
+        'com.google.android.gms.permission.AD_ID',
       ],
     },
 
