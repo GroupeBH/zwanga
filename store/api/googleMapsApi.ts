@@ -65,6 +65,25 @@ export interface PlacesSearchRequest {
   language?: string;
 }
 
+export interface LandmarkPlacesRequest {
+  city?: string;
+  search?: string;
+  commune?: string;
+  category?: string;
+  limit?: number;
+}
+
+export interface LandmarkPlace {
+  id: string;
+  name: string;
+  query: string;
+  address: string;
+  commune: string;
+  category: string;
+  description?: string;
+  keywords: string[];
+}
+
 export interface Waypoint {
   address?: string;
   lat?: number;
@@ -178,6 +197,13 @@ export const googleMapsApi = baseApi.injectEndpoints({
       }),
     }),
 
+    getLandmarks: builder.query<LandmarkPlace[], LandmarkPlacesRequest | void>({
+      query: (params) => ({
+        url: '/google-maps/places/landmarks',
+        params,
+      }),
+    }),
+
     getDirections: builder.mutation<DirectionsResponse, DirectionsRequest>({
       query: (body) => ({
         url: '/google-maps/directions',
@@ -197,6 +223,8 @@ export const {
   useLazyGetPlaceDetailsQuery,
   usePlacesSearchQuery,
   useLazyPlacesSearchQuery,
+  useGetLandmarksQuery,
+  useLazyGetLandmarksQuery,
   useGetDirectionsMutation,
 } = googleMapsApi;
 

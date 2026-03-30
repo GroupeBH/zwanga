@@ -5,6 +5,7 @@ import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
+import { trackEvent } from '@/services/analytics';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackingSocket } from '@/services/trackingSocket';
 import {
@@ -24,7 +25,8 @@ import { selectTripById, selectUser } from '@/store/selectors';
 import type { BookingStatus, GeoPoint } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
 import { openWhatsApp } from '@/utils/phoneHelpers';
-import { getRouteInfo, isPointOnRoute, splitRouteByProgress, type RouteInfo } from '@/utils/routeHelpers';
+import { getRouteInfo, type RouteInfo } from '@/utils/routeApi';
+import { isPointOnRoute, splitRouteByProgress } from '@/utils/routeHelpers';
 import { shareTrip, shareTripViaWhatsApp } from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -697,6 +699,11 @@ export default function TripDetailsScreen() {
       }
 
       const conversation = await createConversation(payload).unwrap();
+      void trackEvent('conversation_opened', {
+        source_screen: 'trip_details',
+        trip_id: trip.id,
+        has_booking: Boolean(activeBooking?.id),
+      });
       router.push({
         pathname: '/chat/[id]',
         params: {
@@ -826,7 +833,7 @@ export default function TripDetailsScreen() {
     }
 
     try {
-      await createBooking({
+      const booking = await createBooking({
         tripId: trip.id,
         numberOfSeats: seatsValue,
         passengerOrigin: passengerOrigin?.title || passengerOrigin?.address,
@@ -841,11 +848,18 @@ export default function TripDetailsScreen() {
           : undefined,
         passengerDestinationCoordinates: hasCustomPassengerDestination && passengerDestination
           ? {
-            latitude: passengerDestination.latitude,
-            longitude: passengerDestination.longitude,
-          }
+              latitude: passengerDestination.latitude,
+              longitude: passengerDestination.longitude,
+            }
           : undefined,
       }).unwrap();
+      void trackEvent('booking_created', {
+        trip_id: trip.id,
+        booking_id: booking.id,
+        seats: seatsValue,
+        has_custom_destination: hasCustomPassengerDestination,
+        has_custom_origin: Boolean(passengerOrigin),
+      });
       setBookingModalVisible(false);
       setBookingModalError('');
       setPassengerOrigin(null);
@@ -869,6 +883,11 @@ export default function TripDetailsScreen() {
     }
     try {
       await cancelBookingMutation(activeBooking.id).unwrap();
+      void trackEvent('booking_cancelled', {
+        booking_id: activeBooking.id,
+        trip_id: activeBooking.tripId,
+        source_screen: 'trip_details',
+      });
       showDialog({
         variant: 'success',
         title: 'Réservation annulée',
@@ -909,6 +928,11 @@ export default function TripDetailsScreen() {
     }
     try {
       await confirmPickupByPassenger(activeBooking.id).unwrap();
+      void trackEvent('booking_pickup_confirmed', {
+        booking_id: activeBooking.id,
+        trip_id: activeBooking.tripId,
+        source_screen: 'trip_details',
+      });
       showDialog({
         variant: 'success',
         title: 'Confirmation réussie',
@@ -934,6 +958,11 @@ export default function TripDetailsScreen() {
     }
     try {
       await confirmDropoffByPassenger(activeBooking.id).unwrap();
+      void trackEvent('booking_dropoff_confirmed', {
+        booking_id: activeBooking.id,
+        trip_id: activeBooking.tripId,
+        source_screen: 'trip_details',
+      });
       showDialog({
         variant: 'success',
         title: 'Confirmation réussie',

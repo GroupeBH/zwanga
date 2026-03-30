@@ -4,6 +4,7 @@ import {
 import { registerBackgroundNotificationTask } from '@/services/backgroundNotificationTask';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { getTripUrl, handleNotificationNavigation } from '@/utils/notificationNavigation';
+import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
@@ -44,7 +45,7 @@ export function NotificationHandler() {
     const linkingListener = Linking.addEventListener('url', (event) => {
       const { url } = event;
       try {
-        const route = url.replace('zwanga://', '');
+        const route = url.replace('zwanga://', '').replace(/^\/+/, '');
 
         const parseQueryParams = (queryString: string): Record<string, string> => {
           const params: Record<string, string> = {};
@@ -97,10 +98,7 @@ export function NotificationHandler() {
           });
         } else if (route.startsWith('request/')) {
           const requestId = route.replace('request/', '').split('?')[0];
-          router.push({
-            pathname: '/request/[id]',
-            params: { id: requestId },
-          });
+          router.push(getTripRequestDetailHref(requestId));
         } else if (route.startsWith('bookings')) {
           router.push('/bookings');
         } else if (route.startsWith('rate/')) {

@@ -1,5 +1,6 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { trackEvent } from '@/services/analytics';
 import { chatSocket } from '@/services/chatSocket';
 import { messageApi, useDeleteConversationMessageMutation, useEditConversationMessageMutation, useGetConversationMessagesQuery, useGetConversationQuery, useMarkConversationAsReadMutation, useSendConversationMessageMutation } from '@/store/api/messageApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -148,6 +149,11 @@ export default function ChatScreen() {
     // Mode envoi normal
     try {
       const saved = await sendMessageMutation({ conversationId, content }).unwrap();
+      void trackEvent('message_sent', {
+        conversation_id: conversationId,
+        has_booking: Boolean(conversation?.bookingId),
+        content_length: content.length,
+      });
       dispatch(
         messageApi.util.updateQueryData('getConversationMessages', { conversationId }, (draft) => {
           draft.push(saved);

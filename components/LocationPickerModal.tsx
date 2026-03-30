@@ -1,4 +1,5 @@
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useGetLandmarksQuery, type LandmarkPlace } from '@/store/api/googleMapsApi';
 import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
 import { getGoogleMapsPlaceDetails, searchGoogleMapsPlaces, type GoogleMapsSearchSuggestion } from '@/utils/googleMapsPlaces';
 import { findClosestPointOnRoute } from '@/utils/routeHelpers';
@@ -37,8 +38,9 @@ type LocationPickerModalProps = {
   initialLocation?: MapLocationSelection | null;
   onClose: () => void;
   onSelect: (location: MapLocationSelection) => void;
-  routeCoordinates?: Array<{ latitude: number; longitude: number }>;
+  routeCoordinates?: { latitude: number; longitude: number }[];
   restrictToRoute?: boolean;
+  autoLocateOnOpen?: boolean;
 };
 
 type SearchResult = MapLocationSelection;
@@ -102,6 +104,7 @@ export default function LocationPickerModal({
   initialLocation,
   routeCoordinates,
   restrictToRoute = false,
+  autoLocateOnOpen = true,
 }: LocationPickerModalProps) {
   const mapRef = useRef<MapView>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -170,9 +173,18 @@ export default function LocationPickerModal({
   };
 
   // Récupérer les lieux favoris
-  const { data: favoriteLocations = [], isLoading: favoritesLoading } = useGetFavoriteLocationsQuery(undefined, {
+  const { data: favoriteLocations = [] } = useGetFavoriteLocationsQuery(undefined, {
     skip: !visible, // Ne charger que quand le modal est visible
   });
+  const { data: kinshasaLandmarks = [] } = useGetLandmarksQuery(
+    {
+      city: 'kinshasa',
+      limit: 6,
+    },
+    {
+      skip: !visible,
+    },
+  );
 
   // Convertir les lieux favoris en SearchResult
   const favoriteLocationsAsResults = useMemo<SearchResult[]>(() => {
@@ -212,7 +224,9 @@ export default function LocationPickerModal({
         animateToCoordinate(initialLocation.latitude, initialLocation.longitude);
       } else {
         // Si pas d'initialLocation, récupérer la position actuelle
-        await requestUserLocation();
+        if (autoLocateOnOpen) {
+          await requestUserLocation();
+        }
       }
     };
 
@@ -225,13 +239,15 @@ export default function LocationPickerModal({
       setSelectedLocation(initialLocation);
       animateToCoordinate(initialLocation.latitude, initialLocation.longitude);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialLocation, visible]);
 
   // clean geocoding timeout when component unmount
   useEffect(() => {
+    const geocodeTimeout = geocodeTimeoutRef.current;
     return () => {
-      if (geocodeTimeoutRef.current) {
-        clearTimeout(geocodeTimeoutRef.current);
+      if (geocodeTimeout) {
+        clearTimeout(geocodeTimeout);
       }
     };
   }, []);
@@ -363,28 +379,6 @@ export default function LocationPickerModal({
     } finally {
       setIsGeocoding(false);
     }
-  };
-
-  // Removed getCoordinates - no longer needed with Google Maps
-  const _unused_getCoordinates = (center: any): [number, number] | null => {
-    if (Array.isArray(center) && center.length >= 2) {
-      const [lng, lat] = center;
-      if (
-        typeof lng === 'number' &&
-        typeof lat === 'number' &&
-        !isNaN(lng) &&
-        !isNaN(lat) &&
-        isFinite(lng) &&
-        isFinite(lat) &&
-        lat >= -90 &&
-        lat <= 90 &&
-        lng >= -180 &&
-        lng <= 180
-      ) {
-        return [lng, lat];
-      }
-    }
-    return null;
   };
 
   const handleCameraChanged = (region: Region) => {
@@ -930,6 +924,26 @@ export default function LocationPickerModal({
     }
   };
 
+  const handleLandmarkDirectoryPress = async (landmark: LandmarkPlace) => {
+    const query = landmark.query || landmark.name;
+    setSearchQuery(query);
+    setSearchResults([]);
+
+    try {
+      const proximity = selectedLocation
+        ? { longitude: selectedLocation.longitude, latitude: selectedLocation.latitude }
+        : undefined;
+      const suggestions = await searchGoogleMapsPlaces(query, proximity, 1);
+      const firstSuggestion = suggestions[0];
+
+      if (firstSuggestion) {
+        await handleGoogleMapsSuggestionPress(firstSuggestion);
+      }
+    } catch (error) {
+      console.warn('Landmark lookup failed', error);
+    }
+  };
+
   const handleClose = useCallback(() => {
     console.log('[LocationPickerModal] handleClose called, visible:', visible);
     if (typeof onClose === 'function') {
@@ -939,7 +953,7 @@ export default function LocationPickerModal({
     }
   }, [onClose, visible]);
 
-  const handleConfirm = useCallback(async () => {
+  const handleConfirm = async () => {
     try {
       setIsConfirming(true);
       
@@ -976,7 +990,7 @@ export default function LocationPickerModal({
     } finally {
       setIsConfirming(false);
     }
-  }, [selectedLocation, onSelect, handleClose]);
+  };
 
   const coordinateDisplay = useMemo(() => {
     if (!selectedLocation) {
@@ -1036,6 +1050,33 @@ export default function LocationPickerModal({
         </View>
 
         {/* Lieux favoris - affichés quand il n'y a pas de recherche active */}
+        {!searchQuery.trim() && kinshasaLandmarks.length > 0 && (
+          <View style={styles.resultsContainer}>
+            <View style={styles.favoritesHeader}>
+              <Ionicons name="navigate" size={16} color={Colors.primary} />
+              <Text style={styles.favoritesHeaderText}>Reperes de Kinshasa</Text>
+            </View>
+            <FlatList
+              data={kinshasaLandmarks}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.resultRow}
+                  onPress={() => handleLandmarkDirectoryPress(item)}
+                >
+                  <Ionicons name="location" size={18} color={Colors.primary} />
+                  <View style={styles.resultContent}>
+                    <Text style={styles.resultTitle}>{item.name}</Text>
+                    <Text style={styles.resultSubtitle} numberOfLines={1}>
+                      {item.commune} • {item.address}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        )}
+
         {!searchQuery.trim() && favoriteLocationsAsResults.length > 0 && (
           <View style={styles.resultsContainer}>
             <View style={styles.favoritesHeader}>

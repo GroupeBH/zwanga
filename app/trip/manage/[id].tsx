@@ -2,6 +2,7 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import { trackEvent } from '@/services/analytics';
 import {
   useAcceptBookingMutation,
   useConfirmDropoffMutation,
@@ -203,6 +204,11 @@ export default function ManageTripScreen() {
     setProcessingBookingId(bookingId);
     try {
       await acceptBooking(bookingId).unwrap();
+      void trackEvent('booking_accepted', {
+        booking_id: bookingId,
+        trip_id: trip?.id ?? '',
+        source_screen: 'trip_manage',
+      });
       showFeedback('success', 'La réservation a été acceptée.');
       refreshAll();
     } catch (error: any) {
@@ -223,6 +229,11 @@ export default function ManageTripScreen() {
     setProcessingBookingId(targetBooking.id);
     try {
       await rejectBooking({ id: targetBooking.id, reason: rejectReason.trim() }).unwrap();
+      void trackEvent('booking_rejected', {
+        booking_id: targetBooking.id,
+        trip_id: trip?.id ?? '',
+        source_screen: 'trip_manage',
+      });
       showFeedback('success', 'La réservation a été refusée.');
       closeRejectModal();
       refreshAll();
@@ -249,6 +260,10 @@ export default function ManageTripScreen() {
           onPress: async () => {
             try {
               await startTrip(trip.id).unwrap();
+              void trackEvent('trip_started', {
+                trip_id: trip.id,
+                source_screen: 'trip_manage',
+              });
               showFeedback('success', 'Le trajet a été démarré avec succès.');
               refreshAll();
             } catch (error: any) {
@@ -276,6 +291,10 @@ export default function ManageTripScreen() {
           onPress: async () => {
             try {
               await pauseTrip(trip.id).unwrap();
+              void trackEvent('trip_paused', {
+                trip_id: trip.id,
+                source_screen: 'trip_manage',
+              });
               showFeedback('success', 'Le trajet a été interrompu avec succès.');
               refreshAll();
             } catch (error: any) {
@@ -318,6 +337,11 @@ export default function ManageTripScreen() {
   const handleConfirmPickup = async (bookingId: string) => {
     try {
       await confirmPickup(bookingId).unwrap();
+      void trackEvent('driver_pickup_confirmed', {
+        booking_id: bookingId,
+        trip_id: trip?.id ?? '',
+        source_screen: 'trip_manage',
+      });
       showFeedback('success', 'Récupération du passager confirmée.');
       refreshAll();
     } catch (error: any) {
@@ -330,6 +354,11 @@ export default function ManageTripScreen() {
   const handleConfirmDropoff = async (bookingId: string) => {
     try {
       await confirmDropoff(bookingId).unwrap();
+      void trackEvent('driver_dropoff_confirmed', {
+        booking_id: bookingId,
+        trip_id: trip?.id ?? '',
+        source_screen: 'trip_manage',
+      });
       showFeedback('success', 'Dépose du passager confirmée.');
       refreshAll();
     } catch (error: any) {
@@ -353,6 +382,10 @@ export default function ManageTripScreen() {
           onPress: async () => {
             try {
               await updateTrip({ id: trip.id, updates: { status: 'cancelled' } }).unwrap();
+              void trackEvent('trip_cancelled', {
+                trip_id: trip.id,
+                source_screen: 'trip_manage',
+              });
               showFeedback('success', 'Le trajet a été annulé.');
               router.back();
             } catch (error: any) {
@@ -380,6 +413,10 @@ export default function ManageTripScreen() {
           onPress: async () => {
             try {
               await updateTrip({ id: trip.id, updates: { status: 'completed' } }).unwrap();
+              void trackEvent('trip_completed', {
+                trip_id: trip.id,
+                source_screen: 'trip_manage',
+              });
               showFeedback('success', 'Le trajet a été terminé avec succès.');
               refreshAll();
             } catch (error: any) {

@@ -1,14 +1,18 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { trackEvent } from '@/services/analytics';
 import {
   TripSearchByPointsPayload,
   TripSearchParams,
   useGetTripsQuery,
   useSearchTripsByCoordinatesMutation,
 } from '@/store/api/tripApi';
+import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
+import { useGetLandmarksQuery, type LandmarkPlace } from '@/store/api/googleMapsApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTrips } from '@/store/selectors';
-import type { Trip } from '@/types';
+import type { FavoriteLocation, Trip } from '@/types';
 import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
+import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { searchMapboxPlaces, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +31,63 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+const FALLBACK_KINSHASA_LANDMARKS: LandmarkPlace[] = [
+  {
+    id: 'fallback-victoire',
+    name: 'Victoire',
+    query: 'Victoire, Kalamu, Kinshasa',
+    address: 'Avenue Victoire, Kalamu, Kinshasa',
+    commune: 'Kalamu',
+    category: 'rond-point',
+    keywords: ['victoire', 'kalamu'],
+  },
+  {
+    id: 'fallback-zando',
+    name: 'Zando',
+    query: 'Marche Central Zando, Gombe, Kinshasa',
+    address: 'Marche Central, Gombe, Kinshasa',
+    commune: 'Gombe',
+    category: 'marche',
+    keywords: ['zando', 'marche central'],
+  },
+  {
+    id: 'fallback-upn',
+    name: 'UPN',
+    query: 'Universite Pedagogique Nationale, Ngaliema, Kinshasa',
+    address: 'UPN, Ngaliema, Kinshasa',
+    commune: 'Ngaliema',
+    category: 'universite',
+    keywords: ['upn'],
+  },
+  {
+    id: 'fallback-ngaba',
+    name: 'Rond-point Ngaba',
+    query: 'Rond-point Ngaba, Ngaba, Kinshasa',
+    address: 'Rond-point Ngaba, Kinshasa',
+    commune: 'Ngaba',
+    category: 'rond-point',
+    keywords: ['ngaba'],
+  },
+  {
+    id: 'fallback-matonge',
+    name: 'Matonge',
+    query: 'Matonge, Kalamu, Kinshasa',
+    address: 'Matonge, Kalamu, Kinshasa',
+    commune: 'Kalamu',
+    category: 'quartier',
+    keywords: ['matonge'],
+  },
+  {
+    id: 'fallback-kintambo',
+    name: 'Kintambo Magasin',
+    query: 'Kintambo Magasin, Kintambo, Kinshasa',
+    address: 'Kintambo Magasin, Kinshasa',
+    commune: 'Kintambo',
+    category: 'quartier',
+    keywords: ['kintambo magasin'],
+  },
+];
+
 export default function SearchScreen() {
   const router = useRouter();
   const searchParams = useLocalSearchParams<{
@@ -43,6 +104,11 @@ export default function SearchScreen() {
     arrivalLabel?: string;
   }>();
   const storedTrips = useAppSelector(selectTrips);
+  const { data: favoriteLocations = [] } = useGetFavoriteLocationsQuery();
+  const { data: kinshasaLandmarks = [] } = useGetLandmarksQuery({
+    city: 'kinshasa',
+    limit: 8,
+  });
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
   const [departureSuggestions, setDepartureSuggestions] = useState<MapboxSearchSuggestion[]>([]);
@@ -52,6 +118,7 @@ export default function SearchScreen() {
   const [activeSearchField, setActiveSearchField] = useState<'departure' | 'arrival' | null>(null);
   const departureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const arrivalTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastTrackedTextSearchKeyRef = useRef<string | null>(null);
   const [queryParams, setQueryParams] = useState<TripSearchParams>({});
   const [advancedTrips, setAdvancedTrips] = useState<Trip[] | null>(null);
   const [advancedError, setAdvancedError] = useState<string | null>(null);
@@ -59,6 +126,8 @@ export default function SearchScreen() {
     useState<TripSearchByPointsPayload | null>(null);
   const [searchTripsByCoordinates, { isLoading: isAdvancedSearching }] =
     useSearchTripsByCoordinatesMutation();
+  const landmarkShortcuts =
+    kinshasaLandmarks.length > 0 ? kinshasaLandmarks : FALLBACK_KINSHASA_LANDMARKS;
 
   const {
     data: remoteTrips,
@@ -163,6 +232,23 @@ export default function SearchScreen() {
     setActiveSearchField(null);
   };
 
+  const activeSuggestions = useMemo(
+    () => (activeSearchField === 'departure' ? departureSuggestions : arrivalSuggestions),
+    [activeSearchField, arrivalSuggestions, departureSuggestions],
+  );
+
+  const activeSuggestionQuery = activeSearchField === 'departure' ? departure : arrival;
+  const visibleSuggestions = useMemo(() => activeSuggestions.slice(0, 3), [activeSuggestions]);
+  const showSuggestionPanel = !!activeSearchField && visibleSuggestions.length > 0;
+  const textSearchKey = useMemo(
+    () =>
+      JSON.stringify({
+        departureLocation: queryParams.departureLocation ?? '',
+        arrivalLocation: queryParams.arrivalLocation ?? '',
+      }),
+    [queryParams.arrivalLocation, queryParams.departureLocation],
+  );
+
   // Fonction pour mettre en évidence le texte recherché
   const highlightText = (text: string, query: string) => {
     if (!query || query.trim().length === 0) {
@@ -201,14 +287,55 @@ export default function SearchScreen() {
   };
 
   const handleApplySearch = () => {
+    const nextParams = {
+      departureLocation: departure.trim() || undefined,
+      arrivalLocation: arrival.trim() || undefined,
+    };
     setDepartureSuggestions([]);
     setArrivalSuggestions([]);
     setActiveSearchField(null);
     clearAdvancedFilter();
-    setQueryParams({
-      departureLocation: departure.trim() || undefined,
-      arrivalLocation: arrival.trim() || undefined,
+    lastTrackedTextSearchKeyRef.current = null;
+    setQueryParams(nextParams);
+    void trackEvent('search_submitted', {
+      search_mode: 'text',
+      has_departure: Boolean(nextParams.departureLocation),
+      has_arrival: Boolean(nextParams.arrivalLocation),
     });
+  };
+
+  const handleFavoriteLocationShortcut = (location: FavoriteLocation) => {
+    const value = location.address || location.name;
+
+    if (activeSearchField === 'arrival') {
+      setArrival(value);
+      setArrivalSuggestions([]);
+    } else if (activeSearchField === 'departure' || !departure.trim()) {
+      setDeparture(value);
+      setDepartureSuggestions([]);
+    } else {
+      setArrival(value);
+      setArrivalSuggestions([]);
+    }
+
+    setActiveSearchField(null);
+  };
+
+  const handleLandmarkShortcut = (landmark: LandmarkPlace) => {
+    const value = landmark.query || landmark.name;
+
+    if (activeSearchField === 'arrival') {
+      setArrival(value);
+      setArrivalSuggestions([]);
+    } else if (activeSearchField === 'departure' || !departure.trim()) {
+      setDeparture(value);
+      setDepartureSuggestions([]);
+    } else {
+      setArrival(value);
+      setArrivalSuggestions([]);
+    }
+
+    setActiveSearchField(null);
   };
 
   const runAdvancedSearch = async (payload: TripSearchByPointsPayload) => {
@@ -217,6 +344,12 @@ export default function SearchScreen() {
     try {
       const results = await searchTripsByCoordinates(payload).unwrap();
       setAdvancedTrips(results);
+      void trackEvent('search_results_viewed', {
+        search_mode: 'coordinates',
+        results_count: results.length,
+        departure_radius_km: payload.departureRadiusKm,
+        arrival_radius_km: payload.arrivalRadiusKm,
+      });
     } catch (error: any) {
       const message =
         error?.data?.message ?? error?.error ?? 'Impossible de filtrer par carte pour le moment.';
@@ -235,6 +368,28 @@ export default function SearchScreen() {
       runAdvancedSearch(lastAdvancedPayload);
     }
   };
+
+  useEffect(() => {
+    if (!remoteTrips) {
+      return;
+    }
+
+    if (!queryParams.departureLocation && !queryParams.arrivalLocation) {
+      return;
+    }
+
+    if (lastTrackedTextSearchKeyRef.current === textSearchKey) {
+      return;
+    }
+
+    lastTrackedTextSearchKeyRef.current = textSearchKey;
+    void trackEvent('search_results_viewed', {
+      search_mode: 'text',
+      results_count: remoteTrips.length,
+      has_departure: Boolean(queryParams.departureLocation),
+      has_arrival: Boolean(queryParams.arrivalLocation),
+    });
+  }, [queryParams.arrivalLocation, queryParams.departureLocation, remoteTrips, textSearchKey]);
 
   useEffect(() => {
     const departureParam = typeof searchParams.departure === 'string' ? searchParams.departure : '';
@@ -404,28 +559,48 @@ export default function SearchScreen() {
           </View>
         </View>
         
-        {/* Suggestions affichées en dehors du searchBox pour éviter le chevauchement */}
-        {departureSuggestions.length > 0 && activeSearchField === 'departure' && (
+        {/* Suggestions affichées dans un panneau compact pour garder l'écran léger */}
+        {showSuggestionPanel && (
           <View style={styles.suggestionsContainerAbsolute}>
+            <View style={styles.suggestionsPanelHeader}>
+              <View style={styles.suggestionsPanelBadge}>
+                <Ionicons
+                  name={activeSearchField === 'departure' ? 'location-outline' : 'flag-outline'}
+                  size={14}
+                  color={Colors.primary}
+                />
+                <Text style={styles.suggestionsPanelBadgeText}>
+                  {activeSearchField === 'departure' ? 'Départ' : 'Arrivée'}
+                </Text>
+              </View>
+              <Text style={styles.suggestionsPanelHint}>Touchez une suggestion</Text>
+            </View>
             <FlatList
-              data={departureSuggestions}
+              data={visibleSuggestions}
               keyExtractor={(item, index) => `${item.id}-${index}`}
+              keyboardShouldPersistTaps="handled"
               renderItem={({ item, index }) => (
                 <TouchableOpacity
                   style={[
                     styles.suggestionRow,
-                    index === departureSuggestions.length - 1 && styles.suggestionRowLast,
+                    index === visibleSuggestions.length - 1 && styles.suggestionRowLast,
                   ]}
-                  onPress={() => handleDepartureSuggestionSelect(item)}
+                  onPress={() =>
+                    activeSearchField === 'departure'
+                      ? handleDepartureSuggestionSelect(item)
+                      : handleArrivalSuggestionSelect(item)
+                  }
                 >
-                  <Ionicons
-                    name={getPlaceIcon(item) as any}
-                    size={20}
-                    color={getPlaceIcon(item) === 'search' ? Colors.primary : Colors.gray[900]}
-                  />
+                  <View style={styles.suggestionIconBadge}>
+                    <Ionicons
+                      name={getPlaceIcon(item) as any}
+                      size={17}
+                      color={getPlaceIcon(item) === 'search' ? Colors.primary : Colors.gray[700]}
+                    />
+                  </View>
                   <View style={styles.suggestionContent}>
-                    <Text style={styles.suggestionTitle}>
-                      {highlightText(item.name, departure)}
+                    <Text style={styles.suggestionTitle} numberOfLines={1}>
+                      {highlightText(item.name, activeSuggestionQuery)}
                     </Text>
                     {item.fullAddress && (
                       <Text style={styles.suggestionSubtitle} numberOfLines={1}>
@@ -433,46 +608,10 @@ export default function SearchScreen() {
                       </Text>
                     )}
                   </View>
-                  <Ionicons name="arrow-up-left" size={16} color={Colors.primary} />
+                  <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
                 </TouchableOpacity>
               )}
-              scrollEnabled={false}
-            />
-          </View>
-        )}
-        
-        {arrivalSuggestions.length > 0 && activeSearchField === 'arrival' && (
-          <View style={styles.suggestionsContainerAbsolute}>
-            <FlatList
-              data={arrivalSuggestions}
-              keyExtractor={(item, index) => `${item.id}-${index}`}
-              renderItem={({ item, index }) => (
-                <TouchableOpacity
-                  style={[
-                    styles.suggestionRow,
-                    index === arrivalSuggestions.length - 1 && styles.suggestionRowLast,
-                  ]}
-                  onPress={() => handleArrivalSuggestionSelect(item)}
-                >
-                  <Ionicons
-                    name={getPlaceIcon(item) as any}
-                    size={20}
-                    color={getPlaceIcon(item) === 'search' ? Colors.primary : Colors.gray[900]}
-                  />
-                  <View style={styles.suggestionContent}>
-                    <Text style={styles.suggestionTitle}>
-                      {highlightText(item.name, arrival)}
-                    </Text>
-                    {item.fullAddress && (
-                      <Text style={styles.suggestionSubtitle} numberOfLines={1}>
-                        {item.fullAddress}
-                      </Text>
-                    )}
-                  </View>
-                  <Ionicons name="arrow-up-left" size={16} color={Colors.primary} />
-                </TouchableOpacity>
-              )}
-              scrollEnabled={false}
+              scrollEnabled={activeSuggestions.length > visibleSuggestions.length}
             />
           </View>
         )}
@@ -483,6 +622,61 @@ export default function SearchScreen() {
             <Text style={styles.searchButtonText}>Rechercher</Text>
           )}
         </TouchableOpacity>
+
+        <View style={styles.favoriteShortcutsSection}>
+          <View style={styles.favoriteShortcutsHeader}>
+            <View>
+              <Text style={styles.favoriteShortcutsTitle}>Acces rapides</Text>
+              <Text style={styles.favoriteShortcutsHint}>Choisissez un repere sans quitter les resultats</Text>
+            </View>
+            {favoriteLocations.length > 0 && (
+              <TouchableOpacity onPress={() => router.push('/favorite-locations')}>
+                <Text style={styles.favoriteShortcutsLink}>Gerer</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.favoriteShortcutsScroll}
+          >
+            {favoriteLocations.slice(0, 4).map((location) => {
+              const icon =
+                location.type === 'home'
+                  ? 'home'
+                  : location.type === 'work'
+                    ? 'briefcase'
+                    : 'location';
+
+              return (
+                <TouchableOpacity
+                  key={location.id}
+                  style={[styles.favoriteShortcutChip, styles.favoriteShortcutChipFavorite]}
+                  onPress={() => handleFavoriteLocationShortcut(location)}
+                >
+                  <Ionicons name={icon} size={14} color={Colors.primary} />
+                  <Text style={styles.favoriteShortcutText} numberOfLines={1}>
+                    {location.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+
+            {landmarkShortcuts.slice(0, 6).map((landmark) => (
+              <TouchableOpacity
+                key={landmark.id}
+                style={styles.favoriteShortcutChip}
+                onPress={() => handleLandmarkShortcut(landmark)}
+              >
+                <Ionicons name="navigate" size={14} color={Colors.primary} />
+                <Text style={styles.favoriteShortcutText} numberOfLines={1}>
+                  {landmark.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
       </View>
 
       {/* Résultats */}
@@ -494,7 +688,7 @@ export default function SearchScreen() {
         {(queryLoading || isAdvancedSearching) && !filteredTrips.length ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loadingText}>Recherche des trajets…</Text>
+            <Text style={styles.loadingText}>Recherche des trajets...</Text>
           </View>
         ) : null}
 
@@ -521,7 +715,7 @@ export default function SearchScreen() {
             </Text>
             <TouchableOpacity
               style={styles.createRequestButton}
-              onPress={() => router.push('/request')}
+                onPress={() => router.push(getTripRequestCreateHref())}
             >
               <Ionicons name="add-circle" size={20} color={Colors.white} />
               <Text style={styles.createRequestButtonText}>Créer une demande de trajet</Text>
@@ -637,14 +831,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.lg,
-    paddingBottom: Spacing.md,
+    paddingBottom: Spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[200],
   },
   headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
   },
   backButton: {
     marginRight: Spacing.lg,
@@ -658,7 +852,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
     borderRadius: BorderRadius.xl,
     padding: Spacing.md,
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   searchButton: {
     backgroundColor: Colors.primary,
@@ -667,11 +861,60 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: Spacing.sm,
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   searchButtonText: {
     color: Colors.white,
     fontWeight: FontWeights.bold,
+  },
+  favoriteShortcutsSection: {
+    marginBottom: Spacing.sm,
+  },
+  favoriteShortcutsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
+  favoriteShortcutsTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[700],
+  },
+  favoriteShortcutsLink: {
+    fontSize: FontSizes.sm,
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  favoriteShortcutsHint: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    fontWeight: FontWeights.medium,
+    marginTop: 2,
+  },
+  favoriteShortcutsScroll: {
+    gap: Spacing.sm,
+    paddingRight: Spacing.xl,
+  },
+  favoriteShortcutChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.primary + '20',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm - 2,
+  },
+  favoriteShortcutChipFavorite: {
+    backgroundColor: Colors.primary + '08',
+  },
+  favoriteShortcutText: {
+    maxWidth: 116,
+    color: Colors.gray[800],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
   },
   searchRowContainer: {
     position: 'relative',
@@ -723,39 +966,78 @@ const styles = StyleSheet.create({
   },
   suggestionsContainerAbsolute: {
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.md,
-    marginTop: -Spacing.md,
+    borderRadius: BorderRadius.xl,
+    marginTop: -Spacing.sm,
     marginBottom: Spacing.md,
     marginHorizontal: Spacing.xl,
-    maxHeight: 300,
+    maxHeight: 240,
     zIndex: 1000,
     ...CommonStyles.shadowLg,
     borderWidth: 1,
     borderColor: Colors.gray[200],
   },
+  suggestionsPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+    gap: Spacing.sm,
+  },
+  suggestionsPanelBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '10',
+  },
+  suggestionsPanelBadgeText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+    textTransform: 'uppercase',
+  },
+  suggestionsPanelHint: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    fontWeight: FontWeights.medium,
+  },
   suggestionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
+    paddingVertical: Spacing.sm + 2,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[100],
   },
   suggestionRowLast: {
     borderBottomWidth: 0,
   },
+  suggestionIconBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.gray[100],
+  },
   suggestionContent: {
     flex: 1,
-    marginLeft: Spacing.md,
+    marginLeft: Spacing.sm,
   },
   suggestionTitle: {
-    fontSize: FontSizes.base,
+    fontSize: FontSizes.sm,
     color: Colors.gray[900],
-    fontWeight: FontWeights.medium,
-    marginBottom: Spacing.xs,
+    fontWeight: FontWeights.semibold,
   },
   suggestionSubtitle: {
-    fontSize: FontSizes.sm,
+    marginTop: 2,
+    fontSize: FontSizes.xs,
     color: Colors.gray[600],
   },
   filterButton: {

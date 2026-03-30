@@ -5,10 +5,11 @@ import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
 import {
   useDeleteTripMutation,
+  useGetMyRecurringTripsQuery,
   useGetMyTripsQuery,
   useUpdateTripMutation,
 } from '@/store/api/tripApi';
-import type { Booking, Trip } from '@/types';
+import type { Trip } from '@/types';
 import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
@@ -66,6 +67,7 @@ export default function TripsScreen() {
     refetchOnFocus: true,
     refetchOnReconnect: true,
   });
+  const { data: recurringTemplates = [] } = useGetMyRecurringTripsQuery();
   const [updateTripMutation, { isLoading: isSavingTrip }] = useUpdateTripMutation();
   const [deleteTripMutation, { isLoading: isDeletingTrip }] = useDeleteTripMutation();
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
@@ -92,7 +94,11 @@ export default function TripsScreen() {
     completeTripsGuide();
   };
 
-  const trips = myTrips ?? [];
+  const trips = useMemo(() => myTrips ?? [], [myTrips]);
+  const activeRecurringTemplates = useMemo(
+    () => recurringTemplates.filter((template) => template.status === 'active').length,
+    [recurringTemplates],
+  );
 
   const upcomingTrips = useMemo(
     () => {
@@ -123,6 +129,10 @@ export default function TripsScreen() {
         const dateA = new Date(a.departureTime).getTime();
         const dateB = new Date(b.departureTime).getTime();
         return dateB - dateA; // dateB - dateA = du plus récent au plus ancien
+      }).sort((a, b) => {
+        const dateA = new Date(a.departureTime).getTime();
+        const dateB = new Date(b.departureTime).getTime();
+        return dateA - dateB;
       });
     },
     [trips],
@@ -186,6 +196,10 @@ export default function TripsScreen() {
       const dateA = new Date(a.trip?.departureTime || a.createdAt).getTime();
       const dateB = new Date(b.trip?.departureTime || b.createdAt).getTime();
       return dateB - dateA;
+    }).sort((a, b) => {
+      const dateA = new Date(a.trip?.departureTime || a.createdAt).getTime();
+      const dateB = new Date(b.trip?.departureTime || b.createdAt).getTime();
+      return dateA - dateB;
     });
   }, [myBookings]);
 
@@ -210,7 +224,6 @@ export default function TripsScreen() {
   const displayTrips = subTab === 'upcoming' ? upcomingTrips : completedTrips;
   const displayBookings = subTab === 'upcoming' ? upcomingBookings : completedBookingsList;
   const displayData = mainTab === 'published' ? displayTrips : displayBookings;
-  const isEmpty = displayData.length === 0;
   const showLoader = (mainTab === 'published' ? tripsLoading : bookingsLoading) && (mainTab === 'published' ? trips.length === 0 : (myBookings?.length ?? 0) === 0);
   const isError = mainTab === 'published' ? tripsError : bookingsError;
   const isFetching = mainTab === 'published' ? tripsFetching : bookingsFetching;
@@ -498,6 +511,29 @@ export default function TripsScreen() {
           />
         }
       >
+        {mainTab === 'published' && (
+          <TouchableOpacity
+            style={styles.recurringHubCard}
+            onPress={() => router.push('/recurring-trips')}
+          >
+            <View style={styles.recurringHubIcon}>
+              <Ionicons name="repeat" size={20} color={Colors.white} />
+            </View>
+            <View style={styles.recurringHubContent}>
+              <Text style={styles.recurringHubTitle}>Trajets recurrents</Text>
+              <Text style={styles.recurringHubText}>
+                {recurringTemplates.length > 0
+                  ? `${activeRecurringTemplates} actif(s) et ${recurringTemplates.length} modele(s) a gerer`
+                  : 'Creez un modele pour publier automatiquement vos trajets habituels'}
+              </Text>
+            </View>
+            <View style={styles.recurringHubAction}>
+              <Text style={styles.recurringHubActionText}>Gerer</Text>
+              <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+            </View>
+          </TouchableOpacity>
+        )}
+
         {showLoader && (
           <View style={styles.loaderContainer}>
             <ActivityIndicator size="large" color={Colors.primary} />
@@ -1041,6 +1077,52 @@ const styles = StyleSheet.create({
   subTabTextActive: {
     color: Colors.gray[800],
     fontWeight: FontWeights.semibold,
+  },
+  recurringHubCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+    ...CommonStyles.shadowSm,
+  },
+  recurringHubIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  recurringHubContent: {
+    flex: 1,
+  },
+  recurringHubTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  recurringHubText: {
+    marginTop: 4,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    lineHeight: 19,
+  },
+  recurringHubAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: Colors.primary + '10',
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  recurringHubActionText: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.sm,
   },
   scrollView: {
     flex: 1,

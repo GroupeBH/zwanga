@@ -5,6 +5,7 @@ import { LayoutAnimationConfig, ReduceMotion, ReducedMotionConfig } from 'react-
 import { Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AnalyticsTracker } from '@/components/AnalyticsTracker';
 import { ReduxProvider } from '@/components/ReduxProvider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 // Importer les handlers de fond pour qu'ils soient enregistres au demarrage
@@ -24,6 +25,7 @@ export default function RootLayout() {
     <ReduxProvider>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <View style={styles.appRoot}>
+          <AnalyticsTracker />
           <Stack
             screenOptions={{
               headerShown: false,
@@ -37,6 +39,11 @@ export default function RootLayout() {
             <Stack.Screen name="auth" options={{ headerShown: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="publish" options={{ headerShown: false, presentation: 'modal' }} />
+            <Stack.Screen name="recurring-trips" options={{ headerShown: false }} />
+            <Stack.Screen name="request-create" options={{ headerShown: false, presentation: 'modal' }} />
+            <Stack.Screen name="request/index" options={{ headerShown: false, presentation: 'modal' }} />
+            <Stack.Screen name="request/[id]" options={{ headerShown: false }} />
+            <Stack.Screen name="request-details/[id]" options={{ headerShown: false }} />
             <Stack.Screen name="search" options={{ headerShown: false, presentation: 'modal' }} />
             <Stack.Screen name="settings" options={{ headerShown: false }} />
             <Stack.Screen name="support" options={{ headerShown: false }} />

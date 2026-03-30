@@ -1,6 +1,7 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
+import { trackEvent } from '@/services/analytics';
 import {
   useCancelBookingMutation,
   useConfirmDropoffByPassengerMutation,
@@ -157,6 +158,10 @@ export default function BookingsScreen() {
           onPress: async () => {
             try {
               await cancelBooking(bookingId).unwrap();
+              void trackEvent('booking_cancelled', {
+                booking_id: bookingId,
+                source_screen: 'bookings',
+              });
               refetch();
             } catch (error: any) {
               const message =
@@ -178,6 +183,10 @@ export default function BookingsScreen() {
   const handleConfirmPickup = async (bookingId: string) => {
     try {
       await confirmPickupByPassenger(bookingId).unwrap();
+      void trackEvent('booking_pickup_confirmed', {
+        booking_id: bookingId,
+        source_screen: 'bookings',
+      });
       showDialog({
         variant: 'success',
         title: 'Confirmation réussie',
@@ -200,6 +209,10 @@ export default function BookingsScreen() {
   const handleConfirmDropoff = async (bookingId: string) => {
     try {
       await confirmDropoffByPassenger(bookingId).unwrap();
+      void trackEvent('booking_dropoff_confirmed', {
+        booking_id: bookingId,
+        source_screen: 'bookings',
+      });
       showDialog({
         variant: 'success',
         title: 'Confirmation réussie',

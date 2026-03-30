@@ -18,6 +18,7 @@ export const store = configureStore({
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {
+        warnAfter: 128,
         // Ignore these action types
         ignoredActions: ['trips/addTrip', 'trips/updateTrip'],
         // Ignore these field paths in all actions
@@ -31,7 +32,7 @@ export const store = configureStore({
           'meta.arg.originalArgs',
         ],
         // Ignore these paths in the state
-        ignoredPaths: ['trips.items', 'messages.conversations'],
+        ignoredPaths: ['trips.items', 'messages.conversations', zwangaApi.reducerPath],
       },
     }).concat(zwangaApi.middleware),
 });

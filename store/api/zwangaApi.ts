@@ -14,10 +14,7 @@
  * - notificationApi.ts : Notifications (getNotifications, markAsRead)
  */
 
-// Import de la base API
-export { baseApi as zwangaApi } from './baseApi';
-
-// Injection de tous les modules API
+import { baseApi } from './baseApi';
 import './authApi';
 import './messageApi';
 import './notificationApi';
@@ -29,6 +26,10 @@ import './vehicleApi';
 import './tripRequestApi';
 import './safetyApi';
 import './googleMapsApi';
+import './supportApi';
+
+// Import de la base API
+export { baseApi as zwangaApi };
 
 // Ré-exporter tous les hooks pour faciliter l'utilisation
 export {
@@ -166,5 +167,20 @@ export {
   useLazyGetPlaceDetailsQuery,
   usePlacesSearchQuery,
   useLazyPlacesSearchQuery,
+  useGetLandmarksQuery,
+  useLazyGetLandmarksQuery,
   useGetDirectionsMutation,
 } from './googleMapsApi';
+
+export {
+  // Support
+  useGetSupportConfigQuery,
+  useGetSupportFaqQuery,
+  useGetSupportFaqEntryQuery,
+  useGetMySupportTicketsQuery,
+  useGetSupportTicketByIdQuery,
+  useCreateSupportTicketMutation,
+  useAddSupportTicketMessageMutation,
+  useCloseSupportTicketMutation,
+  useReopenSupportTicketMutation,
+} from './supportApi';

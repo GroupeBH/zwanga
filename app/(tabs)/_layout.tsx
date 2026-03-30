@@ -63,7 +63,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="trips"
           options={{
-            title: 'Trajets',
+            title: 'Mes trajets',
             tabBarIcon: ({ color, focused, size }) => (
               <View style={styles.iconContainer}>
                 <Ionicons 

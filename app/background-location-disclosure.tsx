@@ -15,19 +15,19 @@ const DISCLOSURE_POINTS = [
     icon: 'navigate',
     iconColor: '#2563EB',
     iconBg: 'rgba(37,99,235,0.12)',
-    text: 'Maintenir la navigation GPS pendant un trajet actif, meme en arriere-plan.',
+    text: 'Maintenir la navigation GPS pendant un trajet actif, même en arrière-plan.',
   },
   {
     icon: 'car',
     iconColor: '#059669',
     iconBg: 'rgba(5,150,105,0.12)',
-    text: 'Permettre le suivi en temps reel entre conducteur et passagers du trajet en cours.',
+    text: 'Permettre le suivi en temps réel entre conducteur et passagers du trajet en cours.',
   },
   {
     icon: 'shield-checkmark',
     iconColor: '#D97706',
     iconBg: 'rgba(217,119,6,0.14)',
-    text: 'Le partage est limite au trajet actif et peut etre refuse dans la permission systeme.',
+    text: 'Le partage est limité au trajet actif et peut être refusé dans la permission système.',
   },
 ] as const;
 
@@ -79,12 +79,12 @@ export default function BackgroundLocationDisclosureScreen() {
 
             <Text style={styles.heroTitle}>Utilisation de la localisation</Text>
             <Text style={styles.heroSubtitle}>
-              Zwanga peut utiliser votre position meme lorsque l application est en arriere-plan pendant un trajet actif.
+              Zwanga peut utiliser votre position même lorsque l&apos;application est en arrière-plan pendant un trajet actif.
             </Text>
           </View>
 
           <View style={styles.pointsCard}>
-            <Text style={styles.sectionTitle}>Pourquoi nous demandons cet acces</Text>
+            <Text style={styles.sectionTitle}>Pourquoi nous demandons cet accès</Text>
 
             <View style={styles.pointsList}>
               {DISCLOSURE_POINTS.map((item) => (
@@ -101,7 +101,7 @@ export default function BackgroundLocationDisclosureScreen() {
           <View style={styles.noteCard}>
             <Ionicons name="lock-closed" size={18} color={Colors.gray[600]} />
             <Text style={styles.noteText}>
-              Vous gardez le controle: vous pourrez accepter ou refuser la permission systeme ensuite.
+              Vous gardez le contrôle : vous pourrez accepter ou refuser la permission système ensuite.
             </Text>
           </View>
 
@@ -120,14 +120,14 @@ export default function BackgroundLocationDisclosureScreen() {
                 <ActivityIndicator size="small" color={Colors.white} />
               ) : (
                 <>
-                  <Text style={styles.continueButtonText}>J ai compris</Text>
+                  <Text style={styles.continueButtonText}>J&apos;ai compris</Text>
                   <Ionicons name="arrow-forward" size={18} color={Colors.white} />
                 </>
               )}
             </LinearGradient>
           </TouchableOpacity>
 
-          <Text style={styles.footerHint}>Cet ecran s affiche une seule fois lors du premier lancement.</Text>
+          <Text style={styles.footerHint}>Cet écran s&apos;affiche une seule fois lors du premier lancement.</Text>
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>

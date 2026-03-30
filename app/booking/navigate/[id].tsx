@@ -1,5 +1,6 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { trackEvent } from '@/services/analytics';
 import { trackingSocket, type DriverLocationPayload } from '@/services/trackingSocket';
 import {
   useConfirmDropoffByPassengerMutation,
@@ -451,6 +452,11 @@ export default function PassengerNavigationScreen() {
           onPress: async () => {
             try {
               await confirmPickup(booking.id).unwrap();
+              void trackEvent('booking_pickup_confirmed', {
+                booking_id: booking.id,
+                trip_id: booking.tripId,
+                source_screen: 'booking_navigation',
+              });
               showDialog({
                 variant: 'success',
                 title: 'Recuperation confirmee',
@@ -486,6 +492,11 @@ export default function PassengerNavigationScreen() {
           onPress: async () => {
             try {
               await confirmDropoff(booking.id).unwrap();
+              void trackEvent('booking_dropoff_confirmed', {
+                booking_id: booking.id,
+                trip_id: booking.tripId,
+                source_screen: 'booking_navigation',
+              });
               showDialog({
                 variant: 'success',
                 title: 'Trajet termine',

@@ -73,7 +73,7 @@ export default function InviteScreen() {
         // But for "send" intent, usually mostly clean digits works. 
 
         // Invitation text
-        const message = "Salut ! Je t'invite à me rejoindre sur Zwanga pour faciliter tes déplacements. Télécharge l'app ici : https://zwanga.com/app";
+        const message = "Salut ! Je t'invite à me rejoindre sur Zwanga pour faciliter tes déplacements. Télécharge l'app ici : https://play.google.com/store/apps/details?id=com.zwanga";
 
         const url = `whatsapp://send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`;
 

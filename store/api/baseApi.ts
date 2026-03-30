@@ -97,6 +97,7 @@ export const baseApi = createApi({
     'User',
     'Trip',
     'MyTrips',
+    'RecurringTrip',
     'Booking',
     'Message',
     'Conversation',
@@ -115,6 +116,8 @@ export const baseApi = createApi({
     'TripSafetyParticipant',
     'TripSafetyHistory',
     'TripSafetyTrip',
+    'SupportFaq',
+    'SupportTicket',
   ],
   endpoints: () => ({}),
 });
