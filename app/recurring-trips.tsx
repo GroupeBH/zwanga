@@ -6,6 +6,7 @@ import {
   FontWeights,
   Spacing,
 } from '@/constants/styles';
+import { trackEvent } from '@/services/analytics';
 import {
   useGetMyRecurringTripsQuery,
   usePauseRecurringTripMutation,
@@ -113,8 +114,14 @@ export default function RecurringTripsScreen() {
       setPendingTemplateId(template.id);
       if (template.status === 'paused') {
         await resumeRecurringTrip(template.id).unwrap();
+        void trackEvent('recurring_trip_resumed', {
+          recurring_trip_id: template.id,
+        });
       } else {
         await pauseRecurringTrip(template.id).unwrap();
+        void trackEvent('recurring_trip_paused', {
+          recurring_trip_id: template.id,
+        });
       }
     } finally {
       setPendingTemplateId(null);

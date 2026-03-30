@@ -129,6 +129,10 @@ export default function TripsScreen() {
         const dateA = new Date(a.departureTime).getTime();
         const dateB = new Date(b.departureTime).getTime();
         return dateB - dateA; // dateB - dateA = du plus récent au plus ancien
+      }).sort((a, b) => {
+        const dateA = new Date(a.departureTime).getTime();
+        const dateB = new Date(b.departureTime).getTime();
+        return dateA - dateB;
       });
     },
     [trips],
@@ -192,6 +196,10 @@ export default function TripsScreen() {
       const dateA = new Date(a.trip?.departureTime || a.createdAt).getTime();
       const dateB = new Date(b.trip?.departureTime || b.createdAt).getTime();
       return dateB - dateA;
+    }).sort((a, b) => {
+      const dateA = new Date(a.trip?.departureTime || a.createdAt).getTime();
+      const dateB = new Date(b.trip?.departureTime || b.createdAt).getTime();
+      return dateA - dateB;
     });
   }, [myBookings]);
 

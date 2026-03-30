@@ -2,6 +2,7 @@ import LocationPickerModal, { MapLocationSelection } from '@/components/Location
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import { trackEvent } from '@/services/analytics';
 import {
   useAcceptDriverOfferMutation,
   useAcceptTripRequestMutation,
@@ -712,6 +713,10 @@ export default function TripRequestDetailsScreen() {
         tripRequestId: id,
         payload: { offerId },
       }).unwrap();
+      void trackEvent('trip_request_offer_selected', {
+        trip_request_id: id,
+        offer_id: offerId,
+      });
 
       showDialog({
         title: 'Proposition retenue',
@@ -750,6 +755,10 @@ export default function TripRequestDetailsScreen() {
                 tripRequestId: id,
                 offerId,
               }).unwrap();
+              void trackEvent('trip_request_offer_rejected', {
+                trip_request_id: id,
+                offer_id: offerId,
+              });
 
               showDialog({
                 title: 'Proposition rejetée',
@@ -785,6 +794,10 @@ export default function TripRequestDetailsScreen() {
           onPress: async () => {
             try {
               const result = await startTripFromRequest(id).unwrap();
+              void trackEvent('trip_started_from_request', {
+                trip_request_id: id,
+                trip_id: result.trip.id,
+              });
               showDialog({
                 title: 'Trajet démarré',
                 message: 'Le trajet a été créé et démarré avec succès. Le passager a été automatiquement réservé.',
@@ -839,11 +852,21 @@ export default function TripRequestDetailsScreen() {
         tripRequestId: id,
         payload,
       }).unwrap();
+      void trackEvent('trip_request_accepted_by_driver', {
+        trip_request_id: id,
+        trip_id: result.trip.id,
+        vehicle_selected: Boolean(payload.vehicleId),
+        start_immediately: startImmediately,
+      });
       closeDirectAcceptForm();
 
       if (startImmediately) {
         try {
           await startTrip(result.trip.id).unwrap();
+          void trackEvent('trip_started', {
+            trip_id: result.trip.id,
+            source_screen: 'trip_request_details',
+          });
 
           showDialog({
             title: 'Trajet d\u00E9marr\u00E9',
@@ -1014,6 +1037,11 @@ export default function TripRequestDetailsScreen() {
           description: editDescription.trim() || undefined,
         },
       }).unwrap();
+      void trackEvent('trip_request_updated', {
+        trip_request_id: id,
+        number_of_seats: parseInt(editNumberOfSeats) || tripRequest?.numberOfSeats || 1,
+        has_budget: Boolean(editMaxPricePerSeat),
+      });
 
       setShowEditForm(false);
       refetch();
@@ -1047,6 +1075,9 @@ export default function TripRequestDetailsScreen() {
           onPress: async () => {
             try {
               await cancelRequest(id).unwrap();
+              void trackEvent('trip_request_cancelled', {
+                trip_request_id: id,
+              });
               showDialog({
                 title: 'Demande annulée',
                 message: 'Votre demande a été annulée avec succès',

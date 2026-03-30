@@ -1,4 +1,5 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { trackEvent } from '@/services/analytics';
 import {
   TripSearchByPointsPayload,
   TripSearchParams,
@@ -117,6 +118,7 @@ export default function SearchScreen() {
   const [activeSearchField, setActiveSearchField] = useState<'departure' | 'arrival' | null>(null);
   const departureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const arrivalTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastTrackedTextSearchKeyRef = useRef<string | null>(null);
   const [queryParams, setQueryParams] = useState<TripSearchParams>({});
   const [advancedTrips, setAdvancedTrips] = useState<Trip[] | null>(null);
   const [advancedError, setAdvancedError] = useState<string | null>(null);
@@ -238,6 +240,14 @@ export default function SearchScreen() {
   const activeSuggestionQuery = activeSearchField === 'departure' ? departure : arrival;
   const visibleSuggestions = useMemo(() => activeSuggestions.slice(0, 3), [activeSuggestions]);
   const showSuggestionPanel = !!activeSearchField && visibleSuggestions.length > 0;
+  const textSearchKey = useMemo(
+    () =>
+      JSON.stringify({
+        departureLocation: queryParams.departureLocation ?? '',
+        arrivalLocation: queryParams.arrivalLocation ?? '',
+      }),
+    [queryParams.arrivalLocation, queryParams.departureLocation],
+  );
 
   // Fonction pour mettre en évidence le texte recherché
   const highlightText = (text: string, query: string) => {
@@ -277,13 +287,20 @@ export default function SearchScreen() {
   };
 
   const handleApplySearch = () => {
+    const nextParams = {
+      departureLocation: departure.trim() || undefined,
+      arrivalLocation: arrival.trim() || undefined,
+    };
     setDepartureSuggestions([]);
     setArrivalSuggestions([]);
     setActiveSearchField(null);
     clearAdvancedFilter();
-    setQueryParams({
-      departureLocation: departure.trim() || undefined,
-      arrivalLocation: arrival.trim() || undefined,
+    lastTrackedTextSearchKeyRef.current = null;
+    setQueryParams(nextParams);
+    void trackEvent('search_submitted', {
+      search_mode: 'text',
+      has_departure: Boolean(nextParams.departureLocation),
+      has_arrival: Boolean(nextParams.arrivalLocation),
     });
   };
 
@@ -327,6 +344,12 @@ export default function SearchScreen() {
     try {
       const results = await searchTripsByCoordinates(payload).unwrap();
       setAdvancedTrips(results);
+      void trackEvent('search_results_viewed', {
+        search_mode: 'coordinates',
+        results_count: results.length,
+        departure_radius_km: payload.departureRadiusKm,
+        arrival_radius_km: payload.arrivalRadiusKm,
+      });
     } catch (error: any) {
       const message =
         error?.data?.message ?? error?.error ?? 'Impossible de filtrer par carte pour le moment.';
@@ -345,6 +368,28 @@ export default function SearchScreen() {
       runAdvancedSearch(lastAdvancedPayload);
     }
   };
+
+  useEffect(() => {
+    if (!remoteTrips) {
+      return;
+    }
+
+    if (!queryParams.departureLocation && !queryParams.arrivalLocation) {
+      return;
+    }
+
+    if (lastTrackedTextSearchKeyRef.current === textSearchKey) {
+      return;
+    }
+
+    lastTrackedTextSearchKeyRef.current = textSearchKey;
+    void trackEvent('search_results_viewed', {
+      search_mode: 'text',
+      results_count: remoteTrips.length,
+      has_departure: Boolean(queryParams.departureLocation),
+      has_arrival: Boolean(queryParams.arrivalLocation),
+    });
+  }, [queryParams.arrivalLocation, queryParams.departureLocation, remoteTrips, textSearchKey]);
 
   useEffect(() => {
     const departureParam = typeof searchParams.departure === 'string' ? searchParams.departure : '';

@@ -1,6 +1,7 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { trackEvent } from '@/services/analytics';
 import { trackingSocket } from '@/services/trackingSocket';
 import {
   useConfirmDropoffMutation,
@@ -805,6 +806,11 @@ export default function NavigationScreen() {
       if (activeWaypoint.type === 'pickup') {
         // Confirmer la récupération du passager
         await confirmPickup(bookingId).unwrap();
+        void trackEvent('driver_pickup_confirmed', {
+          booking_id: bookingId,
+          trip_id: trip?.id ?? tripId,
+          source_screen: 'trip_navigation',
+        });
         showDialog({
           title: 'Passager récupéré ✅',
           message: `${activeWaypoint.passenger.name} a été récupéré avec succès.`,
@@ -814,6 +820,11 @@ export default function NavigationScreen() {
       } else {
         // Confirmer la dépose du passager
         await confirmDropoff(bookingId).unwrap();
+        void trackEvent('driver_dropoff_confirmed', {
+          booking_id: bookingId,
+          trip_id: trip?.id ?? tripId,
+          source_screen: 'trip_navigation',
+        });
         showDialog({
           title: 'Passager déposé ✅',
           message: `${activeWaypoint.passenger.name} a été déposé avec succès.`,

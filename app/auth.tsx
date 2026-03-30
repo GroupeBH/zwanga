@@ -696,6 +696,11 @@ export default function AuthScreen() {
         if (requiresVehicle && kycFiles) {
           setKycSubmitting(true);
           await uploadKyc(buildKycFormData(kycFiles)).unwrap();
+          await trackEvent('kyc_completed', {
+            source_screen: 'auth',
+            method: 'google',
+            role,
+          });
         }
 
         await triggerSignupSuccessNotification(firstName || googleProfileName || undefined);
@@ -742,6 +747,11 @@ export default function AuthScreen() {
       if (requiresVehicle && kycFiles) {
         setKycSubmitting(true);
         await uploadKyc(buildKycFormData(kycFiles)).unwrap();
+        await trackEvent('kyc_completed', {
+          source_screen: 'auth',
+          method: 'phone',
+          role,
+        });
       }
 
       await triggerSignupSuccessNotification(firstName);
