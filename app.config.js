@@ -5,6 +5,8 @@
  */
 
 require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
 
 // Public OAuth client IDs (safe to ship in the app).
 // Keep fallbacks so cloud builds still work even when .env is not uploaded.
@@ -17,6 +19,16 @@ const GOOGLE_IOS_CLIENT_ID =
 const GOOGLE_IOS_URL_SCHEME =
   process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME ||
   'com.googleusercontent.apps.754065251959-chelbj9aa06c2ifbpnmcot2mt6p61rkp';
+const GOOGLE_IOS_SERVICES_FILE = './GoogleService-Info.plist';
+const HAS_IOS_GOOGLE_SERVICES_FILE = fs.existsSync(
+  path.resolve(process.cwd(), GOOGLE_IOS_SERVICES_FILE),
+);
+const META_APP_ID = process.env.EXPO_PUBLIC_META_APP_ID || process.env.META_APP_ID || '';
+const META_CLIENT_TOKEN =
+  process.env.EXPO_PUBLIC_META_CLIENT_TOKEN || process.env.META_CLIENT_TOKEN || '';
+const META_DISPLAY_NAME =
+  process.env.EXPO_PUBLIC_META_DISPLAY_NAME || process.env.META_DISPLAY_NAME || 'Zwanga';
+const HAS_META_APP_EVENTS = Boolean(META_APP_ID && META_CLIENT_TOKEN);
 
 module.exports = {
   expo: {
@@ -34,6 +46,9 @@ module.exports = {
       bundleIdentifier: "com.biso.zwanga",
       buildNumber: "3",
       supportsTablet: true,
+      ...(HAS_IOS_GOOGLE_SERVICES_FILE
+        ? { googleServicesFile: GOOGLE_IOS_SERVICES_FILE }
+        : {}),
       config: {
         googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
       },
@@ -89,6 +104,15 @@ module.exports = {
       favicon: './assets/images/zwanga.png',
     },
 
+    autolinking: {
+      android: {
+        exclude: HAS_META_APP_EVENTS ? [] : ['react-native-fbsdk-next'],
+      },
+      ios: {
+        exclude: HAS_META_APP_EVENTS ? [] : ['react-native-fbsdk-next'],
+      },
+    },
+
     // ✅ EXTRA — version fusionnée et corrigée
     extra: {
       // project ID pour EAS (obligatoire)
@@ -114,6 +138,8 @@ module.exports = {
       EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: GOOGLE_WEB_CLIENT_ID,
       EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: GOOGLE_IOS_CLIENT_ID,
       EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME: GOOGLE_IOS_URL_SCHEME,
+      EXPO_PUBLIC_META_APP_ID: META_APP_ID,
+      EXPO_PUBLIC_META_ENABLED: HAS_META_APP_EVENTS,
 
       secureStoreKeys: {
         access: process.env.EXPO_PUBLIC_SECURESTORE_ACCESS_KEY,
@@ -123,6 +149,7 @@ module.exports = {
 
     plugins: [
       'expo-router',
+      '@react-native-firebase/app',
       'expo-maps',
       [
         'expo-location',
@@ -173,6 +200,22 @@ module.exports = {
           },
         },
       ],
+      ...(HAS_META_APP_EVENTS
+        ? [
+            [
+              'react-native-fbsdk-next',
+              {
+                appID: META_APP_ID,
+                clientToken: META_CLIENT_TOKEN,
+                displayName: META_DISPLAY_NAME,
+                scheme: `fb${META_APP_ID}`,
+                advertiserIDCollectionEnabled: false,
+                iosUserTrackingPermission:
+                  'Autorisez Zwanga a mesurer certaines actions pour ameliorer l application.',
+              },
+            ],
+          ]
+        : []),
       'expo-secure-store',
     ],
 

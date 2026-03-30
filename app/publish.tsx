@@ -3,6 +3,7 @@ import LocationPickerModal, { MapLocationSelection } from '@/components/Location
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import { trackEvent } from '@/services/analytics';
 import { useCreateRecurringTripMutation, useCreateTripMutation } from '@/store/api/tripApi';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
@@ -717,6 +718,12 @@ export default function PublishScreen() {
           description: description.trim() || undefined,
           vehicleId: selectedVehicleId,
         }).unwrap();
+        await trackEvent('recurring_trip_created', {
+          seats: seatsValue,
+          is_free: isFreeTrip,
+          has_description: Boolean(description.trim()),
+          weekdays_count: recurringWeekdays.length,
+        });
       } else {
         await createTrip({
           departureLocation: departureLocation.title,
@@ -730,6 +737,12 @@ export default function PublishScreen() {
           description: description.trim() || undefined,
           vehicleId: selectedVehicleId,
         }).unwrap();
+        await trackEvent('trip_published', {
+          seats: seatsValue,
+          price_per_seat: priceValue,
+          is_free: isFreeTrip,
+          has_description: Boolean(description.trim()),
+        });
       }
 
       const publishedRecurring = isRecurringTrip;

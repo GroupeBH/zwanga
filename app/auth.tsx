@@ -1,6 +1,7 @@
 import { KycCaptureResult, KycWizardModal } from '@/components/KycWizardModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { isSignupOtpVerificationEnabled } from '@/config/env';
+import { trackEvent } from '@/services/analytics';
 import { configureGoogleSignIn, signInWithGoogle } from '@/services/googleAuth';
 import { useSendPhoneVerificationOtpMutation, useUploadKycMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
 import { useGoogleMobileMutation, useLoginMutation, useRegisterMutation } from '@/store/api/zwangaApi';
@@ -256,6 +257,7 @@ export default function AuthScreen() {
       setGoogleIdToken(result.idToken);
       setGoogleProfileName(result.name || result.email || 'Profil Google');
       await googleMobile({ idToken: result.idToken }).unwrap();
+      await trackEvent('login_success', { method: 'google' });
     } catch (error: any) {
       console.error('Google login error:', error);
       showDialog({
@@ -465,6 +467,7 @@ export default function AuthScreen() {
       try {
         const result = await login({ phone, pin }).unwrap();
         await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
+        await trackEvent('login_success', { method: 'phone' });
       } catch (error: any) {
         showDialog({ variant: 'danger', title: 'Erreur', message: error?.data?.message || 'PIN incorrect' });
         setPin('');
@@ -570,6 +573,7 @@ export default function AuthScreen() {
     try {
       const result = await login({ phone, newPin: resetNewPin }).unwrap();
       await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
+      await trackEvent('login_success', { method: 'pin_reset' });
       showDialog({ variant: 'success', title: 'PIN réinitialisé', message: 'Vous êtes maintenant connecté.' });
       setStep('pin');
       setResetPinStep('otp');
@@ -695,6 +699,11 @@ export default function AuthScreen() {
         }
 
         await triggerSignupSuccessNotification(firstName || googleProfileName || undefined);
+        await trackEvent('signup_completed', {
+          method: 'google',
+          role,
+          is_driver: requiresVehicle,
+        });
         setGoogleIdToken(null);
         setGoogleProfileName(null);
         setGoogleFirstName(null);
@@ -736,6 +745,11 @@ export default function AuthScreen() {
       }
 
       await triggerSignupSuccessNotification(firstName);
+      await trackEvent('signup_completed', {
+        method: 'phone',
+        role,
+        is_driver: requiresVehicle,
+      });
     } catch (error: any) {
       showDialog({ variant: 'danger', title: 'Erreur', message: error?.data?.message || "Erreur lors de l'inscription" });
     } finally {

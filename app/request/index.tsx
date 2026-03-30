@@ -2,6 +2,7 @@ import LocationPickerModal, { MapLocationSelection } from '@/components/Location
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import { trackEvent } from '@/services/analytics';
 import { useCreateTripRequestMutation } from '@/store/api/tripRequestApi';
 import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
 import type { FavoriteLocation } from '@/types';
@@ -281,6 +282,12 @@ export default function RequestTripScreen() {
         maxPricePerSeat: parsedBudget,
         description: description.trim() || undefined,
       }).unwrap();
+      await trackEvent('trip_request_created', {
+        seats: numberOfSeats,
+        max_price_per_seat: parsedBudget,
+        has_description: Boolean(description.trim()),
+        flexibility_minutes: flexibilityMinutes,
+      });
       setConfirmationVisible(false);
       router.push(getTripRequestDetailHref(createdRequest.id));
     } catch (error: any) {

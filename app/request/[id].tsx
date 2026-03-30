@@ -18,7 +18,7 @@ import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import type { Vehicle } from '@/types';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { createBecomeDriverAction, isDriverRequiredError } from '@/utils/errorHelpers';
-import { getRouteCoordinates } from '@/utils/routeHelpers';
+import { getRouteCoordinates } from '@/utils/routeApi';
 import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
@@ -42,7 +42,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE, type LatLng, type Region } from 'react-native-maps';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -175,7 +175,7 @@ export default function TripRequestDetailsScreen() {
   const [availableSeats, setAvailableSeats] = useState('');
   const [message, setMessage] = useState('');
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
-  const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[] | null>(null);
+  const [routeCoordinates, setRouteCoordinates] = useState<LatLng[]>([]);
   const [, setIsLoadingRoute] = useState(false);
   const [mapModalVisible, setMapModalVisible] = useState(false);
   const directAcceptMapRef = React.useRef<MapView | null>(null);
@@ -196,54 +196,64 @@ export default function TripRequestDetailsScreen() {
     return preferredDate <= maxDate ? preferredDate : maxDate;
   }, [tripRequest]);
 
-  const directAcceptRouteCoordinates = useMemo(() => {
-    if (routeCoordinates && routeCoordinates.length > 1) {
-      return routeCoordinates;
-    }
-
-    if (
-      tripRequest?.departure?.lat &&
-      tripRequest?.departure?.lng &&
-      tripRequest?.arrival?.lat &&
-      tripRequest?.arrival?.lng
-    ) {
-      return [
-        { latitude: tripRequest.departure.lat, longitude: tripRequest.departure.lng },
-        { latitude: tripRequest.arrival.lat, longitude: tripRequest.arrival.lng },
-      ];
-    }
-
-    return [];
-  }, [
-    routeCoordinates,
-    tripRequest?.arrival?.lat,
-    tripRequest?.arrival?.lng,
-    tripRequest?.departure?.lat,
-    tripRequest?.departure?.lng,
-  ]);
-
-  const directAcceptInitialRegion = useMemo(() => {
-    if (
-      !tripRequest?.departure?.lat ||
-      !tripRequest?.departure?.lng ||
-      !tripRequest?.arrival?.lat ||
-      !tripRequest?.arrival?.lng
-    ) {
+  const tripRequestMapData = useMemo<{
+    departure: LatLng;
+    arrival: LatLng;
+    fallbackCoordinates: LatLng[];
+    region: Region;
+  } | null>(() => {
+    if (!tripRequest) {
       return null;
     }
 
-    return {
-      latitude: (tripRequest.departure.lat + tripRequest.arrival.lat) / 2,
-      longitude: (tripRequest.departure.lng + tripRequest.arrival.lng) / 2,
-      latitudeDelta: Math.abs(tripRequest.departure.lat - tripRequest.arrival.lat) * 2.5 || 0.1,
-      longitudeDelta: Math.abs(tripRequest.departure.lng - tripRequest.arrival.lng) * 2.5 || 0.1,
+    const { departure, arrival } = tripRequest;
+    const hasValidCoordinates =
+      typeof departure?.lat === 'number' &&
+      Number.isFinite(departure.lat) &&
+      typeof departure?.lng === 'number' &&
+      Number.isFinite(departure.lng) &&
+      typeof arrival?.lat === 'number' &&
+      Number.isFinite(arrival.lat) &&
+      typeof arrival?.lng === 'number' &&
+      Number.isFinite(arrival.lng);
+
+    if (!hasValidCoordinates) {
+      return null;
+    }
+
+    const departurePoint: LatLng = {
+      latitude: departure.lat,
+      longitude: departure.lng,
     };
-  }, [
-    tripRequest?.arrival?.lat,
-    tripRequest?.arrival?.lng,
-    tripRequest?.departure?.lat,
-    tripRequest?.departure?.lng,
-  ]);
+    const arrivalPoint: LatLng = {
+      latitude: arrival.lat,
+      longitude: arrival.lng,
+    };
+
+    return {
+      departure: departurePoint,
+      arrival: arrivalPoint,
+      fallbackCoordinates: [departurePoint, arrivalPoint],
+      region: {
+        latitude: (departure.lat + arrival.lat) / 2,
+        longitude: (departure.lng + arrival.lng) / 2,
+        latitudeDelta: Math.abs(departure.lat - arrival.lat) * 2.5 || 0.1,
+        longitudeDelta: Math.abs(departure.lng - arrival.lng) * 2.5 || 0.1,
+      },
+    };
+  }, [tripRequest]);
+
+  const directAcceptRouteCoordinates = useMemo<LatLng[]>(() => {
+    if (routeCoordinates.length > 1) {
+      return routeCoordinates;
+    }
+
+    if (tripRequestMapData) {
+      return tripRequestMapData.fallbackCoordinates;
+    }
+
+    return [];
+  }, [routeCoordinates, tripRequestMapData]);
 
   const fitDirectAcceptRoute = useCallback(() => {
     if (!directAcceptMapRef.current || directAcceptRouteCoordinates.length < 2) return;
@@ -283,21 +293,15 @@ export default function TripRequestDetailsScreen() {
   // Charger les coordonnées de la route réelle
   useEffect(() => {
     const loadRoute = async () => {
-      if (!tripRequest?.departure?.lat || !tripRequest?.departure?.lng || 
-          !tripRequest?.arrival?.lat || !tripRequest?.arrival?.lng) {
+      if (!tripRequestMapData) {
+        setRouteCoordinates([]);
         return;
       }
 
       setIsLoadingRoute(true);
       try {
-        const departureCoordinate = {
-          latitude: tripRequest.departure.lat,
-          longitude: tripRequest.departure.lng,
-        };
-        const arrivalCoordinate = {
-          latitude: tripRequest.arrival.lat,
-          longitude: tripRequest.arrival.lng,
-        };
+        const departureCoordinate = tripRequestMapData.departure;
+        const arrivalCoordinate = tripRequestMapData.arrival;
 
         const coordinates = await getRouteCoordinates(departureCoordinate, arrivalCoordinate);
         if (coordinates && coordinates.length > 0) {
@@ -312,20 +316,14 @@ export default function TripRequestDetailsScreen() {
       } catch (error) {
         console.warn('Error loading route for trip request:', error);
         // Fallback sur ligne droite en cas d'erreur
-        if (tripRequest?.departure?.lat && tripRequest?.departure?.lng && 
-            tripRequest?.arrival?.lat && tripRequest?.arrival?.lng) {
-          setRouteCoordinates([
-            { latitude: tripRequest.departure.lat, longitude: tripRequest.departure.lng },
-            { latitude: tripRequest.arrival.lat, longitude: tripRequest.arrival.lng },
-          ]);
-        }
+        setRouteCoordinates(tripRequestMapData.fallbackCoordinates);
       } finally {
         setIsLoadingRoute(false);
       }
     };
 
     loadRoute();
-  }, [tripRequest?.departure?.lat, tripRequest?.departure?.lng, tripRequest?.arrival?.lat, tripRequest?.arrival?.lng]);
+  }, [tripRequestMapData]);
 
   const isOwner = useMemo(
     () => tripRequest && currentUser && tripRequest.passengerId === currentUser.id,
@@ -970,20 +968,20 @@ export default function TripRequestDetailsScreen() {
 
   // Initialiser le formulaire de modification avec les valeurs actuelles
   const initializeEditForm = () => {
-    if (!tripRequest) return;
+    if (!tripRequest || !tripRequestMapData) return;
     
     setEditDepartureLocation({
       title: tripRequest.departure.name,
       address: tripRequest.departure.address || '',
-      latitude: tripRequest.departure.lat,
-      longitude: tripRequest.departure.lng,
+      latitude: tripRequestMapData.departure.latitude,
+      longitude: tripRequestMapData.departure.longitude,
     });
     
     setEditArrivalLocation({
       title: tripRequest.arrival.name,
       address: tripRequest.arrival.address || '',
-      latitude: tripRequest.arrival.lat,
-      longitude: tripRequest.arrival.lng,
+      latitude: tripRequestMapData.arrival.latitude,
+      longitude: tripRequestMapData.arrival.longitude,
     });
     
     setEditDepartureDateMin(new Date(tripRequest.departureDateMin));
@@ -1542,7 +1540,7 @@ export default function TripRequestDetailsScreen() {
         )}
 
         {/* Carte du trajet */}
-        {false && tripRequest?.departure.lat && tripRequest?.departure.lng && tripRequest?.arrival.lat && tripRequest?.arrival.lng && (
+        {false && tripRequestMapData && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Carte du trajet</Text>
             <View style={styles.mapCard}>
@@ -1558,15 +1556,10 @@ export default function TripRequestDetailsScreen() {
                   zoomEnabled={false}
                   pitchEnabled={false}
                   rotateEnabled={false}
-                  initialRegion={{
-                    latitude: (tripRequest?.departure.lat + tripRequest?.arrival.lat) / 2,
-                    longitude: (tripRequest.departure.lng + tripRequest.arrival.lng) / 2,
-                    latitudeDelta: Math.abs(tripRequest.departure.lat - tripRequest.arrival.lat) * 2.5 || 0.1,
-                    longitudeDelta: Math.abs(tripRequest.departure.lng - tripRequest.arrival.lng) * 2.5 || 0.1,
-                  }}
+                  initialRegion={tripRequestMapData.region}
                 >
                   {/* Trajectoire réelle de circulation */}
-                  {routeCoordinates && routeCoordinates.length > 0 ? (
+                  {routeCoordinates.length > 0 ? (
                     <Polyline
                       coordinates={routeCoordinates}
                       strokeColor={Colors.primary}
@@ -1575,10 +1568,7 @@ export default function TripRequestDetailsScreen() {
                   ) : (
                     // Fallback sur ligne droite pendant le chargement ou en cas d'erreur
                     <Polyline
-                      coordinates={[
-                        { latitude: tripRequest.departure.lat, longitude: tripRequest.departure.lng },
-                        { latitude: tripRequest.arrival.lat, longitude: tripRequest.arrival.lng },
-                      ]}
+                      coordinates={tripRequestMapData.fallbackCoordinates}
                       strokeColor={Colors.gray[400]}
                       strokeWidth={3}
                       lineDashPattern={[2, 2]}
@@ -1587,10 +1577,7 @@ export default function TripRequestDetailsScreen() {
 
                   {/* Marqueur de départ */}
                   <Marker
-                    coordinate={{
-                      latitude: tripRequest.departure.lat,
-                      longitude: tripRequest.departure.lng,
-                    }}
+                    coordinate={tripRequestMapData.departure}
                   >
                     <View style={styles.markerStartCircle}>
                       <Ionicons name="location" size={18} color={Colors.white} />
@@ -1605,10 +1592,7 @@ export default function TripRequestDetailsScreen() {
 
                   {/* Marqueur d'arrivée */}
                   <Marker
-                    coordinate={{
-                      latitude: tripRequest.arrival.lat,
-                      longitude: tripRequest.arrival.lng,
-                    }}
+                    coordinate={tripRequestMapData.arrival}
                   >
                     <View style={styles.markerEndCircle}>
                       <Ionicons name="navigate" size={18} color={Colors.white} />
@@ -2105,13 +2089,13 @@ export default function TripRequestDetailsScreen() {
 
                       <View style={styles.previewSection}>
                         <Text style={styles.previewSectionTitle}>Trajet</Text>
-                        {directAcceptInitialRegion && directAcceptRouteCoordinates.length >= 2 ? (
+                        {tripRequestMapData && directAcceptRouteCoordinates.length >= 2 ? (
                           <View style={styles.directAcceptMapCard}>
                             <MapView
                               ref={directAcceptMapRef}
                               provider={PROVIDER_GOOGLE}
                               style={styles.directAcceptMapView}
-                              initialRegion={directAcceptInitialRegion}
+                              initialRegion={tripRequestMapData.region}
                               onMapReady={fitDirectAcceptRoute}
                               onLayout={fitDirectAcceptRoute}
                               scrollEnabled={false}
@@ -2122,25 +2106,19 @@ export default function TripRequestDetailsScreen() {
                             >
                               <Polyline
                                 coordinates={directAcceptRouteCoordinates}
-                                strokeColor={routeCoordinates && routeCoordinates.length > 1 ? Colors.primary : Colors.gray[400]}
+                                strokeColor={routeCoordinates.length > 1 ? Colors.primary : Colors.gray[400]}
                                 strokeWidth={4}
-                                lineDashPattern={routeCoordinates && routeCoordinates.length > 1 ? undefined : [4, 3]}
+                                lineDashPattern={routeCoordinates.length > 1 ? undefined : [4, 3]}
                               />
                               <Marker
-                                coordinate={{
-                                  latitude: tripRequest.departure.lat,
-                                  longitude: tripRequest.departure.lng,
-                                }}
+                                coordinate={tripRequestMapData.departure}
                               >
                                 <View style={styles.markerStartCircle}>
                                   <Ionicons name="location" size={18} color={Colors.white} />
                                 </View>
                               </Marker>
                               <Marker
-                                coordinate={{
-                                  latitude: tripRequest.arrival.lat,
-                                  longitude: tripRequest.arrival.lng,
-                                }}
+                                coordinate={tripRequestMapData.arrival}
                               >
                                 <View style={styles.markerEndCircle}>
                                   <Ionicons name="navigate" size={18} color={Colors.white} />
@@ -2557,7 +2535,7 @@ export default function TripRequestDetailsScreen() {
         )}
 
         {/* Modal de la carte en plein écran */}
-        {tripRequest.departure.lat && tripRequest.departure.lng && tripRequest.arrival.lat && tripRequest.arrival.lng && (
+        {tripRequestMapData && (
           <Modal visible={mapModalVisible} animationType="fade" transparent onRequestClose={() => setMapModalVisible(false)}>
             <View style={styles.mapModalOverlay}>
               <View style={styles.mapModalContent}>
@@ -2565,15 +2543,10 @@ export default function TripRequestDetailsScreen() {
                   provider={PROVIDER_GOOGLE}
                   style={styles.fullscreenMap}
                   mapType="standard"
-                  initialRegion={{
-                    latitude: (tripRequest.departure.lat + tripRequest.arrival.lat) / 2,
-                    longitude: (tripRequest.departure.lng + tripRequest.arrival.lng) / 2,
-                    latitudeDelta: Math.abs(tripRequest.departure.lat - tripRequest.arrival.lat) * 2.5 || 0.1,
-                    longitudeDelta: Math.abs(tripRequest.departure.lng - tripRequest.arrival.lng) * 2.5 || 0.1,
-                  }}
+                  initialRegion={tripRequestMapData.region}
                 >
                   {/* Trajectoire réelle de circulation */}
-                  {routeCoordinates && routeCoordinates.length > 0 ? (
+                  {routeCoordinates.length > 0 ? (
                     <Polyline
                       coordinates={routeCoordinates}
                       strokeColor={Colors.primary}
@@ -2582,10 +2555,7 @@ export default function TripRequestDetailsScreen() {
                   ) : (
                     // Fallback sur ligne droite pendant le chargement ou en cas d'erreur
                     <Polyline
-                      coordinates={[
-                        { latitude: tripRequest.departure.lat, longitude: tripRequest.departure.lng },
-                        { latitude: tripRequest.arrival.lat, longitude: tripRequest.arrival.lng },
-                      ]}
+                      coordinates={tripRequestMapData.fallbackCoordinates}
                       strokeColor={Colors.gray[400]}
                       strokeWidth={4}
                       lineDashPattern={[2, 2]}
@@ -2594,10 +2564,7 @@ export default function TripRequestDetailsScreen() {
 
                   {/* Marqueur de départ */}
                   <Marker
-                    coordinate={{
-                      latitude: tripRequest.departure.lat,
-                      longitude: tripRequest.departure.lng,
-                    }}
+                    coordinate={tripRequestMapData.departure}
                   >
                     <View style={styles.markerStartCircle}>
                       <Ionicons name="location" size={18} color={Colors.white} />
@@ -2612,10 +2579,7 @@ export default function TripRequestDetailsScreen() {
 
                   {/* Marqueur d'arrivée */}
                   <Marker
-                    coordinate={{
-                      latitude: tripRequest.arrival.lat,
-                      longitude: tripRequest.arrival.lng,
-                    }}
+                    coordinate={tripRequestMapData.arrival}
                   >
                     <View style={styles.markerEndCircle}>
                       <Ionicons name="navigate" size={18} color={Colors.white} />

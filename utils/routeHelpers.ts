@@ -13,6 +13,15 @@ export interface RouteInfo {
   distance: number; // Distance in meters
 }
 
+const ROUTE_CACHE_TTL_MS = 10 * 60 * 1000;
+const FALLBACK_CACHE_TTL_MS = 60 * 1000;
+const THROTTLE_COOLDOWN_MS = 90 * 1000;
+
+const routeInfoCache = new Map<string, { expiresAt: number; value: RouteInfo }>();
+const inFlightRouteRequests = new Map<string, Promise<RouteInfo>>();
+let routeApiCooldownUntil = 0;
+let lastThrottleWarningAt = 0;
+
 /**
  * Décode une polyline encodée de Google Maps
  */
@@ -49,6 +58,79 @@ function decodePolyline(encoded: string): [number, number][] {
   }
 
   return poly;
+}
+
+function normalizeCoordinate(value: number) {
+  return Number.isFinite(value) ? value.toFixed(5) : '0.00000';
+}
+
+function buildRouteCacheKey(origin: LatLng, destination: LatLng) {
+  return [
+    normalizeCoordinate(origin.latitude),
+    normalizeCoordinate(origin.longitude),
+    normalizeCoordinate(destination.latitude),
+    normalizeCoordinate(destination.longitude),
+  ].join(':');
+}
+
+function buildFallbackRouteInfo(origin: LatLng, destination: LatLng): RouteInfo {
+  const distance = calculateDistance(origin, destination) * 1000;
+  const estimatedDuration = (distance / 1000) * 60;
+
+  return {
+    coordinates: [origin, destination],
+    duration: estimatedDuration,
+    distance,
+  };
+}
+
+function getCachedRouteInfo(cacheKey: string) {
+  const cached = routeInfoCache.get(cacheKey);
+  if (!cached) {
+    return null;
+  }
+
+  if (cached.expiresAt <= Date.now()) {
+    routeInfoCache.delete(cacheKey);
+    return null;
+  }
+
+  return cached.value;
+}
+
+function setCachedRouteInfo(cacheKey: string, value: RouteInfo, ttlMs: number) {
+  routeInfoCache.set(cacheKey, {
+    expiresAt: Date.now() + ttlMs,
+    value,
+  });
+}
+
+function isThrottleError(errorLike: unknown) {
+  if (!errorLike || typeof errorLike !== 'object') {
+    return false;
+  }
+
+  const candidate = errorLike as {
+    status?: number | string;
+    data?: { statusCode?: number; message?: string };
+    error?: string;
+  };
+
+  if (candidate.status === 429 || candidate.data?.statusCode === 429) {
+    return true;
+  }
+
+  const message = `${candidate.data?.message ?? ''} ${candidate.error ?? ''}`.toLowerCase();
+  return message.includes('too many requests') || message.includes('throttlerexception');
+}
+
+function enterRouteApiCooldown() {
+  routeApiCooldownUntil = Date.now() + THROTTLE_COOLDOWN_MS;
+
+  if (Date.now() - lastThrottleWarningAt > THROTTLE_COOLDOWN_MS / 2) {
+    lastThrottleWarningAt = Date.now();
+    console.warn('[routeHelpers] Backend directions throttled. Using cached or straight-line fallback temporarily.');
+  }
 }
 
 /**

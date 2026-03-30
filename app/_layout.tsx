@@ -5,6 +5,7 @@ import { LayoutAnimationConfig, ReduceMotion, ReducedMotionConfig } from 'react-
 import { Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AnalyticsTracker } from '@/components/AnalyticsTracker';
 import { ReduxProvider } from '@/components/ReduxProvider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 // Importer les handlers de fond pour qu'ils soient enregistres au demarrage
@@ -24,6 +25,7 @@ export default function RootLayout() {
     <ReduxProvider>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <View style={styles.appRoot}>
+          <AnalyticsTracker />
           <Stack
             screenOptions={{
               headerShown: false,
