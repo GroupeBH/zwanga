@@ -2,7 +2,6 @@ import LocationPickerModal, { MapLocationSelection } from '@/components/Location
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
-import { trackEvent } from '@/services/analytics';
 import {
   useAcceptDriverOfferMutation,
   useAcceptTripRequestMutation,
@@ -19,7 +18,7 @@ import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import type { Vehicle } from '@/types';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { createBecomeDriverAction, isDriverRequiredError } from '@/utils/errorHelpers';
-import { getRouteCoordinates } from '@/utils/routeApi';
+import { getRouteCoordinates } from '@/utils/routeHelpers';
 import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
@@ -43,7 +42,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE, type LatLng, type Region } from 'react-native-maps';
+import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -159,8 +158,6 @@ export default function TripRequestDetailsScreen() {
   const [editLocationPickerType, setEditLocationPickerType] = useState<'departure' | 'arrival' | null>(null);
 
   // États pour le formulaire d'offre
-  const [showDirectAcceptForm, setShowDirectAcceptForm] = useState(false);
-  const [directAcceptVehicleId, setDirectAcceptVehicleId] = useState<string>('');
   const [showOfferForm, setShowOfferForm] = useState(false);
   const [offerStep, setOfferStep] = useState<'details' | 'preview'>('details');
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
@@ -176,14 +173,13 @@ export default function TripRequestDetailsScreen() {
   const [availableSeats, setAvailableSeats] = useState('');
   const [message, setMessage] = useState('');
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
-  const [routeCoordinates, setRouteCoordinates] = useState<LatLng[]>([]);
+  const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[] | null>(null);
   const [, setIsLoadingRoute] = useState(false);
   const [mapModalVisible, setMapModalVisible] = useState(false);
-  const directAcceptMapRef = React.useRef<MapView | null>(null);
 
   const directAcceptVehicle = useMemo(
-    () => activeVehicles.find((vehicle) => vehicle.id === directAcceptVehicleId) ?? null,
-    [activeVehicles, directAcceptVehicleId]
+    () => activeVehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? activeVehicles[0],
+    [activeVehicles, selectedVehicleId]
   );
 
   const directAcceptDepartureDate = useMemo(() => {
@@ -196,89 +192,6 @@ export default function TripRequestDetailsScreen() {
 
     return preferredDate <= maxDate ? preferredDate : maxDate;
   }, [tripRequest]);
-
-  const tripRequestMapData = useMemo<{
-    departure: LatLng;
-    arrival: LatLng;
-    fallbackCoordinates: LatLng[];
-    region: Region;
-  } | null>(() => {
-    if (!tripRequest) {
-      return null;
-    }
-
-    const { departure, arrival } = tripRequest;
-    const hasValidCoordinates =
-      typeof departure?.lat === 'number' &&
-      Number.isFinite(departure.lat) &&
-      typeof departure?.lng === 'number' &&
-      Number.isFinite(departure.lng) &&
-      typeof arrival?.lat === 'number' &&
-      Number.isFinite(arrival.lat) &&
-      typeof arrival?.lng === 'number' &&
-      Number.isFinite(arrival.lng);
-
-    if (!hasValidCoordinates) {
-      return null;
-    }
-
-    const departurePoint: LatLng = {
-      latitude: departure.lat,
-      longitude: departure.lng,
-    };
-    const arrivalPoint: LatLng = {
-      latitude: arrival.lat,
-      longitude: arrival.lng,
-    };
-
-    return {
-      departure: departurePoint,
-      arrival: arrivalPoint,
-      fallbackCoordinates: [departurePoint, arrivalPoint],
-      region: {
-        latitude: (departure.lat + arrival.lat) / 2,
-        longitude: (departure.lng + arrival.lng) / 2,
-        latitudeDelta: Math.abs(departure.lat - arrival.lat) * 2.5 || 0.1,
-        longitudeDelta: Math.abs(departure.lng - arrival.lng) * 2.5 || 0.1,
-      },
-    };
-  }, [tripRequest]);
-
-  const directAcceptRouteCoordinates = useMemo<LatLng[]>(() => {
-    if (routeCoordinates.length > 1) {
-      return routeCoordinates;
-    }
-
-    if (tripRequestMapData) {
-      return tripRequestMapData.fallbackCoordinates;
-    }
-
-    return [];
-  }, [routeCoordinates, tripRequestMapData]);
-
-  const fitDirectAcceptRoute = useCallback(() => {
-    if (!directAcceptMapRef.current || directAcceptRouteCoordinates.length < 2) return;
-
-    directAcceptMapRef.current.fitToCoordinates(directAcceptRouteCoordinates, {
-      edgePadding: {
-        top: 44,
-        right: 44,
-        bottom: 44,
-        left: 44,
-      },
-      animated: false,
-    });
-  }, [directAcceptRouteCoordinates]);
-
-  useEffect(() => {
-    if (!showDirectAcceptForm || directAcceptRouteCoordinates.length < 2) return;
-
-    const timeoutId = setTimeout(() => {
-      fitDirectAcceptRoute();
-    }, 120);
-
-    return () => clearTimeout(timeoutId);
-  }, [fitDirectAcceptRoute, showDirectAcceptForm, directAcceptRouteCoordinates.length]);
 
   // Mettre à jour la date proposée quand la demande change
   useEffect(() => {
@@ -294,15 +207,21 @@ export default function TripRequestDetailsScreen() {
   // Charger les coordonnées de la route réelle
   useEffect(() => {
     const loadRoute = async () => {
-      if (!tripRequestMapData) {
-        setRouteCoordinates([]);
+      if (!tripRequest?.departure?.lat || !tripRequest?.departure?.lng || 
+          !tripRequest?.arrival?.lat || !tripRequest?.arrival?.lng) {
         return;
       }
 
       setIsLoadingRoute(true);
       try {
-        const departureCoordinate = tripRequestMapData.departure;
-        const arrivalCoordinate = tripRequestMapData.arrival;
+        const departureCoordinate = {
+          latitude: tripRequest.departure.lat,
+          longitude: tripRequest.departure.lng,
+        };
+        const arrivalCoordinate = {
+          latitude: tripRequest.arrival.lat,
+          longitude: tripRequest.arrival.lng,
+        };
 
         const coordinates = await getRouteCoordinates(departureCoordinate, arrivalCoordinate);
         if (coordinates && coordinates.length > 0) {
@@ -317,14 +236,20 @@ export default function TripRequestDetailsScreen() {
       } catch (error) {
         console.warn('Error loading route for trip request:', error);
         // Fallback sur ligne droite en cas d'erreur
-        setRouteCoordinates(tripRequestMapData.fallbackCoordinates);
+        if (tripRequest?.departure?.lat && tripRequest?.departure?.lng && 
+            tripRequest?.arrival?.lat && tripRequest?.arrival?.lng) {
+          setRouteCoordinates([
+            { latitude: tripRequest.departure.lat, longitude: tripRequest.departure.lng },
+            { latitude: tripRequest.arrival.lat, longitude: tripRequest.arrival.lng },
+          ]);
+        }
       } finally {
         setIsLoadingRoute(false);
       }
     };
 
     loadRoute();
-  }, [tripRequestMapData]);
+  }, [tripRequest?.departure?.lat, tripRequest?.departure?.lng, tripRequest?.arrival?.lat, tripRequest?.arrival?.lng]);
 
   const isOwner = useMemo(
     () => tripRequest && currentUser && tripRequest.passengerId === currentUser.id,
@@ -440,17 +365,14 @@ export default function TripRequestDetailsScreen() {
     setProposedDepartureDate(minDate > currentDate ? minDate : currentDate);
   }, [tripRequest]);
 
-  const resetDirectAcceptForm = useCallback(() => {
-    setDirectAcceptVehicleId(activeVehicles[0]?.id ?? '');
-  }, [activeVehicles]);
-
-  const closeDirectAcceptForm = useCallback(() => {
-    setShowDirectAcceptForm(false);
-  }, []);
-
   const closeOfferForm = useCallback(() => {
     setShowOfferForm(false);
     resetOfferForm();
+  }, [resetOfferForm]);
+
+  const openOfferForm = useCallback(() => {
+    resetOfferForm();
+    setShowOfferForm(true);
   }, [resetOfferForm]);
 
   // Fonctions pour appliquer uniquement la date ou l'heure
@@ -713,10 +635,6 @@ export default function TripRequestDetailsScreen() {
         tripRequestId: id,
         payload: { offerId },
       }).unwrap();
-      void trackEvent('trip_request_offer_selected', {
-        trip_request_id: id,
-        offer_id: offerId,
-      });
 
       showDialog({
         title: 'Proposition retenue',
@@ -755,10 +673,6 @@ export default function TripRequestDetailsScreen() {
                 tripRequestId: id,
                 offerId,
               }).unwrap();
-              void trackEvent('trip_request_offer_rejected', {
-                trip_request_id: id,
-                offer_id: offerId,
-              });
 
               showDialog({
                 title: 'Proposition rejetée',
@@ -794,10 +708,6 @@ export default function TripRequestDetailsScreen() {
           onPress: async () => {
             try {
               const result = await startTripFromRequest(id).unwrap();
-              void trackEvent('trip_started_from_request', {
-                trip_request_id: id,
-                trip_id: result.trip.id,
-              });
               showDialog({
                 title: 'Trajet démarré',
                 message: 'Le trajet a été créé et démarré avec succès. Le passager a été automatiquement réservé.',
@@ -830,15 +740,6 @@ export default function TripRequestDetailsScreen() {
   const handleDirectAcceptTripRequest = async (startImmediately: boolean) => {
     if (!tripRequest || !id || !directAcceptDepartureDate) return;
 
-    if (!directAcceptVehicle?.id) {
-      showDialog({
-        title: 'Véhicule requis',
-        message: 'Choisissez le véhicule utilisé pour cette course avant de continuer.',
-        variant: 'warning',
-      });
-      return;
-    }
-
     const payload: { vehicleId?: string; departureDate?: string } = {
       departureDate: directAcceptDepartureDate.toISOString(),
     };
@@ -852,21 +753,10 @@ export default function TripRequestDetailsScreen() {
         tripRequestId: id,
         payload,
       }).unwrap();
-      void trackEvent('trip_request_accepted_by_driver', {
-        trip_request_id: id,
-        trip_id: result.trip.id,
-        vehicle_selected: Boolean(payload.vehicleId),
-        start_immediately: startImmediately,
-      });
-      closeDirectAcceptForm();
 
       if (startImmediately) {
         try {
           await startTrip(result.trip.id).unwrap();
-          void trackEvent('trip_started', {
-            trip_id: result.trip.id,
-            source_screen: 'trip_request_details',
-          });
 
           showDialog({
             title: 'Trajet d\u00E9marr\u00E9',
@@ -960,26 +850,35 @@ export default function TripRequestDetailsScreen() {
     }
   };
 
-  const handleOpenDirectAcceptForm = () => {
-    if (!activeVehicles.length) {
-      showDialog({
-        title: 'Ajoutez un véhicule',
-        message: 'Vous devez avoir au moins un véhicule actif pour accepter cette demande.',
-        variant: 'warning',
-        actions: [
-          { label: 'Plus tard', variant: 'ghost' },
-          {
-            label: 'Mes véhicules',
-            variant: 'primary',
-            onPress: () => router.push('/profile'),
-          },
-        ],
-      });
-      return;
-    }
+  const handleOpenDirectAcceptDialog = () => {
+    if (!tripRequest || !directAcceptDepartureDate) return;
 
-    resetDirectAcceptForm();
-    setShowDirectAcceptForm(true);
+    const vehicleLabel = directAcceptVehicle
+      ? `${directAcceptVehicle.brand} ${directAcceptVehicle.model}`
+      : 'votre profil conducteur';
+
+    showDialog({
+      title: 'Accepter la demande',
+      message: `Le trajet sera cr\u00E9\u00E9 pour ${formatDateWithRelativeLabel(directAcceptDepartureDate.toISOString(), true)} avec ${vehicleLabel}. Le passager sera r\u00E9serv\u00E9 automatiquement.`,
+      variant: 'info',
+      actions: [
+        { label: 'Annuler', variant: 'ghost' },
+        {
+          label: 'Accepter',
+          variant: 'secondary',
+          onPress: async () => {
+            await handleDirectAcceptTripRequest(false);
+          },
+        },
+        {
+          label: 'Accepter et d\u00E9marrer',
+          variant: 'primary',
+          onPress: async () => {
+            await handleDirectAcceptTripRequest(true);
+          },
+        },
+      ],
+    });
   };
 
   const handleViewTrip = (tripId: string) => {
@@ -991,20 +890,20 @@ export default function TripRequestDetailsScreen() {
 
   // Initialiser le formulaire de modification avec les valeurs actuelles
   const initializeEditForm = () => {
-    if (!tripRequest || !tripRequestMapData) return;
+    if (!tripRequest) return;
     
     setEditDepartureLocation({
       title: tripRequest.departure.name,
       address: tripRequest.departure.address || '',
-      latitude: tripRequestMapData.departure.latitude,
-      longitude: tripRequestMapData.departure.longitude,
+      latitude: tripRequest.departure.lat,
+      longitude: tripRequest.departure.lng,
     });
     
     setEditArrivalLocation({
       title: tripRequest.arrival.name,
       address: tripRequest.arrival.address || '',
-      latitude: tripRequestMapData.arrival.latitude,
-      longitude: tripRequestMapData.arrival.longitude,
+      latitude: tripRequest.arrival.lat,
+      longitude: tripRequest.arrival.lng,
     });
     
     setEditDepartureDateMin(new Date(tripRequest.departureDateMin));
@@ -1037,11 +936,6 @@ export default function TripRequestDetailsScreen() {
           description: editDescription.trim() || undefined,
         },
       }).unwrap();
-      void trackEvent('trip_request_updated', {
-        trip_request_id: id,
-        number_of_seats: parseInt(editNumberOfSeats) || tripRequest?.numberOfSeats || 1,
-        has_budget: Boolean(editMaxPricePerSeat),
-      });
 
       setShowEditForm(false);
       refetch();
@@ -1075,9 +969,6 @@ export default function TripRequestDetailsScreen() {
           onPress: async () => {
             try {
               await cancelRequest(id).unwrap();
-              void trackEvent('trip_request_cancelled', {
-                trip_request_id: id,
-              });
               showDialog({
                 title: 'Demande annulée',
                 message: 'Votre demande a été annulée avec succès',
@@ -1535,19 +1426,34 @@ export default function TripRequestDetailsScreen() {
                 )}
               </TouchableOpacity>
             ) : canAcceptDirectly ? (
-              <TouchableOpacity
-                style={styles.ownerHeroPrimaryButton}
-                onPress={handleOpenDirectAcceptForm}
-                disabled={isAcceptingTripRequest || isStartingTrip}
-              >
-                {isAcceptingTripRequest || isStartingTrip ? (
-                  <ActivityIndicator size="small" color={Colors.gray[900]} />
-                ) : (
-                  <>
-                    <Ionicons name="checkmark-circle-outline" size={18} color={Colors.gray[900]} />
-                    <Text style={styles.ownerHeroPrimaryButtonText}>Accepter la demande</Text>
-                  </>
-                )}
+              <>
+                <TouchableOpacity
+                  style={styles.ownerHeroPrimaryButton}
+                  onPress={handleOpenDirectAcceptDialog}
+                  disabled={isAcceptingTripRequest || isStartingTrip}
+                >
+                  {isAcceptingTripRequest || isStartingTrip ? (
+                    <ActivityIndicator size="small" color={Colors.gray[900]} />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle-outline" size={18} color={Colors.gray[900]} />
+                      <Text style={styles.ownerHeroPrimaryButtonText}>Accepter la demande</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <View style={[styles.ownerHeroActions, styles.ownerHeroSecondaryActions]}>
+                  <TouchableOpacity style={styles.ownerHeroGhostButton} onPress={openOfferForm}>
+                    <Ionicons name="options-outline" size={16} color={Colors.white} />
+                    <Text style={styles.ownerHeroGhostButtonText}>Faire une proposition</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : canMakeOffer ? (
+              <TouchableOpacity style={styles.ownerHeroPrimaryButton} onPress={openOfferForm}>
+                <Ionicons name="send-outline" size={18} color={Colors.gray[900]} />
+                <Text style={styles.ownerHeroPrimaryButtonText}>
+                  {myOffer?.status === 'rejected' ? 'Faire une nouvelle proposition' : 'Faire une proposition'}
+                </Text>
               </TouchableOpacity>
             ) : !isDriverRole ? (
               <TouchableOpacity style={styles.ownerHeroPrimaryButton} onPress={() => router.push('/publish')}>
@@ -1571,7 +1477,7 @@ export default function TripRequestDetailsScreen() {
         )}
 
         {/* Carte du trajet */}
-        {false && tripRequestMapData && (
+        {false && tripRequest?.departure.lat && tripRequest?.departure.lng && tripRequest?.arrival.lat && tripRequest?.arrival.lng && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Carte du trajet</Text>
             <View style={styles.mapCard}>
@@ -1587,10 +1493,15 @@ export default function TripRequestDetailsScreen() {
                   zoomEnabled={false}
                   pitchEnabled={false}
                   rotateEnabled={false}
-                  initialRegion={tripRequestMapData.region}
+                  initialRegion={{
+                    latitude: (tripRequest?.departure.lat + tripRequest?.arrival.lat) / 2,
+                    longitude: ((tripRequest?.departure.lng ?? 0) + (tripRequest?.arrival.lng ?? 0)) / 2,
+                    latitudeDelta: Math.abs(tripRequest?.departure.lat - tripRequest?.arrival.lat) * 2.5 || 0.1,
+                    longitudeDelta: Math.abs(tripRequest?.departure.lng - tripRequest?.arrival.lng) * 2.5 || 0.1,
+                  }}
                 >
                   {/* Trajectoire réelle de circulation */}
-                  {routeCoordinates.length > 0 ? (
+                  {routeCoordinates && routeCoordinates.length > 0 ? (
                     <Polyline
                       coordinates={routeCoordinates}
                       strokeColor={Colors.primary}
@@ -1599,7 +1510,10 @@ export default function TripRequestDetailsScreen() {
                   ) : (
                     // Fallback sur ligne droite pendant le chargement ou en cas d'erreur
                     <Polyline
-                      coordinates={tripRequestMapData.fallbackCoordinates}
+                      coordinates={[
+                        { latitude: tripRequest.departure.lat, longitude: tripRequest.departure.lng },
+                        { latitude: tripRequest.arrival.lat, longitude: tripRequest.arrival.lng },
+                      ]}
                       strokeColor={Colors.gray[400]}
                       strokeWidth={3}
                       lineDashPattern={[2, 2]}
@@ -1608,7 +1522,10 @@ export default function TripRequestDetailsScreen() {
 
                   {/* Marqueur de départ */}
                   <Marker
-                    coordinate={tripRequestMapData.departure}
+                    coordinate={{
+                      latitude: tripRequest.departure.lat,
+                      longitude: tripRequest.departure.lng,
+                    }}
                   >
                     <View style={styles.markerStartCircle}>
                       <Ionicons name="location" size={18} color={Colors.white} />
@@ -1623,7 +1540,10 @@ export default function TripRequestDetailsScreen() {
 
                   {/* Marqueur d'arrivée */}
                   <Marker
-                    coordinate={tripRequestMapData.arrival}
+                    coordinate={{
+                      latitude: tripRequest.arrival.lat,
+                      longitude: tripRequest.arrival.lng,
+                    }}
                   >
                     <View style={styles.markerEndCircle}>
                       <Ionicons name="navigate" size={18} color={Colors.white} />
@@ -1721,6 +1641,71 @@ export default function TripRequestDetailsScreen() {
                   <Text style={styles.detailValue}>{tripRequest.description}</Text>
                 </View>
               </View>
+            </View>
+          </View>
+        )}
+
+        {/* Driver sélectionné et trajet créé (pour le propriétaire) */}
+        {isOwner && (tripRequest.selectedDriverId || tripRequest.tripId) && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderWithBadge}>
+              <View style={styles.sectionTitleContainer}>
+                <Ionicons name="checkmark-circle" size={24} color={Colors.success} />
+                <Text style={styles.sectionTitle}>
+                  {tripRequest.tripId ? 'Course en cours' : 'Conducteur choisi'}
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.offerCard, styles.offerCardAccepted]}>
+              <View style={styles.offerHeader}>
+                <View style={styles.driverInfo}>
+                  {tripRequest.selectedDriverAvatar ? (
+                    <Image
+                      source={{ uri: tripRequest.selectedDriverAvatar }}
+                      style={styles.offerAvatar}
+                    />
+                  ) : (
+                    <View style={styles.offerAvatar}>
+                      <Ionicons name="person" size={20} color={Colors.gray[500]} />
+                    </View>
+                  )}
+                  <View>
+                    <Text style={styles.driverName}>
+                      {tripRequest.selectedDriverName || 'Conducteur confirmé'}
+                    </Text>
+                    {tripRequest.selectedVehicle && (
+                      <Text style={styles.ratingText}>
+                        {tripRequest.selectedVehicle.brand} {tripRequest.selectedVehicle.model}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              </View>
+              {tripRequest.selectedPricePerSeat && (
+                <View style={styles.offerDetail}>
+                  <Ionicons name="cash-outline" size={16} color={Colors.gray[600]} />
+                  <Text style={styles.offerDetailText}>
+                    {tripRequest.selectedPricePerSeat} FC/place
+                  </Text>
+                </View>
+              )}
+              {tripRequest.tripId && (
+                <View style={styles.tripCreatedContainer}>
+                  <View style={styles.tripCreatedInfo}>
+                    <Ionicons name="car" size={20} color={Colors.primary} />
+                    <Text style={styles.tripCreatedText}>
+                      Le conducteur a déjà lancé le trajet. Vous pouvez suivre la course en temps réel.
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.viewTripButton}
+                    onPress={() => handleViewTrip(tripRequest.tripId!)}
+                  >
+                    <Ionicons name="arrow-forward" size={18} color={Colors.primary} />
+                    <Text style={styles.viewTripButtonText}>Voir le trajet</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           </View>
         )}
@@ -2001,205 +1986,6 @@ export default function TripRequestDetailsScreen() {
               </View>
             ) : null}
           </View>
-        )}
-
-        {tripRequest && (
-          <Modal
-            visible={showDirectAcceptForm}
-            animationType="slide"
-            transparent={true}
-            onRequestClose={closeDirectAcceptForm}
-          >
-            <View style={styles.modalOverlay}>
-              <TouchableOpacity
-                style={styles.modalBackdrop}
-                activeOpacity={1}
-                onPress={() => {
-                  if (!isAcceptingTripRequest && !isStartingTrip) {
-                    closeDirectAcceptForm();
-                  }
-                }}
-              />
-              <SafeAreaView edges={['bottom']} style={styles.directAcceptModalContent}>
-                <TouchableOpacity
-                  activeOpacity={1}
-                  onPress={(e) => e.stopPropagation()}
-                  style={styles.directAcceptModalInner}
-                >
-                  <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>Accepter la demande</Text>
-                    <TouchableOpacity
-                      style={styles.modalCloseButton}
-                      onPress={closeDirectAcceptForm}
-                      disabled={isAcceptingTripRequest || isStartingTrip}
-                    >
-                      <Ionicons name="close" size={24} color={Colors.gray[600]} />
-                    </TouchableOpacity>
-                  </View>
-
-                  <ScrollView
-                    style={styles.modalScrollView}
-                    contentContainerStyle={styles.directAcceptScrollContent}
-                    showsVerticalScrollIndicator={false}
-                  >
-                    <View style={styles.offerFormCard}>
-                      <View style={styles.acceptanceNotice}>
-                        <Ionicons name="car-sport-outline" size={24} color={Colors.info} />
-                        <Text style={styles.acceptanceNoticeText}>
-                          Choisissez le véhicule utilisé pour cette course. Le passager sera réservé automatiquement dès l’acceptation.
-                        </Text>
-                      </View>
-
-                      <View style={styles.previewSection}>
-                        <Text style={styles.previewSectionTitle}>Véhicule utilisé *</Text>
-                        <ScrollView
-                          horizontal
-                          showsHorizontalScrollIndicator={false}
-                          style={styles.vehicleScrollView}
-                          contentContainerStyle={styles.vehicleScrollContent}
-                        >
-                          {activeVehicles.map((vehicle: Vehicle) => (
-                            <TouchableOpacity
-                              key={vehicle.id}
-                              style={[
-                                styles.vehicleCard,
-                                directAcceptVehicleId === vehicle.id && styles.vehicleCardActive,
-                              ]}
-                              onPress={() => setDirectAcceptVehicleId(vehicle.id)}
-                            >
-                              <View style={styles.vehicleCardHeader}>
-                                <Ionicons
-                                  name="car"
-                                  size={24}
-                                  color={directAcceptVehicleId === vehicle.id ? Colors.primary : Colors.gray[600]}
-                                />
-                                {directAcceptVehicleId === vehicle.id && (
-                                  <View style={styles.vehicleCardBadge}>
-                                    <Ionicons name="checkmark" size={14} color={Colors.white} />
-                                  </View>
-                                )}
-                              </View>
-                              <Text style={styles.vehicleCardBrand}>{vehicle.brand}</Text>
-                              <Text style={styles.vehicleCardModel}>{vehicle.model}</Text>
-                              <Text style={styles.vehicleCardDetails}>
-                                {vehicle.color} • {vehicle.licensePlate}
-                              </Text>
-                            </TouchableOpacity>
-                          ))}
-                        </ScrollView>
-                      </View>
-
-                      {directAcceptVehicle && (
-                        <View style={styles.previewSection}>
-                          <Text style={styles.previewSectionTitle}>Véhicule sélectionné</Text>
-                          <View style={styles.previewVehicleCard}>
-                            <Ionicons name="car" size={24} color={Colors.primary} />
-                            <View style={styles.previewVehicleInfo}>
-                              <Text style={styles.previewVehicleBrand}>
-                                {directAcceptVehicle.brand} {directAcceptVehicle.model}
-                              </Text>
-                              <Text style={styles.previewVehicleDetails}>
-                                {directAcceptVehicle.color} • {directAcceptVehicle.licensePlate}
-                              </Text>
-                            </View>
-                          </View>
-                        </View>
-                      )}
-
-                      {directAcceptDepartureDate && (
-                        <View style={styles.previewSection}>
-                          <Text style={styles.previewSectionTitle}>Départ prévu</Text>
-                          <View style={styles.previewInfoCard}>
-                            <Ionicons name="calendar" size={20} color={Colors.primary} />
-                            <Text style={styles.previewInfoText}>
-                              {formatDateWithRelativeLabel(directAcceptDepartureDate.toISOString(), true)}
-                            </Text>
-                          </View>
-                        </View>
-                      )}
-
-                      <View style={styles.previewSection}>
-                        <Text style={styles.previewSectionTitle}>Trajet</Text>
-                        {tripRequestMapData && directAcceptRouteCoordinates.length >= 2 ? (
-                          <View style={styles.directAcceptMapCard}>
-                            <MapView
-                              ref={directAcceptMapRef}
-                              provider={PROVIDER_GOOGLE}
-                              style={styles.directAcceptMapView}
-                              initialRegion={tripRequestMapData.region}
-                              onMapReady={fitDirectAcceptRoute}
-                              onLayout={fitDirectAcceptRoute}
-                              scrollEnabled={false}
-                              zoomEnabled={false}
-                              rotateEnabled={false}
-                              pitchEnabled={false}
-                              toolbarEnabled={false}
-                            >
-                              <Polyline
-                                coordinates={directAcceptRouteCoordinates}
-                                strokeColor={routeCoordinates.length > 1 ? Colors.primary : Colors.gray[400]}
-                                strokeWidth={4}
-                                lineDashPattern={routeCoordinates.length > 1 ? undefined : [4, 3]}
-                              />
-                              <Marker
-                                coordinate={tripRequestMapData.departure}
-                              >
-                                <View style={styles.markerStartCircle}>
-                                  <Ionicons name="location" size={18} color={Colors.white} />
-                                </View>
-                              </Marker>
-                              <Marker
-                                coordinate={tripRequestMapData.arrival}
-                              >
-                                <View style={styles.markerEndCircle}>
-                                  <Ionicons name="navigate" size={18} color={Colors.white} />
-                                </View>
-                              </Marker>
-                            </MapView>
-                          </View>
-                        ) : null}
-                        <View style={styles.previewInfoCard}>
-                          <Ionicons name="navigate" size={20} color={Colors.primary} />
-                          <Text style={styles.previewInfoText}>
-                            {tripRequest.departure.name} → {tripRequest.arrival.name}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  </ScrollView>
-
-                  <View style={styles.directAcceptFooter}>
-                    <TouchableOpacity
-                      style={styles.directAcceptSecondaryButton}
-                      onPress={() => handleDirectAcceptTripRequest(false)}
-                      disabled={isAcceptingTripRequest || isStartingTrip || !directAcceptVehicleId}
-                    >
-                      {isAcceptingTripRequest && !isStartingTrip ? (
-                        <ActivityIndicator size="small" color={Colors.primary} />
-                      ) : (
-                        <Text style={styles.directAcceptSecondaryButtonText}>Accepter</Text>
-                      )}
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.directAcceptPrimaryButton}
-                      onPress={() => handleDirectAcceptTripRequest(true)}
-                      disabled={isAcceptingTripRequest || isStartingTrip || !directAcceptVehicleId}
-                    >
-                      {isStartingTrip ? (
-                        <ActivityIndicator size="small" color={Colors.white} />
-                      ) : (
-                        <>
-                          <Ionicons name="play-circle-outline" size={18} color={Colors.white} />
-                          <Text style={styles.directAcceptPrimaryButtonText}>Accepter et démarrer</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                </TouchableOpacity>
-              </SafeAreaView>
-            </View>
-          </Modal>
         )}
 
         {/* Modal pour créer une offre */}
@@ -2566,7 +2352,7 @@ export default function TripRequestDetailsScreen() {
         )}
 
         {/* Modal de la carte en plein écran */}
-        {tripRequestMapData && (
+        {tripRequest.departure.lat && tripRequest.departure.lng && tripRequest.arrival.lat && tripRequest.arrival.lng && (
           <Modal visible={mapModalVisible} animationType="fade" transparent onRequestClose={() => setMapModalVisible(false)}>
             <View style={styles.mapModalOverlay}>
               <View style={styles.mapModalContent}>
@@ -2574,10 +2360,15 @@ export default function TripRequestDetailsScreen() {
                   provider={PROVIDER_GOOGLE}
                   style={styles.fullscreenMap}
                   mapType="standard"
-                  initialRegion={tripRequestMapData.region}
+                  initialRegion={{
+                    latitude: (tripRequest.departure.lat + tripRequest.arrival.lat) / 2,
+                    longitude: (tripRequest.departure.lng + tripRequest.arrival.lng) / 2,
+                    latitudeDelta: Math.abs(tripRequest.departure.lat - tripRequest.arrival.lat) * 2.5 || 0.1,
+                    longitudeDelta: Math.abs(tripRequest.departure.lng - tripRequest.arrival.lng) * 2.5 || 0.1,
+                  }}
                 >
                   {/* Trajectoire réelle de circulation */}
-                  {routeCoordinates.length > 0 ? (
+                  {routeCoordinates && routeCoordinates.length > 0 ? (
                     <Polyline
                       coordinates={routeCoordinates}
                       strokeColor={Colors.primary}
@@ -2586,7 +2377,10 @@ export default function TripRequestDetailsScreen() {
                   ) : (
                     // Fallback sur ligne droite pendant le chargement ou en cas d'erreur
                     <Polyline
-                      coordinates={tripRequestMapData.fallbackCoordinates}
+                      coordinates={[
+                        { latitude: tripRequest.departure.lat, longitude: tripRequest.departure.lng },
+                        { latitude: tripRequest.arrival.lat, longitude: tripRequest.arrival.lng },
+                      ]}
                       strokeColor={Colors.gray[400]}
                       strokeWidth={4}
                       lineDashPattern={[2, 2]}
@@ -2595,7 +2389,10 @@ export default function TripRequestDetailsScreen() {
 
                   {/* Marqueur de départ */}
                   <Marker
-                    coordinate={tripRequestMapData.departure}
+                    coordinate={{
+                      latitude: tripRequest.departure.lat,
+                      longitude: tripRequest.departure.lng,
+                    }}
                   >
                     <View style={styles.markerStartCircle}>
                       <Ionicons name="location" size={18} color={Colors.white} />
@@ -2610,7 +2407,10 @@ export default function TripRequestDetailsScreen() {
 
                   {/* Marqueur d'arrivée */}
                   <Marker
-                    coordinate={tripRequestMapData.arrival}
+                    coordinate={{
+                      latitude: tripRequest.arrival.lat,
+                      longitude: tripRequest.arrival.lng,
+                    }}
                   >
                     <View style={styles.markerEndCircle}>
                       <Ionicons name="navigate" size={18} color={Colors.white} />
@@ -3336,6 +3136,9 @@ const styles = StyleSheet.create({
   ownerHeroActions: {
     flexDirection: 'row',
     gap: Spacing.sm,
+  },
+  ownerHeroSecondaryActions: {
+    marginTop: Spacing.sm,
   },
   ownerHeroGhostButton: {
     flex: 1,
@@ -4240,79 +4043,6 @@ const styles = StyleSheet.create({
   modalScrollContent: {
     padding: Spacing.lg,
     flexGrow: 1,
-  },
-  directAcceptModalContent: {
-    backgroundColor: Colors.white,
-    borderTopLeftRadius: BorderRadius.xl,
-    borderTopRightRadius: BorderRadius.xl,
-    maxHeight: '82%',
-    minHeight: '58%',
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 10,
-  },
-  directAcceptModalInner: {
-    flex: 1,
-  },
-  directAcceptScrollContent: {
-    padding: Spacing.lg,
-    paddingBottom: Spacing.md,
-  },
-  directAcceptMapCard: {
-    height: 220,
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
-    backgroundColor: Colors.gray[100],
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    marginBottom: Spacing.sm,
-  },
-  directAcceptMapView: {
-    flex: 1,
-  },
-  directAcceptFooter: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.sm,
-    paddingBottom: Spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray[200],
-    backgroundColor: Colors.white,
-  },
-  directAcceptSecondaryButton: {
-    flex: 1,
-    minHeight: 52,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    borderColor: Colors.primary + '35',
-    backgroundColor: Colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.md,
-  },
-  directAcceptSecondaryButtonText: {
-    color: Colors.primary,
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-  },
-  directAcceptPrimaryButton: {
-    flex: 1.35,
-    minHeight: 52,
-    borderRadius: BorderRadius.xl,
-    backgroundColor: Colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    paddingHorizontal: Spacing.md,
-  },
-  directAcceptPrimaryButtonText: {
-    color: Colors.white,
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
   },
   modalConfirmButton: {
     padding: Spacing.md,

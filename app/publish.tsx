@@ -279,6 +279,12 @@ export default function PublishScreen() {
     resetVehicleForm();
   };
 
+  const vehicleModalCopy = {
+    title: 'Nouveau v\u00e9hicule',
+    subtitle:
+      'Ajoutez votre v\u00e9hicule maintenant pour continuer la publication sans perdre votre progression.',
+  };
+
   // Données du formulaire
   const [departureLocation, setDepartureLocation] = useState<MapLocationSelection | null>(null);
   const [arrivalLocation, setArrivalLocation] = useState<MapLocationSelection | null>(null);
@@ -1655,6 +1661,7 @@ export default function PublishScreen() {
         visible={showVehicleForm}
         title="Nouveau véhicule"
         subtitle="Ajoutez votre véhicule maintenant pour continuer la publication sans perdre votre progression."
+        {...vehicleModalCopy}
         brand={vehicleBrand}
         model={vehicleModel}
         color={vehicleColor}
