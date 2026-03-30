@@ -28,6 +28,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View
 } from 'react-native';
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
@@ -49,6 +50,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { showDialog } = useDialog();
+  const { width } = useWindowDimensions();
   const { data: currentUser } = useGetCurrentUserQuery();
   const { data: favoriteLocations = [], isLoading: favoriteLocationsLoading } =
     useGetFavoriteLocationsQuery();
@@ -445,6 +447,7 @@ export default function HomeScreen() {
 
   const unreadNotifications = notificationsData?.unreadCount ?? 0;
   const hasLocationSelections = Boolean(filterDepartureLocation || filterArrivalLocation);
+  const isCompactScreen = width <= 360;
 
   const quickPlaces = useMemo<HomeQuickPlace[]>(() => {
     const favoritePlaceCards = favoriteLocations.map((location) => {
@@ -650,41 +653,75 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.section}>
-          <View style={styles.quickActionsLead}>
+        <View style={[styles.section, isCompactScreen && styles.sectionCompact]}>
+          <View style={[styles.quickActionsLead, isCompactScreen && styles.quickActionsLeadCompact]}>
             <Text style={styles.quickActionsEyebrow}>Actions rapides</Text>
             <Text style={styles.sectionTitle}>Choisissez votre prochaine action</Text>
-            <Text style={styles.quickActionsLeadText}>
+            <Text style={[styles.quickActionsLeadText, isCompactScreen && styles.quickActionsLeadTextCompact]}>
               Publiez si vous conduisez, trouvez un trajet si vous voyagez, ou gérez vos demandes sans chercher.
             </Text>
           </View>
 
-          <View style={styles.quickActionsPrimaryRow}>
+          <View style={[styles.quickActionsPrimaryRow, isCompactScreen && styles.quickActionsRowCompact]}>
             <TouchableOpacity
               activeOpacity={0.92}
-              style={[styles.quickActionPrimaryCard, styles.publishActionCard]}
+              style={[
+                styles.quickActionPrimaryCard,
+                styles.publishActionCard,
+                isCompactScreen && styles.quickActionPrimaryCardCompact,
+              ]}
               onPress={() => router.push('/publish')}
             >
               <LinearGradient
                 colors={[Colors.primary, '#2563EB']}
-                style={styles.quickActionPrimaryGradient}
+                style={[
+                  styles.quickActionPrimaryGradient,
+                  isCompactScreen && styles.quickActionPrimaryGradientCompact,
+                ]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
-                <View style={styles.quickActionPrimaryTop}>
-                  <View style={styles.quickActionPrimaryIcon}>
+                <View style={[styles.quickActionPrimaryTop, isCompactScreen && styles.quickActionPrimaryTopCompact]}>
+                  <View style={[styles.quickActionPrimaryIcon, isCompactScreen && styles.quickActionPrimaryIconCompact]}>
                     <Ionicons name="add" size={28} color={Colors.white} />
                   </View>
-                  <View style={styles.quickActionPrimaryBadge}>
-                    <Text style={styles.quickActionPrimaryBadgeText}>Conducteur</Text>
+                  <View
+                    style={[
+                      styles.quickActionPrimaryBadge,
+                      isCompactScreen && styles.quickActionPrimaryBadgeCompact,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.quickActionPrimaryBadgeText,
+                        isCompactScreen && styles.quickActionPrimaryBadgeTextCompact,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      Conducteur
+                    </Text>
                   </View>
                 </View>
-                <Text style={styles.quickActionPrimaryTitle}>Publier un trajet</Text>
-                <Text style={styles.quickActionPrimarySubtitle}>
+                <Text style={[styles.quickActionPrimaryTitle, isCompactScreen && styles.quickActionPrimaryTitleCompact]}>
+                  Publier un trajet
+                </Text>
+                <Text
+                  style={[
+                    styles.quickActionPrimarySubtitle,
+                    isCompactScreen && styles.quickActionPrimarySubtitleCompact,
+                  ]}
+                >
                   Proposer mes places et recevoir des réservations.
                 </Text>
-                <View style={styles.quickActionPrimaryFooter}>
-                  <Text style={styles.quickActionPrimaryFooterText}>Commencer</Text>
+                <View style={[styles.quickActionPrimaryFooter, isCompactScreen && styles.quickActionPrimaryFooterCompact]}>
+                  <Text
+                    style={[
+                      styles.quickActionPrimaryFooterText,
+                      isCompactScreen && styles.quickActionPrimaryFooterTextCompact,
+                    ]}
+                  >
+                    Commencer
+                  </Text>
                   <Ionicons name="arrow-forward" size={18} color={Colors.white} />
                 </View>
               </LinearGradient>
@@ -692,67 +729,119 @@ export default function HomeScreen() {
 
             <TouchableOpacity
               activeOpacity={0.92}
-              style={[styles.quickActionPrimaryCard, styles.searchActionCard]}
+              style={[
+                styles.quickActionPrimaryCard,
+                styles.searchActionCard,
+                isCompactScreen && styles.quickActionPrimaryCardCompact,
+              ]}
               onPress={() => router.push('/search')}
             >
               <LinearGradient
                 colors={['#2563EB', '#0EA5E9']}
-                style={styles.quickActionPrimaryGradient}
+                style={[
+                  styles.quickActionPrimaryGradient,
+                  isCompactScreen && styles.quickActionPrimaryGradientCompact,
+                ]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
-                <View style={styles.quickActionPrimaryTop}>
-                  <View style={styles.quickActionPrimaryIcon}>
+                <View style={[styles.quickActionPrimaryTop, isCompactScreen && styles.quickActionPrimaryTopCompact]}>
+                  <View style={[styles.quickActionPrimaryIcon, isCompactScreen && styles.quickActionPrimaryIconCompact]}>
                     <Ionicons name="search" size={24} color={Colors.white} />
                   </View>
-                  <View style={styles.quickActionPrimaryBadge}>
-                    <Text style={styles.quickActionPrimaryBadgeText}>Passager</Text>
+                  <View
+                    style={[
+                      styles.quickActionPrimaryBadge,
+                      isCompactScreen && styles.quickActionPrimaryBadgeCompact,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.quickActionPrimaryBadgeText,
+                        isCompactScreen && styles.quickActionPrimaryBadgeTextCompact,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      Passager
+                    </Text>
                   </View>
                 </View>
-                <Text style={styles.quickActionPrimaryTitle}>Trouver un trajet</Text>
-                <Text style={styles.quickActionPrimarySubtitle}>
+                <Text style={[styles.quickActionPrimaryTitle, isCompactScreen && styles.quickActionPrimaryTitleCompact]}>
+                  Trouver un trajet
+                </Text>
+                <Text
+                  style={[
+                    styles.quickActionPrimarySubtitle,
+                    isCompactScreen && styles.quickActionPrimarySubtitleCompact,
+                  ]}
+                >
                   Rechercher une place disponible pour voyager rapidement.
                 </Text>
-                <View style={styles.quickActionPrimaryFooter}>
-                  <Text style={styles.quickActionPrimaryFooterText}>Rechercher</Text>
+                <View style={[styles.quickActionPrimaryFooter, isCompactScreen && styles.quickActionPrimaryFooterCompact]}>
+                  <Text
+                    style={[
+                      styles.quickActionPrimaryFooterText,
+                      isCompactScreen && styles.quickActionPrimaryFooterTextCompact,
+                    ]}
+                  >
+                    Rechercher
+                  </Text>
                   <Ionicons name="arrow-forward" size={18} color={Colors.white} />
                 </View>
               </LinearGradient>
             </TouchableOpacity>
           </View>
 
-          <View style={styles.quickActionsSecondaryRow}>
+          <View
+            style={[
+              styles.quickActionsSecondaryRow,
+              isCompactScreen && styles.quickActionsRowCompact,
+              isCompactScreen && styles.quickActionsSecondaryRowCompact,
+            ]}
+          >
             <TouchableOpacity
-              style={[styles.quickActionCard, styles.requestActionCard]}
+              style={[styles.quickActionCard, styles.requestActionCard, isCompactScreen && styles.quickActionCardCompact]}
                 onPress={() => router.push(getTripRequestCreateHref())}
             >
-              <View style={styles.quickActionBadge}>
-                <Text style={styles.quickActionBadgeText}>Flexible</Text>
+              <View style={[styles.quickActionBadge, isCompactScreen && styles.quickActionBadgeCompact]}>
+                <Text style={[styles.quickActionBadgeText, isCompactScreen && styles.quickActionBadgeTextCompact]}>Flexible</Text>
               </View>
-              <View style={[styles.quickActionIcon, { backgroundColor: Colors.success }]}>
+              <View
+                style={[
+                  styles.quickActionIcon,
+                  { backgroundColor: Colors.success },
+                  isCompactScreen && styles.quickActionIconCompact,
+                ]}
+              >
                 <Ionicons name="paper-plane" size={24} color={Colors.white} />
               </View>
-              <Text style={styles.quickActionTitle}>Demander une course</Text>
-              <Text style={styles.quickActionSubtitle}>Créer un trajet sur mesure</Text>
-              <View style={styles.quickActionFooter}>
+              <Text style={[styles.quickActionTitle, isCompactScreen && styles.quickActionTitleCompact]}>Demander une course</Text>
+              <Text style={[styles.quickActionSubtitle, isCompactScreen && styles.quickActionSubtitleCompact]}>Créer un trajet sur mesure</Text>
+              <View style={[styles.quickActionFooter, isCompactScreen && styles.quickActionFooterCompact]}>
                 <Text style={styles.quickActionFooterText}>Ouvrir</Text>
                 <Ionicons name="arrow-forward" size={16} color={Colors.success} />
               </View>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.quickActionCard, styles.listActionCard]}
+              style={[styles.quickActionCard, styles.listActionCard, isCompactScreen && styles.quickActionCardCompact]}
               onPress={() => router.push(requestsRoute)}
             >
-              <View style={styles.quickActionBadge}>
-                <Text style={styles.quickActionBadgeText}>Suivi</Text>
+              <View style={[styles.quickActionBadge, isCompactScreen && styles.quickActionBadgeCompact]}>
+                <Text style={[styles.quickActionBadgeText, isCompactScreen && styles.quickActionBadgeTextCompact]}>Suivi</Text>
               </View>
-              <View style={[styles.quickActionIcon, { backgroundColor: '#8B5CF6' }]}>
+              <View
+                style={[
+                  styles.quickActionIcon,
+                  { backgroundColor: '#8B5CF6' },
+                  isCompactScreen && styles.quickActionIconCompact,
+                ]}
+              >
                 <Ionicons name="list" size={24} color={Colors.white} />
               </View>
-              <Text style={styles.quickActionTitle}>{requestsActionTitle}</Text>
-              <Text style={styles.quickActionSubtitle}>{requestsActionSubtitle}</Text>
-              <View style={styles.quickActionFooter}>
+              <Text style={[styles.quickActionTitle, isCompactScreen && styles.quickActionTitleCompact]}>{requestsActionTitle}</Text>
+              <Text style={[styles.quickActionSubtitle, isCompactScreen && styles.quickActionSubtitleCompact]}>{requestsActionSubtitle}</Text>
+              <View style={[styles.quickActionFooter, isCompactScreen && styles.quickActionFooterCompact]}>
                 <Text style={[styles.quickActionFooterText, { color: '#7C3AED' }]}>Voir</Text>
                 <Ionicons name="arrow-forward" size={16} color="#7C3AED" />
               </View>
@@ -1289,6 +1378,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     marginBottom: Spacing.xl,
   },
+  sectionCompact: {
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.lg,
+  },
   quickPlacesSection: {
     paddingTop: Spacing.sm,
   },
@@ -1470,6 +1563,9 @@ const styles = StyleSheet.create({
   quickActionsLead: {
     marginBottom: Spacing.md,
   },
+  quickActionsLeadCompact: {
+    marginBottom: Spacing.sm,
+  },
   quickActionsEyebrow: {
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
@@ -1485,6 +1581,11 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     maxWidth: 320,
   },
+  quickActionsLeadTextCompact: {
+    fontSize: 13,
+    lineHeight: 18,
+    maxWidth: '100%',
+  },
   quickActionsPrimaryRow: {
     flexDirection: 'row',
     gap: Spacing.md,
@@ -1494,12 +1595,22 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     marginTop: Spacing.md,
   },
+  quickActionsRowCompact: {
+    gap: Spacing.sm,
+  },
+  quickActionsSecondaryRowCompact: {
+    marginTop: Spacing.sm,
+  },
   quickActionPrimaryCard: {
     flex: 1,
+    minWidth: 0,
     borderRadius: BorderRadius.xxl,
     overflow: 'hidden',
     borderWidth: 1,
     ...CommonStyles.shadowMd,
+  },
+  quickActionPrimaryCardCompact: {
+    borderRadius: BorderRadius.xl,
   },
   quickActionPrimaryGradient: {
     minHeight: 182,
@@ -1507,11 +1618,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.md,
   },
+  quickActionPrimaryGradientCompact: {
+    minHeight: 164,
+    padding: Spacing.sm,
+    gap: Spacing.sm,
+  },
   quickActionPrimaryTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.sm,
+  },
+  quickActionPrimaryTopCompact: {
+    alignItems: 'flex-start',
+    gap: Spacing.xs,
   },
   quickActionPrimaryIcon: {
     width: 52,
@@ -1521,11 +1641,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.16)',
   },
+  quickActionPrimaryIconCompact: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.lg,
+  },
   quickActionPrimaryBadge: {
     paddingHorizontal: Spacing.sm,
     paddingVertical: 6,
     borderRadius: BorderRadius.full,
     backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  quickActionPrimaryBadgeCompact: {
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 5,
+    flexShrink: 1,
+    maxWidth: '60%',
   },
   quickActionPrimaryBadgeText: {
     color: Colors.white,
@@ -1533,16 +1664,27 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     textTransform: 'uppercase',
   },
+  quickActionPrimaryBadgeTextCompact: {
+    fontSize: 10,
+  },
   quickActionPrimaryTitle: {
     fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
     color: Colors.white,
     lineHeight: 24,
   },
+  quickActionPrimaryTitleCompact: {
+    fontSize: FontSizes.base,
+    lineHeight: 22,
+  },
   quickActionPrimarySubtitle: {
     fontSize: FontSizes.sm,
     color: 'rgba(255,255,255,0.92)',
     lineHeight: 20,
+  },
+  quickActionPrimarySubtitleCompact: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   quickActionPrimaryFooter: {
     flexDirection: 'row',
@@ -1552,10 +1694,16 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.16)',
   },
+  quickActionPrimaryFooterCompact: {
+    paddingTop: Spacing.xs,
+  },
   quickActionPrimaryFooterText: {
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
     color: Colors.white,
+  },
+  quickActionPrimaryFooterTextCompact: {
+    fontSize: 13,
   },
   quickActions: {
     flexDirection: 'row',
@@ -1563,6 +1711,7 @@ const styles = StyleSheet.create({
   },
   quickActionCard: {
     flex: 1,
+    minWidth: 0,
     padding: Spacing.lg,
     borderRadius: BorderRadius.xxl,
     backgroundColor: '#FFFCF8',
@@ -1570,6 +1719,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderWidth: 1,
     ...CommonStyles.shadowSm,
+  },
+  quickActionCardCompact: {
+    padding: Spacing.md,
+    minHeight: 150,
+    borderRadius: BorderRadius.xl,
   },
   publishActionCard: {
     borderColor: Colors.primary + '16',
@@ -1595,11 +1749,18 @@ const styles = StyleSheet.create({
     borderColor: Colors.gray[200],
     marginBottom: Spacing.md,
   },
+  quickActionBadgeCompact: {
+    marginBottom: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
+  },
   quickActionBadgeText: {
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
     color: Colors.gray[700],
     textTransform: 'uppercase',
+  },
+  quickActionBadgeTextCompact: {
+    fontSize: 10,
   },
   quickActionIcon: {
     width: 48,
@@ -1609,17 +1770,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: Spacing.md,
   },
+  quickActionIconCompact: {
+    width: 42,
+    height: 42,
+    marginBottom: Spacing.sm,
+  },
   quickActionTitle: {
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
     lineHeight: 22,
   },
+  quickActionTitleCompact: {
+    fontSize: 15,
+    lineHeight: 20,
+  },
   quickActionSubtitle: {
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
     marginTop: 4,
     lineHeight: 19,
+  },
+  quickActionSubtitleCompact: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   quickActionFooter: {
     flexDirection: 'row',
@@ -1629,6 +1803,10 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm,
     borderTopWidth: 1,
     borderTopColor: Colors.gray[200],
+  },
+  quickActionFooterCompact: {
+    marginTop: Spacing.sm,
+    paddingTop: Spacing.xs,
   },
   quickActionFooterText: {
     fontSize: FontSizes.sm,

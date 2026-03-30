@@ -1,5 +1,6 @@
 import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardModal';
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
+import { VehicleFormModal } from '@/components/VehicleFormModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
@@ -193,13 +194,16 @@ export default function PublishScreen() {
   }, [user?.role]);
   const [showDriverRequiredModal, setShowDriverRequiredModal] = useState(false);
 
-  const { 
+  const {
     data: vehicles = [], 
     refetch: refetchVehicles,
     isLoading: isLoadingVehicles,
     isFetching: isFetchingVehicles,
   } = useGetVehiclesQuery(undefined, {
     skip: !isDriver,
+    refetchOnMountOrArgChange: true,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
   });
   
   // Filtrer pour n'afficher que les véhicules actifs
@@ -261,6 +265,18 @@ export default function PublishScreen() {
     setVehicleModel('');
     setVehicleColor('');
     setVehicleLicensePlate('');
+  };
+
+  const resetVehicleForm = () => {
+    setVehicleBrand('');
+    setVehicleModel('');
+    setVehicleColor('');
+    setVehicleLicensePlate('');
+  };
+
+  const closeVehicleForm = () => {
+    setShowVehicleForm(false);
+    resetVehicleForm();
   };
 
   // Données du formulaire
@@ -545,17 +561,12 @@ export default function PublishScreen() {
 
       // Refetch le profil utilisateur pour mettre à jour isDriver si nécessaire
       // (le backend peut mettre isDriver=true après la création du premier véhicule)
-      await refetchProfile();
+      void Promise.allSettled([refetchProfile(), refetchVehicles()]);
       
       // Refetch les véhicules (maintenant que isDriver peut être mis à jour)
-      await refetchVehicles();
       
       setSelectedVehicleId(newVehicle.id);
-      setShowVehicleForm(false);
-      setVehicleBrand('');
-      setVehicleModel('');
-      setVehicleColor('');
-      setVehicleLicensePlate('');
+      closeVehicleForm();
 
       showDialog({
         variant: 'success',
@@ -1640,124 +1651,22 @@ export default function PublishScreen() {
       </Modal>
 
       {/* Vehicle Creation Modal */}
-      <Modal
-        transparent
-        animationType="slide"
+      <VehicleFormModal
         visible={showVehicleForm}
-        onRequestClose={() => {
-          setShowVehicleForm(false);
-          setVehicleBrand('');
-          setVehicleModel('');
-          setVehicleColor('');
-          setVehicleLicensePlate('');
-        }}
-      >
-        <View style={styles.vehicleModalOverlay}>
-          <TouchableOpacity
-            style={styles.vehicleModalBackdrop}
-            activeOpacity={1}
-            onPress={() => {
-              setShowVehicleForm(false);
-              setVehicleBrand('');
-              setVehicleModel('');
-              setVehicleColor('');
-              setVehicleLicensePlate('');
-            }}
-          />
-          <Animated.View entering={FadeInDown} style={styles.vehicleModalCard}>
-            <SafeAreaView edges={['bottom']} style={styles.vehicleModalSafeArea}>
-              <View style={styles.vehicleModalHeader}>
-                <Text style={styles.vehicleModalTitle}>Nouveau véhicule</Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    setShowVehicleForm(false);
-                    setVehicleBrand('');
-                    setVehicleModel('');
-                    setVehicleColor('');
-                    setVehicleLicensePlate('');
-                  }}
-                >
-                  <Ionicons name="close" size={24} color={Colors.gray[600]} />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView
-                style={styles.vehicleModalScrollView}
-                contentContainerStyle={styles.vehicleModalScrollContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-              >
-                <View style={styles.vehicleFormInputGroup}>
-                  <Text style={styles.vehicleFormLabel}>Marque *</Text>
-                  <TextInput
-                    style={styles.vehicleFormInput}
-                    placeholder="Ex: Toyota"
-                    value={vehicleBrand}
-                    onChangeText={setVehicleBrand}
-                  />
-                </View>
-
-                <View style={styles.vehicleFormInputGroup}>
-                  <Text style={styles.vehicleFormLabel}>Modèle *</Text>
-                  <TextInput
-                    style={styles.vehicleFormInput}
-                    placeholder="Ex: Corolla"
-                    value={vehicleModel}
-                    onChangeText={setVehicleModel}
-                  />
-                </View>
-
-                <View style={styles.vehicleFormInputGroup}>
-                  <Text style={styles.vehicleFormLabel}>Couleur *</Text>
-                  <TextInput
-                    style={styles.vehicleFormInput}
-                    placeholder="Ex: Blanc"
-                    value={vehicleColor}
-                    onChangeText={setVehicleColor}
-                  />
-                </View>
-
-                <View style={styles.vehicleFormInputGroup}>
-                  <Text style={styles.vehicleFormLabel}>Plaque d&apos;immatriculation *</Text>
-                  <TextInput
-                    style={styles.vehicleFormInput}
-                    placeholder="Ex: AB-123-CD"
-                    value={vehicleLicensePlate}
-                    onChangeText={setVehicleLicensePlate}
-                    autoCapitalize="characters"
-                  />
-                </View>
-              </ScrollView>
-
-              <View style={styles.vehicleFormButtons}>
-                <TouchableOpacity
-                  style={[styles.vehicleFormButton, styles.vehicleFormButtonSecondary]}
-                  onPress={() => {
-                    setShowVehicleForm(false);
-                    setVehicleBrand('');
-                    setVehicleModel('');
-                    setVehicleColor('');
-                    setVehicleLicensePlate('');
-                  }}
-                >
-                  <Text style={styles.vehicleFormButtonSecondaryText}>Annuler</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.vehicleFormButton, styles.vehicleFormButtonPrimary]}
-                  onPress={handleCreateVehicle}
-                  disabled={isCreatingVehicle}
-                >
-                  {isCreatingVehicle ? (
-                    <ActivityIndicator size="small" color={Colors.white} />
-                  ) : (
-                    <Text style={styles.vehicleFormButtonPrimaryText}>Enregistrer</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </SafeAreaView>
-          </Animated.View>
-        </View>
-      </Modal>
+        title="Nouveau véhicule"
+        subtitle="Ajoutez votre véhicule maintenant pour continuer la publication sans perdre votre progression."
+        brand={vehicleBrand}
+        model={vehicleModel}
+        color={vehicleColor}
+        licensePlate={vehicleLicensePlate}
+        onBrandChange={setVehicleBrand}
+        onModelChange={setVehicleModel}
+        onColorChange={setVehicleColor}
+        onLicensePlateChange={setVehicleLicensePlate}
+        onClose={closeVehicleForm}
+        onSubmit={handleCreateVehicle}
+        submitting={isCreatingVehicle}
+      />
     </SafeAreaView>
   );
 }
@@ -2708,12 +2617,17 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
+  vehicleModalKeyboardAvoiding: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'flex-end',
+  },
   vehicleModalCard: {
     backgroundColor: Colors.white,
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
-    maxHeight: '95%',
-    minHeight: 500,
+    maxHeight: '92%',
+    minHeight: 0,
     shadowColor: Colors.black,
     shadowOpacity: 0.15,
     shadowRadius: 20,
@@ -2743,7 +2657,7 @@ const styles = StyleSheet.create({
   },
   vehicleModalScrollContent: {
     padding: Spacing.xl,
-    paddingBottom: Spacing.lg,
+    paddingBottom: Spacing.xxl,
     gap: Spacing.lg,
   },
   // Vehicle Form Styles

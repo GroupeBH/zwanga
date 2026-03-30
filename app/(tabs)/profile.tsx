@@ -1,5 +1,6 @@
 import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardModal';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
+import { VehicleFormModal } from '@/components/VehicleFormModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
@@ -31,7 +32,6 @@ import {
   TextInput,
   TextInputKeyPressEventData,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -213,6 +213,11 @@ export default function ProfileScreen() {
     setVehiclePlate('');
   }, []);
 
+  const closeVehicleModal = useCallback(() => {
+    setVehicleModalVisible(false);
+    resetVehicleForm();
+  }, [resetVehicleForm]);
+
   // Handlers optimisés pour éviter les re-renders
   const handleVehicleBrandChange = useCallback((text: string) => {
     setVehicleBrand(text);
@@ -260,9 +265,13 @@ export default function ProfileScreen() {
         color: vehicleColor.trim(),
         licensePlate: vehiclePlate.trim(),
       }).unwrap();
-      setVehicleModalVisible(false);
-      resetVehicleForm();
-      await Promise.all([refetchVehicles(), refetchProfile()]);
+      closeVehicleModal();
+      void Promise.allSettled([refetchVehicles(), refetchProfile()]);
+      showDialog({
+        variant: 'success',
+        title: 'V\u00e9hicule ajout\u00e9',
+        message: 'Votre v\u00e9hicule est maintenant disponible dans votre profil.',
+      });
     } catch (error: any) {
       const message =
         error?.data?.message ?? error?.error ?? 'Impossible d\'ajouter le véhicule pour le moment.';
@@ -1234,98 +1243,23 @@ export default function ProfileScreen() {
         </View>
       </ScrollView>
 
-      <Modal 
-        visible={vehicleModalVisible} 
-        transparent 
-        animationType="slide"
-        onRequestClose={() => setVehicleModalVisible(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setVehicleModalVisible(false)}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.vehicleModalOverlay}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-          >
-            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View style={[styles.vehicleModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
-            <View style={styles.vehicleModalHeader}>
-              <TouchableOpacity onPress={() => setVehicleModalVisible(false)}>
-                <Ionicons name="close" size={24} color={Colors.gray[500]} />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.vehicleModalHero}>
-              <View style={styles.vehicleModalBadge}>
-                <Ionicons name="car" size={28} color={Colors.white} />
-              </View>
-              <Text style={styles.vehicleModalTitle}>Ajouter un véhicule</Text>
-              <Text style={styles.vehicleModalSubtitle}>
-                Indiquez les détails exacts de votre véhicule pour rassurer vos passagers.
-              </Text>
-            </View>
-            <ScrollView
-              contentContainerStyle={styles.vehicleModalContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              nestedScrollEnabled={true}
-              bounces={false}
-            >
-              <View style={styles.vehicleInputGroup}>
-                <Text style={styles.vehicleInputLabel}>Marque</Text>
-                <TextInput
-                  style={styles.vehicleInput}
-                  placeholder="Toyota"
-                  placeholderTextColor={Colors.gray[400]}
-                  value={vehicleBrand}
-                  onChangeText={handleVehicleBrandChange}
-                />
-              </View>
-              <View style={styles.vehicleInputGroup}>
-                <Text style={styles.vehicleInputLabel}>Modèle</Text>
-                <TextInput
-                  style={styles.vehicleInput}
-                  placeholder="Corolla"
-                  placeholderTextColor={Colors.gray[400]}
-                  value={vehicleModel}
-                  onChangeText={handleVehicleModelChange}
-                />
-              </View>
-              <View style={styles.vehicleInputGroup}>
-                <Text style={styles.vehicleInputLabel}>Couleur</Text>
-                <TextInput
-                  style={styles.vehicleInput}
-                  placeholder="Bleu"
-                  placeholderTextColor={Colors.gray[400]}
-                  value={vehicleColor}
-                  onChangeText={handleVehicleColorChange}
-                />
-              </View>
-              <View style={styles.vehicleInputGroup}>
-                <Text style={styles.vehicleInputLabel}>Plaque d'immatriculation</Text>
-                <TextInput
-                  style={styles.vehicleInput}
-                  placeholder="ABC-1234"
-                  placeholderTextColor={Colors.gray[400]}
-                  value={vehiclePlate}
-                  onChangeText={handleVehiclePlateChange}
-                />
-              </View>
-              <TouchableOpacity
-                style={[styles.vehicleSaveButton, creatingVehicle && styles.vehicleSaveButtonDisabled]}
-                onPress={handleAddVehicle}
-                disabled={creatingVehicle}
-              >
-                {creatingVehicle ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <Text style={styles.vehicleSaveButtonText}>Ajouter</Text>
-                )}
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-            </TouchableWithoutFeedback>
-        </KeyboardAvoidingView>
-        </TouchableWithoutFeedback>
-      </Modal>
+      <VehicleFormModal
+        visible={vehicleModalVisible}
+        title="Ajouter un véhicule"
+        subtitle="Indiquez les détails exacts de votre véhicule pour rassurer vos passagers."
+        submitLabel="Ajouter"
+        brand={vehicleBrand}
+        model={vehicleModel}
+        color={vehicleColor}
+        licensePlate={vehiclePlate}
+        onBrandChange={handleVehicleBrandChange}
+        onModelChange={handleVehicleModelChange}
+        onColorChange={handleVehicleColorChange}
+        onLicensePlateChange={handleVehiclePlateChange}
+        onClose={closeVehicleModal}
+        onSubmit={handleAddVehicle}
+        submitting={creatingVehicle}
+      />
 
       <KycWizardModal
         visible={kycModalVisible}
@@ -2152,7 +2086,8 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
     padding: Spacing.xl,
-    maxHeight: '90%',
+    maxHeight: '92%',
+    minHeight: 0,
     width: '100%',
   },
   vehicleModalHeader: {

@@ -29,6 +29,22 @@ export const vehicleApi = baseApi.injectEndpoints({
         method: 'POST',
         body,
       }),
+      async onQueryStarted(_body, { dispatch, queryFulfilled }) {
+        try {
+          const { data: createdVehicle } = await queryFulfilled;
+
+          dispatch(
+            vehicleApi.util.updateQueryData('getVehicles', undefined, (draft) => {
+              const alreadyExists = draft.some((vehicle) => vehicle.id === createdVehicle.id);
+              if (!alreadyExists) {
+                draft.unshift(createdVehicle);
+              }
+            }),
+          );
+        } catch {
+          // L'erreur est gérée par le composant appelant.
+        }
+      },
       invalidatesTags: ['Vehicle', 'User'],
     }),
     updateVehicle: builder.mutation<Vehicle, { id: string; data: UpdateVehiclePayload }>({
