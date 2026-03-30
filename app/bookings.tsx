@@ -142,7 +142,7 @@ export default function BookingsScreen() {
   const displayBookings = activeTab === 'active' ? activeBookings : historyBookings;
   const emptyText =
     activeTab === 'active'
-      ? 'Vous n\’avez pas encore de réservation active.'
+      ? 'Vous n&apos;avez pas encore de réservation active.'
       : 'Aucune réservation passée pour le moment.';
 
   const handleCancel = (bookingId: string) => {

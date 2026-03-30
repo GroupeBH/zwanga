@@ -1,8 +1,9 @@
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -37,6 +38,7 @@ const DEFAULT_TITLE = 'Ajouter un v\u00e9hicule';
 const DEFAULT_SUBTITLE =
   'Indiquez les d\u00e9tails exacts de votre v\u00e9hicule pour rassurer vos passagers.';
 const DEFAULT_SUBMIT_LABEL = 'Enregistrer';
+const MODEL_LABEL = 'Mod\u00e8le';
 
 export function VehicleFormModal({
   visible,
@@ -56,6 +58,27 @@ export function VehicleFormModal({
   onSubmit,
 }: VehicleFormModalProps) {
   const insets = useSafeAreaInsets();
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardHeight(event.endCoordinates.height);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  const keyboardOffset = Platform.OS === 'android' ? Math.max(keyboardHeight - insets.bottom, 0) : 0;
+  const contentBottomPadding = Math.max(insets.bottom, 16) + Spacing.xl + keyboardOffset;
 
   return (
     <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
@@ -67,7 +90,7 @@ export function VehicleFormModal({
           keyboardVerticalOffset={0}
           style={styles.keyboardAvoiding}
         >
-          <View style={styles.card}>
+          <View style={[styles.card, keyboardOffset > 0 && { marginBottom: keyboardOffset }]}>
             <SafeAreaView edges={['bottom']} style={styles.safeArea}>
               <View style={styles.header}>
                 <TouchableOpacity style={styles.closeButton} onPress={onClose}>
@@ -85,13 +108,11 @@ export function VehicleFormModal({
 
               <ScrollView
                 style={styles.scrollView}
-                contentContainerStyle={[
-                  styles.content,
-                  { paddingBottom: Math.max(insets.bottom, 16) + Spacing.xl },
-                ]}
+                contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                scrollIndicatorInsets={{ bottom: contentBottomPadding }}
                 bounces={false}
               >
                 <View style={styles.inputGroup}>
@@ -108,7 +129,7 @@ export function VehicleFormModal({
                 </View>
 
                 <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Mod\u00e8le</Text>
+                  <Text style={styles.label}>{MODEL_LABEL}</Text>
                   <TextInput
                     style={styles.input}
                     placeholder="Corolla"

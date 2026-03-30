@@ -218,6 +218,11 @@ export default function ProfileScreen() {
     resetVehicleForm();
   }, [resetVehicleForm]);
 
+  const vehicleModalCopy = {
+    title: 'Ajouter un v\u00e9hicule',
+    subtitle: 'Indiquez les d\u00e9tails exacts de votre v\u00e9hicule pour rassurer vos passagers.',
+  };
+
   // Handlers optimisés pour éviter les re-renders
   const handleVehicleBrandChange = useCallback((text: string) => {
     setVehicleBrand(text);
@@ -1247,6 +1252,7 @@ export default function ProfileScreen() {
         visible={vehicleModalVisible}
         title="Ajouter un véhicule"
         subtitle="Indiquez les détails exacts de votre véhicule pour rassurer vos passagers."
+        {...vehicleModalCopy}
         submitLabel="Ajouter"
         brand={vehicleBrand}
         model={vehicleModel}
