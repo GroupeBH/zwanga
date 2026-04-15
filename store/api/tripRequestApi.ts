@@ -15,6 +15,8 @@ type ServerTripRequest = {
   };
   departureLocation: string;
   arrivalLocation: string;
+  departureReference?: string | null;
+  arrivalReference?: string | null;
   departureCoordinates: [number, number] | null;
   arrivalCoordinates: [number, number] | null;
   departureDateMin: string;
@@ -68,6 +70,10 @@ type ServerDriverOffer = {
   pricePerSeat: number | string;
   availableSeats: number;
   message: string | null;
+  departureReference?: string | null;
+  departureCoordinates?: [number, number] | null;
+  arrivalReference?: string | null;
+  arrivalCoordinates?: [number, number] | null;
   status: string;
   acceptedAt: string | null;
   rejectedAt: string | null;
@@ -98,6 +104,10 @@ type ServerDriverOfferWithTripRequest = {
   pricePerSeat: number | string;
   availableSeats: number;
   message: string | null;
+  departureReference?: string | null;
+  departureCoordinates?: [number, number] | null;
+  arrivalReference?: string | null;
+  arrivalCoordinates?: [number, number] | null;
   status: string;
   acceptedAt: string | null;
   rejectedAt: string | null;
@@ -107,7 +117,9 @@ type ServerDriverOfferWithTripRequest = {
   tripRequest: {
     id: string;
     departureLocation: string;
+    departureReference?: string | null;
     arrivalLocation: string;
+    arrivalReference?: string | null;
     departureDateMin: string;
     departureDateMax: string;
     numberOfSeats: number;
@@ -160,12 +172,16 @@ const mapServerTripRequestToClient = (request: ServerTripRequest): TripRequest =
       address: request.departureLocation,
       lat: departureCoords?.[1] ?? 0,
       lng: departureCoords?.[0] ?? 0,
+      reference: request.departureReference ?? null,
+      hasCoordinates: Boolean(departureCoords),
     },
     arrival: {
       name: request.arrivalLocation,
       address: request.arrivalLocation,
       lat: arrivalCoords?.[1] ?? 0,
       lng: arrivalCoords?.[0] ?? 0,
+      reference: request.arrivalReference ?? null,
+      hasCoordinates: Boolean(arrivalCoords),
     },
     departureDateMin: request.departureDateMin,
     departureDateMax: request.departureDateMax,
@@ -233,6 +249,10 @@ const mapServerDriverOfferToClient = (offer: ServerDriverOffer): DriverOffer => 
     pricePerSeat: typeof offer.pricePerSeat === 'string' ? parseFloat(offer.pricePerSeat) : offer.pricePerSeat,
     availableSeats: offer.availableSeats,
     message: offer.message ?? undefined,
+    departureReference: offer.departureReference ?? undefined,
+    departureCoordinates: offer.departureCoordinates ?? undefined,
+    arrivalReference: offer.arrivalReference ?? undefined,
+    arrivalCoordinates: offer.arrivalCoordinates ?? undefined,
     status: mapStatus(offer.status),
     acceptedAt: offer.acceptedAt ?? undefined,
     rejectedAt: offer.rejectedAt ?? undefined,
@@ -252,6 +272,10 @@ const mapServerDriverOfferWithTripRequestToClient = (offer: ServerDriverOfferWit
     pricePerSeat: offer.pricePerSeat,
     availableSeats: offer.availableSeats,
     message: offer.message,
+    departureReference: offer.departureReference,
+    departureCoordinates: offer.departureCoordinates,
+    arrivalReference: offer.arrivalReference,
+    arrivalCoordinates: offer.arrivalCoordinates,
     status: offer.status,
     acceptedAt: offer.acceptedAt,
     rejectedAt: offer.rejectedAt,
@@ -283,7 +307,9 @@ const mapServerDriverOfferWithTripRequestToClient = (offer: ServerDriverOfferWit
     tripRequest: {
       id: offer.tripRequest.id,
       departureLocation: offer.tripRequest.departureLocation,
+      departureReference: offer.tripRequest.departureReference ?? undefined,
       arrivalLocation: offer.tripRequest.arrivalLocation,
+      arrivalReference: offer.tripRequest.arrivalReference ?? undefined,
       departureDateMin: offer.tripRequest.departureDateMin,
       departureDateMax: offer.tripRequest.departureDateMax,
       numberOfSeats: offer.tripRequest.numberOfSeats,
@@ -304,9 +330,11 @@ const mapServerDriverOfferWithTripRequestToClient = (offer: ServerDriverOfferWit
 
 type CreateTripRequestPayload = {
   departureLocation: string;
-  departureCoordinates: [number, number];
+  departureReference?: string;
+  departureCoordinates?: [number, number];
   arrivalLocation: string;
-  arrivalCoordinates: [number, number];
+  arrivalReference?: string;
+  arrivalCoordinates?: [number, number];
   departureDateMin: string; // ISO string date
   departureDateMax: string; // ISO string date
   numberOfSeats: number;
@@ -320,6 +348,10 @@ type CreateDriverOfferPayload = {
   availableSeats: number;
   vehicleId?: string;
   message?: string;
+  departureReference?: string;
+  departureCoordinates?: [number, number];
+  arrivalReference?: string;
+  arrivalCoordinates?: [number, number];
 };
 
 type AcceptDriverOfferPayload = {
@@ -330,6 +362,10 @@ type AcceptTripRequestPayload = {
   vehicleId?: string;
   departureDate?: string; // ISO string date
   message?: string;
+  departureReference?: string;
+  departureCoordinates?: [number, number];
+  arrivalReference?: string;
+  arrivalCoordinates?: [number, number];
 };
 
 export const tripRequestApi = baseApi.injectEndpoints({

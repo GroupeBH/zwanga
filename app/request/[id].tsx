@@ -43,8 +43,35 @@ import {
   View
 } from 'react-native';
 import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import type { LatLng, Region } from 'react-native-maps';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
+type RequestRouteMapData = {
+  arrivalCoordinate: LatLng;
+  departureCoordinate: LatLng;
+  fallbackCoordinates: LatLng[];
+  initialRegion: Region;
+};
+
+type RouteOverridePickerTarget =
+  | 'offerDeparture'
+  | 'offerArrival'
+  | 'directDeparture'
+  | 'directArrival';
+
+const LANDMARK_PLACEHOLDER = 'Ex: devant la station, portail bleu, entr\u00E9e principale';
+
+function getLocationText(selection: MapLocationSelection | null, manualAddress: string) {
+  return (manualAddress.trim() || selection?.title || selection?.address || '').trim();
+}
+
+function getLocationCoordinates(selection: MapLocationSelection | null): [number, number] | undefined {
+  if (!selection || !Number.isFinite(selection.latitude) || !Number.isFinite(selection.longitude)) {
+    return undefined;
+  }
+  return [selection.longitude, selection.latitude];
+}
 
 export default function TripRequestDetailsScreen() {
   const router = useRouter();
@@ -147,6 +174,10 @@ export default function TripRequestDetailsScreen() {
   const [showEditForm, setShowEditForm] = useState(false);
   const [editDepartureLocation, setEditDepartureLocation] = useState<MapLocationSelection | null>(null);
   const [editArrivalLocation, setEditArrivalLocation] = useState<MapLocationSelection | null>(null);
+  const [editDepartureManualAddress, setEditDepartureManualAddress] = useState('');
+  const [editDepartureReference, setEditDepartureReference] = useState('');
+  const [editArrivalManualAddress, setEditArrivalManualAddress] = useState('');
+  const [editArrivalReference, setEditArrivalReference] = useState('');
   const [editDepartureDateMin, setEditDepartureDateMin] = useState<Date | null>(null);
   const [editDepartureDateMax, setEditDepartureDateMax] = useState<Date | null>(null);
   const [editNumberOfSeats, setEditNumberOfSeats] = useState('');
@@ -172,6 +203,15 @@ export default function TripRequestDetailsScreen() {
   const [pricePerSeat, setPricePerSeat] = useState('');
   const [availableSeats, setAvailableSeats] = useState('');
   const [message, setMessage] = useState('');
+  const [offerDepartureLocation, setOfferDepartureLocation] = useState<MapLocationSelection | null>(null);
+  const [offerDepartureReference, setOfferDepartureReference] = useState('');
+  const [offerArrivalLocation, setOfferArrivalLocation] = useState<MapLocationSelection | null>(null);
+  const [offerArrivalReference, setOfferArrivalReference] = useState('');
+  const [directAcceptDepartureLocation, setDirectAcceptDepartureLocation] = useState<MapLocationSelection | null>(null);
+  const [directAcceptDepartureReference, setDirectAcceptDepartureReference] = useState('');
+  const [directAcceptArrivalLocation, setDirectAcceptArrivalLocation] = useState<MapLocationSelection | null>(null);
+  const [directAcceptArrivalReference, setDirectAcceptArrivalReference] = useState('');
+  const [routeOverridePickerTarget, setRouteOverridePickerTarget] = useState<RouteOverridePickerTarget | null>(null);
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[] | null>(null);
   const [, setIsLoadingRoute] = useState(false);
@@ -330,6 +370,8 @@ export default function TripRequestDetailsScreen() {
   const canAcceptDirectly = useMemo(() => canMakeOffer && !myOffer, [canMakeOffer, myOffer]);
 
   const minimumSeatsRequired = tripRequest?.numberOfSeats ?? 1;
+  const editDepartureAddress = getLocationText(editDepartureLocation, editDepartureManualAddress);
+  const editArrivalAddress = getLocationText(editArrivalLocation, editArrivalManualAddress);
 
   const isOfferDraftValid = useMemo(() => {
     if (!tripRequest) return false;
@@ -361,6 +403,10 @@ export default function TripRequestDetailsScreen() {
     setPricePerSeat('');
     setAvailableSeats(tripRequest ? String(tripRequest.numberOfSeats) : '');
     setMessage('');
+    setOfferDepartureLocation(null);
+    setOfferDepartureReference('');
+    setOfferArrivalLocation(null);
+    setOfferArrivalReference('');
     setIosPickerMode(null);
     setProposedDepartureDate(minDate > currentDate ? minDate : currentDate);
   }, [tripRequest]);
@@ -369,6 +415,26 @@ export default function TripRequestDetailsScreen() {
     setShowOfferForm(false);
     resetOfferForm();
   }, [resetOfferForm]);
+
+  const handleRouteOverrideSelected = (location: MapLocationSelection) => {
+    switch (routeOverridePickerTarget) {
+      case 'offerDeparture':
+        setOfferDepartureLocation(location);
+        break;
+      case 'offerArrival':
+        setOfferArrivalLocation(location);
+        break;
+      case 'directDeparture':
+        setDirectAcceptDepartureLocation(location);
+        break;
+      case 'directArrival':
+        setDirectAcceptArrivalLocation(location);
+        break;
+      default:
+        break;
+    }
+    setRouteOverridePickerTarget(null);
+  };
 
   const openOfferForm = useCallback(() => {
     resetOfferForm();
@@ -573,6 +639,10 @@ export default function TripRequestDetailsScreen() {
         availableSeats: number;
         vehicleId?: string;
         message?: string;
+        departureReference?: string;
+        departureCoordinates?: [number, number];
+        arrivalReference?: string;
+        arrivalCoordinates?: [number, number];
       } = {
         proposedDepartureDate: proposedDepartureDate.toISOString(),
         pricePerSeat: parseFloat(pricePerSeat),
@@ -587,6 +657,21 @@ export default function TripRequestDetailsScreen() {
       // Ajouter message seulement s'il est défini et non vide
       if (message && message.trim() !== '') {
         payload.message = message.trim();
+      }
+
+      const offerDepartureCoordinates = getLocationCoordinates(offerDepartureLocation);
+      const offerArrivalCoordinates = getLocationCoordinates(offerArrivalLocation);
+      if (offerDepartureReference.trim()) {
+        payload.departureReference = offerDepartureReference.trim();
+      }
+      if (offerDepartureCoordinates) {
+        payload.departureCoordinates = offerDepartureCoordinates;
+      }
+      if (offerArrivalReference.trim()) {
+        payload.arrivalReference = offerArrivalReference.trim();
+      }
+      if (offerArrivalCoordinates) {
+        payload.arrivalCoordinates = offerArrivalCoordinates;
       }
 
       await createOffer({
@@ -740,12 +825,33 @@ export default function TripRequestDetailsScreen() {
   const handleDirectAcceptTripRequest = async (startImmediately: boolean) => {
     if (!tripRequest || !id || !directAcceptDepartureDate) return;
 
-    const payload: { vehicleId?: string; departureDate?: string } = {
+    const payload: {
+      vehicleId?: string;
+      departureDate?: string;
+      departureReference?: string;
+      departureCoordinates?: [number, number];
+      arrivalReference?: string;
+      arrivalCoordinates?: [number, number];
+    } = {
       departureDate: directAcceptDepartureDate.toISOString(),
     };
 
     if (directAcceptVehicle?.id) {
       payload.vehicleId = directAcceptVehicle.id;
+    }
+    const directDepartureCoordinates = getLocationCoordinates(directAcceptDepartureLocation);
+    const directArrivalCoordinates = getLocationCoordinates(directAcceptArrivalLocation);
+    if (directAcceptDepartureReference.trim()) {
+      payload.departureReference = directAcceptDepartureReference.trim();
+    }
+    if (directDepartureCoordinates) {
+      payload.departureCoordinates = directDepartureCoordinates;
+    }
+    if (directAcceptArrivalReference.trim()) {
+      payload.arrivalReference = directAcceptArrivalReference.trim();
+    }
+    if (directArrivalCoordinates) {
+      payload.arrivalCoordinates = directArrivalCoordinates;
     }
 
     try {
@@ -892,19 +998,31 @@ export default function TripRequestDetailsScreen() {
   const initializeEditForm = () => {
     if (!tripRequest) return;
     
-    setEditDepartureLocation({
-      title: tripRequest.departure.name,
-      address: tripRequest.departure.address || '',
-      latitude: tripRequest.departure.lat,
-      longitude: tripRequest.departure.lng,
-    });
+    setEditDepartureLocation(
+      tripRequest.departure.hasCoordinates
+        ? {
+            title: tripRequest.departure.name,
+            address: tripRequest.departure.address || '',
+            latitude: tripRequest.departure.lat,
+            longitude: tripRequest.departure.lng,
+          }
+        : null,
+    );
+    setEditDepartureManualAddress(tripRequest.departure.name || tripRequest.departure.address || '');
+    setEditDepartureReference(tripRequest.departure.reference || '');
     
-    setEditArrivalLocation({
-      title: tripRequest.arrival.name,
-      address: tripRequest.arrival.address || '',
-      latitude: tripRequest.arrival.lat,
-      longitude: tripRequest.arrival.lng,
-    });
+    setEditArrivalLocation(
+      tripRequest.arrival.hasCoordinates
+        ? {
+            title: tripRequest.arrival.name,
+            address: tripRequest.arrival.address || '',
+            latitude: tripRequest.arrival.lat,
+            longitude: tripRequest.arrival.lng,
+          }
+        : null,
+    );
+    setEditArrivalManualAddress(tripRequest.arrival.name || tripRequest.arrival.address || '');
+    setEditArrivalReference(tripRequest.arrival.reference || '');
     
     setEditDepartureDateMin(new Date(tripRequest.departureDateMin));
     setEditDepartureDateMax(new Date(tripRequest.departureDateMax));
@@ -919,16 +1037,25 @@ export default function TripRequestDetailsScreen() {
   };
 
   const handleUpdateRequest = async () => {
-    if (!id || !editDepartureLocation || !editArrivalLocation) return;
+    if (!id || !editDepartureAddress || !editArrivalAddress) {
+      showDialog({
+        title: 'Adresse requise',
+        message: 'Indiquez une adresse de départ et une adresse d’arrivée, ou choisissez-les sur la carte.',
+        variant: 'warning',
+      });
+      return;
+    }
 
     try {
       await updateTripRequest({
         id,
         payload: {
-          departureLocation: editDepartureLocation.title,
-          departureCoordinates: [editDepartureLocation.longitude, editDepartureLocation.latitude],
-          arrivalLocation: editArrivalLocation.title,
-          arrivalCoordinates: [editArrivalLocation.longitude, editArrivalLocation.latitude],
+          departureLocation: editDepartureAddress,
+          departureReference: editDepartureReference.trim() || undefined,
+          departureCoordinates: getLocationCoordinates(editDepartureLocation),
+          arrivalLocation: editArrivalAddress,
+          arrivalReference: editArrivalReference.trim() || undefined,
+          arrivalCoordinates: getLocationCoordinates(editArrivalLocation),
           departureDateMin: editDepartureDateMin?.toISOString() || tripRequest?.departureDateMin || '',
           departureDateMax: editDepartureDateMax?.toISOString() || tripRequest?.departureDateMax || '',
           numberOfSeats: parseInt(editNumberOfSeats) || tripRequest?.numberOfSeats || 1,
@@ -1032,7 +1159,7 @@ export default function TripRequestDetailsScreen() {
     );
   }
 
-  if (!isLoading && !tripRequest) {
+  if (!tripRequest) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
@@ -1052,6 +1179,40 @@ export default function TripRequestDetailsScreen() {
       </SafeAreaView>
     );
   }
+
+  const request = tripRequest;
+  const departureLat = tripRequest.departure?.lat;
+  const departureLng = tripRequest.departure?.lng;
+  const arrivalLat = tripRequest.arrival?.lat;
+  const arrivalLng = tripRequest.arrival?.lng;
+  let requestRouteMapData: RequestRouteMapData | null = null;
+
+  if (
+    typeof departureLat === 'number' &&
+    typeof departureLng === 'number' &&
+    typeof arrivalLat === 'number' &&
+    typeof arrivalLng === 'number'
+  ) {
+    const departureCoordinate = { latitude: departureLat, longitude: departureLng };
+    const arrivalCoordinate = { latitude: arrivalLat, longitude: arrivalLng };
+
+    requestRouteMapData = {
+      departureCoordinate,
+      arrivalCoordinate,
+      fallbackCoordinates: [departureCoordinate, arrivalCoordinate],
+      initialRegion: {
+        latitude: (departureLat + arrivalLat) / 2,
+        longitude: (departureLng + arrivalLng) / 2,
+        latitudeDelta: Math.abs(departureLat - arrivalLat) * 2.5 || 0.1,
+        longitudeDelta: Math.abs(departureLng - arrivalLng) * 2.5 || 0.1,
+      },
+    };
+  }
+
+  const displayedRouteCoordinates = routeCoordinates ?? [];
+  const receivedOffers = tripRequest.offers ?? [];
+  const shouldShowInlineMap = false;
+  const shouldShowReceivedOffers = false;
 
   const statusConfigMap = {
     pending: { label: 'En attente', color: Colors.warning, bg: Colors.warning + '15' },
@@ -1402,6 +1563,44 @@ export default function TripRequestDetailsScreen() {
               )}
             </View>
 
+            {canAcceptDirectly && (
+              <View style={styles.driverOverridePanel}>
+                <Text style={styles.driverOverrideTitle}>Précisions optionnelles</Text>
+                <TouchableOpacity
+                  style={styles.driverOverrideButton}
+                  onPress={() => setRouteOverridePickerTarget('directDeparture')}
+                >
+                  <Ionicons name="location-outline" size={16} color={Colors.white} />
+                  <Text style={styles.driverOverrideButtonText}>
+                    {directAcceptDepartureLocation?.title || 'Point de départ sur la carte'}
+                  </Text>
+                </TouchableOpacity>
+                <TextInput
+                  style={styles.driverOverrideInput}
+                  placeholder={LANDMARK_PLACEHOLDER}
+                  placeholderTextColor="rgba(255,255,255,0.58)"
+                  value={directAcceptDepartureReference}
+                  onChangeText={setDirectAcceptDepartureReference}
+                />
+                <TouchableOpacity
+                  style={styles.driverOverrideButton}
+                  onPress={() => setRouteOverridePickerTarget('directArrival')}
+                >
+                  <Ionicons name="navigate-outline" size={16} color={Colors.white} />
+                  <Text style={styles.driverOverrideButtonText}>
+                    {directAcceptArrivalLocation?.title || 'Point d’arrivée sur la carte'}
+                  </Text>
+                </TouchableOpacity>
+                <TextInput
+                  style={styles.driverOverrideInput}
+                  placeholder={LANDMARK_PLACEHOLDER}
+                  placeholderTextColor="rgba(255,255,255,0.58)"
+                  value={directAcceptArrivalReference}
+                  onChangeText={setDirectAcceptArrivalReference}
+                />
+              </View>
+            )}
+
             {canOpenAssignedTrip ? (
               <TouchableOpacity
                 style={styles.ownerHeroPrimaryButton}
@@ -1477,7 +1676,7 @@ export default function TripRequestDetailsScreen() {
         )}
 
         {/* Carte du trajet */}
-        {false && tripRequest?.departure.lat && tripRequest?.departure.lng && tripRequest?.arrival.lat && tripRequest?.arrival.lng && (
+        {requestRouteMapData && shouldShowInlineMap && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Carte du trajet</Text>
             <View style={styles.mapCard}>
@@ -1493,27 +1692,19 @@ export default function TripRequestDetailsScreen() {
                   zoomEnabled={false}
                   pitchEnabled={false}
                   rotateEnabled={false}
-                  initialRegion={{
-                    latitude: (tripRequest?.departure.lat + tripRequest?.arrival.lat) / 2,
-                    longitude: ((tripRequest?.departure.lng ?? 0) + (tripRequest?.arrival.lng ?? 0)) / 2,
-                    latitudeDelta: Math.abs(tripRequest?.departure.lat - tripRequest?.arrival.lat) * 2.5 || 0.1,
-                    longitudeDelta: Math.abs(tripRequest?.departure.lng - tripRequest?.arrival.lng) * 2.5 || 0.1,
-                  }}
+                  initialRegion={requestRouteMapData.initialRegion}
                 >
                   {/* Trajectoire réelle de circulation */}
-                  {routeCoordinates && routeCoordinates.length > 0 ? (
+                  {displayedRouteCoordinates.length > 0 ? (
                     <Polyline
-                      coordinates={routeCoordinates}
+                      coordinates={displayedRouteCoordinates}
                       strokeColor={Colors.primary}
                       strokeWidth={4}
                     />
                   ) : (
                     // Fallback sur ligne droite pendant le chargement ou en cas d'erreur
                     <Polyline
-                      coordinates={[
-                        { latitude: tripRequest.departure.lat, longitude: tripRequest.departure.lng },
-                        { latitude: tripRequest.arrival.lat, longitude: tripRequest.arrival.lng },
-                      ]}
+                      coordinates={requestRouteMapData.fallbackCoordinates}
                       strokeColor={Colors.gray[400]}
                       strokeWidth={3}
                       lineDashPattern={[2, 2]}
@@ -1522,10 +1713,7 @@ export default function TripRequestDetailsScreen() {
 
                   {/* Marqueur de départ */}
                   <Marker
-                    coordinate={{
-                      latitude: tripRequest.departure.lat,
-                      longitude: tripRequest.departure.lng,
-                    }}
+                    coordinate={requestRouteMapData.departureCoordinate}
                   >
                     <View style={styles.markerStartCircle}>
                       <Ionicons name="location" size={18} color={Colors.white} />
@@ -1540,10 +1728,7 @@ export default function TripRequestDetailsScreen() {
 
                   {/* Marqueur d'arrivée */}
                   <Marker
-                    coordinate={{
-                      latitude: tripRequest.arrival.lat,
-                      longitude: tripRequest.arrival.lng,
-                    }}
+                    coordinate={requestRouteMapData.arrivalCoordinate}
                   >
                     <View style={styles.markerEndCircle}>
                       <Ionicons name="navigate" size={18} color={Colors.white} />
@@ -1578,7 +1763,7 @@ export default function TripRequestDetailsScreen() {
               <View style={styles.detailInfo}>
                 <Text style={styles.detailLabel}>Demande publiée</Text>
                 <Text style={styles.detailValue}>
-                  {formatDateWithRelativeLabel(tripRequest.createdAt, false)}
+                  {formatDateWithRelativeLabel(request.createdAt, false)}
                 </Text>
               </View>
             </View>
@@ -1588,10 +1773,10 @@ export default function TripRequestDetailsScreen() {
               <View style={styles.detailInfo}>
                 <Text style={styles.detailLabel}>Date de départ souhaitée</Text>
                 <Text style={styles.detailValue}>
-                  {formatDateWithRelativeLabel(tripRequest.departureDateMin, true)}
+                  {formatDateWithRelativeLabel(request.departureDateMin, true)}
                 </Text>
                 <Text style={styles.detailSubValue}>
-                  Délai max: {formatDateWithRelativeLabel(tripRequest.departureDateMax, true)}
+                  Délai max: {formatDateWithRelativeLabel(request.departureDateMax, true)}
                 </Text>
               </View>
             </View>
@@ -1600,29 +1785,29 @@ export default function TripRequestDetailsScreen() {
               <Ionicons name="people-outline" size={20} color={Colors.gray[600]} />
               <View style={styles.detailInfo}>
                 <Text style={styles.detailLabel}>Nombre de places</Text>
-                <Text style={styles.detailValue}>{tripRequest.numberOfSeats}</Text>
+                <Text style={styles.detailValue}>{request.numberOfSeats}</Text>
               </View>
             </View>
-            {tripRequest.maxPricePerSeat && (
+            {request.maxPricePerSeat && (
               <>
                 <View style={styles.detailDivider} />
                 <View style={styles.detailRow}>
                   <Ionicons name="cash-outline" size={20} color={Colors.gray[600]} />
                   <View style={styles.detailInfo}>
                     <Text style={styles.detailLabel}>Prix maximum par place</Text>
-                    <Text style={styles.detailValue}>{tripRequest.maxPricePerSeat} FC</Text>
+                    <Text style={styles.detailValue}>{request.maxPricePerSeat} FC</Text>
                   </View>
                 </View>
               </>
             )}
-            {tripRequest.description && (
+            {request.description && (
               <>
                 <View style={styles.detailDivider} />
                 <View style={styles.detailRow}>
                   <Ionicons name="document-text-outline" size={20} color={Colors.gray[600]} />
                   <View style={styles.detailInfo}>
                     <Text style={styles.detailLabel}>Description</Text>
-                    <Text style={styles.detailValue}>{tripRequest.description}</Text>
+                    <Text style={styles.detailValue}>{request.description}</Text>
                   </View>
                 </View>
               </>
@@ -1711,7 +1896,7 @@ export default function TripRequestDetailsScreen() {
         )}
 
         {/* Offres reçues (pour le propriétaire) */}
-        {false && isOwner && (
+        {shouldShowReceivedOffers && isOwner && (
           <View style={styles.section}>
             <View style={styles.sectionHeaderWithBadge}>
               <View style={styles.sectionTitleContainer}>
@@ -1720,14 +1905,14 @@ export default function TripRequestDetailsScreen() {
                   Propositions reçues
                 </Text>
               </View>
-              {tripRequest.offers && tripRequest.offers.length > 0 && (
+              {receivedOffers.length > 0 && (
                 <View style={styles.offersCountBadge}>
-                  <Text style={styles.offersCountText}>{tripRequest.offers.length}</Text>
+                  <Text style={styles.offersCountText}>{receivedOffers.length}</Text>
                 </View>
               )}
             </View>
             
-            {(!tripRequest.offers || tripRequest.offers.length === 0) ? (
+            {receivedOffers.length === 0 ? (
               <View style={styles.noOffersContainer}>
                 <View style={styles.noOffersIconContainer}>
                   <Ionicons name="hourglass-outline" size={48} color={Colors.gray[400]} />
@@ -1739,7 +1924,7 @@ export default function TripRequestDetailsScreen() {
               </View>
             ) : (
               <>
-            {tripRequest.offers?.map((offer, index) => {
+            {receivedOffers.map((offer, index) => {
               const isPending = offer.status === 'pending';
               const driverRating = offer.driverRating;
               return (
@@ -1801,6 +1986,24 @@ export default function TripRequestDetailsScreen() {
                     {offer.pricePerSeat} FC/place ({offer.availableSeats} places disponibles)
                   </Text>
                 </View>
+
+                {(offer.departureReference || offer.departureCoordinates) && (
+                  <View style={styles.offerDetail}>
+                    <Ionicons name="location-outline" size={16} color={Colors.gray[600]} />
+                    <Text style={styles.offerDetailText}>
+                      {offer.departureReference || 'Point de départ précisé'}
+                    </Text>
+                  </View>
+                )}
+
+                {(offer.arrivalReference || offer.arrivalCoordinates) && (
+                  <View style={styles.offerDetail}>
+                    <Ionicons name="navigate-outline" size={16} color={Colors.gray[600]} />
+                    <Text style={styles.offerDetailText}>
+                      {offer.arrivalReference || 'Point d’arrivée précisé'}
+                    </Text>
+                  </View>
+                )}
 
                 {offer.message && (
                   <View style={styles.messageContainer}>
@@ -1905,6 +2108,22 @@ export default function TripRequestDetailsScreen() {
                   {myOffer.pricePerSeat} FC/place ({myOffer.availableSeats} places)
                 </Text>
               </View>
+              {(myOffer.departureReference || myOffer.departureCoordinates) && (
+                <View style={styles.offerDetail}>
+                  <Ionicons name="location-outline" size={16} color={Colors.gray[600]} />
+                  <Text style={styles.offerDetailText}>
+                    {myOffer.departureReference || 'Point de départ précisé'}
+                  </Text>
+                </View>
+              )}
+              {(myOffer.arrivalReference || myOffer.arrivalCoordinates) && (
+                <View style={styles.offerDetail}>
+                  <Ionicons name="navigate-outline" size={16} color={Colors.gray[600]} />
+                  <Text style={styles.offerDetailText}>
+                    {myOffer.arrivalReference || 'Point d’arrivée précisé'}
+                  </Text>
+                </View>
+              )}
               {myOffer.message && (
                 <View style={styles.messageContainer}>
                   <Text style={styles.messageText}>{myOffer.message}</Text>
@@ -2108,6 +2327,52 @@ export default function TripRequestDetailsScreen() {
                             </View>
 
                             <View style={styles.formGroup}>
+                              <Text style={styles.formLabel}>Repère de départ</Text>
+                              <Text style={styles.formHelperText}>
+                                Optionnel. Ajoutez un point de prise en charge ou un repère plus précis.
+                              </Text>
+                              <TouchableOpacity
+                                style={styles.locationButton}
+                                onPress={() => setRouteOverridePickerTarget('offerDeparture')}
+                              >
+                                <Ionicons name="location" size={20} color={Colors.primary} />
+                                <Text style={styles.locationButtonText}>
+                                  {offerDepartureLocation?.title || 'Utiliser position/carte'}
+                                </Text>
+                                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                              </TouchableOpacity>
+                              <TextInput
+                                style={[styles.input, styles.referenceInput]}
+                                placeholder={LANDMARK_PLACEHOLDER}
+                                value={offerDepartureReference}
+                                onChangeText={setOfferDepartureReference}
+                              />
+                            </View>
+
+                            <View style={styles.formGroup}>
+                              <Text style={styles.formLabel}>Repère d’arrivée</Text>
+                              <Text style={styles.formHelperText}>
+                                Optionnel. Précisez le point de dépose si nécessaire.
+                              </Text>
+                              <TouchableOpacity
+                                style={styles.locationButton}
+                                onPress={() => setRouteOverridePickerTarget('offerArrival')}
+                              >
+                                <Ionicons name="navigate" size={20} color={Colors.primary} />
+                                <Text style={styles.locationButtonText}>
+                                  {offerArrivalLocation?.title || 'Utiliser position/carte'}
+                                </Text>
+                                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                              </TouchableOpacity>
+                              <TextInput
+                                style={[styles.input, styles.referenceInput]}
+                                placeholder={LANDMARK_PLACEHOLDER}
+                                value={offerArrivalReference}
+                                onChangeText={setOfferArrivalReference}
+                              />
+                            </View>
+
+                            <View style={styles.formGroup}>
                               <Text style={styles.formLabel}>Date et heure de départ proposées *</Text>
                               {tripRequest && (
                                 <Text style={styles.formHelperText}>
@@ -2283,6 +2548,22 @@ export default function TripRequestDetailsScreen() {
                                     {formatDateWithRelativeLabel(proposedDepartureDate.toISOString(), true)}
                                   </Text>
                                 </View>
+                                {(offerDepartureLocation || offerDepartureReference.trim()) && (
+                                  <View style={styles.previewInfoCard}>
+                                    <Ionicons name="location" size={20} color={Colors.primary} />
+                                    <Text style={styles.previewInfoText}>
+                                      {[offerDepartureLocation?.title, offerDepartureReference.trim()].filter(Boolean).join(' - ')}
+                                    </Text>
+                                  </View>
+                                )}
+                                {(offerArrivalLocation || offerArrivalReference.trim()) && (
+                                  <View style={styles.previewInfoCard}>
+                                    <Ionicons name="navigate" size={20} color={Colors.primary} />
+                                    <Text style={styles.previewInfoText}>
+                                      {[offerArrivalLocation?.title, offerArrivalReference.trim()].filter(Boolean).join(' - ')}
+                                    </Text>
+                                  </View>
+                                )}
                               </View>
 
                               <View style={styles.previewSection}>
@@ -2352,7 +2633,7 @@ export default function TripRequestDetailsScreen() {
         )}
 
         {/* Modal de la carte en plein écran */}
-        {tripRequest.departure.lat && tripRequest.departure.lng && tripRequest.arrival.lat && tripRequest.arrival.lng && (
+        {requestRouteMapData && (
           <Modal visible={mapModalVisible} animationType="fade" transparent onRequestClose={() => setMapModalVisible(false)}>
             <View style={styles.mapModalOverlay}>
               <View style={styles.mapModalContent}>
@@ -2360,27 +2641,19 @@ export default function TripRequestDetailsScreen() {
                   provider={PROVIDER_GOOGLE}
                   style={styles.fullscreenMap}
                   mapType="standard"
-                  initialRegion={{
-                    latitude: (tripRequest.departure.lat + tripRequest.arrival.lat) / 2,
-                    longitude: (tripRequest.departure.lng + tripRequest.arrival.lng) / 2,
-                    latitudeDelta: Math.abs(tripRequest.departure.lat - tripRequest.arrival.lat) * 2.5 || 0.1,
-                    longitudeDelta: Math.abs(tripRequest.departure.lng - tripRequest.arrival.lng) * 2.5 || 0.1,
-                  }}
+                  initialRegion={requestRouteMapData.initialRegion}
                 >
                   {/* Trajectoire réelle de circulation */}
-                  {routeCoordinates && routeCoordinates.length > 0 ? (
+                  {displayedRouteCoordinates.length > 0 ? (
                     <Polyline
-                      coordinates={routeCoordinates}
+                      coordinates={displayedRouteCoordinates}
                       strokeColor={Colors.primary}
                       strokeWidth={5}
                     />
                   ) : (
                     // Fallback sur ligne droite pendant le chargement ou en cas d'erreur
                     <Polyline
-                      coordinates={[
-                        { latitude: tripRequest.departure.lat, longitude: tripRequest.departure.lng },
-                        { latitude: tripRequest.arrival.lat, longitude: tripRequest.arrival.lng },
-                      ]}
+                      coordinates={requestRouteMapData.fallbackCoordinates}
                       strokeColor={Colors.gray[400]}
                       strokeWidth={4}
                       lineDashPattern={[2, 2]}
@@ -2389,10 +2662,7 @@ export default function TripRequestDetailsScreen() {
 
                   {/* Marqueur de départ */}
                   <Marker
-                    coordinate={{
-                      latitude: tripRequest.departure.lat,
-                      longitude: tripRequest.departure.lng,
-                    }}
+                    coordinate={requestRouteMapData.departureCoordinate}
                   >
                     <View style={styles.markerStartCircle}>
                       <Ionicons name="location" size={18} color={Colors.white} />
@@ -2407,10 +2677,7 @@ export default function TripRequestDetailsScreen() {
 
                   {/* Marqueur d'arrivée */}
                   <Marker
-                    coordinate={{
-                      latitude: tripRequest.arrival.lat,
-                      longitude: tripRequest.arrival.lng,
-                    }}
+                    coordinate={requestRouteMapData.arrivalCoordinate}
                   >
                     <View style={styles.markerEndCircle}>
                       <Ionicons name="navigate" size={18} color={Colors.white} />
@@ -2474,7 +2741,7 @@ export default function TripRequestDetailsScreen() {
                   >
                     {/* Sélection du lieu de départ */}
                     <View style={styles.formGroup}>
-                      <Text style={styles.formLabel}>Lieu de départ *</Text>
+                      <Text style={styles.formLabel}>Adresse de départ *</Text>
                       <TouchableOpacity
                         style={styles.locationButton}
                         onPress={() => {
@@ -2488,11 +2755,23 @@ export default function TripRequestDetailsScreen() {
                         </Text>
                         <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
                       </TouchableOpacity>
+                      <TextInput
+                        style={[styles.input, styles.referenceInput]}
+                        placeholder="Adresse de départ"
+                        value={editDepartureManualAddress}
+                        onChangeText={setEditDepartureManualAddress}
+                      />
+                      <TextInput
+                        style={[styles.input, styles.referenceInput]}
+                        placeholder={LANDMARK_PLACEHOLDER}
+                        value={editDepartureReference}
+                        onChangeText={setEditDepartureReference}
+                      />
                     </View>
 
                     {/* Sélection du lieu d'arrivée */}
                     <View style={styles.formGroup}>
-                      <Text style={styles.formLabel}>Lieu d&apos;arrivée *</Text>
+                      <Text style={styles.formLabel}>Adresse d’arrivée *</Text>
                       <TouchableOpacity
                         style={styles.locationButton}
                         onPress={() => {
@@ -2506,6 +2785,18 @@ export default function TripRequestDetailsScreen() {
                         </Text>
                         <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
                       </TouchableOpacity>
+                      <TextInput
+                        style={[styles.input, styles.referenceInput]}
+                        placeholder="Adresse d’arrivée"
+                        value={editArrivalManualAddress}
+                        onChangeText={setEditArrivalManualAddress}
+                      />
+                      <TextInput
+                        style={[styles.input, styles.referenceInput]}
+                        placeholder={LANDMARK_PLACEHOLDER}
+                        value={editArrivalReference}
+                        onChangeText={setEditArrivalReference}
+                      />
                     </View>
 
                     {/* Date et heure de départ min */}
@@ -2658,6 +2949,10 @@ export default function TripRequestDetailsScreen() {
                           setShowEditForm(false);
                           setEditDepartureLocation(null);
                           setEditArrivalLocation(null);
+                          setEditDepartureManualAddress('');
+                          setEditDepartureReference('');
+                          setEditArrivalManualAddress('');
+                          setEditArrivalReference('');
                           setEditDepartureDateMin(null);
                           setEditDepartureDateMax(null);
                           setEditNumberOfSeats('');
@@ -2670,8 +2965,8 @@ export default function TripRequestDetailsScreen() {
                       <TouchableOpacity
                         style={[
                           styles.submitButton,
-                          (!editDepartureLocation ||
-                            !editArrivalLocation ||
+                          (!editDepartureAddress ||
+                            !editArrivalAddress ||
                             !editDepartureDateMin ||
                             !editDepartureDateMax ||
                             !editNumberOfSeats ||
@@ -2682,8 +2977,8 @@ export default function TripRequestDetailsScreen() {
                         onPress={handleUpdateRequest}
                         disabled={Boolean(
                           isUpdating ||
-                            !editDepartureLocation ||
-                            !editArrivalLocation ||
+                            !editDepartureAddress ||
+                            !editArrivalAddress ||
                             !editDepartureDateMin ||
                             !editDepartureDateMax ||
                             !editNumberOfSeats ||
@@ -2718,8 +3013,10 @@ export default function TripRequestDetailsScreen() {
             onSelect={(location) => {
               if (editLocationPickerType === 'departure') {
                 setEditDepartureLocation(location);
+                setEditDepartureManualAddress(location.title || location.address);
               } else {
                 setEditArrivalLocation(location);
+                setEditArrivalManualAddress(location.title || location.address);
               }
               setEditActivePicker(null);
               setEditLocationPickerType(null);
@@ -2729,6 +3026,28 @@ export default function TripRequestDetailsScreen() {
             }
           />
         )}
+
+        <LocationPickerModal
+          visible={routeOverridePickerTarget !== null}
+          onClose={() => setRouteOverridePickerTarget(null)}
+          onSelect={handleRouteOverrideSelected}
+          initialLocation={
+            routeOverridePickerTarget === 'offerDeparture'
+              ? offerDepartureLocation
+              : routeOverridePickerTarget === 'offerArrival'
+                ? offerArrivalLocation
+                : routeOverridePickerTarget === 'directDeparture'
+                  ? directAcceptDepartureLocation
+                  : routeOverridePickerTarget === 'directArrival'
+                    ? directAcceptArrivalLocation
+                    : null
+          }
+          title={
+            routeOverridePickerTarget === 'offerArrival' || routeOverridePickerTarget === 'directArrival'
+              ? 'Point d’arrivée'
+              : 'Point de départ'
+          }
+        />
 
       </ScrollView>
     </SafeAreaView>
@@ -3078,6 +3397,46 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.medium,
+  },
+  driverOverridePanel: {
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    marginBottom: Spacing.md,
+  },
+  driverOverrideTitle: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  driverOverrideButton: {
+    minHeight: 42,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.24)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  driverOverrideButtonText: {
+    flex: 1,
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+  },
+  driverOverrideInput: {
+    minHeight: 42,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.24)',
+    paddingHorizontal: Spacing.md,
+    color: Colors.white,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   ownerHeroSteps: {
     flexDirection: 'row',
@@ -3813,6 +4172,9 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
     color: Colors.gray[900],
     backgroundColor: Colors.white,
+  },
+  referenceInput: {
+    marginTop: Spacing.sm,
   },
   textArea: {
     minHeight: 100,

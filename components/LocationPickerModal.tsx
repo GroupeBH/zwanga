@@ -1023,7 +1023,7 @@ export default function LocationPickerModal({
           <Ionicons name="search" size={18} color={Colors.gray[500]} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Recherchez une adresse ou un lieu"
+            placeholder="Chercher une adresse ou un lieu"
             placeholderTextColor={Colors.gray[500]}
             value={searchQuery}
             onChangeText={(text) => {
@@ -1049,12 +1049,19 @@ export default function LocationPickerModal({
           )}
         </View>
 
+        <View style={styles.pickerHint}>
+          <Ionicons name="move-outline" size={16} color={Colors.primary} />
+          <Text style={styles.pickerHintText}>
+            Déplacez la carte, touchez un point ou cherchez un lieu. Confirmez quand le point est bon.
+          </Text>
+        </View>
+
         {/* Lieux favoris - affichés quand il n'y a pas de recherche active */}
         {!searchQuery.trim() && kinshasaLandmarks.length > 0 && (
           <View style={styles.resultsContainer}>
             <View style={styles.favoritesHeader}>
               <Ionicons name="navigate" size={16} color={Colors.primary} />
-              <Text style={styles.favoritesHeaderText}>Reperes de Kinshasa</Text>
+              <Text style={styles.favoritesHeaderText}>Repères de Kinshasa</Text>
             </View>
             <FlatList
               data={kinshasaLandmarks}
@@ -1200,10 +1207,10 @@ export default function LocationPickerModal({
           <View style={styles.locationDetailsContent}>
             <Text style={styles.locationDetailsTitle}>
               {isPanning
-                ? '🗺️ Déplacement de la carte…'
+                ? 'Point en cours de sélection'
                 : isGeocoding
-                  ? '🔍 Recherche de l\'adresse…'
-                  : selectedLocation?.title ?? '🗺️ Déplacez la carte pour sélectionner un lieu'}
+                  ? 'Recherche de l’adresse'
+                  : selectedLocation?.title ?? 'Déplacez la carte pour sélectionner un lieu'}
             </Text>
             {selectedLocation?.address ? (
               <Text style={styles.locationDetailsSubtitle} numberOfLines={2}>
@@ -1307,6 +1314,22 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: FontSizes.base,
     color: Colors.gray[900],
+  },
+  pickerHint: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.primary + '08',
+  },
+  pickerHintText: {
+    flex: 1,
+    fontSize: FontSizes.sm,
+    lineHeight: 18,
+    color: Colors.gray[700],
   },
   resultsContainer: {
     maxHeight: 160,

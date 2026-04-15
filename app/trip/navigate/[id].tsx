@@ -13,6 +13,7 @@ import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import type { Booking } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import * as Speech from 'expo-speech';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -58,6 +59,38 @@ interface Waypoint {
   completed: boolean;
 }
 
+const SPEECH_LANGUAGE = 'fr-FR';
+const SPEECH_RATE = 0.95;
+const SPEECH_MIN_INTERVAL_MS = 2500;
+
+const cleanHtmlInstructions = (html: string): string => {
+  return html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const formatDistanceForSpeech = (distanceInMeters: number): string => {
+  if (!Number.isFinite(distanceInMeters) || distanceInMeters <= 0) {
+    return '';
+  }
+
+  if (distanceInMeters >= 1000) {
+    const kilometers = distanceInMeters / 1000;
+    const rounded = kilometers >= 10 ? Math.round(kilometers).toString() : kilometers.toFixed(1).replace('.', ',');
+    return `${rounded} ${kilometers > 1 ? 'kilomètres' : 'kilomètre'}`;
+  }
+
+  const roundedMeters = Math.max(10, Math.round(distanceInMeters / 10) * 10);
+  return `${roundedMeters} mètres`;
+};
+
 export default function NavigationScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -83,6 +116,7 @@ export default function NavigationScreen() {
   const [isLoadingRoute, setIsLoadingRoute] = useState(true);
   const [heading, setHeading] = useState<number>(0);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
+  const [isVoiceGuidanceEnabled, setIsVoiceGuidanceEnabled] = useState(true);
   
   // Modal et panneau pour les waypoints
   const [waypointModalVisible, setWaypointModalVisible] = useState(false);
@@ -116,6 +150,21 @@ export default function NavigationScreen() {
   const hasEnabled3DRef = useRef(false);
   const exitNavigationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isExitingRef = useRef(false);
+  const isVoiceGuidanceEnabledRef = useRef(true);
+  const lastSpeechAtRef = useRef(0);
+  const spokenInstructionKeysRef = useRef<Set<string>>(new Set());
+  const announcedWaypointIdsRef = useRef<Set<string>>(new Set());
+  const stepsRef = useRef<RouteStep[]>([]);
+  const currentStepIndexRef = useRef(0);
+  const waypointsRef = useRef<Waypoint[]>([]);
+  const currentWaypointIndexRef = useRef(0);
+  const waypointModalVisibleRef = useRef(false);
+
+  stepsRef.current = steps;
+  currentStepIndexRef.current = currentStepIndex;
+  waypointsRef.current = waypoints;
+  currentWaypointIndexRef.current = currentWaypointIndex;
+  waypointModalVisibleRef.current = waypointModalVisible;
 
   const cleanupNavigationUi = useCallback(() => {
     if (recalcRouteTimeoutRef.current) {
@@ -130,9 +179,11 @@ export default function NavigationScreen() {
       backgroundDisclosureResolverRef.current(false);
       backgroundDisclosureResolverRef.current = null;
     }
+    void Speech.stop();
 
     setBackgroundDisclosureVisible(false);
     setSecurityModalVisible(false);
+    waypointModalVisibleRef.current = false;
     setWaypointModalVisible(false);
     setPassengersPanelVisible(false);
     setActiveWaypoint(null);
@@ -179,6 +230,7 @@ export default function NavigationScreen() {
         backgroundDisclosureResolverRef.current(false);
         backgroundDisclosureResolverRef.current = null;
       }
+      void Speech.stop();
     };
   }, []);
 
@@ -187,9 +239,25 @@ export default function NavigationScreen() {
   }, [isTripOngoing]);
 
   useEffect(() => {
+    isVoiceGuidanceEnabledRef.current = isVoiceGuidanceEnabled;
+    if (!isVoiceGuidanceEnabled) {
+      void Speech.stop();
+    }
+  }, [isVoiceGuidanceEnabled]);
+
+  useEffect(() => {
+    spokenInstructionKeysRef.current.clear();
+    announcedWaypointIdsRef.current.clear();
+    lastSpeechAtRef.current = 0;
+    void Speech.stop();
+  }, [tripId]);
+
+  useEffect(() => {
     if (isTripOngoing) {
       return;
     }
+    void Speech.stop();
+    waypointModalVisibleRef.current = false;
     setWaypointModalVisible(false);
     setPassengersPanelVisible(false);
     setActiveWaypoint(null);
@@ -311,11 +379,13 @@ export default function NavigationScreen() {
       }
     });
 
+    waypointsRef.current = waypointsList;
     setWaypoints(waypointsList);
 
     // Trouver le prochain waypoint non complété
     const nextIncompleteIndex = waypointsList.findIndex(wp => !wp.completed);
     if (nextIncompleteIndex !== -1) {
+      currentWaypointIndexRef.current = nextIncompleteIndex;
       setCurrentWaypointIndex(nextIncompleteIndex);
     }
   }, [bookings, trip]);
@@ -540,6 +610,110 @@ export default function NavigationScreen() {
       { duration: 800 }
     );
   }, [isTripOngoing, currentLocation, heading]);
+
+  const speakNavigationMessage = useCallback(async (message: string, options: { force?: boolean } = {}) => {
+    const text = message.replace(/\s+/g, ' ').trim();
+    if (!text || !isMountedRef.current || !isTripOngoingRef.current || !isVoiceGuidanceEnabledRef.current) {
+      return;
+    }
+
+    const now = Date.now();
+    if (!options.force && now - lastSpeechAtRef.current < SPEECH_MIN_INTERVAL_MS) {
+      return;
+    }
+    lastSpeechAtRef.current = now;
+
+    try {
+      if (await Speech.isSpeakingAsync()) {
+        await Speech.stop();
+      }
+
+      if (!isMountedRef.current || !isTripOngoingRef.current || !isVoiceGuidanceEnabledRef.current) {
+        return;
+      }
+
+      Speech.speak(text, {
+        language: SPEECH_LANGUAGE,
+        rate: SPEECH_RATE,
+        pitch: 1,
+        onError: (error) => {
+          console.warn('[Navigation] Guidage vocal impossible:', error);
+        },
+      });
+    } catch (error) {
+      console.warn('[Navigation] Guidage vocal indisponible:', error);
+    }
+  }, []);
+
+  const buildInstructionSpeech = useCallback((step: RouteStep, intro?: string) => {
+    const instruction = cleanHtmlInstructions(step.html_instructions);
+    if (!instruction) return '';
+
+    const distance = formatDistanceForSpeech(step.distance.value);
+    const instructionText = distance ? `Dans ${distance}, ${instruction}.` : `${instruction}.`;
+    return [intro, instructionText].filter(Boolean).join(' ');
+  }, []);
+
+  const buildWaypointSpeech = useCallback((waypoint: Waypoint) => {
+    const passengerName = waypoint.passenger.name || 'le passager';
+    const waypointType =
+      waypoint.type === 'pickup'
+        ? `point de récupération de ${passengerName}`
+        : `point de dépose de ${passengerName}`;
+    const address = waypoint.address ? ` Adresse: ${waypoint.address}.` : '';
+    return `Vous arrivez au ${waypointType}.${address}`;
+  }, []);
+
+  const announceInstruction = useCallback((step: RouteStep, index: number, intro?: string) => {
+    const instruction = cleanHtmlInstructions(step.html_instructions);
+    if (!instruction) return;
+
+    const speechKey = `${index}:${instruction}`;
+    if (spokenInstructionKeysRef.current.has(speechKey)) {
+      return;
+    }
+
+    spokenInstructionKeysRef.current.add(speechKey);
+    void speakNavigationMessage(buildInstructionSpeech(step, intro));
+  }, [buildInstructionSpeech, speakNavigationMessage]);
+
+  const toggleVoiceGuidance = useCallback(() => {
+    const nextValue = !isVoiceGuidanceEnabledRef.current;
+    isVoiceGuidanceEnabledRef.current = nextValue;
+    setIsVoiceGuidanceEnabled(nextValue);
+
+    if (!nextValue) {
+      void Speech.stop();
+      return;
+    }
+
+    const currentStep = steps[currentStepIndex];
+    const message = currentStep
+      ? buildInstructionSpeech(currentStep, 'Guidage vocal activé.')
+      : 'Guidage vocal activé.';
+    void speakNavigationMessage(message, { force: true });
+  }, [buildInstructionSpeech, currentStepIndex, speakNavigationMessage, steps]);
+
+  useEffect(() => {
+    spokenInstructionKeysRef.current.clear();
+  }, [steps]);
+
+  useEffect(() => {
+    if (!isTripOngoing || isLoadingRoute) {
+      return;
+    }
+
+    const currentStep = steps[currentStepIndex];
+    if (!currentStep) {
+      return;
+    }
+
+    announceInstruction(
+      currentStep,
+      currentStepIndex,
+      currentStepIndex === 0 ? 'Navigation démarrée.' : 'Prochaine instruction.'
+    );
+  }, [announceInstruction, currentStepIndex, isLoadingRoute, isTripOngoing, steps]);
   // Récupérer l'itinéraire depuis Google Directions API (une seule fois au démarrage et quand les waypoints changent)
   useEffect(() => {
     const now = Date.now();
@@ -620,6 +794,8 @@ export default function NavigationScreen() {
             polyline: { points: step.polyline },
             travel_mode: 'DRIVING',
           }));
+          stepsRef.current = convertedSteps;
+          currentStepIndexRef.current = 0;
           setSteps(convertedSteps);
           setCurrentStepIndex(0);
         }
@@ -658,7 +834,12 @@ export default function NavigationScreen() {
         setRouteCoordinates(fallbackPoints);
         setTotalDistance('--');
         setTotalDuration('--');
+        stepsRef.current = [];
         setSteps([]);
+        void speakNavigationMessage(
+          "Itinéraire détaillé indisponible. Suivez la ligne jusqu'à la destination.",
+          { force: true }
+        );
       } else if (isNetworkError) {
         // Erreur réseau - afficher un warning discret
         console.warn('[Navigation] Erreur réseau, nouvelle tentative plus tard');
@@ -675,7 +856,12 @@ export default function NavigationScreen() {
 
   // Mettre à jour l'étape actuelle en fonction de la position
   const updateCurrentStep = (location: Location.LocationObject) => {
-    if (!isMountedRef.current || steps.length === 0) return;
+    const latestSteps = stepsRef.current;
+    const latestWaypoints = waypointsRef.current;
+    const latestWaypointIndex = currentWaypointIndexRef.current;
+    const latestStepIndex = currentStepIndexRef.current;
+
+    if (!isMountedRef.current || latestSteps.length === 0) return;
 
     const currentCoords = {
       latitude: location.coords.latitude,
@@ -683,8 +869,8 @@ export default function NavigationScreen() {
     };
 
     // Vérifier si on est proche du prochain waypoint
-    if (waypoints.length > 0 && currentWaypointIndex < waypoints.length) {
-      const nextWaypoint = waypoints[currentWaypointIndex];
+    if (latestWaypoints.length > 0 && latestWaypointIndex < latestWaypoints.length) {
+      const nextWaypoint = latestWaypoints[latestWaypointIndex];
       if (!nextWaypoint.completed) {
         const waypointCoords = {
           latitude: nextWaypoint.location.lat,
@@ -693,27 +879,35 @@ export default function NavigationScreen() {
         const distanceToWaypoint = calculateDistance(currentCoords, waypointCoords);
 
         // Si on est à moins de 50 mètres du waypoint, notifier le conducteur
-        if (distanceToWaypoint < 0.05 && !waypointModalVisible) {
-          setActiveWaypoint(nextWaypoint);
-          setWaypointModalVisible(true);
+        if (distanceToWaypoint < 0.05) {
+          if (!announcedWaypointIdsRef.current.has(nextWaypoint.id)) {
+            announcedWaypointIdsRef.current.add(nextWaypoint.id);
+            void speakNavigationMessage(buildWaypointSpeech(nextWaypoint), { force: true });
+          }
+
+          if (!waypointModalVisibleRef.current) {
+            waypointModalVisibleRef.current = true;
+            setActiveWaypoint(nextWaypoint);
+            setWaypointModalVisible(true);
+          }
         }
       }
     }
 
     // Trouver l'étape la plus proche
-    for (let i = currentStepIndex; i < steps.length; i++) {
+    for (let i = latestStepIndex; i < latestSteps.length; i++) {
       const stepEnd = {
-        latitude: steps[i].end_location.lat,
-        longitude: steps[i].end_location.lng,
+        latitude: latestSteps[i].end_location.lat,
+        longitude: latestSteps[i].end_location.lng,
       };
 
       const distance = calculateDistance(currentCoords, stepEnd);
 
       // Si on est à moins de 30 mètres de la fin de l'étape, passer à la suivante
-      if (distance < 0.03 && i < steps.length - 1) {
+      if (distance < 0.03 && i < latestSteps.length - 1) {
+        currentStepIndexRef.current = i + 1;
         setCurrentStepIndex(i + 1);
-        // Jouer un son de notification
-        playInstructionSound();
+        break;
       }
     }
   };
@@ -739,16 +933,6 @@ export default function NavigationScreen() {
         Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
-  };
-
-  // Notification sonore/vibration (optionnel)
-  const playInstructionSound = () => {
-    // TODO: Ajouter expo-haptics pour les vibrations
-    // import * as Haptics from 'expo-haptics';
-    // Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    
-    // Ou utiliser expo-audio (remplaçant d'expo-av) pour les sons personnalisés
-    // import { Audio } from 'expo-audio';
   };
 
   // Forcer le recalcul de l'itinéraire
@@ -842,16 +1026,23 @@ export default function NavigationScreen() {
       const waypointIndex = updatedWaypoints.findIndex(wp => wp.id === activeWaypoint.id);
       if (waypointIndex !== -1) {
         updatedWaypoints[waypointIndex].completed = true;
+        waypointsRef.current = updatedWaypoints;
         setWaypoints(updatedWaypoints);
       }
       
       // Passer au waypoint suivant
       if (currentWaypointIndex < waypoints.length - 1) {
-        setCurrentWaypointIndex(currentWaypointIndex + 1);
+        const nextWaypointIndex = currentWaypointIndex + 1;
+        currentWaypointIndexRef.current = nextWaypointIndex;
+        setCurrentWaypointIndex(nextWaypointIndex);
         setCurrentLegIndex(currentLegIndex + 1);
       }
       
-      playInstructionSound();
+      const confirmationSpeech =
+        activeWaypoint.type === 'pickup'
+          ? `${activeWaypoint.passenger.name} est récupéré. Recalcul de l'itinéraire vers la prochaine étape.`
+          : `${activeWaypoint.passenger.name} est déposé. Recalcul de l'itinéraire vers la prochaine étape.`;
+      void speakNavigationMessage(confirmationSpeech, { force: true });
       
       // Recalculer l'itinéraire après confirmation d'un waypoint
       if (recalcRouteTimeoutRef.current) {
@@ -873,6 +1064,7 @@ export default function NavigationScreen() {
       });
     } finally {
       if (isMountedRef.current) {
+        waypointModalVisibleRef.current = false;
         setWaypointModalVisible(false);
         setActiveWaypoint(null);
       }
@@ -881,6 +1073,7 @@ export default function NavigationScreen() {
 
   // Fermer le modal de waypoint sans confirmer
   const handleDismissWaypointModal = () => {
+    waypointModalVisibleRef.current = false;
     setWaypointModalVisible(false);
     setActiveWaypoint(null);
   };
@@ -990,16 +1183,6 @@ export default function NavigationScreen() {
     }
     
     return simplified;
-  };
-
-  // Nettoyer les balises HTML des instructions
-  const cleanHtmlInstructions = (html: string): string => {
-    return html
-      .replace(/<[^>]*>/g, '')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>');
   };
 
   // Obtenir l'icône de manœuvre
@@ -1278,6 +1461,7 @@ export default function NavigationScreen() {
               ]}
               activeOpacity={0.8}
               onPress={() => {
+                waypointModalVisibleRef.current = true;
                 setActiveWaypoint(waypoints[currentWaypointIndex]);
                 setWaypointModalVisible(true);
               }}
@@ -1296,6 +1480,7 @@ export default function NavigationScreen() {
                   { backgroundColor: waypoints[currentWaypointIndex].type === 'pickup' ? Colors.secondary : Colors.success }
                 ]}
                 onPress={() => {
+                  waypointModalVisibleRef.current = true;
                   setActiveWaypoint(waypoints[currentWaypointIndex]);
                   setWaypointModalVisible(true);
                 }}
@@ -1354,6 +1539,19 @@ export default function NavigationScreen() {
           onPress={() => setSecurityModalVisible(true)}
         >
           <Ionicons name="shield-checkmark" size={22} color={Colors.primary} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.floatingButton, !isVoiceGuidanceEnabled && styles.voiceButtonMuted]}
+          onPress={toggleVoiceGuidance}
+          accessibilityRole="button"
+          accessibilityLabel={isVoiceGuidanceEnabled ? 'Désactiver le guidage vocal' : 'Activer le guidage vocal'}
+        >
+          <Ionicons
+            name={isVoiceGuidanceEnabled ? 'volume-high' : 'volume-mute'}
+            size={22}
+            color={isVoiceGuidanceEnabled ? Colors.primary : Colors.gray[500]}
+          />
         </TouchableOpacity>
 
         {/* Bouton recalculer l'itinéraire */}
@@ -1624,6 +1822,7 @@ export default function NavigationScreen() {
                     activeOpacity={0.7}
                     onPress={() => {
                       if (!waypoint.completed) {
+                        waypointModalVisibleRef.current = true;
                         setActiveWaypoint(waypoint);
                         setPassengersPanelVisible(false);
                         setWaypointModalVisible(true);
@@ -1677,6 +1876,7 @@ export default function NavigationScreen() {
                           ]}
                           onPress={(event) => {
                             event.stopPropagation();
+                            waypointModalVisibleRef.current = true;
                             setActiveWaypoint(waypoint);
                             setPassengersPanelVisible(false);
                             setWaypointModalVisible(true);
@@ -1986,6 +2186,9 @@ const styles = StyleSheet.create({
   },
   floatingButtonDisabled: {
     opacity: 0.6,
+  },
+  voiceButtonMuted: {
+    backgroundColor: Colors.gray[100],
   },
   securityModalOverlay: {
     flex: 1,

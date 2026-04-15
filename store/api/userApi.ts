@@ -44,6 +44,9 @@ const mapServerUser = (user: ServerUser): User => {
     identityVerified: Boolean(user.kycDocuments?.some?.((doc: any) => doc.status === 'approved')),
     vehicle: vehicleEntry ? mapServerVehicle(vehicleEntry) : undefined,
     isDriver: user.isDriver ?? false,
+    isPremium: Boolean(user.isPremium),
+    premiumBadge: Boolean(user.premiumBadge),
+    premiumBadgeEnabled: Boolean(user.premiumBadgeEnabled ?? user.premiumBadge),
     createdAt: user.createdAt ?? new Date().toISOString(),
   };
 };

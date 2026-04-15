@@ -52,6 +52,8 @@ export type ServerTrip = {
   driver?: ServerUser | null;
   departureLocation: string;
   arrivalLocation: string;
+  departureReference?: string | null;
+  arrivalReference?: string | null;
   departureCoordinates?: CoordinatesTuple;
   arrivalCoordinates?: CoordinatesTuple;
   departureDate: string;
@@ -78,6 +80,8 @@ export type ServerRecurringTripTemplate = {
   driverId: string;
   departureLocation: string;
   arrivalLocation: string;
+  departureReference?: string | null;
+  arrivalReference?: string | null;
   departureCoordinates?: CoordinatesTuple;
   arrivalCoordinates?: CoordinatesTuple;
   departureTime: string;
@@ -229,12 +233,16 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
       address: trip.departureLocation,
       lat: departureCoords?.lat ?? 0,
       lng: departureCoords?.lng ?? 0,
+      reference: trip.departureReference ?? null,
+      hasCoordinates: Boolean(departureCoords),
     },
     arrival: {
       name: trip.arrivalLocation,
       address: trip.arrivalLocation,
       lat: arrivalCoords?.lat ?? 0,
       lng: arrivalCoords?.lng ?? 0,
+      reference: trip.arrivalReference ?? null,
+      hasCoordinates: Boolean(arrivalCoords),
     },
     departureTime: trip.departureDate,
     arrivalTime: trip.departureDate,
@@ -273,12 +281,16 @@ const mapServerRecurringTripToClient = (
       address: template.departureLocation,
       lat: departureCoords?.lat ?? 0,
       lng: departureCoords?.lng ?? 0,
+      reference: template.departureReference ?? null,
+      hasCoordinates: Boolean(departureCoords),
     },
     arrival: {
       name: template.arrivalLocation,
       address: template.arrivalLocation,
       lat: arrivalCoords?.lat ?? 0,
       lng: arrivalCoords?.lng ?? 0,
+      reference: template.arrivalReference ?? null,
+      hasCoordinates: Boolean(arrivalCoords),
     },
     departureTime: template.departureTime,
     weekdays: Array.isArray(template.weekdays) ? template.weekdays : [],
@@ -335,9 +347,11 @@ export type TripSearchByPointsPayload = {
 
 type CreateTripPayload = {
   departureLocation: string;
-  departureCoordinates: [number, number];
+  departureReference?: string;
+  departureCoordinates?: [number, number];
   arrivalLocation: string;
-  arrivalCoordinates: [number, number];
+  arrivalReference?: string;
+  arrivalCoordinates?: [number, number];
   departureDate: string;
   totalSeats: number;
   // availableSeats: number | null | undefined;
@@ -349,9 +363,11 @@ type CreateTripPayload = {
 
 export type CreateRecurringTripPayload = {
   departureLocation: string;
-  departureCoordinates: [number, number];
+  departureReference?: string;
+  departureCoordinates?: [number, number];
   arrivalLocation: string;
-  arrivalCoordinates: [number, number];
+  arrivalReference?: string;
+  arrivalCoordinates?: [number, number];
   startDate: string;
   endDate?: string;
   departureTime: string;

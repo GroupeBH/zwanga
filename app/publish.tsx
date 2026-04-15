@@ -1,3 +1,5 @@
+import AddressEntryModeSelector, { type AddressInputMode } from '@/components/AddressEntryModeSelector';
+import AddressSectionSlider, { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardModal';
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { VehicleFormModal } from '@/components/VehicleFormModal';
@@ -32,6 +34,18 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 type PublishStep = 'route' | 'datetime' | 'vehicle' | 'pricing' | 'confirm';
 const PUBLISH_STEP_ORDER: PublishStep[] = ['route', 'datetime', 'vehicle', 'pricing', 'confirm'];
+const LANDMARK_PLACEHOLDER = 'Ex: devant la station, portail bleu, entr\u00E9e principale';
+
+function getLocationText(selection: MapLocationSelection | null, manualAddress: string) {
+  return (manualAddress.trim() || selection?.title || selection?.address || '').trim();
+}
+
+function getLocationCoordinates(selection: MapLocationSelection | null): [number, number] | undefined {
+  if (!selection || !Number.isFinite(selection.latitude) || !Number.isFinite(selection.longitude)) {
+    return undefined;
+  }
+  return [selection.longitude, selection.latitude];
+}
 
 export default function PublishScreen() {
   const router = useRouter();
@@ -259,6 +273,12 @@ export default function PublishScreen() {
     setIsRecurringTrip(false);
     setRecurringWeekdays([]);
     setRecurringEndDate(null);
+    setDepartureManualAddress('');
+    setDepartureReference('');
+    setArrivalManualAddress('');
+    setArrivalReference('');
+    setAddressInputMode('map');
+    setAddressSectionStep('method');
     setSelectedVehicleId(null);
     setShowVehicleForm(false);
     setVehicleBrand('');
@@ -288,6 +308,12 @@ export default function PublishScreen() {
   // Données du formulaire
   const [departureLocation, setDepartureLocation] = useState<MapLocationSelection | null>(null);
   const [arrivalLocation, setArrivalLocation] = useState<MapLocationSelection | null>(null);
+  const [departureManualAddress, setDepartureManualAddress] = useState('');
+  const [departureReference, setDepartureReference] = useState('');
+  const [arrivalManualAddress, setArrivalManualAddress] = useState('');
+  const [arrivalReference, setArrivalReference] = useState('');
+  const [addressInputMode, setAddressInputMode] = useState<AddressInputMode>('map');
+  const [addressSectionStep, setAddressSectionStep] = useState<AddressSectionStep>('method');
   const [activeLocationType, setActiveLocationType] = useState<'departure' | 'arrival' | null>(null);
   const [departureDateTime, setDepartureDateTime] = useState<Date | null>(null);
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
@@ -299,25 +325,46 @@ export default function PublishScreen() {
   const [isRecurringTrip, setIsRecurringTrip] = useState(false);
   const [recurringWeekdays, setRecurringWeekdays] = useState<number[]>([]);
   const [recurringEndDate, setRecurringEndDate] = useState<Date | null>(null);
+  const departureAddress =
+    addressInputMode === 'manual'
+      ? departureManualAddress.trim()
+      : getLocationText(departureLocation, '');
+  const arrivalAddress =
+    addressInputMode === 'manual'
+      ? arrivalManualAddress.trim()
+      : getLocationText(arrivalLocation, '');
+  const hasDepartureAddress = departureAddress.length > 0;
+  const hasArrivalAddress = arrivalAddress.length > 0;
+  const canOpenAddressSectionStep = (stepId: AddressSectionStep) =>
+    stepId !== 'arrival' || hasDepartureAddress;
+  const goToPreviousAddressSectionStep = () => {
+    setAddressSectionStep((current) => (current === 'arrival' ? 'departure' : 'method'));
+  };
+  const goToNextAddressSectionStep = () => {
+    setAddressSectionStep((current) => (current === 'method' ? 'departure' : 'arrival'));
+  };
+  const addressSectionNextDisabled = addressSectionStep === 'departure' && !hasDepartureAddress;
+  const addressSectionNextLabel =
+    addressSectionStep === 'method' ? 'Choisir le départ' : 'Choisir l’arrivée';
 
   const departureSummary = useMemo(
     () => ({
-      title: departureLocation?.title ?? 'Point de départ non défini',
-      address: departureLocation?.address ?? 'Sélectionnez un lieu sur la carte',
+      title: departureAddress || 'Point de départ non défini',
+      address: departureLocation?.address ?? departureAddress,
       latitude: departureLocation?.latitude,
       longitude: departureLocation?.longitude,
     }),
-    [departureLocation],
+    [departureAddress, departureLocation?.address, departureLocation?.latitude, departureLocation?.longitude],
   );
 
   const arrivalSummary = useMemo(
     () => ({
-      title: arrivalLocation?.title ?? 'Destination non définie',
-      address: arrivalLocation?.address ?? 'Sélectionnez un lieu sur la carte',
+      title: arrivalAddress || 'Destination non définie',
+      address: arrivalLocation?.address ?? arrivalAddress,
       latitude: arrivalLocation?.latitude,
       longitude: arrivalLocation?.longitude,
     }),
-    [arrivalLocation],
+    [arrivalAddress, arrivalLocation?.address, arrivalLocation?.latitude, arrivalLocation?.longitude],
   );
   const recurringWeekdayOptions = useMemo(
     () => [
@@ -355,10 +402,14 @@ export default function PublishScreen() {
   const closeLocationPicker = () => setActiveLocationType(null);
 
   const handleLocationSelected = (selection: MapLocationSelection) => {
+    setAddressInputMode('map');
     if (activeLocationType === 'departure') {
       setDepartureLocation(selection);
+      setDepartureManualAddress(selection.title || selection.address);
+      setAddressSectionStep('arrival');
     } else if (activeLocationType === 'arrival') {
       setArrivalLocation(selection);
+      setArrivalManualAddress(selection.title || selection.address);
     }
     closeLocationPicker();
   };
@@ -594,11 +645,12 @@ export default function PublishScreen() {
 
   const handleNextStep = () => {
     if (step === 'route') {
-      if (!departureLocation || !arrivalLocation) {
+      if (!hasDepartureAddress || !hasArrivalAddress) {
+        setAddressSectionStep(!hasDepartureAddress ? 'departure' : 'arrival');
         showDialog({
           variant: 'warning',
           title: 'Itineraire incomplet',
-          message: 'Veuillez selectionner un point de depart et une destination.',
+          message: 'Indiquez une adresse de depart et une destination, ou choisissez-les sur la carte.',
         });
         return;
       }
@@ -663,11 +715,12 @@ export default function PublishScreen() {
   const handlePublish = async () => {
     if (isSubmittingTrip) return;
 
-    if (!departureLocation || !arrivalLocation) {
+    if (!hasDepartureAddress || !hasArrivalAddress) {
+      setAddressSectionStep(!hasDepartureAddress ? 'departure' : 'arrival');
       showDialog({
         variant: 'warning',
         title: 'Itineraire incomplet',
-        message: 'Veuillez selectionner vos points de depart et d arrivee.',
+        message: 'Indiquez vos adresses de depart et d arrivee, ou choisissez-les sur la carte.',
       });
       return;
     }
@@ -719,12 +772,19 @@ export default function PublishScreen() {
     }
 
     try {
+      const departureCoordinates =
+        addressInputMode === 'map' ? getLocationCoordinates(departureLocation) : undefined;
+      const arrivalCoordinates =
+        addressInputMode === 'map' ? getLocationCoordinates(arrivalLocation) : undefined;
+
       if (isRecurringTrip) {
         await createRecurringTrip({
-          departureLocation: departureLocation.title,
-          arrivalLocation: arrivalLocation.title,
-          departureCoordinates: [departureLocation.longitude, departureLocation.latitude],
-          arrivalCoordinates: [arrivalLocation.longitude, arrivalLocation.latitude],
+          departureLocation: departureAddress,
+          departureReference: departureReference.trim() || undefined,
+          departureCoordinates,
+          arrivalLocation: arrivalAddress,
+          arrivalReference: arrivalReference.trim() || undefined,
+          arrivalCoordinates,
           startDate: formatDateOnlyValue(departureDate),
           endDate: recurringEndDate ? formatDateOnlyValue(recurringEndDate) : undefined,
           departureTime: formatTimeOnlyValue(departureDate),
@@ -743,10 +803,12 @@ export default function PublishScreen() {
         });
       } else {
         await createTrip({
-          departureLocation: departureLocation.title,
-          arrivalLocation: arrivalLocation.title,
-          departureCoordinates: [departureLocation.longitude, departureLocation.latitude],
-          arrivalCoordinates: [arrivalLocation.longitude, arrivalLocation.latitude],
+          departureLocation: departureAddress,
+          departureReference: departureReference.trim() || undefined,
+          departureCoordinates,
+          arrivalLocation: arrivalAddress,
+          arrivalReference: arrivalReference.trim() || undefined,
+          arrivalCoordinates,
           departureDate: departureDate.toISOString(),
           totalSeats: seatsValue,
           pricePerSeat: priceValue,
@@ -981,25 +1043,129 @@ export default function PublishScreen() {
                 <View style={styles.dotBlue} />
               </View>
               <View style={styles.routeInputs}>
-                <TouchableOpacity
-                  style={styles.locationSelector}
-                  onPress={() => openLocationPicker('departure')}
+                <AddressSectionSlider
+                  activeStep={addressSectionStep}
+                  completedSteps={{
+                    method: true,
+                    departure: hasDepartureAddress,
+                    arrival: hasArrivalAddress,
+                  }}
+                  canOpenStep={canOpenAddressSectionStep}
+                  nextDisabled={addressSectionNextDisabled}
+                  nextLabel={addressSectionNextLabel}
+                  onBack={goToPreviousAddressSectionStep}
+                  onNext={goToNextAddressSectionStep}
+                  onStepChange={setAddressSectionStep}
                 >
-                  <Text style={styles.locationLabel}>DÉPART</Text>
-                  <Text style={styles.locationValue} numberOfLines={1}>
-                    {departureLocation?.title || 'Sélectionnez le point de départ'}
-                  </Text>
-                </TouchableOpacity>
-                <View style={styles.divider} />
-                <TouchableOpacity
-                  style={styles.locationSelector}
-                  onPress={() => openLocationPicker('arrival')}
-                >
-                  <Text style={styles.locationLabel}>ARRIVÉE</Text>
-                  <Text style={[styles.locationValue, !arrivalLocation && { color: Colors.gray[400] }]} numberOfLines={1}>
-                    {arrivalLocation?.title || 'Où allez-vous ?'}
-                  </Text>
-                </TouchableOpacity>
+                  {addressSectionStep === 'method' && (
+                    <AddressEntryModeSelector
+                      mode={addressInputMode}
+                      onChange={setAddressInputMode}
+                      title="Comment renseigner les adresses ?"
+                      hint="Choisissez une seule méthode pour le départ et l’arrivée."
+                    />
+                  )}
+
+                  {addressSectionStep === 'departure' && (
+                    <>
+                      <View style={styles.addressBlock}>
+                        <Text style={styles.locationLabel}>Adresse de départ</Text>
+                        <Text style={styles.addressMethodText}>
+                          {addressInputMode === 'map'
+                            ? 'Choisissez le point de départ sur la carte.'
+                            : 'Écrivez l’adresse de départ, sans chercher un point GPS.'}
+                        </Text>
+                        {addressInputMode === 'map' && (
+                          <View style={styles.addressChoiceRow}>
+                            <TouchableOpacity
+                              style={[styles.addressChoiceButton, departureLocation && styles.addressChoiceButtonActive]}
+                              onPress={() => openLocationPicker('departure')}
+                              activeOpacity={0.9}
+                            >
+                              <Ionicons name="map-outline" size={18} color={departureLocation ? Colors.primary : Colors.gray[600]} />
+                              <View style={styles.addressChoiceText}>
+                                <Text style={styles.addressChoiceTitle}>Choisir sur la carte</Text>
+                                <Text style={styles.addressChoiceHint} numberOfLines={1}>
+                                  {departureLocation?.title || 'Sélectionner un point'}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
+                      {addressInputMode === 'manual' && (
+                        <>
+                          <Text style={styles.manualLocationLabel}>Adresse de départ</Text>
+                          <TextInput
+                            style={styles.manualLocationInput}
+                            value={departureManualAddress}
+                            onChangeText={setDepartureManualAddress}
+                            placeholder="Ex: avenue Kasa-Vubu, Bandal"
+                            placeholderTextColor={Colors.gray[400]}
+                          />
+                        </>
+                      )}
+                      <Text style={styles.manualLocationLabel}>Repère de départ (optionnel)</Text>
+                      <TextInput
+                        style={styles.manualLocationInput}
+                        value={departureReference}
+                        onChangeText={setDepartureReference}
+                        placeholder={LANDMARK_PLACEHOLDER}
+                        placeholderTextColor={Colors.gray[400]}
+                      />
+                    </>
+                  )}
+
+                  {addressSectionStep === 'arrival' && (
+                    <>
+                      <View style={styles.addressBlock}>
+                        <Text style={styles.locationLabel}>Adresse d’arrivée</Text>
+                        <Text style={styles.addressMethodText}>
+                          {addressInputMode === 'map'
+                            ? 'Choisissez le point d’arrivée sur la carte.'
+                            : 'Écrivez l’adresse d’arrivée, même sans coordonnées.'}
+                        </Text>
+                        {addressInputMode === 'map' && (
+                          <View style={styles.addressChoiceRow}>
+                            <TouchableOpacity
+                              style={[styles.addressChoiceButton, arrivalLocation && styles.addressChoiceButtonActive]}
+                              onPress={() => openLocationPicker('arrival')}
+                              activeOpacity={0.9}
+                            >
+                              <Ionicons name="map-outline" size={18} color={arrivalLocation ? Colors.primary : Colors.gray[600]} />
+                              <View style={styles.addressChoiceText}>
+                                <Text style={styles.addressChoiceTitle}>Choisir sur la carte</Text>
+                                <Text style={styles.addressChoiceHint} numberOfLines={1}>
+                                  {arrivalLocation?.title || 'Sélectionner un point'}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
+                      {addressInputMode === 'manual' && (
+                        <>
+                          <Text style={styles.manualLocationLabel}>Adresse d’arrivée</Text>
+                          <TextInput
+                            style={styles.manualLocationInput}
+                            value={arrivalManualAddress}
+                            onChangeText={setArrivalManualAddress}
+                            placeholder="Ex: rond-point Victoire"
+                            placeholderTextColor={Colors.gray[400]}
+                          />
+                        </>
+                      )}
+                      <Text style={styles.manualLocationLabel}>Repère d’arrivée (optionnel)</Text>
+                      <TextInput
+                        style={styles.manualLocationInput}
+                        value={arrivalReference}
+                        onChangeText={setArrivalReference}
+                        placeholder={LANDMARK_PLACEHOLDER}
+                        placeholderTextColor={Colors.gray[400]}
+                      />
+                    </>
+                  )}
+                </AddressSectionSlider>
               </View>
             </View>
 
@@ -1408,6 +1574,9 @@ export default function PublishScreen() {
                       {departureLocation?.address && (
                         <Text style={styles.confirmRouteAddress}>{departureSummary.address}</Text>
                       )}
+                      {departureReference.trim() ? (
+                        <Text style={styles.confirmRouteAddress}>{departureReference.trim()}</Text>
+                      ) : null}
                       <Text style={styles.confirmRouteAddress}>
                         {formatCoordinatePair(
                           departureSummary.latitude,
@@ -1424,6 +1593,9 @@ export default function PublishScreen() {
                       {arrivalLocation?.address && (
                         <Text style={styles.confirmRouteAddress}>{arrivalSummary.address}</Text>
                       )}
+                      {arrivalReference.trim() ? (
+                        <Text style={styles.confirmRouteAddress}>{arrivalReference.trim()}</Text>
+                      ) : null}
                       <Text style={styles.confirmRouteAddress}>
                         {formatCoordinatePair(
                           arrivalSummary.latitude,
@@ -1659,8 +1831,6 @@ export default function PublishScreen() {
       {/* Vehicle Creation Modal */}
       <VehicleFormModal
         visible={showVehicleForm}
-        title="Nouveau véhicule"
-        subtitle="Ajoutez votre véhicule maintenant pour continuer la publication sans perdre votre progression."
         {...vehicleModalCopy}
         brand={vehicleBrand}
         model={vehicleModel}
@@ -2847,6 +3017,47 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: Spacing.md,
   },
+  addressBlock: {
+    gap: Spacing.sm,
+  },
+  addressMethodText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+    lineHeight: 18,
+  },
+  addressChoiceRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  addressChoiceButton: {
+    flex: 1,
+    minHeight: 66,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+    padding: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  addressChoiceButtonActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '10',
+  },
+  addressChoiceText: {
+    flex: 1,
+  },
+  addressChoiceTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  addressChoiceHint: {
+    marginTop: 2,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+  },
   locationSelector: {
     paddingVertical: Spacing.xs,
   },
@@ -2862,10 +3073,23 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.medium,
     marginTop: 4,
   },
-  divider: {
-    height: 1,
-    backgroundColor: Colors.gray[100],
-    marginVertical: Spacing.md,
+  manualLocationLabel: {
+    marginTop: Spacing.sm,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[600],
+  },
+  manualLocationInput: {
+    minHeight: 46,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    marginTop: Spacing.sm,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
   },
   infoBox: {
     flexDirection: 'row',
