@@ -1949,8 +1949,16 @@ export default function TripRequestDetailsScreen() {
                         <Ionicons name="person" size={20} color={Colors.gray[500]} />
                       </View>
                     )}
-                    <View>
-                      <Text style={styles.driverName}>{offer.driverName}</Text>
+                    <View style={styles.offerDriverText}>
+                      <View style={styles.offerDriverNameRow}>
+                        <Text style={styles.driverName} numberOfLines={1}>{offer.driverName}</Text>
+                        {offer.driverPremiumBadge && (
+                          <View style={styles.offerProBadge}>
+                            <Ionicons name="shield-checkmark" size={11} color={Colors.white} />
+                            <Text style={styles.offerProBadgeText}>Pro</Text>
+                          </View>
+                        )}
+                      </View>
                       {driverRating !== undefined && driverRating > 0 && (
                         <View style={styles.ratingRow}>
                           <Ionicons name="star" size={14} color={Colors.secondary} />
@@ -3784,10 +3792,34 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
+  offerDriverText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  offerDriverNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
   driverName: {
+    flexShrink: 1,
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
+  },
+  offerProBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  offerProBadgeText: {
+    color: Colors.white,
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
   },
   ratingRow: {
     flexDirection: 'row',

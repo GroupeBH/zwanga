@@ -1682,6 +1682,12 @@ export default function TripDetailsScreen() {
               <View style={styles.driverDetails}>
                 <View style={styles.driverNameRow}>
                   <Text style={styles.driverName} numberOfLines={1}>{trip?.driverName}</Text>
+                  {(trip?.driver?.premiumBadge || trip?.driver?.premiumBadgeEnabled) && (
+                    <View style={styles.driverProBadge}>
+                      <Ionicons name="shield-checkmark" size={12} color={Colors.white} />
+                      <Text style={styles.driverProBadgeText}>Pro</Text>
+                    </View>
+                  )}
                   <Ionicons name="chevron-forward" size={18} color={Colors.gray[300]} />
                 </View>
                 <View style={styles.driverMeta}>
@@ -3514,6 +3520,20 @@ const styles = StyleSheet.create({
     fontSize: 17,
     flex: 1,
   },
+  driverProBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  driverProBadgeText: {
+    color: Colors.white,
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+  },
   driverMeta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3868,7 +3888,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
-    height: '72%',
+    height: '86%',
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.md,
   },

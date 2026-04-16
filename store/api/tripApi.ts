@@ -24,6 +24,8 @@ type ServerUser = {
   role?: string;
   status?: string;
   isDriver?: boolean;
+  isPremium?: boolean;
+  premiumBadge?: boolean;
 };
 
 type ServerBooking = {
@@ -73,6 +75,7 @@ export type ServerTrip = {
   driverSafetyEmergencyContactIds?: string[];
   recurringTemplateId?: string | null;
   recurringOccurrenceDate?: string | null;
+  isFeatured?: boolean;
 };
 
 export type ServerRecurringTripTemplate = {
@@ -216,6 +219,9 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
           role: trip.driver.role as any,
           status: trip.driver.status,
           isDriver: trip.driver.isDriver ?? false,
+          isPremium: Boolean(trip.driver.isPremium),
+          premiumBadge: Boolean(trip.driver.premiumBadge),
+          premiumBadgeEnabled: Boolean(trip.driver.premiumBadge),
           averageRating:
             Number.isFinite(Number(trip.driver.averageRating))
               ? Number(trip.driver.averageRating)
@@ -264,6 +270,7 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
       : [],
     recurringTemplateId: trip.recurringTemplateId ?? null,
     recurringOccurrenceDate: trip.recurringOccurrenceDate ?? null,
+    isFeatured: Boolean(trip.isFeatured),
   };
 };
 

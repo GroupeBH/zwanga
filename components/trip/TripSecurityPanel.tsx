@@ -1,4 +1,5 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import { PoliceContactPanel } from '@/components/PoliceContactPanel';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import {
   useGetBookingByIdQuery,
@@ -286,6 +287,8 @@ function TripSecurityPanel({
           </Text>
         </View>
       </View>
+
+      <PoliceContactPanel compact={compact} presentation="strip" />
 
       {!compact ? (
         <View style={styles.flowCard}>

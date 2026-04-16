@@ -10,7 +10,7 @@ import {
   useGetPremiumOverviewQuery,
   useGetSubscriptionPlansQuery,
   useStartPremiumTrialMutation,
-  useSubscribeToPlanMutation,
+  useSubscribeToProMutation,
 } from '@/store/api/subscriptionApi';
 import { useGetMyDriverOffersQuery, useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useSendPhoneVerificationOtpMutation, useUpdatePinMutation, useUpdatePinWithOtpMutation, useUpdateUserMutation, useUploadKycMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
@@ -43,10 +43,13 @@ import {
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const formatSubscriptionAmount = (amount?: number, currency?: string) => {
-  if (!Number.isFinite(amount)) return '5 000 CDF';
-  const formatted = Math.round(amount ?? 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-  return `${formatted} ${currency || 'CDF'}`;
+const formatSubscriptionAmount = (amount?: number | string, currency?: string) => {
+  const numericAmount = Number(amount);
+  if (!Number.isFinite(numericAmount)) return `2 ${currency || 'USD'}`;
+  const formatted = numericAmount % 1 === 0
+    ? Math.round(numericAmount).toString()
+    : numericAmount.toFixed(2);
+  return `${formatted} ${currency || 'USD'}`;
 };
 
 const formatSubscriptionEndDate = (value?: string | null) => {
@@ -57,6 +60,7 @@ const formatSubscriptionEndDate = (value?: string | null) => {
 };
 
 const getPlanLabel = (plan?: SubscriptionPlan | null) => {
+  if (plan === 'pro') return 'Pro';
   if (plan === 'yearly') return 'annuel';
   return 'mensuel';
 };
@@ -135,7 +139,7 @@ export default function ProfileScreen() {
     refetch: refetchPremiumOverview,
   } = useGetPremiumOverviewQuery(undefined, { skip: !isDriver });
   const [startPremiumTrial, { isLoading: startingPremiumTrial }] = useStartPremiumTrialMutation();
-  const [subscribeToPlan, { isLoading: subscribingToPlan }] = useSubscribeToPlanMutation();
+  const [subscribeToPro, { isLoading: subscribingToPro }] = useSubscribeToProMutation();
 
   const isKycApproved = kycStatus?.status === 'approved';
   const isKycPending = kycStatus?.status === 'pending';
@@ -163,20 +167,16 @@ export default function ProfileScreen() {
     return total / reviews.length;
   }, [avgRatingData?.averageRating, reviews, currentUser?.rating]);
   const featuredReviews = useMemo(() => (reviews ?? []).slice(0, 3), [reviews]);
-  const monthlyPlan = useMemo(
-    () => subscriptionPlans.find((plan) => plan.plan === 'monthly'),
-    [subscriptionPlans],
-  );
-  const yearlyPlan = useMemo(
-    () => subscriptionPlans.find((plan) => plan.plan === 'yearly'),
+  const proPlan = useMemo(
+    () => subscriptionPlans.find((plan) => plan.plan === 'pro') ?? subscriptionPlans[0],
     [subscriptionPlans],
   );
   const isPremiumActive = Boolean(
     premiumOverview?.isPremium || premiumOverview?.isActive || currentUser?.isPremium || currentUser?.premiumBadge,
   );
-  const proPriceLabel = formatSubscriptionAmount(monthlyPlan?.amount, monthlyPlan?.currency);
+  const proPriceLabel = formatSubscriptionAmount(proPlan?.amount, proPlan?.currency);
   const proEndDateLabel = formatSubscriptionEndDate(premiumOverview?.endDate);
-  const proBusy = premiumOverviewFetching || startingPremiumTrial || subscribingToPlan;
+  const proBusy = premiumOverviewFetching || startingPremiumTrial || subscribingToPro;
   const { shouldShow: shouldShowProfileGuide, complete: completeProfileGuide } =
     useTutorialGuide('profile_screen');
   const [profileGuideVisible, setProfileGuideVisible] = useState(false);
@@ -521,25 +521,18 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleSubscribePro = (plan: SubscriptionPlan) => {
+  const handleSubscribePro = () => {
     if (!isDriver) {
       handleStartDriverOnboarding();
       return;
     }
 
-    const selectedPlan = plan === 'yearly' ? yearlyPlan : monthlyPlan;
-    const fallbackAmount = plan === 'yearly' && monthlyPlan?.amount
-      ? monthlyPlan.amount * 12
-      : monthlyPlan?.amount;
-    const amountLabel = formatSubscriptionAmount(
-      selectedPlan?.amount ?? fallbackAmount,
-      selectedPlan?.currency ?? monthlyPlan?.currency,
-    );
+    const amountLabel = formatSubscriptionAmount(proPlan?.amount, proPlan?.currency);
 
     showDialog({
       variant: 'info',
-      title: `Activer Pro ${getPlanLabel(plan)}`,
-      message: `Confirmez l'activation de Zwanga Pro ${getPlanLabel(plan)} à ${amountLabel}.`,
+      title: 'Activer Zwanga Pro',
+      message: `Confirmez l'activation du pack Pro à ${amountLabel}.`,
       actions: [
         { label: 'Annuler', variant: 'ghost' },
         {
@@ -547,7 +540,7 @@ export default function ProfileScreen() {
           variant: 'primary',
           onPress: async () => {
             try {
-              await subscribeToPlan(plan).unwrap();
+              await subscribeToPro().unwrap();
               await Promise.allSettled([refetchPremiumOverview(), refetchProfile()]);
               showDialog({
                 variant: 'success',
@@ -1189,7 +1182,7 @@ export default function ProfileScreen() {
                 <View style={styles.proActivePanel}>
                   <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
                   <Text style={styles.proActiveText} numberOfLines={2}>
-                    Pro {getPlanLabel(premiumOverview?.plan)} actif
+                    Pack {getPlanLabel(premiumOverview?.plan)} actif
                     {proEndDateLabel ? ` jusqu'au ${proEndDateLabel}` : ''}
                   </Text>
                 </View>
@@ -1213,34 +1206,20 @@ export default function ProfileScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.proSecondaryButton, styles.proActionButton]}
-                      onPress={() => handleSubscribePro('monthly')}
+                      onPress={handleSubscribePro}
                       disabled={proBusy}
                       activeOpacity={0.85}
                     >
-                      {subscribingToPlan ? (
+                      {subscribingToPro ? (
                         <ActivityIndicator color={Colors.primary} />
                       ) : (
                         <>
-                          <Text style={styles.proSecondaryButtonText}>Mensuel</Text>
+                          <Text style={styles.proSecondaryButtonText}>Activer Pro</Text>
                           <Text style={styles.proSecondaryPrice}>{proPriceLabel}</Text>
                         </>
                       )}
                     </TouchableOpacity>
                   </View>
-
-                  {yearlyPlan && (
-                    <TouchableOpacity
-                      style={styles.proYearlyButton}
-                      onPress={() => handleSubscribePro('yearly')}
-                      disabled={proBusy}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={styles.proYearlyText}>
-                        Annuel - {formatSubscriptionAmount(yearlyPlan.amount, yearlyPlan.currency)}
-                      </Text>
-                      <Ionicons name="chevron-forward" size={16} color={Colors.gray[500]} />
-                    </TouchableOpacity>
-                  )}
                 </>
               )}
             </View>
@@ -2679,20 +2658,6 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
     fontSize: 10,
     fontWeight: FontWeights.semibold,
-  },
-  proYearlyButton: {
-    minHeight: 40,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: Colors.gray[50],
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md,
-  },
-  proYearlyText: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[700],
   },
   proActivePanel: {
     minHeight: 46,

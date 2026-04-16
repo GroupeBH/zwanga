@@ -2202,7 +2202,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
-    height: '78%',
+    height: '88%',
     paddingTop: Spacing.md,
     paddingHorizontal: Spacing.md,
   },

@@ -57,6 +57,8 @@ type ServerDriverOffer = {
     lastName: string;
     phone: string;
     profilePicture: string | null;
+    isPremium?: boolean;
+    premiumBadge?: boolean;
   };
   vehicle: {
     id: string;
@@ -91,6 +93,8 @@ type ServerDriverOfferWithTripRequest = {
     lastName: string;
     phone: string;
     profilePicture: string | null;
+    isPremium?: boolean;
+    premiumBadge?: boolean;
   };
   vehicle: {
     id: string;
@@ -243,6 +247,8 @@ const mapServerDriverOfferToClient = (offer: ServerDriverOffer): DriverOffer => 
     driverName: formatFullName(offer.driver),
     driverAvatar: offer.driver.profilePicture ?? undefined,
     driverRating: 0, // Backend ne retourne pas le rating dans l'offre
+    driverIsPremium: Boolean(offer.driver.isPremium),
+    driverPremiumBadge: Boolean(offer.driver.premiumBadge),
     vehicleId: offer.vehicle?.id ?? undefined,
     vehicleInfo,
     proposedDepartureDate: offer.proposedDepartureDate,

@@ -4,7 +4,7 @@ export type TripStatus = 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
 export type RecurringTripStatus = 'active' | 'paused';
 export type BookingStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'completed' | 'expired';
 export type PaymentMethod = 'orange_money' | 'm_pesa' | 'airtel_money' | 'cash';
-export type SubscriptionPlan = 'monthly' | 'yearly';
+export type SubscriptionPlan = 'pro' | 'monthly' | 'yearly';
 export type SubscriptionStatus = 'active' | 'expired' | 'cancelled';
 
 export interface User {
@@ -48,12 +48,13 @@ export interface TripDriverInfo {
 
 export interface SubscriptionPlanSummary {
   plan: SubscriptionPlan;
-  amount: number;
+  amount: number | string;
   currency: string;
   premiumBadgeEnabled: boolean;
   featuredTripsEnabled: boolean;
   documentFundingEnabled: boolean;
   documentFundingLimit: number | null;
+  documentFundingCurrency?: string;
   eligibleDocumentTypes: string[];
 }
 
@@ -77,7 +78,8 @@ export interface Subscription {
   status: SubscriptionStatus;
   startDate: string;
   endDate: string;
-  amount: number;
+  amount: number | string;
+  currency: string;
   premiumBadgeEnabled: boolean;
   featuredTripsEnabled: boolean;
   documentFundingEnabled: boolean;
@@ -145,6 +147,7 @@ export interface Trip {
   driverSafetyEmergencyContactIds?: string[];
   recurringTemplateId?: string | null;
   recurringOccurrenceDate?: string | null;
+  isFeatured?: boolean;
 }
 
 export interface RecurringTripTemplate {
@@ -338,6 +341,8 @@ export interface DriverOffer {
   driverName?: string;
   driverAvatar?: string;
   driverRating?: number;
+  driverIsPremium?: boolean;
+  driverPremiumBadge?: boolean;
   vehicleId?: string | null;
   vehicleType?: VehicleType;
   vehicleInfo?: string;

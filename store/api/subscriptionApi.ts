@@ -1,7 +1,6 @@
 import type {
   PremiumOverview,
   Subscription,
-  SubscriptionPlan,
   SubscriptionPlanSummary,
 } from '../../types';
 import { baseApi } from './baseApi';
@@ -27,11 +26,11 @@ export const subscriptionApi = baseApi.injectEndpoints({
       invalidatesTags: ['Subscription', 'User', 'Trip', 'MyTrips'],
     }),
 
-    subscribeToPlan: builder.mutation<Subscription, SubscriptionPlan>({
-      query: (plan) => ({
+    subscribeToPro: builder.mutation<Subscription, void>({
+      query: () => ({
         url: '/subscriptions/subscribe',
         method: 'POST',
-        body: { plan },
+        body: { plan: 'pro' },
       }),
       invalidatesTags: ['Subscription', 'User', 'Trip', 'MyTrips'],
     }),
@@ -42,5 +41,5 @@ export const {
   useGetSubscriptionPlansQuery,
   useGetPremiumOverviewQuery,
   useStartPremiumTrialMutation,
-  useSubscribeToPlanMutation,
+  useSubscribeToProMutation,
 } = subscriptionApi;

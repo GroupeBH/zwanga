@@ -1071,9 +1071,17 @@ export default function HomeScreen() {
                         <View style={styles.avatar} />
                       )}
                       <View style={styles.tripDriverDetails}>
-                        <Text style={styles.driverName} numberOfLines={1} ellipsizeMode="tail">
-                          {trip?.driverName ?? ''}
-                        </Text>
+                        <View style={styles.driverNameRow}>
+                          <Text style={styles.driverName} numberOfLines={1} ellipsizeMode="tail">
+                            {trip?.driverName ?? ''}
+                          </Text>
+                          {(trip.driver?.premiumBadge || trip.driver?.premiumBadgeEnabled) && (
+                            <View style={styles.proBadge}>
+                              <Ionicons name="shield-checkmark" size={11} color={Colors.white} />
+                              <Text style={styles.proBadgeText}>Pro</Text>
+                            </View>
+                          )}
+                        </View>
                         <View style={styles.driverMeta}>
                           <Ionicons
                             name={hasDriverRating ? "star" : "star-outline"}
@@ -1943,10 +1951,30 @@ const styles = StyleSheet.create({
   tripDriverDetails: {
     flex: 1,
   },
+  driverNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
   driverName: {
+    flex: 1,
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
+  },
+  proBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  proBadgeText: {
+    color: Colors.white,
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
   },
   driverMeta: {
     flexDirection: 'row',
