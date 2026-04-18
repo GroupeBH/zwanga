@@ -6,13 +6,17 @@ import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } f
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
+import {
+  useGetPremiumOverviewQuery,
+  useGetSubscriptionPlansQuery,
+} from '@/store/api/subscriptionApi';
 import { useGetMyDriverOffersQuery, useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useSendPhoneVerificationOtpMutation, useUpdatePinMutation, useUpdatePinWithOtpMutation, useUpdateUserMutation, useUploadKycMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useDeleteVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { performLogout } from '@/store/slices/authSlice';
-import type { Vehicle } from '@/types';
+import type { SubscriptionPlan, Vehicle } from '@/types';
 import { createBecomeDriverAction, isDriverRequiredError } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,6 +26,7 @@ import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   NativeSyntheticEvent,
   Platform,
@@ -37,7 +42,29 @@ import {
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+const formatSubscriptionAmount = (amount?: number | string, currency?: string) => {
+  const numericAmount = Number(amount);
+  if (!Number.isFinite(numericAmount)) return `2 ${currency || 'USD'}`;
+  const formatted = numericAmount % 1 === 0
+    ? Math.round(numericAmount).toString()
+    : numericAmount.toFixed(2);
+  return `${formatted} ${currency || 'USD'}`;
+};
 
+const formatSubscriptionEndDate = (value?: string | null) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+const getPlanLabel = (plan?: SubscriptionPlan | null) => {
+  if (plan === 'pro') return 'Pro';
+  if (plan === 'yearly') return 'annuel';
+  return 'mensuel';
+};
+
+const ZWANGA_PRO_ENQUIRY_URL = 'https://zwanga-app.com/enquiry';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -66,6 +93,7 @@ export default function ProfileScreen() {
   const [newPin, setNewPin] = useState('');
   const [newPinConfirm, setNewPinConfirm] = useState('');
   const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [openingProEnquiry, setOpeningProEnquiry] = useState(false);
   const oldPinInputRef = useRef<TextInput | null>(null);
   const otpInputRefs = useRef<Array<TextInput | null>>([]);
   const pinInputRef = useRef<TextInput | null>(null);
@@ -103,8 +131,15 @@ export default function ProfileScreen() {
   // Déterminer si l'utilisateur est conducteur basé sur le role
   const isDriver = useMemo(() => {
     const role = currentUser?.role;
-    return role === 'driver' || role === 'both';
-  }, [currentUser?.role]);
+    return role === 'driver' || role === 'both' || Boolean(currentUser?.isDriver);
+  }, [currentUser?.isDriver, currentUser?.role]);
+
+  const { data: subscriptionPlans = [] } = useGetSubscriptionPlansQuery();
+  const {
+    data: premiumOverview,
+    isFetching: premiumOverviewFetching,
+    refetch: refetchPremiumOverview,
+  } = useGetPremiumOverviewQuery(undefined, { skip: !isDriver });
 
   const isKycApproved = kycStatus?.status === 'approved';
   const isKycPending = kycStatus?.status === 'pending';
@@ -132,6 +167,16 @@ export default function ProfileScreen() {
     return total / reviews.length;
   }, [avgRatingData?.averageRating, reviews, currentUser?.rating]);
   const featuredReviews = useMemo(() => (reviews ?? []).slice(0, 3), [reviews]);
+  const proPlan = useMemo(
+    () => subscriptionPlans.find((plan) => plan.plan === 'pro') ?? subscriptionPlans[0],
+    [subscriptionPlans],
+  );
+  const isPremiumActive = Boolean(
+    premiumOverview?.isPremium || premiumOverview?.isActive || currentUser?.isPremium || currentUser?.premiumBadge,
+  );
+  const proPriceLabel = formatSubscriptionAmount(proPlan?.amount, proPlan?.currency);
+  const proEndDateLabel = formatSubscriptionEndDate(premiumOverview?.endDate);
+  const proBusy = premiumOverviewFetching || openingProEnquiry;
   const { shouldShow: shouldShowProfileGuide, complete: completeProfileGuide } =
     useTutorialGuide('profile_screen');
   const [profileGuideVisible, setProfileGuideVisible] = useState(false);
@@ -200,7 +245,15 @@ export default function ProfileScreen() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([refetchProfile(), refetchVehicles(), refetchKycStatus()]);
+      const refreshTasks: Promise<unknown>[] = [
+        Promise.resolve(refetchProfile()),
+        Promise.resolve(refetchVehicles()),
+        Promise.resolve(refetchKycStatus()),
+      ];
+      if (isDriver) {
+        refreshTasks.push(Promise.resolve(refetchPremiumOverview()));
+      }
+      await Promise.all(refreshTasks);
     } finally {
       setRefreshing(false);
     }
@@ -392,6 +445,64 @@ export default function ProfileScreen() {
         title: 'Erreur',
         message: error?.data?.message || 'Impossible d\'activer le compte conducteur. Veuillez réessayer.',
       });
+    }
+  };
+
+  const handleStartDriverOnboarding = () => {
+    const hasVehicle = vehicleList.length > 0;
+    const hasKyc = isKycApproved;
+
+    if (!hasVehicle && !hasKyc) {
+      showDialog({
+        variant: 'info',
+        title: 'Devenir conducteur',
+        message: 'Pour devenir conducteur, vous devez :\n\n1. Ajouter un véhicule\n2. Compléter la vérification d\'identité (KYC)\n\nSouhaitez-vous commencer par ajouter un véhicule ?',
+        actions: [
+          { label: 'Plus tard', variant: 'ghost' },
+          {
+            label: 'Ajouter un véhicule',
+            variant: 'primary',
+            onPress: () => {
+              resetVehicleForm();
+              setVehicleModalVisible(true);
+            },
+          },
+        ],
+      });
+      return;
+    }
+
+    if (!hasVehicle) {
+      resetVehicleForm();
+      setVehicleModalVisible(true);
+      return;
+    }
+
+    if (!hasKyc) {
+      handleOpenKycModal();
+      return;
+    }
+
+    void handleBecomeDriver();
+  };
+
+  const handleSubscribePro = async () => {
+    if (!isDriver) {
+      handleStartDriverOnboarding();
+      return;
+    }
+
+    try {
+      setOpeningProEnquiry(true);
+      await Linking.openURL(ZWANGA_PRO_ENQUIRY_URL);
+    } catch {
+      showDialog({
+        variant: 'danger',
+        title: 'Redirection impossible',
+        message: `Impossible d'ouvrir la page Zwanga Pro pour le moment. Vous pouvez aller sur ${ZWANGA_PRO_ENQUIRY_URL}.`,
+      });
+    } finally {
+      setOpeningProEnquiry(false);
     }
   };
 
@@ -885,38 +996,7 @@ export default function ProfileScreen() {
               <TouchableOpacity
                 style={styles.becomeDriverCard}
                 disabled={isUpdatingUser}
-                onPress={() => {
-                  // Vérifier les prérequis et guider l'utilisateur
-                  const hasVehicle = vehicleList.length > 0;
-                  const hasKyc = isKycApproved;
-                  
-                  if (!hasVehicle && !hasKyc) {
-                    showDialog({
-                      variant: 'info',
-                      title: 'Devenir conducteur',
-                      message: 'Pour devenir conducteur, vous devez :\n\n1. Ajouter un véhicule\n2. Compléter la vérification d\'identité (KYC)\n\nSouhaitez-vous commencer par ajouter un véhicule ?',
-                      actions: [
-                        { label: 'Plus tard', variant: 'ghost' },
-                        {
-                          label: 'Ajouter un véhicule',
-                          variant: 'primary',
-                          onPress: () => {
-                            resetVehicleForm();
-                            setVehicleModalVisible(true);
-                          },
-                        },
-                      ],
-                    });
-                  } else if (!hasVehicle) {
-                    resetVehicleForm();
-                    setVehicleModalVisible(true);
-                  } else if (!hasKyc) {
-                    handleOpenKycModal();
-                  } else {
-                    // Tous les prérequis sont remplis, activer le compte conducteur
-                    handleBecomeDriver();
-                  }
-                }}
+                onPress={handleStartDriverOnboarding}
                 activeOpacity={0.8}
               >
                 <LinearGradient
@@ -932,7 +1012,7 @@ export default function ProfileScreen() {
                     <View style={styles.becomeDriverTextContainer}>
                       <Text style={styles.becomeDriverTitle}>Devenir conducteur</Text>
                       <Text style={styles.becomeDriverSubtitle}>
-                        Gagnez de l'argent en proposant des trajets
+                        {"Gagnez de l'argent en proposant des trajets"}
                       </Text>
                       <View style={styles.becomeDriverProgress}>
                         <View style={styles.becomeDriverProgressItem}>
@@ -977,6 +1057,99 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </Animated.View>
           )}
+
+          <Animated.View entering={FadeInDown.delay(260)}>
+            <View style={[styles.proCard, isPremiumActive && styles.proCardActive]}>
+              <View style={styles.proHeader}>
+                <View style={[styles.proIcon, isPremiumActive && styles.proIconActive]}>
+                  <Ionicons
+                    name={isPremiumActive ? 'shield-checkmark' : 'sparkles-outline'}
+                    size={22}
+                    color={isPremiumActive ? Colors.white : Colors.primary}
+                  />
+                </View>
+                <View style={styles.proTitleContent}>
+                  <View style={styles.proTitleRow}>
+                    <Text style={styles.proTitle}>Zwanga Pro</Text>
+                    {isPremiumActive && (
+                      <View style={styles.proBadge}>
+                        <Text style={styles.proBadgeText}>Actif</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.proSubtitle} numberOfLines={2}>
+                    {isDriver
+                      ? 'Plus de visibilité pour vos trajets conducteur.'
+                      : 'Réservé aux conducteurs qui publient des trajets.'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.proBenefitRow}>
+                <View style={styles.proBenefitPill}>
+                  <Ionicons name="ribbon-outline" size={14} color={Colors.primary} />
+                  <Text style={styles.proBenefitText}>Badge Pro</Text>
+                </View>
+                <View style={styles.proBenefitPill}>
+                  <Ionicons name="trending-up-outline" size={14} color={Colors.info} />
+                  <Text style={styles.proBenefitText}>Trajets mis en avant</Text>
+                </View>
+              </View>
+
+              {isDriver && premiumOverview?.documentFundingEnabled && (
+                <Text style={styles.proFundingText} numberOfLines={2}>
+                  {"Financement documents jusqu'à "}
+                  {formatSubscriptionAmount(
+                    premiumOverview.documentFundingLimit ?? undefined,
+                    premiumOverview.documentFundingCurrency,
+                  )}
+                  {'.'}
+                </Text>
+              )}
+
+              {!isDriver ? (
+                <TouchableOpacity
+                  style={styles.proPrimaryButton}
+                  onPress={handleStartDriverOnboarding}
+                  disabled={isUpdatingUser}
+                  activeOpacity={0.85}
+                >
+                  {isUpdatingUser ? (
+                    <ActivityIndicator color={Colors.white} />
+                  ) : (
+                    <>
+                      <Text style={styles.proPrimaryButtonText}>Devenir conducteur</Text>
+                      <Ionicons name="arrow-forward" size={16} color={Colors.white} />
+                    </>
+                  )}
+                </TouchableOpacity>
+              ) : isPremiumActive ? (
+                <View style={styles.proActivePanel}>
+                  <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
+                  <Text style={styles.proActiveText} numberOfLines={2}>
+                    Pack {getPlanLabel(premiumOverview?.plan)} actif
+                    {proEndDateLabel ? ` jusqu'au ${proEndDateLabel}` : ''}
+                  </Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.proSecondaryButton}
+                  onPress={handleSubscribePro}
+                  disabled={proBusy}
+                  activeOpacity={0.85}
+                >
+                  {openingProEnquiry ? (
+                    <ActivityIndicator color={Colors.primary} />
+                  ) : (
+                    <>
+                      <Text style={styles.proSecondaryButtonText}>Passer à Pro</Text>
+                      <Text style={styles.proSecondaryPrice}>{proPriceLabel}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+          </Animated.View>
         </View>
 
         <View style={styles.section}>
@@ -1039,8 +1212,7 @@ export default function ProfileScreen() {
             </View>
             {reviewCount === 0 ? (
               <Text style={styles.reviewsEmptyText}>
-                Vous n'avez pas encore reçu d'avis. Continuez à proposer des trajets sécurisés pour en
-                recevoir.
+                {"Vous n'avez pas encore reçu d'avis. Continuez à proposer des trajets sécurisés pour en recevoir."}
               </Text>
             ) : (
               featuredReviews.map((review) => (
@@ -1250,8 +1422,6 @@ export default function ProfileScreen() {
 
       <VehicleFormModal
         visible={vehicleModalVisible}
-        title="Ajouter un véhicule"
-        subtitle="Indiquez les détails exacts de votre véhicule pour rassurer vos passagers."
         {...vehicleModalCopy}
         submitLabel="Ajouter"
         brand={vehicleBrand}
@@ -1300,7 +1470,7 @@ export default function ProfileScreen() {
             >
               {(reviews ?? []).length === 0 ? (
                 <Text style={styles.reviewsEmptyText}>
-                  Vous n'avez pas encore reçu d'avis.
+                  {"Vous n'avez pas encore reçu d'avis."}
                 </Text>
               ) : (
                 reviews?.map((review) => (
@@ -1379,7 +1549,7 @@ export default function ProfileScreen() {
                   style={styles.pinModalForgotButton}
                   onPress={handleForgotPin}
                 >
-                  <Text style={styles.pinModalForgotText}>J'ai oublié mon PIN</Text>
+                  <Text style={styles.pinModalForgotText}>{"J'ai oublié mon PIN"}</Text>
                 </TouchableOpacity>
               </>
             ) : pinStep === 'otp' ? (
@@ -2285,6 +2455,143 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.medium,
+  },
+  proCard: {
+    marginTop: Spacing.md,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary + '24',
+    padding: Spacing.md,
+    gap: Spacing.md,
+    ...CommonStyles.shadowSm,
+  },
+  proCardActive: {
+    borderColor: Colors.success + '40',
+    backgroundColor: '#FFFFFF',
+  },
+  proHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  proIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.primary + '12',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  proIconActive: {
+    backgroundColor: Colors.success,
+  },
+  proTitleContent: {
+    flex: 1,
+  },
+  proTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  proTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  proBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.success + '15',
+  },
+  proBadgeText: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    color: Colors.successDark,
+  },
+  proSubtitle: {
+    marginTop: 2,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+    lineHeight: 17,
+  },
+  proBenefitRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  proBenefitPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.gray[50],
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+  },
+  proBenefitText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+  },
+  proFundingText: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+    lineHeight: 17,
+  },
+  proPrimaryButton: {
+    minHeight: 46,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+  },
+  proPrimaryButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  proSecondaryButton: {
+    minHeight: 46,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary + '35',
+    backgroundColor: Colors.primary + '08',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  proSecondaryButtonText: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  proSecondaryPrice: {
+    marginTop: 2,
+    color: Colors.gray[600],
+    fontSize: 10,
+    fontWeight: FontWeights.semibold,
+  },
+  proActivePanel: {
+    minHeight: 46,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.success + '10',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+  },
+  proActiveText: {
+    flex: 1,
+    color: Colors.successDark,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
   },
   becomeDriverCard: {
     marginTop: Spacing.md,

@@ -24,6 +24,8 @@ type ServerUser = {
   role?: string;
   status?: string;
   isDriver?: boolean;
+  isPremium?: boolean;
+  premiumBadge?: boolean;
 };
 
 type ServerBooking = {
@@ -52,6 +54,8 @@ export type ServerTrip = {
   driver?: ServerUser | null;
   departureLocation: string;
   arrivalLocation: string;
+  departureReference?: string | null;
+  arrivalReference?: string | null;
   departureCoordinates?: CoordinatesTuple;
   arrivalCoordinates?: CoordinatesTuple;
   departureDate: string;
@@ -71,6 +75,7 @@ export type ServerTrip = {
   driverSafetyEmergencyContactIds?: string[];
   recurringTemplateId?: string | null;
   recurringOccurrenceDate?: string | null;
+  isFeatured?: boolean;
 };
 
 export type ServerRecurringTripTemplate = {
@@ -78,6 +83,8 @@ export type ServerRecurringTripTemplate = {
   driverId: string;
   departureLocation: string;
   arrivalLocation: string;
+  departureReference?: string | null;
+  arrivalReference?: string | null;
   departureCoordinates?: CoordinatesTuple;
   arrivalCoordinates?: CoordinatesTuple;
   departureTime: string;
@@ -212,6 +219,9 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
           role: trip.driver.role as any,
           status: trip.driver.status,
           isDriver: trip.driver.isDriver ?? false,
+          isPremium: Boolean(trip.driver.isPremium),
+          premiumBadge: Boolean(trip.driver.premiumBadge),
+          premiumBadgeEnabled: Boolean(trip.driver.premiumBadge),
           averageRating:
             Number.isFinite(Number(trip.driver.averageRating))
               ? Number(trip.driver.averageRating)
@@ -229,12 +239,16 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
       address: trip.departureLocation,
       lat: departureCoords?.lat ?? 0,
       lng: departureCoords?.lng ?? 0,
+      reference: trip.departureReference ?? null,
+      hasCoordinates: Boolean(departureCoords),
     },
     arrival: {
       name: trip.arrivalLocation,
       address: trip.arrivalLocation,
       lat: arrivalCoords?.lat ?? 0,
       lng: arrivalCoords?.lng ?? 0,
+      reference: trip.arrivalReference ?? null,
+      hasCoordinates: Boolean(arrivalCoords),
     },
     departureTime: trip.departureDate,
     arrivalTime: trip.departureDate,
@@ -256,6 +270,7 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
       : [],
     recurringTemplateId: trip.recurringTemplateId ?? null,
     recurringOccurrenceDate: trip.recurringOccurrenceDate ?? null,
+    isFeatured: Boolean(trip.isFeatured),
   };
 };
 
@@ -273,12 +288,16 @@ const mapServerRecurringTripToClient = (
       address: template.departureLocation,
       lat: departureCoords?.lat ?? 0,
       lng: departureCoords?.lng ?? 0,
+      reference: template.departureReference ?? null,
+      hasCoordinates: Boolean(departureCoords),
     },
     arrival: {
       name: template.arrivalLocation,
       address: template.arrivalLocation,
       lat: arrivalCoords?.lat ?? 0,
       lng: arrivalCoords?.lng ?? 0,
+      reference: template.arrivalReference ?? null,
+      hasCoordinates: Boolean(arrivalCoords),
     },
     departureTime: template.departureTime,
     weekdays: Array.isArray(template.weekdays) ? template.weekdays : [],
@@ -335,9 +354,11 @@ export type TripSearchByPointsPayload = {
 
 type CreateTripPayload = {
   departureLocation: string;
-  departureCoordinates: [number, number];
+  departureReference?: string;
+  departureCoordinates?: [number, number];
   arrivalLocation: string;
-  arrivalCoordinates: [number, number];
+  arrivalReference?: string;
+  arrivalCoordinates?: [number, number];
   departureDate: string;
   totalSeats: number;
   // availableSeats: number | null | undefined;
@@ -349,9 +370,11 @@ type CreateTripPayload = {
 
 export type CreateRecurringTripPayload = {
   departureLocation: string;
-  departureCoordinates: [number, number];
+  departureReference?: string;
+  departureCoordinates?: [number, number];
   arrivalLocation: string;
-  arrivalCoordinates: [number, number];
+  arrivalReference?: string;
+  arrivalCoordinates?: [number, number];
   startDate: string;
   endDate?: string;
   departureTime: string;

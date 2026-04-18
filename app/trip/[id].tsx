@@ -1,3 +1,4 @@
+import AddressEntryModeSelector, { type AddressInputMode } from '@/components/AddressEntryModeSelector';
 import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardModal';
 import LocationPickerModal, { type MapLocationSelection } from '@/components/LocationPickerModal';
 import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
@@ -81,6 +82,20 @@ const arrayToLatLng = (coordinates?: [number, number] | null) => {
   };
 };
 
+const LANDMARK_PLACEHOLDER = 'Ex: devant la station, portail bleu, entr\u00E9e principale';
+
+const getLocationText = (selection: MapLocationSelection | null, manualAddress: string) =>
+  (manualAddress.trim() || selection?.title || selection?.address || '').trim();
+
+const getLocationCoordinatesObject = (selection: MapLocationSelection | null) => {
+  if (!selection || !Number.isFinite(selection.latitude) || !Number.isFinite(selection.longitude)) {
+    return undefined;
+  }
+  return {
+    latitude: selection.latitude,
+    longitude: selection.longitude,
+  };
+};
 
 const BOOKING_STATUS_CONFIG: Record<
   BookingStatus,
@@ -124,6 +139,7 @@ export default function TripDetailsScreen() {
   const insets = useSafeAreaInsets();
   const tripId = typeof params.id === 'string' ? (params.id as string) : '';
   const trackParam = Array.isArray(params.track) ? params.track.includes('true') : params.track === 'true'; // Permet le suivi via lien partagé
+  const tripFromStore = useAppSelector((state) => selectTripById(tripId)(state));
 
   // Récupérer le trajet depuis l'API si pas dans le store
   // Polling intelligent basé sur le statut du trajet
@@ -135,9 +151,9 @@ export default function TripDetailsScreen() {
   } = useGetTripByIdQuery(tripId, { 
     skip: !tripId,
     // Polling automatique basé sur le statut du trajet
-    pollingInterval: tripFromApi?.status === 'ongoing' 
+    pollingInterval: tripFromStore?.status === 'ongoing'
       ? 5000 // 5 secondes pour les trajets en cours
-      : tripFromApi?.status === 'upcoming'
+      : tripFromStore?.status === 'upcoming'
       ? 30000 // 30 secondes pour les trajets à venir
       : 0, // Pas de polling pour les trajets terminés/annulés
     refetchOnFocus: true, // Rafraîchir quand l'utilisateur revient dans l'app
@@ -145,7 +161,6 @@ export default function TripDetailsScreen() {
   });
 
   // Utiliser le trajet de l'API en priorité, sinon celui du store
-  const tripFromStore = useAppSelector((state) => selectTripById(tripId)(state));
   const trip = tripFromApi || tripFromStore;
 
   const user = useAppSelector(selectUser);
@@ -207,9 +222,14 @@ export default function TripDetailsScreen() {
   const [bookingSeats, setBookingSeats] = useState('1');
   const [bookingModalError, setBookingModalError] = useState('');
   const [passengerOrigin, setPassengerOrigin] = useState<MapLocationSelection | null>(null);
+  const [passengerOriginManualAddress, setPassengerOriginManualAddress] = useState('');
+  const [passengerOriginReference, setPassengerOriginReference] = useState('');
   const [showOriginPicker, setShowOriginPicker] = useState(false);
   const [passengerDestination, setPassengerDestination] = useState<MapLocationSelection | null>(null);
+  const [passengerDestinationManualAddress, setPassengerDestinationManualAddress] = useState('');
+  const [passengerDestinationReference, setPassengerDestinationReference] = useState('');
   const [showDestinationPicker, setShowDestinationPicker] = useState(false);
+  const [bookingAddressInputMode, setBookingAddressInputMode] = useState<AddressInputMode>('map');
   const [shouldAutofillPassengerOrigin, setShouldAutofillPassengerOrigin] = useState(false);
   const [isValidatingDestination, setIsValidatingDestination] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState<{ visible: boolean; seats: number }>({
@@ -575,7 +595,14 @@ export default function TripDetailsScreen() {
     setBookingSeats('1');
     setBookingModalError('');
     setPassengerOrigin(autoOrigin);
+    setPassengerOriginManualAddress(autoOrigin?.title || autoOrigin?.address || '');
+    setPassengerOriginReference('');
     setPassengerDestination(defaultPassengerDestinationSelection);
+    setPassengerDestinationManualAddress(
+      defaultPassengerDestinationSelection?.title || defaultPassengerDestinationSelection?.address || '',
+    );
+    setPassengerDestinationReference('');
+    setBookingAddressInputMode('map');
     setShouldAutofillPassengerOrigin(!autoOrigin);
     setBookingStep(1);
     setBookingModalVisible(true);
@@ -630,6 +657,7 @@ export default function TripDetailsScreen() {
       return;
     }
     setPassengerOrigin(defaultPassengerOriginSelection);
+    setPassengerOriginManualAddress(defaultPassengerOriginSelection.title || defaultPassengerOriginSelection.address);
     setShouldAutofillPassengerOrigin(false);
   }, [
     bookingModalVisible,
@@ -783,6 +811,15 @@ export default function TripDetailsScreen() {
 
     const tripArrivalLatitude = Number(trip.arrival?.lat);
     const tripArrivalLongitude = Number(trip.arrival?.lng);
+    const passengerOriginText =
+      bookingAddressInputMode === 'manual'
+        ? passengerOriginManualAddress.trim()
+        : getLocationText(passengerOrigin, '');
+    const passengerDestinationText =
+      bookingAddressInputMode === 'manual'
+        ? passengerDestinationManualAddress.trim()
+        : getLocationText(passengerDestination, '');
+    const defaultArrivalText = (trip.arrival?.name || trip.arrival?.address || '').trim();
     const hasTripArrivalCoordinates =
       Number.isFinite(tripArrivalLatitude) && Number.isFinite(tripArrivalLongitude);
     const isDefaultTripArrivalDestination = Boolean(
@@ -792,22 +829,23 @@ export default function TripDetailsScreen() {
       Math.abs(passengerDestination.longitude - tripArrivalLongitude) < 0.000001,
     );
     const hasCustomPassengerDestination = Boolean(
-      passengerDestination && !isDefaultTripArrivalDestination,
+      (passengerDestination && !isDefaultTripArrivalDestination) ||
+        (passengerDestinationText && passengerDestinationText !== defaultArrivalText) ||
+        passengerDestinationReference.trim(),
     );
 
     // Valider la destination seulement si le passager a choisi une destination personnalisée
-    if (hasCustomPassengerDestination && passengerDestination) {
+    if (
+      bookingAddressInputMode === 'map' &&
+      hasCustomPassengerDestination &&
+      passengerDestination &&
+      routeCoordinates &&
+      routeCoordinates.length >= 2
+    ) {
       setIsValidatingDestination(true);
       setBookingModalError('');
 
       try {
-        // Vérifier que la destination est sur le trajet
-        if (!routeCoordinates || routeCoordinates.length < 2) {
-          setBookingModalError('Impossible de valider la destination. Veuillez réessayer.');
-          setIsValidatingDestination(false);
-          return;
-        }
-
         const destinationPoint = {
           latitude: passengerDestination.latitude,
           longitude: passengerDestination.longitude,
@@ -836,21 +874,18 @@ export default function TripDetailsScreen() {
       const booking = await createBooking({
         tripId: trip.id,
         numberOfSeats: seatsValue,
-        passengerOrigin: passengerOrigin?.title || passengerOrigin?.address,
-        passengerOriginCoordinates: passengerOrigin
-          ? {
-            latitude: passengerOrigin.latitude,
-            longitude: passengerOrigin.longitude,
-          }
-          : undefined,
+        passengerOrigin: passengerOriginText || undefined,
+        passengerOriginReference: passengerOriginReference.trim() || undefined,
+        passengerOriginCoordinates:
+          bookingAddressInputMode === 'map' ? getLocationCoordinatesObject(passengerOrigin) : undefined,
         passengerDestination: hasCustomPassengerDestination
-          ? passengerDestination?.title || passengerDestination?.address
+          ? passengerDestinationText || undefined
           : undefined,
-        passengerDestinationCoordinates: hasCustomPassengerDestination && passengerDestination
-          ? {
-              latitude: passengerDestination.latitude,
-              longitude: passengerDestination.longitude,
-            }
+        passengerDestinationReference: passengerDestinationReference.trim() || undefined,
+        passengerDestinationCoordinates: hasCustomPassengerDestination
+          ? bookingAddressInputMode === 'map'
+            ? getLocationCoordinatesObject(passengerDestination)
+            : undefined
           : undefined,
       }).unwrap();
       void trackEvent('booking_created', {
@@ -863,7 +898,11 @@ export default function TripDetailsScreen() {
       setBookingModalVisible(false);
       setBookingModalError('');
       setPassengerOrigin(null);
+      setPassengerOriginManualAddress('');
+      setPassengerOriginReference('');
       setPassengerDestination(null);
+      setPassengerDestinationManualAddress('');
+      setPassengerDestinationReference('');
       setShouldAutofillPassengerOrigin(false);
       setBookingStep(1);
       openBookingSuccessModal(seatsValue);
@@ -1278,7 +1317,7 @@ export default function TripDetailsScreen() {
           </View>
           <Text style={styles.emptyStateTitle}>Trajet introuvable</Text>
           <Text style={styles.emptyStateText}>
-            Ce trajet n'existe plus ou a été supprimé par son propriétaire.
+            Ce trajet n&apos;existe plus ou a été supprimé par son propriétaire.
           </Text>
           <TouchableOpacity style={styles.primaryButton} onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={16} color={Colors.white} />
@@ -1329,7 +1368,7 @@ export default function TripDetailsScreen() {
         }
       >
         {/* Carte interactive - masquée quand le trajet est en cours */}
-        {trip.status !== 'ongoing' && (
+        {trip?.status !== 'ongoing' && (
           <TouchableOpacity
             style={styles.mapContainer}
             onPress={() => setMapModalVisible(true)}
@@ -1418,7 +1457,7 @@ export default function TripDetailsScreen() {
         )}
 
         {/* Modal carte plein écran - masqué quand le trajet est en cours */}
-        {trip.status !== 'ongoing' && (
+        {trip?.status !== 'ongoing' && (
           <Modal visible={mapModalVisible} animationType="fade" transparent onRequestClose={() => setMapModalVisible(false)}>
             <View style={styles.mapModalOverlay}>
               <View style={styles.mapModalContent}>
@@ -1512,7 +1551,7 @@ export default function TripDetailsScreen() {
           </Modal>
         )}
 
-        {canTrackTrip && trip.status !== 'ongoing' && (
+        {canTrackTrip && trip?.status !== 'ongoing' && (
           <View style={styles.trackingBanner}>
             <View style={styles.trackingBannerLeft}>
               <View
@@ -1643,6 +1682,12 @@ export default function TripDetailsScreen() {
               <View style={styles.driverDetails}>
                 <View style={styles.driverNameRow}>
                   <Text style={styles.driverName} numberOfLines={1}>{trip?.driverName}</Text>
+                  {(trip?.driver?.premiumBadge || trip?.driver?.premiumBadgeEnabled) && (
+                    <View style={styles.driverProBadge}>
+                      <Ionicons name="shield-checkmark" size={12} color={Colors.white} />
+                      <Text style={styles.driverProBadgeText}>Pro</Text>
+                    </View>
+                  )}
                   <Ionicons name="chevron-forward" size={18} color={Colors.gray[300]} />
                 </View>
                 <View style={styles.driverMeta}>
@@ -2306,10 +2351,20 @@ export default function TripDetailsScreen() {
               <>
                 <Text style={styles.bookingModalTitle}>Point de récupération</Text>
                 <Text style={styles.bookingModalDescription}>
-                  Votre position actuelle est utilisee automatiquement. Vous pouvez la modifier si besoin.
+                  Choisissez d’abord la méthode. Elle servira aussi pour votre destination.
                 </Text>
 
                 <View style={styles.bookingDestinationSection}>
+                  <AddressEntryModeSelector
+                    mode={bookingAddressInputMode}
+                    onChange={setBookingAddressInputMode}
+                    title="Comment renseigner les adresses ?"
+                    hint="Un seul choix pour la prise en charge et la destination."
+                    style={styles.bookingAddressModeSelector}
+                  />
+                  {bookingAddressInputMode === 'map' && (
+                  <>
+                  <Text style={styles.bookingChoiceLabel}>Point de prise en charge</Text>
                   <TouchableOpacity
                     style={[
                       styles.bookingDestinationButton,
@@ -2332,7 +2387,7 @@ export default function TripDetailsScreen() {
                     >
                       {passengerOrigin
                         ? passengerOrigin.title || passengerOrigin.address
-                        : 'Utiliser ma position actuelle'}
+                        : 'Choisir sur la carte ou utiliser ma position'}
                     </Text>
                     {passengerOrigin && (
                       <TouchableOpacity
@@ -2348,8 +2403,37 @@ export default function TripDetailsScreen() {
                     )}
                   </TouchableOpacity>
                   <Text style={styles.bookingDestinationHint}>
-                    Si indisponible, le depart du trajet sera utilise : {trip?.departure?.address}
+                    Si vous ne changez rien, le départ du trajet sera utilisé : {trip?.departure?.address}
                   </Text>
+                  </>
+                  )}
+                  <View style={styles.bookingManualHeader}>
+                    <Ionicons name="create-outline" size={16} color={Colors.primary} />
+                    <Text style={styles.bookingChoiceLabel}>
+                      {bookingAddressInputMode === 'manual' ? 'Adresse de départ' : 'Repère de départ (optionnel)'}
+                    </Text>
+                  </View>
+                  {bookingAddressInputMode === 'manual' && (
+                    <TextInput
+                      style={styles.bookingManualInput}
+                      value={passengerOriginManualAddress}
+                      onChangeText={setPassengerOriginManualAddress}
+                      placeholder="Ex: avenue Kasa-Vubu, Bandal"
+                      placeholderTextColor={Colors.gray[400]}
+                      editable={!isBooking}
+                    />
+                  )}
+                  {bookingAddressInputMode === 'manual' && (
+                    <Text style={styles.bookingFieldLabel}>Repère de départ (optionnel)</Text>
+                  )}
+                  <TextInput
+                    style={styles.bookingManualInput}
+                    value={passengerOriginReference}
+                    onChangeText={setPassengerOriginReference}
+                    placeholder={LANDMARK_PLACEHOLDER}
+                    placeholderTextColor={Colors.gray[400]}
+                    editable={!isBooking}
+                  />
                 </View>
               </>
             )}
@@ -2359,10 +2443,23 @@ export default function TripDetailsScreen() {
               <>
                 <Text style={styles.bookingModalTitle}>Ma destination</Text>
                 <Text style={styles.bookingModalDescription}>
-                  La destination du trajet est pre-remplie automatiquement. Modifiez-la si necessaire.
+                  Même méthode que la prise en charge. Vous pouvez garder l’arrivée du trajet.
                 </Text>
 
                 <View style={styles.bookingDestinationSection}>
+                  <View style={styles.bookingModeSummary}>
+                    <Ionicons
+                      name={bookingAddressInputMode === 'map' ? 'map-outline' : 'create-outline'}
+                      size={16}
+                      color={Colors.primary}
+                    />
+                    <Text style={styles.bookingModeSummaryText}>
+                      Mode choisi : {bookingAddressInputMode === 'map' ? 'Choisir sur la carte' : 'Saisie manuelle'}
+                    </Text>
+                  </View>
+                  {bookingAddressInputMode === 'map' && (
+                  <>
+                  <Text style={styles.bookingChoiceLabel}>Point d’arrivée</Text>
                   <TouchableOpacity
                     style={[
                       styles.bookingDestinationButton,
@@ -2385,7 +2482,7 @@ export default function TripDetailsScreen() {
                     >
                       {passengerDestination
                         ? passengerDestination.title || passengerDestination.address
-                        : 'Sélectionner ma destination'}
+                        : 'Choisir sur la carte'}
                     </Text>
                     {passengerDestination && (
                       <TouchableOpacity
@@ -2400,8 +2497,37 @@ export default function TripDetailsScreen() {
                     )}
                   </TouchableOpacity>
                   <Text style={styles.bookingDestinationHint}>
-                    Si vide, l'arrivee du trajet sera utilisee : {trip?.arrival?.address}
+                    Si vous laissez vide, l&apos;arrivée du trajet sera utilisée : {trip?.arrival?.address}
                   </Text>
+                  </>
+                  )}
+                  <View style={styles.bookingManualHeader}>
+                    <Ionicons name="create-outline" size={16} color={Colors.primary} />
+                    <Text style={styles.bookingChoiceLabel}>
+                      {bookingAddressInputMode === 'manual' ? 'Adresse d’arrivée' : 'Repère d’arrivée (optionnel)'}
+                    </Text>
+                  </View>
+                  {bookingAddressInputMode === 'manual' && (
+                    <TextInput
+                      style={styles.bookingManualInput}
+                      value={passengerDestinationManualAddress}
+                      onChangeText={setPassengerDestinationManualAddress}
+                      placeholder="Ex: rond-point Victoire"
+                      placeholderTextColor={Colors.gray[400]}
+                      editable={!isBooking && !isValidatingDestination}
+                    />
+                  )}
+                  {bookingAddressInputMode === 'manual' && (
+                    <Text style={styles.bookingFieldLabel}>Repère d’arrivée (optionnel)</Text>
+                  )}
+                  <TextInput
+                    style={styles.bookingManualInput}
+                    value={passengerDestinationReference}
+                    onChangeText={setPassengerDestinationReference}
+                    placeholder={LANDMARK_PLACEHOLDER}
+                    placeholderTextColor={Colors.gray[400]}
+                    editable={!isBooking && !isValidatingDestination}
+                  />
                 </View>
 
                 {/* Récapitulatif */}
@@ -2414,15 +2540,31 @@ export default function TripDetailsScreen() {
                   <View style={styles.bookingSummaryRow}>
                     <Ionicons name="location" size={16} color={Colors.secondary} />
                     <Text style={styles.bookingSummaryText} numberOfLines={1}>
-                      {passengerOrigin?.title || passengerOrigin?.address || trip?.departure?.address}
+                      {passengerOriginManualAddress.trim() || passengerOrigin?.title || passengerOrigin?.address || trip?.departure?.address}
                     </Text>
                   </View>
+                  {passengerOriginReference.trim() ? (
+                    <View style={styles.bookingSummaryRow}>
+                      <Ionicons name="trail-sign" size={16} color={Colors.secondary} />
+                      <Text style={styles.bookingSummaryText} numberOfLines={1}>
+                        {passengerOriginReference.trim()}
+                      </Text>
+                    </View>
+                  ) : null}
                   <View style={styles.bookingSummaryRow}>
                     <Ionicons name="flag" size={16} color={Colors.primary} />
                     <Text style={styles.bookingSummaryText} numberOfLines={1}>
-                      {passengerDestination?.title || passengerDestination?.address || trip?.arrival?.address}
+                      {passengerDestinationManualAddress.trim() || passengerDestination?.title || passengerDestination?.address || trip?.arrival?.address}
                     </Text>
                   </View>
+                  {passengerDestinationReference.trim() ? (
+                    <View style={styles.bookingSummaryRow}>
+                      <Ionicons name="trail-sign" size={16} color={Colors.primary} />
+                      <Text style={styles.bookingSummaryText} numberOfLines={1}>
+                        {passengerDestinationReference.trim()}
+                      </Text>
+                    </View>
+                  ) : null}
                   <View style={styles.bookingSummaryRow}>
                     <Ionicons name="cash" size={16} color={Colors.success} />
                     <Text style={styles.bookingSummaryText}>
@@ -2495,7 +2637,9 @@ export default function TripDetailsScreen() {
         restrictToRoute={true}
         onClose={() => setShowOriginPicker(false)}
         onSelect={(location) => {
+          setBookingAddressInputMode('map');
           setPassengerOrigin(location);
+          setPassengerOriginManualAddress(location.title || location.address);
           setShouldAutofillPassengerOrigin(false);
           setShowOriginPicker(false);
           setBookingModalError('');
@@ -2511,7 +2655,9 @@ export default function TripDetailsScreen() {
         restrictToRoute={true}
         onClose={() => setShowDestinationPicker(false)}
         onSelect={(location) => {
+          setBookingAddressInputMode('map');
           setPassengerDestination(location);
+          setPassengerDestinationManualAddress(location.title || location.address);
           setShowDestinationPicker(false);
           setBookingModalError('');
         }}
@@ -2570,7 +2716,7 @@ export default function TripDetailsScreen() {
               showsVerticalScrollIndicator={false}
             >
               {driverReviewCount === 0 ? (
-                <Text style={styles.reviewsEmptyText}>Pas encore d'avis pour ce conducteur.</Text>
+                <Text style={styles.reviewsEmptyText}>Pas encore d&apos;avis pour ce conducteur.</Text>
               ) : (
                 driverReviews?.map((review) => (
                   <View key={review.id} style={styles.reviewItem}>
@@ -2758,7 +2904,7 @@ export default function TripDetailsScreen() {
                 </View>
                 <View style={styles.contactModalButtonContent}>
                   <Text style={styles.contactModalButtonTitle}>Partager</Text>
-                  <Text style={styles.contactModalButtonSubtitle}>Partager via l'application de votre choix</Text>
+                  <Text style={styles.contactModalButtonSubtitle}>Partager via l&apos;application de votre choix</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
               </TouchableOpacity>
@@ -3374,6 +3520,20 @@ const styles = StyleSheet.create({
     fontSize: 17,
     flex: 1,
   },
+  driverProBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  driverProBadgeText: {
+    color: Colors.white,
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+  },
   driverMeta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3728,7 +3888,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
-    height: '72%',
+    height: '86%',
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.md,
   },
@@ -3917,6 +4077,46 @@ const styles = StyleSheet.create({
   bookingDestinationSection: {
     marginBottom: Spacing.xl,
   },
+  bookingChoiceLabel: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[600],
+    textTransform: 'uppercase',
+    marginBottom: Spacing.sm,
+  },
+  bookingAddressModeSelector: {
+    marginBottom: Spacing.md,
+  },
+  bookingModeSummary: {
+    minHeight: 44,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary + '25',
+    backgroundColor: Colors.primary + '08',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  bookingModeSummaryText: {
+    flex: 1,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[800],
+  },
+  bookingManualHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginTop: Spacing.md,
+  },
+  bookingFieldLabel: {
+    marginTop: Spacing.sm,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[600],
+  },
   bookingDestinationLabel: {
     fontSize: 14,
     fontWeight: FontWeights.bold,
@@ -3956,6 +4156,18 @@ const styles = StyleSheet.create({
     color: Colors.gray[400],
     marginTop: 8,
     lineHeight: 18,
+  },
+  bookingManualInput: {
+    minHeight: 46,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    marginTop: Spacing.sm,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
   },
   reviewsModalOverlay: {
     flex: 1,

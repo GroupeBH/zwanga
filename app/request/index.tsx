@@ -1,3 +1,5 @@
+import AddressEntryModeSelector, { type AddressInputMode } from '@/components/AddressEntryModeSelector';
+import AddressSectionSlider, { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
@@ -12,9 +14,8 @@ import DateTimePicker, {
   DateTimePickerAndroid,
   type DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
+import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -33,6 +34,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 type TimePreset = 'now' | 'soon' | 'later' | 'tomorrow' | 'custom';
 type PickerTarget = 'departure' | 'arrival';
+type RequestFormStep = 'route' | 'details';
 
 const TIME_PRESETS: {
   id: TimePreset;
@@ -48,6 +50,7 @@ const TIME_PRESETS: {
 ];
 
 const FLEX_OPTIONS = [0, 30, 60, 120];
+const LANDMARK_PLACEHOLDER = 'Ex: devant la station, portail bleu, entr\u00E9e principale';
 
 function roundToStep(date: Date, step: number) {
   const next = new Date(date);
@@ -117,6 +120,17 @@ function favoriteIcon(type: FavoriteLocation['type']) {
   return 'location';
 }
 
+function getLocationText(selection: MapLocationSelection | null, manualAddress: string) {
+  return (manualAddress.trim() || selection?.title || selection?.address || '').trim();
+}
+
+function getLocationCoordinates(selection: MapLocationSelection | null): [number, number] | undefined {
+  if (!selection || !Number.isFinite(selection.latitude) || !Number.isFinite(selection.longitude)) {
+    return undefined;
+  }
+  return [selection.longitude, selection.latitude];
+}
+
 export default function RequestTripScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -127,6 +141,12 @@ export default function RequestTripScreen() {
   const [initialWindow] = useState(() => buildPresetWindow('now'));
   const [departureLocation, setDepartureLocation] = useState<MapLocationSelection | null>(null);
   const [arrivalLocation, setArrivalLocation] = useState<MapLocationSelection | null>(null);
+  const [departureManualAddress, setDepartureManualAddress] = useState('');
+  const [departureReference, setDepartureReference] = useState('');
+  const [arrivalManualAddress, setArrivalManualAddress] = useState('');
+  const [arrivalReference, setArrivalReference] = useState('');
+  const [addressInputMode, setAddressInputMode] = useState<AddressInputMode>('map');
+  const [addressSectionStep, setAddressSectionStep] = useState<AddressSectionStep>('method');
   const [activePicker, setActivePicker] = useState<PickerTarget | null>(null);
   const [timePreset, setTimePreset] = useState<TimePreset>('now');
   const [departureDateMin, setDepartureDateMin] = useState(initialWindow.min);
@@ -137,28 +157,53 @@ export default function RequestTripScreen() {
   const [description, setDescription] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
-  const [confirmationVisible, setConfirmationVisible] = useState(false);
+  const [requestFormStep, setRequestFormStep] = useState<RequestFormStep>('route');
 
   const departureDateMax = useMemo(
     () => new Date(departureDateMin.getTime() + flexibilityMinutes * 60000),
     [departureDateMin, flexibilityMinutes],
   );
+  const departureAddress =
+    addressInputMode === 'manual'
+      ? departureManualAddress.trim()
+      : getLocationText(departureLocation, '');
+  const arrivalAddress =
+    addressInputMode === 'manual'
+      ? arrivalManualAddress.trim()
+      : getLocationText(arrivalLocation, '');
+  const hasDepartureAddress = departureAddress.length > 0;
+  const hasArrivalAddress = arrivalAddress.length > 0;
+  const canOpenAddressSectionStep = (step: AddressSectionStep) =>
+    step !== 'arrival' || hasDepartureAddress;
+  const goToPreviousAddressSectionStep = () => {
+    setAddressSectionStep((current) => (current === 'arrival' ? 'departure' : 'method'));
+  };
+  const goToNextAddressSectionStep = () => {
+    setAddressSectionStep((current) => (current === 'method' ? 'departure' : 'arrival'));
+  };
+  const addressSectionNextDisabled = addressSectionStep === 'departure' && !hasDepartureAddress;
+  const addressSectionNextLabel =
+    addressSectionStep === 'method' ? 'Choisir le départ' : 'Choisir l’arrivée';
+  const canOpenRequestDetails = hasDepartureAddress && hasArrivalAddress;
 
   const routeSummary = useMemo(() => {
-    if (departureLocation && arrivalLocation) return `${departureLocation.title} → ${arrivalLocation.title}`;
-    if (departureLocation) return `Départ : ${departureLocation.title}`;
-    return 'Choisissez votre départ et votre destination';
-  }, [arrivalLocation, departureLocation]);
+    if (hasDepartureAddress && hasArrivalAddress) return `${departureAddress} \u2192 ${arrivalAddress}`;
+    if (hasDepartureAddress) return `D\u00E9part : ${departureAddress}`;
+    return 'Choisissez votre d\u00E9part et votre destination';
+  }, [arrivalAddress, departureAddress, hasArrivalAddress, hasDepartureAddress]);
 
   const timeSummary = useMemo(() => {
     if (flexibilityMinutes === 0) return `${formatDateLabel(departureDateMin)} à ${formatTimeLabel(departureDateMin)}`;
     return `${formatDateLabel(departureDateMin)} entre ${formatTimeLabel(departureDateMin)} et ${formatTimeLabel(departureDateMax)}`;
   }, [departureDateMax, departureDateMin, flexibilityMinutes]);
 
-  const primaryLabel = !departureLocation
-    ? 'Choisir mon départ'
-    : !arrivalLocation
-      ? 'Choisir ma destination'
+  const primaryLabel =
+    requestFormStep === 'route'
+      ? !hasDepartureAddress
+        ? 'Choisir mon départ'
+        : !hasArrivalAddress
+          ? 'Choisir ma destination'
+          : 'Continuer'
       : !isIdentityVerified
         ? isCheckingIdentity
           ? 'Vérification en cours...'
@@ -202,6 +247,7 @@ export default function RequestTripScreen() {
 
   const handleUseCurrentLocation = async () => {
     try {
+      setAddressInputMode('map');
       setIsLocating(true);
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== Location.PermissionStatus.GRANTED) {
@@ -216,8 +262,10 @@ export default function RequestTripScreen() {
       const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const coordinate = { latitude: position.coords.latitude, longitude: position.coords.longitude };
       const [address] = await Location.reverseGeocodeAsync(coordinate);
-      setDepartureLocation(buildSelection(coordinate, address));
-      if (!arrivalLocation) setTimeout(() => setActivePicker('arrival'), 150);
+      const selection = buildSelection(coordinate, address);
+      setDepartureLocation(selection);
+      setDepartureManualAddress(selection.title || selection.address);
+      setAddressSectionStep('arrival');
     } catch (error) {
       console.warn('Impossible de récupérer la position actuelle', error);
       showDialog({
@@ -231,9 +279,30 @@ export default function RequestTripScreen() {
   };
 
   const validate = () => {
-    if (!departureLocation) return setActivePicker('departure'), false;
-    if (!arrivalLocation) return setActivePicker('arrival'), false;
+    if (!hasDepartureAddress) {
+      setRequestFormStep('route');
+      setAddressSectionStep('departure');
+      showDialog({
+        title: 'Départ requis',
+        message: 'Indiquez une adresse de départ ou choisissez un point sur la carte.',
+        variant: 'warning',
+      });
+      return false;
+    }
+    if (!hasArrivalAddress) {
+      setRequestFormStep('route');
+      setAddressSectionStep('arrival');
+      showDialog({
+        title: 'Destination requise',
+        message: 'Indiquez une adresse d’arrivée ou choisissez un point sur la carte.',
+        variant: 'warning',
+      });
+      return false;
+    }
     if (
+      addressInputMode === 'map' &&
+      departureLocation &&
+      arrivalLocation &&
       departureLocation.latitude === arrivalLocation.latitude &&
       departureLocation.longitude === arrivalLocation.longitude
     ) {
@@ -256,7 +325,7 @@ export default function RequestTripScreen() {
   };
 
   const handleCreateRequest = async () => {
-    if (!validate() || !departureLocation || !arrivalLocation) return;
+    if (!validate()) return;
     if (!isIdentityVerified) {
       const canProceed = checkIdentity('request');
       if (!canProceed) return;
@@ -271,11 +340,17 @@ export default function RequestTripScreen() {
       return;
     }
     try {
+      const departureCoordinates =
+        addressInputMode === 'map' ? getLocationCoordinates(departureLocation) : undefined;
+      const arrivalCoordinates =
+        addressInputMode === 'map' ? getLocationCoordinates(arrivalLocation) : undefined;
       const createdRequest = await createTripRequest({
-        departureLocation: departureLocation.title,
-        departureCoordinates: [departureLocation.longitude, departureLocation.latitude],
-        arrivalLocation: arrivalLocation.title,
-        arrivalCoordinates: [arrivalLocation.longitude, arrivalLocation.latitude],
+        departureLocation: departureAddress,
+        departureReference: departureReference.trim() || undefined,
+        departureCoordinates,
+        arrivalLocation: arrivalAddress,
+        arrivalReference: arrivalReference.trim() || undefined,
+        arrivalCoordinates,
         departureDateMin: departureDateMin.toISOString(),
         departureDateMax: departureDateMax.toISOString(),
         numberOfSeats,
@@ -288,7 +363,6 @@ export default function RequestTripScreen() {
         has_description: Boolean(description.trim()),
         flexibility_minutes: flexibilityMinutes,
       });
-      setConfirmationVisible(false);
       router.push(getTripRequestDetailHref(createdRequest.id));
     } catch (error: any) {
       showDialog({
@@ -300,12 +374,54 @@ export default function RequestTripScreen() {
   };
 
   const handlePrimaryAction = async () => {
-    if (!departureLocation) return setActivePicker('departure');
-    if (!arrivalLocation) return setActivePicker('arrival');
+    if (!hasDepartureAddress) {
+      setRequestFormStep('route');
+      setAddressSectionStep('departure');
+      if (addressInputMode === 'map') setActivePicker('departure');
+      return;
+    }
+    if (!hasArrivalAddress) {
+      setRequestFormStep('route');
+      setAddressSectionStep('arrival');
+      if (addressInputMode === 'map') setActivePicker('arrival');
+      return;
+    }
+    if (requestFormStep === 'route') {
+      setRequestFormStep('details');
+      return;
+    }
     if (!isIdentityVerified) return void checkIdentity('request');
     if (!validate()) return;
-    setConfirmationVisible(true);
+    await handleCreateRequest();
   };
+
+  const primaryButtonDisabled = isCreating || isCheckingIdentity;
+  const primaryIconName =
+    !hasDepartureAddress || !hasArrivalAddress || requestFormStep === 'route'
+      ? 'arrow-forward'
+      : !isIdentityVerified
+        ? 'shield-checkmark-outline'
+        : 'send';
+
+  const renderPrimaryButton = () => (
+    <TouchableOpacity
+      style={styles.mainButtonWrap}
+      onPress={handlePrimaryAction}
+      disabled={primaryButtonDisabled}
+      activeOpacity={0.9}
+    >
+      <View style={[styles.mainButton, primaryButtonDisabled && styles.mainButtonDisabled]}>
+        {primaryButtonDisabled ? (
+          <ActivityIndicator color={Colors.white} />
+        ) : (
+          <>
+            <Text style={styles.mainButtonText}>{primaryLabel}</Text>
+            <Ionicons name={primaryIconName} size={18} color={Colors.white} />
+          </>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -319,14 +435,42 @@ export default function RequestTripScreen() {
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          <LinearGradient colors={['#0F766E', '#14B8A6']} style={styles.hero}>
-            <Text style={styles.heroPill}>Mode simple</Text>
-            <Text style={styles.heroTitle}>Dites-nous d&apos;où vous partez, où vous allez et quand.</Text>
-            <Text style={styles.heroSubtitle}>
-              Ensuite, des conducteurs pourront vous faire une proposition de covoiturage simple à comprendre.
-            </Text>
-          </LinearGradient>
+          <View style={styles.requestStepper}>
+            <TouchableOpacity
+              style={[styles.requestStepPill, requestFormStep === 'route' && styles.requestStepPillActive]}
+              onPress={() => setRequestFormStep('route')}
+              activeOpacity={0.9}
+            >
+              <View style={[styles.requestStepNumber, requestFormStep === 'route' && styles.requestStepNumberActive]}>
+                <Text style={[styles.requestStepNumberText, requestFormStep === 'route' && styles.requestStepNumberTextActive]}>1</Text>
+              </View>
+              <Text style={[styles.requestStepLabel, requestFormStep === 'route' && styles.requestStepLabelActive]}>
+                Trajet
+              </Text>
+            </TouchableOpacity>
+            <View style={[styles.requestStepLine, canOpenRequestDetails && styles.requestStepLineActive]} />
+            <TouchableOpacity
+              style={[
+                styles.requestStepPill,
+                requestFormStep === 'details' && styles.requestStepPillActive,
+                !canOpenRequestDetails && styles.requestStepPillDisabled,
+              ]}
+              onPress={() => {
+                if (canOpenRequestDetails) setRequestFormStep('details');
+              }}
+              disabled={!canOpenRequestDetails}
+              activeOpacity={0.9}
+            >
+              <View style={[styles.requestStepNumber, requestFormStep === 'details' && styles.requestStepNumberActive]}>
+                <Text style={[styles.requestStepNumberText, requestFormStep === 'details' && styles.requestStepNumberTextActive]}>2</Text>
+              </View>
+              <Text style={[styles.requestStepLabel, requestFormStep === 'details' && styles.requestStepLabelActive]}>
+                Détails
+              </Text>
+            </TouchableOpacity>
+          </View>
 
+          {requestFormStep === 'route' && (
           <View style={styles.card}>
             <View style={styles.cardHead}>
               <View>
@@ -336,77 +480,217 @@ export default function RequestTripScreen() {
               <TouchableOpacity style={styles.iconCircle} onPress={() => {
                 setDepartureLocation(arrivalLocation);
                 setArrivalLocation(departureLocation);
+                setDepartureManualAddress(arrivalManualAddress);
+                setArrivalManualAddress(departureManualAddress);
+                setDepartureReference(arrivalReference);
+                setArrivalReference(departureReference);
               }}>
                 <Ionicons name="swap-vertical" size={18} color={Colors.primary} />
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={styles.routeRow} onPress={() => setActivePicker('departure')}>
-              <View style={[styles.routeDot, { backgroundColor: Colors.success }]} />
-              <View style={styles.routeText}>
-                <Text style={styles.routeLabel}>Je pars de</Text>
-                <Text style={[styles.routeValue, !departureLocation && styles.placeholder]} numberOfLines={1}>
-                  {departureLocation?.title || 'Touchez pour choisir votre départ'}
-                </Text>
-                <Text style={styles.routeHint} numberOfLines={1}>
-                  {departureLocation?.address || 'Départ manuel ou ma position'}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
-            </TouchableOpacity>
+            <AddressSectionSlider
+              activeStep={addressSectionStep}
+              completedSteps={{
+                method: true,
+                departure: hasDepartureAddress,
+                arrival: hasArrivalAddress,
+              }}
+              canOpenStep={canOpenAddressSectionStep}
+              nextDisabled={addressSectionNextDisabled}
+              nextLabel={addressSectionNextLabel}
+              onBack={goToPreviousAddressSectionStep}
+              onNext={goToNextAddressSectionStep}
+              onStepChange={setAddressSectionStep}
+            >
+              {addressSectionStep === 'method' && (
+                <AddressEntryModeSelector
+                  mode={addressInputMode}
+                  onChange={setAddressInputMode}
+                  title="Comment renseigner les adresses ?"
+                  hint="Choisissez une seule méthode pour le départ et l’arrivée."
+                />
+              )}
 
-            <View style={styles.line} />
+              {addressSectionStep === 'departure' && (
+                <>
+                  <View style={styles.addressBlock}>
+                    <View style={styles.routeRow}>
+                      <View style={[styles.routeDot, { backgroundColor: Colors.success }]} />
+                      <View style={styles.routeText}>
+                        <Text style={styles.routeLabel}>Adresse de départ</Text>
+                        <Text style={styles.routeHint}>
+                          {addressInputMode === 'map'
+                            ? 'Choisissez le point de départ sur la carte.'
+                            : 'Écrivez l’adresse de départ, sans chercher un point GPS.'}
+                        </Text>
+                      </View>
+                    </View>
 
-            <TouchableOpacity style={styles.routeRow} onPress={() => setActivePicker('arrival')}>
-              <View style={[styles.routeDot, styles.squareDot]} />
-              <View style={styles.routeText}>
-                <Text style={styles.routeLabel}>Je vais vers</Text>
-                <Text style={[styles.routeValue, !arrivalLocation && styles.placeholder]} numberOfLines={1}>
-                  {arrivalLocation?.title || 'Touchez pour choisir votre destination'}
-                </Text>
-                <Text style={styles.routeHint} numberOfLines={1}>
-                  {arrivalLocation?.address || 'Les repères de Kinshasa sont proposés dans la recherche'}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
-            </TouchableOpacity>
+                    {addressInputMode === 'map' && (
+                      <View style={styles.addressChoiceRow}>
+                        <TouchableOpacity
+                          style={[styles.addressChoiceButton, departureLocation && styles.addressChoiceButtonActive]}
+                          onPress={() => setActivePicker('departure')}
+                          activeOpacity={0.9}
+                        >
+                          <Ionicons name="map-outline" size={18} color={departureLocation ? Colors.primary : Colors.gray[600]} />
+                          <View style={styles.addressChoiceText}>
+                            <Text style={styles.addressChoiceTitle}>Choisir sur la carte</Text>
+                            <Text style={styles.addressChoiceHint} numberOfLines={1}>
+                              {departureLocation?.title || 'Choisir sur la carte'}
+                            </Text>
+                          </View>
+                          <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
 
-            <View style={styles.chipRow}>
-              <TouchableOpacity style={[styles.chip, styles.primaryChip]} onPress={handleUseCurrentLocation} disabled={isLocating}>
-                {isLocating ? <ActivityIndicator size="small" color={Colors.primary} /> : <Ionicons name="locate" size={16} color={Colors.primary} />}
-                <Text style={styles.chipText}>Partir d&apos;ici</Text>
-              </TouchableOpacity>
-              {favoriteLocations.slice(0, 3).map((location) => (
-                <TouchableOpacity
-                  key={location.id}
-                  style={styles.chip}
-                  onPress={() => {
-                    setDepartureLocation({
-                      title: location.name,
-                      address: location.address,
-                      latitude: location.coordinates.latitude,
-                      longitude: location.coordinates.longitude,
-                    });
-                    if (!arrivalLocation) setTimeout(() => setActivePicker('arrival'), 150);
-                  }}
-                >
-                  <Ionicons name={favoriteIcon(location.type)} size={16} color={Colors.primary} />
-                  <Text style={styles.chipText}>{location.name}</Text>
-                </TouchableOpacity>
-              ))}
+                  <View style={styles.manualLocationGroup}>
+                    {addressInputMode === 'manual' && (
+                      <>
+                        <Text style={styles.manualLocationLabel}>Adresse de départ</Text>
+                        <TextInput
+                          style={styles.manualLocationInput}
+                          value={departureManualAddress}
+                          onChangeText={setDepartureManualAddress}
+                          placeholder="Ex: avenue Kasa-Vubu, Bandal"
+                          placeholderTextColor={Colors.gray[400]}
+                        />
+                      </>
+                    )}
+                    <Text style={styles.manualLocationLabel}>Repère de départ (optionnel)</Text>
+                    <TextInput
+                      style={styles.manualLocationInput}
+                      value={departureReference}
+                      onChangeText={setDepartureReference}
+                      placeholder={LANDMARK_PLACEHOLDER}
+                      placeholderTextColor={Colors.gray[400]}
+                    />
+                  </View>
+
+                  {addressInputMode === 'map' && (
+                    <View style={styles.chipRow}>
+                      <TouchableOpacity style={[styles.chip, styles.primaryChip]} onPress={handleUseCurrentLocation} disabled={isLocating}>
+                        {isLocating ? <ActivityIndicator size="small" color={Colors.primary} /> : <Ionicons name="locate" size={16} color={Colors.primary} />}
+                        <Text style={styles.chipText}>Partir d&apos;ici</Text>
+                      </TouchableOpacity>
+                      {favoriteLocations.slice(0, 3).map((location) => (
+                        <TouchableOpacity
+                          key={location.id}
+                          style={styles.chip}
+                          onPress={() => {
+                            const selection = {
+                              title: location.name,
+                              address: location.address,
+                              latitude: location.coordinates.latitude,
+                              longitude: location.coordinates.longitude,
+                            };
+                            setAddressInputMode('map');
+                            setDepartureLocation(selection);
+                            setDepartureManualAddress(selection.title || selection.address);
+                            setAddressSectionStep('arrival');
+                          }}
+                        >
+                          <Ionicons name={favoriteIcon(location.type)} size={16} color={Colors.primary} />
+                          <Text style={styles.chipText}>{location.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </>
+              )}
+
+              {addressSectionStep === 'arrival' && (
+                <>
+                  <View style={styles.addressBlock}>
+                    <View style={styles.routeRow}>
+                      <View style={[styles.routeDot, styles.squareDot]} />
+                      <View style={styles.routeText}>
+                        <Text style={styles.routeLabel}>Adresse d’arrivée</Text>
+                        <Text style={styles.routeHint}>
+                          {addressInputMode === 'map'
+                            ? 'Choisissez le point d’arrivée sur la carte.'
+                            : 'Écrivez l’adresse d’arrivée, même sans coordonnées.'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {addressInputMode === 'map' && (
+                      <View style={styles.addressChoiceRow}>
+                        <TouchableOpacity
+                          style={[styles.addressChoiceButton, arrivalLocation && styles.addressChoiceButtonActive]}
+                          onPress={() => setActivePicker('arrival')}
+                          activeOpacity={0.9}
+                        >
+                          <Ionicons name="map-outline" size={18} color={arrivalLocation ? Colors.primary : Colors.gray[600]} />
+                          <View style={styles.addressChoiceText}>
+                            <Text style={styles.addressChoiceTitle}>Choisir sur la carte</Text>
+                            <Text style={styles.addressChoiceHint} numberOfLines={1}>
+                              {arrivalLocation?.title || 'Choisir sur la carte'}
+                            </Text>
+                          </View>
+                          <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={styles.manualLocationGroup}>
+                    {addressInputMode === 'manual' && (
+                      <>
+                        <Text style={styles.manualLocationLabel}>Adresse d’arrivée</Text>
+                        <TextInput
+                          style={styles.manualLocationInput}
+                          value={arrivalManualAddress}
+                          onChangeText={setArrivalManualAddress}
+                          placeholder="Ex: rond-point Victoire"
+                          placeholderTextColor={Colors.gray[400]}
+                        />
+                      </>
+                    )}
+                    <Text style={styles.manualLocationLabel}>Repère d’arrivée (optionnel)</Text>
+                    <TextInput
+                      style={styles.manualLocationInput}
+                      value={arrivalReference}
+                      onChangeText={setArrivalReference}
+                      placeholder={LANDMARK_PLACEHOLDER}
+                      placeholderTextColor={Colors.gray[400]}
+                    />
+                  </View>
+                </>
+              )}
+            </AddressSectionSlider>
+          </View>
+          )}
+
+          {requestFormStep === 'details' && (
+          <>
+          <View style={styles.stepIntroCard}>
+            <View style={styles.stepIntroIcon}>
+              <Ionicons name="options-outline" size={18} color={Colors.primary} />
             </View>
+            <View style={styles.stepIntroText}>
+              <Text style={styles.stepIntroTitle}>Détails</Text>
+              <Text style={styles.stepIntroSubtitle} numberOfLines={1}>
+                {routeSummary}
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.stepBackButton} onPress={() => setRequestFormStep('route')}>
+              <Text style={styles.stepBackButtonText}>Modifier</Text>
+            </TouchableOpacity>
           </View>
 
-          <View style={styles.card}>
+          <View style={[styles.card, styles.detailsCard]}>
             <Text style={styles.cardTitle}>Quand voulez-vous partir ?</Text>
             <View style={styles.presetGrid}>
               {TIME_PRESETS.map((preset) => {
                 const active = timePreset === preset.id;
                 return (
                   <TouchableOpacity key={preset.id} style={[styles.preset, active && styles.presetActive]} onPress={() => applyPreset(preset.id)}>
-                    <Ionicons name={preset.icon} size={18} color={active ? Colors.primary : Colors.gray[500]} />
-                    <Text style={[styles.presetLabel, active && styles.presetLabelActive]}>{preset.label}</Text>
-                    <Text style={styles.presetCaption}>{preset.caption}</Text>
+                    <Ionicons name={preset.icon} size={16} color={active ? Colors.primary : Colors.gray[500]} />
+                    <Text style={[styles.presetLabel, active && styles.presetLabelActive]} numberOfLines={1}>{preset.label}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -444,19 +728,39 @@ export default function RequestTripScreen() {
             )}
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Combien de personnes ?</Text>
-            <View style={styles.counter}>
-              <TouchableOpacity style={styles.counterBtn} onPress={() => setNumberOfSeats((value) => Math.max(1, value - 1))}>
-                <Ionicons name="remove" size={20} color={Colors.gray[900]} />
-              </TouchableOpacity>
-              <View style={styles.counterText}>
-                <Text style={styles.counterValue}>{numberOfSeats}</Text>
-                <Text style={styles.counterLabel}>{numberOfSeats} personne{numberOfSeats > 1 ? 's' : ''}</Text>
+          <View style={styles.detailsPanel}>
+            <View style={styles.detailsFieldRow}>
+              <View style={styles.detailsFieldLabelBlock}>
+                <Text style={styles.detailsFieldTitle}>Places</Text>
+                <Text style={styles.detailsFieldHint}>{numberOfSeats} personne{numberOfSeats > 1 ? 's' : ''}</Text>
               </View>
-              <TouchableOpacity style={styles.counterBtn} onPress={() => setNumberOfSeats((value) => value + 1)}>
-                <Ionicons name="add" size={20} color={Colors.gray[900]} />
-              </TouchableOpacity>
+              <View style={styles.counterCompact}>
+                <TouchableOpacity style={styles.counterBtnCompact} onPress={() => setNumberOfSeats((value) => Math.max(1, value - 1))}>
+                  <Ionicons name="remove" size={18} color={Colors.gray[900]} />
+                </TouchableOpacity>
+                <Text style={styles.counterValueCompact}>{numberOfSeats}</Text>
+                <TouchableOpacity style={styles.counterBtnCompact} onPress={() => setNumberOfSeats((value) => value + 1)}>
+                  <Ionicons name="add" size={18} color={Colors.gray[900]} />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <View style={styles.detailsDivider} />
+            <View style={styles.detailsFieldRow}>
+              <View style={styles.detailsFieldLabelBlock}>
+                <Text style={styles.detailsFieldTitle}>Budget max</Text>
+                <Text style={styles.detailsFieldHint}>Par place</Text>
+              </View>
+              <View style={styles.priceBoxCompact}>
+                <TextInput
+                  style={styles.priceInputCompact}
+                  value={maxPricePerSeat}
+                  onChangeText={setMaxPricePerSeat}
+                  keyboardType="number-pad"
+                  placeholder="2500"
+                  placeholderTextColor={Colors.gray[400]}
+                />
+                <Text style={styles.currency}>FC</Text>
+              </View>
             </View>
           </View>
 
@@ -484,141 +788,25 @@ export default function RequestTripScreen() {
 
           <View style={styles.summary}>
             <Text style={styles.summaryTitle}>Resume rapide</Text>
-            <Text style={styles.summaryText}>{routeSummary}</Text>
-            <Text style={styles.summaryText}>{timeSummary}</Text>
+            <Text style={styles.summaryText} numberOfLines={1}>{routeSummary}</Text>
+            <Text style={styles.summaryText} numberOfLines={1}>{timeSummary}</Text>
             <Text style={styles.summaryText}>{numberOfSeats} personne{numberOfSeats > 1 ? 's' : ''}</Text>
             {maxPricePerSeat ? <Text style={styles.summaryText}>Maximum {maxPricePerSeat} FC / place</Text> : null}
           </View>
+          </>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
-        <Text style={styles.footerTitle} numberOfLines={1}>{routeSummary}</Text>
-        <Text style={styles.footerText} numberOfLines={1}>{timeSummary}</Text>
-        <TouchableOpacity onPress={handlePrimaryAction} disabled={isCreating || isCheckingIdentity}>
-          <LinearGradient
-            colors={!departureLocation || !arrivalLocation ? [Colors.primary, '#2563EB'] : !isIdentityVerified ? [Colors.warning, '#F97316'] : [Colors.success, '#16A34A']}
-            style={styles.mainButton}
-          >
-            {isCreating || isCheckingIdentity ? (
-              <ActivityIndicator color={Colors.white} />
-            ) : (
-              <>
-                <Text style={styles.mainButtonText}>{primaryLabel}</Text>
-                <Ionicons name={!departureLocation || !arrivalLocation ? 'arrow-forward' : !isIdentityVerified ? 'shield-checkmark-outline' : 'send'} size={18} color={Colors.white} />
-              </>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
+      <View style={[styles.footer, requestFormStep === 'details' && styles.footerCompact, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
+        {requestFormStep === 'route' && (
+          <>
+            <Text style={styles.footerTitle} numberOfLines={1}>{routeSummary}</Text>
+            <Text style={styles.footerText} numberOfLines={1}>{timeSummary}</Text>
+          </>
+        )}
+        {renderPrimaryButton()}
       </View>
-
-      <Modal visible={confirmationVisible} transparent animationType="fade" onRequestClose={() => setConfirmationVisible(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.confirmOverlay}>
-          <TouchableOpacity style={styles.confirmBackdrop} activeOpacity={1} onPress={() => setConfirmationVisible(false)} />
-          <View style={[styles.confirmSheet, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
-            <View style={styles.confirmHandle} />
-            <View style={styles.confirmHeader}>
-              <View style={styles.confirmBadge}>
-                <Ionicons name="wallet-outline" size={20} color={Colors.primary} />
-              </View>
-              <View style={styles.confirmHeaderText}>
-                <Text style={styles.confirmTitle}>Finaliser la demande</Text>
-                <Text style={styles.confirmSubtitle}>
-                  Ajoutez votre budget et ajustez la prise en charge si besoin.
-                </Text>
-              </View>
-              <TouchableOpacity style={styles.confirmCloseButton} onPress={() => setConfirmationVisible(false)}>
-                <Ionicons name="close" size={20} color={Colors.gray[500]} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
-              contentContainerStyle={styles.confirmContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <LinearGradient colors={['#FFF7ED', '#FFFFFF']} style={styles.confirmHero}>
-                <Text style={styles.confirmHeroTitle}>{routeSummary}</Text>
-                <Text style={styles.confirmHeroText}>{timeSummary}</Text>
-              </LinearGradient>
-
-              <View style={[styles.confirmSection, styles.confirmPanel]}>
-                <Text style={styles.smallLabel}>Montant disponible pour la course</Text>
-                <View style={styles.priceBox}>
-                  <TextInput
-                    style={styles.priceInput}
-                    value={maxPricePerSeat}
-                    onChangeText={setMaxPricePerSeat}
-                    keyboardType="number-pad"
-                    placeholder="Ex: 2500"
-                    placeholderTextColor={Colors.gray[400]}
-                  />
-                  <Text style={styles.currency}>FC</Text>
-                </View>
-                <Text style={styles.confirmHelperText}>
-                  Ce montant sera envoyé comme budget maximum par place.
-                </Text>
-              </View>
-
-              <View style={[styles.confirmSection, styles.confirmPanel]}>
-                <View style={styles.confirmSectionHeader}>
-                  <Text style={styles.smallLabel}>Date et heure de prise en charge</Text>
-                  <Text style={styles.confirmOptionalText}>Optionnel</Text>
-                </View>
-                <View style={styles.confirmDateRow}>
-                  <TouchableOpacity style={styles.confirmDateButton} onPress={() => openCustomPicker('date')}>
-                    <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
-                    <View style={styles.confirmDateContent}>
-                      <Text style={styles.confirmDateLabel}>Date</Text>
-                      <Text style={styles.confirmDateValue}>{formatDateLabel(departureDateMin)}</Text>
-                    </View>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.confirmDateButton} onPress={() => openCustomPicker('time')}>
-                    <Ionicons name="time-outline" size={18} color={Colors.primary} />
-                    <View style={styles.confirmDateContent}>
-                      <Text style={styles.confirmDateLabel}>Heure</Text>
-                      <Text style={styles.confirmDateValue}>{formatTimeLabel(departureDateMin)}</Text>
-                    </View>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.infoCard}>
-                  <Ionicons name="hourglass-outline" size={18} color={Colors.secondary} />
-                  <Text style={styles.infoCardText}>{timeSummary}</Text>
-                </View>
-              </View>
-
-              {description.trim().length > 0 && (
-                <View style={styles.confirmNoteCard}>
-                  <Ionicons name="chatbox-ellipses-outline" size={18} color={Colors.primary} />
-                  <Text style={styles.confirmNoteText}>{description.trim()}</Text>
-                </View>
-              )}
-            </ScrollView>
-
-            <View style={styles.confirmActions}>
-              <TouchableOpacity style={styles.confirmSecondaryButton} onPress={() => setConfirmationVisible(false)}>
-                <Text style={styles.confirmSecondaryButtonText}>Retour</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.confirmPrimaryWrap}
-                onPress={handleCreateRequest}
-                disabled={isCreating}
-              >
-                <LinearGradient colors={[Colors.primary, Colors.primaryDark]} style={styles.confirmPrimaryButton}>
-                  {isCreating ? (
-                    <ActivityIndicator color={Colors.white} />
-                  ) : (
-                    <>
-                      <Text style={styles.confirmPrimaryButtonText}>Envoyer ma demande</Text>
-                      <Ionicons name="arrow-forward" size={18} color={Colors.white} />
-                    </>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
 
       <LocationPickerModal
         visible={activePicker !== null}
@@ -630,11 +818,15 @@ export default function RequestTripScreen() {
           const target = activePicker;
           setActivePicker(null);
           if (target === 'departure') {
+            setAddressInputMode('map');
             setDepartureLocation(location);
-            if (!arrivalLocation) setTimeout(() => setActivePicker('arrival'), 150);
+            setDepartureManualAddress(location.title || location.address);
+            setAddressSectionStep('arrival');
             return;
           }
+          setAddressInputMode('map');
           setArrivalLocation(location);
+          setArrivalManualAddress(location.title || location.address);
         }}
       />
 
@@ -661,16 +853,35 @@ const styles = StyleSheet.create({
   headerButton: { width: 40, height: 40, borderRadius: BorderRadius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.white },
   headerTitle: { fontSize: FontSizes.lg, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   headerSpacer: { width: 40, height: 40 },
-  content: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xxl, gap: Spacing.md },
+  content: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.lg, gap: Spacing.sm },
+  requestStepper: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.white, borderRadius: BorderRadius.sm, padding: 6, gap: Spacing.xs },
+  requestStepPill: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, minHeight: 36, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.sm, backgroundColor: Colors.gray[50] },
+  requestStepPillActive: { backgroundColor: `${Colors.primary}10` },
+  requestStepPillDisabled: { opacity: 0.5 },
+  requestStepNumber: { width: 22, height: 22, borderRadius: BorderRadius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.gray[200] },
+  requestStepNumberActive: { backgroundColor: Colors.primary },
+  requestStepNumberText: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[600] },
+  requestStepNumberTextActive: { color: Colors.white },
+  requestStepLabel: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[600] },
+  requestStepLabelActive: { color: Colors.primary },
+  requestStepLine: { flex: 1, height: 1, backgroundColor: Colors.gray[200] },
+  requestStepLineActive: { backgroundColor: Colors.primary },
   hero: { borderRadius: BorderRadius.xxl, padding: Spacing.xl, gap: Spacing.sm },
   heroPill: { alignSelf: 'flex-start', paddingHorizontal: Spacing.md, paddingVertical: 6, borderRadius: BorderRadius.full, backgroundColor: 'rgba(255,255,255,0.16)', color: Colors.white, fontWeight: FontWeights.semibold },
   heroTitle: { fontSize: FontSizes.xxl, fontWeight: FontWeights.bold, color: Colors.white, lineHeight: 34 },
   heroSubtitle: { fontSize: FontSizes.base, color: 'rgba(255,255,255,0.92)', lineHeight: 22 },
-  card: { backgroundColor: Colors.white, borderRadius: BorderRadius.xxl, padding: Spacing.lg, gap: Spacing.md, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.06, shadowRadius: 18, elevation: 3 },
+  card: { backgroundColor: Colors.white, borderRadius: BorderRadius.sm, padding: Spacing.md, gap: Spacing.sm, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.04, shadowRadius: 10, elevation: 2 },
   cardHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.md },
-  cardHeadCompact: { backgroundColor: Colors.white, borderRadius: BorderRadius.xxl, padding: Spacing.lg, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cardTitle: { fontSize: FontSizes.lg, fontWeight: FontWeights.bold, color: Colors.gray[900] },
-  cardSubtitle: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[500] },
+  cardHeadCompact: { backgroundColor: Colors.white, borderRadius: BorderRadius.sm, padding: Spacing.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cardTitle: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  cardSubtitle: { marginTop: 2, fontSize: 13, color: Colors.gray[500] },
+  stepIntroCard: { backgroundColor: Colors.white, borderRadius: BorderRadius.sm, padding: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  stepIntroIcon: { width: 34, height: 34, borderRadius: BorderRadius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: `${Colors.primary}12` },
+  stepIntroText: { flex: 1 },
+  stepIntroTitle: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  stepIntroSubtitle: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[500], lineHeight: 18 },
+  stepBackButton: { minHeight: 34, borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: Colors.gray[200], alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.sm },
+  stepBackButtonText: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[700] },
   iconCircle: { width: 40, height: 40, borderRadius: BorderRadius.full, backgroundColor: `${Colors.primary}12`, alignItems: 'center', justifyContent: 'center' },
   routeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   routeDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: Colors.primary },
@@ -680,74 +891,68 @@ const styles = StyleSheet.create({
   routeValue: { marginTop: 4, fontSize: FontSizes.base, fontWeight: FontWeights.semibold, color: Colors.gray[900] },
   placeholder: { color: Colors.gray[400] },
   routeHint: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[500] },
-  line: { height: 1, backgroundColor: Colors.gray[200], marginLeft: 26 },
+  addressBlock: { gap: Spacing.sm },
+  addressChoiceRow: { flexDirection: 'row', gap: Spacing.sm, marginLeft: 26 },
+  addressChoiceButton: { flex: 1, minHeight: 66, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: Spacing.sm, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  addressChoiceButtonActive: { borderColor: Colors.primary, backgroundColor: `${Colors.primary}10` },
+  addressChoiceText: { flex: 1 },
+  addressChoiceTitle: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  addressChoiceHint: { marginTop: 2, fontSize: FontSizes.xs, color: Colors.gray[500] },
+  manualLocationGroup: { gap: Spacing.sm, marginLeft: 26 },
+  manualLocationLabel: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[600] },
+  manualLocationInput: { minHeight: 48, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, fontSize: FontSizes.base, color: Colors.gray[900] },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   chip: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, backgroundColor: Colors.gray[100], borderRadius: BorderRadius.full, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
   primaryChip: { backgroundColor: `${Colors.primary}12` },
   chipText: { fontSize: FontSizes.sm, fontWeight: FontWeights.medium, color: Colors.gray[800] },
+  flexChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  flexChipTextActive: { color: Colors.white },
+  detailsCard: { paddingBottom: Spacing.sm },
   presetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-  preset: { width: '48%', minWidth: 140, backgroundColor: Colors.gray[50], borderRadius: BorderRadius.xl, padding: Spacing.md, borderWidth: 1, borderColor: Colors.gray[100], gap: 6 },
+  preset: { minHeight: 42, flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.gray[50], borderRadius: BorderRadius.sm, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: Colors.gray[100], gap: 6 },
   presetActive: { backgroundColor: `${Colors.primary}10`, borderColor: Colors.primary },
-  presetLabel: { fontSize: FontSizes.base, fontWeight: FontWeights.semibold, color: Colors.gray[900] },
+  presetLabel: { fontSize: FontSizes.sm, fontWeight: FontWeights.semibold, color: Colors.gray[900] },
   presetLabelActive: { color: Colors.primary },
-  presetCaption: { fontSize: FontSizes.sm, color: Colors.gray[500] },
-  infoCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.gray[50], borderRadius: BorderRadius.xl, padding: Spacing.md },
-  infoCardText: { flex: 1, fontSize: FontSizes.base, color: Colors.gray[900], fontWeight: FontWeights.semibold, lineHeight: 22 },
+  presetCaption: { fontSize: FontSizes.xs, color: Colors.gray[500] },
+  infoCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.gray[50], borderRadius: BorderRadius.sm, padding: Spacing.sm },
+  infoCardText: { flex: 1, fontSize: 13, color: Colors.gray[900], fontWeight: FontWeights.semibold, lineHeight: 18 },
   customWrap: { gap: Spacing.sm },
-  inputLike: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, borderRadius: BorderRadius.xl, backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[100], padding: Spacing.md },
-  inputLikeText: { fontSize: FontSizes.base, fontWeight: FontWeights.semibold, color: Colors.gray[900] },
+  inputLike: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, borderRadius: BorderRadius.sm, backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[100], padding: Spacing.sm },
+  inputLikeText: { fontSize: FontSizes.sm, fontWeight: FontWeights.semibold, color: Colors.gray[900] },
   counter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.gray[50], borderRadius: BorderRadius.xl, padding: Spacing.md },
   counterBtn: { width: 48, height: 48, borderRadius: BorderRadius.lg, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
   counterText: { alignItems: 'center', gap: 4 },
   counterValue: { fontSize: FontSizes.xxl, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   counterLabel: { fontSize: FontSizes.sm, color: Colors.gray[500] },
   smallLabel: { fontSize: FontSizes.sm, fontWeight: FontWeights.semibold, color: Colors.gray[600] },
-  priceBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.gray[50], borderRadius: BorderRadius.xl, paddingHorizontal: Spacing.lg, height: 60, borderWidth: 1, borderColor: Colors.gray[100] },
+  detailsPanel: { backgroundColor: Colors.white, borderRadius: BorderRadius.sm, padding: Spacing.md, gap: Spacing.sm, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.04, shadowRadius: 10, elevation: 2 },
+  detailsFieldRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.md },
+  detailsFieldLabelBlock: { flex: 1, minWidth: 0 },
+  detailsFieldTitle: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  detailsFieldHint: { marginTop: 2, fontSize: FontSizes.xs, color: Colors.gray[500] },
+  detailsDivider: { height: 1, backgroundColor: Colors.gray[100] },
+  counterCompact: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.gray[50], borderRadius: BorderRadius.sm, padding: 4 },
+  counterBtnCompact: { width: 34, height: 34, borderRadius: BorderRadius.sm, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
+  counterValueCompact: { minWidth: 28, textAlign: 'center', fontSize: FontSizes.lg, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  priceBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.gray[50], borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.lg, height: 52, borderWidth: 1, borderColor: Colors.gray[100] },
   priceInput: { flex: 1, fontSize: FontSizes.xl, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  priceBoxCompact: { width: 150, height: 42, flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.gray[50], borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.sm, borderWidth: 1, borderColor: Colors.gray[100] },
+  priceInputCompact: { flex: 1, fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   currency: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[500] },
-  textArea: { minHeight: 96, borderRadius: BorderRadius.xl, backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[100], padding: Spacing.md, fontSize: FontSizes.base, color: Colors.gray[900], textAlignVertical: 'top', lineHeight: 22 },
-  summary: { backgroundColor: Colors.white, borderRadius: BorderRadius.xxl, padding: Spacing.lg, gap: Spacing.xs },
-  summaryTitle: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
-  summaryText: { fontSize: FontSizes.sm, color: Colors.gray[600], lineHeight: 20 },
-  footer: { backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, gap: 4 },
+  textArea: { minHeight: 78, borderRadius: BorderRadius.sm, backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[100], padding: Spacing.md, fontSize: FontSizes.base, color: Colors.gray[900], textAlignVertical: 'top', lineHeight: 22 },
+  summary: { backgroundColor: Colors.white, borderRadius: BorderRadius.sm, padding: Spacing.md, gap: 2 },
+  summaryTitle: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  summaryText: { fontSize: 13, color: Colors.gray[600], lineHeight: 18 },
+  footer: { backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, gap: 2 },
+  footerCompact: { paddingTop: Spacing.sm },
   footerTitle: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   footerText: { fontSize: FontSizes.sm, color: Colors.gray[500] },
-  mainButton: { minHeight: 56, borderRadius: BorderRadius.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, marginTop: Spacing.sm },
+  mainButtonWrap: { width: '100%' },
+  mainButton: { minHeight: 54, borderRadius: BorderRadius.sm, backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, marginTop: 6 },
+  mainButtonDisabled: { opacity: 0.65 },
   mainButtonText: { color: Colors.white, fontSize: FontSizes.base, fontWeight: FontWeights.bold },
   iosOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.35)' },
   iosSheet: { backgroundColor: Colors.white, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, paddingTop: Spacing.md },
   iosDone: { padding: Spacing.lg, alignItems: 'center', borderTopWidth: 1, borderTopColor: Colors.gray[100] },
   iosDoneText: { color: Colors.primary, fontWeight: FontWeights.bold, fontSize: FontSizes.base },
-  confirmOverlay: { flex: 1, justifyContent: 'flex-end' },
-  confirmBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,23,42,0.5)' },
-  confirmSheet: { backgroundColor: Colors.white, borderTopLeftRadius: BorderRadius.xxl, borderTopRightRadius: BorderRadius.xxl, paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, maxHeight: '92%', gap: Spacing.md, shadowColor: '#0F172A', shadowOffset: { width: 0, height: -10 }, shadowOpacity: 0.12, shadowRadius: 24, elevation: 10 },
-  confirmHandle: { alignSelf: 'center', width: 44, height: 4, borderRadius: BorderRadius.full, backgroundColor: Colors.gray[300] },
-  confirmHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm },
-  confirmBadge: { width: 44, height: 44, borderRadius: BorderRadius.full, backgroundColor: `${Colors.primary}12`, alignItems: 'center', justifyContent: 'center' },
-  confirmHeaderText: { flex: 1 },
-  confirmTitle: { fontSize: FontSizes.xl, fontWeight: FontWeights.bold, color: Colors.gray[900] },
-  confirmSubtitle: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[500], lineHeight: 18 },
-  confirmCloseButton: { width: 36, height: 36, borderRadius: BorderRadius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.gray[100] },
-  confirmContent: { gap: Spacing.md, paddingBottom: Spacing.sm },
-  confirmHero: { borderRadius: BorderRadius.xxl, padding: Spacing.lg, gap: Spacing.xs, borderWidth: 1, borderColor: `${Colors.primary}12` },
-  confirmHeroTitle: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
-  confirmHeroText: { fontSize: FontSizes.sm, color: Colors.gray[600], lineHeight: 20 },
-  confirmSection: { gap: Spacing.sm },
-  confirmPanel: { backgroundColor: '#FFFCF8', borderRadius: BorderRadius.xxl, padding: Spacing.md, borderWidth: 1, borderColor: Colors.gray[100] },
-  confirmHelperText: { fontSize: FontSizes.sm, color: Colors.gray[500], lineHeight: 18 },
-  confirmSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  confirmOptionalText: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[500], textTransform: 'uppercase' },
-  confirmDateRow: { flexDirection: 'row', gap: Spacing.sm },
-  confirmDateButton: { flex: 1, minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, borderRadius: BorderRadius.xl, backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[100], padding: Spacing.md },
-  confirmDateContent: { flex: 1 },
-  confirmDateLabel: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[500], textTransform: 'uppercase' },
-  confirmDateValue: { marginTop: 4, fontSize: FontSizes.sm, fontWeight: FontWeights.semibold, color: Colors.gray[900] },
-  confirmNoteCard: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm, borderRadius: BorderRadius.xl, backgroundColor: `${Colors.primary}08`, padding: Spacing.md },
-  confirmNoteText: { flex: 1, fontSize: FontSizes.sm, color: Colors.gray[700], lineHeight: 20 },
-  confirmActions: { flexDirection: 'row', gap: Spacing.md, paddingTop: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.gray[100] },
-  confirmSecondaryButton: { flex: 1, minHeight: 56, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.gray[200], alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.white },
-  confirmSecondaryButtonText: { fontSize: FontSizes.base, fontWeight: FontWeights.semibold, color: Colors.gray[700] },
-  confirmPrimaryWrap: { flex: 1 },
-  confirmPrimaryButton: { minHeight: 56, borderRadius: BorderRadius.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm },
-  confirmPrimaryButtonText: { color: Colors.white, fontSize: FontSizes.base, fontWeight: FontWeights.bold },
 });

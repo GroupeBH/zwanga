@@ -1,4 +1,5 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { PoliceContactPanel } from '@/components/PoliceContactPanel';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -84,7 +85,8 @@ export default function SecurityScreen() {
 
       const pickedContact = await Contacts.presentContactPickerAsync();
       if (pickedContact && pickedContact.phoneNumbers && pickedContact.phoneNumbers.length > 0) {
-        const phoneNumber = pickedContact.phoneNumbers[0].number.replace(/\s/g, '');
+        const phoneNumber = pickedContact.phoneNumbers[0]?.number?.replace(/\s/g, '') ?? '';
+        if (!phoneNumber) return;
         setFormData({
           name: pickedContact.name || '',
           phone: phoneNumber,
@@ -185,7 +187,7 @@ export default function SecurityScreen() {
       actions: [
         {
           label: 'Supprimer',
-          variant: 'danger',
+          variant: 'primary',
           onPress: async () => {
             try {
               await deleteContact(contactId).unwrap();
@@ -324,8 +326,12 @@ export default function SecurityScreen() {
             </View>
           </Animated.View>
 
+          <Animated.View entering={FadeInDown.delay(80)} style={styles.section}>
+            <PoliceContactPanel />
+          </Animated.View>
+
           {/* Section Contacts d'urgence */}
-          <Animated.View entering={FadeInDown.delay(100)} style={styles.section}>
+          <Animated.View entering={FadeInDown.delay(120)} style={styles.section}>
             <View style={styles.sectionHeader}>
               <View>
                 <Text style={styles.sectionTitle}>Contacts d urgence</Text>

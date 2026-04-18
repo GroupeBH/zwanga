@@ -198,9 +198,8 @@ export default function HomeScreen() {
     return 'Votre demande reste visible pour les conducteurs autour de vous';
   }, [activeTripRequest, activeTripRequestPendingOffers]);
 
-  const requestsRoute = (
-    currentUser?.role === 'driver' || currentUser?.role === 'both' ? '/requests' : '/my-requests'
-  ) as const;
+  const requestsRoute =
+    currentUser?.role === 'driver' || currentUser?.role === 'both' ? '/requests' : '/my-requests';
   const requestsActionTitle =
     currentUser?.role === 'driver' || currentUser?.role === 'both'
       ? 'Voir les demandes'
@@ -658,7 +657,7 @@ export default function HomeScreen() {
             <Text style={styles.quickActionsEyebrow}>Actions rapides</Text>
             <Text style={styles.sectionTitle}>Choisissez votre prochaine action</Text>
             <Text style={[styles.quickActionsLeadText, isCompactScreen && styles.quickActionsLeadTextCompact]}>
-              Publiez si vous conduisez, trouvez un trajet si vous voyagez, ou gérez vos demandes sans chercher.
+              Publiez, trouvez ou demandez un trajet en un geste.
             </Text>
           </View>
 
@@ -683,7 +682,7 @@ export default function HomeScreen() {
               >
                 <View style={[styles.quickActionPrimaryTop, isCompactScreen && styles.quickActionPrimaryTopCompact]}>
                   <View style={[styles.quickActionPrimaryIcon, isCompactScreen && styles.quickActionPrimaryIconCompact]}>
-                    <Ionicons name="add" size={28} color={Colors.white} />
+                    <Ionicons name="add" size={22} color={Colors.white} />
                   </View>
                   <View
                     style={[
@@ -702,7 +701,10 @@ export default function HomeScreen() {
                     </Text>
                   </View>
                 </View>
-                <Text style={[styles.quickActionPrimaryTitle, isCompactScreen && styles.quickActionPrimaryTitleCompact]}>
+                <Text
+                  style={[styles.quickActionPrimaryTitle, isCompactScreen && styles.quickActionPrimaryTitleCompact]}
+                  numberOfLines={1}
+                >
                   Publier un trajet
                 </Text>
                 <Text
@@ -710,8 +712,9 @@ export default function HomeScreen() {
                     styles.quickActionPrimarySubtitle,
                     isCompactScreen && styles.quickActionPrimarySubtitleCompact,
                   ]}
+                  numberOfLines={1}
                 >
-                  Proposer mes places et recevoir des réservations.
+                  Proposer mes places.
                 </Text>
                 <View style={[styles.quickActionPrimaryFooter, isCompactScreen && styles.quickActionPrimaryFooterCompact]}>
                   <Text
@@ -722,7 +725,7 @@ export default function HomeScreen() {
                   >
                     Commencer
                   </Text>
-                  <Ionicons name="arrow-forward" size={18} color={Colors.white} />
+                  <Ionicons name="arrow-forward" size={16} color={Colors.white} />
                 </View>
               </LinearGradient>
             </TouchableOpacity>
@@ -747,7 +750,7 @@ export default function HomeScreen() {
               >
                 <View style={[styles.quickActionPrimaryTop, isCompactScreen && styles.quickActionPrimaryTopCompact]}>
                   <View style={[styles.quickActionPrimaryIcon, isCompactScreen && styles.quickActionPrimaryIconCompact]}>
-                    <Ionicons name="search" size={24} color={Colors.white} />
+                    <Ionicons name="search" size={21} color={Colors.white} />
                   </View>
                   <View
                     style={[
@@ -766,7 +769,10 @@ export default function HomeScreen() {
                     </Text>
                   </View>
                 </View>
-                <Text style={[styles.quickActionPrimaryTitle, isCompactScreen && styles.quickActionPrimaryTitleCompact]}>
+                <Text
+                  style={[styles.quickActionPrimaryTitle, isCompactScreen && styles.quickActionPrimaryTitleCompact]}
+                  numberOfLines={1}
+                >
                   Trouver un trajet
                 </Text>
                 <Text
@@ -774,8 +780,9 @@ export default function HomeScreen() {
                     styles.quickActionPrimarySubtitle,
                     isCompactScreen && styles.quickActionPrimarySubtitleCompact,
                   ]}
+                  numberOfLines={1}
                 >
-                  Rechercher une place disponible pour voyager rapidement.
+                  Chercher une place.
                 </Text>
                 <View style={[styles.quickActionPrimaryFooter, isCompactScreen && styles.quickActionPrimaryFooterCompact]}>
                   <Text
@@ -786,7 +793,7 @@ export default function HomeScreen() {
                   >
                     Rechercher
                   </Text>
-                  <Ionicons name="arrow-forward" size={18} color={Colors.white} />
+                  <Ionicons name="arrow-forward" size={16} color={Colors.white} />
                 </View>
               </LinearGradient>
             </TouchableOpacity>
@@ -813,13 +820,17 @@ export default function HomeScreen() {
                   isCompactScreen && styles.quickActionIconCompact,
                 ]}
               >
-                <Ionicons name="paper-plane" size={24} color={Colors.white} />
+                <Ionicons name="paper-plane" size={20} color={Colors.white} />
               </View>
-              <Text style={[styles.quickActionTitle, isCompactScreen && styles.quickActionTitleCompact]}>Demander une course</Text>
-              <Text style={[styles.quickActionSubtitle, isCompactScreen && styles.quickActionSubtitleCompact]}>Créer un trajet sur mesure</Text>
+              <Text style={[styles.quickActionTitle, isCompactScreen && styles.quickActionTitleCompact]} numberOfLines={2}>
+                Demander une course
+              </Text>
+              <Text style={[styles.quickActionSubtitle, isCompactScreen && styles.quickActionSubtitleCompact]} numberOfLines={1}>
+                Trajet sur mesure
+              </Text>
               <View style={[styles.quickActionFooter, isCompactScreen && styles.quickActionFooterCompact]}>
                 <Text style={styles.quickActionFooterText}>Ouvrir</Text>
-                <Ionicons name="arrow-forward" size={16} color={Colors.success} />
+                <Ionicons name="arrow-forward" size={14} color={Colors.success} />
               </View>
             </TouchableOpacity>
 
@@ -837,13 +848,17 @@ export default function HomeScreen() {
                   isCompactScreen && styles.quickActionIconCompact,
                 ]}
               >
-                <Ionicons name="list" size={24} color={Colors.white} />
+                <Ionicons name="list" size={20} color={Colors.white} />
               </View>
-              <Text style={[styles.quickActionTitle, isCompactScreen && styles.quickActionTitleCompact]}>{requestsActionTitle}</Text>
-              <Text style={[styles.quickActionSubtitle, isCompactScreen && styles.quickActionSubtitleCompact]}>{requestsActionSubtitle}</Text>
+              <Text style={[styles.quickActionTitle, isCompactScreen && styles.quickActionTitleCompact]} numberOfLines={2}>
+                {requestsActionTitle}
+              </Text>
+              <Text style={[styles.quickActionSubtitle, isCompactScreen && styles.quickActionSubtitleCompact]} numberOfLines={1}>
+                {requestsActionSubtitle}
+              </Text>
               <View style={[styles.quickActionFooter, isCompactScreen && styles.quickActionFooterCompact]}>
                 <Text style={[styles.quickActionFooterText, { color: '#7C3AED' }]}>Voir</Text>
-                <Ionicons name="arrow-forward" size={16} color="#7C3AED" />
+                <Ionicons name="arrow-forward" size={14} color="#7C3AED" />
               </View>
             </TouchableOpacity>
           </View>
@@ -922,7 +937,7 @@ export default function HomeScreen() {
               <Text style={styles.quickPlacesEyebrow}>Départ rapide</Text>
               <Text style={styles.sectionTitle}>Mes lieux utiles</Text>
               <Text style={styles.quickPlacesLeadText}>
-                Retrouvez vos repères les plus utilisés et relancez une recherche en un geste.
+                Vos repères enregistrés pour relancer une recherche vite.
               </Text>
             </View>
             <TouchableOpacity
@@ -954,7 +969,7 @@ export default function HomeScreen() {
                         { backgroundColor: `${place.accent}18` },
                       ]}
                     >
-                      <Ionicons name={place.icon} size={18} color={place.accent} />
+                      <Ionicons name={place.icon} size={16} color={place.accent} />
                     </View>
                     <View style={styles.quickPlaceBadge}>
                       <Text style={styles.quickPlaceBadgeText}>{place.badge}</Text>
@@ -965,14 +980,14 @@ export default function HomeScreen() {
                     <Text style={styles.quickPlaceTitle} numberOfLines={1}>
                       {place.title}
                     </Text>
-                    <Text style={styles.quickPlaceSubtitle} numberOfLines={2}>
+                    <Text style={styles.quickPlaceSubtitle} numberOfLines={1}>
                       {place.subtitle}
                     </Text>
                   </View>
 
                   <View style={[styles.quickPlaceAction, { backgroundColor: `${place.accent}12` }]}>
                     <Text style={[styles.quickPlaceActionText, { color: place.accent }]}>Partir d&apos;ici</Text>
-                    <Ionicons name="arrow-forward" size={16} color={place.accent} />
+                    <Ionicons name="arrow-forward" size={14} color={place.accent} />
                   </View>
                 </TouchableOpacity>
               ))}
@@ -1056,9 +1071,17 @@ export default function HomeScreen() {
                         <View style={styles.avatar} />
                       )}
                       <View style={styles.tripDriverDetails}>
-                        <Text style={styles.driverName} numberOfLines={1} ellipsizeMode="tail">
-                          {trip?.driverName ?? ''}
-                        </Text>
+                        <View style={styles.driverNameRow}>
+                          <Text style={styles.driverName} numberOfLines={1} ellipsizeMode="tail">
+                            {trip?.driverName ?? ''}
+                          </Text>
+                          {(trip.driver?.premiumBadge || trip.driver?.premiumBadgeEnabled) && (
+                            <View style={styles.proBadge}>
+                              <Ionicons name="shield-checkmark" size={11} color={Colors.white} />
+                              <Text style={styles.proBadgeText}>Pro</Text>
+                            </View>
+                          )}
+                        </View>
                         <View style={styles.driverMeta}>
                           <Ionicons
                             name={hasDriverRating ? "star" : "star-outline"}
@@ -1404,8 +1427,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    gap: Spacing.md,
-    marginBottom: Spacing.md,
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
   },
   quickPlacesLeadCopy: {
     flex: 1,
@@ -1419,32 +1442,32 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   quickPlacesLeadText: {
-    marginTop: 6,
-    fontSize: FontSizes.sm,
+    marginTop: 4,
+    fontSize: 13,
     color: Colors.gray[600],
-    lineHeight: 20,
+    lineHeight: 18,
     maxWidth: 300,
   },
   quickPlacesManageButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.sm,
     backgroundColor: '#FFF8F3',
     borderWidth: 1,
     borderColor: Colors.primary + '12',
   },
   quickPlacesManageText: {
-    fontSize: FontSizes.sm,
+    fontSize: 13,
     fontWeight: FontWeights.bold,
     color: Colors.gray[800],
   },
   quickPlacesStateCard: {
     backgroundColor: '#FFF8F3',
-    borderRadius: BorderRadius.xxl,
-    padding: Spacing.lg,
+    borderRadius: BorderRadius.sm,
+    padding: Spacing.md,
     alignItems: 'center',
     gap: Spacing.sm,
     borderWidth: 1,
@@ -1457,91 +1480,90 @@ const styles = StyleSheet.create({
   quickPlacesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.md,
+    gap: Spacing.sm,
   },
   quickPlaceCard: {
     width: '48%',
     backgroundColor: '#FFF8F3',
-    borderRadius: BorderRadius.xxl,
-    padding: Spacing.lg,
-    minHeight: 168,
+    borderRadius: BorderRadius.sm,
+    padding: Spacing.md,
+    minHeight: 118,
     justifyContent: 'space-between',
     borderWidth: 1,
     shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1,
   },
   quickPlaceHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   quickPlaceBody: {
     flex: 1,
   },
   quickPlaceIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.xl,
+    width: 34,
+    height: 34,
+    borderRadius: BorderRadius.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
   quickPlaceBadge: {
     backgroundColor: Colors.white,
     borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 5,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 3,
     borderWidth: 1,
     borderColor: Colors.gray[200],
   },
   quickPlaceBadgeText: {
     color: Colors.gray[600],
-    fontSize: FontSizes.xs,
+    fontSize: 10,
     fontWeight: FontWeights.bold,
   },
   quickPlaceTitle: {
-    fontSize: FontSizes.base,
+    fontSize: 14,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    marginBottom: Spacing.xs,
+    marginBottom: 2,
   },
   quickPlaceSubtitle: {
-    fontSize: FontSizes.sm,
+    fontSize: 12,
     color: Colors.gray[600],
-    lineHeight: 19,
-    minHeight: 38,
+    lineHeight: 16,
   },
   quickPlaceAction: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.xs,
-    marginTop: Spacing.md,
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    marginTop: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
   },
   quickPlaceActionText: {
     fontWeight: FontWeights.bold,
-    fontSize: FontSizes.sm,
+    fontSize: 12,
   },
   quickPlacesEmptyCard: {
     backgroundColor: '#FFF8F3',
-    borderRadius: BorderRadius.xxl,
-    padding: Spacing.lg,
+    borderRadius: BorderRadius.sm,
+    padding: Spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
+    gap: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.primary + '12',
   },
   quickPlacesEmptyIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: BorderRadius.lg,
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.sm,
     backgroundColor: Colors.primary + '12',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1561,10 +1583,10 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   quickActionsLead: {
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   quickActionsLeadCompact: {
-    marginBottom: Spacing.sm,
+    marginBottom: 6,
   },
   quickActionsEyebrow: {
     fontSize: FontSizes.xs,
@@ -1575,25 +1597,25 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   quickActionsLeadText: {
-    marginTop: 6,
-    fontSize: FontSizes.sm,
+    marginTop: 4,
+    fontSize: 13,
     color: Colors.gray[600],
-    lineHeight: 20,
+    lineHeight: 18,
     maxWidth: 320,
   },
   quickActionsLeadTextCompact: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
     maxWidth: '100%',
   },
   quickActionsPrimaryRow: {
     flexDirection: 'row',
-    gap: Spacing.md,
+    gap: Spacing.sm,
   },
   quickActionsSecondaryRow: {
     flexDirection: 'row',
-    gap: Spacing.md,
-    marginTop: Spacing.md,
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
   },
   quickActionsRowCompact: {
     gap: Spacing.sm,
@@ -1604,24 +1626,24 @@ const styles = StyleSheet.create({
   quickActionPrimaryCard: {
     flex: 1,
     minWidth: 0,
-    borderRadius: BorderRadius.xxl,
+    borderRadius: BorderRadius.sm,
     overflow: 'hidden',
     borderWidth: 1,
-    ...CommonStyles.shadowMd,
+    ...CommonStyles.shadowSm,
   },
   quickActionPrimaryCardCompact: {
-    borderRadius: BorderRadius.xl,
+    borderRadius: BorderRadius.sm,
   },
   quickActionPrimaryGradient: {
-    minHeight: 182,
-    padding: Spacing.md,
+    minHeight: 128,
+    padding: 10,
     justifyContent: 'space-between',
-    gap: Spacing.md,
+    gap: 6,
   },
   quickActionPrimaryGradientCompact: {
-    minHeight: 164,
-    padding: Spacing.sm,
-    gap: Spacing.sm,
+    minHeight: 116,
+    padding: 9,
+    gap: 6,
   },
   quickActionPrimaryTop: {
     flexDirection: 'row',
@@ -1634,57 +1656,57 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   quickActionPrimaryIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: BorderRadius.xl,
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.sm,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.16)',
   },
   quickActionPrimaryIconCompact: {
-    width: 44,
-    height: 44,
-    borderRadius: BorderRadius.lg,
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.sm,
   },
   quickActionPrimaryBadge: {
     paddingHorizontal: Spacing.sm,
-    paddingVertical: 6,
+    paddingVertical: 4,
     borderRadius: BorderRadius.full,
     backgroundColor: 'rgba(255,255,255,0.14)',
   },
   quickActionPrimaryBadgeCompact: {
     paddingHorizontal: Spacing.xs,
-    paddingVertical: 5,
+    paddingVertical: 3,
     flexShrink: 1,
     maxWidth: '60%',
   },
   quickActionPrimaryBadgeText: {
     color: Colors.white,
-    fontSize: FontSizes.xs,
+    fontSize: 11,
     fontWeight: FontWeights.bold,
     textTransform: 'uppercase',
   },
   quickActionPrimaryBadgeTextCompact: {
-    fontSize: 10,
+    fontSize: 9,
   },
   quickActionPrimaryTitle: {
-    fontSize: FontSizes.lg,
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.white,
-    lineHeight: 24,
+    lineHeight: 21,
   },
   quickActionPrimaryTitleCompact: {
-    fontSize: FontSizes.base,
-    lineHeight: 22,
-  },
-  quickActionPrimarySubtitle: {
-    fontSize: FontSizes.sm,
-    color: 'rgba(255,255,255,0.92)',
+    fontSize: 15,
     lineHeight: 20,
   },
-  quickActionPrimarySubtitleCompact: {
+  quickActionPrimarySubtitle: {
     fontSize: 13,
+    color: 'rgba(255,255,255,0.92)',
     lineHeight: 18,
+  },
+  quickActionPrimarySubtitleCompact: {
+    fontSize: 12,
+    lineHeight: 16,
   },
   quickActionPrimaryFooter: {
     flexDirection: 'row',
@@ -1698,12 +1720,12 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.xs,
   },
   quickActionPrimaryFooterText: {
-    fontSize: FontSizes.sm,
+    fontSize: 13,
     fontWeight: FontWeights.bold,
     color: Colors.white,
   },
   quickActionPrimaryFooterTextCompact: {
-    fontSize: 13,
+    fontSize: 12,
   },
   quickActions: {
     flexDirection: 'row',
@@ -1712,18 +1734,18 @@ const styles = StyleSheet.create({
   quickActionCard: {
     flex: 1,
     minWidth: 0,
-    padding: Spacing.lg,
-    borderRadius: BorderRadius.xxl,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.sm,
     backgroundColor: '#FFFCF8',
-    minHeight: 164,
+    minHeight: 118,
     justifyContent: 'space-between',
     borderWidth: 1,
     ...CommonStyles.shadowSm,
   },
   quickActionCardCompact: {
-    padding: Spacing.md,
-    minHeight: 150,
-    borderRadius: BorderRadius.xl,
+    padding: 10,
+    minHeight: 108,
+    borderRadius: BorderRadius.sm,
   },
   publishActionCard: {
     borderColor: Colors.primary + '16',
@@ -1740,21 +1762,26 @@ const styles = StyleSheet.create({
     borderColor: '#8B5CF620',
   },
   quickActionBadge: {
+    position: 'absolute',
+    top: Spacing.sm,
+    right: Spacing.sm,
     alignSelf: 'flex-start',
     paddingHorizontal: Spacing.sm,
-    paddingVertical: 6,
+    paddingVertical: 4,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.white,
     borderWidth: 1,
     borderColor: Colors.gray[200],
-    marginBottom: Spacing.md,
+    marginBottom: 0,
   },
   quickActionBadgeCompact: {
-    marginBottom: Spacing.sm,
+    top: 6,
+    right: 6,
+    marginBottom: 0,
     paddingHorizontal: Spacing.xs,
   },
   quickActionBadgeText: {
-    fontSize: FontSizes.xs,
+    fontSize: 11,
     fontWeight: FontWeights.bold,
     color: Colors.gray[700],
     textTransform: 'uppercase',
@@ -1763,44 +1790,44 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   quickActionIcon: {
-    width: 48,
-    height: 48,
+    width: 34,
+    height: 34,
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: Spacing.md,
-  },
-  quickActionIconCompact: {
-    width: 42,
-    height: 42,
     marginBottom: Spacing.sm,
   },
+  quickActionIconCompact: {
+    width: 30,
+    height: 30,
+    marginBottom: 6,
+  },
   quickActionTitle: {
-    fontSize: FontSizes.base,
+    fontSize: 15,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    lineHeight: 22,
-  },
-  quickActionTitleCompact: {
-    fontSize: 15,
     lineHeight: 20,
   },
+  quickActionTitleCompact: {
+    fontSize: 14,
+    lineHeight: 18,
+  },
   quickActionSubtitle: {
-    fontSize: FontSizes.sm,
+    fontSize: 13,
     color: Colors.gray[600],
-    marginTop: 4,
-    lineHeight: 19,
+    marginTop: 2,
+    lineHeight: 17,
   },
   quickActionSubtitleCompact: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
   },
   quickActionFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: Spacing.md,
-    paddingTop: Spacing.sm,
+    marginTop: 6,
+    paddingTop: 6,
     borderTopWidth: 1,
     borderTopColor: Colors.gray[200],
   },
@@ -1809,7 +1836,7 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.xs,
   },
   quickActionFooterText: {
-    fontSize: FontSizes.sm,
+    fontSize: 13,
     fontWeight: FontWeights.bold,
     color: Colors.success,
   },
@@ -1924,10 +1951,30 @@ const styles = StyleSheet.create({
   tripDriverDetails: {
     flex: 1,
   },
+  driverNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
   driverName: {
+    flex: 1,
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
+  },
+  proBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  proBadgeText: {
+    color: Colors.white,
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
   },
   driverMeta: {
     flexDirection: 'row',

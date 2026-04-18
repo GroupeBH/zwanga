@@ -26,8 +26,12 @@ type ServerBooking = {
   passenger?: ServerUser | null;
   trip?: ServerTrip | null;
   passengerOrigin?: string | null;
+  passengerOriginReference?: string | null;
+  passengerOriginCoordinates?: { latitude: number; longitude: number } | null;
   passengerOriginPoint?: { type: string; coordinates: [number, number] } | null;
   passengerDestination?: string | null;
+  passengerDestinationReference?: string | null;
+  passengerDestinationCoordinates?: { latitude: number; longitude: number } | null;
   passengerDestinationPoint?: { type: string; coordinates: [number, number] } | null;
   pickedUp?: boolean;
   pickedUpAt?: string | null;
@@ -48,6 +52,19 @@ const formatPassengerName = (passenger?: ServerUser | null) => {
   return fullName || undefined;
 };
 
+const mapBookingCoordinates = (
+  point?: { type: string; coordinates: [number, number] } | null,
+  coordinates?: { latitude: number; longitude: number } | null,
+) => {
+  if (point) {
+    return { latitude: point.coordinates[1], longitude: point.coordinates[0] };
+  }
+  if (coordinates) {
+    return coordinates;
+  }
+  return undefined;
+};
+
 const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
   id: booking.id,
   tripId: booking.tripId,
@@ -64,13 +81,17 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
   updatedAt: booking.updatedAt,
   trip: booking.trip ? mapServerTripToClient(booking.trip) : undefined,
   passengerOrigin: booking.passengerOrigin ?? undefined,
-  passengerOriginCoordinates: booking.passengerOriginPoint 
-    ? { latitude: booking.passengerOriginPoint.coordinates[1], longitude: booking.passengerOriginPoint.coordinates[0] }
-    : undefined,
+  passengerOriginReference: booking.passengerOriginReference ?? undefined,
+  passengerOriginCoordinates: mapBookingCoordinates(
+    booking.passengerOriginPoint,
+    booking.passengerOriginCoordinates,
+  ),
   passengerDestination: booking.passengerDestination ?? undefined,
-  passengerDestinationCoordinates: booking.passengerDestinationPoint 
-    ? { latitude: booking.passengerDestinationPoint.coordinates[1], longitude: booking.passengerDestinationPoint.coordinates[0] }
-    : undefined,
+  passengerDestinationReference: booking.passengerDestinationReference ?? undefined,
+  passengerDestinationCoordinates: mapBookingCoordinates(
+    booking.passengerDestinationPoint,
+    booking.passengerDestinationCoordinates,
+  ),
   pickedUp: booking.pickedUp ?? false,
   pickedUpAt: booking.pickedUpAt ?? undefined,
   pickedUpConfirmedByPassenger: booking.pickedUpConfirmedByPassenger ?? false,
@@ -91,8 +112,10 @@ export const bookingApi = baseApi.injectEndpoints({
         tripId: string;
         numberOfSeats: number;
         passengerOrigin?: string;
+        passengerOriginReference?: string;
         passengerOriginCoordinates?: { latitude: number; longitude: number };
         passengerDestination?: string;
+        passengerDestinationReference?: string;
         passengerDestinationCoordinates?: { latitude: number; longitude: number };
       }
     >({

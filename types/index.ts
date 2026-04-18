@@ -4,6 +4,8 @@ export type TripStatus = 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
 export type RecurringTripStatus = 'active' | 'paused';
 export type BookingStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'completed' | 'expired';
 export type PaymentMethod = 'orange_money' | 'm_pesa' | 'airtel_money' | 'cash';
+export type SubscriptionPlan = 'pro' | 'monthly' | 'yearly';
+export type SubscriptionStatus = 'active' | 'expired' | 'cancelled';
 
 export interface User {
   id: string;
@@ -21,6 +23,9 @@ export interface User {
   identityVerified: boolean; // Vérification d'identité (carte + visage)
   vehicle?: Vehicle;
   isDriver?: boolean;
+  isPremium?: boolean;
+  premiumBadge?: boolean;
+  premiumBadgeEnabled?: boolean;
   createdAt: string; // ISO string date
   status?: string;
 }
@@ -34,8 +39,56 @@ export interface TripDriverInfo {
   role?: UserRole;
   status?: string;
   isDriver?: boolean;
+  isPremium?: boolean;
+  premiumBadge?: boolean;
+  premiumBadgeEnabled?: boolean;
   averageRating?: number | null;
   totalRatings?: number;
+}
+
+export interface SubscriptionPlanSummary {
+  plan: SubscriptionPlan;
+  amount: number | string;
+  currency: string;
+  premiumBadgeEnabled: boolean;
+  featuredTripsEnabled: boolean;
+  documentFundingEnabled: boolean;
+  documentFundingLimit: number | null;
+  documentFundingCurrency?: string;
+  eligibleDocumentTypes: string[];
+}
+
+export interface PremiumOverview {
+  isActive: boolean;
+  isPremium: boolean;
+  premiumBadgeEnabled: boolean;
+  featuredTripsEnabled: boolean;
+  documentFundingEnabled: boolean;
+  documentFundingLimit: number | null;
+  documentFundingCurrency: string;
+  subscriptionId: string | null;
+  plan: SubscriptionPlan | null;
+  endDate: string | null;
+}
+
+export interface Subscription {
+  id: string;
+  userId: string;
+  plan: SubscriptionPlan;
+  status: SubscriptionStatus;
+  startDate: string;
+  endDate: string;
+  amount: number | string;
+  currency: string;
+  premiumBadgeEnabled: boolean;
+  featuredTripsEnabled: boolean;
+  documentFundingEnabled: boolean;
+  documentFundingLimit: number | null;
+  documentFundingCurrency: string;
+  paymentReference?: string | null;
+  isTrial: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface GeoPoint {
@@ -61,6 +114,8 @@ export interface Location {
   address: string;
   lat: number;
   lng: number;
+  reference?: string | null;
+  hasCoordinates?: boolean;
 }
 
 export interface Trip {
@@ -92,6 +147,7 @@ export interface Trip {
   driverSafetyEmergencyContactIds?: string[];
   recurringTemplateId?: string | null;
   recurringOccurrenceDate?: string | null;
+  isFeatured?: boolean;
 }
 
 export interface RecurringTripTemplate {
@@ -141,9 +197,11 @@ export interface Booking {
   trip?: Trip;
   // Point de récupération personnalisé du passager
   passengerOrigin?: string | null;
+  passengerOriginReference?: string | null;
   passengerOriginCoordinates?: { latitude: number; longitude: number } | null;
   // Destination personnalisée du passager
   passengerDestination?: string | null;
+  passengerDestinationReference?: string | null;
   passengerDestinationCoordinates?: { latitude: number; longitude: number } | null;
   // Confirmation de récupération
   pickedUp?: boolean;
@@ -283,6 +341,8 @@ export interface DriverOffer {
   driverName?: string;
   driverAvatar?: string;
   driverRating?: number;
+  driverIsPremium?: boolean;
+  driverPremiumBadge?: boolean;
   vehicleId?: string | null;
   vehicleType?: VehicleType;
   vehicleInfo?: string;
@@ -290,6 +350,10 @@ export interface DriverOffer {
   pricePerSeat: number; // Prix proposé par place
   availableSeats: number; // Nombre de places disponibles
   message?: string | null; // Message optionnel du driver
+  departureReference?: string | null;
+  departureCoordinates?: [number, number] | null;
+  arrivalReference?: string | null;
+  arrivalCoordinates?: [number, number] | null;
   status: DriverOfferStatus;
   acceptedAt?: string | null;
   rejectedAt?: string | null;
@@ -302,7 +366,9 @@ export interface DriverOfferWithTripRequest extends DriverOffer {
   tripRequest: {
     id: string;
     departureLocation: string;
+    departureReference?: string | null;
     arrivalLocation: string;
+    arrivalReference?: string | null;
     departureDateMin: string; // ISO string date
     departureDateMax: string; // ISO string date
     numberOfSeats: number;

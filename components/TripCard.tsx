@@ -1,4 +1,4 @@
-import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import type { Trip } from '@/types';
 import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
@@ -18,6 +18,8 @@ interface TripCardProps {
 export function TripCard({ trip, onPress, showReserveButton = false, showDetailsButton = true }: TripCardProps) {
   const router = useRouter();
   const calculatedArrivalTime = useTripArrivalTime(trip);
+  const hasPremiumBadge = Boolean(trip.driver?.premiumBadge || trip.driver?.premiumBadgeEnabled);
+  const isFeatured = Boolean(trip.isFeatured);
 
   const handlePress = () => {
     if (onPress) {
@@ -32,12 +34,22 @@ export function TripCard({ trip, onPress, showReserveButton = false, showDetails
     : formatTime(trip.arrivalTime);
 
   return (
-    <View style={styles.tripCard}>
+    <View style={[styles.tripCard, isFeatured && styles.tripCardFeatured]}>
       <View style={styles.tripHeader}>
         <View style={styles.tripDriverInfo}>
           <View style={styles.avatar} />
           <View style={styles.tripDriverDetails}>
-            <Text style={styles.driverName}>{trip.driverName}</Text>
+            <View style={styles.driverNameRow}>
+              <Text style={styles.driverName} numberOfLines={1}>
+                {trip.driverName}
+              </Text>
+              {hasPremiumBadge && (
+                <View style={styles.proBadge}>
+                  <Ionicons name="shield-checkmark" size={12} color={Colors.white} />
+                  <Text style={styles.proBadgeText}>Pro</Text>
+                </View>
+              )}
+            </View>
             <View style={styles.driverMeta}>
               <Ionicons name="star" size={14} color={Colors.secondary} />
               <Text style={styles.driverRating}>{trip.driverRating}</Text>
@@ -121,7 +133,12 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
     marginBottom: Spacing.md,
-    ...Colors.shadowSm,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    ...CommonStyles.shadowSm,
+  },
+  tripCardFeatured: {
+    borderColor: Colors.primary + '45',
   },
   tripHeader: {
     flexDirection: 'row',
@@ -144,11 +161,31 @@ const styles = StyleSheet.create({
   tripDriverDetails: {
     flex: 1,
   },
+  driverNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
   driverName: {
+    flex: 1,
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    marginBottom: Spacing.xs,
+  },
+  proBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  proBadgeText: {
+    color: Colors.white,
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
   },
   driverMeta: {
     flexDirection: 'row',

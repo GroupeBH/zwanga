@@ -1526,7 +1526,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
-    height: '72%',
+    height: '86%',
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.md,
   },
