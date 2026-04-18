@@ -9,8 +9,6 @@ import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/review
 import {
   useGetPremiumOverviewQuery,
   useGetSubscriptionPlansQuery,
-  useStartPremiumTrialMutation,
-  useSubscribeToProMutation,
 } from '@/store/api/subscriptionApi';
 import { useGetMyDriverOffersQuery, useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useSendPhoneVerificationOtpMutation, useUpdatePinMutation, useUpdatePinWithOtpMutation, useUpdateUserMutation, useUploadKycMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
@@ -28,6 +26,7 @@ import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   NativeSyntheticEvent,
   Platform,
@@ -65,6 +64,8 @@ const getPlanLabel = (plan?: SubscriptionPlan | null) => {
   return 'mensuel';
 };
 
+const ZWANGA_PRO_ENQUIRY_URL = 'https://zwanga-app.com/enquiry';
+
 export default function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -92,6 +93,7 @@ export default function ProfileScreen() {
   const [newPin, setNewPin] = useState('');
   const [newPinConfirm, setNewPinConfirm] = useState('');
   const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [openingProEnquiry, setOpeningProEnquiry] = useState(false);
   const oldPinInputRef = useRef<TextInput | null>(null);
   const otpInputRefs = useRef<Array<TextInput | null>>([]);
   const pinInputRef = useRef<TextInput | null>(null);
@@ -138,8 +140,6 @@ export default function ProfileScreen() {
     isFetching: premiumOverviewFetching,
     refetch: refetchPremiumOverview,
   } = useGetPremiumOverviewQuery(undefined, { skip: !isDriver });
-  const [startPremiumTrial, { isLoading: startingPremiumTrial }] = useStartPremiumTrialMutation();
-  const [subscribeToPro, { isLoading: subscribingToPro }] = useSubscribeToProMutation();
 
   const isKycApproved = kycStatus?.status === 'approved';
   const isKycPending = kycStatus?.status === 'pending';
@@ -176,7 +176,7 @@ export default function ProfileScreen() {
   );
   const proPriceLabel = formatSubscriptionAmount(proPlan?.amount, proPlan?.currency);
   const proEndDateLabel = formatSubscriptionEndDate(premiumOverview?.endDate);
-  const proBusy = premiumOverviewFetching || startingPremiumTrial || subscribingToPro;
+  const proBusy = premiumOverviewFetching || openingProEnquiry;
   const { shouldShow: shouldShowProfileGuide, complete: completeProfileGuide } =
     useTutorialGuide('profile_screen');
   const [profileGuideVisible, setProfileGuideVisible] = useState(false);
@@ -486,79 +486,24 @@ export default function ProfileScreen() {
     void handleBecomeDriver();
   };
 
-  const handleStartPremiumTrial = async () => {
+  const handleSubscribePro = async () => {
     if (!isDriver) {
       handleStartDriverOnboarding();
-      return;
-    }
-
-    if (isPremiumActive) {
-      showDialog({
-        variant: 'info',
-        title: 'Pro déjà actif',
-        message: proEndDateLabel
-          ? `Votre accès Pro est actif jusqu'au ${proEndDateLabel}.`
-          : 'Votre accès Pro est déjà actif.',
-      });
       return;
     }
 
     try {
-      await startPremiumTrial().unwrap();
-      await Promise.allSettled([refetchPremiumOverview(), refetchProfile()]);
-      showDialog({
-        variant: 'success',
-        title: 'Zwanga Pro activé',
-        message: 'Votre essai Pro est actif. Vos trajets peuvent maintenant afficher le badge Pro et être mieux mis en avant.',
-      });
-    } catch (error: any) {
-      const message = error?.data?.message ?? error?.error ?? 'Impossible d\'activer l\'essai Pro pour le moment.';
+      setOpeningProEnquiry(true);
+      await Linking.openURL(ZWANGA_PRO_ENQUIRY_URL);
+    } catch {
       showDialog({
         variant: 'danger',
-        title: 'Activation impossible',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        title: 'Redirection impossible',
+        message: `Impossible d'ouvrir la page Zwanga Pro pour le moment. Vous pouvez aller sur ${ZWANGA_PRO_ENQUIRY_URL}.`,
       });
+    } finally {
+      setOpeningProEnquiry(false);
     }
-  };
-
-  const handleSubscribePro = () => {
-    if (!isDriver) {
-      handleStartDriverOnboarding();
-      return;
-    }
-
-    const amountLabel = formatSubscriptionAmount(proPlan?.amount, proPlan?.currency);
-
-    showDialog({
-      variant: 'info',
-      title: 'Activer Zwanga Pro',
-      message: `Confirmez l'activation du pack Pro à ${amountLabel}.`,
-      actions: [
-        { label: 'Annuler', variant: 'ghost' },
-        {
-          label: 'Activer',
-          variant: 'primary',
-          onPress: async () => {
-            try {
-              await subscribeToPro().unwrap();
-              await Promise.allSettled([refetchPremiumOverview(), refetchProfile()]);
-              showDialog({
-                variant: 'success',
-                title: 'Zwanga Pro activé',
-                message: 'Votre accès Pro est actif sur votre profil conducteur.',
-              });
-            } catch (error: any) {
-              const message = error?.data?.message ?? error?.error ?? 'Impossible d\'activer Pro pour le moment.';
-              showDialog({
-                variant: 'danger',
-                title: 'Activation impossible',
-                message: Array.isArray(message) ? message.join('\n') : message,
-              });
-            }
-          },
-        },
-      ],
-    });
   };
 
   const buildKycFormData = (files?: Partial<KycCaptureResult>) => {
@@ -1187,40 +1132,21 @@ export default function ProfileScreen() {
                   </Text>
                 </View>
               ) : (
-                <>
-                  <View style={styles.proActionRow}>
-                    <TouchableOpacity
-                      style={[styles.proPrimaryButton, styles.proActionButton]}
-                      onPress={handleStartPremiumTrial}
-                      disabled={proBusy}
-                      activeOpacity={0.85}
-                    >
-                      {startingPremiumTrial ? (
-                        <ActivityIndicator color={Colors.white} />
-                      ) : (
-                        <>
-                          <Text style={styles.proPrimaryButtonText}>Essai 7 jours</Text>
-                          <Ionicons name="flash" size={16} color={Colors.white} />
-                        </>
-                      )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.proSecondaryButton, styles.proActionButton]}
-                      onPress={handleSubscribePro}
-                      disabled={proBusy}
-                      activeOpacity={0.85}
-                    >
-                      {subscribingToPro ? (
-                        <ActivityIndicator color={Colors.primary} />
-                      ) : (
-                        <>
-                          <Text style={styles.proSecondaryButtonText}>Activer Pro</Text>
-                          <Text style={styles.proSecondaryPrice}>{proPriceLabel}</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                </>
+                <TouchableOpacity
+                  style={styles.proSecondaryButton}
+                  onPress={handleSubscribePro}
+                  disabled={proBusy}
+                  activeOpacity={0.85}
+                >
+                  {openingProEnquiry ? (
+                    <ActivityIndicator color={Colors.primary} />
+                  ) : (
+                    <>
+                      <Text style={styles.proSecondaryButtonText}>Passer à Pro</Text>
+                      <Text style={styles.proSecondaryPrice}>{proPriceLabel}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
               )}
             </View>
           </Animated.View>
@@ -2615,13 +2541,6 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.xs,
     color: Colors.gray[600],
     lineHeight: 17,
-  },
-  proActionRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  proActionButton: {
-    flex: 1,
   },
   proPrimaryButton: {
     minHeight: 46,
