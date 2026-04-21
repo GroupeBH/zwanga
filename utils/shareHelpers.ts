@@ -11,7 +11,7 @@ export function generateTripShareLink(tripId: string): string {
   const deepLink = `zwanga://trip/${tripId}?track=true`;
   
   // URL web de fallback (si vous avez une page web pour le suivi)
-  const webUrl = `https://zwanga.cd/trip/${tripId}?track=true`;
+  const webUrl = `https://zwanga-app.com/trip/${tripId}?track=true`;
   
   // Pour l'instant, on utilise le deep link
   // Si l'app n'est pas installée, le système proposera d'ouvrir dans le navigateur

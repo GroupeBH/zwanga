@@ -60,7 +60,17 @@ export function NotificationHandler() {
           return params;
         };
 
-        if (route.startsWith('trip/manage/')) {
+        if (route.startsWith('subscriptions/payment')) {
+          const parts = route.split('?');
+          const params = parseQueryParams(parts[1] || '');
+          router.push({
+            pathname: '/profile',
+            params: {
+              openSubscription: '1',
+              paymentStatus: params.status || 'returned',
+            },
+          });
+        } else if (route.startsWith('trip/manage/')) {
           const tripId = route.replace('trip/manage/', '').split('?')[0];
           router.push({
             pathname: '/trip/manage/[id]',
