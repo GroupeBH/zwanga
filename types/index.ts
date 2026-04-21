@@ -4,8 +4,15 @@ export type TripStatus = 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
 export type RecurringTripStatus = 'active' | 'paused';
 export type BookingStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'completed' | 'expired';
 export type PaymentMethod = 'orange_money' | 'm_pesa' | 'airtel_money' | 'cash';
+export type SubscriptionPaymentMethod = 'mobile_money' | 'card';
+export type SubscriptionPaymentStatus =
+  | 'pending'
+  | 'initiated'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled';
 export type SubscriptionPlan = 'pro' | 'monthly' | 'yearly';
-export type SubscriptionStatus = 'active' | 'expired' | 'cancelled';
+export type SubscriptionStatus = 'pending' | 'active' | 'expired' | 'cancelled' | 'payment_failed';
 
 export interface User {
   id: string;
@@ -55,6 +62,7 @@ export interface SubscriptionPlanSummary {
   documentFundingEnabled: boolean;
   documentFundingLimit: number | null;
   documentFundingCurrency?: string;
+  paymentMethods?: SubscriptionPaymentMethod[];
   eligibleDocumentTypes: string[];
 }
 
@@ -86,9 +94,36 @@ export interface Subscription {
   documentFundingLimit: number | null;
   documentFundingCurrency: string;
   paymentReference?: string | null;
+  paymentTransactionId?: string | null;
   isTrial: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SubscriptionPayment {
+  transactionId: string | null;
+  method: SubscriptionPaymentMethod | null;
+  reference: string | null;
+  orderNumber: string | null;
+  status: SubscriptionPaymentStatus | null;
+  statusCode: string | null;
+  message: string | null;
+  paymentUrl: string | null;
+  amount: number;
+  currency: string;
+}
+
+export interface SubscriptionPaymentResponse {
+  subscription: Subscription;
+  payment: SubscriptionPayment;
+}
+
+export interface SubscribeToProPayload {
+  paymentMethod: SubscriptionPaymentMethod;
+  phone?: string;
+  approveUrl?: string;
+  cancelUrl?: string;
+  declineUrl?: string;
 }
 
 export interface GeoPoint {

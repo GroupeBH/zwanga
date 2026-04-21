@@ -7,8 +7,10 @@ import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
 import {
+  useLazyCheckSubscriptionPaymentStatusQuery,
   useGetPremiumOverviewQuery,
   useGetSubscriptionPlansQuery,
+  useSubscribeToProMutation,
 } from '@/store/api/subscriptionApi';
 import { useGetMyDriverOffersQuery, useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useSendPhoneVerificationOtpMutation, useUpdatePinMutation, useUpdatePinWithOtpMutation, useUpdateUserMutation, useUploadKycMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
@@ -16,11 +18,13 @@ import { useCreateVehicleMutation, useDeleteVehicleMutation, useGetVehiclesQuery
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { performLogout } from '@/store/slices/authSlice';
-import type { SubscriptionPlan, Vehicle } from '@/types';
+import type { SubscriptionPaymentResponse, SubscriptionPlan, Vehicle } from '@/types';
 import { createBecomeDriverAction, isDriverRequiredError } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import * as ExpoLinking from 'expo-linking';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -44,11 +48,11 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 const formatSubscriptionAmount = (amount?: number | string, currency?: string) => {
   const numericAmount = Number(amount);
-  if (!Number.isFinite(numericAmount)) return `2 ${currency || 'USD'}`;
+  if (!Number.isFinite(numericAmount)) return `5000 ${currency || 'CDF'}`;
   const formatted = numericAmount % 1 === 0
     ? Math.round(numericAmount).toString()
     : numericAmount.toFixed(2);
-  return `${formatted} ${currency || 'USD'}`;
+  return `${formatted} ${currency || 'CDF'}`;
 };
 
 const formatSubscriptionEndDate = (value?: string | null) => {
@@ -64,10 +68,105 @@ const getPlanLabel = (plan?: SubscriptionPlan | null) => {
   return 'mensuel';
 };
 
-const ZWANGA_PRO_ENQUIRY_URL = 'https://zwanga-app.com/enquiry';
+type SubscriptionPaymentChannel = 'mpesa' | 'airtel' | 'orange' | 'card';
+type SubscriptionCardPaymentResult = 'success' | 'cancel' | 'decline';
+type SubscriptionPaymentCheckOutcome = 'success' | 'pending' | 'failed' | 'error';
+
+const ZWANGA_DOCUMENTS_PACK_URL = 'https://zwanga-app.com/demande-documents';
+const SUBSCRIPTION_CARD_PAYMENT_RETURN_PATH = 'subscriptions/payment';
+const SUBSCRIPTION_MOBILE_MONEY_AUTO_CHECK_INITIAL_DELAY_MS = 15000;
+const SUBSCRIPTION_MOBILE_MONEY_AUTO_CHECK_INTERVAL_MS = 15000;
+const SUBSCRIPTION_MOBILE_MONEY_AUTO_CHECK_TIMEOUT_MS = 120000;
+const createCardPaymentRedirectUrls = () => {
+  const baseUrl = ExpoLinking.createURL(SUBSCRIPTION_CARD_PAYMENT_RETURN_PATH);
+  const withStatus = (status: SubscriptionCardPaymentResult) =>
+    `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}status=${status}`;
+
+  return {
+    approveUrl: withStatus('success'),
+    cancelUrl: withStatus('cancel'),
+    declineUrl: withStatus('decline'),
+    returnUrl: baseUrl,
+  };
+};
+const SUBSCRIPTION_PAYMENT_OPTIONS: {
+  id: SubscriptionPaymentChannel;
+  label: string;
+  hint: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}[] = [
+  { id: 'mpesa', label: 'M-Pesa', hint: 'Paiement Mobile Money', icon: 'phone-portrait-outline' },
+  { id: 'airtel', label: 'Airtel Money', hint: 'Paiement Mobile Money', icon: 'phone-portrait-outline' },
+  { id: 'orange', label: 'Orange Money', hint: 'Paiement Mobile Money', icon: 'phone-portrait-outline' },
+  { id: 'card', label: 'Carte', hint: 'Visa ou Mastercard', icon: 'card-outline' },
+];
+
+const DRC_MOBILE_MONEY_PREFIX = '+243';
+const DRC_MOBILE_MONEY_REGEX = /^\+243\d{9}$/;
+
+const normalizePaymentPhone = (value?: string | null) => {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed) return '';
+
+  const digits = trimmed.replace(/\D/g, '');
+  if (!digits) {
+    return trimmed.startsWith('+') ? '+' : '';
+  }
+
+  return trimmed.startsWith('+') ? `+${digits}` : digits;
+};
+
+const formatCongolesePaymentPhone = (value?: string | null) => {
+  const normalized = normalizePaymentPhone(value);
+  if (!normalized) return '';
+
+  const digits = normalized.replace(/\D/g, '');
+  if (digits.startsWith('243') && digits.length === 12) {
+    return `+${digits}`;
+  }
+
+  if (digits.startsWith('0') && digits.length === 10) {
+    return `${DRC_MOBILE_MONEY_PREFIX}${digits.slice(1)}`;
+  }
+
+  if (digits.length === 9) {
+    return `${DRC_MOBILE_MONEY_PREFIX}${digits}`;
+  }
+
+  return normalized;
+};
+
+const isValidCongolesePaymentPhone = (value?: string | null) =>
+  DRC_MOBILE_MONEY_REGEX.test(formatCongolesePaymentPhone(value));
+
+const getApiMessage = (error: any, fallback: string) => {
+  const message = error?.data?.message ?? error?.error ?? error?.message ?? fallback;
+  return Array.isArray(message) ? message.join('\n') : String(message);
+};
+
+const isSubscriptionPaymentComplete = (response?: SubscriptionPaymentResponse | null) =>
+  response?.subscription?.status === 'active' || response?.payment?.status === 'succeeded';
+
+const isSubscriptionPaymentFailed = (response?: SubscriptionPaymentResponse | null) =>
+  response?.payment?.status === 'failed' || response?.subscription?.status === 'payment_failed';
+
+const getCardPaymentResultFromUrl = (url?: string | null): SubscriptionCardPaymentResult | null => {
+  if (!url) return null;
+  const lowerUrl = url.toLowerCase();
+  if (lowerUrl.includes('status=success') || lowerUrl.includes('/success')) return 'success';
+  if (lowerUrl.includes('status=cancel') || lowerUrl.includes('/cancel')) return 'cancel';
+  if (lowerUrl.includes('status=decline') || lowerUrl.includes('/decline')) return 'decline';
+  return null;
+};
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { openSubscription, paymentStatus } = useLocalSearchParams<{
+    openSubscription?: string;
+    paymentStatus?: string;
+  }>();
   const insets = useSafeAreaInsets();
   const dispatch = useAppDispatch();
   const user = useAppSelector(selectUser);
@@ -93,9 +192,21 @@ export default function ProfileScreen() {
   const [newPin, setNewPin] = useState('');
   const [newPinConfirm, setNewPinConfirm] = useState('');
   const [isSendingOtp, setIsSendingOtp] = useState(false);
-  const [openingProEnquiry, setOpeningProEnquiry] = useState(false);
+  const [openingDocumentsPack, setOpeningDocumentsPack] = useState(false);
+  const [subscriptionModalVisible, setSubscriptionModalVisible] = useState(false);
+  const [selectedSubscriptionPaymentChannel, setSelectedSubscriptionPaymentChannel] =
+    useState<SubscriptionPaymentChannel>('mpesa');
+  const [subscriptionPhone, setSubscriptionPhone] = useState('');
+  const [subscriptionPaymentOrderNumber, setSubscriptionPaymentOrderNumber] = useState<string | null>(null);
+  const [subscriptionPaymentMessage, setSubscriptionPaymentMessage] = useState<string | null>(null);
+  const [isSubscriptionPaymentAutoChecking, setIsSubscriptionPaymentAutoChecking] = useState(false);
+  const openedSubscriptionParamRef = useRef(false);
+  const handledPaymentStatusRef = useRef<string | null>(null);
+  const prefilledSubscriptionPhoneRef = useRef(false);
+  const subscriptionPaymentPollingRunIdRef = useRef(0);
+  const subscriptionPaymentMountedRef = useRef(true);
   const oldPinInputRef = useRef<TextInput | null>(null);
-  const otpInputRefs = useRef<Array<TextInput | null>>([]);
+  const otpInputRefs = useRef<(TextInput | null)[]>([]);
   const pinInputRef = useRef<TextInput | null>(null);
   const pinConfirmInputRef = useRef<TextInput | null>(null);
   const {
@@ -121,6 +232,11 @@ export default function ProfileScreen() {
   const [updateUser, { isLoading: isUpdatingUser }] = useUpdateUserMutation();
   const [sendPhoneVerificationOtp] = useSendPhoneVerificationOtpMutation();
   const [verifyPhoneOtp] = useVerifyPhoneOtpMutation();
+  const [subscribeToPro, { isLoading: isSubscribingPro }] = useSubscribeToProMutation();
+  const [
+    checkSubscriptionPaymentStatus,
+    { isFetching: isCheckingSubscriptionPayment },
+  ] = useLazyCheckSubscriptionPaymentStatusQuery();
   const { data: myTripRequests = [] } = useGetMyTripRequestsQuery();
   const { data: myDriverOffers = [] } = useGetMyDriverOffersQuery();
 
@@ -176,7 +292,12 @@ export default function ProfileScreen() {
   );
   const proPriceLabel = formatSubscriptionAmount(proPlan?.amount, proPlan?.currency);
   const proEndDateLabel = formatSubscriptionEndDate(premiumOverview?.endDate);
-  const proBusy = premiumOverviewFetching || openingProEnquiry;
+  const proBusy =
+    premiumOverviewFetching ||
+    isSubscribingPro ||
+    isCheckingSubscriptionPayment ||
+    isSubscriptionPaymentAutoChecking;
+  const isSubscriptionCardPayment = selectedSubscriptionPaymentChannel === 'card';
   const { shouldShow: shouldShowProfileGuide, complete: completeProfileGuide } =
     useTutorialGuide('profile_screen');
   const [profileGuideVisible, setProfileGuideVisible] = useState(false);
@@ -186,6 +307,19 @@ export default function ProfileScreen() {
       setProfileGuideVisible(true);
     }
   }, [shouldShowProfileGuide]);
+
+  useEffect(() => {
+    if (prefilledSubscriptionPhoneRef.current || !currentUser?.phone) {
+      return;
+    }
+    setSubscriptionPhone(formatCongolesePaymentPhone(currentUser.phone));
+    prefilledSubscriptionPhoneRef.current = true;
+  }, [currentUser?.phone]);
+
+  useEffect(() => () => {
+    subscriptionPaymentMountedRef.current = false;
+    subscriptionPaymentPollingRunIdRef.current += 1;
+  }, []);
 
   const handleDismissProfileGuide = () => {
     setProfileGuideVisible(false);
@@ -486,25 +620,392 @@ export default function ProfileScreen() {
     void handleBecomeDriver();
   };
 
-  const handleSubscribePro = async () => {
+  const openExternalUrl = async (url: string) => {
+    try {
+      await WebBrowser.openBrowserAsync(url);
+    } catch {
+      await Linking.openURL(url);
+    }
+  };
+
+  const closeSubscriptionModal = () => {
+    if (isSubscribingPro || isCheckingSubscriptionPayment || isSubscriptionPaymentAutoChecking) {
+      return;
+    }
+    setSubscriptionModalVisible(false);
+  };
+
+  const stopSubscriptionPaymentAutoCheck = useCallback(() => {
+    subscriptionPaymentPollingRunIdRef.current += 1;
+    if (subscriptionPaymentMountedRef.current) {
+      setIsSubscriptionPaymentAutoChecking(false);
+    }
+  }, []);
+
+  const finishSubscriptionPayment = useCallback(async (response: SubscriptionPaymentResponse) => {
+    if (!isSubscriptionPaymentComplete(response)) {
+      return false;
+    }
+
+    stopSubscriptionPaymentAutoCheck();
+    await Promise.allSettled([
+      Promise.resolve(refetchPremiumOverview()),
+      Promise.resolve(refetchProfile()),
+    ]);
+    setSubscriptionModalVisible(false);
+    setSubscriptionPaymentOrderNumber(null);
+    setSubscriptionPaymentMessage(null);
+    showDialog({
+      variant: 'success',
+      title: 'Abonnement actif',
+      message: 'Votre abonnement conducteur est actif. Vous pouvez publier plus de 5 trajets par jour.',
+    });
+    return true;
+  }, [refetchPremiumOverview, refetchProfile, showDialog, stopSubscriptionPaymentAutoCheck]);
+
+  const checkSubscriptionPaymentByOrderNumber = useCallback(async (
+    orderNumber: string,
+    options?: {
+      pendingMessage?: string;
+      suppressErrorDialog?: boolean;
+      silentErrorMessage?: string;
+    },
+  ) => {
+    try {
+      const response = await checkSubscriptionPaymentStatus(orderNumber).unwrap();
+      if (await finishSubscriptionPayment(response)) {
+        return 'success' as SubscriptionPaymentCheckOutcome;
+      }
+
+      if (isSubscriptionPaymentFailed(response)) {
+        setSubscriptionPaymentMessage(
+          response.payment.message ||
+            'Le paiement a echoue. Vous pouvez reessayer ou choisir un autre moyen de paiement.',
+        );
+        return 'failed' as SubscriptionPaymentCheckOutcome;
+      }
+
+      setSubscriptionPaymentMessage(
+        response.payment.message ||
+          options?.pendingMessage ||
+          'Paiement encore en attente. Confirmez sur votre telephone ou terminez la page carte.',
+      );
+      return 'pending' as SubscriptionPaymentCheckOutcome;
+    } catch (error: any) {
+      if (options?.suppressErrorDialog) {
+        setSubscriptionPaymentMessage(
+          options.silentErrorMessage ||
+            'Demande envoyee. Nous poursuivons la verification automatique du paiement.',
+        );
+        return 'error' as SubscriptionPaymentCheckOutcome;
+      }
+
+      showDialog({
+        variant: 'danger',
+        title: 'Verification impossible',
+        message: getApiMessage(error, 'Impossible de verifier ce paiement pour le moment.'),
+      });
+      return 'error' as SubscriptionPaymentCheckOutcome;
+    }
+  }, [checkSubscriptionPaymentStatus, finishSubscriptionPayment, showDialog]);
+
+  const startSubscriptionPaymentAutoCheck = useCallback((
+    orderNumber: string,
+    initialMessage?: string | null,
+  ) => {
+    if (!orderNumber) {
+      return;
+    }
+
+    const runId = subscriptionPaymentPollingRunIdRef.current + 1;
+    subscriptionPaymentPollingRunIdRef.current = runId;
+    setIsSubscriptionPaymentAutoChecking(true);
+    setSubscriptionPaymentMessage(
+      initialMessage ||
+        'Demande envoyee. Confirmez le paiement sur votre telephone. Verification automatique en cours pendant 2 minutes.',
+    );
+
+    void (async () => {
+      const deadline = Date.now() + SUBSCRIPTION_MOBILE_MONEY_AUTO_CHECK_TIMEOUT_MS;
+      let attempt = 0;
+      let nextDelay = SUBSCRIPTION_MOBILE_MONEY_AUTO_CHECK_INITIAL_DELAY_MS;
+
+      while (
+        subscriptionPaymentMountedRef.current &&
+        subscriptionPaymentPollingRunIdRef.current === runId
+      ) {
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) {
+          break;
+        }
+
+        await wait(Math.min(nextDelay, remainingMs));
+
+        if (
+          !subscriptionPaymentMountedRef.current ||
+          subscriptionPaymentPollingRunIdRef.current !== runId
+        ) {
+          return;
+        }
+
+        attempt += 1;
+        const outcome = await checkSubscriptionPaymentByOrderNumber(orderNumber, {
+          pendingMessage:
+            attempt === 1
+              ? 'Confirmation en cours sur votre telephone. Verification automatique...'
+              : `Paiement en attente. Verification automatique ${attempt} en cours...`,
+          suppressErrorDialog: true,
+          silentErrorMessage:
+            'Demande envoyee. Nous poursuivons la verification automatique du paiement.',
+        });
+
+        if (
+          !subscriptionPaymentMountedRef.current ||
+          subscriptionPaymentPollingRunIdRef.current !== runId
+        ) {
+          return;
+        }
+
+        if (outcome === 'success' || outcome === 'failed') {
+          setIsSubscriptionPaymentAutoChecking(false);
+          return;
+        }
+
+        nextDelay = SUBSCRIPTION_MOBILE_MONEY_AUTO_CHECK_INTERVAL_MS;
+      }
+
+      if (
+        subscriptionPaymentMountedRef.current &&
+        subscriptionPaymentPollingRunIdRef.current === runId
+      ) {
+        setIsSubscriptionPaymentAutoChecking(false);
+        setSubscriptionPaymentMessage(
+          'Demande envoyee. Nous n avons pas encore recu la confirmation du paiement. Vous pouvez patienter encore un peu ou lancer une verification manuelle.',
+        );
+      }
+    })();
+  }, [checkSubscriptionPaymentByOrderNumber]);
+
+  const openCardPaymentUrl = useCallback(async (
+    paymentUrl: string,
+    orderNumber: string | null,
+    returnUrl: string,
+  ) => {
+    const result = await WebBrowser.openAuthSessionAsync(paymentUrl, returnUrl);
+
+    if (result.type !== 'success') {
+      setSubscriptionPaymentMessage(
+        'Paiement carte interrompu. Vous pouvez rouvrir le paiement ou verifier le statut.',
+      );
+      return;
+    }
+
+    const paymentResult = getCardPaymentResultFromUrl(result.url);
+    if (paymentResult === 'cancel') {
+      setSubscriptionPaymentMessage('Paiement carte annule. Vous pouvez relancer le paiement.');
+      return;
+    }
+
+    if (paymentResult === 'decline') {
+      setSubscriptionPaymentMessage('Paiement carte refuse. Verifiez votre carte ou essayez un autre moyen.');
+      return;
+    }
+
+    if (!orderNumber) {
+      setSubscriptionPaymentMessage(
+        'Retour du paiement carte recu. La reference FlexPay est manquante, relancez la verification plus tard.',
+      );
+      return;
+    }
+
+    await checkSubscriptionPaymentByOrderNumber(
+      orderNumber,
+      {
+        pendingMessage:
+          paymentResult === 'success'
+            ? 'Paiement carte valide cote FlexPay, activation en cours.'
+            : 'Retour du paiement carte recu. Verification FlexPay en cours.',
+      },
+    );
+  }, [checkSubscriptionPaymentByOrderNumber]);
+
+  const handleSubscribePro = () => {
     if (!isDriver) {
       handleStartDriverOnboarding();
       return;
     }
 
+    stopSubscriptionPaymentAutoCheck();
+    if (!subscriptionPhone.trim()) {
+      setSubscriptionPhone(DRC_MOBILE_MONEY_PREFIX);
+    }
+    setSubscriptionPaymentOrderNumber(null);
+    setSubscriptionPaymentMessage(null);
+    setSubscriptionModalVisible(true);
+  };
+
+  const handleOpenDocumentsPack = async () => {
     try {
-      setOpeningProEnquiry(true);
-      await Linking.openURL(ZWANGA_PRO_ENQUIRY_URL);
+      setOpeningDocumentsPack(true);
+      await openExternalUrl(ZWANGA_DOCUMENTS_PACK_URL);
     } catch {
       showDialog({
         variant: 'danger',
         title: 'Redirection impossible',
-        message: `Impossible d'ouvrir la page Zwanga Pro pour le moment. Vous pouvez aller sur ${ZWANGA_PRO_ENQUIRY_URL}.`,
+        message: `Impossible d'ouvrir le site pour le moment. Vous pouvez aller sur ${ZWANGA_DOCUMENTS_PACK_URL}.`,
       });
     } finally {
-      setOpeningProEnquiry(false);
+      setOpeningDocumentsPack(false);
     }
   };
+
+  const handleSubmitSubscriptionPayment = async () => {
+    const phone = formatCongolesePaymentPhone(subscriptionPhone);
+    const paymentMethod = isSubscriptionCardPayment ? 'card' : 'mobile_money';
+
+    if (!isSubscriptionCardPayment && !phone) {
+      showDialog({
+        variant: 'warning',
+        title: 'Numero requis',
+        message: 'Entrez le numero Mobile Money qui recevra la demande de paiement.',
+      });
+      return;
+    }
+
+    if (!isSubscriptionCardPayment && !isValidCongolesePaymentPhone(phone)) {
+      showDialog({
+        variant: 'warning',
+        title: 'Numero invalide',
+        message: 'Le numero Mobile Money doit commencer par +243, par exemple +243891234567.',
+      });
+      return;
+    }
+
+    try {
+      stopSubscriptionPaymentAutoCheck();
+      setSubscriptionPaymentMessage(null);
+      if (!isSubscriptionCardPayment) {
+        setSubscriptionPhone(phone);
+      }
+      const cardRedirectUrls = isSubscriptionCardPayment
+        ? createCardPaymentRedirectUrls()
+        : null;
+      const response = await subscribeToPro({
+        paymentMethod,
+        phone: isSubscriptionCardPayment ? undefined : phone,
+        ...(cardRedirectUrls
+          ? {
+              approveUrl: cardRedirectUrls.approveUrl,
+              cancelUrl: cardRedirectUrls.cancelUrl,
+              declineUrl: cardRedirectUrls.declineUrl,
+            }
+          : {}),
+      }).unwrap();
+
+      setSubscriptionPaymentOrderNumber(response.payment.orderNumber);
+
+      if (await finishSubscriptionPayment(response)) {
+        return;
+      }
+
+      if (response.payment.paymentUrl) {
+        setSubscriptionPaymentMessage(
+          'Paiement carte ouvert. Validez dans la fenetre securisee FlexPay.',
+        );
+        if (cardRedirectUrls) {
+          await openCardPaymentUrl(
+            response.payment.paymentUrl,
+            response.payment.orderNumber,
+            cardRedirectUrls.returnUrl,
+          );
+        } else {
+          await openExternalUrl(response.payment.paymentUrl);
+        }
+        return;
+      }
+
+      if (!isSubscriptionCardPayment && response.payment.orderNumber) {
+        startSubscriptionPaymentAutoCheck(
+          response.payment.orderNumber,
+          response.payment.message ||
+            'Demande envoyee. Confirmez le paiement sur votre telephone. Verification automatique en cours pendant 2 minutes.',
+        );
+        return;
+      }
+
+      setSubscriptionPaymentMessage(
+        response.payment.message ||
+          'Confirmez la demande de paiement sur votre telephone, puis verifiez le statut.',
+      );
+    } catch (error: any) {
+      showDialog({
+        variant: 'danger',
+        title: 'Paiement impossible',
+        message: getApiMessage(error, 'Impossible de lancer le paiement pour le moment.'),
+      });
+    }
+  };
+
+  const handleCheckSubscriptionPayment = async () => {
+    if (!subscriptionPaymentOrderNumber) {
+      showDialog({
+        variant: 'warning',
+        title: 'Paiement introuvable',
+        message: 'Lancez d abord le paiement avant de verifier son statut.',
+      });
+      return;
+    }
+
+    stopSubscriptionPaymentAutoCheck();
+    await checkSubscriptionPaymentByOrderNumber(subscriptionPaymentOrderNumber);
+  };
+
+  useEffect(() => {
+    if (openedSubscriptionParamRef.current || !openSubscription || !currentUser) {
+      return;
+    }
+
+    openedSubscriptionParamRef.current = true;
+    if (isDriver) {
+      setSubscriptionPaymentOrderNumber(null);
+      setSubscriptionPaymentMessage(null);
+      setSubscriptionModalVisible(true);
+    }
+  }, [currentUser, isDriver, openSubscription]);
+
+  useEffect(() => {
+    if (!paymentStatus || handledPaymentStatusRef.current === paymentStatus) {
+      return;
+    }
+
+    handledPaymentStatusRef.current = paymentStatus;
+    setSubscriptionModalVisible(true);
+
+    const normalizedStatus = String(paymentStatus).toLowerCase();
+    if (normalizedStatus === 'success' && subscriptionPaymentOrderNumber) {
+      void checkSubscriptionPaymentByOrderNumber(
+        subscriptionPaymentOrderNumber,
+        {
+          pendingMessage: 'Retour du paiement carte recu. Verification FlexPay en cours.',
+        },
+      );
+      return;
+    }
+
+    if (normalizedStatus === 'cancel') {
+      setSubscriptionPaymentMessage('Paiement carte annule. Vous pouvez relancer le paiement.');
+      return;
+    }
+
+    if (normalizedStatus === 'decline') {
+      setSubscriptionPaymentMessage('Paiement carte refuse. Verifiez votre carte ou essayez un autre moyen.');
+      return;
+    }
+
+    setSubscriptionPaymentMessage(
+      'Retour du paiement carte recu. Utilisez le bouton de verification pour confirmer le statut.',
+    );
+  }, [paymentStatus, subscriptionPaymentOrderNumber, checkSubscriptionPaymentByOrderNumber]);
 
   const buildKycFormData = (files?: Partial<KycCaptureResult>) => {
     const formData = new FormData();
@@ -1079,7 +1580,7 @@ export default function ProfileScreen() {
                   </View>
                   <Text style={styles.proSubtitle} numberOfLines={2}>
                     {isDriver
-                      ? 'Plus de visibilité pour vos trajets conducteur.'
+                      ? '5 trajets par jour inclus, abonnement pour publier sans blocage.'
                       : 'Réservé aux conducteurs qui publient des trajets.'}
                   </Text>
                 </View>
@@ -1088,11 +1589,11 @@ export default function ProfileScreen() {
               <View style={styles.proBenefitRow}>
                 <View style={styles.proBenefitPill}>
                   <Ionicons name="ribbon-outline" size={14} color={Colors.primary} />
-                  <Text style={styles.proBenefitText}>Badge Pro</Text>
+                  <Text style={styles.proBenefitText}>{proPriceLabel}/mois</Text>
                 </View>
                 <View style={styles.proBenefitPill}>
                   <Ionicons name="trending-up-outline" size={14} color={Colors.info} />
-                  <Text style={styles.proBenefitText}>Trajets mis en avant</Text>
+                  <Text style={styles.proBenefitText}>Plus de 5 trajets/jour</Text>
                 </View>
               </View>
 
@@ -1138,11 +1639,11 @@ export default function ProfileScreen() {
                   disabled={proBusy}
                   activeOpacity={0.85}
                 >
-                  {openingProEnquiry ? (
+                  {proBusy ? (
                     <ActivityIndicator color={Colors.primary} />
                   ) : (
                     <>
-                      <Text style={styles.proSecondaryButtonText}>Passer à Pro</Text>
+                      <Text style={styles.proSecondaryButtonText}>{"Payer dans l'app"}</Text>
                       <Text style={styles.proSecondaryPrice}>{proPriceLabel}</Text>
                     </>
                   )}
@@ -1150,6 +1651,39 @@ export default function ProfileScreen() {
               )}
             </View>
           </Animated.View>
+
+          {isDriver && (
+            <Animated.View entering={FadeInDown.delay(300)}>
+              <View style={styles.documentPackCard}>
+                <View style={styles.documentPackHeader}>
+                  <View style={styles.documentPackIcon}>
+                    <Ionicons name="documents-outline" size={22} color={Colors.info} />
+                  </View>
+                  <View style={styles.documentPackContent}>
+                    <Text style={styles.documentPackTitle}>Pack documents véhicule</Text>
+                    <Text style={styles.documentPackSubtitle}>
+                      Continuez sur le site Zwanga pour les documents nécessaires au véhicule.
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={styles.documentPackButton}
+                  onPress={handleOpenDocumentsPack}
+                  disabled={openingDocumentsPack}
+                  activeOpacity={0.85}
+                >
+                  {openingDocumentsPack ? (
+                    <ActivityIndicator color={Colors.info} />
+                  ) : (
+                    <>
+                      <Text style={styles.documentPackButtonText}>Continuer sur le site</Text>
+                      <Ionicons name="open-outline" size={16} color={Colors.info} />
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
+          )}
         </View>
 
         <View style={styles.section}>
@@ -1644,6 +2178,180 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               </>
             )}
+            </ScrollView>
+          </Animated.View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        visible={subscriptionModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeSubscriptionModal}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.subscriptionModalOverlay}
+        >
+          <TouchableOpacity
+            style={styles.subscriptionModalBackdrop}
+            activeOpacity={1}
+            onPress={closeSubscriptionModal}
+          />
+          <Animated.View
+            entering={FadeInDown}
+            style={[
+              styles.subscriptionModalCard,
+              { paddingBottom: Math.max(insets.bottom, Spacing.lg) },
+            ]}
+          >
+            <View style={styles.subscriptionModalHandle} />
+            <LinearGradient
+              colors={['#FFF7ED', '#FFFFFF']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.subscriptionModalHero}
+            >
+              <View style={styles.subscriptionHeaderTopRow}>
+                <View style={styles.subscriptionHeaderBadge}>
+                  <Ionicons name="sparkles-outline" size={14} color={Colors.primaryDark} />
+                  <Text style={styles.subscriptionHeaderBadgeText}>Conducteur Pro</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={closeSubscriptionModal}
+                  disabled={proBusy}
+                  style={styles.subscriptionModalCloseButton}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="close" size={18} color={Colors.gray[700]} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.subscriptionModalHeader}>
+                <View style={styles.subscriptionModalHeaderTextBlock}>
+                  <Text style={styles.subscriptionModalTitle}>Abonnement conducteur</Text>
+                  <Text style={styles.subscriptionModalSubtitle}>
+                    Pour publier au-delà des 5 trajets inclus chaque jour.
+                  </Text>
+                </View>
+
+                <View style={styles.subscriptionModalPricePill}>
+                  <Text style={styles.subscriptionModalPrice}>{proPriceLabel}</Text>
+                  <Text style={styles.subscriptionModalPriceCaption}>par mois</Text>
+                </View>
+              </View>
+            </LinearGradient>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.subscriptionModalContent}
+            >
+              <View style={styles.subscriptionSummaryCard}>
+                <Text style={styles.subscriptionSummaryPrice}>{proPriceLabel}</Text>
+                <Text style={styles.subscriptionSummaryText}>
+                  {"Le quota gratuit reste à 5 trajets par jour. L'abonnement débloque les publications supplémentaires dès validation du paiement."}
+                </Text>
+              </View>
+
+              <Text style={styles.subscriptionSectionLabel}>Moyen de paiement</Text>
+              <View style={styles.subscriptionPaymentGrid}>
+                {SUBSCRIPTION_PAYMENT_OPTIONS.map((option) => {
+                  const isSelected = selectedSubscriptionPaymentChannel === option.id;
+                  return (
+                    <TouchableOpacity
+                      key={option.id}
+                      style={[
+                        styles.subscriptionPaymentOption,
+                        isSelected && styles.subscriptionPaymentOptionActive,
+                      ]}
+                      disabled={proBusy}
+                      onPress={() => setSelectedSubscriptionPaymentChannel(option.id)}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons
+                        name={option.icon}
+                        size={20}
+                        color={isSelected ? Colors.primary : Colors.gray[600]}
+                      />
+                      <View style={styles.subscriptionPaymentOptionText}>
+                        <Text style={styles.subscriptionPaymentOptionLabel}>{option.label}</Text>
+                        <Text style={styles.subscriptionPaymentOptionHint}>{option.hint}</Text>
+                      </View>
+                      {isSelected && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {!isSubscriptionCardPayment && (
+                <View style={styles.subscriptionPhoneSection}>
+                  <Text style={styles.subscriptionSectionLabel}>Numéro Mobile Money</Text>
+                  <View style={styles.subscriptionPhoneInputWrapper}>
+                    <Ionicons name="call-outline" size={18} color={Colors.gray[500]} />
+                    <TextInput
+                      style={styles.subscriptionPhoneInput}
+                      keyboardType="phone-pad"
+                      editable={!proBusy}
+                      maxLength={13}
+                      value={subscriptionPhone}
+                      onChangeText={(text) => setSubscriptionPhone(normalizePaymentPhone(text))}
+                      placeholder="+243891234567"
+                      placeholderTextColor={Colors.gray[400]}
+                    />
+                  </View>
+                  <Text style={styles.subscriptionInputHint}>
+                    Le numéro Mobile Money doit commencer par +243. FlexPay enverra une demande de confirmation sur ce numéro.
+                  </Text>
+                </View>
+              )}
+
+              {(subscriptionPaymentMessage || subscriptionPaymentOrderNumber) && (
+                <View style={styles.subscriptionPendingPanel}>
+                  <Ionicons name="time-outline" size={18} color={Colors.warningDark} />
+                  <View style={styles.subscriptionPendingTextContent}>
+                    <Text style={styles.subscriptionPendingTitle}>Paiement en cours</Text>
+                    {subscriptionPaymentMessage ? (
+                      <Text style={styles.subscriptionPendingText}>{subscriptionPaymentMessage}</Text>
+                    ) : null}
+                    {subscriptionPaymentOrderNumber ? (
+                      <Text style={styles.subscriptionPendingReference}>
+                        Référence {subscriptionPaymentOrderNumber}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={[styles.subscriptionPrimaryButton, proBusy && styles.subscriptionButtonDisabled]}
+                onPress={handleSubmitSubscriptionPayment}
+                disabled={proBusy}
+                activeOpacity={0.85}
+              >
+                {isSubscribingPro || isSubscriptionPaymentAutoChecking ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <Text style={styles.subscriptionPrimaryButtonText}>
+                    {isSubscriptionCardPayment ? 'Ouvrir le paiement carte' : 'Lancer le paiement'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+
+              {subscriptionPaymentOrderNumber && !isSubscriptionPaymentAutoChecking && (
+                <TouchableOpacity
+                  style={[styles.subscriptionSecondaryButton, proBusy && styles.subscriptionButtonDisabled]}
+                  onPress={handleCheckSubscriptionPayment}
+                  disabled={proBusy}
+                  activeOpacity={0.85}
+                >
+                  {isCheckingSubscriptionPayment ? (
+                    <ActivityIndicator color={Colors.primary} />
+                  ) : (
+                    <Text style={styles.subscriptionSecondaryButtonText}>Vérifier le statut</Text>
+                  )}
+                </TouchableOpacity>
+              )}
             </ScrollView>
           </Animated.View>
         </KeyboardAvoidingView>
@@ -2592,6 +3300,310 @@ const styles = StyleSheet.create({
     color: Colors.successDark,
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
+  },
+  documentPackCard: {
+    marginTop: Spacing.md,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.info + '25',
+    padding: Spacing.md,
+    gap: Spacing.md,
+    ...CommonStyles.shadowSm,
+  },
+  documentPackHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  documentPackIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.info + '12',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  documentPackContent: {
+    flex: 1,
+  },
+  documentPackTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  documentPackSubtitle: {
+    marginTop: 2,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+    lineHeight: 17,
+  },
+  documentPackButton: {
+    minHeight: 44,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.info + '35',
+    backgroundColor: Colors.info + '08',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+  },
+  documentPackButtonText: {
+    color: Colors.info,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  subscriptionModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  subscriptionModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  subscriptionModalCard: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    maxHeight: '88%',
+    paddingTop: Spacing.sm,
+    overflow: 'hidden',
+    ...CommonStyles.shadowLg,
+  },
+  subscriptionModalHandle: {
+    width: 48,
+    height: 5,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[300],
+    alignSelf: 'center',
+    marginBottom: Spacing.md,
+  },
+  subscriptionModalHero: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+  },
+  subscriptionHeaderTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  subscriptionHeaderBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.primary + '18',
+    backgroundColor: Colors.primary + '10',
+  },
+  subscriptionHeaderBadgeText: {
+    color: Colors.primaryDark,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+  },
+  subscriptionModalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white + 'D9',
+  },
+  subscriptionModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    gap: Spacing.md,
+  },
+  subscriptionModalHeaderTextBlock: {
+    flex: 1,
+    gap: Spacing.xs,
+  },
+  subscriptionModalTitle: {
+    fontSize: FontSizes.xxl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  subscriptionModalSubtitle: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.base,
+    lineHeight: 24,
+  },
+  subscriptionModalPricePill: {
+    minWidth: 112,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.lg,
+    alignItems: 'flex-end',
+    borderWidth: 1,
+    borderColor: Colors.primary + '16',
+    backgroundColor: Colors.white + 'F2',
+    ...CommonStyles.shadowSm,
+  },
+  subscriptionModalPrice: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+  },
+  subscriptionModalPriceCaption: {
+    marginTop: 2,
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+  },
+  subscriptionModalContent: {
+    padding: Spacing.xl,
+    gap: Spacing.md,
+  },
+  subscriptionSummaryCard: {
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.primary + '07',
+    borderWidth: 1,
+    borderColor: Colors.primary + '16',
+    padding: Spacing.lg,
+  },
+  subscriptionSummaryPrice: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+  },
+  subscriptionSummaryText: {
+    marginTop: Spacing.xs,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+    lineHeight: 20,
+  },
+  subscriptionSectionLabel: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+  },
+  subscriptionPaymentGrid: {
+    gap: Spacing.sm,
+  },
+  subscriptionPaymentOption: {
+    minHeight: 58,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  subscriptionPaymentOptionActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '08',
+  },
+  subscriptionPaymentOptionText: {
+    flex: 1,
+  },
+  subscriptionPaymentOptionLabel: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  subscriptionPaymentOptionHint: {
+    marginTop: 2,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+  },
+  subscriptionPhoneSection: {
+    gap: Spacing.sm,
+  },
+  subscriptionPhoneInputWrapper: {
+    minHeight: 52,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+    paddingHorizontal: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  subscriptionPhoneInput: {
+    flex: 1,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+  },
+  subscriptionInputHint: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    lineHeight: 17,
+  },
+  subscriptionPendingPanel: {
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.warning + '12',
+    borderWidth: 1,
+    borderColor: Colors.warning + '30',
+    padding: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+  },
+  subscriptionPendingTextContent: {
+    flex: 1,
+  },
+  subscriptionPendingTitle: {
+    color: Colors.warningDark,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.sm,
+  },
+  subscriptionPendingText: {
+    marginTop: 2,
+    color: Colors.gray[700],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+  },
+  subscriptionPendingReference: {
+    marginTop: 4,
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+  },
+  subscriptionPrimaryButton: {
+    minHeight: 48,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  subscriptionPrimaryButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  subscriptionSecondaryButton: {
+    minHeight: 46,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary + '35',
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  subscriptionSecondaryButtonText: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  subscriptionButtonDisabled: {
+    opacity: 0.6,
   },
   becomeDriverCard: {
     marginTop: Spacing.md,

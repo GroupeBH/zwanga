@@ -47,6 +47,18 @@ function getLocationCoordinates(selection: MapLocationSelection | null): [number
   return [selection.longitude, selection.latitude];
 }
 
+function isDailyPublicationLimitError(error: any) {
+  const rawMessage = error?.data?.message ?? error?.error ?? error?.message ?? '';
+  const message = Array.isArray(rawMessage) ? rawMessage.join(' ') : String(rawMessage);
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('5 trajets') ||
+    normalized.includes('cinq trajets') ||
+    (normalized.includes('limite') && normalized.includes('jour')) ||
+    (normalized.includes('daily') && normalized.includes('limit'))
+  );
+}
+
 export default function PublishScreen() {
   const router = useRouter();
   const { mode } = useLocalSearchParams<{ mode?: string }>();
@@ -852,12 +864,22 @@ export default function PublishScreen() {
         'Impossible de publier le trajet pour le moment. Veuillez reessayer.';
 
       const isDriverError = isDriverRequiredError(error);
+      const isQuotaError = isDailyPublicationLimitError(error);
 
       showDialog({
-        variant: 'danger',
-        title: 'Erreur',
+        variant: isQuotaError ? 'warning' : 'danger',
+        title: isQuotaError ? 'Abonnement conducteur requis' : 'Erreur',
         message: Array.isArray(message) ? message.join('\n') : message,
-        actions: isDriverError
+        actions: isQuotaError
+          ? [
+              { label: 'Plus tard', variant: 'ghost' },
+              {
+                label: "Activer l'abonnement",
+                variant: 'primary',
+                onPress: () => router.push({ pathname: '/profile', params: { openSubscription: '1' } }),
+              },
+            ]
+          : isDriverError
           ? [
               { label: 'Fermer', variant: 'ghost' },
               createBecomeDriverAction(router),
