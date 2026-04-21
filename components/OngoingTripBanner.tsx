@@ -1,3 +1,4 @@
+import { getFloatingBannerBottomOffset } from '@/constants/navigation';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import {
   startOngoingTripTracking,
@@ -219,15 +220,13 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
   const iconName = isDriver ? 'car-sport' : 'navigate-circle';
   const statusBadgeColor = isDriver ? '#A855F7' : '#14B8A6';
 
-  // Calculate bottom padding for tab bar
-  const tabBarHeight = Platform.OS === 'ios' ? 88 : 125;
-  const bottomPadding = tabBarHeight + Spacing.sm;
+  const bottomPadding = getFloatingBannerBottomOffset(insets.bottom);
 
   return (
     <Animated.View
       style={[
         styles.container,
-        { bottom: bottomPadding + insets.bottom },
+        { bottom: bottomPadding },
         animatedStyle
       ]}
     >

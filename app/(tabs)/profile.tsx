@@ -2205,17 +2205,42 @@ export default function ProfileScreen() {
               { paddingBottom: Math.max(insets.bottom, Spacing.lg) },
             ]}
           >
-            <View style={styles.subscriptionModalHeader}>
-              <View>
-                <Text style={styles.subscriptionModalTitle}>Abonnement conducteur</Text>
-                <Text style={styles.subscriptionModalSubtitle}>
-                  {proPriceLabel} par mois pour publier plus de 5 trajets par jour.
-                </Text>
+            <View style={styles.subscriptionModalHandle} />
+            <LinearGradient
+              colors={['#FFF7ED', '#FFFFFF']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.subscriptionModalHero}
+            >
+              <View style={styles.subscriptionHeaderTopRow}>
+                <View style={styles.subscriptionHeaderBadge}>
+                  <Ionicons name="sparkles-outline" size={14} color={Colors.primaryDark} />
+                  <Text style={styles.subscriptionHeaderBadgeText}>Conducteur Pro</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={closeSubscriptionModal}
+                  disabled={proBusy}
+                  style={styles.subscriptionModalCloseButton}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="close" size={18} color={Colors.gray[700]} />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity onPress={closeSubscriptionModal} disabled={proBusy}>
-                <Ionicons name="close" size={24} color={Colors.gray[500]} />
-              </TouchableOpacity>
-            </View>
+
+              <View style={styles.subscriptionModalHeader}>
+                <View style={styles.subscriptionModalHeaderTextBlock}>
+                  <Text style={styles.subscriptionModalTitle}>Abonnement conducteur</Text>
+                  <Text style={styles.subscriptionModalSubtitle}>
+                    Pour publier au-delà des 5 trajets inclus chaque jour.
+                  </Text>
+                </View>
+
+                <View style={styles.subscriptionModalPricePill}>
+                  <Text style={styles.subscriptionModalPrice}>{proPriceLabel}</Text>
+                  <Text style={styles.subscriptionModalPriceCaption}>par mois</Text>
+                </View>
+              </View>
+            </LinearGradient>
 
             <ScrollView
               showsVerticalScrollIndicator={false}
@@ -3343,40 +3368,110 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
     maxHeight: '88%',
-    paddingTop: Spacing.lg,
+    paddingTop: Spacing.sm,
+    overflow: 'hidden',
     ...CommonStyles.shadowLg,
+  },
+  subscriptionModalHandle: {
+    width: 48,
+    height: 5,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[300],
+    alignSelf: 'center',
+    marginBottom: Spacing.md,
+  },
+  subscriptionModalHero: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+  },
+  subscriptionHeaderTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  subscriptionHeaderBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.primary + '18',
+    backgroundColor: Colors.primary + '10',
+  },
+  subscriptionHeaderBadgeText: {
+    color: Colors.primaryDark,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+  },
+  subscriptionModalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white + 'D9',
   },
   subscriptionModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[100],
+    alignItems: 'flex-end',
     gap: Spacing.md,
   },
+  subscriptionModalHeaderTextBlock: {
+    flex: 1,
+    gap: Spacing.xs,
+  },
   subscriptionModalTitle: {
-    fontSize: FontSizes.lg,
+    fontSize: FontSizes.xxl,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
   subscriptionModalSubtitle: {
-    marginTop: 4,
     color: Colors.gray[600],
-    fontSize: FontSizes.sm,
-    lineHeight: 19,
+    fontSize: FontSizes.base,
+    lineHeight: 24,
+  },
+  subscriptionModalPricePill: {
+    minWidth: 112,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.lg,
+    alignItems: 'flex-end',
+    borderWidth: 1,
+    borderColor: Colors.primary + '16',
+    backgroundColor: Colors.white + 'F2',
+    ...CommonStyles.shadowSm,
+  },
+  subscriptionModalPrice: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+  },
+  subscriptionModalPriceCaption: {
+    marginTop: 2,
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
   },
   subscriptionModalContent: {
     padding: Spacing.xl,
     gap: Spacing.md,
   },
   subscriptionSummaryCard: {
-    borderRadius: BorderRadius.sm,
-    backgroundColor: Colors.primary + '08',
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.primary + '07',
     borderWidth: 1,
-    borderColor: Colors.primary + '20',
-    padding: Spacing.md,
+    borderColor: Colors.primary + '16',
+    padding: Spacing.lg,
   },
   subscriptionSummaryPrice: {
     fontSize: FontSizes.xl,
