@@ -1,5 +1,5 @@
-import { useDialog } from '@/components/ui/DialogProvider';
 import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
+import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { trackEvent } from '@/services/analytics';
@@ -129,7 +129,8 @@ export default function ManageTripScreen() {
   });
   const [acceptBooking, { isLoading: isAccepting }] = useAcceptBookingMutation();
   const [rejectBooking, { isLoading: isRejecting }] = useRejectBookingMutation();
-  const [updateTrip, { isLoading: isCancellingTrip }] = useUpdateTripMutation();
+  const [updateTripStatus, { isLoading: isUpdatingTripStatus }] = useUpdateTripMutation();
+  const [updateTripRoute, { isLoading: isUpdatingRoute }] = useUpdateTripMutation();
   const [startTrip, { isLoading: isStartingTrip }] = useStartTripMutation();
   const [pauseTrip, { isLoading: isPausingTrip }] = usePauseTripMutation();
   const [confirmPickup, { isLoading: isConfirmingPickup }] = useConfirmPickupMutation();
@@ -149,6 +150,10 @@ export default function ManageTripScreen() {
   const [selectedPassengerName, setSelectedPassengerName] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [securityModalVisible, setSecurityModalVisible] = useState(false);
+  const [editRouteModalVisible, setEditRouteModalVisible] = useState(false);
+  const [editDepartureAddress, setEditDepartureAddress] = useState('');
+  const [editArrivalAddress, setEditArrivalAddress] = useState('');
+  const [editRouteError, setEditRouteError] = useState('');
 
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
@@ -167,6 +172,73 @@ export default function ManageTripScreen() {
 
   const closeTripSecurityModal = () => {
     setSecurityModalVisible(false);
+  };
+
+  const openEditRouteModal = () => {
+    if (!trip || trip.status !== 'upcoming') {
+      return;
+    }
+    setEditDepartureAddress((trip.departure.address || '').trim());
+    setEditArrivalAddress((trip.arrival.address || '').trim());
+    setEditRouteError('');
+    setEditRouteModalVisible(true);
+  };
+
+  const closeEditRouteModal = () => {
+    if (isUpdatingRoute) return;
+    setEditRouteModalVisible(false);
+    setEditRouteError('');
+  };
+
+  const handleSaveRouteAddresses = async () => {
+    if (!trip) return;
+
+    const nextDeparture = editDepartureAddress.trim();
+    const nextArrival = editArrivalAddress.trim();
+
+    if (!nextDeparture || !nextArrival) {
+      setEditRouteError('Renseignez les adresses de depart et d arrivee.');
+      return;
+    }
+
+    if (nextDeparture.toLowerCase() === nextArrival.toLowerCase()) {
+      setEditRouteError('Les adresses de depart et d arrivee doivent etre differentes.');
+      return;
+    }
+
+    const currentDeparture = (trip.departure.address || '').trim();
+    const currentArrival = (trip.arrival.address || '').trim();
+    const updates: { departureLocation?: string; arrivalLocation?: string } = {};
+
+    if (nextDeparture !== currentDeparture) {
+      updates.departureLocation = nextDeparture;
+    }
+    if (nextArrival !== currentArrival) {
+      updates.arrivalLocation = nextArrival;
+    }
+
+    if (!updates.departureLocation && !updates.arrivalLocation) {
+      setEditRouteModalVisible(false);
+      return;
+    }
+
+    try {
+      await updateTripRoute({ id: trip.id, updates }).unwrap();
+      void trackEvent('trip_route_updated', {
+        trip_id: trip.id,
+        source_screen: 'trip_manage',
+        departure_updated: Boolean(updates.departureLocation),
+        arrival_updated: Boolean(updates.arrivalLocation),
+      });
+      setEditRouteModalVisible(false);
+      setEditRouteError('');
+      showFeedback('success', 'Les adresses du trajet ont ete mises a jour.');
+      refreshAll();
+    } catch (error: any) {
+      const message =
+        error?.data?.message ?? error?.error ?? 'Impossible de mettre a jour les adresses du trajet.';
+      setEditRouteError(Array.isArray(message) ? message.join('\n') : message);
+    }
   };
 
   // Calculate arrival coordinate for canCompleteTrip
@@ -381,7 +453,7 @@ export default function ManageTripScreen() {
           variant: 'primary',
           onPress: async () => {
             try {
-              await updateTrip({ id: trip.id, updates: { status: 'cancelled' } }).unwrap();
+              await updateTripStatus({ id: trip.id, updates: { status: 'cancelled' } }).unwrap();
               void trackEvent('trip_cancelled', {
                 trip_id: trip.id,
                 source_screen: 'trip_manage',
@@ -412,7 +484,7 @@ export default function ManageTripScreen() {
           variant: 'primary',
           onPress: async () => {
             try {
-              await updateTrip({ id: trip.id, updates: { status: 'completed' } }).unwrap();
+              await updateTripStatus({ id: trip.id, updates: { status: 'completed' } }).unwrap();
               void trackEvent('trip_completed', {
                 trip_id: trip.id,
                 source_screen: 'trip_manage',
@@ -633,6 +705,13 @@ export default function ManageTripScreen() {
               </View>
             </View>
           </View>
+
+          {/* {trip.status === 'upcoming' && (
+            <TouchableOpacity style={styles.editRouteButton} onPress={openEditRouteModal} activeOpacity={0.9}>
+              <Ionicons name="create-outline" size={16} color={Colors.primary} />
+              <Text style={styles.editRouteButtonText}>Modifier les adresses</Text>
+            </TouchableOpacity>
+          )} */}
 
           <View style={styles.statsGrid}>
             <View style={styles.statItem}>
@@ -870,10 +949,10 @@ export default function ManageTripScreen() {
             <TouchableOpacity
               style={styles.secondaryButton}
               onPress={handleCancelTrip}
-              disabled={isCancellingTrip}
+              disabled={isUpdatingTripStatus}
               activeOpacity={0.8}
             >
-              {isCancellingTrip ? (
+              {isUpdatingTripStatus ? (
                 <ActivityIndicator color={Colors.danger} />
               ) : (
                 <Text style={[styles.secondaryButtonText, { color: Colors.danger }]}>Annuler</Text>
@@ -886,10 +965,10 @@ export default function ManageTripScreen() {
           <TouchableOpacity
             style={[styles.primaryButton, styles.completeTripButton]}
             onPress={handleCompleteTrip}
-            disabled={isCancellingTrip}
+            disabled={isUpdatingTripStatus}
             activeOpacity={0.8}
           >
-            {isCancellingTrip ? (
+            {isUpdatingTripStatus ? (
               <ActivityIndicator color={Colors.white} />
             ) : (
               <>
@@ -981,6 +1060,72 @@ export default function ManageTripScreen() {
                 compact
               />
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+
+      <Modal
+        animationType="slide"
+        transparent
+        visible={editRouteModalVisible}
+        onRequestClose={closeEditRouteModal}
+      >
+        <View style={styles.bookingModalOverlay}>
+          <View style={[styles.bookingModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
+            <Text style={styles.bookingModalTitle}>Modifier le trajet</Text>
+            <Text style={styles.bookingModalDescription}>
+              Mettez a jour l adresse de depart et/ou d arrivee.
+            </Text>
+
+            <Text style={styles.editRouteLabel}>Adresse de depart</Text>
+            <TextInput
+              style={styles.editRouteInput}
+              placeholder="Ex: avenue Kasa-Vubu, Bandal"
+              placeholderTextColor={Colors.gray[400]}
+              value={editDepartureAddress}
+              onChangeText={(text) => {
+                setEditDepartureAddress(text);
+                if (editRouteError) setEditRouteError('');
+              }}
+              editable={!isUpdatingRoute}
+            />
+
+            <Text style={styles.editRouteLabel}>Adresse d arrivee</Text>
+            <TextInput
+              style={styles.editRouteInput}
+              placeholder="Ex: rond-point Victoire"
+              placeholderTextColor={Colors.gray[400]}
+              value={editArrivalAddress}
+              onChangeText={(text) => {
+                setEditArrivalAddress(text);
+                if (editRouteError) setEditRouteError('');
+              }}
+              editable={!isUpdatingRoute}
+            />
+
+            {editRouteError ? <Text style={styles.bookingModalError}>{editRouteError}</Text> : null}
+
+            <View style={styles.bookingModalActions}>
+              <TouchableOpacity
+                style={[styles.bookingModalButton, styles.bookingModalButtonSecondary]}
+                onPress={closeEditRouteModal}
+                disabled={isUpdatingRoute}
+              >
+                <Text style={styles.bookingModalButtonSecondaryText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.bookingModalButton, styles.bookingModalButtonPrimary]}
+                onPress={handleSaveRouteAddresses}
+                disabled={isUpdatingRoute}
+              >
+                {isUpdatingRoute ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <Text style={styles.bookingModalButtonPrimaryText}>Enregistrer</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1321,6 +1466,22 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.semibold,
     color: Colors.gray[900],
   },
+  editRouteButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '10',
+    marginBottom: Spacing.md,
+  },
+  editRouteButtonText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.primary,
+  },
   statsGrid: {
     flexDirection: 'row',
     backgroundColor: Colors.gray[50],
@@ -1639,6 +1800,23 @@ const styles = StyleSheet.create({
     borderColor: Colors.gray[200],
     minHeight: 100,
     textAlignVertical: 'top',
+  },
+  editRouteLabel: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+    marginBottom: Spacing.xs,
+  },
+  editRouteInput: {
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    marginBottom: Spacing.md,
   },
   bookingModalError: {
     color: Colors.danger,

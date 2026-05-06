@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   FlatList,
   Modal,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -122,6 +123,7 @@ export default function LocationPickerModal({
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [showFavorites, setShowFavorites] = useState(false);
   const geocodeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isUserInteractionRef = useRef(false);
   const lastMarkerUpdateRef = useRef<{ latitude: number; longitude: number } | null>(null);
@@ -1056,53 +1058,65 @@ export default function LocationPickerModal({
           </Text>
         </View>
 
-        {/* Lieux favoris - affichés quand il n'y a pas de recherche active */}
+        {/* Barre d'accès rapide - Repères de Kinshasa horizontal */}
         {!searchQuery.trim() && kinshasaLandmarks.length > 0 && (
-          <View style={styles.resultsContainer}>
-            <View style={styles.favoritesHeader}>
-              <Ionicons name="navigate" size={16} color={Colors.primary} />
-              <Text style={styles.favoritesHeaderText}>Repères de Kinshasa</Text>
-            </View>
-            <FlatList
-              data={kinshasaLandmarks}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
+          <View style={styles.quickAccessBar}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.quickAccessScrollContent}
+            >
+              {kinshasaLandmarks.map((landmark) => (
                 <TouchableOpacity
-                  style={styles.resultRow}
-                  onPress={() => handleLandmarkDirectoryPress(item)}
+                  key={landmark.id}
+                  style={styles.landmarkChip}
+                  onPress={() => handleLandmarkDirectoryPress(landmark)}
                 >
-                  <Ionicons name="location" size={18} color={Colors.primary} />
-                  <View style={styles.resultContent}>
-                    <Text style={styles.resultTitle}>{item.name}</Text>
-                    <Text style={styles.resultSubtitle} numberOfLines={1}>
-                      {item.commune} • {item.address}
-                    </Text>
-                  </View>
+                  <Ionicons name="location" size={14} color={Colors.primary} />
+                  <Text style={styles.landmarkChipText} numberOfLines={1}>
+                    {landmark.name}
+                  </Text>
                 </TouchableOpacity>
-              )}
-            />
+              ))}
+            </ScrollView>
           </View>
         )}
 
+        {/* Bouton Lieux favoris - accessible uniquement au clic */}
         {!searchQuery.trim() && favoriteLocationsAsResults.length > 0 && (
-          <View style={styles.resultsContainer}>
-            <View style={styles.favoritesHeader}>
+          <View style={styles.favoritesToggleContainer}>
+            <TouchableOpacity
+              style={styles.favoritesToggleButton}
+              onPress={() => setShowFavorites((prev) => !prev)}
+            >
               <Ionicons name="star" size={16} color={Colors.secondary} />
-              <Text style={styles.favoritesHeaderText}>Lieux favoris</Text>
-            </View>
+              <Text style={styles.favoritesToggleText}>
+                {showFavorites ? 'Masquer les favoris' : 'Lieux favoris'}
+              </Text>
+              <Ionicons
+                name={showFavorites ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={Colors.gray[600]}
+              />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Liste des favoris - affichée uniquement si toggled */}
+        {showFavorites && !searchQuery.trim() && favoriteLocationsAsResults.length > 0 && (
+          <View style={styles.resultsContainer}>
             <FlatList
               data={favoriteLocationsAsResults}
               keyExtractor={(_, index) => `favorite-${index}`}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.resultRow}
-                  onPress={() => handleFavoritePress(item)}
+                  onPress={() => {
+                    handleFavoritePress(item);
+                    setShowFavorites(false);
+                  }}
                 >
-                  <Ionicons
-                    name="star"
-                    size={18}
-                    color={Colors.secondary}
-                  />
+                  <Ionicons name="star" size={18} color={Colors.secondary} />
                   <View style={styles.resultContent}>
                     <Text style={styles.resultTitle}>{item.title}</Text>
                     <Text style={styles.resultSubtitle} numberOfLines={1}>
@@ -1114,7 +1128,6 @@ export default function LocationPickerModal({
             />
           </View>
         )}
-
         {/* Suggestions Mapbox en temps réel */}
         {googleMapsSuggestions.length > 0 && (
           <View style={styles.resultsContainer}>
@@ -1510,5 +1523,50 @@ const styles = StyleSheet.create({
     color: Colors.gray[700],
     flex: 1,
   },
+  quickAccessBar: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.sm,
+  },
+  quickAccessScrollContent: {
+    gap: Spacing.sm,
+    paddingRight: Spacing.lg,
+  },
+  landmarkChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+    backgroundColor: Colors.primary + '08',
+  },
+  landmarkChipText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+    color: Colors.primary,
+    maxWidth: 140,
+  },
+  favoritesToggleContainer: {
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.sm,
+  },
+  favoritesToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+    alignSelf: 'flex-start',
+  },
+  favoritesToggleText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[700],
+  },
 });
-

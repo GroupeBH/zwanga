@@ -7,9 +7,9 @@ import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
 import {
-  useLazyCheckSubscriptionPaymentStatusQuery,
   useGetPremiumOverviewQuery,
   useGetSubscriptionPlansQuery,
+  useLazyCheckSubscriptionPaymentStatusQuery,
   useSubscribeToProMutation,
 } from '@/store/api/subscriptionApi';
 import { useGetMyDriverOffersQuery, useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
@@ -2192,6 +2192,7 @@ export default function ProfileScreen() {
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.subscriptionModalOverlay}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
           <TouchableOpacity
             style={styles.subscriptionModalBackdrop}
@@ -2247,13 +2248,6 @@ export default function ProfileScreen() {
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.subscriptionModalContent}
             >
-              <View style={styles.subscriptionSummaryCard}>
-                <Text style={styles.subscriptionSummaryPrice}>{proPriceLabel}</Text>
-                <Text style={styles.subscriptionSummaryText}>
-                  {"Le quota gratuit reste à 5 trajets par jour. L'abonnement débloque les publications supplémentaires dès validation du paiement."}
-                </Text>
-              </View>
-
               <Text style={styles.subscriptionSectionLabel}>Moyen de paiement</Text>
               <View style={styles.subscriptionPaymentGrid}>
                 {SUBSCRIPTION_PAYMENT_OPTIONS.map((option) => {
@@ -2284,8 +2278,39 @@ export default function ProfileScreen() {
                 })}
               </View>
 
-              {!isSubscriptionCardPayment && (
-                <View style={styles.subscriptionPhoneSection}>
+              {(subscriptionPaymentMessage || subscriptionPaymentOrderNumber) && (
+                <View style={styles.subscriptionPendingPanel}>
+                  <Ionicons name="time-outline" size={18} color={Colors.warningDark} />
+                  <View style={styles.subscriptionPendingTextContent}>
+                    <Text style={styles.subscriptionPendingTitle}>Statut du paiement</Text>
+                    {subscriptionPaymentMessage ? (
+                      <Text style={styles.subscriptionPendingText}>{subscriptionPaymentMessage}</Text>
+                    ) : null}
+                    {subscriptionPaymentOrderNumber ? (
+                      <Text style={styles.subscriptionPendingReference}>
+                        Référence {subscriptionPaymentOrderNumber}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.subscriptionSummaryCard}>
+                <Text style={styles.subscriptionSummaryPrice}>{proPriceLabel}</Text>
+                <Text style={styles.subscriptionSummaryText}>
+                  {"Le quota gratuit reste à 5 trajets par jour. L'abonnement débloque les publications supplémentaires dès validation du paiement."}
+                </Text>
+              </View>
+            </ScrollView>
+
+            {/* Zone fixe en bas : saisie du numéro + bouton d'action — toujours visible au-dessus du clavier */}
+            <View style={styles.subscriptionFixedFooter}>
+              {!isSubscriptionCardPayment ? (
+                <Animated.View
+                  key={selectedSubscriptionPaymentChannel}
+                  entering={FadeInDown.duration(300)}
+                  style={styles.subscriptionPhoneSection}
+                >
                   <Text style={styles.subscriptionSectionLabel}>Numéro Mobile Money</Text>
                   <View style={styles.subscriptionPhoneInputWrapper}>
                     <Ionicons name="call-outline" size={18} color={Colors.gray[500]} />
@@ -2301,58 +2326,43 @@ export default function ProfileScreen() {
                     />
                   </View>
                   <Text style={styles.subscriptionInputHint}>
-                    Le numéro Mobile Money doit commencer par +243. FlexPay enverra une demande de confirmation sur ce numéro.
+                    Format +243 suivi de 9 chiffres. FlexPay enverra une confirmation.
                   </Text>
-                </View>
-              )}
+                </Animated.View>
+              ) : null}
 
-              {(subscriptionPaymentMessage || subscriptionPaymentOrderNumber) && (
-                <View style={styles.subscriptionPendingPanel}>
-                  <Ionicons name="time-outline" size={18} color={Colors.warningDark} />
-                  <View style={styles.subscriptionPendingTextContent}>
-                    <Text style={styles.subscriptionPendingTitle}>Paiement en cours</Text>
-                    {subscriptionPaymentMessage ? (
-                      <Text style={styles.subscriptionPendingText}>{subscriptionPaymentMessage}</Text>
-                    ) : null}
-                    {subscriptionPaymentOrderNumber ? (
-                      <Text style={styles.subscriptionPendingReference}>
-                        Référence {subscriptionPaymentOrderNumber}
-                      </Text>
-                    ) : null}
-                  </View>
-                </View>
-              )}
-
-              <TouchableOpacity
-                style={[styles.subscriptionPrimaryButton, proBusy && styles.subscriptionButtonDisabled]}
-                onPress={handleSubmitSubscriptionPayment}
-                disabled={proBusy}
-                activeOpacity={0.85}
-              >
-                {isSubscribingPro || isSubscriptionPaymentAutoChecking ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <Text style={styles.subscriptionPrimaryButtonText}>
-                    {isSubscriptionCardPayment ? 'Ouvrir le paiement carte' : 'Lancer le paiement'}
-                  </Text>
-                )}
-              </TouchableOpacity>
-
-              {subscriptionPaymentOrderNumber && !isSubscriptionPaymentAutoChecking && (
+              <View style={styles.paymentButtonContainer}>
                 <TouchableOpacity
-                  style={[styles.subscriptionSecondaryButton, proBusy && styles.subscriptionButtonDisabled]}
-                  onPress={handleCheckSubscriptionPayment}
+                  style={[styles.subscriptionPrimaryButton, proBusy && styles.subscriptionButtonDisabled]}
+                  onPress={handleSubmitSubscriptionPayment}
                   disabled={proBusy}
                   activeOpacity={0.85}
                 >
-                  {isCheckingSubscriptionPayment ? (
-                    <ActivityIndicator color={Colors.primary} />
+                  {isSubscribingPro || isSubscriptionPaymentAutoChecking ? (
+                    <ActivityIndicator color={Colors.white} />
                   ) : (
-                    <Text style={styles.subscriptionSecondaryButtonText}>Vérifier le statut</Text>
+                    <Text style={styles.subscriptionPrimaryButtonText}>
+                      {isSubscriptionCardPayment ? 'Ouvrir le paiement carte' : 'Lancer le paiement'}
+                    </Text>
                   )}
                 </TouchableOpacity>
-              )}
-            </ScrollView>
+
+                {subscriptionPaymentOrderNumber && !isSubscriptionPaymentAutoChecking && (
+                  <TouchableOpacity
+                    style={[styles.subscriptionSecondaryButton, proBusy && styles.subscriptionButtonDisabled]}
+                    onPress={handleCheckSubscriptionPayment}
+                    disabled={proBusy}
+                    activeOpacity={0.85}
+                  >
+                    {isCheckingSubscriptionPayment ? (
+                      <ActivityIndicator color={Colors.primary} />
+                    ) : (
+                      <Text style={styles.subscriptionSecondaryButtonText}>Vérifier le statut</Text>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
           </Animated.View>
         </KeyboardAvoidingView>
       </Modal>
@@ -3604,6 +3614,21 @@ const styles = StyleSheet.create({
   },
   subscriptionButtonDisabled: {
     opacity: 0.6,
+  },
+  paymentActionContainer: {
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  subscriptionFixedFooter: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[100],
+    gap: Spacing.md,
+  },
+  paymentButtonContainer: {
+    gap: Spacing.sm,
   },
   becomeDriverCard: {
     marginTop: Spacing.md,

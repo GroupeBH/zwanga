@@ -4,10 +4,10 @@ import LocationPickerModal, { type MapLocationSelection } from '@/components/Loc
 import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
-import { trackEvent } from '@/services/analytics';
 import { useUserLocation } from '@/hooks/useUserLocation';
+import { trackEvent } from '@/services/analytics';
 import { trackingSocket } from '@/services/trackingSocket';
 import {
   useCancelBookingMutation,
@@ -19,7 +19,7 @@ import {
 } from '@/store/api/bookingApi';
 import { useCreateConversationMutation } from '@/store/api/messageApi';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
-import { useGetTripByIdQuery } from '@/store/api/tripApi';
+import { useGetTripByIdQuery, useUpdateTripMutation } from '@/store/api/tripApi';
 import { useGetKycStatusQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
@@ -30,12 +30,14 @@ import { getRouteInfo, type RouteInfo } from '@/utils/routeApi';
 import { isPointOnRoute, splitRouteByProgress } from '@/utils/routeHelpers';
 import { shareTrip, shareTripViaWhatsApp } from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker, { DateTimePickerAndroid, type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -97,6 +99,15 @@ const getLocationCoordinatesObject = (selection: MapLocationSelection | null) =>
   };
 };
 
+const getLocationCoordinatesTuple = (
+  selection: MapLocationSelection | null,
+): [number, number] | undefined => {
+  if (!selection || !Number.isFinite(selection.latitude) || !Number.isFinite(selection.longitude)) {
+    return undefined;
+  }
+  return [selection.longitude, selection.latitude];
+};
+
 const BOOKING_STATUS_CONFIG: Record<
   BookingStatus,
   { label: string; color: string; background: string }
@@ -148,14 +159,14 @@ export default function TripDetailsScreen() {
     isLoading: tripLoading,
     isFetching: tripFetching,
     refetch: refetchTrip,
-  } = useGetTripByIdQuery(tripId, { 
+  } = useGetTripByIdQuery(tripId, {
     skip: !tripId,
     // Polling automatique basé sur le statut du trajet
     pollingInterval: tripFromStore?.status === 'ongoing'
       ? 5000 // 5 secondes pour les trajets en cours
       : tripFromStore?.status === 'upcoming'
-      ? 30000 // 30 secondes pour les trajets à venir
-      : 0, // Pas de polling pour les trajets terminés/annulés
+        ? 30000 // 30 secondes pour les trajets à venir
+        : 0, // Pas de polling pour les trajets terminés/annulés
     refetchOnFocus: true, // Rafraîchir quand l'utilisateur revient dans l'app
     refetchOnReconnect: true, // Rafraîchir après une reconnexion réseau
   });
@@ -184,7 +195,7 @@ export default function TripDetailsScreen() {
     data: tripBookings,
     isLoading: tripBookingsLoading,
     refetch: refetchTripBookings,
-  } = useGetTripBookingsQuery(tripId, { 
+  } = useGetTripBookingsQuery(tripId, {
     skip: !tripId,
     // Polling pour les réservations du trajet
     pollingInterval: trip?.status === 'ongoing' ? 10000 : trip?.status === 'upcoming' ? 30000 : 0,
@@ -212,6 +223,289 @@ export default function TripDetailsScreen() {
   useEffect(() => {
     setLiveDriverUpdatedAt(trip?.lastLocationUpdateAt ?? null);
   }, [trip?.lastLocationUpdateAt]);
+  const [updateTripMutation, { isLoading: isSavingTrip }] = useUpdateTripMutation();
+  const [editTripModalVisible, setEditTripModalVisible] = useState(false);
+  const [editSeats, setEditSeats] = useState('');
+  const [editPrice, setEditPrice] = useState('');
+  const [editDateTime, setEditDateTime] = useState<Date | null>(null);
+  const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
+  const [editRouteMode, setEditRouteMode] = useState<'map' | 'manual'>('map');
+  const [editDepartureSelection, setEditDepartureSelection] = useState<MapLocationSelection | null>(null);
+  const [editArrivalSelection, setEditArrivalSelection] = useState<MapLocationSelection | null>(null);
+  const [editDepartureManualAddress, setEditDepartureManualAddress] = useState('');
+  const [editArrivalManualAddress, setEditArrivalManualAddress] = useState('');
+  const [editRoutePickerTarget, setEditRoutePickerTarget] = useState<'departure' | 'arrival' | null>(null);
+
+  const getDefaultFutureDate = () => {
+    const base = new Date();
+    base.setMinutes(0, 0, 0);
+    base.setHours(base.getHours() + 1);
+    return base;
+  };
+
+  const getEditBaseDate = () => {
+    if (editDateTime) {
+      return new Date(editDateTime);
+    }
+    return getDefaultFutureDate();
+  };
+
+  const applyEditDatePart = (pickedDate: Date) => {
+    const base = getEditBaseDate();
+    const next = new Date(base);
+    next.setFullYear(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
+    return next;
+  };
+
+  const applyEditTimePart = (pickedDate: Date) => {
+    const base = getEditBaseDate();
+    const next = new Date(base);
+    next.setHours(pickedDate.getHours(), pickedDate.getMinutes(), 0, 0);
+    return next;
+  };
+
+  const openDateOrTimePicker = (mode: 'date' | 'time') => {
+    const value = getEditBaseDate();
+    if (Platform.OS === 'android') {
+      DateTimePickerAndroid.open({
+        mode,
+        value,
+        is24Hour: true,
+        minimumDate: mode === 'date' ? new Date() : undefined,
+        onChange: (_event: DateTimePickerEvent, selectedDate?: Date) => {
+          if (!selectedDate) {
+            return;
+          }
+          setEditDateTime(mode === 'date' ? applyEditDatePart(selectedDate) : applyEditTimePart(selectedDate));
+        },
+      });
+    } else {
+      setIosPickerMode(mode);
+    }
+  };
+
+  const handleIosPickerChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (!selectedDate || !iosPickerMode) {
+      return;
+    }
+    setEditDateTime(
+      iosPickerMode === 'date' ? applyEditDatePart(selectedDate) : applyEditTimePart(selectedDate),
+    );
+  };
+
+  const closeIosPicker = () => setIosPickerMode(null);
+
+  const openEditModal = () => {
+    if (!trip || !isTripDriver) return;
+
+    const departureLat = Number(trip.departure?.lat);
+    const departureLng = Number(trip.departure?.lng);
+    const arrivalLat = Number(trip.arrival?.lat);
+    const arrivalLng = Number(trip.arrival?.lng);
+
+    const departureSelection =
+      Number.isFinite(departureLat) && Number.isFinite(departureLng)
+        ? {
+            title: trip.departure?.name || 'Depart',
+            address:
+              trip.departure?.address || `${departureLat.toFixed(5)}, ${departureLng.toFixed(5)}`,
+            latitude: departureLat,
+            longitude: departureLng,
+          }
+        : null;
+    const arrivalSelection =
+      Number.isFinite(arrivalLat) && Number.isFinite(arrivalLng)
+        ? {
+            title: trip.arrival?.name || 'Arrivee',
+            address: trip.arrival?.address || `${arrivalLat.toFixed(5)}, ${arrivalLng.toFixed(5)}`,
+            latitude: arrivalLat,
+            longitude: arrivalLng,
+          }
+        : null;
+
+    setEditSeats(String(trip.availableSeats));
+    setEditPrice(String(trip.price));
+    const parsedDate = trip.departureTime ? new Date(trip.departureTime) : null;
+    setEditDateTime(parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : getDefaultFutureDate());
+    setEditDepartureSelection(departureSelection);
+    setEditArrivalSelection(arrivalSelection);
+    setEditDepartureManualAddress((trip.departure?.address || trip.departure?.name || '').trim());
+    setEditArrivalManualAddress((trip.arrival?.address || trip.arrival?.name || '').trim());
+    setEditRouteMode(departureSelection && arrivalSelection ? 'map' : 'manual');
+    setEditRoutePickerTarget(null);
+    setEditTripModalVisible(true);
+  };
+
+  const closeEditModal = () => {
+    setEditTripModalVisible(false);
+    setEditSeats('');
+    setEditPrice('');
+    setEditDateTime(null);
+    setIosPickerMode(null);
+    setEditRouteMode('map');
+    setEditDepartureSelection(null);
+    setEditArrivalSelection(null);
+    setEditDepartureManualAddress('');
+    setEditArrivalManualAddress('');
+    setEditRoutePickerTarget(null);
+  };
+
+  const swapEditRoutePoints = () => {
+    setEditDepartureSelection(editArrivalSelection);
+    setEditArrivalSelection(editDepartureSelection);
+    setEditDepartureManualAddress(editArrivalManualAddress);
+    setEditArrivalManualAddress(editDepartureManualAddress);
+  };
+
+  const handleSaveTrip = async () => {
+    if (!trip || !editDateTime || !isTripDriver) {
+      showDialog({
+        variant: 'warning',
+        title: 'Action non autorisee',
+        message: 'Seul le conducteur de ce trajet peut le modifier.',
+      });
+      return;
+    }
+
+    const seatsValue = parseInt(editSeats, 10);
+    const priceValue = parseFloat(editPrice);
+    if (Number.isNaN(seatsValue) || Number.isNaN(priceValue) || seatsValue <= 0 || priceValue < 0) {
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: 'Veuillez verifier le nombre de places et le prix.',
+      });
+      return;
+    }
+
+    const departureAddress =
+      editRouteMode === 'manual'
+        ? editDepartureManualAddress.trim()
+        : getLocationText(editDepartureSelection, '');
+    const arrivalAddress =
+      editRouteMode === 'manual'
+        ? editArrivalManualAddress.trim()
+        : getLocationText(editArrivalSelection, '');
+
+    if (!departureAddress || !arrivalAddress) {
+      showDialog({
+        variant: 'warning',
+        title: 'Adresses requises',
+        message: 'Indiquez un depart et une arrivee avant d enregistrer.',
+      });
+      return;
+    }
+
+    if (departureAddress.toLowerCase() === arrivalAddress.toLowerCase()) {
+      showDialog({
+        variant: 'warning',
+        title: 'Trajet invalide',
+        message: 'Le depart et l arrivee doivent etre differents.',
+      });
+      return;
+    }
+
+    const currentDepartureAddress = (trip.departure?.address || trip.departure?.name || '').trim();
+    const currentArrivalAddress = (trip.arrival?.address || trip.arrival?.name || '').trim();
+    const updates: {
+      totalSeats: number;
+      pricePerSeat: number;
+      departureDate: string;
+      departureLocation?: string;
+      arrivalLocation?: string;
+      departureCoordinates?: [number, number];
+      arrivalCoordinates?: [number, number];
+    } = {
+      totalSeats: seatsValue,
+      pricePerSeat: priceValue,
+      departureDate: editDateTime.toISOString(),
+    };
+
+    if (departureAddress !== currentDepartureAddress) {
+      updates.departureLocation = departureAddress;
+    }
+    if (arrivalAddress !== currentArrivalAddress) {
+      updates.arrivalLocation = arrivalAddress;
+    }
+
+    if (editRouteMode === 'map') {
+      const departureTuple = getLocationCoordinatesTuple(editDepartureSelection);
+      const arrivalTuple = getLocationCoordinatesTuple(editArrivalSelection);
+      const currentDepartureLat = Number(trip.departure?.lat);
+      const currentDepartureLng = Number(trip.departure?.lng);
+      const currentArrivalLat = Number(trip.arrival?.lat);
+      const currentArrivalLng = Number(trip.arrival?.lng);
+
+      if (
+        departureTuple &&
+        (!Number.isFinite(currentDepartureLat) ||
+          !Number.isFinite(currentDepartureLng) ||
+          Math.abs(departureTuple[1] - currentDepartureLat) > 0.000001 ||
+          Math.abs(departureTuple[0] - currentDepartureLng) > 0.000001)
+      ) {
+        updates.departureCoordinates = departureTuple;
+      }
+
+      if (
+        arrivalTuple &&
+        (!Number.isFinite(currentArrivalLat) ||
+          !Number.isFinite(currentArrivalLng) ||
+          Math.abs(arrivalTuple[1] - currentArrivalLat) > 0.000001 ||
+          Math.abs(arrivalTuple[0] - currentArrivalLng) > 0.000001)
+      ) {
+        updates.arrivalCoordinates = arrivalTuple;
+      }
+    }
+
+    try {
+      await updateTripMutation({
+        id: trip.id,
+        updates,
+      }).unwrap();
+      showDialog({ variant: 'success', title: 'Succes', message: 'Le trajet a ete mis a jour.' });
+      closeEditModal();
+      refetchTrip();
+    } catch (error: any) {
+      const message =
+        error?.data?.message ?? error?.error ?? 'Impossible de mettre a jour ce trajet pour le moment.';
+      showDialog({ variant: 'danger', title: 'Erreur', message });
+    }
+  };
+
+  const formattedEditDate = useMemo(() => {
+    if (!editDateTime) return 'Choisir la date';
+    return new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).format(editDateTime);
+  }, [editDateTime]);
+
+  const formattedEditTime = useMemo(() => {
+    if (!editDateTime) return 'Choisir l\'heure';
+    return new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(editDateTime);
+  }, [editDateTime]);
+
+  const editDepartureDisplay = useMemo(() => {
+    if (editRouteMode === 'manual') {
+      return editDepartureManualAddress.trim() || 'Renseigner le depart';
+    }
+    return (
+      editDepartureSelection?.title ||
+      editDepartureSelection?.address ||
+      editDepartureManualAddress.trim() ||
+      'Choisir le point de depart'
+    );
+  }, [editDepartureManualAddress, editDepartureSelection, editRouteMode]);
+
+  const editArrivalDisplay = useMemo(() => {
+    if (editRouteMode === 'manual') {
+      return editArrivalManualAddress.trim() || 'Renseigner l arrivee';
+    }
+    return (
+      editArrivalSelection?.title ||
+      editArrivalSelection?.address ||
+      editArrivalManualAddress.trim() ||
+      'Choisir le point d arrivee'
+    );
+  }, [editArrivalManualAddress, editArrivalSelection, editRouteMode]);
+
   const [createBooking, { isLoading: isBooking }] = useCreateBookingMutation();
   const [cancelBookingMutation, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
   const [confirmPickupByPassenger, { isLoading: isConfirmingPickup }] = useConfirmPickupByPassengerMutation();
@@ -258,12 +552,7 @@ export default function TripDetailsScreen() {
   const [kycBackImage, setKycBackImage] = useState<string | null>(null);
   const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
   const [kycSubmitting, setKycSubmitting] = useState(false);
-  const {
-    data: kycStatus,
-    isLoading: kycStatusLoading,
-    isFetching: kycStatusFetching,
-    refetch: refetchKycStatus,
-  } = useGetKycStatusQuery();
+  const { refetch: refetchKycStatus } = useGetKycStatusQuery();
   const [uploadKyc, { isLoading: uploadingKyc }] = useUploadKycMutation();
   const { data: driverReviews } = useGetReviewsQuery(trip?.driverId ?? '', {
     skip: !trip?.driverId,
@@ -435,7 +724,7 @@ export default function TripDetailsScreen() {
     if (!liveDriverCoordinate) {
       return isTripDriver
         ? 'Partage automatique activé dès que la localisation est disponible.'
-        : 'Le conducteur n’a pas encore partagé sa position.';
+        : "Le conducteur n’a pas encore partagé sa position.";
     }
     if (!liveDriverUpdatedAt) {
       return 'Mise à jour en cours...';
@@ -521,76 +810,7 @@ export default function TripDetailsScreen() {
       longitude,
     };
   }, [trip?.arrival?.address, trip?.arrival?.lat, trip?.arrival?.lng, trip?.arrival?.name]);
-  const isKycApproved = kycStatus?.status === 'approved';
-  const isKycPending = kycStatus?.status === 'pending';
-  const isKycRejected = kycStatus?.status === 'rejected';
-  const isKycStatusBusy = kycStatusLoading || kycStatusFetching;
-  const kycBookingLockLabel = isKycStatusBusy
-    ? 'Verification KYC en cours...'
-    : isKycPending
-      ? 'KYC en cours de verification'
-      : isKycRejected
-        ? 'KYC refuse - reprendre'
-        : 'KYC requis pour reserver';
-
-  const ensureKycForBooking = () => {
-    if (isKycApproved) {
-      return true;
-    }
-
-    if (isKycStatusBusy) {
-      showDialog({
-        variant: 'info',
-        title: 'Verification KYC en cours',
-        message: 'Nous verifions votre statut KYC. Reessayez dans quelques secondes.',
-      });
-      return false;
-    }
-
-    if (isKycPending) {
-      showDialog({
-        variant: 'info',
-        title: 'KYC en attente',
-        message:
-          'Vos documents sont en cours de verification. Vous pourrez reserver ce trajet apres validation du KYC.',
-        actions: [
-          { label: 'Compris', variant: 'ghost' },
-          { label: 'Voir mon statut', variant: 'primary', onPress: () => router.push('/profile') },
-        ],
-      });
-      return false;
-    }
-
-    if (isKycRejected) {
-      showDialog({
-        variant: 'warning',
-        title: 'KYC requis',
-        message:
-          'Votre verification KYC a ete rejetee. Merci de reprendre le parcours KYC pour reserver ce trajet.',
-        actions: [
-          { label: 'Plus tard', variant: 'ghost' },
-          { label: 'Reprendre KYC', variant: 'primary', onPress: () => setKycWizardVisible(true) },
-        ],
-      });
-      return false;
-    }
-
-    showDialog({
-      variant: 'warning',
-      title: 'KYC requis',
-      message: 'Pour reserver un trajet, vous devez verifier votre identite (piece + selfie).',
-      actions: [
-        { label: 'Plus tard', variant: 'ghost' },
-        { label: 'Commencer KYC', variant: 'primary', onPress: () => setKycWizardVisible(true) },
-      ],
-    });
-    return false;
-  };
-
   const openBookingModal = () => {
-    if (!ensureKycForBooking()) {
-      return;
-    }
     const autoOrigin = defaultPassengerOriginSelection;
     setBookingSeats('1');
     setBookingModalError('');
@@ -792,10 +1012,6 @@ export default function TripDetailsScreen() {
     if (isBooking || !trip || isValidatingDestination) {
       return;
     }
-    if (!ensureKycForBooking()) {
-      setBookingModalError('Votre KYC doit etre valide avant de reserver ce trajet.');
-      return;
-    }
     const seatsValue = parseInt(bookingSeats, 10);
     if (Number.isNaN(seatsValue) || seatsValue <= 0) {
       setBookingModalError('Veuillez indiquer un nombre de places valide.');
@@ -830,8 +1046,8 @@ export default function TripDetailsScreen() {
     );
     const hasCustomPassengerDestination = Boolean(
       (passengerDestination && !isDefaultTripArrivalDestination) ||
-        (passengerDestinationText && passengerDestinationText !== defaultArrivalText) ||
-        passengerDestinationReference.trim(),
+      (passengerDestinationText && passengerDestinationText !== defaultArrivalText) ||
+      passengerDestinationReference.trim(),
     );
 
     // Valider la destination seulement si le passager a choisi une destination personnalisée
@@ -2013,6 +2229,29 @@ export default function TripDetailsScreen() {
               (trip?.status === 'ongoing' && (availableSeats > 0 || Boolean(activeBooking && activeBookingStatus)))
             );
 
+          if (isTripDriver) {
+            return (
+              <View style={[styles.actionsContainer, { flexDirection: 'row', gap: Spacing.sm }]}>
+                <TouchableOpacity
+                  style={[styles.actionButton, { backgroundColor: Colors.primary, flex: 1 }]}
+                  onPress={() => router.push(`/trip/manage/${trip?.id}`)}
+                >
+                  <Ionicons name="settings-outline" size={20} color={Colors.white} style={{ marginRight: 8 }} />
+                  <Text style={styles.actionButtonText}>Gérer le trajet</Text>
+                </TouchableOpacity>
+                {(trip?.status === 'upcoming' || trip?.status === 'ongoing') && !isExpired && (
+                  <TouchableOpacity
+                    style={[styles.actionButton, { backgroundColor: Colors.secondary, flex: 1 }]}
+                    onPress={openEditModal}
+                  >
+                    <Ionicons name="create-outline" size={20} color={Colors.white} style={{ marginRight: 8 }} />
+                    <Text style={styles.actionButtonText}>Modifier</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            );
+          }
+
           if (canBook) {
             return (
               <View style={styles.actionsContainer}>
@@ -2186,14 +2425,6 @@ export default function TripDetailsScreen() {
                     <Ionicons name="close-circle" size={20} color={Colors.white} />
                     <Text style={styles.actionButtonText}>Complet • Plus de places disponibles</Text>
                   </View>
-                ) : !isKycApproved ? (
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.actionButtonKycRequired]}
-                    onPress={ensureKycForBooking}
-                  >
-                    <Ionicons name="shield-checkmark-outline" size={20} color={Colors.white} />
-                    <Text style={styles.actionButtonText}>{kycBookingLockLabel}</Text>
-                  </TouchableOpacity>
                 ) : (
                   <TouchableOpacity
                     style={styles.actionButton}
@@ -2363,49 +2594,49 @@ export default function TripDetailsScreen() {
                     style={styles.bookingAddressModeSelector}
                   />
                   {bookingAddressInputMode === 'map' && (
-                  <>
-                  <Text style={styles.bookingChoiceLabel}>Point de prise en charge</Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.bookingDestinationButton,
-                      passengerOrigin && styles.bookingDestinationButtonSelected,
-                    ]}
-                    onPress={() => setShowOriginPicker(true)}
-                    disabled={isBooking}
-                  >
-                    <Ionicons
-                      name={passengerOrigin ? 'location' : 'location-outline'}
-                      size={18}
-                      color={passengerOrigin ? Colors.secondary : Colors.gray[600]}
-                    />
-                    <Text
-                      style={[
-                        styles.bookingDestinationButtonText,
-                        passengerOrigin && styles.bookingDestinationButtonTextSelected,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {passengerOrigin
-                        ? passengerOrigin.title || passengerOrigin.address
-                        : 'Choisir sur la carte ou utiliser ma position'}
-                    </Text>
-                    {passengerOrigin && (
+                    <>
+                      <Text style={styles.bookingChoiceLabel}>Point de prise en charge</Text>
                       <TouchableOpacity
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          setPassengerOrigin(null);
-                          setShouldAutofillPassengerOrigin(false);
-                        }}
-                        style={styles.bookingDestinationRemoveButton}
+                        style={[
+                          styles.bookingDestinationButton,
+                          passengerOrigin && styles.bookingDestinationButtonSelected,
+                        ]}
+                        onPress={() => setShowOriginPicker(true)}
+                        disabled={isBooking}
                       >
-                        <Ionicons name="close-circle" size={18} color={Colors.danger} />
+                        <Ionicons
+                          name={passengerOrigin ? 'location' : 'location-outline'}
+                          size={18}
+                          color={passengerOrigin ? Colors.secondary : Colors.gray[600]}
+                        />
+                        <Text
+                          style={[
+                            styles.bookingDestinationButtonText,
+                            passengerOrigin && styles.bookingDestinationButtonTextSelected,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {passengerOrigin
+                            ? passengerOrigin.title || passengerOrigin.address
+                            : 'Choisir sur la carte ou utiliser ma position'}
+                        </Text>
+                        {passengerOrigin && (
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              setPassengerOrigin(null);
+                              setShouldAutofillPassengerOrigin(false);
+                            }}
+                            style={styles.bookingDestinationRemoveButton}
+                          >
+                            <Ionicons name="close-circle" size={18} color={Colors.danger} />
+                          </TouchableOpacity>
+                        )}
                       </TouchableOpacity>
-                    )}
-                  </TouchableOpacity>
-                  <Text style={styles.bookingDestinationHint}>
-                    Si vous ne changez rien, le départ du trajet sera utilisé : {trip?.departure?.address}
-                  </Text>
-                  </>
+                      <Text style={styles.bookingDestinationHint}>
+                        Si vous ne changez rien, le départ du trajet sera utilisé : {trip?.departure?.address}
+                      </Text>
+                    </>
                   )}
                   <View style={styles.bookingManualHeader}>
                     <Ionicons name="create-outline" size={16} color={Colors.primary} />
@@ -2458,48 +2689,48 @@ export default function TripDetailsScreen() {
                     </Text>
                   </View>
                   {bookingAddressInputMode === 'map' && (
-                  <>
-                  <Text style={styles.bookingChoiceLabel}>Point d’arrivée</Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.bookingDestinationButton,
-                      passengerDestination && styles.bookingDestinationButtonSelected,
-                    ]}
-                    onPress={() => setShowDestinationPicker(true)}
-                    disabled={isBooking || isValidatingDestination}
-                  >
-                    <Ionicons
-                      name={passengerDestination ? 'flag' : 'flag-outline'}
-                      size={18}
-                      color={passengerDestination ? Colors.primary : Colors.gray[600]}
-                    />
-                    <Text
-                      style={[
-                        styles.bookingDestinationButtonText,
-                        passengerDestination && styles.bookingDestinationButtonTextSelected,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {passengerDestination
-                        ? passengerDestination.title || passengerDestination.address
-                        : 'Choisir sur la carte'}
-                    </Text>
-                    {passengerDestination && (
+                    <>
+                      <Text style={styles.bookingChoiceLabel}>Point d’arrivée</Text>
                       <TouchableOpacity
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          setPassengerDestination(null);
-                        }}
-                        style={styles.bookingDestinationRemoveButton}
+                        style={[
+                          styles.bookingDestinationButton,
+                          passengerDestination && styles.bookingDestinationButtonSelected,
+                        ]}
+                        onPress={() => setShowDestinationPicker(true)}
+                        disabled={isBooking || isValidatingDestination}
                       >
-                        <Ionicons name="close-circle" size={18} color={Colors.danger} />
+                        <Ionicons
+                          name={passengerDestination ? 'flag' : 'flag-outline'}
+                          size={18}
+                          color={passengerDestination ? Colors.primary : Colors.gray[600]}
+                        />
+                        <Text
+                          style={[
+                            styles.bookingDestinationButtonText,
+                            passengerDestination && styles.bookingDestinationButtonTextSelected,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {passengerDestination
+                            ? passengerDestination.title || passengerDestination.address
+                            : 'Choisir sur la carte'}
+                        </Text>
+                        {passengerDestination && (
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              setPassengerDestination(null);
+                            }}
+                            style={styles.bookingDestinationRemoveButton}
+                          >
+                            <Ionicons name="close-circle" size={18} color={Colors.danger} />
+                          </TouchableOpacity>
+                        )}
                       </TouchableOpacity>
-                    )}
-                  </TouchableOpacity>
-                  <Text style={styles.bookingDestinationHint}>
-                    Si vous laissez vide, l&apos;arrivée du trajet sera utilisée : {trip?.arrival?.address}
-                  </Text>
-                  </>
+                      <Text style={styles.bookingDestinationHint}>
+                        Si vous laissez vide, l&apos;arrivée du trajet sera utilisée : {trip?.arrival?.address}
+                      </Text>
+                    </>
                   )}
                   <View style={styles.bookingManualHeader}>
                     <Ionicons name="create-outline" size={16} color={Colors.primary} />
@@ -2598,7 +2829,7 @@ export default function TripDetailsScreen() {
                   <Text style={styles.bookingModalButtonSecondaryText}>Retour</Text>
                 </TouchableOpacity>
               )}
-              
+
               {bookingStep < 3 ? (
                 <TouchableOpacity
                   style={[styles.bookingModalButton, styles.bookingModalButtonPrimary]}
@@ -2612,14 +2843,12 @@ export default function TripDetailsScreen() {
                 <TouchableOpacity
                   style={[styles.bookingModalButton, styles.bookingModalButtonPrimary]}
                   onPress={handleConfirmBooking}
-                  disabled={isBooking || isValidatingDestination || !isKycApproved || isKycStatusBusy}
+                  disabled={isBooking || isValidatingDestination}
                 >
                   {isBooking || isValidatingDestination ? (
                     <ActivityIndicator color={Colors.white} />
                   ) : (
-                    <Text style={styles.bookingModalButtonPrimaryText}>
-                      {isKycApproved ? 'Confirmer' : 'KYC requis'}
-                    </Text>
+                    <Text style={styles.bookingModalButtonPrimaryText}>Confirmer</Text>
                   )}
                 </TouchableOpacity>
               )}
@@ -2950,6 +3179,261 @@ export default function TripDetailsScreen() {
           </Animated.View>
         </TouchableOpacity>
       </Modal>
+      <Modal transparent animationType="slide" visible={editTripModalVisible}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={styles.modalTitle}>Modifier le trajet</Text>
+                <TouchableOpacity onPress={closeEditModal} style={{ padding: 4 }}>
+                  <Ionicons name="close" size={24} color={Colors.gray[500]} />
+                </TouchableOpacity>
+              </View>
+              {trip && (
+                <Text style={styles.modalSubtitle}>
+                  {trip.departure.name} {'->'} {trip.arrival.name}
+                </Text>
+              )}
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              style={{ maxHeight: '80%' }}
+              contentContainerStyle={{ paddingBottom: Spacing.md }}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.modalRouteCard}>
+                <View style={styles.modalRouteHeader}>
+                  <Text style={styles.modalRouteTitle}>Points du trajet</Text>
+                  <TouchableOpacity style={styles.modalSwapButton} onPress={swapEditRoutePoints}>
+                    <Ionicons name="swap-vertical" size={16} color={Colors.primary} />
+                    <Text style={styles.modalSwapButtonText}>Echanger</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.modalRouteModeRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.modalRouteModeChip,
+                      editRouteMode === 'map' && styles.modalRouteModeChipActive,
+                    ]}
+                    onPress={() => setEditRouteMode('map')}
+                  >
+                    <Ionicons
+                      name="map-outline"
+                      size={14}
+                      color={editRouteMode === 'map' ? Colors.primary : Colors.gray[500]}
+                    />
+                    <Text
+                      style={[
+                        styles.modalRouteModeChipText,
+                        editRouteMode === 'map' && styles.modalRouteModeChipTextActive,
+                      ]}
+                    >
+                      Carte
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.modalRouteModeChip,
+                      editRouteMode === 'manual' && styles.modalRouteModeChipActive,
+                    ]}
+                    onPress={() => setEditRouteMode('manual')}
+                  >
+                    <Ionicons
+                      name="create-outline"
+                      size={14}
+                      color={editRouteMode === 'manual' ? Colors.primary : Colors.gray[500]}
+                    />
+                    <Text
+                      style={[
+                        styles.modalRouteModeChipText,
+                        editRouteMode === 'manual' && styles.modalRouteModeChipTextActive,
+                      ]}
+                    >
+                      Saisie
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {editRouteMode === 'manual' ? (
+                  <>
+                    <Text style={styles.modalLabel}>Adresse de départ</Text>
+                    <TextInput
+                      style={[styles.modalInput, styles.modalRouteInput]}
+                      placeholder="Ex: avenue Kasa-Vubu, Bandal"
+                      placeholderTextColor={Colors.gray[400]}
+                      value={editDepartureManualAddress}
+                      onChangeText={setEditDepartureManualAddress}
+                    />
+                    <Text style={styles.modalLabel}>Adresse d arrivee</Text>
+                    <TextInput
+                      style={[styles.modalInput, styles.modalRouteInput]}
+                      placeholder="Ex: rond-point Victoire"
+                      placeholderTextColor={Colors.gray[400]}
+                      value={editArrivalManualAddress}
+                      onChangeText={setEditArrivalManualAddress}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <TouchableOpacity
+                      style={styles.modalRoutePointButton}
+                      onPress={() => setEditRoutePickerTarget('departure')}
+                    >
+                      <View style={[styles.modalRoutePointIcon, { backgroundColor: Colors.success + '15' }]}>
+                        <Ionicons name="location" size={15} color={Colors.success} />
+                      </View>
+                      <View style={styles.modalRoutePointContent}>
+                        <Text style={styles.modalRoutePointLabel}>Départ</Text>
+                        <Text style={styles.modalRoutePointValue} numberOfLines={2}>
+                          {editDepartureDisplay}
+                        </Text>
+                        {editDepartureSelection && (
+                          <Text style={styles.modalRoutePointCoords} numberOfLines={1}>
+                            {editDepartureSelection.address}
+                          </Text>
+                        )}
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.modalRoutePointButton}
+                      onPress={() => setEditRoutePickerTarget('arrival')}
+                    >
+                      <View style={[styles.modalRoutePointIcon, { backgroundColor: Colors.primary + '15' }]}>
+                        <Ionicons name="navigate" size={15} color={Colors.primary} />
+                      </View>
+                      <View style={styles.modalRoutePointContent}>
+                        <Text style={styles.modalRoutePointLabel}>Arrivée</Text>
+                        <Text style={styles.modalRoutePointValue} numberOfLines={2}>
+                          {editArrivalDisplay}
+                        </Text>
+                        {editArrivalSelection && (
+                          <Text style={styles.modalRoutePointCoords} numberOfLines={1}>
+                            {editArrivalSelection.address}
+                          </Text>
+                        )}
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+
+              <View style={styles.modalField}>
+                <Text style={styles.modalLabel}>Places disponibles</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  keyboardType="numeric"
+                  placeholder="4"
+                  placeholderTextColor={Colors.gray[400]}
+                  value={editSeats}
+                  onChangeText={setEditSeats}
+                />
+              </View>
+
+              <View style={styles.modalField}>
+                <Text style={styles.modalLabel}>Prix (FC)</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  keyboardType="numeric"
+                  placeholder="5000"
+                  placeholderTextColor={Colors.gray[400]}
+                  value={editPrice}
+                  onChangeText={setEditPrice}
+                />
+              </View>
+
+              <View style={styles.modalField}>
+                <Text style={styles.modalLabel}>Date et heure de départ</Text>
+                <View style={styles.modalDatetimeRow}>
+                  <TouchableOpacity
+                    style={styles.modalDatetimeButton}
+                    onPress={() => openDateOrTimePicker('date')}
+                  >
+                    <Ionicons name="calendar" size={18} color={Colors.primary} />
+                    <View style={{ marginLeft: Spacing.sm }}>
+                      <Text style={styles.modalDatetimeLabel}>Date</Text>
+                      <Text style={styles.modalDatetimeValue}>{formattedEditDate}</Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalDatetimeButton, { marginRight: 0 }]}
+                    onPress={() => openDateOrTimePicker('time')}
+                  >
+                    <Ionicons name="time" size={18} color={Colors.gray[700]} />
+                    <View style={{ marginLeft: Spacing.sm }}>
+                      <Text style={styles.modalDatetimeLabel}>Heure</Text>
+                      <Text style={styles.modalDatetimeValue}>{formattedEditTime}</Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {Platform.OS === 'ios' && iosPickerMode && (
+                <View style={styles.iosPickerContainer}>
+                  <DateTimePicker
+                    value={getEditBaseDate()}
+                    mode={iosPickerMode}
+                    display="inline"
+                    minuteInterval={5}
+                    minimumDate={iosPickerMode === 'date' ? new Date() : undefined}
+                    onChange={handleIosPickerChange}
+                  />
+                  <TouchableOpacity style={styles.iosPickerCloseButton} onPress={closeIosPicker}>
+                    <Text style={styles.iosPickerCloseText}>Terminé</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonSecondary]}
+                onPress={closeEditModal}
+              >
+                <Text style={styles.modalButtonSecondaryText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonPrimary, { marginRight: 0 }]}
+                onPress={handleSaveTrip}
+                disabled={isSavingTrip}
+              >
+                {isSavingTrip ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <Text style={styles.modalButtonPrimaryText}>Enregistrer</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <LocationPickerModal
+        visible={editRoutePickerTarget !== null}
+        title={editRoutePickerTarget === 'departure' ? 'Choisir le depart' : 'Choisir l arrivee'}
+        initialLocation={
+          editRoutePickerTarget === 'departure' ? editDepartureSelection : editArrivalSelection
+        }
+        autoLocateOnOpen={false}
+        onClose={() => setEditRoutePickerTarget(null)}
+        onSelect={(location) => {
+          const target = editRoutePickerTarget;
+          setEditRoutePickerTarget(null);
+          setEditRouteMode('map');
+          if (target === 'departure') {
+            setEditDepartureSelection(location);
+            setEditDepartureManualAddress(location.title || location.address);
+            return;
+          }
+          if (target === 'arrival') {
+            setEditArrivalSelection(location);
+            setEditArrivalManualAddress(location.title || location.address);
+          }
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -3669,11 +4153,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[300],
     elevation: 0,
     shadowOpacity: 0,
-  },
-  actionButtonKycRequired: {
-    backgroundColor: Colors.gray[800],
-    shadowColor: Colors.gray[800],
-    shadowOpacity: 0.18,
   },
   bookingCard: {
     backgroundColor: Colors.white,
@@ -4613,5 +5092,218 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.semibold,
     marginLeft: Spacing.xs,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+  },
+  modalCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    maxHeight: '90%',
+    ...CommonStyles.shadowLg,
+  },
+  modalHeader: {
+    marginBottom: Spacing.lg,
+  },
+  modalTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  modalSubtitle: {
+    marginTop: Spacing.xs,
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+  },
+  modalRouteCard: {
+    backgroundColor: Colors.gray[50],
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  modalRouteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalRouteTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  modalSwapButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '10',
+  },
+  modalSwapButtonText: {
+    color: Colors.primary,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+  },
+  modalRouteModeRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  modalRouteModeChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.sm,
+    backgroundColor: Colors.white,
+  },
+  modalRouteModeChipActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '12',
+  },
+  modalRouteModeChipText: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+  },
+  modalRouteModeChipTextActive: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  modalRouteInput: {
+    marginBottom: Spacing.sm,
+  },
+  modalRoutePointButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.white,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.sm,
+  },
+  modalRoutePointIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.gray[100],
+  },
+  modalRoutePointContent: {
+    flex: 1,
+    marginLeft: Spacing.sm,
+    marginRight: Spacing.xs,
+  },
+  modalRoutePointLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    textTransform: 'uppercase',
+  },
+  modalRoutePointValue: {
+    marginTop: 2,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[900],
+    fontWeight: FontWeights.semibold,
+  },
+  modalRoutePointCoords: {
+    marginTop: 2,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+  },
+  modalField: {
+    marginBottom: Spacing.lg,
+  },
+  modalLabel: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[700],
+    marginBottom: Spacing.xs,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+  },
+  modalDatetimeRow: {
+    flexDirection: 'row',
+  },
+  modalDatetimeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    marginRight: Spacing.sm,
+  },
+  modalDatetimeLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    textTransform: 'uppercase',
+  },
+  modalDatetimeValue: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+  },
+  iosPickerContainer: {
+    marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    overflow: 'hidden',
+  },
+  iosPickerCloseButton: {
+    paddingVertical: Spacing.sm,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[200],
+  },
+  iosPickerCloseText: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  modalActions: {
+    flexDirection: 'row',
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    marginRight: Spacing.sm,
+  },
+  modalButtonSecondary: {
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    backgroundColor: Colors.white,
+  },
+  modalButtonSecondaryText: {
+    color: Colors.gray[800],
+    fontWeight: FontWeights.semibold,
+  },
+  modalButtonPrimary: {
+    backgroundColor: Colors.primary,
+  },
+  modalButtonPrimaryText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+  },
 });
-

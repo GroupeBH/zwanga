@@ -4,12 +4,12 @@ import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } f
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
 import { useGetNotificationsQuery } from '@/store/api/notificationApi';
-import { useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
 import {
   TripSearchParams,
   useGetTripsQuery,
   useSearchTripsByCoordinatesMutation,
 } from '@/store/api/tripApi';
+import { useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
 import { useGetCurrentUserQuery, useGetFavoriteLocationsQuery } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectAvailableTrips, selectSavedLocations } from '@/store/selectors';
@@ -347,15 +347,15 @@ export default function HomeScreen() {
     const payload = {
       ...(departureCoordinates
         ? {
-            departureCoordinates,
-            departureRadiusKm: parseNumberInput(departureRadius) ?? 50,
-          }
+          departureCoordinates,
+          departureRadiusKm: parseNumberInput(departureRadius) ?? 50,
+        }
         : {}),
       ...(arrivalCoordinates
         ? {
-            arrivalCoordinates,
-            arrivalRadiusKm: parseNumberInput(arrivalRadius) ?? 50,
-          }
+          arrivalCoordinates,
+          arrivalRadiusKm: parseNumberInput(arrivalRadius) ?? 50,
+        }
         : {}),
       minSeats: parseNumberInput(minSeatsFilter),
       maxPrice: parseNumberInput(maxPriceFilter),
@@ -370,19 +370,19 @@ export default function HomeScreen() {
           mode: 'map',
           ...(filterDepartureLocation
             ? {
-                departureLat: filterDepartureLocation.latitude.toString(),
-                departureLng: filterDepartureLocation.longitude.toString(),
-                departureRadiusKm: String(payload.departureRadiusKm ?? 50),
-                departureLabel: filterDepartureLocation.title,
-              }
+              departureLat: filterDepartureLocation.latitude.toString(),
+              departureLng: filterDepartureLocation.longitude.toString(),
+              departureRadiusKm: String(payload.departureRadiusKm ?? 50),
+              departureLabel: filterDepartureLocation.title,
+            }
             : {}),
           ...(filterArrivalLocation
             ? {
-                arrivalLat: filterArrivalLocation.latitude.toString(),
-                arrivalLng: filterArrivalLocation.longitude.toString(),
-                arrivalRadiusKm: String(payload.arrivalRadiusKm ?? 50),
-                arrivalLabel: filterArrivalLocation.title,
-              }
+              arrivalLat: filterArrivalLocation.latitude.toString(),
+              arrivalLng: filterArrivalLocation.longitude.toString(),
+              arrivalRadiusKm: String(payload.arrivalRadiusKm ?? 50),
+              arrivalLabel: filterArrivalLocation.title,
+            }
             : {}),
         },
       });
@@ -453,24 +453,24 @@ export default function HomeScreen() {
       const typeMeta =
         location.type === 'home'
           ? {
-              title: 'Domicile',
-              icon: 'home' as const,
-              accent: Colors.primary,
-              badge: 'Favori',
-            }
+            title: 'Domicile',
+            icon: 'home' as const,
+            accent: Colors.primary,
+            badge: 'Favori',
+          }
           : location.type === 'work'
             ? {
-                title: 'Bureau',
-                icon: 'briefcase' as const,
-                accent: '#2563EB',
-                badge: 'Favori',
-              }
+              title: 'Bureau',
+              icon: 'briefcase' as const,
+              accent: '#2563EB',
+              badge: 'Favori',
+            }
             : {
-                title: location.name,
-                icon: 'location' as const,
-                accent: Colors.success,
-                badge: 'Repere',
-              };
+              title: location.name,
+              icon: 'location' as const,
+              accent: Colors.success,
+              badge: 'Repere',
+            };
 
       return {
         id: `favorite-${location.id}`,
@@ -656,9 +656,6 @@ export default function HomeScreen() {
           <View style={[styles.quickActionsLead, isCompactScreen && styles.quickActionsLeadCompact]}>
             <Text style={styles.quickActionsEyebrow}>Actions rapides</Text>
             <Text style={styles.sectionTitle}>Choisissez votre prochaine action</Text>
-            <Text style={[styles.quickActionsLeadText, isCompactScreen && styles.quickActionsLeadTextCompact]}>
-              Publiez, trouvez ou demandez un trajet en un geste.
-            </Text>
           </View>
 
           <View style={[styles.quickActionsPrimaryRow, isCompactScreen && styles.quickActionsRowCompact]}>
@@ -808,7 +805,7 @@ export default function HomeScreen() {
           >
             <TouchableOpacity
               style={[styles.quickActionCard, styles.requestActionCard, isCompactScreen && styles.quickActionCardCompact]}
-                onPress={() => router.push(getTripRequestCreateHref())}
+              onPress={() => router.push(getTripRequestCreateHref())}
             >
               <View style={[styles.quickActionBadge, isCompactScreen && styles.quickActionBadgeCompact]}>
                 <Text style={[styles.quickActionBadgeText, isCompactScreen && styles.quickActionBadgeTextCompact]}>Flexible</Text>
@@ -931,7 +928,7 @@ export default function HomeScreen() {
           </View>
         )}
 
-        <View style={[styles.section, styles.quickPlacesSection]}>
+        {/* <View style={[styles.section, styles.quickPlacesSection]}>
           <View style={styles.quickPlacesLead}>
             <View style={styles.quickPlacesLeadCopy}>
               <Text style={styles.quickPlacesEyebrow}>Départ rapide</Text>
@@ -1009,7 +1006,7 @@ export default function HomeScreen() {
               <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
             </TouchableOpacity>
           )}
-        </View>
+        </View>  */}
 
 
         {/* Trajets disponibles */}
