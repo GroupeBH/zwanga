@@ -3,7 +3,6 @@ import AddressSectionSlider, { type AddressSectionStep } from '@/components/Addr
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { trackEvent } from '@/services/analytics';
 import { useCreateTripRequestMutation } from '@/store/api/tripRequestApi';
 import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
@@ -135,7 +134,6 @@ export default function RequestTripScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { showDialog } = useDialog();
-  const { isIdentityVerified, isChecking: isCheckingIdentity, checkIdentity } = useIdentityCheck();
   const { data: favoriteLocations = [] } = useGetFavoriteLocationsQuery();
   const [createTripRequest, { isLoading: isCreating }] = useCreateTripRequestMutation();
   const [initialWindow] = useState(() => buildPresetWindow('now'));
@@ -204,11 +202,7 @@ export default function RequestTripScreen() {
         : !hasArrivalAddress
           ? 'Choisir ma destination'
           : 'Continuer'
-      : !isIdentityVerified
-        ? isCheckingIdentity
-          ? 'Vérification en cours...'
-          : 'Continuer avec ma vérification'
-        : 'Valider ma demande';
+      : 'Valider ma demande';
 
   const applyPreset = (preset: TimePreset) => {
     setTimePreset(preset);
@@ -326,10 +320,6 @@ export default function RequestTripScreen() {
 
   const handleCreateRequest = async () => {
     if (!validate()) return;
-    if (!isIdentityVerified) {
-      const canProceed = checkIdentity('request');
-      if (!canProceed) return;
-    }
     const parsedBudget = Number.parseFloat(maxPricePerSeat);
     if (!Number.isFinite(parsedBudget) || parsedBudget <= 0) {
       showDialog({
@@ -390,18 +380,15 @@ export default function RequestTripScreen() {
       setRequestFormStep('details');
       return;
     }
-    if (!isIdentityVerified) return void checkIdentity('request');
     if (!validate()) return;
     await handleCreateRequest();
   };
 
-  const primaryButtonDisabled = isCreating || isCheckingIdentity;
+  const primaryButtonDisabled = isCreating;
   const primaryIconName =
     !hasDepartureAddress || !hasArrivalAddress || requestFormStep === 'route'
       ? 'arrow-forward'
-      : !isIdentityVerified
-        ? 'shield-checkmark-outline'
-        : 'send';
+      : 'send';
 
   const renderPrimaryButton = () => (
     <TouchableOpacity

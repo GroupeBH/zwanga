@@ -2192,6 +2192,7 @@ export default function ProfileScreen() {
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.subscriptionModalOverlay}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
           <TouchableOpacity
             style={styles.subscriptionModalBackdrop}
@@ -2277,34 +2278,6 @@ export default function ProfileScreen() {
                 })}
               </View>
 
-            {/* Zone d'action dynamique : regroupe saisie, bouton et statut pour éviter de scroller */}
-            <Animated.View 
-              key={selectedSubscriptionPaymentChannel}
-              entering={FadeInDown.duration(400)}
-              style={styles.paymentActionContainer}
-            >
-              {!isSubscriptionCardPayment ? (
-                <View style={styles.subscriptionPhoneSection}>
-                  <Text style={styles.subscriptionSectionLabel}>Numéro Mobile Money</Text>
-                  <View style={styles.subscriptionPhoneInputWrapper}>
-                    <Ionicons name="call-outline" size={18} color={Colors.gray[500]} />
-                    <TextInput
-                      style={styles.subscriptionPhoneInput}
-                      keyboardType="phone-pad"
-                      editable={!proBusy}
-                      maxLength={13}
-                      value={subscriptionPhone}
-                      onChangeText={(text) => setSubscriptionPhone(normalizePaymentPhone(text))}
-                      placeholder="+243891234567"
-                      placeholderTextColor={Colors.gray[400]}
-                    />
-                  </View>
-                  <Text style={styles.subscriptionInputHint}>
-                    Le numéro Mobile Money doit commencer par +243. FlexPay enverra une demande de confirmation sur ce numéro.
-                  </Text>
-                </View>
-              ) : null}
-
               {(subscriptionPaymentMessage || subscriptionPaymentOrderNumber) && (
                 <View style={styles.subscriptionPendingPanel}>
                   <Ionicons name="time-outline" size={18} color={Colors.warningDark} />
@@ -2321,6 +2294,42 @@ export default function ProfileScreen() {
                   </View>
                 </View>
               )}
+
+              <View style={styles.subscriptionSummaryCard}>
+                <Text style={styles.subscriptionSummaryPrice}>{proPriceLabel}</Text>
+                <Text style={styles.subscriptionSummaryText}>
+                  {"Le quota gratuit reste à 5 trajets par jour. L'abonnement débloque les publications supplémentaires dès validation du paiement."}
+                </Text>
+              </View>
+            </ScrollView>
+
+            {/* Zone fixe en bas : saisie du numéro + bouton d'action — toujours visible au-dessus du clavier */}
+            <View style={styles.subscriptionFixedFooter}>
+              {!isSubscriptionCardPayment ? (
+                <Animated.View
+                  key={selectedSubscriptionPaymentChannel}
+                  entering={FadeInDown.duration(300)}
+                  style={styles.subscriptionPhoneSection}
+                >
+                  <Text style={styles.subscriptionSectionLabel}>Numéro Mobile Money</Text>
+                  <View style={styles.subscriptionPhoneInputWrapper}>
+                    <Ionicons name="call-outline" size={18} color={Colors.gray[500]} />
+                    <TextInput
+                      style={styles.subscriptionPhoneInput}
+                      keyboardType="phone-pad"
+                      editable={!proBusy}
+                      maxLength={13}
+                      value={subscriptionPhone}
+                      onChangeText={(text) => setSubscriptionPhone(normalizePaymentPhone(text))}
+                      placeholder="+243891234567"
+                      placeholderTextColor={Colors.gray[400]}
+                    />
+                  </View>
+                  <Text style={styles.subscriptionInputHint}>
+                    Format +243 suivi de 9 chiffres. FlexPay enverra une confirmation.
+                  </Text>
+                </Animated.View>
+              ) : null}
 
               <View style={styles.paymentButtonContainer}>
                 <TouchableOpacity
@@ -2352,16 +2361,8 @@ export default function ProfileScreen() {
                     )}
                   </TouchableOpacity>
                 )}
-                </View>
-            </Animated.View>
-
-            <View style={styles.subscriptionSummaryCard}>
-              <Text style={styles.subscriptionSummaryPrice}>{proPriceLabel}</Text>
-              <Text style={styles.subscriptionSummaryText}>
-                {"Le quota gratuit reste à 5 trajets par jour. L'abonnement débloque les publications supplémentaires dès validation du paiement."}
-              </Text>
+              </View>
             </View>
-            </ScrollView>
           </Animated.View>
         </KeyboardAvoidingView>
       </Modal>
@@ -3617,6 +3618,14 @@ const styles = StyleSheet.create({
   paymentActionContainer: {
     gap: Spacing.md,
     marginBottom: Spacing.lg,
+  },
+  subscriptionFixedFooter: {
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[100],
+    gap: Spacing.md,
   },
   paymentButtonContainer: {
     gap: Spacing.sm,
