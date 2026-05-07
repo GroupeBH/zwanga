@@ -324,6 +324,8 @@ export default function PublishScreen() {
   const [departureReference, setDepartureReference] = useState('');
   const [arrivalManualAddress, setArrivalManualAddress] = useState('');
   const [arrivalReference, setArrivalReference] = useState('');
+  const [showQuickLandmarks, setShowQuickLandmarks] = useState(true);
+  const [recentAddresses, setRecentAddresses] = useState<MapLocationSelection[]>([]);
   const [addressInputMode, setAddressInputMode] = useState<AddressInputMode>('map');
   const [addressSectionStep, setAddressSectionStep] = useState<AddressSectionStep>('method');
   const [activeLocationType, setActiveLocationType] = useState<'departure' | 'arrival' | null>(null);
@@ -1023,41 +1025,18 @@ export default function PublishScreen() {
         </View>
       )} */}
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={[styles.scrollViewContent, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}
+      <View style={{ flex: 1 }}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[styles.scrollViewContent, { paddingBottom: Math.max(insets.bottom, 16) + 80 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Étape 1: Itinéraire */}
         {step === 'route' && (
           <Animated.View entering={stepEntering} style={styles.stepContainer}>
-            <Text style={styles.sectionTitle}>Votre itinéraire</Text>
+            <Text style={styles.sectionTitle}>Où allez-vous ?</Text>
 
-            {/* Message KYC visible dans l'étape route */}
-            {!isIdentityVerified && (
-              <View style={styles.routeKycWarningCard}>
-                <View style={styles.routeKycWarningHeader}>
-                  <View style={styles.routeKycWarningIconContainer}>
-                    <Ionicons name="shield-checkmark" size={24} color={Colors.primary} />
-                  </View>
-                  <View style={styles.routeKycWarningTextContainer}>
-                    <Text style={styles.routeKycWarningTitle}>KYC requis pour publier</Text>
-                    <Text style={styles.routeKycWarningSubtitle}>
-                      Vous devez vérifier votre identité avant de pouvoir publier des trajets
-                    </Text>
-                  </View>
-                </View>
-                <TouchableOpacity
-                  style={styles.routeKycWarningButton}
-                  onPress={handleStartKyc}
-                >
-                  <Ionicons name="shield" size={18} color={Colors.white} />
-                  <Text style={styles.routeKycWarningButtonText}>Compléter ma vérification</Text>
-                  <Ionicons name="arrow-forward" size={16} color={Colors.white} />
-                </TouchableOpacity>
-              </View>
-            )}
-
+            {/* Carte récap itinéraire */}
             <View style={styles.routeCard}>
               <View style={styles.routeVisual}>
                 <View style={styles.dotGreen} />
@@ -1065,154 +1044,238 @@ export default function PublishScreen() {
                 <View style={styles.dotBlue} />
               </View>
               <View style={styles.routeInputs}>
-                <AddressSectionSlider
-                  activeStep={addressSectionStep}
-                  completedSteps={{
-                    method: true,
-                    departure: hasDepartureAddress,
-                    arrival: hasArrivalAddress,
-                  }}
-                  canOpenStep={canOpenAddressSectionStep}
-                  nextDisabled={addressSectionNextDisabled}
-                  nextLabel={addressSectionNextLabel}
-                  onBack={goToPreviousAddressSectionStep}
-                  onNext={goToNextAddressSectionStep}
-                  onStepChange={setAddressSectionStep}
-                >
-                  {addressSectionStep === 'method' && (
-                    <AddressEntryModeSelector
-                      mode={addressInputMode}
-                      onChange={setAddressInputMode}
-                      title="Comment renseigner les adresses ?"
-                      hint="Choisissez une seule méthode pour le départ et l’arrivée."
+                {/* Départ */}
+                <View style={styles.addressField}>
+                  <Text style={styles.addressFieldLabel}>Départ</Text>
+                  <View style={styles.addressInputRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.addressInputButton,
+                        departureLocation && styles.addressInputButtonActive,
+                      ]}
+                      onPress={() => {
+                        setAddressInputMode('map');
+                        openLocationPicker('departure');
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons
+                        name={departureLocation ? "location" : "location-outline"}
+                        size={18}
+                        color={departureLocation ? Colors.success : Colors.gray[500]}
+                      />
+                      <Text
+                        style={[
+                          styles.addressInputText,
+                          departureLocation && styles.addressInputTextActive,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {departureLocation?.title || departureManualAddress || 'Choisir sur la carte'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.modeToggle,
+                        addressInputMode === 'manual' && styles.modeToggleActive,
+                      ]}
+                      onPress={() => {
+                        setAddressInputMode(addressInputMode === 'manual' ? 'map' : 'manual');
+                      }}
+                    >
+                      <Ionicons
+                        name="create-outline"
+                        size={16}
+                        color={addressInputMode === 'manual' ? Colors.primary : Colors.gray[500]}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                  {addressInputMode === 'manual' && (
+                    <TextInput
+                      style={styles.inlineManualInput}
+                      value={departureManualAddress}
+                      onChangeText={setDepartureManualAddress}
+                      placeholder="Ex: avenue Kasa-Vubu, Bandal"
+                      placeholderTextColor={Colors.gray[400]}
                     />
                   )}
+                  <TextInput
+                    style={styles.referenceInput}
+                    value={departureReference}
+                    onChangeText={setDepartureReference}
+                    placeholder={LANDMARK_PLACEHOLDER}
+                    placeholderTextColor={Colors.gray[400]}
+                  />
+                </View>
 
-                  {addressSectionStep === 'departure' && (
-                    <>
-                      <View style={styles.addressBlock}>
-                        <Text style={styles.locationLabel}>Adresse de départ</Text>
-                        <Text style={styles.addressMethodText}>
-                          {addressInputMode === 'map'
-                            ? 'Choisissez le point de départ sur la carte.'
-                            : 'Écrivez l’adresse de départ, sans chercher un point GPS.'}
-                        </Text>
-                        {addressInputMode === 'map' && (
-                          <View style={styles.addressChoiceRow}>
-                            <TouchableOpacity
-                              style={[styles.addressChoiceButton, departureLocation && styles.addressChoiceButtonActive]}
-                              onPress={() => openLocationPicker('departure')}
-                              activeOpacity={0.9}
-                            >
-                              <Ionicons name="map-outline" size={18} color={departureLocation ? Colors.primary : Colors.gray[600]} />
-                              <View style={styles.addressChoiceText}>
-                                <Text style={styles.addressChoiceTitle}>Choisir sur la carte</Text>
-                                <Text style={styles.addressChoiceHint} numberOfLines={1}>
-                                  {departureLocation?.title || 'Sélectionner un point'}
-                                </Text>
-                              </View>
-                            </TouchableOpacity>
-                          </View>
-                        )}
-                      </View>
-                      {addressInputMode === 'manual' && (
-                        <>
-                          <Text style={styles.manualLocationLabel}>Adresse de départ</Text>
-                          <TextInput
-                            style={styles.manualLocationInput}
-                            value={departureManualAddress}
-                            onChangeText={setDepartureManualAddress}
-                            placeholder="Ex: avenue Kasa-Vubu, Bandal"
-                            placeholderTextColor={Colors.gray[400]}
-                          />
-                        </>
-                      )}
-                      <Text style={styles.manualLocationLabel}>Repère de départ (optionnel)</Text>
-                      <TextInput
-                        style={styles.manualLocationInput}
-                        value={departureReference}
-                        onChangeText={setDepartureReference}
-                        placeholder={LANDMARK_PLACEHOLDER}
-                        placeholderTextColor={Colors.gray[400]}
-                      />
-                    </>
-                  )}
+                {/* Swap button */}
+                <TouchableOpacity
+                  style={styles.swapButton}
+                  onPress={() => {
+                    const tempLoc = departureLocation;
+                    const tempManual = departureManualAddress;
+                    const tempRef = departureReference;
+                    setDepartureLocation(arrivalLocation);
+                    setDepartureManualAddress(arrivalManualAddress);
+                    setDepartureReference(arrivalReference);
+                    setArrivalLocation(tempLoc);
+                    setArrivalManualAddress(tempManual);
+                    setArrivalReference(tempRef);
+                  }}
+                >
+                  <View style={styles.swapButtonInner}>
+                    <Ionicons name="swap-vertical" size={18} color={Colors.primary} />
+                  </View>
+                </TouchableOpacity>
 
-                  {addressSectionStep === 'arrival' && (
-                    <>
-                      <View style={styles.addressBlock}>
-                        <Text style={styles.locationLabel}>Adresse d’arrivée</Text>
-                        <Text style={styles.addressMethodText}>
-                          {addressInputMode === 'map'
-                            ? 'Choisissez le point d’arrivée sur la carte.'
-                            : 'Écrivez l’adresse d’arrivée, même sans coordonnées.'}
-                        </Text>
-                        {addressInputMode === 'map' && (
-                          <View style={styles.addressChoiceRow}>
-                            <TouchableOpacity
-                              style={[styles.addressChoiceButton, arrivalLocation && styles.addressChoiceButtonActive]}
-                              onPress={() => openLocationPicker('arrival')}
-                              activeOpacity={0.9}
-                            >
-                              <Ionicons name="map-outline" size={18} color={arrivalLocation ? Colors.primary : Colors.gray[600]} />
-                              <View style={styles.addressChoiceText}>
-                                <Text style={styles.addressChoiceTitle}>Choisir sur la carte</Text>
-                                <Text style={styles.addressChoiceHint} numberOfLines={1}>
-                                  {arrivalLocation?.title || 'Sélectionner un point'}
-                                </Text>
-                              </View>
-                            </TouchableOpacity>
-                          </View>
-                        )}
-                      </View>
-                      {addressInputMode === 'manual' && (
-                        <>
-                          <Text style={styles.manualLocationLabel}>Adresse d’arrivée</Text>
-                          <TextInput
-                            style={styles.manualLocationInput}
-                            value={arrivalManualAddress}
-                            onChangeText={setArrivalManualAddress}
-                            placeholder="Ex: rond-point Victoire"
-                            placeholderTextColor={Colors.gray[400]}
-                          />
-                        </>
-                      )}
-                      <Text style={styles.manualLocationLabel}>Repère d’arrivée (optionnel)</Text>
-                      <TextInput
-                        style={styles.manualLocationInput}
-                        value={arrivalReference}
-                        onChangeText={setArrivalReference}
-                        placeholder={LANDMARK_PLACEHOLDER}
-                        placeholderTextColor={Colors.gray[400]}
+                {/* Arrivée */}
+                <View style={styles.addressField}>
+                  <Text style={styles.addressFieldLabel}>Arrivée</Text>
+                  <View style={styles.addressInputRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.addressInputButton,
+                        arrivalLocation && styles.addressInputButtonActive,
+                      ]}
+                      onPress={() => {
+                        setAddressInputMode('map');
+                        openLocationPicker('arrival');
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons
+                        name={arrivalLocation ? "navigate" : "navigate-outline"}
+                        size={18}
+                        color={arrivalLocation ? Colors.primary : Colors.gray[500]}
                       />
-                    </>
+                      <Text
+                        style={[
+                          styles.addressInputText,
+                          arrivalLocation && styles.addressInputTextActive,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {arrivalLocation?.title || arrivalManualAddress || 'Choisir sur la carte'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.modeToggle,
+                        addressInputMode === 'manual' && styles.modeToggleActive,
+                      ]}
+                      onPress={() => {
+                        setAddressInputMode(addressInputMode === 'manual' ? 'map' : 'manual');
+                      }}
+                    >
+                      <Ionicons
+                        name="create-outline"
+                        size={16}
+                        color={addressInputMode === 'manual' ? Colors.primary : Colors.gray[500]}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                  {addressInputMode === 'manual' && (
+                    <TextInput
+                      style={styles.inlineManualInput}
+                      value={arrivalManualAddress}
+                      onChangeText={setArrivalManualAddress}
+                      placeholder="Ex: rond-point Victoire"
+                      placeholderTextColor={Colors.gray[400]}
+                    />
                   )}
-                </AddressSectionSlider>
+                  <TextInput
+                    style={styles.referenceInput}
+                    value={arrivalReference}
+                    onChangeText={setArrivalReference}
+                    placeholder={LANDMARK_PLACEHOLDER}
+                    placeholderTextColor={Colors.gray[400]}
+                  />
+                </View>
               </View>
             </View>
 
+            {/* Repères rapides Kinshasa */}
+            {showQuickLandmarks && (
+              <View style={styles.quickLandmarksSection}>
+                <View style={styles.quickLandmarksHeader}>
+                  <Ionicons name="navigate" size={14} color={Colors.primary} />
+                  <Text style={styles.quickLandmarksTitle}>Repères rapides</Text>
+                  <TouchableOpacity
+                    style={styles.quickLandmarksToggle}
+                    onPress={() => setShowQuickLandmarks(false)}
+                  >
+                    <Ionicons name="chevron-up" size={16} color={Colors.gray[500]} />
+                  </TouchableOpacity>
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.quickLandmarksScroll}
+                >
+                  {[
+                    { name: 'Gare Centrale', commune: 'Gombe' },
+                    { name: 'Marché Zando', commune: 'Kalamu' },
+                    { name: 'Rond-point Victoire', commune: 'Lingwala' },
+                    { name: 'UPN', commune: 'Lemba' },
+                    { name: 'Kintambo Magasin', commune: 'Kintambo' },
+                    { name: 'Bandal Tshibangu', commune: 'Bandalungwa' },
+                    { name: 'Mont-Ngafula', commune: 'Mont-Ngafula' },
+                    { name: 'Kasa-Vubu', commune: 'Kasa-Vubu' },
+                    { name: 'Ndjili', commune: 'Ndjili' },
+                    { name: 'Matete', commune: 'Matete' },
+                  ].map((place) => (
+                    <TouchableOpacity
+                      key={place.name}
+                      style={styles.quickLandmarkChip}
+                      onPress={() => {
+                        if (!departureLocation && !departureManualAddress) {
+                          setDepartureManualAddress(`${place.name}, ${place.commune}`);
+                        } else if (!arrivalLocation && !arrivalManualAddress) {
+                          setArrivalManualAddress(`${place.name}, ${place.commune}`);
+                        } else {
+                          setArrivalManualAddress(`${place.name}, ${place.commune}`);
+                        }
+                        setAddressInputMode('manual');
+                      }}
+                    >
+                      <Ionicons name="location" size={12} color={Colors.primary} />
+                      <Text style={styles.quickLandmarkText} numberOfLines={1}>
+                        {place.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Info */}
             <View style={styles.infoBox}>
               <Ionicons name="information-circle-outline" size={20} color={Colors.info} />
               <Text style={styles.infoText}>
-                Assurez-vous que vos informations sont exactes pour faciliter la réservation.
+                Touchez une puce pour remplir rapidement, ou utilisez la carte pour une précision GPS.
               </Text>
             </View>
 
-            <TouchableOpacity
-              style={[
-                styles.button,
-                !isIdentityVerified && styles.buttonDisabled
-              ]}
-              onPress={handleNextStep}
-              disabled={!isIdentityVerified}
-            >
-              <Text style={styles.buttonText}>
-                {isIdentityVerified ? 'Continuer' : 'KYC requis pour continuer'}
-              </Text>
-            </TouchableOpacity>
+            {/* KYC Warning si non vérifié */}
+            {!isIdentityVerified && (
+              <TouchableOpacity
+                style={styles.inlineKycBanner}
+                onPress={handleStartKyc}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="shield-checkmark" size={20} color={Colors.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inlineKycTitle}>KYC requis pour publier</Text>
+                  <Text style={styles.inlineKycSubtitle}>
+                    Vérifiez votre identité en moins de 5 min
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={Colors.primary} />
+              </TouchableOpacity>
+            )}
+
           </Animated.View>
         )}
-
         {/* Étape 2: Date & Heure */}
         {step === 'datetime' && (
           <Animated.View entering={stepEntering} style={styles.stepContainer}>
@@ -1721,6 +1784,29 @@ export default function PublishScreen() {
           </Animated.View>
         )}
       </ScrollView>
+
+        {step === 'route' && (
+          <View style={[styles.fixedBottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+            <TouchableOpacity
+              style={[
+                styles.button,
+                styles.fixedButton,
+                (!hasDepartureAddress || !hasArrivalAddress) && styles.buttonDisabled,
+              ]}
+              onPress={handleNextStep}
+              disabled={!hasDepartureAddress || !hasArrivalAddress}
+            >
+              <Text style={styles.buttonText}>
+                {!hasDepartureAddress
+                  ? 'Indiquez le départ'
+                  : !hasArrivalAddress
+                    ? "Indiquez l'arrivée"
+                    : 'Continuer'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
 
       <LocationPickerModal
         visible={activeLocationType !== null}
@@ -3200,8 +3286,180 @@ const styles = StyleSheet.create({
     minHeight: 80,
     textAlignVertical: 'top',
   },
+  // === NOUVEAUX STYLES UX ROUTE ===
+  addressField: {
+    gap: Spacing.xs,
+  },
+  addressFieldLabel: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  addressInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  addressInputButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    borderWidth: 1.5,
+    borderColor: Colors.gray[300],
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.white,
+  },
+  addressInputButtonActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '10',
+  },
+  addressInputText: {
+    flex: 1,
+    fontSize: FontSizes.base,
+    color: Colors.gray[700],
+    fontWeight: FontWeights.medium,
+  },
+  addressInputTextActive: {
+    color: Colors.gray[900],
+    fontWeight: FontWeights.bold,
+  },
+  modeToggle: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1.5,
+    borderColor: Colors.gray[300],
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modeToggleActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '10',
+  },
+  inlineManualInput: {
+    borderWidth: 2,
+    borderColor: Colors.primary + '50',
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+    backgroundColor: Colors.white,
+    marginTop: Spacing.xs,
+  },
+  referenceInput: {
+    borderWidth: 1.5,
+    borderColor: Colors.gray[300],
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[800],
+    backgroundColor: Colors.gray[50],
+    marginTop: Spacing.xs,
+  },
+  swapButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: Spacing.sm,
+  },
+  swapButtonInner: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.primary + '12',
+    borderWidth: 1.5,
+    borderColor: Colors.primary + '30',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  quickLandmarksSection: {
+    marginBottom: Spacing.lg,
+  },
+  quickLandmarksHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
+  },
+  quickLandmarksTitle: {
+    flex: 1,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+  },
+  quickLandmarksToggle: {
+    padding: Spacing.xs,
+  },
+  quickLandmarksScroll: {
+    gap: Spacing.sm,
+    paddingRight: Spacing.xl,
+  },
+  quickLandmarkChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.primary + '25',
+    backgroundColor: Colors.primary + '06',
+  },
+  quickLandmarkText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+    color: Colors.primary,
+    maxWidth: 120,
+  },
+  inlineKycBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    backgroundColor: Colors.primary + '08',
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1.5,
+    borderColor: Colors.primary + '20',
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  inlineKycTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+  },
+  inlineKycSubtitle: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginTop: 2,
+  },
+  fixedBottomBar: {
+    backgroundColor: Colors.white,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[100],
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.md,
+  },
+  fixedButton: {
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 6,
+  },
 });
-
 
 
 

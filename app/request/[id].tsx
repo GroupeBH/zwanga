@@ -1,4 +1,5 @@
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
+import AddressEntryModeSelector, { type AddressInputMode } from '@/components/AddressEntryModeSelector';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
@@ -178,6 +179,7 @@ export default function TripRequestDetailsScreen() {
   const [editDepartureReference, setEditDepartureReference] = useState('');
   const [editArrivalManualAddress, setEditArrivalManualAddress] = useState('');
   const [editArrivalReference, setEditArrivalReference] = useState('');
+  const [editAddressInputMode, setEditAddressInputMode] = useState<AddressInputMode>('map');
   const [editDepartureDateMin, setEditDepartureDateMin] = useState<Date | null>(null);
   const [editDepartureDateMax, setEditDepartureDateMax] = useState<Date | null>(null);
   const [editNumberOfSeats, setEditNumberOfSeats] = useState('');
@@ -370,8 +372,14 @@ export default function TripRequestDetailsScreen() {
   const canAcceptDirectly = useMemo(() => canMakeOffer && !myOffer, [canMakeOffer, myOffer]);
 
   const minimumSeatsRequired = tripRequest?.numberOfSeats ?? 1;
-  const editDepartureAddress = getLocationText(editDepartureLocation, editDepartureManualAddress);
-  const editArrivalAddress = getLocationText(editArrivalLocation, editArrivalManualAddress);
+  const editDepartureAddress =
+    editAddressInputMode === 'manual'
+      ? editDepartureManualAddress.trim()
+      : getLocationText(editDepartureLocation, editDepartureManualAddress);
+  const editArrivalAddress =
+    editAddressInputMode === 'manual'
+      ? editArrivalManualAddress.trim()
+      : getLocationText(editArrivalLocation, editArrivalManualAddress);
 
   const isOfferDraftValid = useMemo(() => {
     if (!tripRequest) return false;
@@ -997,6 +1005,8 @@ export default function TripRequestDetailsScreen() {
   // Initialiser le formulaire de modification avec les valeurs actuelles
   const initializeEditForm = () => {
     if (!tripRequest) return;
+    const hasMapCoordinates = tripRequest.departure.hasCoordinates && tripRequest.arrival.hasCoordinates;
+    setEditAddressInputMode(hasMapCoordinates ? 'map' : 'manual');
     
     setEditDepartureLocation(
       tripRequest.departure.hasCoordinates
@@ -1052,10 +1062,12 @@ export default function TripRequestDetailsScreen() {
         payload: {
           departureLocation: editDepartureAddress,
           departureReference: editDepartureReference.trim() || undefined,
-          departureCoordinates: getLocationCoordinates(editDepartureLocation),
+          departureCoordinates:
+            editAddressInputMode === 'map' ? getLocationCoordinates(editDepartureLocation) : undefined,
           arrivalLocation: editArrivalAddress,
           arrivalReference: editArrivalReference.trim() || undefined,
-          arrivalCoordinates: getLocationCoordinates(editArrivalLocation),
+          arrivalCoordinates:
+            editAddressInputMode === 'map' ? getLocationCoordinates(editArrivalLocation) : undefined,
           departureDateMin: editDepartureDateMin?.toISOString() || tripRequest?.departureDateMin || '',
           departureDateMax: editDepartureDateMax?.toISOString() || tripRequest?.departureDateMax || '',
           numberOfSeats: parseInt(editNumberOfSeats) || tripRequest?.numberOfSeats || 1,
@@ -2747,31 +2759,50 @@ export default function TripRequestDetailsScreen() {
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                   >
+                    <View style={styles.formGroup}>
+                      <AddressEntryModeSelector
+                        mode={editAddressInputMode}
+                        onChange={setEditAddressInputMode}
+                        title="Comment renseigner les adresses ?"
+                        hint="Saisie écrite pour une adresse exacte, carte pour un point GPS précis."
+                      />
+                    </View>
+                    <View style={styles.formGroup}>
+                      <Text style={styles.formHelperText}>
+                        {editAddressInputMode === 'map'
+                          ? 'Mode carte actif: sélectionnez un point précis pour le départ et l’arrivée.'
+                          : 'Mode saisie active: entrez les adresses complètes de départ et d’arrivée.'}
+                      </Text>
+                    </View>
+
                     {/* Sélection du lieu de départ */}
                     <View style={styles.formGroup}>
                       <Text style={styles.formLabel}>Adresse de départ *</Text>
-                      <TouchableOpacity
-                        style={styles.locationButton}
-                        onPress={() => {
-                          setEditLocationPickerType('departure');
-                          setEditActivePicker('departure');
-                        }}
-                      >
-                        <Ionicons name="location" size={20} color={Colors.primary} />
-                        <Text style={styles.locationButtonText}>
-                          {editDepartureLocation?.title || 'Sélectionner le lieu de départ'}
-                        </Text>
-                        <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
-                      </TouchableOpacity>
+                      {editAddressInputMode === 'map' ? (
+                        <TouchableOpacity
+                          style={styles.locationButton}
+                          onPress={() => {
+                            setEditLocationPickerType('departure');
+                            setEditActivePicker('departure');
+                          }}
+                        >
+                          <Ionicons name="location" size={20} color={Colors.primary} />
+                          <Text style={styles.locationButtonText}>
+                            {editDepartureLocation?.title || 'Choisir le point de départ sur la carte'}
+                          </Text>
+                          <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                        </TouchableOpacity>
+                      ) : (
+                        <TextInput
+                          style={styles.input}
+                          placeholder="Ex: Avenue Kasa-Vubu 12, Bandalungwa"
+                          value={editDepartureManualAddress}
+                          onChangeText={setEditDepartureManualAddress}
+                        />
+                      )}
                       <TextInput
                         style={[styles.input, styles.referenceInput]}
-                        placeholder="Adresse de départ"
-                        value={editDepartureManualAddress}
-                        onChangeText={setEditDepartureManualAddress}
-                      />
-                      <TextInput
-                        style={[styles.input, styles.referenceInput]}
-                        placeholder={LANDMARK_PLACEHOLDER}
+                        placeholder="Détail du point de départ (optionnel)"
                         value={editDepartureReference}
                         onChangeText={setEditDepartureReference}
                       />
@@ -2780,28 +2811,31 @@ export default function TripRequestDetailsScreen() {
                     {/* Sélection du lieu d'arrivée */}
                     <View style={styles.formGroup}>
                       <Text style={styles.formLabel}>Adresse d’arrivée *</Text>
-                      <TouchableOpacity
-                        style={styles.locationButton}
-                        onPress={() => {
-                          setEditLocationPickerType('arrival');
-                          setEditActivePicker('arrival');
-                        }}
-                      >
-                        <Ionicons name="navigate" size={20} color={Colors.primary} />
-                        <Text style={styles.locationButtonText}>
-                          {editArrivalLocation?.title || "Sélectionner le lieu d'arrivée"}
-                        </Text>
-                        <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
-                      </TouchableOpacity>
+                      {editAddressInputMode === 'map' ? (
+                        <TouchableOpacity
+                          style={styles.locationButton}
+                          onPress={() => {
+                            setEditLocationPickerType('arrival');
+                            setEditActivePicker('arrival');
+                          }}
+                        >
+                          <Ionicons name="navigate" size={20} color={Colors.primary} />
+                          <Text style={styles.locationButtonText}>
+                            {editArrivalLocation?.title || "Choisir l’arrivée sur la carte"}
+                          </Text>
+                          <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                        </TouchableOpacity>
+                      ) : (
+                        <TextInput
+                          style={styles.input}
+                          placeholder="Ex: Boulevard du 30 Juin, Gombe"
+                          value={editArrivalManualAddress}
+                          onChangeText={setEditArrivalManualAddress}
+                        />
+                      )}
                       <TextInput
                         style={[styles.input, styles.referenceInput]}
-                        placeholder="Adresse d’arrivée"
-                        value={editArrivalManualAddress}
-                        onChangeText={setEditArrivalManualAddress}
-                      />
-                      <TextInput
-                        style={[styles.input, styles.referenceInput]}
-                        placeholder={LANDMARK_PLACEHOLDER}
+                        placeholder="Détail du point d’arrivée (optionnel)"
                         value={editArrivalReference}
                         onChangeText={setEditArrivalReference}
                       />
