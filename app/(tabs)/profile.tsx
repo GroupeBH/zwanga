@@ -197,7 +197,6 @@ export default function ProfileScreen() {
   const [subscriptionModalVisible, setSubscriptionModalVisible] = useState(false);
   const [selectedSubscriptionPaymentChannel, setSelectedSubscriptionPaymentChannel] =
     useState<SubscriptionPaymentChannel>('mpesa');
-  const [subscriptionModalStep, setSubscriptionModalStep] = useState<SubscriptionModalStep>('method');
   const [subscriptionPhone, setSubscriptionPhone] = useState('');
   const [subscriptionPaymentOrderNumber, setSubscriptionPaymentOrderNumber] = useState<string | null>(null);
   const [subscriptionPaymentMessage, setSubscriptionPaymentMessage] = useState<string | null>(null);
@@ -300,7 +299,6 @@ export default function ProfileScreen() {
     isCheckingSubscriptionPayment ||
     isSubscriptionPaymentAutoChecking;
   const isSubscriptionCardPayment = selectedSubscriptionPaymentChannel === 'card';
-  const isSubscriptionMobileStep = subscriptionModalStep === 'mobile_money';
   const shouldShowPaymentStatusPanel = Boolean(subscriptionPaymentMessage || subscriptionPaymentOrderNumber);
   const { shouldShow: shouldShowProfileGuide, complete: completeProfileGuide } =
     useTutorialGuide('profile_screen');
@@ -636,7 +634,6 @@ export default function ProfileScreen() {
     if (isSubscribingPro || isCheckingSubscriptionPayment || isSubscriptionPaymentAutoChecking) {
       return;
     }
-    setSubscriptionModalStep('method');
     setSubscriptionModalVisible(false);
   };
 
@@ -841,7 +838,6 @@ export default function ProfileScreen() {
     }
 
     stopSubscriptionPaymentAutoCheck();
-    setSubscriptionModalStep('method');
     if (!subscriptionPhone.trim()) {
       setSubscriptionPhone(DRC_MOBILE_MONEY_PREFIX);
     }
@@ -973,7 +969,6 @@ export default function ProfileScreen() {
 
     openedSubscriptionParamRef.current = true;
     if (isDriver) {
-      setSubscriptionModalStep('method');
       setSubscriptionPaymentOrderNumber(null);
       setSubscriptionPaymentMessage(null);
       setSubscriptionModalVisible(true);
@@ -986,7 +981,6 @@ export default function ProfileScreen() {
     }
 
     handledPaymentStatusRef.current = paymentStatus;
-    setSubscriptionModalStep('method');
     setSubscriptionModalVisible(true);
 
     const normalizedStatus = String(paymentStatus).toLowerCase();
@@ -2256,45 +2250,40 @@ export default function ProfileScreen() {
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.subscriptionModalContent}
             >
-              {!isSubscriptionMobileStep ? (
-                <>
-                  <Text style={styles.subscriptionSectionLabel}>Moyen de paiement</Text>
-                  <View style={styles.subscriptionPaymentGrid}>
-                    {SUBSCRIPTION_PAYMENT_OPTIONS.map((option) => {
-                      const isSelected = selectedSubscriptionPaymentChannel === option.id;
-                      return (
-                        <TouchableOpacity
-                          key={option.id}
-                          style={[
-                            styles.subscriptionPaymentOption,
-                            isSelected && styles.subscriptionPaymentOptionActive,
-                          ]}
-                          disabled={proBusy}
-                          onPress={() => {
-                            setSelectedSubscriptionPaymentChannel(option.id);
-                            setSubscriptionModalStep(option.id === 'card' ? 'method' : 'mobile_money');
-                          }}
-                          activeOpacity={0.85}
-                        >
-                          <Ionicons
-                            name={option.icon}
-                            size={20}
-                            color={isSelected ? Colors.primary : Colors.gray[600]}
-                          />
-                          <View style={styles.subscriptionPaymentOptionText}>
-                            <Text style={styles.subscriptionPaymentOptionLabel}>{option.label}</Text>
-                            <Text style={styles.subscriptionPaymentOptionHint}>{option.hint}</Text>
-                          </View>
-                          {isSelected && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />}
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </>
-              ) : null}
+              <Text style={styles.subscriptionSectionLabel}>Moyen de paiement</Text>
+              <View style={styles.subscriptionPaymentGrid}>
+                {SUBSCRIPTION_PAYMENT_OPTIONS.map((option) => {
+                  const isSelected = selectedSubscriptionPaymentChannel === option.id;
+                  return (
+                    <TouchableOpacity
+                      key={option.id}
+                      style={[
+                        styles.subscriptionPaymentOption,
+                        isSelected && styles.subscriptionPaymentOptionActive,
+                      ]}
+                      disabled={proBusy}
+                      onPress={() => {
+                        setSelectedSubscriptionPaymentChannel(option.id);
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons
+                        name={option.icon}
+                        size={20}
+                        color={isSelected ? Colors.primary : Colors.gray[600]}
+                      />
+                      <View style={styles.subscriptionPaymentOptionText}>
+                        <Text style={styles.subscriptionPaymentOptionLabel}>{option.label}</Text>
+                        <Text style={styles.subscriptionPaymentOptionHint}>{option.hint}</Text>
+                      </View>
+                      {isSelected && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
 
-              {!isSubscriptionMobileStep && shouldShowPaymentStatusPanel && (
-                <View style={styles.subscriptionPendingPanel}>
+              {shouldShowPaymentStatusPanel && (
+                <View style={[styles.subscriptionPendingPanel, { marginTop: Spacing.md }]}>
                   <Ionicons name="time-outline" size={18} color={Colors.warningDark} />
                   <View style={styles.subscriptionPendingTextContent}>
                     <Text style={styles.subscriptionPendingTitle}>Statut du paiement</Text>
@@ -2310,29 +2299,16 @@ export default function ProfileScreen() {
                 </View>
               )}
 
-              {!isSubscriptionMobileStep ? (
-                <View style={styles.subscriptionSummaryCard}>
-                  <Text style={styles.subscriptionSummaryPrice}>{proPriceLabel}</Text>
-                  <Text style={styles.subscriptionSummaryText}>
-                    {"Le quota gratuit reste à 5 trajets par jour. L'abonnement débloque les publications supplémentaires dès validation du paiement."}
-                  </Text>
-                </View>
-              ) : null}
+              <View style={[styles.subscriptionSummaryCard, { marginTop: Spacing.lg }]}>
+                <Text style={styles.subscriptionSummaryPrice}>{proPriceLabel}</Text>
+                <Text style={styles.subscriptionSummaryText}>
+                  {"Le quota gratuit reste à 5 trajets par jour. L'abonnement débloque les publications supplémentaires dès validation du paiement."}
+                </Text>
+              </View>
             </ScrollView>
 
             {/* Zone fixe en bas : saisie du numéro + bouton d'action — toujours visible au-dessus du clavier */}
             <View style={styles.subscriptionFixedFooter}>
-              {isSubscriptionMobileStep ? (
-                <TouchableOpacity
-                  style={styles.subscriptionSecondaryButton}
-                  onPress={() => setSubscriptionModalStep('method')}
-                  disabled={proBusy}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.subscriptionSecondaryButtonText}>Changer le moyen de paiement</Text>
-                </TouchableOpacity>
-              ) : null}
-
               {!isSubscriptionCardPayment ? (
                 <Animated.View
                   key={selectedSubscriptionPaymentChannel}
@@ -2357,23 +2333,6 @@ export default function ProfileScreen() {
                     Format +243 suivi de 9 chiffres. FlexPay enverra une confirmation.
                   </Text>
                 </Animated.View>
-              ) : null}
-
-              {isSubscriptionMobileStep && shouldShowPaymentStatusPanel ? (
-                <View style={styles.subscriptionPendingPanel}>
-                  <Ionicons name="time-outline" size={18} color={Colors.warningDark} />
-                  <View style={styles.subscriptionPendingTextContent}>
-                    <Text style={styles.subscriptionPendingTitle}>Statut du paiement</Text>
-                    {subscriptionPaymentMessage ? (
-                      <Text style={styles.subscriptionPendingText}>{subscriptionPaymentMessage}</Text>
-                    ) : null}
-                    {subscriptionPaymentOrderNumber ? (
-                      <Text style={styles.subscriptionPendingReference}>
-                        Référence {subscriptionPaymentOrderNumber}
-                      </Text>
-                    ) : null}
-                  </View>
-                </View>
               ) : null}
 
               <View style={styles.paymentButtonContainer}>
