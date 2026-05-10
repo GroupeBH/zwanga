@@ -2761,81 +2761,101 @@ export default function TripRequestDetailsScreen() {
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                   >
-                    {/* Mode de saisie */}
-                    <View style={styles.editSection}>
-                      <AddressEntryModeSelector
-                        mode={editAddressInputMode}
-                        onChange={setEditAddressInputMode}
-                        title="Comment renseigner les adresses ?"
-                        hint="Carte pour un point GPS précis, ou saisie manuelle."
-                      />
+                    {/* ── Section Itinéraire ── */}
+                    <View style={styles.editSectionHeader}>
+                      <View style={styles.editSectionIconWrap}>
+                        <Ionicons name="map-outline" size={15} color={Colors.primary} />
+                      </View>
+                      <Text style={styles.editSectionTitle}>Itinéraire</Text>
                     </View>
 
-                    {/* Départ */}
-                    <View style={styles.editSection}>
-                      <View style={styles.editSectionHeader}>
-                        <Ionicons name="location" size={20} color={Colors.success} />
-                        <Text style={styles.editSectionTitle}>Point de départ</Text>
+                    {/* Mode selector */}
+                    <View style={styles.editModeRow}>
+                      <TouchableOpacity
+                        style={[styles.editModeChip, editAddressInputMode === 'map' && styles.editModeChipActive]}
+                        onPress={() => setEditAddressInputMode('map')}
+                      >
+                        <Ionicons name="map-outline" size={13} color={editAddressInputMode === 'map' ? Colors.primary : Colors.gray[500]} />
+                        <Text style={[styles.editModeChipText, editAddressInputMode === 'map' && styles.editModeChipTextActive]}>Carte</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.editModeChip, editAddressInputMode === 'manual' && styles.editModeChipActive]}
+                        onPress={() => setEditAddressInputMode('manual')}
+                      >
+                        <Ionicons name="create-outline" size={13} color={editAddressInputMode === 'manual' ? Colors.primary : Colors.gray[500]} />
+                        <Text style={[styles.editModeChipText, editAddressInputMode === 'manual' && styles.editModeChipTextActive]}>Saisie manuelle</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {editAddressInputMode === 'manual' ? (
+                      <View style={styles.editRouteCard}>
+                        <View style={styles.editRouteManualItem}>
+                          <View style={[styles.editRouteManualDot, { backgroundColor: Colors.success }]} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.editRouteManualLabel}>Départ</Text>
+                            <TextInput
+                              style={styles.editRouteManualInput}
+                              placeholder="Adresse de départ"
+                              placeholderTextColor={Colors.gray[400]}
+                              value={editDepartureManualAddress}
+                              onChangeText={setEditDepartureManualAddress}
+                            />
+                          </View>
+                        </View>
+                        <View style={styles.editRouteDividerLine} />
+                        <View style={styles.editRouteManualItem}>
+                          <View style={[styles.editRouteManualDot, { backgroundColor: Colors.primary }]} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.editRouteManualLabel}>Arrivée</Text>
+                            <TextInput
+                              style={styles.editRouteManualInput}
+                              placeholder="Adresse d'arrivée"
+                              placeholderTextColor={Colors.gray[400]}
+                              value={editArrivalManualAddress}
+                              onChangeText={setEditArrivalManualAddress}
+                            />
+                          </View>
+                        </View>
                       </View>
-                      {editAddressInputMode === 'map' ? (
+                    ) : (
+                      <View style={styles.editRouteCard}>
                         <TouchableOpacity
-                          style={styles.editInputButton}
+                          style={styles.editRouteMapBtn}
                           onPress={() => { setEditLocationPickerType('departure'); setEditActivePicker('departure'); }}
+                          activeOpacity={0.75}
                         >
-                          <Ionicons name="map-outline" size={20} color={Colors.primary} />
-                          <Text style={styles.editInputButtonText}>
-                            {editDepartureLocation?.title || 'Sélectionner sur la carte'}
-                          </Text>
-                          <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
+                          <View style={[styles.editRouteMapDot, { backgroundColor: Colors.success + '20' }]}>
+                            <Ionicons name="location" size={16} color={Colors.success} />
+                          </View>
+                          <View style={styles.editRouteMapContent}>
+                            <Text style={[styles.editRouteMapType, { color: Colors.success }]}>DÉPART</Text>
+                            <Text style={styles.editRouteMapValue} numberOfLines={1}>
+                              {editDepartureAddress || 'Sélectionner sur la carte'}
+                            </Text>
+                          </View>
+                          <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
                         </TouchableOpacity>
-                      ) : (
-                        <TextInput
-                          style={styles.editInput}
-                          placeholder="Adresse de départ"
-                          value={editDepartureManualAddress}
-                          onChangeText={setEditDepartureManualAddress}
-                        />
-                      )}
-                      <TextInput
-                        style={[styles.editInput, styles.editInputSecondary]}
-                        placeholder="Repère (ex: portail bleu, devant la station)"
-                        value={editDepartureReference}
-                        onChangeText={setEditDepartureReference}
-                      />
-                    </View>
 
-                    {/* Arrivée */}
-                    <View style={styles.editSection}>
-                      <View style={styles.editSectionHeader}>
-                        <Ionicons name="navigate" size={20} color={Colors.primary} />
-                        <Text style={styles.editSectionTitle}>Point d'arrivée</Text>
-                      </View>
-                      {editAddressInputMode === 'map' ? (
+                        <View style={styles.editRouteDividerLine} />
+
                         <TouchableOpacity
-                          style={styles.editInputButton}
+                          style={styles.editRouteMapBtn}
                           onPress={() => { setEditLocationPickerType('arrival'); setEditActivePicker('arrival'); }}
+                          activeOpacity={0.75}
                         >
-                          <Ionicons name="map-outline" size={20} color={Colors.primary} />
-                          <Text style={styles.editInputButtonText}>
-                            {editArrivalLocation?.title || 'Sélectionner sur la carte'}
-                          </Text>
-                          <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
+                          <View style={[styles.editRouteMapDot, { backgroundColor: Colors.primary + '18' }]}>
+                            <Ionicons name="navigate" size={16} color={Colors.primary} />
+                          </View>
+                          <View style={styles.editRouteMapContent}>
+                            <Text style={[styles.editRouteMapType, { color: Colors.primary }]}>ARRIVÉE</Text>
+                            <Text style={styles.editRouteMapValue} numberOfLines={1}>
+                              {editArrivalAddress || 'Sélectionner sur la carte'}
+                            </Text>
+                          </View>
+                          <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
                         </TouchableOpacity>
-                      ) : (
-                        <TextInput
-                          style={styles.editInput}
-                          placeholder="Adresse d'arrivée"
-                          value={editArrivalManualAddress}
-                          onChangeText={setEditArrivalManualAddress}
-                        />
-                      )}
-                      <TextInput
-                        style={[styles.editInput, styles.editInputSecondary]}
-                        placeholder="Repère d'arrivée"
-                        value={editArrivalReference}
-                        onChangeText={setEditArrivalReference}
-                      />
-                    </View>
+                      </View>
+                    )}
 
                     {/* Fenêtre horaire */}
                     <View style={styles.editSection}>
@@ -4760,5 +4780,111 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
     color: Colors.white,
     fontWeight: FontWeights.bold,
+  },
+  editSectionIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: Colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editModeRow: {
+    flexDirection: 'row',
+    backgroundColor: Colors.gray[100],
+    borderRadius: 10,
+    padding: 4,
+    marginBottom: Spacing.md,
+  },
+  editModeChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  editModeChipActive: {
+    backgroundColor: Colors.white,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  editModeChipText: {
+    fontSize: 13,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[500],
+  },
+  editModeChipTextActive: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  editRouteCard: {
+    backgroundColor: Colors.gray[50],
+    borderRadius: 16,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  editRouteMapBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+  },
+  editRouteMapDot: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.sm,
+  },
+  editRouteMapContent: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  editRouteMapType: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    marginBottom: 2,
+  },
+  editRouteMapValue: {
+    fontSize: 14,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
+  },
+  editRouteDividerLine: {
+    width: 1,
+    height: 20,
+    backgroundColor: Colors.gray[300],
+    marginLeft: 16,
+    marginVertical: 4,
+  },
+  editRouteManualItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  editRouteManualDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: Spacing.md,
+    marginLeft: 10,
+  },
+  editRouteManualLabel: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[500],
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  editRouteManualInput: {
+    fontSize: 14,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[900],
+    padding: 0,
+    minHeight: 24,
   },
 });
