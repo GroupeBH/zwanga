@@ -3179,196 +3179,170 @@ export default function TripDetailsScreen() {
           </Animated.View>
         </TouchableOpacity>
       </Modal>
-      <Modal transparent animationType="slide" visible={editTripModalVisible}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text style={styles.modalTitle}>Modifier le trajet</Text>
-                <TouchableOpacity onPress={closeEditModal} style={{ padding: 4 }}>
-                  <Ionicons name="close" size={24} color={Colors.gray[500]} />
-                </TouchableOpacity>
+      <Modal transparent animationType="slide" visible={editTripModalVisible} onRequestClose={closeEditModal}>
+        <View style={styles.editModalOverlay}>
+          <TouchableOpacity style={styles.editModalBackdrop} activeOpacity={1} onPress={closeEditModal} />
+          <View style={[styles.editModalSheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
+
+            {/* Handle bar */}
+            <View style={styles.editModalHandle} />
+
+            {/* Header */}
+            <View style={styles.editModalHeader}>
+              <View style={styles.editModalHeaderIcon}>
+                <Ionicons name="create" size={20} color={Colors.primary} />
               </View>
-              {trip && (
-                <Text style={styles.modalSubtitle}>
-                  {trip.departure.name} {'->'} {trip.arrival.name}
-                </Text>
-              )}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.editModalTitle}>Modifier le trajet</Text>
+                {trip && (
+                  <Text style={styles.editModalSubtitle} numberOfLines={1}>
+                    {trip.departure.name} {'->'} {trip.arrival.name}
+                  </Text>
+                )}
+              </View>
+              <TouchableOpacity onPress={closeEditModal} style={styles.editModalCloseBtn}>
+                <Ionicons name="close" size={20} color={Colors.gray[600]} />
+              </TouchableOpacity>
             </View>
 
             <ScrollView
               showsVerticalScrollIndicator={false}
-              style={{ maxHeight: '80%' }}
-              contentContainerStyle={{ paddingBottom: Spacing.md }}
               keyboardShouldPersistTaps="handled"
+              style={{ flex: 1 }}
+              contentContainerStyle={styles.editModalScroll}
             >
-              <View style={styles.modalRouteCard}>
-                <View style={styles.modalRouteHeader}>
-                  <Text style={styles.modalRouteTitle}>Points du trajet</Text>
-                  <TouchableOpacity style={styles.modalSwapButton} onPress={swapEditRoutePoints}>
-                    <Ionicons name="swap-vertical" size={16} color={Colors.primary} />
-                    <Text style={styles.modalSwapButtonText}>Echanger</Text>
+              {/* ── Section Itinéraire ── */}
+              <View style={styles.editSectionHeader}>
+                <View style={styles.editSectionIconWrap}>
+                  <Ionicons name="map-outline" size={15} color={Colors.primary} />
+                </View>
+                <Text style={styles.editSectionTitle}>Itinéraire</Text>
+                <TouchableOpacity style={styles.editSwapBtn} onPress={swapEditRoutePoints}>
+                  <Ionicons name="swap-vertical" size={14} color={Colors.primary} />
+                  <Text style={styles.editSwapText}>Inverser</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Mode selector */}
+              <View style={styles.editModeRow}>
+                <TouchableOpacity
+                  style={[styles.editModeChip, editRouteMode === 'map' && styles.editModeChipActive]}
+                  onPress={() => setEditRouteMode('map')}
+                >
+                  <Ionicons name="map-outline" size={13} color={editRouteMode === 'map' ? Colors.primary : Colors.gray[500]} />
+                  <Text style={[styles.editModeChipText, editRouteMode === 'map' && styles.editModeChipTextActive]}>Carte</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.editModeChip, editRouteMode === 'manual' && styles.editModeChipActive]}
+                  onPress={() => setEditRouteMode('manual')}
+                >
+                  <Ionicons name="create-outline" size={13} color={editRouteMode === 'manual' ? Colors.primary : Colors.gray[500]} />
+                  <Text style={[styles.editModeChipText, editRouteMode === 'manual' && styles.editModeChipTextActive]}>Saisie manuelle</Text>
+                </TouchableOpacity>
+              </View>
+
+              {editRouteMode === 'manual' ? (
+                <View style={styles.editRouteCard}>
+                  <View style={styles.editRouteManualItem}>
+                    <View style={[styles.editRouteManualDot, { backgroundColor: Colors.success }]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.editRouteManualLabel}>Départ</Text>
+                      <TextInput
+                        style={styles.editRouteManualInput}
+                        placeholder="Ex: avenue Kasa-Vubu, Bandal"
+                        placeholderTextColor={Colors.gray[400]}
+                        value={editDepartureManualAddress}
+                        onChangeText={setEditDepartureManualAddress}
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.editRouteDividerLine} />
+                  <View style={styles.editRouteManualItem}>
+                    <View style={[styles.editRouteManualDot, { backgroundColor: Colors.primary }]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.editRouteManualLabel}>Arrivée</Text>
+                      <TextInput
+                        style={styles.editRouteManualInput}
+                        placeholder="Ex: rond-point Victoire"
+                        placeholderTextColor={Colors.gray[400]}
+                        value={editArrivalManualAddress}
+                        onChangeText={setEditArrivalManualAddress}
+                      />
+                    </View>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.editRouteCard}>
+                  <TouchableOpacity
+                    style={styles.editRouteMapBtn}
+                    onPress={() => setEditRoutePickerTarget('departure')}
+                    activeOpacity={0.75}
+                  >
+                    <View style={[styles.editRouteMapDot, { backgroundColor: Colors.success + '20' }]}>
+                      <Ionicons name="location" size={16} color={Colors.success} />
+                    </View>
+                    <View style={styles.editRouteMapContent}>
+                      <Text style={[styles.editRouteMapType, { color: Colors.success }]}>DÉPART</Text>
+                      <Text style={styles.editRouteMapValue} numberOfLines={1}>{editDepartureDisplay}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
+                  </TouchableOpacity>
+
+                  <View style={styles.editRouteDividerLine} />
+
+                  <TouchableOpacity
+                    style={styles.editRouteMapBtn}
+                    onPress={() => setEditRoutePickerTarget('arrival')}
+                    activeOpacity={0.75}
+                  >
+                    <View style={[styles.editRouteMapDot, { backgroundColor: Colors.primary + '18' }]}>
+                      <Ionicons name="navigate" size={16} color={Colors.primary} />
+                    </View>
+                    <View style={styles.editRouteMapContent}>
+                      <Text style={[styles.editRouteMapType, { color: Colors.primary }]}>ARRIVÉE</Text>
+                      <Text style={styles.editRouteMapValue} numberOfLines={1}>{editArrivalDisplay}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
                   </TouchableOpacity>
                 </View>
-                <View style={styles.modalRouteModeRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.modalRouteModeChip,
-                      editRouteMode === 'map' && styles.modalRouteModeChipActive,
-                    ]}
-                    onPress={() => setEditRouteMode('map')}
-                  >
-                    <Ionicons
-                      name="map-outline"
-                      size={14}
-                      color={editRouteMode === 'map' ? Colors.primary : Colors.gray[500]}
-                    />
-                    <Text
-                      style={[
-                        styles.modalRouteModeChipText,
-                        editRouteMode === 'map' && styles.modalRouteModeChipTextActive,
-                      ]}
-                    >
-                      Carte
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.modalRouteModeChip,
-                      editRouteMode === 'manual' && styles.modalRouteModeChipActive,
-                    ]}
-                    onPress={() => setEditRouteMode('manual')}
-                  >
-                    <Ionicons
-                      name="create-outline"
-                      size={14}
-                      color={editRouteMode === 'manual' ? Colors.primary : Colors.gray[500]}
-                    />
-                    <Text
-                      style={[
-                        styles.modalRouteModeChipText,
-                        editRouteMode === 'manual' && styles.modalRouteModeChipTextActive,
-                      ]}
-                    >
-                      Saisie
-                    </Text>
-                  </TouchableOpacity>
+              )}
+
+              {/* ── Section Date & Heure ── */}
+              <View style={[styles.editSectionHeader, { marginTop: Spacing.lg }]}>
+                <View style={[styles.editSectionIconWrap, { backgroundColor: Colors.secondary + '18' }]}>
+                  <Ionicons name="calendar-outline" size={15} color={Colors.secondary} />
                 </View>
-
-                {editRouteMode === 'manual' ? (
-                  <>
-                    <Text style={styles.modalLabel}>Adresse de départ</Text>
-                    <TextInput
-                      style={[styles.modalInput, styles.modalRouteInput]}
-                      placeholder="Ex: avenue Kasa-Vubu, Bandal"
-                      placeholderTextColor={Colors.gray[400]}
-                      value={editDepartureManualAddress}
-                      onChangeText={setEditDepartureManualAddress}
-                    />
-                    <Text style={styles.modalLabel}>Adresse d arrivee</Text>
-                    <TextInput
-                      style={[styles.modalInput, styles.modalRouteInput]}
-                      placeholder="Ex: rond-point Victoire"
-                      placeholderTextColor={Colors.gray[400]}
-                      value={editArrivalManualAddress}
-                      onChangeText={setEditArrivalManualAddress}
-                    />
-                  </>
-                ) : (
-                  <>
-                    <TouchableOpacity
-                      style={styles.modalRoutePointButton}
-                      onPress={() => setEditRoutePickerTarget('departure')}
-                    >
-                      <View style={[styles.modalRoutePointIcon, { backgroundColor: Colors.success + '15' }]}>
-                        <Ionicons name="location" size={15} color={Colors.success} />
-                      </View>
-                      <View style={styles.modalRoutePointContent}>
-                        <Text style={styles.modalRoutePointLabel}>Départ</Text>
-                        <Text style={styles.modalRoutePointValue} numberOfLines={2}>
-                          {editDepartureDisplay}
-                        </Text>
-                        {editDepartureSelection && (
-                          <Text style={styles.modalRoutePointCoords} numberOfLines={1}>
-                            {editDepartureSelection.address}
-                          </Text>
-                        )}
-                      </View>
-                      <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.modalRoutePointButton}
-                      onPress={() => setEditRoutePickerTarget('arrival')}
-                    >
-                      <View style={[styles.modalRoutePointIcon, { backgroundColor: Colors.primary + '15' }]}>
-                        <Ionicons name="navigate" size={15} color={Colors.primary} />
-                      </View>
-                      <View style={styles.modalRoutePointContent}>
-                        <Text style={styles.modalRoutePointLabel}>Arrivée</Text>
-                        <Text style={styles.modalRoutePointValue} numberOfLines={2}>
-                          {editArrivalDisplay}
-                        </Text>
-                        {editArrivalSelection && (
-                          <Text style={styles.modalRoutePointCoords} numberOfLines={1}>
-                            {editArrivalSelection.address}
-                          </Text>
-                        )}
-                      </View>
-                      <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
-                    </TouchableOpacity>
-                  </>
-                )}
+                <Text style={styles.editSectionTitle}>Date & Heure de départ</Text>
               </View>
-
-              <View style={styles.modalField}>
-                <Text style={styles.modalLabel}>Places disponibles</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  keyboardType="numeric"
-                  placeholder="4"
-                  placeholderTextColor={Colors.gray[400]}
-                  value={editSeats}
-                  onChangeText={setEditSeats}
-                />
-              </View>
-
-              <View style={styles.modalField}>
-                <Text style={styles.modalLabel}>Prix (FC)</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  keyboardType="numeric"
-                  placeholder="5000"
-                  placeholderTextColor={Colors.gray[400]}
-                  value={editPrice}
-                  onChangeText={setEditPrice}
-                />
-              </View>
-
-              <View style={styles.modalField}>
-                <Text style={styles.modalLabel}>Date et heure de départ</Text>
-                <View style={styles.modalDatetimeRow}>
-                  <TouchableOpacity
-                    style={styles.modalDatetimeButton}
-                    onPress={() => openDateOrTimePicker('date')}
-                  >
+              <View style={styles.editDatetimeRow}>
+                <TouchableOpacity
+                  style={styles.editDatetimeCard}
+                  onPress={() => openDateOrTimePicker('date')}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.editDatetimeIconBox}>
                     <Ionicons name="calendar" size={18} color={Colors.primary} />
-                    <View style={{ marginLeft: Spacing.sm }}>
-                      <Text style={styles.modalDatetimeLabel}>Date</Text>
-                      <Text style={styles.modalDatetimeValue}>{formattedEditDate}</Text>
-                    </View>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalDatetimeButton, { marginRight: 0 }]}
-                    onPress={() => openDateOrTimePicker('time')}
-                  >
-                    <Ionicons name="time" size={18} color={Colors.gray[700]} />
-                    <View style={{ marginLeft: Spacing.sm }}>
-                      <Text style={styles.modalDatetimeLabel}>Heure</Text>
-                      <Text style={styles.modalDatetimeValue}>{formattedEditTime}</Text>
-                    </View>
-                  </TouchableOpacity>
-                </View>
+                  </View>
+                  <View style={styles.editDatetimeTexts}>
+                    <Text style={styles.editDatetimeLabel}>Date</Text>
+                    <Text style={styles.editDatetimeValue} numberOfLines={1}>{formattedEditDate}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={14} color={Colors.gray[300]} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.editDatetimeCard, { marginLeft: Spacing.sm, borderColor: Colors.secondary + '40' }]}
+                  onPress={() => openDateOrTimePicker('time')}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.editDatetimeIconBox, { backgroundColor: Colors.secondary + '18' }]}>
+                    <Ionicons name="time" size={18} color={Colors.secondary} />
+                  </View>
+                  <View style={styles.editDatetimeTexts}>
+                    <Text style={styles.editDatetimeLabel}>Heure</Text>
+                    <Text style={[styles.editDatetimeValue, { color: Colors.secondary }]}>{formattedEditTime}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={14} color={Colors.gray[300]} />
+                </TouchableOpacity>
               </View>
 
               {Platform.OS === 'ios' && iosPickerMode && (
@@ -3386,30 +3360,71 @@ export default function TripDetailsScreen() {
                   </TouchableOpacity>
                 </View>
               )}
+
+              {/* ── Section Capacité & Prix ── */}
+              <View style={[styles.editSectionHeader, { marginTop: Spacing.lg }]}>
+                <View style={[styles.editSectionIconWrap, { backgroundColor: Colors.success + '18' }]}>
+                  <Ionicons name="people-outline" size={15} color={Colors.success} />
+                </View>
+                <Text style={styles.editSectionTitle}>Capacité & Tarif</Text>
+              </View>
+              <View style={styles.editFieldsRow}>
+                <View style={styles.editFieldCard}>
+                  <View style={styles.editFieldLabelRow}>
+                    <Ionicons name="people" size={13} color={Colors.success} />
+                    <Text style={styles.editFieldLabel}>Places dispo.</Text>
+                  </View>
+                  <TextInput
+                    style={styles.editFieldInput}
+                    keyboardType="numeric"
+                    placeholder="4"
+                    placeholderTextColor={Colors.gray[400]}
+                    value={editSeats}
+                    onChangeText={setEditSeats}
+                  />
+                </View>
+                <View style={[styles.editFieldCard, { marginLeft: Spacing.sm, borderColor: Colors.secondary + '40' }]}>
+                  <View style={styles.editFieldLabelRow}>
+                    <Ionicons name="cash" size={13} color={Colors.secondary} />
+                    <Text style={[styles.editFieldLabel, { color: Colors.secondary }]}>Prix (FC)</Text>
+                  </View>
+                  <TextInput
+                    style={[styles.editFieldInput, { color: Colors.secondary }]}
+                    keyboardType="numeric"
+                    placeholder="5000"
+                    placeholderTextColor={Colors.gray[400]}
+                    value={editPrice}
+                    onChangeText={setEditPrice}
+                  />
+                </View>
+              </View>
             </ScrollView>
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonSecondary]}
-                onPress={closeEditModal}
-              >
-                <Text style={styles.modalButtonSecondaryText}>Annuler</Text>
+            {/* ── Actions ── */}
+            <View style={styles.editModalActions}>
+              <TouchableOpacity style={styles.editModalCancelBtn} onPress={closeEditModal}>
+                <Text style={styles.editModalCancelText}>Annuler</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonPrimary, { marginRight: 0 }]}
+                style={[styles.editModalSaveBtn, isSavingTrip && { opacity: 0.7 }]}
                 onPress={handleSaveTrip}
                 disabled={isSavingTrip}
               >
                 {isSavingTrip ? (
-                  <ActivityIndicator color={Colors.white} />
+                  <ActivityIndicator color={Colors.white} size="small" />
                 ) : (
-                  <Text style={styles.modalButtonPrimaryText}>Enregistrer</Text>
+                  <>
+                    <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
+                    <Text style={styles.editModalSaveText}>Enregistrer</Text>
+                  </>
                 )}
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
+
+
 
       <LocationPickerModal
         visible={editRoutePickerTarget !== null}
@@ -5091,6 +5106,321 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: FontWeights.semibold,
     marginLeft: Spacing.xs,
+  },
+  editModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  editModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  editModalSheet: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: '92%',
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.sm,
+    flexDirection: 'column',
+    elevation: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+  },
+  editModalHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.gray[300],
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.lg,
+  },
+  editModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    marginBottom: Spacing.xl,
+  },
+  editModalHeaderIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    backgroundColor: Colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editModalTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  editModalSubtitle: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    marginTop: 2,
+  },
+  editModalCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.gray[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editModalScroll: {
+    paddingBottom: Spacing.xl,
+    flexGrow: 1,
+  },
+  editSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  editSectionIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: Colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editSectionTitle: {
+    flex: 1,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+  },
+  editSwapBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 5,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '12',
+  },
+  editSwapText: {
+    fontSize: FontSizes.xs,
+    color: Colors.primary,
+    fontWeight: FontWeights.semibold,
+  },
+  editModeRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  editModeChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
+  },
+  editModeChipActive: {
+    borderColor: Colors.primary + '60',
+    backgroundColor: Colors.primary + '10',
+  },
+  editModeChipText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[500],
+  },
+  editModeChipTextActive: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  editRouteCard: {
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+    overflow: 'hidden',
+    marginBottom: Spacing.md,
+  },
+  editRouteDividerLine: {
+    height: 1,
+    backgroundColor: Colors.gray[200],
+    marginHorizontal: Spacing.md,
+  },
+  editRouteManualItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.md,
+    padding: Spacing.md,
+  },
+  editRouteManualDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginTop: 14,
+  },
+  editRouteManualLabel: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[500],
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  editRouteManualInput: {
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.white,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[900],
+  },
+  editRouteMapBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    gap: Spacing.md,
+  },
+  editRouteMapDot: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editRouteMapContent: {
+    flex: 1,
+  },
+  editRouteMapType: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[500],
+    letterSpacing: 0.6,
+    marginBottom: 2,
+  },
+  editRouteMapValue: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
+  },
+  editDatetimeRow: {
+    flexDirection: 'row',
+    marginBottom: Spacing.md,
+  },
+  editDatetimeCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary + '40',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    backgroundColor: Colors.primary + '05',
+  },
+  editDatetimeIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: Colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editDatetimeTexts: {
+    flex: 1,
+  },
+  editDatetimeLabel: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[500],
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  editDatetimeValue: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginTop: 2,
+  },
+  editFieldsRow: {
+    flexDirection: 'row',
+    marginBottom: Spacing.md,
+  },
+  editFieldCard: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: Colors.success + '40',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    backgroundColor: Colors.gray[50],
+  },
+  editFieldLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: Spacing.sm,
+  },
+  editFieldLabel: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.success,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  editFieldInput: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[200],
+  },
+  editModalActions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    paddingTop: Spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[100],
+    marginTop: Spacing.sm,
+  },
+  editModalCancelBtn: {
+    flex: 1,
+    height: 52,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.gray[100],
+  },
+  editModalCancelText: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+  },
+  editModalSaveBtn: {
+    flex: 2,
+    height: 52,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.primary,
+    elevation: 4,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+  },
+  editModalSaveText: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
   },
   modalOverlay: {
     flex: 1,

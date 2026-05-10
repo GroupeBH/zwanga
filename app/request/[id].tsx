@@ -1,8 +1,9 @@
-import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import AddressEntryModeSelector, { type AddressInputMode } from '@/components/AddressEntryModeSelector';
+import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import { useStartTripMutation } from '@/store/api/tripApi';
 import {
   useAcceptDriverOfferMutation,
   useAcceptTripRequestMutation,
@@ -13,14 +14,13 @@ import {
   useStartTripFromRequestMutation,
   useUpdateTripRequestMutation,
 } from '@/store/api/tripRequestApi';
-import { useStartTripMutation } from '@/store/api/tripApi';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import type { Vehicle } from '@/types';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { createBecomeDriverAction, isDriverRequiredError } from '@/utils/errorHelpers';
-import { getRouteCoordinates } from '@/utils/routeHelpers';
 import { getTripRequestCreateHref } from '@/utils/requestNavigation';
+import { getRouteCoordinates } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -43,8 +43,8 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import type { LatLng, Region } from 'react-native-maps';
+import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -2720,330 +2720,244 @@ export default function TripRequestDetailsScreen() {
 
         {/* Modal de modification de la demande */}
         {showEditForm && tripRequest && (
-          <Modal
-            visible={showEditForm}
-            animationType="slide"
-            transparent
-            onRequestClose={() => setShowEditForm(false)}
-          >
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={styles.modalOverlay}
+            <Modal
+              visible={showEditForm}
+              animationType="slide"
+              transparent
+              onRequestClose={() => setShowEditForm(false)}
             >
-              <TouchableOpacity
-                style={styles.modalOverlay}
-                activeOpacity={1}
-                onPress={() => setShowEditForm(false)}
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={styles.editModalRoot}
               >
                 <TouchableOpacity
+                  style={styles.editModalBackdrop}
                   activeOpacity={1}
-                  onPress={(e) => e.stopPropagation()}
-                  style={styles.modalContent}
-                >
-                  <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>Modifier la demande</Text>
+                  onPress={() => setShowEditForm(false)}
+                />
+                
+                <View style={styles.editModalCard}>
+                  {/* En-tête */}
+                  <View style={styles.editModalHeader}>
+                    <View style={styles.editModalHeaderContent}>
+                      <Ionicons name="create-outline" size={24} color={Colors.primary} />
+                      <View>
+                        <Text style={styles.editModalTitle}>Modifier la demande</Text>
+                        <Text style={styles.editModalSubtitle}>Ajustez les détails avant de republier</Text>
+                      </View>
+                    </View>
                     <TouchableOpacity
-                      style={styles.modalCloseButton}
+                      style={styles.editModalCloseButton}
                       onPress={() => setShowEditForm(false)}
                     >
                       <Ionicons name="close" size={24} color={Colors.gray[600]} />
                     </TouchableOpacity>
                   </View>
 
+                  {/* Contenu Scrollable */}
                   <ScrollView
-                    style={styles.modalScrollView}
-                    contentContainerStyle={[
-                      styles.modalScrollContent,
-                      { paddingBottom: Math.max(insets.bottom, 16) + 16 }
-                    ]}
+                    style={styles.editModalScrollView}
+                    contentContainerStyle={styles.editModalScrollContent}
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                   >
-                    <View style={styles.formGroup}>
+                    {/* Mode de saisie */}
+                    <View style={styles.editSection}>
                       <AddressEntryModeSelector
                         mode={editAddressInputMode}
                         onChange={setEditAddressInputMode}
                         title="Comment renseigner les adresses ?"
-                        hint="Saisie écrite pour une adresse exacte, carte pour un point GPS précis."
+                        hint="Carte pour un point GPS précis, ou saisie manuelle."
                       />
                     </View>
-                    <View style={styles.formGroup}>
-                      <Text style={styles.formHelperText}>
-                        {editAddressInputMode === 'map'
-                          ? 'Mode carte actif: sélectionnez un point précis pour le départ et l’arrivée.'
-                          : 'Mode saisie active: entrez les adresses complètes de départ et d’arrivée.'}
-                      </Text>
-                    </View>
 
-                    {/* Sélection du lieu de départ */}
-                    <View style={styles.formGroup}>
-                      <Text style={styles.formLabel}>Adresse de départ *</Text>
+                    {/* Départ */}
+                    <View style={styles.editSection}>
+                      <View style={styles.editSectionHeader}>
+                        <Ionicons name="location" size={20} color={Colors.success} />
+                        <Text style={styles.editSectionTitle}>Point de départ</Text>
+                      </View>
                       {editAddressInputMode === 'map' ? (
                         <TouchableOpacity
-                          style={styles.locationButton}
-                          onPress={() => {
-                            setEditLocationPickerType('departure');
-                            setEditActivePicker('departure');
-                          }}
+                          style={styles.editInputButton}
+                          onPress={() => { setEditLocationPickerType('departure'); setEditActivePicker('departure'); }}
                         >
-                          <Ionicons name="location" size={20} color={Colors.primary} />
-                          <Text style={styles.locationButtonText}>
-                            {editDepartureLocation?.title || 'Choisir le point de départ sur la carte'}
+                          <Ionicons name="map-outline" size={20} color={Colors.primary} />
+                          <Text style={styles.editInputButtonText}>
+                            {editDepartureLocation?.title || 'Sélectionner sur la carte'}
                           </Text>
-                          <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                          <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
                         </TouchableOpacity>
                       ) : (
                         <TextInput
-                          style={styles.input}
-                          placeholder="Ex: Avenue Kasa-Vubu 12, Bandalungwa"
+                          style={styles.editInput}
+                          placeholder="Adresse de départ"
                           value={editDepartureManualAddress}
                           onChangeText={setEditDepartureManualAddress}
                         />
                       )}
                       <TextInput
-                        style={[styles.input, styles.referenceInput]}
-                        placeholder="Détail du point de départ (optionnel)"
+                        style={[styles.editInput, styles.editInputSecondary]}
+                        placeholder="Repère (ex: portail bleu, devant la station)"
                         value={editDepartureReference}
                         onChangeText={setEditDepartureReference}
                       />
                     </View>
 
-                    {/* Sélection du lieu d'arrivée */}
-                    <View style={styles.formGroup}>
-                      <Text style={styles.formLabel}>Adresse d’arrivée *</Text>
+                    {/* Arrivée */}
+                    <View style={styles.editSection}>
+                      <View style={styles.editSectionHeader}>
+                        <Ionicons name="navigate" size={20} color={Colors.primary} />
+                        <Text style={styles.editSectionTitle}>Point d'arrivée</Text>
+                      </View>
                       {editAddressInputMode === 'map' ? (
                         <TouchableOpacity
-                          style={styles.locationButton}
-                          onPress={() => {
-                            setEditLocationPickerType('arrival');
-                            setEditActivePicker('arrival');
-                          }}
+                          style={styles.editInputButton}
+                          onPress={() => { setEditLocationPickerType('arrival'); setEditActivePicker('arrival'); }}
                         >
-                          <Ionicons name="navigate" size={20} color={Colors.primary} />
-                          <Text style={styles.locationButtonText}>
-                            {editArrivalLocation?.title || "Choisir l’arrivée sur la carte"}
+                          <Ionicons name="map-outline" size={20} color={Colors.primary} />
+                          <Text style={styles.editInputButtonText}>
+                            {editArrivalLocation?.title || 'Sélectionner sur la carte'}
                           </Text>
-                          <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                          <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
                         </TouchableOpacity>
                       ) : (
                         <TextInput
-                          style={styles.input}
-                          placeholder="Ex: Boulevard du 30 Juin, Gombe"
+                          style={styles.editInput}
+                          placeholder="Adresse d'arrivée"
                           value={editArrivalManualAddress}
                           onChangeText={setEditArrivalManualAddress}
                         />
                       )}
                       <TextInput
-                        style={[styles.input, styles.referenceInput]}
-                        placeholder="Détail du point d’arrivée (optionnel)"
+                        style={[styles.editInput, styles.editInputSecondary]}
+                        placeholder="Repère d'arrivée"
                         value={editArrivalReference}
                         onChangeText={setEditArrivalReference}
                       />
                     </View>
 
-                    {/* Date et heure de départ min */}
-                    <View style={styles.formGroup}>
-                      <Text style={styles.formLabel}>Date/heure de départ (min) *</Text>
-                      <View style={styles.dateTimeContainer}>
-                        <TouchableOpacity
-                          style={styles.dateTimeButton}
-                          onPress={() => openEditDateOrTimePickerMin('date')}
-                        >
-                          <Ionicons name="calendar-outline" size={20} color={Colors.primary} />
-                          <Text style={styles.dateTimeText}>
-                            {editDepartureDateMin
-                              ? editDepartureDateMin.toLocaleDateString('fr-FR', {
-                                  day: '2-digit',
-                                  month: '2-digit',
-                                  year: 'numeric',
-                                })
-                              : 'Date'}
-                          </Text>
+                    {/* Fenêtre horaire */}
+                    <View style={styles.editSection}>
+                      <View style={styles.editSectionHeader}>
+                        <Ionicons name="calendar" size={20} color={Colors.warning} />
+                        <Text style={styles.editSectionTitle}>Créneau de départ</Text>
+                      </View>
+                      
+                      {/* Min */}
+                      <View style={styles.editDateTimeRow}>
+                        <Text style={styles.editDateTimeLabel}>Au plus tôt</Text>
+                        <TouchableOpacity style={styles.editDateTimeButton} onPress={() => openEditDateOrTimePickerMin('date')}>
+                          <Ionicons name="calendar-outline" size={16} color={Colors.gray[600]} />
+                          <Text style={styles.editDateTimeText}>{editDepartureDateMin ? editDepartureDateMin.toLocaleDateString('fr-FR') : 'Date'}</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.dateTimeButton}
-                          onPress={() => openEditDateOrTimePickerMin('time')}
-                        >
-                          <Ionicons name="time-outline" size={20} color={Colors.primary} />
-                          <Text style={styles.dateTimeText}>
-                            {editDepartureDateMin
-                              ? editDepartureDateMin.toLocaleTimeString('fr-FR', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })
-                              : 'Heure'}
-                          </Text>
+                        <TouchableOpacity style={styles.editDateTimeButton} onPress={() => openEditDateOrTimePickerMin('time')}>
+                          <Ionicons name="time-outline" size={16} color={Colors.gray[600]} />
+                          <Text style={styles.editDateTimeText}>{editDepartureDateMin ? editDepartureDateMin.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) : 'Heure'}</Text>
                         </TouchableOpacity>
                       </View>
+
+                      {/* Max */}
+                      <View style={styles.editDateTimeRow}>
+                        <Text style={styles.editDateTimeLabel}>Au plus tard</Text>
+                        <TouchableOpacity style={styles.editDateTimeButton} onPress={() => openEditDateOrTimePickerMax('date')}>
+                          <Ionicons name="calendar-outline" size={16} color={Colors.gray[600]} />
+                          <Text style={styles.editDateTimeText}>{editDepartureDateMax ? editDepartureDateMax.toLocaleDateString('fr-FR') : 'Date'}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.editDateTimeButton} onPress={() => openEditDateOrTimePickerMax('time')}>
+                          <Ionicons name="time-outline" size={16} color={Colors.gray[600]} />
+                          <Text style={styles.editDateTimeText}>{editDepartureDateMax ? editDepartureDateMax.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) : 'Heure'}</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* iOS Pickers intégrés */}
                       {Platform.OS === 'ios' && editIosPickerModeMin && editDepartureDateMin && (
-                        <View style={styles.iosPickerContainer}>
-                          <DateTimePicker
-                            value={editDepartureDateMin}
-                            mode={editIosPickerModeMin}
-                            display="spinner"
-                            onChange={handleEditIosPickerChangeMin}
-                            minimumDate={new Date()}
-                          />
-                          <TouchableOpacity
-                            style={styles.iosPickerCloseButton}
-                            onPress={() => setEditIosPickerModeMin(null)}
-                          >
-                            <Text style={styles.iosPickerCloseText}>Confirmer</Text>
-                          </TouchableOpacity>
+                        <View style={styles.editIosPickerWrapper}>
+                          <DateTimePicker value={editDepartureDateMin} mode={editIosPickerModeMin} display="spinner" onChange={handleEditIosPickerChangeMin} minimumDate={new Date()} />
                         </View>
                       )}
-                    </View>
-
-                    {/* Date et heure de départ max */}
-                    <View style={styles.formGroup}>
-                      <Text style={styles.formLabel}>Date/heure de départ (max) *</Text>
-                      <View style={styles.dateTimeContainer}>
-                        <TouchableOpacity
-                          style={styles.dateTimeButton}
-                          onPress={() => openEditDateOrTimePickerMax('date')}
-                        >
-                          <Ionicons name="calendar-outline" size={20} color={Colors.primary} />
-                          <Text style={styles.dateTimeText}>
-                            {editDepartureDateMax
-                              ? editDepartureDateMax.toLocaleDateString('fr-FR', {
-                                  day: '2-digit',
-                                  month: '2-digit',
-                                  year: 'numeric',
-                                })
-                              : 'Date'}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.dateTimeButton}
-                          onPress={() => openEditDateOrTimePickerMax('time')}
-                        >
-                          <Ionicons name="time-outline" size={20} color={Colors.primary} />
-                          <Text style={styles.dateTimeText}>
-                            {editDepartureDateMax
-                              ? editDepartureDateMax.toLocaleTimeString('fr-FR', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })
-                              : 'Heure'}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
                       {Platform.OS === 'ios' && editIosPickerModeMax && editDepartureDateMax && (
-                        <View style={styles.iosPickerContainer}>
-                          <DateTimePicker
-                            value={editDepartureDateMax}
-                            mode={editIosPickerModeMax}
-                            display="spinner"
-                            onChange={handleEditIosPickerChangeMax}
-                            minimumDate={editDepartureDateMin || new Date()}
-                          />
-                          <TouchableOpacity
-                            style={styles.iosPickerCloseButton}
-                            onPress={() => setEditIosPickerModeMax(null)}
-                          >
-                            <Text style={styles.iosPickerCloseText}>Confirmer</Text>
-                          </TouchableOpacity>
+                        <View style={styles.editIosPickerWrapper}>
+                          <DateTimePicker value={editDepartureDateMax} mode={editIosPickerModeMax} display="spinner" onChange={handleEditIosPickerChangeMax} minimumDate={editDepartureDateMin || new Date()} />
                         </View>
                       )}
                     </View>
 
-                    {/* Nombre de places */}
-                    <View style={styles.formGroup}>
-                      <Text style={styles.formLabel}>Nombre de places *</Text>
-                      <TextInput
-                        style={styles.input}
-                        keyboardType="numeric"
-                        placeholder="Ex: 1"
-                        value={editNumberOfSeats}
-                        onChangeText={setEditNumberOfSeats}
-                      />
-                    </View>
-
-                    {/* Prix maximum par place */}
-                    <View style={styles.formGroup}>
-                      <Text style={styles.formLabel}>Prix maximum par place (FC)</Text>
-                      <TextInput
-                        style={styles.input}
-                        keyboardType="numeric"
-                        placeholder="Ex: 5000"
-                        value={editMaxPricePerSeat}
-                        onChangeText={setEditMaxPricePerSeat}
-                      />
+                    {/* Capacité & Prix */}
+                    <View style={styles.editSection}>
+                      <View style={styles.editSectionHeader}>
+                        <Ionicons name="people" size={20} color={Colors.info} />
+                        <Text style={styles.editSectionTitle}>Capacité & Budget</Text>
+                      </View>
+                      <View style={styles.editRowInputs}>
+                        <View style={{flex: 1}}>
+                          <Text style={styles.editLabel}>Places demandées</Text>
+                          <TextInput
+                            style={styles.editInput}
+                            keyboardType="numeric"
+                            placeholder="Ex: 1"
+                            value={editNumberOfSeats}
+                            onChangeText={setEditNumberOfSeats}
+                          />
+                        </View>
+                        <View style={{flex: 1}}>
+                          <Text style={styles.editLabel}>Prix max/place (FC)</Text>
+                          <TextInput
+                            style={styles.editInput}
+                            keyboardType="numeric"
+                            placeholder="Ex: 5000"
+                            value={editMaxPricePerSeat}
+                            onChangeText={setEditMaxPricePerSeat}
+                          />
+                        </View>
+                      </View>
                     </View>
 
                     {/* Description */}
-                    <View style={styles.formGroup}>
-                      <Text style={styles.formLabel}>Description (optionnel)</Text>
+                    <View style={styles.editSection}>
+                      <Text style={styles.editLabel}>Note pour le conducteur (optionnel)</Text>
                       <TextInput
-                        style={[styles.input, styles.textArea]}
+                        style={[styles.editInput, styles.editTextArea]}
                         multiline
                         numberOfLines={4}
-                        placeholder="Ajoutez des informations supplémentaires..."
+                        placeholder="Bagages, contraintes horaires, précisions..."
                         value={editDescription}
                         onChangeText={setEditDescription}
                       />
                     </View>
-
-                    <View style={styles.formActions}>
-                      <TouchableOpacity
-                        style={styles.cancelFormButton}
-                        onPress={() => {
-                          setShowEditForm(false);
-                          setEditDepartureLocation(null);
-                          setEditArrivalLocation(null);
-                          setEditDepartureManualAddress('');
-                          setEditDepartureReference('');
-                          setEditArrivalManualAddress('');
-                          setEditArrivalReference('');
-                          setEditDepartureDateMin(null);
-                          setEditDepartureDateMax(null);
-                          setEditNumberOfSeats('');
-                          setEditMaxPricePerSeat('');
-                          setEditDescription('');
-                        }}
-                      >
-                        <Text style={styles.cancelFormButtonText}>Annuler</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.submitButton,
-                          (!editDepartureAddress ||
-                            !editArrivalAddress ||
-                            !editDepartureDateMin ||
-                            !editDepartureDateMax ||
-                            !editNumberOfSeats ||
-                            parseInt(editNumberOfSeats) <= 0)
-                            ? styles.submitButtonDisabled
-                            : undefined,
-                        ]}
-                        onPress={handleUpdateRequest}
-                        disabled={Boolean(
-                          isUpdating ||
-                            !editDepartureAddress ||
-                            !editArrivalAddress ||
-                            !editDepartureDateMin ||
-                            !editDepartureDateMax ||
-                            !editNumberOfSeats ||
-                            parseInt(editNumberOfSeats) <= 0
-                        )}
-                      >
-                        {isUpdating ? (
-                          <ActivityIndicator size="small" color={Colors.white} />
-                        ) : (
-                          <>
-                            <Ionicons name="checkmark" size={18} color={Colors.white} />
-                            <Text style={styles.submitButtonText}>Enregistrer</Text>
-                          </>
-                        )}
-                      </TouchableOpacity>
-                    </View>
                   </ScrollView>
-                </TouchableOpacity>
-              </TouchableOpacity>
-            </KeyboardAvoidingView>
-          </Modal>
-        )}
 
+                  {/* Actions fixes en bas */}
+                  <View style={styles.editModalFooter}>
+                    <TouchableOpacity style={styles.editModalCancelButton} onPress={() => setShowEditForm(false)}>
+                      <Text style={styles.editModalCancelText}>Annuler</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.editModalSaveButton,
+                        (!editDepartureAddress || !editArrivalAddress || !editDepartureDateMin || !editDepartureDateMax || !editNumberOfSeats || parseInt(editNumberOfSeats) <= 0) && styles.editModalSaveButtonDisabled
+                      ]}
+                      onPress={handleUpdateRequest}
+                      disabled={
+                        isUpdating || !editDepartureAddress || !editArrivalAddress ||
+                        !editDepartureDateMin || !editDepartureDateMax ||
+                        !editNumberOfSeats || parseInt(editNumberOfSeats) <= 0
+                      }
+                    >
+                      {isUpdating ? (
+                        <ActivityIndicator size="small" color={Colors.white} />
+                      ) : (
+                        <>
+                          <Ionicons name="save-outline" size={18} color={Colors.white} />
+                          <Text style={styles.editModalSaveText}>Enregistrer</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </KeyboardAvoidingView>
+            </Modal>
+          )}
         {/* Location Picker Modal pour la modification */}
         {editLocationPickerType && (
           <LocationPickerModal
@@ -4645,5 +4559,206 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+    // === MODAL DE MODIFICATION ===
+  editModalRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  editModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  editModalCard: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
+    maxHeight: '90%',
+    flexShrink: 1,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 10,
+    overflow: 'hidden',
+  },
+  editModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+  },
+  editModalHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    flex: 1,
+  },
+  editModalTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  editModalSubtitle: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    marginTop: 2,
+  },
+  editModalCloseButton: {
+    padding: Spacing.xs,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[100],
+  },
+  editModalScrollView: {
+    flexShrink: 1,
+  },
+  editModalScrollContent: {
+    padding: Spacing.lg,
+    paddingBottom: Spacing.lg,
+  },
+  editSection: {
+    marginBottom: Spacing.lg,
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+  },
+  editSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  editSectionTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[800],
+  },
+  editInput: {
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+  },
+  editInputButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  editInputButtonText: {
+    flex: 1,
+    fontSize: FontSizes.base,
+    color: Colors.gray[800],
+    fontWeight: FontWeights.medium,
+  },
+  editInputSecondary: {
+    marginTop: Spacing.sm,
+    backgroundColor: Colors.white,
+    borderColor: Colors.gray[300],
+  },
+  editLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    fontWeight: FontWeights.medium,
+    marginBottom: Spacing.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  editDateTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+    backgroundColor: Colors.white,
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+  },
+  editDateTimeLabel: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+    fontWeight: FontWeights.medium,
+  },
+  editDateTimeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.gray[100],
+  },
+  editDateTimeText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[900],
+    fontWeight: FontWeights.semibold,
+  },
+  editIosPickerWrapper: {
+    marginTop: Spacing.md,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    overflow: 'hidden',
+  },
+  editRowInputs: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  editTextArea: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  editModalFooter: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[100],
+    backgroundColor: Colors.white,
+  },
+  editModalCancelButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.gray[100],
+    alignItems: 'center',
+  },
+  editModalCancelText: {
+    fontSize: FontSizes.base,
+    color: Colors.gray[700],
+    fontWeight: FontWeights.semibold,
+  },
+  editModalSaveButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  editModalSaveButtonDisabled: {
+    backgroundColor: Colors.gray[300],
+    opacity: 0.7,
+  },
+  editModalSaveText: {
+    fontSize: FontSizes.base,
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
   },
 });
