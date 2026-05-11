@@ -23,13 +23,13 @@ const OPTIONS: {
     mode: 'map',
     icon: 'map-outline',
     title: 'Choisir sur la carte',
-    description: 'Point précis, position actuelle ou lieu favori.',
+    description: 'Point GPS précis + détail du lieu (entrée, repère, bâtiment).',
   },
   {
     mode: 'manual',
     icon: 'create-outline',
-    title: 'Adresse écrite',
-    description: 'Adresse simple + repère si besoin.',
+    title: 'Saisie exacte',
+    description: 'Adresse complète écrite sans approximation.',
   },
 ];
 

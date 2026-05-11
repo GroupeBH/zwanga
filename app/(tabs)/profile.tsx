@@ -69,6 +69,7 @@ const getPlanLabel = (plan?: SubscriptionPlan | null) => {
 };
 
 type SubscriptionPaymentChannel = 'mpesa' | 'airtel' | 'orange' | 'card';
+type SubscriptionModalStep = 'method' | 'mobile_money';
 type SubscriptionCardPaymentResult = 'success' | 'cancel' | 'decline';
 type SubscriptionPaymentCheckOutcome = 'success' | 'pending' | 'failed' | 'error';
 
@@ -298,6 +299,7 @@ export default function ProfileScreen() {
     isCheckingSubscriptionPayment ||
     isSubscriptionPaymentAutoChecking;
   const isSubscriptionCardPayment = selectedSubscriptionPaymentChannel === 'card';
+  const shouldShowPaymentStatusPanel = Boolean(subscriptionPaymentMessage || subscriptionPaymentOrderNumber);
   const { shouldShow: shouldShowProfileGuide, complete: completeProfileGuide } =
     useTutorialGuide('profile_screen');
   const [profileGuideVisible, setProfileGuideVisible] = useState(false);
@@ -2190,7 +2192,7 @@ export default function ProfileScreen() {
         onRequestClose={closeSubscriptionModal}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.subscriptionModalOverlay}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
@@ -2260,7 +2262,9 @@ export default function ProfileScreen() {
                         isSelected && styles.subscriptionPaymentOptionActive,
                       ]}
                       disabled={proBusy}
-                      onPress={() => setSelectedSubscriptionPaymentChannel(option.id)}
+                      onPress={() => {
+                        setSelectedSubscriptionPaymentChannel(option.id);
+                      }}
                       activeOpacity={0.85}
                     >
                       <Ionicons
@@ -2278,8 +2282,8 @@ export default function ProfileScreen() {
                 })}
               </View>
 
-              {(subscriptionPaymentMessage || subscriptionPaymentOrderNumber) && (
-                <View style={styles.subscriptionPendingPanel}>
+              {shouldShowPaymentStatusPanel && (
+                <View style={[styles.subscriptionPendingPanel, { marginTop: Spacing.md }]}>
                   <Ionicons name="time-outline" size={18} color={Colors.warningDark} />
                   <View style={styles.subscriptionPendingTextContent}>
                     <Text style={styles.subscriptionPendingTitle}>Statut du paiement</Text>
@@ -2295,7 +2299,7 @@ export default function ProfileScreen() {
                 </View>
               )}
 
-              <View style={styles.subscriptionSummaryCard}>
+              <View style={[styles.subscriptionSummaryCard, { marginTop: Spacing.lg }]}>
                 <Text style={styles.subscriptionSummaryPrice}>{proPriceLabel}</Text>
                 <Text style={styles.subscriptionSummaryText}>
                   {"Le quota gratuit reste à 5 trajets par jour. L'abonnement débloque les publications supplémentaires dès validation du paiement."}
@@ -3377,7 +3381,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
-    maxHeight: '88%',
+    maxHeight: '82%',
     paddingTop: Spacing.sm,
     overflow: 'hidden',
     ...CommonStyles.shadowLg,
@@ -3388,12 +3392,12 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.gray[300],
     alignSelf: 'center',
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   subscriptionModalHero: {
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.sm,
-    paddingBottom: Spacing.lg,
+    paddingTop: 6,
+    paddingBottom: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[100],
   },
@@ -3402,7 +3406,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.md,
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
   },
   subscriptionHeaderBadge: {
     flexDirection: 'row',
@@ -3441,14 +3445,14 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   subscriptionModalTitle: {
-    fontSize: FontSizes.xxl,
+    fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
   subscriptionModalSubtitle: {
     color: Colors.gray[600],
-    fontSize: FontSizes.base,
-    lineHeight: 24,
+    fontSize: FontSizes.sm,
+    lineHeight: 20,
   },
   subscriptionModalPricePill: {
     minWidth: 112,
