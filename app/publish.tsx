@@ -1051,7 +1051,7 @@ export default function PublishScreen() {
                     <TouchableOpacity
                       style={[
                         styles.addressInputButton,
-                        departureLocation && styles.addressInputButtonActive,
+                        hasDepartureAddress && styles.addressInputButtonActive,
                       ]}
                       onPress={() => {
                         setAddressInputMode('map');
@@ -1060,14 +1060,14 @@ export default function PublishScreen() {
                       activeOpacity={0.85}
                     >
                       <Ionicons
-                        name={departureLocation ? "location" : "location-outline"}
+                        name={hasDepartureAddress ? "location" : "location-outline"}
                         size={18}
-                        color={departureLocation ? Colors.success : Colors.gray[500]}
+                        color={hasDepartureAddress ? Colors.success : Colors.gray[500]}
                       />
                       <Text
                         style={[
                           styles.addressInputText,
-                          departureLocation && styles.addressInputTextActive,
+                          hasDepartureAddress && styles.addressInputTextActive,
                         ]}
                         numberOfLines={1}
                       >
@@ -1135,7 +1135,7 @@ export default function PublishScreen() {
                     <TouchableOpacity
                       style={[
                         styles.addressInputButton,
-                        arrivalLocation && styles.addressInputButtonActive,
+                        hasArrivalAddress && styles.addressInputButtonActive,
                       ]}
                       onPress={() => {
                         setAddressInputMode('map');
@@ -1144,14 +1144,14 @@ export default function PublishScreen() {
                       activeOpacity={0.85}
                     >
                       <Ionicons
-                        name={arrivalLocation ? "navigate" : "navigate-outline"}
+                        name={hasArrivalAddress ? "navigate" : "navigate-outline"}
                         size={18}
-                        color={arrivalLocation ? Colors.primary : Colors.gray[500]}
+                        color={hasArrivalAddress ? Colors.primary : Colors.gray[500]}
                       />
                       <Text
                         style={[
                           styles.addressInputText,
-                          arrivalLocation && styles.addressInputTextActive,
+                          hasArrivalAddress && styles.addressInputTextActive,
                         ]}
                         numberOfLines={1}
                       >
@@ -3088,42 +3088,51 @@ const styles = StyleSheet.create({
   },
   routeCard: {
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
+    borderRadius: BorderRadius.sm,
+    padding: Spacing.md,
     flexDirection: 'row',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 15,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    elevation: 4,
     marginBottom: Spacing.lg,
   },
   routeVisual: {
-    width: 20,
+    width: 24,
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingTop: 18,
+    paddingBottom: 18,
   },
   dotGreen: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: Colors.success,
+    borderWidth: 3,
+    borderColor: Colors.success + '20',
   },
   dotBlue: {
-    width: 10,
-    height: 10,
-    borderRadius: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 4,
     backgroundColor: Colors.primary,
+    borderWidth: 3,
+    borderColor: Colors.primary + '20',
   },
   routeLine: {
     flex: 1,
-    width: 1,
+    width: 2,
     backgroundColor: Colors.gray[200],
-    marginVertical: 4,
+    marginVertical: 6,
+    borderRadius: BorderRadius.full,
   },
   routeInputs: {
     flex: 1,
     marginLeft: Spacing.md,
+    gap: Spacing.sm,
   },
   addressBlock: {
     gap: Spacing.sm,
@@ -3203,7 +3212,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: Colors.info + '10',
     padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.info + '20',
     marginBottom: Spacing.lg,
     alignItems: 'center',
   },
@@ -3288,13 +3299,18 @@ const styles = StyleSheet.create({
   },
   // === NOUVEAUX STYLES UX ROUTE ===
   addressField: {
-    gap: Spacing.xs,
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.sm,
+    padding: Spacing.md,
   },
   addressFieldLabel: {
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    letterSpacing: 0.8,
+    color: Colors.gray[500],
+    letterSpacing: 0,
     textTransform: 'uppercase',
   },
   addressInputRow: {
@@ -3307,16 +3323,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    borderWidth: 1.5,
-    borderColor: Colors.gray[300],
-    borderRadius: BorderRadius.lg,
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.sm,
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
+    paddingVertical: Spacing.sm,
     backgroundColor: Colors.white,
   },
   addressInputButtonActive: {
     borderColor: Colors.primary,
-    backgroundColor: Colors.primary + '10',
+    backgroundColor: Colors.primary + '08',
   },
   addressInputText: {
     flex: 1,
@@ -3329,11 +3346,11 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   modeToggle: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1.5,
-    borderColor: Colors.gray[300],
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
     backgroundColor: Colors.white,
     alignItems: 'center',
     justifyContent: 'center',
@@ -3343,9 +3360,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary + '10',
   },
   inlineManualInput: {
-    borderWidth: 2,
+    minHeight: 48,
+    borderWidth: 1,
     borderColor: Colors.primary + '50',
-    borderRadius: BorderRadius.lg,
+    borderRadius: BorderRadius.sm,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     fontSize: FontSizes.base,
@@ -3354,15 +3372,15 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
   referenceInput: {
-    borderWidth: 1.5,
-    borderColor: Colors.gray[300],
-    borderRadius: BorderRadius.lg,
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.sm,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     fontSize: FontSizes.sm,
     color: Colors.gray[800],
-    backgroundColor: Colors.gray[50],
-    marginTop: Spacing.xs,
+    backgroundColor: Colors.white,
   },
   swapButton: {
     alignItems: 'center',
@@ -3370,11 +3388,11 @@ const styles = StyleSheet.create({
     marginVertical: Spacing.sm,
   },
   swapButtonInner: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 38,
+    height: 38,
+    borderRadius: BorderRadius.full,
     backgroundColor: Colors.primary + '12',
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: Colors.primary + '30',
     alignItems: 'center',
     justifyContent: 'center',
@@ -3386,13 +3404,18 @@ const styles = StyleSheet.create({
   },
   quickLandmarksSection: {
     marginBottom: Spacing.lg,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    paddingVertical: Spacing.sm,
   },
   quickLandmarksHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
     marginBottom: Spacing.sm,
-    paddingHorizontal: Spacing.xs,
+    paddingHorizontal: Spacing.md,
   },
   quickLandmarksTitle: {
     flex: 1,
@@ -3405,6 +3428,7 @@ const styles = StyleSheet.create({
   },
   quickLandmarksScroll: {
     gap: Spacing.sm,
+    paddingLeft: Spacing.md,
     paddingRight: Spacing.xl,
   },
   quickLandmarkChip: {
@@ -3413,10 +3437,10 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.lg,
+    borderRadius: BorderRadius.full,
     borderWidth: 1,
     borderColor: Colors.primary + '25',
-    backgroundColor: Colors.primary + '06',
+    backgroundColor: Colors.primary + '08',
   },
   quickLandmarkText: {
     fontSize: FontSizes.sm,
@@ -3460,6 +3484,3 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
 });
-
-
-
