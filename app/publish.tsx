@@ -34,7 +34,6 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 type PublishStep = 'route' | 'datetime' | 'vehicle' | 'pricing' | 'confirm';
 const PUBLISH_STEP_ORDER: PublishStep[] = ['route', 'datetime', 'vehicle', 'pricing', 'confirm'];
-const LANDMARK_PLACEHOLDER = 'Ex: devant la station, portail bleu, entr\u00E9e principale';
 
 function getLocationText(selection: MapLocationSelection | null, manualAddress: string) {
   return (manualAddress.trim() || selection?.title || selection?.address || '').trim();
@@ -1045,13 +1044,15 @@ export default function PublishScreen() {
               </View>
               <View style={styles.routeInputs}>
                 {/* Départ */}
-                <View style={styles.addressField}>
-                  <Text style={styles.addressFieldLabel}>Départ</Text>
+                <View style={[styles.addressField, hasDepartureAddress && styles.addressFieldDepartureReady]}>
+                  <Text style={[styles.addressFieldLabel, hasDepartureAddress && styles.addressFieldLabelReady]}>
+                    Départ
+                  </Text>
                   <View style={styles.addressInputRow}>
                     <TouchableOpacity
                       style={[
                         styles.addressInputButton,
-                        hasDepartureAddress && styles.addressInputButtonActive,
+                        hasDepartureAddress && styles.addressInputButtonDepartureActive,
                       ]}
                       onPress={() => {
                         setAddressInputMode('map');
@@ -1099,13 +1100,16 @@ export default function PublishScreen() {
                       placeholderTextColor={Colors.gray[400]}
                     />
                   )}
-                  <TextInput
-                    style={styles.referenceInput}
-                    value={departureReference}
-                    onChangeText={setDepartureReference}
-                    placeholder={LANDMARK_PLACEHOLDER}
-                    placeholderTextColor={Colors.gray[400]}
-                  />
+                  <View style={styles.referenceField}>
+                    <Text style={styles.referenceLabel}>Repère de départ (optionnel)</Text>
+                    <TextInput
+                      style={styles.referenceInput}
+                      value={departureReference}
+                      onChangeText={setDepartureReference}
+                      placeholder="Ex: station, portail bleu"
+                      placeholderTextColor={Colors.gray[400]}
+                    />
+                  </View>
                 </View>
 
                 {/* Swap button */}
@@ -1129,13 +1133,15 @@ export default function PublishScreen() {
                 </TouchableOpacity>
 
                 {/* Arrivée */}
-                <View style={styles.addressField}>
-                  <Text style={styles.addressFieldLabel}>Arrivée</Text>
+                <View style={[styles.addressField, hasArrivalAddress && styles.addressFieldArrivalReady]}>
+                  <Text style={[styles.addressFieldLabel, hasArrivalAddress && styles.addressFieldLabelReady]}>
+                    Arrivée
+                  </Text>
                   <View style={styles.addressInputRow}>
                     <TouchableOpacity
                       style={[
                         styles.addressInputButton,
-                        hasArrivalAddress && styles.addressInputButtonActive,
+                        hasArrivalAddress && styles.addressInputButtonArrivalActive,
                       ]}
                       onPress={() => {
                         setAddressInputMode('map');
@@ -1183,13 +1189,16 @@ export default function PublishScreen() {
                       placeholderTextColor={Colors.gray[400]}
                     />
                   )}
-                  <TextInput
-                    style={styles.referenceInput}
-                    value={arrivalReference}
-                    onChangeText={setArrivalReference}
-                    placeholder={LANDMARK_PLACEHOLDER}
-                    placeholderTextColor={Colors.gray[400]}
-                  />
+                  <View style={styles.referenceField}>
+                    <Text style={styles.referenceLabel}>Repère d’arrivée (optionnel)</Text>
+                    <TextInput
+                      style={styles.referenceInput}
+                      value={arrivalReference}
+                      onChangeText={setArrivalReference}
+                      placeholder="Ex: entrée principale"
+                      placeholderTextColor={Colors.gray[400]}
+                    />
+                  </View>
                 </View>
               </View>
             </View>
@@ -1786,7 +1795,7 @@ export default function PublishScreen() {
       </ScrollView>
 
         {step === 'route' && (
-          <View style={[styles.fixedBottomBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <View style={styles.fixedBottomBar}>
             <TouchableOpacity
               style={[
                 styles.button,
@@ -2096,11 +2105,11 @@ const styles = StyleSheet.create({
   scrollViewContent: {
     flexGrow: 1,
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xl,
+    paddingTop: Spacing.md,
     paddingBottom: Spacing.xxl,
   },
   stepContainer: {
-    marginTop: Spacing.xl,
+    marginTop: 0,
   },
   iconContainer: {
     alignItems: 'center',
@@ -3084,55 +3093,55 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
   },
   routeCard: {
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.sm,
+    borderRadius: BorderRadius.md,
     padding: Spacing.md,
     flexDirection: 'row',
     borderWidth: 1,
-    borderColor: Colors.gray[100],
+    borderColor: Colors.gray[200],
     shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.06,
-    shadowRadius: 18,
-    elevation: 4,
+    shadowRadius: 12,
+    elevation: 3,
     marginBottom: Spacing.lg,
   },
   routeVisual: {
     width: 24,
     alignItems: 'center',
-    paddingTop: 18,
-    paddingBottom: 18,
+    paddingTop: 22,
+    paddingBottom: 22,
   },
   dotGreen: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 13,
+    height: 13,
+    borderRadius: 7,
     backgroundColor: Colors.success,
     borderWidth: 3,
     borderColor: Colors.success + '20',
   },
   dotBlue: {
-    width: 12,
-    height: 12,
-    borderRadius: 4,
+    width: 13,
+    height: 13,
+    borderRadius: 7,
     backgroundColor: Colors.primary,
     borderWidth: 3,
     borderColor: Colors.primary + '20',
   },
   routeLine: {
     flex: 1,
-    width: 2,
+    width: 3,
     backgroundColor: Colors.gray[200],
-    marginVertical: 6,
+    marginVertical: Spacing.sm,
     borderRadius: BorderRadius.full,
   },
   routeInputs: {
     flex: 1,
     marginLeft: Spacing.md,
-    gap: Spacing.sm,
+    gap: 0,
   },
   addressBlock: {
     gap: Spacing.sm,
@@ -3299,12 +3308,20 @@ const styles = StyleSheet.create({
   },
   // === NOUVEAUX STYLES UX ROUTE ===
   addressField: {
-    gap: Spacing.sm,
+    gap: Spacing.xs,
     borderWidth: 1,
-    borderColor: Colors.gray[100],
+    borderColor: Colors.gray[200],
     backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.sm,
-    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+  },
+  addressFieldDepartureReady: {
+    borderColor: Colors.success + '55',
+    backgroundColor: Colors.success + '06',
+  },
+  addressFieldArrivalReady: {
+    borderColor: Colors.primary + '55',
+    backgroundColor: Colors.primary + '06',
   },
   addressFieldLabel: {
     fontSize: FontSizes.xs,
@@ -3312,6 +3329,9 @@ const styles = StyleSheet.create({
     color: Colors.gray[500],
     letterSpacing: 0,
     textTransform: 'uppercase',
+  },
+  addressFieldLabelReady: {
+    color: Colors.gray[800],
   },
   addressInputRow: {
     flexDirection: 'row',
@@ -3323,17 +3343,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    minHeight: 48,
+    minHeight: 46,
     borderWidth: 1,
     borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.sm,
+    borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    paddingVertical: Spacing.xs,
     backgroundColor: Colors.white,
   },
-  addressInputButtonActive: {
+  addressInputButtonDepartureActive: {
+    borderColor: Colors.success,
+    backgroundColor: Colors.success + '10',
+  },
+  addressInputButtonArrivalActive: {
     borderColor: Colors.primary,
-    backgroundColor: Colors.primary + '08',
+    backgroundColor: Colors.primary + '10',
   },
   addressInputText: {
     flex: 1,
@@ -3346,9 +3370,9 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   modeToggle: {
-    width: 44,
-    height: 44,
-    borderRadius: BorderRadius.sm,
+    width: 46,
+    height: 46,
+    borderRadius: BorderRadius.md,
     borderWidth: 1,
     borderColor: Colors.gray[200],
     backgroundColor: Colors.white,
@@ -3360,24 +3384,32 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary + '10',
   },
   inlineManualInput: {
-    minHeight: 48,
+    minHeight: 44,
     borderWidth: 1,
     borderColor: Colors.primary + '50',
-    borderRadius: BorderRadius.sm,
+    borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    paddingVertical: Spacing.xs,
     fontSize: FontSizes.base,
     color: Colors.gray[900],
     backgroundColor: Colors.white,
     marginTop: Spacing.xs,
   },
+  referenceField: {
+    gap: Spacing.xs,
+  },
+  referenceLabel: {
+    fontSize: 11,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[600],
+  },
   referenceInput: {
-    minHeight: 44,
+    minHeight: 38,
     borderWidth: 1,
     borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.sm,
+    borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    paddingVertical: Spacing.xs,
     fontSize: FontSizes.sm,
     color: Colors.gray[800],
     backgroundColor: Colors.white,
@@ -3385,11 +3417,12 @@ const styles = StyleSheet.create({
   swapButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: Spacing.sm,
+    height: 32,
+    marginVertical: -1,
   },
   swapButtonInner: {
-    width: 38,
-    height: 38,
+    width: 32,
+    height: 32,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.primary + '12',
     borderWidth: 1,
@@ -3475,6 +3508,7 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.gray[100],
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
   },
   fixedButton: {
     shadowColor: Colors.primary,
