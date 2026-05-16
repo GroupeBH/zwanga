@@ -29,6 +29,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -69,7 +70,7 @@ const getPlanLabel = (plan?: SubscriptionPlan | null) => {
 };
 
 type SubscriptionPaymentChannel = 'mpesa' | 'airtel' | 'orange' | 'card';
-type SubscriptionModalStep = 'method' | 'mobile_money';
+type SubscriptionModalStep = 'method' | 'payment';
 type SubscriptionCardPaymentResult = 'success' | 'cancel' | 'decline';
 type SubscriptionPaymentCheckOutcome = 'success' | 'pending' | 'failed' | 'error';
 
@@ -197,6 +198,8 @@ export default function ProfileScreen() {
   const [subscriptionModalVisible, setSubscriptionModalVisible] = useState(false);
   const [selectedSubscriptionPaymentChannel, setSelectedSubscriptionPaymentChannel] =
     useState<SubscriptionPaymentChannel>('mpesa');
+  const [subscriptionModalStep, setSubscriptionModalStep] = useState<SubscriptionModalStep>('method');
+  const [subscriptionKeyboardHeight, setSubscriptionKeyboardHeight] = useState(0);
   const [subscriptionPhone, setSubscriptionPhone] = useState('');
   const [subscriptionPaymentOrderNumber, setSubscriptionPaymentOrderNumber] = useState<string | null>(null);
   const [subscriptionPaymentMessage, setSubscriptionPaymentMessage] = useState<string | null>(null);
@@ -300,6 +303,23 @@ export default function ProfileScreen() {
     isSubscriptionPaymentAutoChecking;
   const isSubscriptionCardPayment = selectedSubscriptionPaymentChannel === 'card';
   const shouldShowPaymentStatusPanel = Boolean(subscriptionPaymentMessage || subscriptionPaymentOrderNumber);
+  const selectedSubscriptionPaymentOption = useMemo(
+    () =>
+      SUBSCRIPTION_PAYMENT_OPTIONS.find((option) => option.id === selectedSubscriptionPaymentChannel) ??
+      SUBSCRIPTION_PAYMENT_OPTIONS[0],
+    [selectedSubscriptionPaymentChannel],
+  );
+  const subscriptionModalKeyboardOffset =
+    Platform.OS === 'android' && subscriptionModalVisible
+      ? Math.max(subscriptionKeyboardHeight - insets.bottom, 0)
+      : 0;
+  const subscriptionModalCardKeyboardStyle =
+    Platform.OS === 'android' && subscriptionModalKeyboardOffset > 0
+      ? {
+          marginBottom: subscriptionModalKeyboardOffset,
+          maxHeight: '74%' as const,
+        }
+      : null;
   const { shouldShow: shouldShowProfileGuide, complete: completeProfileGuide } =
     useTutorialGuide('profile_screen');
   const [profileGuideVisible, setProfileGuideVisible] = useState(false);
@@ -309,6 +329,22 @@ export default function ProfileScreen() {
       setProfileGuideVisible(true);
     }
   }, [shouldShowProfileGuide]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      setSubscriptionKeyboardHeight(event.endCoordinates.height);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setSubscriptionKeyboardHeight(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (prefilledSubscriptionPhoneRef.current || !currentUser?.phone) {
@@ -634,7 +670,10 @@ export default function ProfileScreen() {
     if (isSubscribingPro || isCheckingSubscriptionPayment || isSubscriptionPaymentAutoChecking) {
       return;
     }
+    Keyboard.dismiss();
     setSubscriptionModalVisible(false);
+    setSubscriptionModalStep('method');
+    setSubscriptionKeyboardHeight(0);
   };
 
   const stopSubscriptionPaymentAutoCheck = useCallback(() => {
@@ -655,6 +694,7 @@ export default function ProfileScreen() {
       Promise.resolve(refetchProfile()),
     ]);
     setSubscriptionModalVisible(false);
+    setSubscriptionModalStep('method');
     setSubscriptionPaymentOrderNumber(null);
     setSubscriptionPaymentMessage(null);
     showDialog({
@@ -838,11 +878,12 @@ export default function ProfileScreen() {
     }
 
     stopSubscriptionPaymentAutoCheck();
-    if (!subscriptionPhone.trim()) {
+    if (!isSubscriptionCardPayment && !subscriptionPhone.trim()) {
       setSubscriptionPhone(DRC_MOBILE_MONEY_PREFIX);
     }
     setSubscriptionPaymentOrderNumber(null);
     setSubscriptionPaymentMessage(null);
+    setSubscriptionModalStep('method');
     setSubscriptionModalVisible(true);
   };
 
@@ -859,6 +900,20 @@ export default function ProfileScreen() {
     } finally {
       setOpeningDocumentsPack(false);
     }
+  };
+
+  const handleContinueSubscriptionPayment = () => {
+    Keyboard.dismiss();
+
+    if (!isSubscriptionCardPayment && !subscriptionPhone.trim()) {
+      setSubscriptionPhone(DRC_MOBILE_MONEY_PREFIX);
+    }
+    setSubscriptionModalStep('payment');
+  };
+
+  const handleBackToSubscriptionMethod = () => {
+    Keyboard.dismiss();
+    setSubscriptionModalStep('method');
   };
 
   const handleSubmitSubscriptionPayment = async () => {
@@ -2206,6 +2261,7 @@ export default function ProfileScreen() {
             style={[
               styles.subscriptionModalCard,
               { paddingBottom: Math.max(insets.bottom, Spacing.lg) },
+              subscriptionModalCardKeyboardStyle,
             ]}
           >
             <View style={styles.subscriptionModalHandle} />
@@ -2245,11 +2301,48 @@ export default function ProfileScreen() {
               </View>
             </LinearGradient>
 
+            <View style={styles.subscriptionStepIndicator}>
+              <View
+                style={[
+                  styles.subscriptionStepPill,
+                  subscriptionModalStep === 'method' && styles.subscriptionStepPillActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.subscriptionStepText,
+                    subscriptionModalStep === 'method' && styles.subscriptionStepTextActive,
+                  ]}
+                >
+                  1. Methode
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.subscriptionStepPill,
+                  subscriptionModalStep === 'payment' && styles.subscriptionStepPillActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.subscriptionStepText,
+                    subscriptionModalStep === 'payment' && styles.subscriptionStepTextActive,
+                  ]}
+                >
+                  2. Paiement
+                </Text>
+              </View>
+            </View>
+
             <ScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+              style={styles.subscriptionModalScroll}
               contentContainerStyle={styles.subscriptionModalContent}
             >
+              {subscriptionModalStep === 'method' ? (
+                <>
               <Text style={styles.subscriptionSectionLabel}>Moyen de paiement</Text>
               <View style={styles.subscriptionPaymentGrid}>
                 {SUBSCRIPTION_PAYMENT_OPTIONS.map((option) => {
@@ -2305,53 +2398,123 @@ export default function ProfileScreen() {
                   {"Le quota gratuit reste à 5 trajets par jour. L'abonnement débloque les publications supplémentaires dès validation du paiement."}
                 </Text>
               </View>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.subscriptionSectionLabel}>Paiement</Text>
+                  <View style={styles.subscriptionSelectedMethodCard}>
+                    <Ionicons
+                      name={selectedSubscriptionPaymentOption.icon}
+                      size={20}
+                      color={Colors.primary}
+                    />
+                    <View style={styles.subscriptionPaymentOptionText}>
+                      <Text style={styles.subscriptionPaymentOptionLabel}>
+                        {selectedSubscriptionPaymentOption.label}
+                      </Text>
+                      <Text style={styles.subscriptionPaymentOptionHint}>
+                        {selectedSubscriptionPaymentOption.hint}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={handleBackToSubscriptionMethod}
+                      disabled={proBusy}
+                      style={styles.subscriptionChangeMethodButton}
+                    >
+                      <Text style={styles.subscriptionChangeMethodText}>Modifier</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {!isSubscriptionCardPayment ? (
+                    <Animated.View
+                      key={selectedSubscriptionPaymentChannel}
+                      entering={FadeInDown.duration(300)}
+                      style={styles.subscriptionPhoneSection}
+                    >
+                      <Text style={styles.subscriptionSectionLabel}>Numero Mobile Money</Text>
+                      <View style={styles.subscriptionPhoneInputWrapper}>
+                        <Ionicons name="call-outline" size={18} color={Colors.gray[500]} />
+                        <TextInput
+                          style={styles.subscriptionPhoneInput}
+                          keyboardType="phone-pad"
+                          editable={!proBusy}
+                          maxLength={13}
+                          value={subscriptionPhone}
+                          onChangeText={(text) => setSubscriptionPhone(normalizePaymentPhone(text))}
+                          placeholder="+243891234567"
+                          placeholderTextColor={Colors.gray[400]}
+                        />
+                      </View>
+                      <Text style={styles.subscriptionInputHint}>
+                        Format +243 suivi de 9 chiffres. FlexPay enverra une confirmation.
+                      </Text>
+                    </Animated.View>
+                  ) : (
+                    <View style={styles.subscriptionSummaryCard}>
+                      <Text style={styles.subscriptionSummaryPrice}>{proPriceLabel}</Text>
+                      <Text style={styles.subscriptionSummaryText}>
+                        {"Le paiement carte s'ouvrira dans une page securisee."}
+                      </Text>
+                    </View>
+                  )}
+
+                  {shouldShowPaymentStatusPanel && (
+                    <View style={styles.subscriptionPendingPanel}>
+                      <Ionicons name="time-outline" size={18} color={Colors.warningDark} />
+                      <View style={styles.subscriptionPendingTextContent}>
+                        <Text style={styles.subscriptionPendingTitle}>Statut du paiement</Text>
+                        {subscriptionPaymentMessage ? (
+                          <Text style={styles.subscriptionPendingText}>{subscriptionPaymentMessage}</Text>
+                        ) : null}
+                        {subscriptionPaymentOrderNumber ? (
+                          <Text style={styles.subscriptionPendingReference}>
+                            Reference {subscriptionPaymentOrderNumber}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  )}
+                </>
+              )}
             </ScrollView>
 
-            {/* Zone fixe en bas : saisie du numéro + bouton d'action — toujours visible au-dessus du clavier */}
+            {/* Zone fixe en bas : actions toujours visibles au-dessus du clavier */}
             <View style={styles.subscriptionFixedFooter}>
-              {!isSubscriptionCardPayment ? (
-                <Animated.View
-                  key={selectedSubscriptionPaymentChannel}
-                  entering={FadeInDown.duration(300)}
-                  style={styles.subscriptionPhoneSection}
-                >
-                  <Text style={styles.subscriptionSectionLabel}>Numéro Mobile Money</Text>
-                  <View style={styles.subscriptionPhoneInputWrapper}>
-                    <Ionicons name="call-outline" size={18} color={Colors.gray[500]} />
-                    <TextInput
-                      style={styles.subscriptionPhoneInput}
-                      keyboardType="phone-pad"
-                      editable={!proBusy}
-                      maxLength={13}
-                      value={subscriptionPhone}
-                      onChangeText={(text) => setSubscriptionPhone(normalizePaymentPhone(text))}
-                      placeholder="+243891234567"
-                      placeholderTextColor={Colors.gray[400]}
-                    />
-                  </View>
-                  <Text style={styles.subscriptionInputHint}>
-                    Format +243 suivi de 9 chiffres. FlexPay enverra une confirmation.
-                  </Text>
-                </Animated.View>
-              ) : null}
-
               <View style={styles.paymentButtonContainer}>
+                {subscriptionModalStep === 'payment' && (
+                  <TouchableOpacity
+                    style={[styles.subscriptionSecondaryButton, proBusy && styles.subscriptionButtonDisabled]}
+                    onPress={handleBackToSubscriptionMethod}
+                    disabled={proBusy}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.subscriptionSecondaryButtonText}>Retour</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   style={[styles.subscriptionPrimaryButton, proBusy && styles.subscriptionButtonDisabled]}
-                  onPress={handleSubmitSubscriptionPayment}
+                  onPress={
+                    subscriptionModalStep === 'method'
+                      ? handleContinueSubscriptionPayment
+                      : handleSubmitSubscriptionPayment
+                  }
                   disabled={proBusy}
                   activeOpacity={0.85}
                 >
-                  {isSubscribingPro || isSubscriptionPaymentAutoChecking ? (
+                  {subscriptionModalStep === 'payment' && (isSubscribingPro || isSubscriptionPaymentAutoChecking) ? (
                     <ActivityIndicator color={Colors.white} />
                   ) : (
                     <Text style={styles.subscriptionPrimaryButtonText}>
-                      {isSubscriptionCardPayment ? 'Ouvrir le paiement carte' : 'Lancer le paiement'}
+                      {subscriptionModalStep === 'method'
+                        ? 'Suivant'
+                        : isSubscriptionCardPayment
+                          ? 'Ouvrir le paiement carte'
+                          : 'Lancer le paiement'}
                     </Text>
                   )}
                 </TouchableOpacity>
 
-                {subscriptionPaymentOrderNumber && !isSubscriptionPaymentAutoChecking && (
+                {subscriptionModalStep === 'payment' && subscriptionPaymentOrderNumber && !isSubscriptionPaymentAutoChecking && (
                   <TouchableOpacity
                     style={[styles.subscriptionSecondaryButton, proBusy && styles.subscriptionButtonDisabled]}
                     onPress={handleCheckSubscriptionPayment}
@@ -3476,6 +3639,41 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.semibold,
   },
+  subscriptionStepIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
+    backgroundColor: Colors.white,
+  },
+  subscriptionStepPill: {
+    flex: 1,
+    minHeight: 34,
+    borderRadius: BorderRadius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    backgroundColor: Colors.gray[50],
+  },
+  subscriptionStepPillActive: {
+    borderColor: Colors.primary + '35',
+    backgroundColor: Colors.primary + '08',
+  },
+  subscriptionStepText: {
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+  },
+  subscriptionStepTextActive: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  subscriptionModalScroll: {
+    maxHeight: 360,
+  },
   subscriptionModalContent: {
     padding: Spacing.xl,
     gap: Spacing.md,
@@ -3524,6 +3722,31 @@ const styles = StyleSheet.create({
   },
   subscriptionPaymentOptionText: {
     flex: 1,
+  },
+  subscriptionSelectedMethodCard: {
+    minHeight: 58,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary + '25',
+    backgroundColor: Colors.primary + '08',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  subscriptionChangeMethodButton: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.primary + '20',
+  },
+  subscriptionChangeMethodText: {
+    color: Colors.primary,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
   },
   subscriptionPaymentOptionLabel: {
     fontSize: FontSizes.sm,
