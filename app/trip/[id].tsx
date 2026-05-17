@@ -35,6 +35,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
+  KeyboardAvoidingView,
   Image,
   Modal,
   Platform,
@@ -98,6 +100,8 @@ const getLocationCoordinatesObject = (selection: MapLocationSelection | null) =>
     longitude: selection.longitude,
   };
 };
+
+type EditTripStep = 1 | 2;
 
 const getLocationCoordinatesTuple = (
   selection: MapLocationSelection | null,
@@ -225,6 +229,8 @@ export default function TripDetailsScreen() {
   }, [trip?.lastLocationUpdateAt]);
   const [updateTripMutation, { isLoading: isSavingTrip }] = useUpdateTripMutation();
   const [editTripModalVisible, setEditTripModalVisible] = useState(false);
+  const [editStep, setEditStep] = useState<EditTripStep>(1);
+  const [editKeyboardHeight, setEditKeyboardHeight] = useState(0);
   const [editSeats, setEditSeats] = useState('');
   const [editPrice, setEditPrice] = useState('');
   const [editDateTime, setEditDateTime] = useState<Date | null>(null);
@@ -235,6 +241,22 @@ export default function TripDetailsScreen() {
   const [editDepartureManualAddress, setEditDepartureManualAddress] = useState('');
   const [editArrivalManualAddress, setEditArrivalManualAddress] = useState('');
   const [editRoutePickerTarget, setEditRoutePickerTarget] = useState<'departure' | 'arrival' | null>(null);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      setEditKeyboardHeight(event.endCoordinates.height);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setEditKeyboardHeight(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const getDefaultFutureDate = () => {
     const base = new Date();
@@ -333,11 +355,14 @@ export default function TripDetailsScreen() {
     setEditArrivalManualAddress((trip.arrival?.address || trip.arrival?.name || '').trim());
     setEditRouteMode(departureSelection && arrivalSelection ? 'map' : 'manual');
     setEditRoutePickerTarget(null);
+    setEditStep(1);
     setEditTripModalVisible(true);
   };
 
   const closeEditModal = () => {
     setEditTripModalVisible(false);
+    setEditStep(1);
+    setEditKeyboardHeight(0);
     setEditSeats('');
     setEditPrice('');
     setEditDateTime(null);
@@ -355,6 +380,45 @@ export default function TripDetailsScreen() {
     setEditArrivalSelection(editDepartureSelection);
     setEditDepartureManualAddress(editArrivalManualAddress);
     setEditArrivalManualAddress(editDepartureManualAddress);
+  };
+
+  const handleContinueEditTrip = () => {
+    const departureAddress =
+      editRouteMode === 'manual'
+        ? editDepartureManualAddress.trim()
+        : getLocationText(editDepartureSelection, '');
+    const arrivalAddress =
+      editRouteMode === 'manual'
+        ? editArrivalManualAddress.trim()
+        : getLocationText(editArrivalSelection, '');
+
+    if (!departureAddress || !arrivalAddress) {
+      showDialog({
+        variant: 'warning',
+        title: 'Adresses requises',
+        message: 'Indiquez un depart et une arrivee avant de continuer.',
+      });
+      return;
+    }
+
+    if (departureAddress.toLowerCase() === arrivalAddress.toLowerCase()) {
+      showDialog({
+        variant: 'warning',
+        title: 'Trajet invalide',
+        message: 'Le depart et l arrivee doivent etre differents.',
+      });
+      return;
+    }
+
+    Keyboard.dismiss();
+    setIosPickerMode(null);
+    setEditStep(2);
+  };
+
+  const handleBackToEditRoute = () => {
+    Keyboard.dismiss();
+    setIosPickerMode(null);
+    setEditStep(1);
   };
 
   const handleSaveTrip = async () => {
@@ -505,6 +569,19 @@ export default function TripDetailsScreen() {
       'Choisir le point d arrivee'
     );
   }, [editArrivalManualAddress, editArrivalSelection, editRouteMode]);
+
+  const editModalKeyboardOffset =
+    Platform.OS === 'android' && editTripModalVisible
+      ? Math.max(editKeyboardHeight - insets.bottom, 0)
+      : 0;
+  const editModalBottomPadding = Math.max(insets.bottom, 16) + 8;
+  const editModalSheetKeyboardStyle =
+    Platform.OS === 'android' && editModalKeyboardOffset > 0
+      ? {
+          marginBottom: editModalKeyboardOffset,
+          maxHeight: '78%' as const,
+        }
+      : null;
 
   const [createBooking, { isLoading: isBooking }] = useCreateBookingMutation();
   const [cancelBookingMutation, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
@@ -2513,8 +2590,8 @@ export default function TripDetailsScreen() {
                 <Text style={styles.securityModalLoadingText}>Chargement securite...</Text>
               </View>
             )}
+            </View>
           </View>
-        </View>
       </Modal>
 
       <Modal animationType="fade" transparent visible={bookingModalVisible}>
@@ -2853,8 +2930,8 @@ export default function TripDetailsScreen() {
                 </TouchableOpacity>
               )}
             </View>
+            </View>
           </View>
-        </View>
       </Modal>
 
       {/* Location Picker pour le point de récupération */}
@@ -3179,13 +3256,33 @@ export default function TripDetailsScreen() {
           </Animated.View>
         </TouchableOpacity>
       </Modal>
-      <Modal transparent animationType="slide" visible={editTripModalVisible} onRequestClose={closeEditModal}>
-        <View style={styles.editModalOverlay}>
-          <TouchableOpacity style={styles.editModalBackdrop} activeOpacity={1} onPress={closeEditModal} />
-          <View style={[styles.editModalSheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
-
-            {/* Handle bar */}
-            <View style={styles.editModalHandle} />
+      <Modal
+        transparent={Platform.OS === 'android'}
+        animationType="slide"
+        presentationStyle={Platform.OS === 'ios' ? 'pageSheet' : 'overFullScreen'}
+        statusBarTranslucent={Platform.OS === 'android'}
+        navigationBarTranslucent={Platform.OS === 'android'}
+        visible={editTripModalVisible}
+        onRequestClose={closeEditModal}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={0}
+          style={[styles.editModalKeyboard, Platform.OS === 'ios' && styles.editModalKeyboardIos]}
+        >
+          <View style={[styles.editModalOverlay, Platform.OS === 'ios' && styles.editModalOverlayIos]}>
+            {Platform.OS === 'android' && (
+              <TouchableOpacity style={styles.editModalBackdrop} activeOpacity={1} onPress={closeEditModal} />
+            )}
+            <View
+              style={[
+                styles.editModalSheet,
+                Platform.OS === 'ios' && styles.editModalSheetIos,
+                { paddingBottom: editModalBottomPadding },
+                editModalSheetKeyboardStyle,
+              ]}
+            >
+              {Platform.OS === 'android' && <View style={styles.editModalHandle} />}
 
             {/* Header */}
             <View style={styles.editModalHeader}>
@@ -3205,12 +3302,32 @@ export default function TripDetailsScreen() {
               </TouchableOpacity>
             </View>
 
+            <View style={styles.editStepIndicator}>
+              <View style={[styles.editStepPill, editStep === 1 && styles.editStepPillActive]}>
+                <Text style={[styles.editStepText, editStep === 1 && styles.editStepTextActive]}>
+                  1. Itineraire
+                </Text>
+              </View>
+              <View style={[styles.editStepPill, editStep === 2 && styles.editStepPillActive]}>
+                <Text style={[styles.editStepText, editStep === 2 && styles.editStepTextActive]}>
+                  2. Details
+                </Text>
+              </View>
+            </View>
+
             <ScrollView
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
-              style={{ flex: 1 }}
-              contentContainerStyle={styles.editModalScroll}
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+              style={[styles.editModalScrollView, Platform.OS === 'ios' && styles.editModalScrollViewIos]}
+              contentContainerStyle={[
+                styles.editModalScroll,
+                { paddingBottom: Spacing.xl },
+              ]}
+              scrollIndicatorInsets={{ bottom: editModalBottomPadding }}
             >
+              {editStep === 1 ? (
+                <>
               {/* ── Section Itinéraire ── */}
               <View style={styles.editSectionHeader}>
                 <View style={styles.editSectionIconWrap}>
@@ -3253,6 +3370,7 @@ export default function TripDetailsScreen() {
                         placeholderTextColor={Colors.gray[400]}
                         value={editDepartureManualAddress}
                         onChangeText={setEditDepartureManualAddress}
+                        returnKeyType="next"
                       />
                     </View>
                   </View>
@@ -3267,6 +3385,8 @@ export default function TripDetailsScreen() {
                         placeholderTextColor={Colors.gray[400]}
                         value={editArrivalManualAddress}
                         onChangeText={setEditArrivalManualAddress}
+                        returnKeyType="done"
+                        onSubmitEditing={handleContinueEditTrip}
                       />
                     </View>
                   </View>
@@ -3308,7 +3428,10 @@ export default function TripDetailsScreen() {
               )}
 
               {/* ── Section Date & Heure ── */}
-              <View style={[styles.editSectionHeader, { marginTop: Spacing.lg }]}>
+                </>
+              ) : (
+                <>
+              <View style={styles.editSectionHeader}>
                 <View style={[styles.editSectionIconWrap, { backgroundColor: Colors.secondary + '18' }]}>
                   <Ionicons name="calendar-outline" size={15} color={Colors.secondary} />
                 </View>
@@ -3398,19 +3521,30 @@ export default function TripDetailsScreen() {
                   />
                 </View>
               </View>
+                </>
+              )}
             </ScrollView>
 
             {/* ── Actions ── */}
             <View style={styles.editModalActions}>
-              <TouchableOpacity style={styles.editModalCancelBtn} onPress={closeEditModal}>
-                <Text style={styles.editModalCancelText}>Annuler</Text>
+              <TouchableOpacity
+                style={styles.editModalCancelBtn}
+                onPress={editStep === 1 ? closeEditModal : handleBackToEditRoute}
+              >
+                {editStep === 2 && <Ionicons name="arrow-back" size={18} color={Colors.gray[700]} />}
+                <Text style={styles.editModalCancelText}>{editStep === 1 ? 'Annuler' : 'Retour'}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.editModalSaveBtn, isSavingTrip && { opacity: 0.7 }]}
-                onPress={handleSaveTrip}
+                onPress={editStep === 1 ? handleContinueEditTrip : handleSaveTrip}
                 disabled={isSavingTrip}
               >
-                {isSavingTrip ? (
+                {editStep === 1 ? (
+                  <>
+                    <Text style={styles.editModalSaveText}>Suivant</Text>
+                    <Ionicons name="arrow-forward" size={18} color={Colors.white} />
+                  </>
+                ) : isSavingTrip ? (
                   <ActivityIndicator color={Colors.white} size="small" />
                 ) : (
                   <>
@@ -3421,7 +3555,8 @@ export default function TripDetailsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
 
@@ -5118,9 +5253,19 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.semibold,
     marginLeft: Spacing.xs,
   },
+  editModalKeyboard: {
+    flex: 1,
+  },
+  editModalKeyboardIos: {
+    backgroundColor: Colors.white,
+  },
   editModalOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
+  },
+  editModalOverlayIos: {
+    backgroundColor: Colors.white,
+    justifyContent: 'flex-start',
   },
   editModalBackdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -5139,6 +5284,15 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -6 },
     shadowOpacity: 0.12,
     shadowRadius: 16,
+  },
+  editModalSheetIos: {
+    flex: 1,
+    maxHeight: '100%',
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    paddingTop: Spacing.lg,
+    elevation: 0,
+    shadowOpacity: 0,
   },
   editModalHandle: {
     alignSelf: 'center',
@@ -5180,6 +5334,45 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[100],
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  editStepIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: 4,
+    marginBottom: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.gray[50],
+  },
+  editStepPill: {
+    flex: 1,
+    minHeight: 34,
+    borderRadius: BorderRadius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  editStepPillActive: {
+    backgroundColor: Colors.white,
+    borderColor: Colors.primary + '25',
+  },
+  editStepText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[500],
+  },
+  editStepTextActive: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  editModalScrollView: {
+    minHeight: 220,
+    maxHeight: 430,
+  },
+  editModalScrollViewIos: {
+    flex: 1,
+    maxHeight: '100%',
   },
   editModalScroll: {
     paddingBottom: Spacing.xl,
@@ -5417,8 +5610,10 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 52,
     borderRadius: 16,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: Spacing.xs,
     backgroundColor: Colors.gray[100],
   },
   editModalCancelText: {

@@ -8,6 +8,7 @@ import { useCreateTripRequestMutation } from '@/store/api/tripRequestApi';
 import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
 import type { FavoriteLocation } from '@/types';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
+import { getRouteCoordinates } from '@/utils/routeApi';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -15,7 +16,7 @@ import DateTimePicker, {
 } from '@react-native-community/datetimepicker';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -35,6 +36,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 type TimePreset = 'now' | 'soon' | 'later' | 'tomorrow' | 'custom';
 type PickerTarget = 'departure' | 'arrival';
 type RequestFormStep = 'route' | 'details';
+type LatLng = { latitude: number; longitude: number };
 
 const TIME_PRESETS: {
   id: TimePreset;
@@ -146,6 +148,70 @@ function getLocationCoordinates(selection: MapLocationSelection | null): [number
   return [selection.longitude, selection.latitude];
 }
 
+function getMapCoordinate(selection: MapLocationSelection | null): LatLng | null {
+  if (!selection || !Number.isFinite(selection.latitude) || !Number.isFinite(selection.longitude)) {
+    return null;
+  }
+
+  return {
+    latitude: selection.latitude,
+    longitude: selection.longitude,
+  };
+}
+
+function areSameCoordinate(left: LatLng, right: LatLng) {
+  return (
+    Math.abs(left.latitude - right.latitude) < 0.00001 &&
+    Math.abs(left.longitude - right.longitude) < 0.00001
+  );
+}
+
+function getRenderableRouteCoordinates(
+  coordinates: LatLng[],
+  origin: LatLng,
+  destination: LatLng,
+) {
+  if (coordinates.length < 2) {
+    return [];
+  }
+
+  const isStraightFallback =
+    coordinates.length === 2 &&
+    areSameCoordinate(coordinates[0], origin) &&
+    areSameCoordinate(coordinates[1], destination);
+
+  return isStraightFallback ? [] : coordinates;
+}
+
+function buildRoutePreviewRegion(points: LatLng[]): Region {
+  if (points.length === 0) {
+    return DEFAULT_REQUEST_REGION;
+  }
+
+  if (points.length === 1) {
+    return {
+      latitude: points[0].latitude,
+      longitude: points[0].longitude,
+      latitudeDelta: 0.035,
+      longitudeDelta: 0.035,
+    };
+  }
+
+  const latitudes = points.map((point) => point.latitude);
+  const longitudes = points.map((point) => point.longitude);
+  const minLatitude = Math.min(...latitudes);
+  const maxLatitude = Math.max(...latitudes);
+  const minLongitude = Math.min(...longitudes);
+  const maxLongitude = Math.max(...longitudes);
+
+  return {
+    latitude: (minLatitude + maxLatitude) / 2,
+    longitude: (minLongitude + maxLongitude) / 2,
+    latitudeDelta: Math.max((maxLatitude - minLatitude) * 1.35, 0.035),
+    longitudeDelta: Math.max((maxLongitude - minLongitude) * 1.35, 0.035),
+  };
+}
+
 export default function RequestTripScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -173,39 +239,25 @@ export default function RequestTripScreen() {
   const [showQuickLandmarks, setShowQuickLandmarks] = useState(true);
   const [isLocating, setIsLocating] = useState(false);
   const [requestFormStep, setRequestFormStep] = useState<RequestFormStep>('route');
+  const [routeCoordinates, setRouteCoordinates] = useState<LatLng[]>([]);
+  const [isRouteLoading, setIsRouteLoading] = useState(false);
 
   const departureDateMax = useMemo(
     () => new Date(departureDateMin.getTime() + flexibilityMinutes * 60000),
     [departureDateMin, flexibilityMinutes],
   );
   const routePreviewRegion = useMemo<Region>(() => {
-    const points = [departureLocation, arrivalLocation].filter(
-      (point): point is MapLocationSelection =>
-        Boolean(point) &&
-        Number.isFinite(point?.latitude) &&
-        Number.isFinite(point?.longitude),
+    const selectedPoints = [getMapCoordinate(departureLocation), getMapCoordinate(arrivalLocation)].filter(
+      (point): point is LatLng => Boolean(point),
     );
+    const previewPoints = routeCoordinates.length > 1 ? routeCoordinates : selectedPoints;
 
-    if (points.length === 0) {
-      return DEFAULT_REQUEST_REGION;
-    }
-
-    if (points.length === 1) {
-      return {
-        latitude: points[0].latitude,
-        longitude: points[0].longitude,
-        latitudeDelta: 0.035,
-        longitudeDelta: 0.035,
-      };
-    }
-
-    const latitude = (points[0].latitude + points[1].latitude) / 2;
-    const longitude = (points[0].longitude + points[1].longitude) / 2;
-    const latitudeDelta = Math.max(Math.abs(points[0].latitude - points[1].latitude) * 2.2, 0.035);
-    const longitudeDelta = Math.max(Math.abs(points[0].longitude - points[1].longitude) * 2.2, 0.035);
-
-    return { latitude, longitude, latitudeDelta, longitudeDelta };
-  }, [arrivalLocation, departureLocation]);
+    return buildRoutePreviewRegion(previewPoints);
+  }, [
+    arrivalLocation,
+    departureLocation,
+    routeCoordinates,
+  ]);
   const favoriteSuggestions = useMemo(() => favoriteLocations.slice(0, 4), [favoriteLocations]);
   const departureAddress = getLocationText(departureLocation, departureManualAddress);
   const arrivalAddress = getLocationText(arrivalLocation, arrivalManualAddress);
@@ -221,6 +273,44 @@ export default function RequestTripScreen() {
     if (flexibilityMinutes === 0) return `${formatDateLabel(departureDateMin)} à ${formatTimeLabel(departureDateMin)}`;
     return `${formatDateLabel(departureDateMin)} entre ${formatTimeLabel(departureDateMin)} et ${formatTimeLabel(departureDateMax)}`;
   }, [departureDateMax, departureDateMin, flexibilityMinutes]);
+
+  useEffect(() => {
+    const origin = getMapCoordinate(departureLocation);
+    const destination = getMapCoordinate(arrivalLocation);
+
+    if (!origin || !destination) {
+      setRouteCoordinates([]);
+      setIsRouteLoading(false);
+      return;
+    }
+
+    let isCurrent = true;
+    setIsRouteLoading(true);
+    setRouteCoordinates([]);
+
+    getRouteCoordinates(origin, destination)
+      .then((coordinates) => {
+        if (!isCurrent) return;
+        setRouteCoordinates(getRenderableRouteCoordinates(coordinates, origin, destination));
+      })
+      .catch((error) => {
+        if (!isCurrent) return;
+        console.warn('Impossible de calculer l itineraire de demande', error);
+        setRouteCoordinates([]);
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setIsRouteLoading(false);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [
+    arrivalLocation,
+    departureLocation,
+  ]);
 
   const primaryLabel =
     requestFormStep === 'route'
@@ -530,24 +620,35 @@ export default function RequestTripScreen() {
                       title="Destination"
                     />
                   ) : null}
-                  {departureLocation && arrivalLocation ? (
+                  {routeCoordinates.length > 1 ? (
                     <Polyline
-                      coordinates={[
-                        {
-                          latitude: departureLocation.latitude,
-                          longitude: departureLocation.longitude,
-                        },
-                        {
-                          latitude: arrivalLocation.latitude,
-                          longitude: arrivalLocation.longitude,
-                        },
-                      ]}
+                      coordinates={routeCoordinates}
                       strokeColor={Colors.primary}
-                      strokeWidth={4}
+                      strokeWidth={5}
                     />
                   ) : null}
                 </MapView>
                 <View pointerEvents="none" style={styles.mapPreviewShade} />
+                {departureLocation && arrivalLocation ? (
+                  <View pointerEvents="none" style={styles.routeStatusBadge}>
+                    {isRouteLoading ? (
+                      <ActivityIndicator color={Colors.primary} size="small" />
+                    ) : (
+                      <Ionicons
+                        name={routeCoordinates.length > 1 ? 'git-branch' : 'alert-circle-outline'}
+                        size={15}
+                        color={routeCoordinates.length > 1 ? Colors.primary : Colors.gray[500]}
+                      />
+                    )}
+                    <Text style={styles.routeStatusText}>
+                      {isRouteLoading
+                        ? 'Calcul de l itineraire'
+                        : routeCoordinates.length > 1
+                          ? 'Itineraire Google'
+                          : 'Route a recalculer'}
+                    </Text>
+                  </View>
+                ) : null}
                 <TouchableOpacity
                   style={styles.mapLocateButton}
                   onPress={handleUseCurrentLocation}
@@ -981,6 +1082,8 @@ const styles = StyleSheet.create({
   mapPreviewShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 78, backgroundColor: 'rgba(238,242,246,0.72)' },
   mapLocateButton: { position: 'absolute', right: Spacing.lg, top: Spacing.md, minHeight: 42, borderRadius: BorderRadius.full, paddingHorizontal: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, backgroundColor: Colors.white, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 12, elevation: 4 },
   mapLocateButtonText: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  routeStatusBadge: { position: 'absolute', left: Spacing.lg, top: Spacing.md, minHeight: 38, borderRadius: BorderRadius.full, paddingHorizontal: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, backgroundColor: Colors.white, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 4 },
+  routeStatusText: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[800] },
   rideSheet: { marginHorizontal: Spacing.lg, marginTop: -34, borderRadius: BorderRadius.xl, backgroundColor: Colors.white, padding: Spacing.md, gap: Spacing.md, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.14, shadowRadius: 24, elevation: 10 },
   sheetHandle: { alignSelf: 'center', width: 42, height: 4, borderRadius: BorderRadius.full, backgroundColor: Colors.gray[200], marginBottom: 2 },
   rideSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.md },

@@ -1,5 +1,5 @@
-import AddressEntryModeSelector, { type AddressInputMode } from '@/components/AddressEntryModeSelector';
-import AddressSectionSlider, { type AddressSectionStep } from '@/components/AddressSectionSlider';
+import { type AddressInputMode } from '@/components/AddressEntryModeSelector';
+import { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardModal';
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { VehicleFormModal } from '@/components/VehicleFormModal';
@@ -11,6 +11,7 @@ import { useCreateRecurringTripMutation, useCreateTripMutation } from '@/store/a
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { createBecomeDriverAction, isDriverRequiredError } from '@/utils/errorHelpers';
+import { getRouteCoordinates } from '@/utils/routeApi';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -30,10 +31,18 @@ import {
   View,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type PublishStep = 'route' | 'datetime' | 'vehicle' | 'pricing' | 'confirm';
+type LatLng = { latitude: number; longitude: number };
 const PUBLISH_STEP_ORDER: PublishStep[] = ['route', 'datetime', 'vehicle', 'pricing', 'confirm'];
+const DEFAULT_PUBLISH_REGION: Region = {
+  latitude: -4.441931,
+  longitude: 15.266293,
+  latitudeDelta: 0.08,
+  longitudeDelta: 0.08,
+};
 
 function getLocationText(selection: MapLocationSelection | null, manualAddress: string) {
   return (manualAddress.trim() || selection?.title || selection?.address || '').trim();
@@ -44,6 +53,70 @@ function getLocationCoordinates(selection: MapLocationSelection | null): [number
     return undefined;
   }
   return [selection.longitude, selection.latitude];
+}
+
+function getMapCoordinate(selection: MapLocationSelection | null): LatLng | null {
+  if (!selection || !Number.isFinite(selection.latitude) || !Number.isFinite(selection.longitude)) {
+    return null;
+  }
+
+  return {
+    latitude: selection.latitude,
+    longitude: selection.longitude,
+  };
+}
+
+function areSameCoordinate(left: LatLng, right: LatLng) {
+  return (
+    Math.abs(left.latitude - right.latitude) < 0.00001 &&
+    Math.abs(left.longitude - right.longitude) < 0.00001
+  );
+}
+
+function getRenderableRouteCoordinates(
+  coordinates: LatLng[],
+  origin: LatLng,
+  destination: LatLng,
+) {
+  if (coordinates.length < 2) {
+    return [];
+  }
+
+  const isStraightFallback =
+    coordinates.length === 2 &&
+    areSameCoordinate(coordinates[0], origin) &&
+    areSameCoordinate(coordinates[1], destination);
+
+  return isStraightFallback ? [] : coordinates;
+}
+
+function buildRoutePreviewRegion(points: LatLng[]): Region {
+  if (points.length === 0) {
+    return DEFAULT_PUBLISH_REGION;
+  }
+
+  if (points.length === 1) {
+    return {
+      latitude: points[0].latitude,
+      longitude: points[0].longitude,
+      latitudeDelta: 0.035,
+      longitudeDelta: 0.035,
+    };
+  }
+
+  const latitudes = points.map((point) => point.latitude);
+  const longitudes = points.map((point) => point.longitude);
+  const minLatitude = Math.min(...latitudes);
+  const maxLatitude = Math.max(...latitudes);
+  const minLongitude = Math.min(...longitudes);
+  const maxLongitude = Math.max(...longitudes);
+
+  return {
+    latitude: (minLatitude + maxLatitude) / 2,
+    longitude: (minLongitude + maxLongitude) / 2,
+    latitudeDelta: Math.max((maxLatitude - minLatitude) * 1.35, 0.035),
+    longitudeDelta: Math.max((maxLongitude - minLongitude) * 1.35, 0.035),
+  };
 }
 
 function isDailyPublicationLimitError(error: any) {
@@ -324,9 +397,8 @@ export default function PublishScreen() {
   const [arrivalManualAddress, setArrivalManualAddress] = useState('');
   const [arrivalReference, setArrivalReference] = useState('');
   const [showQuickLandmarks, setShowQuickLandmarks] = useState(true);
-  const [recentAddresses, setRecentAddresses] = useState<MapLocationSelection[]>([]);
   const [addressInputMode, setAddressInputMode] = useState<AddressInputMode>('map');
-  const [addressSectionStep, setAddressSectionStep] = useState<AddressSectionStep>('method');
+  const [, setAddressSectionStep] = useState<AddressSectionStep>('method');
   const [activeLocationType, setActiveLocationType] = useState<'departure' | 'arrival' | null>(null);
   const [departureDateTime, setDepartureDateTime] = useState<Date | null>(null);
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
@@ -338,6 +410,8 @@ export default function PublishScreen() {
   const [isRecurringTrip, setIsRecurringTrip] = useState(false);
   const [recurringWeekdays, setRecurringWeekdays] = useState<number[]>([]);
   const [recurringEndDate, setRecurringEndDate] = useState<Date | null>(null);
+  const [routeCoordinates, setRouteCoordinates] = useState<LatLng[]>([]);
+  const [isRouteLoading, setIsRouteLoading] = useState(false);
   const departureAddress =
     addressInputMode === 'manual'
       ? departureManualAddress.trim()
@@ -348,18 +422,23 @@ export default function PublishScreen() {
       : getLocationText(arrivalLocation, '');
   const hasDepartureAddress = departureAddress.length > 0;
   const hasArrivalAddress = arrivalAddress.length > 0;
-  const canOpenAddressSectionStep = (stepId: AddressSectionStep) =>
-    stepId !== 'arrival' || hasDepartureAddress;
-  const goToPreviousAddressSectionStep = () => {
-    setAddressSectionStep((current) => (current === 'arrival' ? 'departure' : 'method'));
-  };
-  const goToNextAddressSectionStep = () => {
-    setAddressSectionStep((current) => (current === 'method' ? 'departure' : 'arrival'));
-  };
-  const addressSectionNextDisabled = addressSectionStep === 'departure' && !hasDepartureAddress;
-  const addressSectionNextLabel =
-    addressSectionStep === 'method' ? 'Choisir le départ' : 'Choisir l’arrivée';
+  const routePreviewRegion = useMemo<Region>(() => {
+    const selectedPoints = [getMapCoordinate(departureLocation), getMapCoordinate(arrivalLocation)].filter(
+      (point): point is LatLng => Boolean(point),
+    );
+    const previewPoints = routeCoordinates.length > 1 ? routeCoordinates : selectedPoints;
 
+    return buildRoutePreviewRegion(previewPoints);
+  }, [
+    arrivalLocation,
+    departureLocation,
+    routeCoordinates,
+  ]);
+  const routeSummary = useMemo(() => {
+    if (hasDepartureAddress && hasArrivalAddress) return `${departureAddress} \u2192 ${arrivalAddress}`;
+    if (hasDepartureAddress) return `Depart : ${departureAddress}`;
+    return 'Choisissez le depart et la destination';
+  }, [arrivalAddress, departureAddress, hasArrivalAddress, hasDepartureAddress]);
   const departureSummary = useMemo(
     () => ({
       title: departureAddress || 'Point de départ non défini',
@@ -413,6 +492,18 @@ export default function PublishScreen() {
   const openLocationPicker = (type: 'departure' | 'arrival') => setActiveLocationType(type);
 
   const closeLocationPicker = () => setActiveLocationType(null);
+
+  const swapRoutePoints = () => {
+    const tempLoc = departureLocation;
+    const tempManual = departureManualAddress;
+    const tempRef = departureReference;
+    setDepartureLocation(arrivalLocation);
+    setDepartureManualAddress(arrivalManualAddress);
+    setDepartureReference(arrivalReference);
+    setArrivalLocation(tempLoc);
+    setArrivalManualAddress(tempManual);
+    setArrivalReference(tempRef);
+  };
 
   const handleLocationSelected = (selection: MapLocationSelection) => {
     setAddressInputMode('map');
@@ -599,6 +690,45 @@ export default function PublishScreen() {
       return [...current, weekday].sort((left, right) => left - right);
     });
   };
+
+  useEffect(() => {
+    const origin = addressInputMode === 'map' ? getMapCoordinate(departureLocation) : null;
+    const destination = addressInputMode === 'map' ? getMapCoordinate(arrivalLocation) : null;
+
+    if (!origin || !destination) {
+      setRouteCoordinates([]);
+      setIsRouteLoading(false);
+      return;
+    }
+
+    let isCurrent = true;
+    setIsRouteLoading(true);
+    setRouteCoordinates([]);
+
+    getRouteCoordinates(origin, destination)
+      .then((coordinates) => {
+        if (!isCurrent) return;
+        setRouteCoordinates(getRenderableRouteCoordinates(coordinates, origin, destination));
+      })
+      .catch((error) => {
+        if (!isCurrent) return;
+        console.warn('Impossible de calculer l itineraire de publication', error);
+        setRouteCoordinates([]);
+      })
+      .finally(() => {
+        if (isCurrent) {
+          setIsRouteLoading(false);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [
+    addressInputMode,
+    arrivalLocation,
+    departureLocation,
+  ]);
 
   useEffect(() => {
     if (mode !== 'recurring' || isRecurringTrip) {
@@ -1027,13 +1157,84 @@ export default function PublishScreen() {
       <View style={{ flex: 1 }}>
         <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={[styles.scrollViewContent, { paddingBottom: Math.max(insets.bottom, 16) + 80 }]}
+          contentContainerStyle={[
+            styles.scrollViewContent,
+            step === 'route' && styles.routeScrollViewContent,
+            { paddingBottom: Math.max(insets.bottom, 16) + 80 },
+          ]}
         showsVerticalScrollIndicator={false}
       >
         {/* Étape 1: Itinéraire */}
         {step === 'route' && (
-          <Animated.View entering={stepEntering} style={styles.stepContainer}>
-            <Text style={styles.sectionTitle}>Où allez-vous ?</Text>
+          <Animated.View entering={stepEntering} style={[styles.stepContainer, styles.routeStepContainer]}>
+            <View style={styles.publishMapPreview}>
+              <MapView
+                style={styles.publishMapPreviewMap}
+                provider={PROVIDER_GOOGLE}
+                region={routePreviewRegion}
+                scrollEnabled={false}
+                zoomEnabled={false}
+                rotateEnabled={false}
+                pitchEnabled={false}
+                toolbarEnabled={false}
+              >
+                {departureLocation ? (
+                  <Marker
+                    coordinate={{
+                      latitude: departureLocation.latitude,
+                      longitude: departureLocation.longitude,
+                    }}
+                    pinColor={Colors.success}
+                    title="Depart"
+                  />
+                ) : null}
+                {arrivalLocation ? (
+                  <Marker
+                    coordinate={{
+                      latitude: arrivalLocation.latitude,
+                      longitude: arrivalLocation.longitude,
+                    }}
+                    pinColor={Colors.primary}
+                    title="Destination"
+                  />
+                ) : null}
+                {routeCoordinates.length > 1 ? (
+                  <Polyline coordinates={routeCoordinates} strokeColor={Colors.primary} strokeWidth={5} />
+                ) : null}
+              </MapView>
+              <View pointerEvents="none" style={styles.publishMapPreviewShade} />
+              {departureLocation && arrivalLocation ? (
+                <View pointerEvents="none" style={styles.routeStatusBadge}>
+                  {isRouteLoading ? (
+                    <ActivityIndicator color={Colors.primary} size="small" />
+                  ) : (
+                    <Ionicons
+                      name={routeCoordinates.length > 1 ? 'git-branch' : 'alert-circle-outline'}
+                      size={15}
+                      color={routeCoordinates.length > 1 ? Colors.primary : Colors.gray[500]}
+                    />
+                  )}
+                  <Text style={styles.routeStatusText}>
+                    {isRouteLoading
+                      ? 'Calcul de l itineraire'
+                      : routeCoordinates.length > 1
+                        ? 'Itineraire Google'
+                        : 'Route a recalculer'}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.publishRouteSheet}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.rideSheetHeader}>
+                <View style={styles.routeSheetHeaderCopy}>
+                  <Text style={styles.sectionTitle}>Publier votre trajet</Text>
+                  <Text style={styles.routeSheetSubtitle} numberOfLines={1}>
+                    {routeSummary}
+                  </Text>
+                </View>
+              </View>
 
             {/* Carte récap itinéraire */}
             <View style={styles.routeCard}>
@@ -1095,7 +1296,10 @@ export default function PublishScreen() {
                     <TextInput
                       style={styles.inlineManualInput}
                       value={departureManualAddress}
-                      onChangeText={setDepartureManualAddress}
+                      onChangeText={(value) => {
+                        setDepartureManualAddress(value);
+                        setDepartureLocation(null);
+                      }}
                       placeholder="Ex: avenue Kasa-Vubu, Bandal"
                       placeholderTextColor={Colors.gray[400]}
                     />
@@ -1115,17 +1319,7 @@ export default function PublishScreen() {
                 {/* Swap button */}
                 <TouchableOpacity
                   style={styles.swapButton}
-                  onPress={() => {
-                    const tempLoc = departureLocation;
-                    const tempManual = departureManualAddress;
-                    const tempRef = departureReference;
-                    setDepartureLocation(arrivalLocation);
-                    setDepartureManualAddress(arrivalManualAddress);
-                    setDepartureReference(arrivalReference);
-                    setArrivalLocation(tempLoc);
-                    setArrivalManualAddress(tempManual);
-                    setArrivalReference(tempRef);
-                  }}
+                  onPress={swapRoutePoints}
                 >
                   <View style={styles.swapButtonInner}>
                     <Ionicons name="swap-vertical" size={18} color={Colors.primary} />
@@ -1184,7 +1378,10 @@ export default function PublishScreen() {
                     <TextInput
                       style={styles.inlineManualInput}
                       value={arrivalManualAddress}
-                      onChangeText={setArrivalManualAddress}
+                      onChangeText={(value) => {
+                        setArrivalManualAddress(value);
+                        setArrivalLocation(null);
+                      }}
                       placeholder="Ex: rond-point Victoire"
                       placeholderTextColor={Colors.gray[400]}
                     />
@@ -1283,6 +1480,7 @@ export default function PublishScreen() {
               </TouchableOpacity>
             )}
 
+            </View>
           </Animated.View>
         )}
         {/* Étape 2: Date & Heure */}
@@ -1968,18 +2166,28 @@ export default function PublishScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.white,
+    backgroundColor: '#EEF2F6',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[200],
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    backgroundColor: '#EEF2F6',
   },
   closeButton: {
     marginRight: Spacing.lg,
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
   headerContent: {
     flex: 1,
@@ -1987,7 +2195,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
+    color: Colors.gray[900],
   },
   headerSubtitle: {
     fontSize: FontSizes.sm,
@@ -2108,7 +2316,14 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.md,
     paddingBottom: Spacing.xxl,
   },
+  routeScrollViewContent: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
+  },
   stepContainer: {
+    marginTop: 0,
+  },
+  routeStepContainer: {
     marginTop: 0,
   },
   iconContainer: {
@@ -3020,11 +3235,10 @@ const styles = StyleSheet.create({
   },
   // Step Indicator Styles
   stepIndicatorContainer: {
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.lg,
-    backgroundColor: Colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[100],
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.xs,
+    paddingBottom: Spacing.sm,
+    backgroundColor: '#EEF2F6',
   },
   stepIndicatorRow: {
     flexDirection: 'row',
@@ -3033,34 +3247,18 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   stepDot: {
-    width: 40,
-    height: 40,
+    width: 32,
+    height: 32,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.gray[300],
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: Colors.black,
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
   stepDotActive: {
     backgroundColor: Colors.primary,
-    shadowColor: Colors.primary,
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-    transform: [{ scale: 1.1 }],
   },
   stepDotCompleted: {
     backgroundColor: Colors.success,
-    shadowColor: Colors.success,
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
   },
   stepLine: {
     flex: 1,
@@ -3089,25 +3287,94 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   // Route Card Styles (from request.tsx)
+  publishMapPreview: {
+    height: 238,
+    overflow: 'hidden',
+    backgroundColor: Colors.gray[200],
+  },
+  publishMapPreviewMap: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  publishMapPreviewShade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 78,
+    backgroundColor: 'rgba(238,242,246,0.72)',
+  },
+  routeStatusBadge: {
+    position: 'absolute',
+    left: Spacing.lg,
+    top: Spacing.md,
+    minHeight: 38,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: Colors.white,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  routeStatusText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+  },
+  publishRouteSheet: {
+    marginHorizontal: Spacing.lg,
+    marginTop: -34,
+    borderRadius: BorderRadius.xl,
+    backgroundColor: Colors.white,
+    padding: Spacing.md,
+    gap: Spacing.md,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.14,
+    shadowRadius: 24,
+    elevation: 10,
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 42,
+    height: 4,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[200],
+    marginBottom: 2,
+  },
+  rideSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  routeSheetHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  routeSheetSubtitle: {
+    marginTop: 2,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+  },
   sectionTitle: {
     fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    marginBottom: Spacing.md,
+    marginBottom: 0,
   },
   routeCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
+    backgroundColor: '#F8FAFC',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.sm,
     flexDirection: 'row',
     borderWidth: 1,
     borderColor: Colors.gray[200],
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
-    marginBottom: Spacing.lg,
+    marginBottom: 0,
   },
   routeVisual: {
     width: 24,
@@ -3224,7 +3491,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.sm,
     borderWidth: 1,
     borderColor: Colors.info + '20',
-    marginBottom: Spacing.lg,
+    marginBottom: 0,
     alignItems: 'center',
   },
   infoText: {
@@ -3436,11 +3703,11 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   quickLandmarksSection: {
-    marginBottom: Spacing.lg,
-    backgroundColor: Colors.white,
+    marginBottom: 0,
+    backgroundColor: 'transparent',
     borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    borderColor: Colors.gray[100],
+    borderWidth: 0,
+    borderColor: 'transparent',
     paddingVertical: Spacing.sm,
   },
   quickLandmarksHeader: {
@@ -3490,7 +3757,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: Colors.primary + '20',
     padding: Spacing.md,
-    marginBottom: Spacing.lg,
+    marginBottom: 0,
   },
   inlineKycTitle: {
     fontSize: FontSizes.base,
