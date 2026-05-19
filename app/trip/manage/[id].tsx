@@ -5,6 +5,7 @@ import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { trackEvent } from '@/services/analytics';
 import {
   useAcceptBookingMutation,
+  useCancelBookingMutation,
   useConfirmDropoffMutation,
   useConfirmPickupMutation,
   useGetTripBookingsQuery,
@@ -73,6 +74,9 @@ const BOOKING_STATUS_CONFIG: Record<
   },
 };
 
+const hasPassengerBoarded = (booking: Booking) =>
+  Boolean(booking.pickedUp || booking.pickedUpConfirmedByPassenger);
+
 export default function ManageTripScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
@@ -129,6 +133,7 @@ export default function ManageTripScreen() {
   });
   const [acceptBooking, { isLoading: isAccepting }] = useAcceptBookingMutation();
   const [rejectBooking, { isLoading: isRejecting }] = useRejectBookingMutation();
+  const [cancelBooking, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
   const [updateTripStatus, { isLoading: isUpdatingTripStatus }] = useUpdateTripMutation();
   const [updateTripRoute, { isLoading: isUpdatingRoute }] = useUpdateTripMutation();
   const [startTrip, { isLoading: isStartingTrip }] = useStartTripMutation();
@@ -316,6 +321,49 @@ export default function ManageTripScreen() {
     } finally {
       setProcessingBookingId(null);
     }
+  };
+
+  const handleCancelBookingBeforePickup = (booking: Booking) => {
+    if (!trip) return;
+
+    if (booking.status !== 'accepted' || hasPassengerBoarded(booking)) {
+      showFeedback('error', 'Impossible d\'annuler cette réservation : le passager a déjà embarqué.');
+      return;
+    }
+
+    const passengerName = booking.passengerName || 'ce passager';
+
+    showDialog({
+      variant: 'warning',
+      title: 'Annuler la réservation',
+      message: `Voulez-vous annuler la réservation de ${passengerName} ? Cette action est possible uniquement avant l'embarquement du passager.`,
+      actions: [
+        { label: 'Retour', variant: 'ghost' },
+        {
+          label: 'Oui, annuler',
+          variant: 'primary',
+          onPress: async () => {
+            setProcessingBookingId(booking.id);
+            try {
+              await cancelBooking(booking.id).unwrap();
+              void trackEvent('driver_booking_cancelled_before_pickup', {
+                booking_id: booking.id,
+                trip_id: trip.id,
+                source_screen: 'trip_manage',
+              });
+              showFeedback('success', 'La réservation a été annulée. Le passager sera notifié.');
+              refreshAll();
+            } catch (error: any) {
+              const message =
+                error?.data?.message ?? error?.error ?? 'Impossible d\'annuler cette réservation.';
+              showFeedback('error', message);
+            } finally {
+              setProcessingBookingId(null);
+            }
+          },
+        },
+      ],
+    });
   };
 
   const handleStartTrip = async () => {
@@ -884,6 +932,28 @@ export default function ManageTripScreen() {
                       <Ionicons name="chatbubble-ellipses" size={18} color={Colors.primary} />
                       <Text style={[styles.actionText, { color: Colors.primary }]}>Contacter</Text>
                     </TouchableOpacity>
+
+                    {!hasPassengerBoarded(booking) && (trip.status === 'upcoming' || trip.status === 'ongoing') && (
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.cancelBookingButton]}
+                        onPress={() => handleCancelBookingBeforePickup(booking)}
+                        disabled={
+                          isCancellingBooking ||
+                          isConfirmingPickup ||
+                          isConfirmingDropoff ||
+                          processingBookingId === booking.id
+                        }
+                      >
+                        {processingBookingId === booking.id && isCancellingBooking ? (
+                          <ActivityIndicator size="small" color={Colors.danger} />
+                        ) : (
+                          <>
+                            <Ionicons name="close-circle-outline" size={18} color={Colors.danger} />
+                            <Text style={[styles.actionText, { color: Colors.danger }]}>Annuler</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    )}
                     
                     {trip.status === 'ongoing' && !booking.pickedUp && (
                       <TouchableOpacity
@@ -1625,6 +1695,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
     marginTop: Spacing.md,
     paddingTop: Spacing.md,
     borderTopWidth: 1,
@@ -1654,6 +1726,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.success,
   },
   rejectButton: {
+    backgroundColor: Colors.danger + '10',
+  },
+  cancelBookingButton: {
     backgroundColor: Colors.danger + '10',
   },
   actionText: {

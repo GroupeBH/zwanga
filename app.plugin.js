@@ -1,9 +1,5 @@
-const { withAndroidManifest, AndroidConfig } = require('@expo/config-plugins');
+const { withAndroidManifest, withGradleProperties, AndroidConfig } = require('@expo/config-plugins');
 
-/**
- * Plugin pour ajouter explicitement les permissions de localisation au manifest Android
- * Cela garantit que Google Play détecte correctement ces permissions
- */
 const withAndroidLocationPermissions = (config) => {
   return withAndroidManifest(config, async (config) => {
     const androidManifest = config.modResults;
@@ -22,10 +18,9 @@ const withAndroidLocationPermissions = (config) => {
     ];
 
     permissions.forEach((permission) => {
-      // Vérifier si la permission existe déjà
       const existingPermissions = manifest['uses-permission'] || [];
       const exists = existingPermissions.some(
-        (p) => p.$ && p.$['android:name'] === permission
+        (p) => p.$ && p.$['android:name'] === permission,
       );
 
       if (!exists) {
@@ -35,23 +30,42 @@ const withAndroidLocationPermissions = (config) => {
       }
     });
 
-    // Supprimer FOREGROUND_SERVICE_MEDIA_PLAYBACK si elle existe (bloquée car non utilisée)
-    const blockedPermissions = [
-      'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
-    ];
+    return config;
+  });
+};
 
-    if (manifest['uses-permission']) {
-      manifest['uses-permission'] = manifest['uses-permission'].filter(
-        (permission) => {
-          const permissionName = permission.$ && permission.$['android:name'];
-          return !blockedPermissions.includes(permissionName);
-        }
-      );
+const withAndroidLargeScreenCompatibility = (config) => {
+  return withAndroidManifest(config, async (config) => {
+    const androidManifest = config.modResults;
+    const mainApplication = androidManifest.manifest.application?.[0];
+    const mainActivity = AndroidConfig.Manifest.getMainActivityOrThrow(androidManifest);
+
+    if (mainApplication?.$) {
+      mainApplication.$['android:resizeableActivity'] = 'true';
+    }
+
+    if (mainActivity?.$) {
+      delete mainActivity.$['android:screenOrientation'];
     }
 
     return config;
   });
 };
 
-module.exports = withAndroidLocationPermissions;
+const withModernEdgeToEdgeGradleProperties = (config) => {
+  return withGradleProperties(config, (config) => {
+    config.modResults = config.modResults.filter((property) => {
+      const value = typeof property.value === 'string' ? property.value : '';
+      return property.key !== 'expo.edgeToEdgeEnabled' && !value.includes('expo.edgeToEdgeEnabled');
+    });
 
+    return config;
+  });
+};
+
+module.exports = (config) => {
+  config = withAndroidLocationPermissions(config);
+  config = withAndroidLargeScreenCompatibility(config);
+  config = withModernEdgeToEdgeGradleProperties(config);
+  return config;
+};

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
@@ -56,7 +56,7 @@ export function GooglePhoneStep({
             keyboardType="phone-pad"
             value={phone}
             onChangeText={onPhoneChange}
-            autoFocus
+            autoFocus={Platform.OS !== 'android'}
           />
         </View>
 

@@ -17,7 +17,7 @@ import { performLogout, setTokens } from '@/store/slices/authSlice';
 import { isTokenExpired } from '@/utils/jwt';
 import { useRouter, useSegments } from 'expo-router';
 import { useEffect, useRef } from 'react';
-import { ActivityIndicator, AppState, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, InteractionManager, StyleSheet, View } from 'react-native';
 
 /**
  * Route guard:
@@ -45,6 +45,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const lastAuthTime = useRef<number | null>(null);
   const isRedirectingAfterLogout = useRef(false);
   const hasCheckedTokensOnMount = useRef(false);
+  const lastFcmSyncAccessToken = useRef<string | null>(null);
 
   // Validate SecureStore tokens before hydrating Redux (ex: hot reload).
   useEffect(() => {
@@ -52,17 +53,23 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
     const checkSecureStore = async () => {
       if (!accessToken && !refreshToken && !isAuthenticated) {
-        console.log('[AuthGuard] Redux empty - validating SecureStore session...');
+        if (__DEV__) {
+          console.log('[AuthGuard] Redux empty - validating SecureStore session...');
+        }
         try {
           const hasValidSession = await validateAndRefreshTokens();
           if (!hasValidSession) {
-            console.log('[AuthGuard] No valid session found in SecureStore');
+            if (__DEV__) {
+              console.log('[AuthGuard] No valid session found in SecureStore');
+            }
             return;
           }
 
           const storedTokens = await getTokens();
           if (storedTokens.accessToken && storedTokens.refreshToken) {
-            console.log('[AuthGuard] Valid session found - hydrating Redux');
+            if (__DEV__) {
+              console.log('[AuthGuard] Valid session found - hydrating Redux');
+            }
             dispatch(
               setTokens({
                 accessToken: storedTokens.accessToken,
@@ -96,14 +103,20 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       hasCheckedTokensOnMount.current = true;
 
       if (justAuthenticated()) {
-        console.log(
-          '[AuthGuard] Recent login/signup detected - skip startup proactive refresh'
-        );
+        if (__DEV__) {
+          console.log(
+            '[AuthGuard] Recent login/signup detected - skip startup proactive refresh'
+          );
+        }
       } else {
-        console.log('[AuthGuard] Startup proactive token check...');
+        if (__DEV__) {
+          console.log('[AuthGuard] Startup proactive token check...');
+        }
         proactiveTokenRefresh().then((valid) => {
           if (!valid) {
-            console.log('[AuthGuard] Invalid session at startup - local logout');
+            if (__DEV__) {
+              console.log('[AuthGuard] Invalid session at startup - local logout');
+            }
             dispatch({ type: 'auth/logout' });
           }
         });
@@ -113,16 +126,22 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
         if (justAuthenticated()) {
-          console.log(
-            '[AuthGuard] Recent login/signup detected - skip foreground refresh'
-          );
+          if (__DEV__) {
+            console.log(
+              '[AuthGuard] Recent login/signup detected - skip foreground refresh'
+            );
+          }
           return;
         }
 
-        console.log('[AuthGuard] App foregrounded - proactive token check...');
+        if (__DEV__) {
+          console.log('[AuthGuard] App foregrounded - proactive token check...');
+        }
         proactiveTokenRefresh().then((valid) => {
           if (!valid) {
-            console.log('[AuthGuard] Invalid session after foreground - local logout');
+            if (__DEV__) {
+              console.log('[AuthGuard] Invalid session after foreground - local logout');
+            }
             dispatch({ type: 'auth/logout' });
           }
         });
@@ -136,7 +155,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isAuthenticated && accessToken && refreshToken) {
       lastAuthTime.current = Date.now();
-      console.log('[AuthGuard] Successful authentication detected');
+      if (__DEV__) {
+        console.log('[AuthGuard] Successful authentication detected');
+      }
     }
   }, [isAuthenticated, accessToken, refreshToken]);
 
@@ -156,10 +177,14 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
       if (isAuthenticated && !accessToken && !refreshToken) {
         if (justAuthenticated) {
-          console.log('[AuthGuard] Recent auth, waiting token propagation...');
+          if (__DEV__) {
+            console.log('[AuthGuard] Recent auth, waiting token propagation...');
+          }
           return;
         }
-        console.log('[AuthGuard] Authenticated but tokens missing in Redux');
+        if (__DEV__) {
+          console.log('[AuthGuard] Authenticated but tokens missing in Redux');
+        }
         return;
       }
 
@@ -183,7 +208,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
           try {
             await dispatch(performLogout()).unwrap();
-            console.log('[AuthGuard] Logout done - redirecting to /auth-entry');
+            if (__DEV__) {
+              console.log('[AuthGuard] Logout done - redirecting to /auth-entry');
+            }
             if (!inAuthGroup) {
               router.replace('/auth-entry');
             }
@@ -219,28 +246,36 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    console.log(
-      `[AuthGuard] Check: Auth=${isAuthenticated}, InAuthGroup=${inAuthGroup}, Segments=${JSON.stringify(
-        segments
-      )}, AccessToken=${!!accessToken}, RefreshToken=${!!refreshToken}`
-    );
+    if (__DEV__) {
+      console.log(
+        `[AuthGuard] Check: Auth=${isAuthenticated}, InAuthGroup=${inAuthGroup}, Segments=${JSON.stringify(
+          segments
+        )}, AccessToken=${!!accessToken}, RefreshToken=${!!refreshToken}`
+      );
+    }
 
     if (isAuthenticated && accessToken && refreshToken) {
       if (segments[0] === 'auth-entry') {
-        console.log('[AuthGuard] Authenticated on auth-entry - redirect /(tabs)');
+        if (__DEV__) {
+          console.log('[AuthGuard] Authenticated on auth-entry - redirect /(tabs)');
+        }
         router.replace('/(tabs)');
         return;
       }
 
       if (inAuthGroup && segments[0] === 'auth' && segments.length === 1) {
-        console.log('[AuthGuard] Authenticated on /auth - redirect /(tabs)');
+        if (__DEV__) {
+          console.log('[AuthGuard] Authenticated on /auth - redirect /(tabs)');
+        }
         router.replace('/(tabs)');
         return;
       }
     }
 
     if (!isAuthenticated && !inAuthGroup && !isPublicRoute && !accessToken && !refreshToken) {
-      console.log('[AuthGuard] Unauthenticated outside auth - redirect /auth-entry');
+      if (__DEV__) {
+        console.log('[AuthGuard] Unauthenticated outside auth - redirect /auth-entry');
+      }
       router.replace('/auth-entry');
     }
   }, [
@@ -256,6 +291,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    let interactionTask: { cancel: () => void } | null = null;
 
     const syncTokenWithBackend = async (token: string | null) => {
       if (!token) {
@@ -270,22 +307,39 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
     const registerPushToken = async () => {
       if (!isAuthenticated) {
+        lastFcmSyncAccessToken.current = null;
         await clearStoredFcmToken();
+        return;
+      }
+
+      if (!accessToken || lastFcmSyncAccessToken.current === accessToken) {
         return;
       }
 
       const token = await obtainFcmToken();
       if (!cancelled) {
         await syncTokenWithBackend(token);
+        lastFcmSyncAccessToken.current = accessToken;
       }
     };
 
-    registerPushToken();
+    interactionTask = InteractionManager.runAfterInteractions(() => {
+      timeout = setTimeout(() => {
+        if (cancelled || AppState.currentState !== 'active') {
+          return;
+        }
+        registerPushToken();
+      }, 1200);
+    });
 
     return () => {
       cancelled = true;
+      interactionTask?.cancel();
+      if (timeout) {
+        clearTimeout(timeout);
+      }
     };
-  }, [isAuthenticated, updateFcmTokenMutation]);
+  }, [isAuthenticated, accessToken, updateFcmTokenMutation]);
 
   if (isLoading) {
     return (

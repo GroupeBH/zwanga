@@ -19,7 +19,7 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { performLogout } from '@/store/slices/authSlice';
 import type { SubscriptionPaymentResponse, SubscriptionPlan, Vehicle } from '@/types';
-import { createBecomeDriverAction, isDriverRequiredError } from '@/utils/errorHelpers';
+import { createBecomeDriverAction, getApiErrorMessage, isDriverRequiredError } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ExpoLinking from 'expo-linking';
@@ -142,8 +142,7 @@ const isValidCongolesePaymentPhone = (value?: string | null) =>
   DRC_MOBILE_MONEY_REGEX.test(formatCongolesePaymentPhone(value));
 
 const getApiMessage = (error: any, fallback: string) => {
-  const message = error?.data?.message ?? error?.error ?? error?.message ?? fallback;
-  return Array.isArray(message) ? message.join('\n') : String(message);
+  return getApiErrorMessage(error, fallback);
 };
 
 const isSubscriptionPaymentComplete = (response?: SubscriptionPaymentResponse | null) =>
@@ -503,14 +502,16 @@ export default function ProfileScreen() {
         message: 'Votre v\u00e9hicule est maintenant disponible dans votre profil.',
       });
     } catch (error: any) {
-      const message =
-        error?.data?.message ?? error?.error ?? 'Impossible d\'ajouter le véhicule pour le moment.';
+      const message = getApiErrorMessage(
+        error,
+        'Impossible d\'ajouter le véhicule pour le moment.',
+      );
       const isDriverError = isDriverRequiredError(error);
       
       showDialog({
         variant: 'danger',
         title: 'Erreur',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message,
         actions: isDriverError
           ? [
               { label: 'Fermer', variant: 'ghost' },

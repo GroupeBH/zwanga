@@ -10,7 +10,7 @@ import { trackEvent } from '@/services/analytics';
 import { useCreateRecurringTripMutation, useCreateTripMutation } from '@/store/api/tripApi';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
-import { createBecomeDriverAction, isDriverRequiredError } from '@/utils/errorHelpers';
+import { createBecomeDriverAction, getApiErrorMessage, isDriverRequiredError } from '@/utils/errorHelpers';
 import { getRouteCoordinates } from '@/utils/routeApi';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
@@ -774,14 +774,14 @@ export default function PublishScreen() {
         message: 'Votre véhicule a été ajouté avec succès.',
       });
     } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        'Impossible d\'ajouter le véhicule pour le moment.';
+      const message = getApiErrorMessage(
+        error,
+        'Impossible d\'ajouter le véhicule pour le moment.',
+      );
       showDialog({
         variant: 'danger',
         title: 'Erreur',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message,
       });
     }
   };
