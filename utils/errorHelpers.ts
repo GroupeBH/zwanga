@@ -37,6 +37,37 @@ export function isDriverRequiredError(error: any): boolean {
 /**
  * Crée une action de redirection vers le profil pour devenir conducteur
  */
+export function getApiErrorMessage(error: any, fallback: string): string {
+  if (!error) {
+    return fallback;
+  }
+
+  if (error.status === 429) {
+    return 'Trop de tentatives. Patientez quelques instants puis réessayez.';
+  }
+
+  if (error.status === 'FETCH_ERROR') {
+    return 'Connexion impossible avec le serveur. Vérifiez votre connexion internet puis réessayez.';
+  }
+
+  if (error.status === 'TIMEOUT_ERROR') {
+    return 'Le serveur met trop de temps à répondre. Réessayez dans un instant.';
+  }
+
+  const rawMessage =
+    error?.data?.message ??
+    error?.data?.error ??
+    error?.error ??
+    error?.message ??
+    fallback;
+
+  if (Array.isArray(rawMessage)) {
+    return rawMessage.join('\n');
+  }
+
+  return String(rawMessage || fallback);
+}
+
 export function createBecomeDriverAction(router: any) {
   return {
     label: 'Devenir conducteur',

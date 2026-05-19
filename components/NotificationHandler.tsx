@@ -3,19 +3,28 @@ import {
 } from '@/services/pushNotifications';
 import { registerBackgroundNotificationTask } from '@/services/backgroundNotificationTask';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
+import { useAppSelector } from '@/store/hooks';
+import { selectIsAuthenticated } from '@/store/selectors';
 import { getTripUrl, handleNotificationNavigation } from '@/utils/notificationNavigation';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
-import { useEffect } from 'react';
-import { Linking } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { InteractionManager, Linking } from 'react-native';
 
 export function NotificationHandler() {
   const router = useRouter();
-  const { data: currentUser } = useGetCurrentUserQuery();
+  const isAuthenticated = useAppSelector(selectIsAuthenticated);
+  const { data: currentUser } = useGetCurrentUserQuery(undefined, {
+    skip: !isAuthenticated,
+  });
+  const currentUserRef = useRef(currentUser);
 
   useEffect(() => {
-    // Keep startup independent from Notifee.
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
+  useEffect(() => {
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
@@ -26,14 +35,15 @@ export function NotificationHandler() {
       }),
     });
 
-    ensureAndroidChannel();
-
-    registerBackgroundNotificationTask().catch((error) => {
-      console.warn('Background task registration failed:', error);
+    const startupTask = InteractionManager.runAfterInteractions(() => {
+      void ensureAndroidChannel();
+      registerBackgroundNotificationTask().catch((error) => {
+        console.warn('Background task registration failed:', error);
+      });
     });
 
     const handleNotificationPress = (data: Record<string, any>) => {
-      handleNotificationNavigation(data, router, currentUser);
+      handleNotificationNavigation(data, router, currentUserRef.current);
     };
 
     const responseListener = Notifications.addNotificationResponseReceivedListener((response) => {
@@ -87,7 +97,7 @@ export function NotificationHandler() {
             ...params,
           };
 
-          const targetUrl = getTripUrl(tripId, linkData, currentUser);
+          const targetUrl = getTripUrl(tripId, linkData, currentUserRef.current);
 
           if (targetUrl.includes('/trip/manage/')) {
             router.push({
@@ -124,10 +134,11 @@ export function NotificationHandler() {
     });
 
     return () => {
+      startupTask.cancel();
       responseListener.remove();
       linkingListener.remove();
     };
-  }, [router, currentUser]);
+  }, [router]);
 
   return null;
 }

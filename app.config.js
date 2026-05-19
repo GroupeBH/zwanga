@@ -35,7 +35,9 @@ module.exports = {
     name: 'zwanga',
     slug: 'zwanga-app',
     version: '1.0.1',
-    orientation: 'portrait',
+    // Do not lock orientation. Google Play flags portrait-only apps as less
+    // compatible with tablets, foldables, Chromebooks, and large screens.
+    orientation: 'default',
     icon: './assets/images/zwanga.png',
     scheme: 'zwanga',
     userInterfaceStyle: 'automatic',
@@ -201,6 +203,7 @@ module.exports = {
           },
         },
       ],
+      './app.plugin.js',
       ...(HAS_META_APP_EVENTS
         ? [
             [

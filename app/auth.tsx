@@ -10,9 +10,10 @@ import { selectIsAuthenticated } from '@/store/selectors';
 import { saveTokensAndUpdateState } from '@/store/slices/authSlice';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
+  InteractionManager,
   NativeSyntheticEvent,
   Platform,
   ScrollView,
@@ -95,6 +96,8 @@ export default function AuthScreen() {
   const resetOtpInputRefs = useRef<Array<TextInput | null>>([]);
   const resetPinInputRef = useRef<TextInput | null>(null);
   const resetPinConfirmInputRef = useRef<TextInput | null>(null);
+  const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const focusInteractionRef = useRef<{ cancel: () => void } | null>(null);
   const [isSendingResetOtp, setIsSendingResetOtp] = useState(false);
   
   // Profile State
@@ -164,23 +167,50 @@ export default function AuthScreen() {
     configureGoogleSignIn();
   }, []);
 
+  const cancelPendingFocus = useCallback(() => {
+    focusInteractionRef.current?.cancel();
+    focusInteractionRef.current = null;
+    if (focusTimeoutRef.current) {
+      clearTimeout(focusTimeoutRef.current);
+      focusTimeoutRef.current = null;
+    }
+  }, []);
+
+  const focusAfterInteractions = useCallback(
+    (
+      inputRef: React.RefObject<TextInput | null>,
+      delay = Platform.OS === 'android' ? 350 : 100,
+    ) => {
+      cancelPendingFocus();
+      focusInteractionRef.current = InteractionManager.runAfterInteractions(() => {
+        focusTimeoutRef.current = setTimeout(() => {
+          inputRef.current?.focus();
+          focusTimeoutRef.current = null;
+        }, delay);
+      });
+    },
+    [cancelPendingFocus],
+  );
+
+  useEffect(() => cancelPendingFocus, [cancelPendingFocus]);
+
   useEffect(() => {
     if (step === 'sms') {
-      const timer = setTimeout(() => smsInputRefs.current[0]?.focus(), 500);
-      return () => clearTimeout(timer);
+      focusAfterInteractions({ current: smsInputRefs.current[0] }, 500);
+      return cancelPendingFocus;
     }
     if (step === 'pin') {
-      const timer = setTimeout(() => pinInputRef.current?.focus(), 500);
-      return () => clearTimeout(timer);
+      focusAfterInteractions(pinInputRef, 500);
+      return cancelPendingFocus;
     }
-  }, [step]);
+  }, [cancelPendingFocus, focusAfterInteractions, step]);
   
   useEffect(() => {
     if (googleSignupStep === 'otp' && googleIdToken) {
-      const timer = setTimeout(() => googleOtpRefs.current[0]?.focus(), 500);
-      return () => clearTimeout(timer);
+      focusAfterInteractions({ current: googleOtpRefs.current[0] }, 500);
+      return cancelPendingFocus;
     }
-  }, [googleSignupStep, googleIdToken]);
+  }, [cancelPendingFocus, focusAfterInteractions, googleSignupStep, googleIdToken]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -499,7 +529,7 @@ export default function AuthScreen() {
       setIsSendingResetOtp(true);
       await sendPhoneVerificationOtp({ phone, context: 'update' }).unwrap();
       showDialog({ variant: 'success', title: 'Code envoyé', message: 'Un code de vérification a été envoyé.' });
-      setTimeout(() => resetOtpInputRefs.current[0]?.focus(), 100);
+      focusAfterInteractions({ current: resetOtpInputRefs.current[0] });
     } catch (error: any) {
       showDialog({ variant: 'danger', title: 'Erreur', message: error?.data?.message || 'Erreur lors de l\'envoi du code' });
     } finally {
@@ -551,7 +581,7 @@ export default function AuthScreen() {
     try {
       await verifyPhoneOtp({ phone, otp: code }).unwrap();
       setResetPinStep('newPin');
-      setTimeout(() => resetPinInputRef.current?.focus(), 100);
+      focusAfterInteractions(resetPinInputRef);
     } catch (error: any) {
       showDialog({ variant: 'danger', title: 'Code invalide', message: error?.data?.message || 'Code OTP invalide' });
     }
