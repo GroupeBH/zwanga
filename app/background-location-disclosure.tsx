@@ -6,7 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const BACKGROUND_DISCLOSURE_KEY = 'hasSeenBackgroundLocationDisclosure';
 
@@ -33,6 +33,7 @@ const DISCLOSURE_POINTS = [
 
 export default function BackgroundLocationDisclosureScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -58,8 +59,12 @@ export default function BackgroundLocationDisclosureScreen() {
       end={{ x: 1, y: 1 }}
       style={styles.gradient}
     >
-      <SafeAreaView style={styles.container}>
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.topChip}>
             <Ionicons name="information-circle" size={16} color={Colors.primary} />
             <Text style={styles.topChipText}>Information importante</Text>
@@ -105,6 +110,9 @@ export default function BackgroundLocationDisclosureScreen() {
             </Text>
           </View>
 
+        </ScrollView>
+
+        <View style={[styles.fixedFooter, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}>
           <TouchableOpacity
             style={[styles.continueButton, isSubmitting && styles.continueButtonDisabled]}
             onPress={handleContinue}
@@ -128,7 +136,7 @@ export default function BackgroundLocationDisclosureScreen() {
           </TouchableOpacity>
 
           <Text style={styles.footerHint}>Cet écran s&apos;affiche une seule fois lors du premier lancement.</Text>
-        </ScrollView>
+        </View>
       </SafeAreaView>
     </LinearGradient>
   );
@@ -141,12 +149,22 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  scrollView: {
+    flex: 1,
+  },
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.lg,
     justifyContent: 'center',
     gap: Spacing.lg,
+  },
+  fixedFooter: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(15,23,42,0.08)',
   },
   topChip: {
     alignSelf: 'center',
@@ -257,7 +275,6 @@ const styles = StyleSheet.create({
   continueButton: {
     borderRadius: BorderRadius.lg,
     overflow: 'hidden',
-    marginTop: Spacing.xs,
   },
   continueButtonDisabled: {
     opacity: 0.8,
