@@ -1,5 +1,5 @@
-import { TutorialOverlay } from '@/components/TutorialOverlay';
 import LocationPickerModal, { type MapLocationSelection } from '@/components/LocationPickerModal';
+import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
@@ -746,12 +746,12 @@ export default function TripsScreen() {
               <Text style={styles.recurringHubTitle}>Trajets recurrents</Text>
               <Text style={styles.recurringHubText}>
                 {recurringTemplates.length > 0
-                  ? `${activeRecurringTemplates} actif(s) et ${recurringTemplates.length} modele(s) a gerer`
-                  : 'Creez un modele pour publier automatiquement vos trajets habituels'}
+                  ? `${activeRecurringTemplates} actif(s) et ${recurringTemplates.length} modèle(s) à gerer`
+                  : 'Publier automatiquement un trajet habituel pour plusieurs jours'}
               </Text>
             </View>
             <View style={styles.recurringHubAction}>
-              <Text style={styles.recurringHubActionText}>Gerer</Text>
+              <Text style={styles.recurringHubActionText}>Gérer</Text>
               <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
             </View>
           </TouchableOpacity>

@@ -30,8 +30,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type PublishStep = 'route' | 'datetime' | 'vehicle' | 'pricing' | 'confirm';
@@ -977,12 +977,12 @@ export default function PublishScreen() {
           : 'Votre trajet a ete publie avec succes !',
         actions: [
           {
-            label: publishedRecurring ? 'Creer un autre' : 'Publier un autre',
+            label: publishedRecurring ? 'Publier des autres' : 'Publier un autre',
             variant: 'secondary',
             onPress: () => { },
           },
           {
-            label: publishedRecurring ? 'Gerer mes recurrents' : 'Voir mes trajets',
+            label: publishedRecurring ? 'Gerer mes trajets' : 'Voir mes trajets',
             variant: 'primary',
             onPress: () => router.push(publishedRecurring ? '/recurring-trips' : '/trips'),
           },
@@ -1981,7 +1981,7 @@ export default function PublishScreen() {
                   <Text style={styles.buttonText}>
                     {isIdentityVerified
                       ? isRecurringTrip
-                        ? 'Creer le modele'
+                        ? 'Publier les trajets'
                         : 'Publier'
                       : 'KYC requis'}
                   </Text>
