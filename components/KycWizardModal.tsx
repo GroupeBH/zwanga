@@ -342,16 +342,17 @@ export function KycWizardModal({
           style={styles.camera}
           facing={currentCaptureKey === 'selfie' ? 'front' : 'back'}
           autofocus="on"
-        >
-          <View style={styles.cameraOverlay}>
+        />
+        <View pointerEvents="box-none" style={styles.cameraOverlay}>
             <View
+              pointerEvents="none"
               style={[
                 styles.captureFrame,
                 currentCaptureKey === 'selfie' && styles.captureFrameRound,
               ]}
             />
             {!manualCaptureAvailable && (
-              <View style={styles.overlayInstruction}>
+              <View pointerEvents="none" style={styles.overlayInstruction}>
                 <Ionicons
                   name={currentCaptureKey === 'selfie' ? 'happy' : 'scan'}
                   size={18}
@@ -365,7 +366,7 @@ export function KycWizardModal({
               </View>
             )}
             {captureCountdown !== null && (
-              <View style={styles.countdownBadge}>
+              <View pointerEvents="none" style={styles.countdownBadge}>
                 <Text style={styles.countdownText}>
                   {captureCountdown <= 0 ? 'SCAN…' : captureCountdown}
                 </Text>
@@ -387,8 +388,7 @@ export function KycWizardModal({
                 )}
               </TouchableOpacity>
             )}
-          </View>
-        </CameraView>
+        </View>
       </View>
     );
   };
@@ -417,6 +417,10 @@ export function KycWizardModal({
       </View>
     );
   };
+
+  if (!visible) {
+    return null;
+  }
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -537,13 +541,18 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: Colors.gray[200],
+    position: 'relative',
   },
   camera: {
     width: '100%',
     aspectRatio: 3 / 4,
   },
   cameraOverlay: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.2)',

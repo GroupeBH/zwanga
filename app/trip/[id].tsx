@@ -62,13 +62,15 @@ const pointToLatLng = (point?: GeoPoint | null) => {
   if (!point?.coordinates || point.coordinates.length < 2) {
     return null;
   }
-  const [longitude, latitude] = point.coordinates;
-  if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+  const [longitudeValue, latitudeValue] = point.coordinates;
+  const latitude = Number(latitudeValue);
+  const longitude = Number(longitudeValue);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
     return null;
   }
   return {
-    latitude: Number(latitude),
-    longitude: Number(longitude),
+    latitude,
+    longitude,
   };
 };
 
@@ -76,17 +78,35 @@ const arrayToLatLng = (coordinates?: [number, number] | null) => {
   if (!coordinates || coordinates.length < 2) {
     return null;
   }
-  const [longitude, latitude] = coordinates;
-  if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+  const [longitudeValue, latitudeValue] = coordinates;
+  const latitude = Number(latitudeValue);
+  const longitude = Number(longitudeValue);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
     return null;
   }
   return {
-    latitude: Number(latitude),
-    longitude: Number(longitude),
+    latitude,
+    longitude,
   };
 };
 
 const LANDMARK_PLACEHOLDER = 'Ex: devant la station, portail bleu, entr\u00E9e principale';
+const USE_CUSTOM_MAP_MARKERS = Platform.OS !== 'android';
+const DEFAULT_MAP_REGION = {
+  latitude: -4.325,
+  longitude: 15.322,
+  latitudeDelta: 0.12,
+  longitudeDelta: 0.12,
+};
+
+const isValidMapCoordinate = (coordinate?: { latitude: number; longitude: number } | null) =>
+  Boolean(
+    coordinate &&
+    Number.isFinite(coordinate.latitude) &&
+    Number.isFinite(coordinate.longitude) &&
+    Math.abs(coordinate.latitude) <= 90 &&
+    Math.abs(coordinate.longitude) <= 180,
+  );
 
 const getLocationText = (selection: MapLocationSelection | null, manualAddress: string) =>
   (manualAddress.trim() || selection?.title || selection?.address || '').trim();
@@ -1447,12 +1467,14 @@ export default function TripDetailsScreen() {
 
   const departureCoordinate = useMemo(
     () => {
-      if (!trip?.departure?.lat || !trip?.departure?.lng) {
+      const latitude = Number(trip?.departure?.lat);
+      const longitude = Number(trip?.departure?.lng);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
         return { latitude: 0, longitude: 0 };
       }
       return {
-        latitude: trip.departure.lat,
-        longitude: trip.departure.lng,
+        latitude,
+        longitude,
       };
     },
     [trip?.departure?.lat, trip?.departure?.lng],
@@ -1460,20 +1482,31 @@ export default function TripDetailsScreen() {
 
   const arrivalCoordinate = useMemo(
     () => {
-      if (!trip?.arrival?.lat || !trip?.arrival?.lng) {
+      const latitude = Number(trip?.arrival?.lat);
+      const longitude = Number(trip?.arrival?.lng);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
         return { latitude: 0, longitude: 0 };
       }
       return {
-        latitude: trip.arrival.lat,
-        longitude: trip.arrival.lng,
+        latitude,
+        longitude,
       };
     },
     [trip?.arrival?.lat, trip?.arrival?.lng],
   );
 
+  const hasValidRouteEndpoints = useMemo(
+    () => Boolean(trip && isValidMapCoordinate(departureCoordinate) && isValidMapCoordinate(arrivalCoordinate)),
+    [arrivalCoordinate, departureCoordinate, trip],
+  );
+
   // Load route coordinates and info when trip changes
   useEffect(() => {
-    if (!trip) {
+    if (!trip || !hasValidRouteEndpoints) {
+      setRouteCoordinates(null);
+      setRouteInfo(null);
+      setCalculatedArrivalTime(null);
+      setIsLoadingRoute(false);
       return;
     }
     setIsLoadingRoute(true);
@@ -1499,7 +1532,7 @@ export default function TripDetailsScreen() {
         setCalculatedArrivalTime(null);
         setIsLoadingRoute(false);
       });
-  }, [departureCoordinate, arrivalCoordinate, trip?.id, trip?.departureTime]);
+  }, [departureCoordinate, arrivalCoordinate, hasValidRouteEndpoints, trip?.id, trip?.departureTime]);
 
   // Calculate estimated coordinate based on progress
   const estimatedCoordinate = useMemo(() => {
@@ -1527,6 +1560,46 @@ export default function TripDetailsScreen() {
     }
     return splitRouteByProgress(currentCoordinate, routeCoordinates);
   }, [routeCoordinates, trip?.status, currentCoordinate]);
+
+  const routeMapCoordinates = useMemo(() => {
+    const validRouteCoordinates = (routeCoordinates ?? []).filter(isValidMapCoordinate);
+    if (validRouteCoordinates.length >= 2) {
+      return validRouteCoordinates;
+    }
+    return hasValidRouteEndpoints ? [departureCoordinate, arrivalCoordinate] : [];
+  }, [arrivalCoordinate, departureCoordinate, hasValidRouteEndpoints, routeCoordinates]);
+
+  const hasDetailedRouteMapCoordinates = (routeCoordinates ?? []).filter(isValidMapCoordinate).length >= 2;
+
+  const passengerDestinationMarkers = useMemo(() => {
+    const markers: {
+      id: string;
+      coordinate: { latitude: number; longitude: number };
+      title: string;
+      description: string;
+    }[] = [];
+
+    tripBookings
+      ?.filter((booking) => booking.status === 'accepted' && booking.passengerDestinationCoordinates)
+      .forEach((booking) => {
+        const destination = booking.passengerDestinationCoordinates;
+        const coordinate = {
+          latitude: Number(destination?.latitude),
+          longitude: Number(destination?.longitude),
+        };
+        if (!isValidMapCoordinate(coordinate)) {
+          return;
+        }
+        markers.push({
+          id: String(booking.id),
+          coordinate,
+          title: booking.passengerDestination || booking.passengerName || 'Destination passager',
+          description: booking.passengerName || 'Passager',
+        });
+      });
+
+    return markers;
+  }, [tripBookings]);
 
   // Calculate estimated arrival time based on current position
   useEffect(() => {
@@ -1574,6 +1647,9 @@ export default function TripDetailsScreen() {
   }, [trip?.status, routeInfo, currentCoordinate, arrivalCoordinate, progress]);
 
   const mapRegion = useMemo(() => {
+    if (!hasValidRouteEndpoints) {
+      return DEFAULT_MAP_REGION;
+    }
     const latitudeCenter = (departureCoordinate.latitude + arrivalCoordinate.latitude) / 2;
     const longitudeCenter = (departureCoordinate.longitude + arrivalCoordinate.longitude) / 2;
     const latitudeDelta =
@@ -1587,7 +1663,9 @@ export default function TripDetailsScreen() {
       latitudeDelta,
       longitudeDelta,
     };
-  }, [arrivalCoordinate, departureCoordinate]);
+  }, [arrivalCoordinate, departureCoordinate, hasValidRouteEndpoints]);
+
+  const canRenderTripMap = trip?.status !== 'ongoing' && hasValidRouteEndpoints;
 
   // Early return AFTER all hooks to avoid hook order violation
   if (tripLoading && !trip) {
@@ -1661,7 +1739,7 @@ export default function TripDetailsScreen() {
         }
       >
         {/* Carte interactive - masquée quand le trajet est en cours */}
-        {trip?.status !== 'ongoing' && (
+        {canRenderTripMap && (
           <TouchableOpacity
             style={styles.mapContainer}
             onPress={() => setMapModalVisible(true)}
@@ -1677,63 +1755,60 @@ export default function TripDetailsScreen() {
                 rotateEnabled={false}
                 initialRegion={mapRegion}
               >
-                {/* Route polyline */}
-                {routeCoordinates && routeCoordinates.length > 0 ? (
+                {routeMapCoordinates.length >= 2 && (
                   <Polyline
-                    coordinates={routeCoordinates}
+                    coordinates={routeMapCoordinates}
                     strokeColor={Colors.primary}
                     strokeWidth={4}
-                  />
-                ) : (
-                  <Polyline
-                    coordinates={[departureCoordinate, arrivalCoordinate]}
-                    strokeColor={Colors.primary}
-                    strokeWidth={4}
-                    lineDashPattern={[1, 1]}
+                    lineDashPattern={hasDetailedRouteMapCoordinates ? undefined : [1, 1]}
                   />
                 )}
 
                 <Marker
                   coordinate={departureCoordinate}
+                  pinColor={Colors.success}
+                  title="Depart"
+                  description={trip?.departure?.address}
+                  tracksViewChanges={false}
                 >
-                  <View style={styles.markerStartCircle}>
-                    <Ionicons name="location" size={18} color={Colors.white} />
-                  </View>
+                  {USE_CUSTOM_MAP_MARKERS ? (
+                    <View style={styles.markerStartCircle}>
+                      <Ionicons name="location" size={18} color={Colors.white} />
+                    </View>
+                  ) : null}
                 </Marker>
 
                 <Marker
                   coordinate={arrivalCoordinate}
+                  pinColor={Colors.primary}
+                  title="Arrivee"
+                  description={trip?.arrival?.address}
+                  tracksViewChanges={false}
                 >
-                  <View style={styles.markerEndCircle}>
-                    <Ionicons name="navigate" size={18} color={Colors.white} />
-                  </View>
+                  {USE_CUSTOM_MAP_MARKERS ? (
+                    <View style={styles.markerEndCircle}>
+                      <Ionicons name="navigate" size={18} color={Colors.white} />
+                    </View>
+                  ) : null}
                 </Marker>
 
                 {/* Destinations des passagers */}
-                {tripBookings
-                  ?.filter(
-                    (booking) =>
-                      booking.status === 'accepted' &&
-                      booking.passengerDestinationCoordinates &&
-                      booking.passengerDestinationCoordinates.latitude &&
-                      booking.passengerDestinationCoordinates.longitude,
-                  )
-                  .map((booking) => {
-                    const destCoords = booking.passengerDestinationCoordinates!;
-                    return (
-                      <Marker
-                        key={`passenger-dest-${booking.id}`}
-                        coordinate={{
-                          latitude: destCoords.latitude,
-                          longitude: destCoords.longitude,
-                        }}
-                      >
-                        <View style={styles.markerPassengerDestCircle}>
-                          <Ionicons name="person" size={14} color={Colors.white} />
-                        </View>
-                      </Marker>
-                    );
-                  })}
+                {passengerDestinationMarkers.map((marker) => (
+                  <Marker
+                    key={`passenger-dest-${marker.id}`}
+                    coordinate={marker.coordinate}
+                    pinColor={Colors.secondary}
+                    title={marker.title}
+                    description={marker.description}
+                    tracksViewChanges={false}
+                  >
+                    {USE_CUSTOM_MAP_MARKERS ? (
+                      <View style={styles.markerPassengerDestCircle}>
+                        <Ionicons name="person" size={14} color={Colors.white} />
+                      </View>
+                    ) : null}
+                  </Marker>
+                ))}
               </MapView>
 
               <View style={styles.mapOverlay}>
@@ -1750,7 +1825,7 @@ export default function TripDetailsScreen() {
         )}
 
         {/* Modal carte plein écran - masqué quand le trajet est en cours */}
-        {trip?.status !== 'ongoing' && (
+        {canRenderTripMap && mapModalVisible && (
           <Modal visible={mapModalVisible} animationType="fade" transparent onRequestClose={() => setMapModalVisible(false)}>
             <View style={styles.mapModalOverlay}>
               <View style={styles.mapModalContent}>
@@ -1760,24 +1835,24 @@ export default function TripDetailsScreen() {
                   mapType="standard"
                   initialRegion={mapRegion}
                 >
-                  {/* Route polyline */}
-                  {routeCoordinates && routeCoordinates.length > 0 ? (
+                  {routeMapCoordinates.length >= 2 && (
                     <Polyline
-                      coordinates={routeCoordinates}
+                      coordinates={routeMapCoordinates}
                       strokeColor={Colors.primary}
                       strokeWidth={5}
-                    />
-                  ) : (
-                    <Polyline
-                      coordinates={[departureCoordinate, arrivalCoordinate]}
-                      strokeColor={Colors.primary}
-                      strokeWidth={5}
+                      lineDashPattern={hasDetailedRouteMapCoordinates ? undefined : [1, 1]}
                     />
                   )}
 
                   <Marker
                     coordinate={departureCoordinate}
+                    pinColor={Colors.success}
+                    title="Depart"
+                    description={trip?.departure.address}
+                    tracksViewChanges={false}
                   >
+                    {USE_CUSTOM_MAP_MARKERS ? (
+                      <>
                     <View style={styles.markerStartCircle}>
                       <Ionicons name="location" size={20} color={Colors.white} />
                     </View>
@@ -1787,11 +1862,19 @@ export default function TripDetailsScreen() {
                         <Text>{trip?.departure.address}</Text>
                       </View>
                     </Callout>
+                      </>
+                    ) : null}
                   </Marker>
 
                   <Marker
                     coordinate={arrivalCoordinate}
+                    pinColor={Colors.primary}
+                    title="Arrivee"
+                    description={trip?.arrival?.address}
+                    tracksViewChanges={false}
                   >
+                    {USE_CUSTOM_MAP_MARKERS ? (
+                      <>
                     <View style={styles.markerEndCircle}>
                       <Ionicons name="navigate" size={20} color={Colors.white} />
                     </View>
@@ -1801,39 +1884,35 @@ export default function TripDetailsScreen() {
                         <Text>{trip?.arrival?.address}</Text>
                       </View>
                     </Callout>
+                      </>
+                    ) : null}
                   </Marker>
 
                   {/* Destinations des passagers */}
-                  {tripBookings
-                    ?.filter(
-                      (booking) =>
-                        booking.status === 'accepted' &&
-                        booking.passengerDestinationCoordinates &&
-                        booking.passengerDestinationCoordinates.latitude &&
-                        booking.passengerDestinationCoordinates.longitude,
-                    )
-                    .map((booking) => {
-                      const destCoords = booking.passengerDestinationCoordinates!;
-                      return (
-                        <Marker
-                          key={`passenger-dest-fullscreen-${booking.id}`}
-                          coordinate={{
-                            latitude: destCoords.latitude,
-                            longitude: destCoords.longitude,
-                          }}
-                        >
+                  {passengerDestinationMarkers.map((marker) => (
+                    <Marker
+                      key={`passenger-dest-fullscreen-${marker.id}`}
+                      coordinate={marker.coordinate}
+                      pinColor={Colors.secondary}
+                      title={marker.title}
+                      description={marker.description}
+                      tracksViewChanges={false}
+                    >
+                      {USE_CUSTOM_MAP_MARKERS ? (
+                        <>
                           <View style={styles.markerPassengerDestCircle}>
                             <Ionicons name="person" size={16} color={Colors.white} />
                           </View>
                           <Callout>
                             <View>
-                              <Text style={{ fontWeight: 'bold' }}>{booking.passengerDestination || booking.passengerName || 'Destination passager'}</Text>
-                              <Text>{booking.passengerName || 'Passager'}</Text>
+                              <Text style={{ fontWeight: 'bold' }}>{marker.title}</Text>
+                              <Text>{marker.description}</Text>
                             </View>
                           </Callout>
-                        </Marker>
-                      );
-                    })}
+                        </>
+                      ) : null}
+                    </Marker>
+                  ))}
                 </MapView>
 
                 <TouchableOpacity style={styles.closeMapButton} onPress={() => setMapModalVisible(false)}>
