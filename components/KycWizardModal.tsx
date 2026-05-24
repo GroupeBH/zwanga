@@ -2,7 +2,7 @@ import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constan
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Accelerometer, type AccelerometerMeasurement } from 'expo-sensors';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -30,7 +30,7 @@ interface KycWizardModalProps {
   initialValues?: Partial<Record<KycCaptureKey, string | null>>;
 }
 
-const DOCUMENT_STEPS: Array<{ key: KycCaptureKey; title: string; description: string }> = [
+const DOCUMENT_STEPS: { key: KycCaptureKey; title: string; description: string }[] = [
   {
     key: 'front',
     title: 'Scanner le recto',
@@ -68,7 +68,9 @@ export function KycWizardModal({
   });
   const [isDeviceStable, setIsDeviceStable] = useState(false);
   const [captureCountdown, setCaptureCountdown] = useState<number | null>(null);
+  const [manualCaptureAvailable, setManualCaptureAvailable] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
+  const isCapturingRef = useRef(false);
   const stabilityTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastMeasurementRef = useRef<AccelerometerMeasurement | null>(null);
 
@@ -103,6 +105,8 @@ export function KycWizardModal({
       setCurrentStepIndex(0);
       setCaptureCountdown(null);
       setIsDeviceStable(false);
+      setManualCaptureAvailable(false);
+      isCapturingRef.current = false;
     } else {
       cleanupStabilityTracking();
     }
@@ -160,15 +164,73 @@ export function KycWizardModal({
   useEffect(() => {
     if (!needsCamera || currentCaptureValue) {
       setCaptureCountdown(null);
+      setManualCaptureAvailable(false);
       return;
     }
 
     if (isDeviceStable && captureCountdown === null) {
+      setManualCaptureAvailable(false);
       setCaptureCountdown(2);
     } else if (!isDeviceStable && captureCountdown !== null) {
       setCaptureCountdown(null);
+      setManualCaptureAvailable(false);
     }
   }, [captureCountdown, currentCaptureValue, isDeviceStable, needsCamera]);
+
+  const cleanupStabilityTracking = () => {
+    if (stabilityTimerRef.current) {
+      clearTimeout(stabilityTimerRef.current);
+      stabilityTimerRef.current = null;
+    }
+    lastMeasurementRef.current = null;
+    setIsDeviceStable(false);
+    setCaptureCountdown(null);
+  };
+
+  const captureCurrentFrame = useCallback(async (showManualFallback = false) => {
+    if (!cameraRef.current || isCapturingRef.current || !currentCaptureKey) {
+      if (showManualFallback && !currentCaptureValue) {
+        setManualCaptureAvailable(true);
+      }
+      return;
+    }
+    isCapturingRef.current = true;
+    setIsCapturing(true);
+    setManualCaptureAvailable(false);
+    let didCapture = false;
+    try {
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.85,
+        base64: false,
+        skipProcessing: false,
+      });
+      if (photo?.uri) {
+        didCapture = true;
+        setCaptures((prev) => ({
+          ...prev,
+          [currentCaptureKey]: photo.uri,
+        }));
+      }
+    } catch (error) {
+      console.warn('Auto capture failed:', error);
+    } finally {
+      isCapturingRef.current = false;
+      setIsCapturing(false);
+      setIsDeviceStable(false);
+      setCaptureCountdown(null);
+      if (showManualFallback && !didCapture) {
+        setManualCaptureAvailable(true);
+      }
+    }
+  }, [currentCaptureKey, currentCaptureValue]);
+
+  const autoCapture = useCallback(async () => {
+    await captureCurrentFrame(true);
+  }, [captureCurrentFrame]);
+
+  const handleManualCapture = useCallback(async () => {
+    await captureCurrentFrame(true);
+  }, [captureCurrentFrame]);
 
   useEffect(() => {
     if (captureCountdown === null) {
@@ -182,43 +244,7 @@ export function KycWizardModal({
       setCaptureCountdown((prev) => (prev ?? 1) - 1);
     }, 500);
     return () => clearTimeout(timer);
-  }, [captureCountdown]);
-
-  const cleanupStabilityTracking = () => {
-    if (stabilityTimerRef.current) {
-      clearTimeout(stabilityTimerRef.current);
-      stabilityTimerRef.current = null;
-    }
-    lastMeasurementRef.current = null;
-    setIsDeviceStable(false);
-    setCaptureCountdown(null);
-  };
-
-  const autoCapture = async () => {
-    if (!cameraRef.current || isCapturing || !currentCaptureKey) {
-      return;
-    }
-    setIsCapturing(true);
-    try {
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.85,
-        base64: false,
-        skipProcessing: false,
-      });
-      if (photo?.uri) {
-        setCaptures((prev) => ({
-          ...prev,
-          [currentCaptureKey]: photo.uri,
-        }));
-      }
-    } catch (error) {
-      console.warn('Auto capture failed:', error);
-    } finally {
-      setIsCapturing(false);
-      setIsDeviceStable(false);
-      setCaptureCountdown(null);
-    }
-  };
+  }, [autoCapture, captureCountdown]);
 
   const handleContinue = () => {
     if (isReviewStep) {
@@ -232,6 +258,7 @@ export function KycWizardModal({
     setCurrentStepIndex((prev) => Math.min(prev + 1, steps.length - 1));
     setCaptureCountdown(null);
     setIsDeviceStable(false);
+    setManualCaptureAvailable(false);
   };
 
   const handleGoBack = () => {
@@ -242,6 +269,7 @@ export function KycWizardModal({
     setCurrentStepIndex((prev) => Math.max(prev - 1, 0));
     setCaptureCountdown(null);
     setIsDeviceStable(false);
+    setManualCaptureAvailable(false);
   };
 
   const handleRetake = (key: KycCaptureKey) => {
@@ -252,6 +280,7 @@ export function KycWizardModal({
     if (currentCaptureKey === key) {
       setIsDeviceStable(false);
       setCaptureCountdown(null);
+      setManualCaptureAvailable(false);
     }
   };
 
@@ -321,24 +350,42 @@ export function KycWizardModal({
                 currentCaptureKey === 'selfie' && styles.captureFrameRound,
               ]}
             />
-            <View style={styles.overlayInstruction}>
-              <Ionicons
-                name={currentCaptureKey === 'selfie' ? 'happy' : 'scan'}
-                size={18}
-                color={Colors.white}
-              />
-              <Text style={styles.overlayInstructionText}>
-                {isDeviceStable
-                  ? 'Document détecté, ne bougez plus…'
-                  : 'Alignez l’élément dans le cadre'}
-              </Text>
-            </View>
+            {!manualCaptureAvailable && (
+              <View style={styles.overlayInstruction}>
+                <Ionicons
+                  name={currentCaptureKey === 'selfie' ? 'happy' : 'scan'}
+                  size={18}
+                  color={Colors.white}
+                />
+                <Text style={styles.overlayInstructionText}>
+                  {isDeviceStable
+                    ? 'Document détecté, ne bougez plus…'
+                    : 'Alignez l’élément dans le cadre'}
+                </Text>
+              </View>
+            )}
             {captureCountdown !== null && (
               <View style={styles.countdownBadge}>
                 <Text style={styles.countdownText}>
                   {captureCountdown <= 0 ? 'SCAN…' : captureCountdown}
                 </Text>
               </View>
+            )}
+            {manualCaptureAvailable && captureCountdown === null && (
+              <TouchableOpacity
+                style={styles.manualCaptureButton}
+                onPress={handleManualCapture}
+                disabled={isCapturing}
+              >
+                {isCapturing ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <>
+                    <Ionicons name="camera" size={18} color={Colors.white} />
+                    <Text style={styles.manualCaptureButtonText}>Scanner manuellement</Text>
+                  </>
+                )}
+              </TouchableOpacity>
             )}
           </View>
         </CameraView>
@@ -541,6 +588,21 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontWeight: FontWeights.bold,
     fontSize: FontSizes.lg,
+  },
+  manualCaptureButton: {
+    position: 'absolute',
+    bottom: Spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+  },
+  manualCaptureButtonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
   },
   previewContainer: {
     borderRadius: BorderRadius.xl,
