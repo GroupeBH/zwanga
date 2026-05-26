@@ -79,6 +79,9 @@ const hasPassengerBoarded = (booking: Booking) =>
 
 export default function ManageTripScreen() {
   const router = useRouter();
+  const goHome = useCallback(() => {
+    router.replace('/(tabs)');
+  }, [router]);
   const { id } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const tripId = typeof id === 'string' ? id : '';
@@ -507,7 +510,7 @@ export default function ManageTripScreen() {
                 source_screen: 'trip_manage',
               });
               showFeedback('success', 'Le trajet a été annulé.');
-              router.back();
+              goHome();
             } catch (error: any) {
               const message =
                 error?.data?.message ?? error?.error ?? "Impossible d'annuler ce trajet.";
@@ -633,7 +636,7 @@ export default function ManageTripScreen() {
           </Text>
           <TouchableOpacity
             style={[styles.primaryButton, { marginTop: Spacing.lg, paddingHorizontal: Spacing.xl }]}
-            onPress={() => router.back()}
+            onPress={goHome}
           >
             <Text style={styles.primaryButtonText}>Retour</Text>
           </TouchableOpacity>
@@ -666,7 +669,7 @@ export default function ManageTripScreen() {
       <View style={styles.header}>
         <TouchableOpacity 
           style={styles.backButton} 
-          onPress={() => router.back()}
+          onPress={goHome}
           activeOpacity={0.7}
         >
           <Ionicons name="chevron-back" size={24} color={Colors.gray[900]} />

@@ -4,9 +4,16 @@ import LocationPickerModal, { MapLocationSelection } from '@/components/Location
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { trackEvent } from '@/services/analytics';
+import { useGeocodeMutation } from '@/store/api/googleMapsApi';
 import { useCreateTripRequestMutation } from '@/store/api/tripRequestApi';
 import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
 import type { FavoriteLocation } from '@/types';
+import {
+  buildManualGeocodeQuery,
+  MANUAL_GEOCODE_DEBOUNCE_MS,
+  mapGeocodeResponseToSelection,
+  type ManualGeocodeStatus,
+} from '@/utils/manualAddressGeocode';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { getRouteCoordinates } from '@/utils/routeApi';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +26,7 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -52,6 +60,7 @@ const TIME_PRESETS: {
 ];
 
 const FLEX_OPTIONS = [0, 30, 60, 120];
+const TIME_PRESET_SYNC_INTERVAL_MS = 30000;
 const DEFAULT_REQUEST_REGION: Region = {
   latitude: -4.441931,
   longitude: 15.266293,
@@ -218,6 +227,7 @@ export default function RequestTripScreen() {
   const { showDialog } = useDialog();
   const { data: favoriteLocations = [] } = useGetFavoriteLocationsQuery();
   const [createTripRequest, { isLoading: isCreating }] = useCreateTripRequestMutation();
+  const [geocodeManualAddress] = useGeocodeMutation();
   const [initialWindow] = useState(() => buildPresetWindow('now'));
   const [departureLocation, setDepartureLocation] = useState<MapLocationSelection | null>(null);
   const [arrivalLocation, setArrivalLocation] = useState<MapLocationSelection | null>(null);
@@ -225,6 +235,10 @@ export default function RequestTripScreen() {
   const [departureReference, setDepartureReference] = useState('');
   const [arrivalManualAddress, setArrivalManualAddress] = useState('');
   const [arrivalReference, setArrivalReference] = useState('');
+  const [departureManualGeocodeStatus, setDepartureManualGeocodeStatus] =
+    useState<ManualGeocodeStatus>('idle');
+  const [arrivalManualGeocodeStatus, setArrivalManualGeocodeStatus] =
+    useState<ManualGeocodeStatus>('idle');
   const [addressInputMode, setAddressInputMode] = useState<AddressInputMode>('map');
   const [addressSectionStep, setAddressSectionStep] = useState<AddressSectionStep>('method');
   const [activePicker, setActivePicker] = useState<PickerTarget | null>(null);
@@ -268,11 +282,188 @@ export default function RequestTripScreen() {
     if (hasDepartureAddress) return `D\u00E9part : ${departureAddress}`;
     return 'Choisissez votre d\u00E9part et votre destination';
   }, [arrivalAddress, departureAddress, hasArrivalAddress, hasDepartureAddress]);
+  const renderManualGeocodeStatus = (status: ManualGeocodeStatus) => {
+    if (status === 'idle') {
+      return null;
+    }
+
+    const isSearching = status === 'searching';
+    const isFound = status === 'found';
+    const color = isFound ? Colors.success : isSearching ? Colors.primary : Colors.danger;
+
+    return (
+      <View style={styles.manualGeocodeStatus}>
+        {isSearching ? (
+          <ActivityIndicator size="small" color={Colors.primary} />
+        ) : (
+          <Ionicons
+            name={isFound ? 'checkmark-circle' : 'alert-circle'}
+            size={14}
+            color={color}
+          />
+        )}
+        <Text
+          style={[
+            styles.manualGeocodeStatusText,
+            isFound && styles.manualGeocodeStatusTextFound,
+            status === 'missing' && styles.manualGeocodeStatusTextMissing,
+          ]}
+        >
+          {isSearching
+            ? 'Recherche des coordonnees...'
+            : isFound
+              ? 'Coordonnees trouvees'
+              : 'Adresse introuvable'}
+        </Text>
+      </View>
+    );
+  };
 
   const timeSummary = useMemo(() => {
     if (flexibilityMinutes === 0) return `${formatDateLabel(departureDateMin)} à ${formatTimeLabel(departureDateMin)}`;
     return `${formatDateLabel(departureDateMin)} entre ${formatTimeLabel(departureDateMin)} et ${formatTimeLabel(departureDateMax)}`;
   }, [departureDateMax, departureDateMin, flexibilityMinutes]);
+
+  const getCurrentDepartureWindow = () => {
+    if (timePreset === 'custom') {
+      return {
+        min: departureDateMin,
+        max: departureDateMax,
+        flex: flexibilityMinutes,
+      };
+    }
+
+    const next = buildPresetWindow(timePreset);
+    return {
+      min: next.min,
+      max: new Date(next.min.getTime() + next.flex * 60000),
+      flex: next.flex,
+    };
+  };
+
+  useEffect(() => {
+    const preset = timePreset;
+    if (preset === 'custom') {
+      return;
+    }
+
+    const syncPresetWindow = () => {
+      const next = buildPresetWindow(preset);
+      setDepartureDateMin(next.min);
+      setFlexibilityMinutes(next.flex);
+    };
+
+    syncPresetWindow();
+    const interval = setInterval(syncPresetWindow, TIME_PRESET_SYNC_INTERVAL_MS);
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        syncPresetWindow();
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      appStateSubscription.remove();
+    };
+  }, [timePreset]);
+
+  useEffect(() => {
+    if (addressInputMode !== 'manual') {
+      setDepartureManualGeocodeStatus('idle');
+      return;
+    }
+
+    const address = departureManualAddress.trim();
+    if (address.length < 3) {
+      setDepartureManualGeocodeStatus('idle');
+      return;
+    }
+
+    if (departureLocation) {
+      setDepartureManualGeocodeStatus('found');
+      return;
+    }
+
+    let isCurrent = true;
+    setDepartureManualGeocodeStatus('searching');
+
+    const timeout = setTimeout(() => {
+      geocodeManualAddress({
+        address: buildManualGeocodeQuery(address),
+        region: 'cd',
+      })
+        .unwrap()
+        .then((response) => {
+          if (!isCurrent) return;
+          const selection = mapGeocodeResponseToSelection(address, response);
+          if (!selection) {
+            setDepartureManualGeocodeStatus('missing');
+            return;
+          }
+          setDepartureLocation(selection);
+          setDepartureManualGeocodeStatus('found');
+        })
+        .catch((error) => {
+          if (!isCurrent) return;
+          console.warn('Manual departure geocode failed', error);
+          setDepartureManualGeocodeStatus('missing');
+        });
+    }, MANUAL_GEOCODE_DEBOUNCE_MS);
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(timeout);
+    };
+  }, [addressInputMode, departureLocation, departureManualAddress, geocodeManualAddress]);
+
+  useEffect(() => {
+    if (addressInputMode !== 'manual') {
+      setArrivalManualGeocodeStatus('idle');
+      return;
+    }
+
+    const address = arrivalManualAddress.trim();
+    if (address.length < 3) {
+      setArrivalManualGeocodeStatus('idle');
+      return;
+    }
+
+    if (arrivalLocation) {
+      setArrivalManualGeocodeStatus('found');
+      return;
+    }
+
+    let isCurrent = true;
+    setArrivalManualGeocodeStatus('searching');
+
+    const timeout = setTimeout(() => {
+      geocodeManualAddress({
+        address: buildManualGeocodeQuery(address),
+        region: 'cd',
+      })
+        .unwrap()
+        .then((response) => {
+          if (!isCurrent) return;
+          const selection = mapGeocodeResponseToSelection(address, response);
+          if (!selection) {
+            setArrivalManualGeocodeStatus('missing');
+            return;
+          }
+          setArrivalLocation(selection);
+          setArrivalManualGeocodeStatus('found');
+        })
+        .catch((error) => {
+          if (!isCurrent) return;
+          console.warn('Manual arrival geocode failed', error);
+          setArrivalManualGeocodeStatus('missing');
+        });
+    }, MANUAL_GEOCODE_DEBOUNCE_MS);
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(timeout);
+    };
+  }, [addressInputMode, arrivalLocation, arrivalManualAddress, geocodeManualAddress]);
 
   useEffect(() => {
     const origin = getMapCoordinate(departureLocation);
@@ -435,7 +626,7 @@ export default function RequestTripScreen() {
     setAddressSectionStep('arrival');
   };
 
-  const validate = () => {
+  const validate = (departureWindow = getCurrentDepartureWindow()) => {
     if (!hasDepartureAddress) {
       setRequestFormStep('route');
       setAddressSectionStep('departure');
@@ -469,7 +660,10 @@ export default function RequestTripScreen() {
       });
       return false;
     }
-    if (departureDateMin >= departureDateMax || departureDateMin.getTime() < Date.now() - 60000) {
+    if (
+      departureWindow.min.getTime() >= departureWindow.max.getTime() ||
+      departureWindow.min.getTime() < Date.now() - 60000
+    ) {
       showDialog({
         title: 'Heure invalide',
         message: 'Choisissez une heure de départ à venir.',
@@ -481,7 +675,12 @@ export default function RequestTripScreen() {
   };
 
   const handleCreateRequest = async () => {
-    if (!validate()) return;
+    const departureWindow = getCurrentDepartureWindow();
+    if (timePreset !== 'custom') {
+      setDepartureDateMin(departureWindow.min);
+      setFlexibilityMinutes(departureWindow.flex);
+    }
+    if (!validate(departureWindow)) return;
     const parsedBudget = Number.parseFloat(maxPricePerSeat);
     if (!Number.isFinite(parsedBudget) || parsedBudget <= 0) {
       showDialog({
@@ -501,8 +700,8 @@ export default function RequestTripScreen() {
         arrivalLocation: arrivalAddress,
         arrivalReference: arrivalReference.trim() || undefined,
         arrivalCoordinates,
-        departureDateMin: departureDateMin.toISOString(),
-        departureDateMax: departureDateMax.toISOString(),
+        departureDateMin: departureWindow.min.toISOString(),
+        departureDateMax: departureWindow.max.toISOString(),
         numberOfSeats,
         maxPricePerSeat: parsedBudget,
         description: description.trim() || undefined,
@@ -511,7 +710,7 @@ export default function RequestTripScreen() {
         seats: numberOfSeats,
         max_price_per_seat: parsedBudget,
         has_description: Boolean(description.trim()),
-        flexibility_minutes: flexibilityMinutes,
+        flexibility_minutes: departureWindow.flex,
       });
       router.push(getTripRequestDetailHref(createdRequest.id));
     } catch (error: any) {
@@ -538,24 +737,26 @@ export default function RequestTripScreen() {
       setRequestFormStep('details');
       return;
     }
-    if (!validate()) return;
     await handleCreateRequest();
   };
 
-  const primaryButtonDisabled = isCreating;
+  const isManualAddressGeocoding =
+    addressInputMode === 'manual' &&
+    (departureManualGeocodeStatus === 'searching' || arrivalManualGeocodeStatus === 'searching');
+  const primaryButtonDisabled = isCreating || isManualAddressGeocoding;
   const primaryIconName =
     !hasDepartureAddress || !hasArrivalAddress || requestFormStep === 'route'
       ? 'arrow-forward'
       : 'send';
 
-  const renderPrimaryButton = () => (
+  const renderPrimaryButton = (compact = false) => (
     <TouchableOpacity
-      style={styles.mainButtonWrap}
+      style={[styles.mainButtonWrap, compact && styles.mainButtonWrapCompact]}
       onPress={handlePrimaryAction}
       disabled={primaryButtonDisabled}
       activeOpacity={0.9}
     >
-      <View style={[styles.mainButton, primaryButtonDisabled && styles.mainButtonDisabled]}>
+      <View style={[styles.mainButton, compact && styles.mainButtonCompact, primaryButtonDisabled && styles.mainButtonDisabled]}>
         {primaryButtonDisabled ? (
           <ActivityIndicator color={Colors.white} />
         ) : (
@@ -589,81 +790,6 @@ export default function RequestTripScreen() {
         >
           {requestFormStep === 'route' && (
             <>
-              <View style={styles.mapPreview}>
-                <MapView
-                  style={styles.mapPreviewMap}
-                  provider={PROVIDER_GOOGLE}
-                  region={routePreviewRegion}
-                  scrollEnabled={false}
-                  zoomEnabled={false}
-                  rotateEnabled={false}
-                  pitchEnabled={false}
-                  toolbarEnabled={false}
-                >
-                  {departureLocation ? (
-                    <Marker
-                      coordinate={{
-                        latitude: departureLocation.latitude,
-                        longitude: departureLocation.longitude,
-                      }}
-                      pinColor={Colors.success}
-                      title="Départ"
-                    />
-                  ) : null}
-                  {arrivalLocation ? (
-                    <Marker
-                      coordinate={{
-                        latitude: arrivalLocation.latitude,
-                        longitude: arrivalLocation.longitude,
-                      }}
-                      pinColor={Colors.primary}
-                      title="Destination"
-                    />
-                  ) : null}
-                  {routeCoordinates.length > 1 ? (
-                    <Polyline
-                      coordinates={routeCoordinates}
-                      strokeColor={Colors.primary}
-                      strokeWidth={5}
-                    />
-                  ) : null}
-                </MapView>
-                <View pointerEvents="none" style={styles.mapPreviewShade} />
-                {departureLocation && arrivalLocation ? (
-                  <View pointerEvents="none" style={styles.routeStatusBadge}>
-                    {isRouteLoading ? (
-                      <ActivityIndicator color={Colors.primary} size="small" />
-                    ) : (
-                      <Ionicons
-                        name={routeCoordinates.length > 1 ? 'git-branch' : 'alert-circle-outline'}
-                        size={15}
-                        color={routeCoordinates.length > 1 ? Colors.primary : Colors.gray[500]}
-                      />
-                    )}
-                    <Text style={styles.routeStatusText}>
-                      {isRouteLoading
-                        ? 'Calcul de l itineraire'
-                        : routeCoordinates.length > 1
-                          ? 'Itineraire Google'
-                          : 'Route a recalculer'}
-                    </Text>
-                  </View>
-                ) : null}
-                <TouchableOpacity
-                  style={styles.mapLocateButton}
-                  onPress={handleUseCurrentLocation}
-                  disabled={isLocating}
-                  activeOpacity={0.9}
-                >
-                  {isLocating ? (
-                    <ActivityIndicator color={Colors.primary} size="small" />
-                  ) : (
-                    <Ionicons name="locate" size={18} color={Colors.primary} />
-                  )}
-                  <Text style={styles.mapLocateButtonText}>Ma position</Text>
-                </TouchableOpacity>
-              </View>
-
               <Animated.View entering={FadeIn} style={styles.rideSheet}>
                 <View style={styles.sheetHandle} />
                 <View style={styles.rideSheetHeader}>
@@ -720,16 +846,19 @@ export default function RequestTripScreen() {
                         </TouchableOpacity>
                       </TouchableOpacity>
                       {addressInputMode === 'manual' && addressSectionStep === 'departure' ? (
-                        <TextInput
-                          style={styles.rideManualInput}
-                          value={departureManualAddress}
-                          onChangeText={(value) => {
-                            setDepartureManualAddress(value);
-                            setDepartureLocation(null);
-                          }}
+                        <>
+                          <TextInput
+                            style={styles.rideManualInput}
+                            value={departureManualAddress}
+                            onChangeText={(value) => {
+                              setDepartureManualAddress(value);
+                              setDepartureLocation(null);
+                            }}
                           placeholder="Saisir le départ"
-                          placeholderTextColor={Colors.gray[400]}
-                        />
+                            placeholderTextColor={Colors.gray[400]}
+                          />
+                          {renderManualGeocodeStatus(departureManualGeocodeStatus)}
+                        </>
                       ) : null}
                       {hasDepartureAddress ? (
                         <TextInput
@@ -778,16 +907,19 @@ export default function RequestTripScreen() {
                         </TouchableOpacity>
                       </TouchableOpacity>
                       {addressInputMode === 'manual' && addressSectionStep === 'arrival' ? (
-                        <TextInput
-                          style={styles.rideManualInput}
-                          value={arrivalManualAddress}
-                          onChangeText={(value) => {
-                            setArrivalManualAddress(value);
-                            setArrivalLocation(null);
-                          }}
+                        <>
+                          <TextInput
+                            style={styles.rideManualInput}
+                            value={arrivalManualAddress}
+                            onChangeText={(value) => {
+                              setArrivalManualAddress(value);
+                              setArrivalLocation(null);
+                            }}
                           placeholder="Saisir la destination"
-                          placeholderTextColor={Colors.gray[400]}
-                        />
+                            placeholderTextColor={Colors.gray[400]}
+                          />
+                          {renderManualGeocodeStatus(arrivalManualGeocodeStatus)}
+                        </>
                       ) : null}
                       {hasArrivalAddress ? (
                         <TextInput
@@ -898,9 +1030,68 @@ export default function RequestTripScreen() {
                 {routeSummary}
               </Text>
             </View>
-            <TouchableOpacity style={styles.stepBackButton} onPress={() => setRequestFormStep('route')}>
-              <Text style={styles.stepBackButtonText}>Modifier</Text>
-            </TouchableOpacity>
+          </View>
+
+          <View style={[styles.mapPreview, styles.detailsMapPreview]}>
+            <MapView
+              style={styles.mapPreviewMap}
+              provider={PROVIDER_GOOGLE}
+              region={routePreviewRegion}
+              scrollEnabled={false}
+              zoomEnabled={false}
+              rotateEnabled={false}
+              pitchEnabled={false}
+              toolbarEnabled={false}
+            >
+              {departureLocation ? (
+                <Marker
+                  coordinate={{
+                    latitude: departureLocation.latitude,
+                    longitude: departureLocation.longitude,
+                  }}
+                  pinColor={Colors.success}
+                  title="Depart"
+                />
+              ) : null}
+              {arrivalLocation ? (
+                <Marker
+                  coordinate={{
+                    latitude: arrivalLocation.latitude,
+                    longitude: arrivalLocation.longitude,
+                  }}
+                  pinColor={Colors.primary}
+                  title="Destination"
+                />
+              ) : null}
+              {routeCoordinates.length > 1 ? (
+                <Polyline
+                  coordinates={routeCoordinates}
+                  strokeColor={Colors.primary}
+                  strokeWidth={5}
+                />
+              ) : null}
+            </MapView>
+            <View pointerEvents="none" style={styles.mapPreviewShade} />
+            {departureLocation && arrivalLocation ? (
+              <View pointerEvents="none" style={styles.routeStatusBadge}>
+                {isRouteLoading ? (
+                  <ActivityIndicator color={Colors.primary} size="small" />
+                ) : (
+                  <Ionicons
+                    name={routeCoordinates.length > 1 ? 'git-branch' : 'alert-circle-outline'}
+                    size={15}
+                    color={routeCoordinates.length > 1 ? Colors.primary : Colors.gray[500]}
+                  />
+                )}
+                <Text style={styles.routeStatusText}>
+                  {isRouteLoading
+                    ? 'Calcul de l itineraire'
+                    : routeCoordinates.length > 1
+                      ? 'Itineraire Google'
+                      : 'Route a recalculer'}
+                </Text>
+              </View>
+            ) : null}
           </View>
 
           <View style={[styles.card, styles.detailsCard]}>
@@ -1026,7 +1217,14 @@ export default function RequestTripScreen() {
             <Text style={styles.footerText} numberOfLines={1}>{timeSummary}</Text>
           </>
         )}
-        {renderPrimaryButton()}
+        <View style={[styles.footerActions, requestFormStep === 'details' && styles.footerActionsRow]}>
+          {requestFormStep === 'details' && (
+            <TouchableOpacity style={styles.footerSecondaryButton} onPress={() => setRequestFormStep('route')}>
+              <Text style={styles.footerSecondaryButtonText}>Retour</Text>
+            </TouchableOpacity>
+          )}
+          {renderPrimaryButton(requestFormStep === 'details')}
+        </View>
       </View>
 
       <LocationPickerModal
@@ -1076,15 +1274,16 @@ const styles = StyleSheet.create({
   headerSpacer: { width: 40, height: 40 },
   content: { paddingBottom: Spacing.lg },
   routeContent: { paddingHorizontal: 0 },
-  detailsContent: { paddingHorizontal: Spacing.lg, gap: Spacing.sm },
+  detailsContent: { paddingHorizontal: Spacing.lg, gap: Spacing.xs },
   mapPreview: { height: 240, overflow: 'hidden', backgroundColor: Colors.gray[200] },
+  detailsMapPreview: { height: 190, borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: Colors.gray[200] },
   mapPreviewMap: { ...StyleSheet.absoluteFillObject },
   mapPreviewShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 78, backgroundColor: 'rgba(238,242,246,0.72)' },
   mapLocateButton: { position: 'absolute', right: Spacing.lg, top: Spacing.md, minHeight: 42, borderRadius: BorderRadius.full, paddingHorizontal: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, backgroundColor: Colors.white, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 12, elevation: 4 },
   mapLocateButtonText: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   routeStatusBadge: { position: 'absolute', left: Spacing.lg, top: Spacing.md, minHeight: 38, borderRadius: BorderRadius.full, paddingHorizontal: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, backgroundColor: Colors.white, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 4 },
   routeStatusText: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[800] },
-  rideSheet: { marginHorizontal: Spacing.lg, marginTop: -34, borderRadius: BorderRadius.xl, backgroundColor: Colors.white, padding: Spacing.md, gap: Spacing.md, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.14, shadowRadius: 24, elevation: 10 },
+  rideSheet: { marginHorizontal: Spacing.lg, marginTop: Spacing.md, borderRadius: BorderRadius.xl, backgroundColor: Colors.white, padding: Spacing.md, gap: Spacing.md, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.14, shadowRadius: 24, elevation: 10 },
   sheetHandle: { alignSelf: 'center', width: 42, height: 4, borderRadius: BorderRadius.full, backgroundColor: Colors.gray[200], marginBottom: 2 },
   rideSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.md },
   rideSheetTitle: { fontSize: FontSizes.xl, fontWeight: FontWeights.bold, color: Colors.gray[900] },
@@ -1106,6 +1305,10 @@ const styles = StyleSheet.create({
   rideLocationPlaceholder: { color: Colors.gray[500], fontWeight: FontWeights.semibold },
   rideEditButton: { width: 34, height: 34, borderRadius: BorderRadius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[200] },
   rideManualInput: { minHeight: 42, borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs, fontSize: FontSizes.base, color: Colors.gray[900] },
+  manualGeocodeStatus: { minHeight: 20, flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, paddingHorizontal: 2 },
+  manualGeocodeStatusText: { fontSize: FontSizes.xs, fontWeight: FontWeights.semibold, color: Colors.primary },
+  manualGeocodeStatusTextFound: { color: Colors.success },
+  manualGeocodeStatusTextMissing: { color: Colors.danger },
   rideReferenceInput: { minHeight: 38, borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs, fontSize: FontSizes.sm, color: Colors.gray[800] },
   rideDivider: { height: 1, backgroundColor: Colors.gray[200], marginVertical: Spacing.xs },
   quickActionsRow: { flexDirection: 'row', gap: Spacing.sm },
@@ -1140,8 +1343,8 @@ const styles = StyleSheet.create({
   cardHeadCompact: { backgroundColor: Colors.white, borderRadius: BorderRadius.sm, padding: Spacing.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardTitle: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   cardSubtitle: { marginTop: 2, fontSize: 13, color: Colors.gray[500] },
-  stepIntroCard: { backgroundColor: Colors.white, borderRadius: BorderRadius.sm, padding: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  stepIntroIcon: { width: 34, height: 34, borderRadius: BorderRadius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: `${Colors.primary}12` },
+  stepIntroCard: { backgroundColor: Colors.white, borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  stepIntroIcon: { width: 30, height: 30, borderRadius: BorderRadius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: `${Colors.primary}12` },
   stepIntroText: { flex: 1 },
   stepIntroTitle: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   stepIntroSubtitle: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[500], lineHeight: 18 },
@@ -1212,8 +1415,14 @@ const styles = StyleSheet.create({
   footerCompact: { paddingTop: Spacing.sm },
   footerTitle: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   footerText: { fontSize: FontSizes.sm, color: Colors.gray[500] },
+  footerActions: { marginTop: Spacing.sm },
+  footerActionsRow: { marginTop: 0, flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  footerSecondaryButton: { minWidth: 108, minHeight: 52, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.md },
+  footerSecondaryButtonText: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[700] },
   mainButtonWrap: { width: '100%' },
+  mainButtonWrapCompact: { flex: 1, width: 'auto' },
   mainButton: { minHeight: 56, borderRadius: BorderRadius.lg, backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, marginTop: Spacing.sm, shadowColor: Colors.primary, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.24, shadowRadius: 12, elevation: 5 },
+  mainButtonCompact: { minHeight: 52, marginTop: 0 },
   mainButtonDisabled: { opacity: 0.65 },
   mainButtonText: { color: Colors.white, fontSize: FontSizes.base, fontWeight: FontWeights.bold },
   iosOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.35)' },

@@ -170,6 +170,9 @@ const BOOKING_STATUS_CONFIG: Record<
 
 export default function TripDetailsScreen() {
   const router = useRouter();
+  const goHome = useCallback(() => {
+    router.replace('/(tabs)');
+  }, [router]);
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const tripId = typeof params.id === 'string' ? (params.id as string) : '';
@@ -1690,7 +1693,7 @@ export default function TripDetailsScreen() {
           <Text style={styles.emptyStateText}>
             Ce trajet n&apos;existe plus ou a été supprimé par son propriétaire.
           </Text>
-          <TouchableOpacity style={styles.primaryButton} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.primaryButton} onPress={goHome}>
             <Ionicons name="arrow-back" size={16} color={Colors.white} />
             <Text style={styles.primaryButtonText}>Retour</Text>
           </TouchableOpacity>
@@ -1704,7 +1707,7 @@ export default function TripDetailsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={goHome}>
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Détails du trajet</Text>
