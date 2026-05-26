@@ -76,6 +76,9 @@ function getLocationCoordinates(selection: MapLocationSelection | null): [number
 
 export default function TripRequestDetailsScreen() {
   const router = useRouter();
+  const goHome = useCallback(() => {
+    router.replace('/(tabs)');
+  }, [router]);
   const params = useLocalSearchParams<{ id: string }>();
   const { showDialog } = useDialog();
   const insets = useSafeAreaInsets();
@@ -1112,7 +1115,7 @@ export default function TripRequestDetailsScreen() {
                 title: 'Demande annulée',
                 message: 'Votre demande a été annulée avec succès',
                 variant: 'success',
-                actions: [{ label: 'OK', onPress: () => router.back() }],
+                actions: [{ label: 'OK', onPress: goHome }],
               });
             } catch (error: any) {
               showDialog({
@@ -1131,7 +1134,7 @@ export default function TripRequestDetailsScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={goHome} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Détails de la demande</Text>
@@ -1149,7 +1152,7 @@ export default function TripRequestDetailsScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={goHome} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Détails de la demande</Text>
@@ -1175,7 +1178,7 @@ export default function TripRequestDetailsScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={goHome} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Détails de la demande</Text>
@@ -1367,7 +1370,7 @@ export default function TripRequestDetailsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={goHome} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Détails de la demande</Text>

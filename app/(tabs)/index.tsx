@@ -146,6 +146,14 @@ export default function HomeScreen() {
       offers_received: 1,
       pending: 2,
     } as const;
+    const getDepartureTime = (departureDate?: string | null) => {
+      if (!departureDate) {
+        return null;
+      }
+
+      const timestamp = new Date(departureDate).getTime();
+      return Number.isFinite(timestamp) ? timestamp : null;
+    };
 
     return [...myTripRequests]
       .filter(
@@ -156,6 +164,20 @@ export default function HomeScreen() {
           !request.tripId,
       )
       .sort((a, b) => {
+        const departureA = getDepartureTime(a.departureDateMin);
+        const departureB = getDepartureTime(b.departureDateMin);
+
+        if (departureA !== null && departureB === null) {
+          return -1;
+        }
+        if (departureA === null && departureB !== null) {
+          return 1;
+        }
+
+        if (departureA !== null && departureB !== null && departureA !== departureB) {
+          return departureA - departureB;
+        }
+
         const priorityA = statusPriority[a.status as keyof typeof statusPriority] ?? 99;
         const priorityB = statusPriority[b.status as keyof typeof statusPriority] ?? 99;
         if (priorityA !== priorityB) {

@@ -7,10 +7,17 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { trackEvent } from '@/services/analytics';
+import { useGeocodeMutation } from '@/store/api/googleMapsApi';
 import { useCreateRecurringTripMutation, useCreateTripMutation } from '@/store/api/tripApi';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { createBecomeDriverAction, getApiErrorMessage, isDriverRequiredError } from '@/utils/errorHelpers';
+import {
+  buildManualGeocodeQuery,
+  MANUAL_GEOCODE_DEBOUNCE_MS,
+  mapGeocodeResponseToSelection,
+  type ManualGeocodeStatus,
+} from '@/utils/manualAddressGeocode';
 import { getRouteCoordinates } from '@/utils/routeApi';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
@@ -141,6 +148,7 @@ export default function PublishScreen() {
   const stepEntering = Platform.OS === 'android' ? undefined : FadeInDown.duration(180);
   const [createTrip, { isLoading: isPublishing }] = useCreateTripMutation();
   const [createRecurringTrip, { isLoading: isPublishingRecurring }] = useCreateRecurringTripMutation();
+  const [geocodeManualAddress] = useGeocodeMutation();
   const { showDialog } = useDialog();
 
   const [kycModalVisible, setKycModalVisible] = useState(false);
@@ -396,6 +404,10 @@ export default function PublishScreen() {
   const [departureReference, setDepartureReference] = useState('');
   const [arrivalManualAddress, setArrivalManualAddress] = useState('');
   const [arrivalReference, setArrivalReference] = useState('');
+  const [departureManualGeocodeStatus, setDepartureManualGeocodeStatus] =
+    useState<ManualGeocodeStatus>('idle');
+  const [arrivalManualGeocodeStatus, setArrivalManualGeocodeStatus] =
+    useState<ManualGeocodeStatus>('idle');
   const [showQuickLandmarks, setShowQuickLandmarks] = useState(true);
   const [addressInputMode, setAddressInputMode] = useState<AddressInputMode>('map');
   const [, setAddressSectionStep] = useState<AddressSectionStep>('method');
@@ -439,6 +451,42 @@ export default function PublishScreen() {
     if (hasDepartureAddress) return `Depart : ${departureAddress}`;
     return 'Choisissez le depart et la destination';
   }, [arrivalAddress, departureAddress, hasArrivalAddress, hasDepartureAddress]);
+  const renderManualGeocodeStatus = (status: ManualGeocodeStatus) => {
+    if (status === 'idle') {
+      return null;
+    }
+
+    const isSearching = status === 'searching';
+    const isFound = status === 'found';
+    const color = isFound ? Colors.success : isSearching ? Colors.primary : Colors.danger;
+
+    return (
+      <View style={styles.manualGeocodeStatus}>
+        {isSearching ? (
+          <ActivityIndicator size="small" color={Colors.primary} />
+        ) : (
+          <Ionicons
+            name={isFound ? 'checkmark-circle' : 'alert-circle'}
+            size={14}
+            color={color}
+          />
+        )}
+        <Text
+          style={[
+            styles.manualGeocodeStatusText,
+            isFound && styles.manualGeocodeStatusTextFound,
+            status === 'missing' && styles.manualGeocodeStatusTextMissing,
+          ]}
+        >
+          {isSearching
+            ? 'Recherche des coordonnees...'
+            : isFound
+              ? 'Coordonnees trouvees'
+              : 'Adresse introuvable'}
+        </Text>
+      </View>
+    );
+  };
   const departureSummary = useMemo(
     () => ({
       title: departureAddress || 'Point de départ non défini',
@@ -668,6 +716,9 @@ export default function PublishScreen() {
   }, [recurringWeekdayOptions, recurringWeekdays]);
 
   const isSubmittingTrip = isPublishing || isPublishingRecurring;
+  const isManualAddressGeocoding =
+    addressInputMode === 'manual' &&
+    (departureManualGeocodeStatus === 'searching' || arrivalManualGeocodeStatus === 'searching');
 
   const toggleRecurringTrip = () => {
     setIsRecurringTrip((current) => {
@@ -692,8 +743,106 @@ export default function PublishScreen() {
   };
 
   useEffect(() => {
-    const origin = addressInputMode === 'map' ? getMapCoordinate(departureLocation) : null;
-    const destination = addressInputMode === 'map' ? getMapCoordinate(arrivalLocation) : null;
+    if (addressInputMode !== 'manual') {
+      setDepartureManualGeocodeStatus('idle');
+      return;
+    }
+
+    const address = departureManualAddress.trim();
+    if (address.length < 3) {
+      setDepartureManualGeocodeStatus('idle');
+      return;
+    }
+
+    if (departureLocation) {
+      setDepartureManualGeocodeStatus('found');
+      return;
+    }
+
+    let isCurrent = true;
+    setDepartureManualGeocodeStatus('searching');
+
+    const timeout = setTimeout(() => {
+      geocodeManualAddress({
+        address: buildManualGeocodeQuery(address),
+        region: 'cd',
+      })
+        .unwrap()
+        .then((response) => {
+          if (!isCurrent) return;
+          const selection = mapGeocodeResponseToSelection(address, response);
+          if (!selection) {
+            setDepartureManualGeocodeStatus('missing');
+            return;
+          }
+          setDepartureLocation(selection);
+          setDepartureManualGeocodeStatus('found');
+        })
+        .catch((error) => {
+          if (!isCurrent) return;
+          console.warn('Manual departure geocode failed', error);
+          setDepartureManualGeocodeStatus('missing');
+        });
+    }, MANUAL_GEOCODE_DEBOUNCE_MS);
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(timeout);
+    };
+  }, [addressInputMode, departureLocation, departureManualAddress, geocodeManualAddress]);
+
+  useEffect(() => {
+    if (addressInputMode !== 'manual') {
+      setArrivalManualGeocodeStatus('idle');
+      return;
+    }
+
+    const address = arrivalManualAddress.trim();
+    if (address.length < 3) {
+      setArrivalManualGeocodeStatus('idle');
+      return;
+    }
+
+    if (arrivalLocation) {
+      setArrivalManualGeocodeStatus('found');
+      return;
+    }
+
+    let isCurrent = true;
+    setArrivalManualGeocodeStatus('searching');
+
+    const timeout = setTimeout(() => {
+      geocodeManualAddress({
+        address: buildManualGeocodeQuery(address),
+        region: 'cd',
+      })
+        .unwrap()
+        .then((response) => {
+          if (!isCurrent) return;
+          const selection = mapGeocodeResponseToSelection(address, response);
+          if (!selection) {
+            setArrivalManualGeocodeStatus('missing');
+            return;
+          }
+          setArrivalLocation(selection);
+          setArrivalManualGeocodeStatus('found');
+        })
+        .catch((error) => {
+          if (!isCurrent) return;
+          console.warn('Manual arrival geocode failed', error);
+          setArrivalManualGeocodeStatus('missing');
+        });
+    }, MANUAL_GEOCODE_DEBOUNCE_MS);
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(timeout);
+    };
+  }, [addressInputMode, arrivalLocation, arrivalManualAddress, geocodeManualAddress]);
+
+  useEffect(() => {
+    const origin = getMapCoordinate(departureLocation);
+    const destination = getMapCoordinate(arrivalLocation);
 
     if (!origin || !destination) {
       setRouteCoordinates([]);
@@ -724,11 +873,7 @@ export default function PublishScreen() {
     return () => {
       isCurrent = false;
     };
-  }, [
-    addressInputMode,
-    arrivalLocation,
-    departureLocation,
-  ]);
+  }, [arrivalLocation, departureLocation]);
 
   useEffect(() => {
     if (mode !== 'recurring' || isRecurringTrip) {
@@ -915,10 +1060,8 @@ export default function PublishScreen() {
     }
 
     try {
-      const departureCoordinates =
-        addressInputMode === 'map' ? getLocationCoordinates(departureLocation) : undefined;
-      const arrivalCoordinates =
-        addressInputMode === 'map' ? getLocationCoordinates(arrivalLocation) : undefined;
+      const departureCoordinates = getLocationCoordinates(departureLocation);
+      const arrivalCoordinates = getLocationCoordinates(arrivalLocation);
 
       if (isRecurringTrip) {
         await createRecurringTrip({
@@ -1038,6 +1181,39 @@ export default function PublishScreen() {
     });
   };
 
+  const previousStep = useMemo(() => {
+    const currentIndex = PUBLISH_STEP_ORDER.indexOf(step);
+    return currentIndex > 0 ? PUBLISH_STEP_ORDER[currentIndex - 1] : null;
+  }, [step]);
+
+  const footerPrimaryDisabled =
+    step === 'route'
+      ? !hasDepartureAddress || !hasArrivalAddress || isManualAddressGeocoding
+      : step === 'confirm'
+        ? isSubmittingTrip || !isIdentityVerified || isManualAddressGeocoding
+        : false;
+
+  const footerPrimaryLabel = (() => {
+    if (step === 'route') {
+      if (!hasDepartureAddress) return 'Indiquez le dÃ©part';
+      if (!hasArrivalAddress) return "Indiquez l'arrivÃ©e";
+      return 'Continuer';
+    }
+    if (step === 'confirm') {
+      if (!isIdentityVerified) return 'KYC requis';
+      return isRecurringTrip ? 'Publier les trajets' : 'Publier';
+    }
+    return 'Continuer';
+  })();
+
+  const handleFooterPrimary = () => {
+    if (step === 'confirm') {
+      handlePublish();
+      return;
+    }
+    handleNextStep();
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -1143,7 +1319,7 @@ export default function PublishScreen() {
             <Text style={styles.identityWarningText}>
               Vérifiez votre identité pour pouvoir publier et confirmer vos trajets.
             </Text>
-            <TouchableOpacity
+          <TouchableOpacity
               style={styles.identityWarningButton}
               onPress={handleStartKyc}
             >
@@ -1160,71 +1336,13 @@ export default function PublishScreen() {
           contentContainerStyle={[
             styles.scrollViewContent,
             step === 'route' && styles.routeScrollViewContent,
-            { paddingBottom: Math.max(insets.bottom, 16) + 80 },
+            { paddingBottom: Math.max(insets.bottom, 16) + 116 },
           ]}
         showsVerticalScrollIndicator={false}
       >
         {/* Étape 1: Itinéraire */}
         {step === 'route' && (
           <Animated.View entering={stepEntering} style={[styles.stepContainer, styles.routeStepContainer]}>
-            <View style={styles.publishMapPreview}>
-              <MapView
-                style={styles.publishMapPreviewMap}
-                provider={PROVIDER_GOOGLE}
-                region={routePreviewRegion}
-                scrollEnabled={false}
-                zoomEnabled={false}
-                rotateEnabled={false}
-                pitchEnabled={false}
-                toolbarEnabled={false}
-              >
-                {departureLocation ? (
-                  <Marker
-                    coordinate={{
-                      latitude: departureLocation.latitude,
-                      longitude: departureLocation.longitude,
-                    }}
-                    pinColor={Colors.success}
-                    title="Depart"
-                  />
-                ) : null}
-                {arrivalLocation ? (
-                  <Marker
-                    coordinate={{
-                      latitude: arrivalLocation.latitude,
-                      longitude: arrivalLocation.longitude,
-                    }}
-                    pinColor={Colors.primary}
-                    title="Destination"
-                  />
-                ) : null}
-                {routeCoordinates.length > 1 ? (
-                  <Polyline coordinates={routeCoordinates} strokeColor={Colors.primary} strokeWidth={5} />
-                ) : null}
-              </MapView>
-              <View pointerEvents="none" style={styles.publishMapPreviewShade} />
-              {departureLocation && arrivalLocation ? (
-                <View pointerEvents="none" style={styles.routeStatusBadge}>
-                  {isRouteLoading ? (
-                    <ActivityIndicator color={Colors.primary} size="small" />
-                  ) : (
-                    <Ionicons
-                      name={routeCoordinates.length > 1 ? 'git-branch' : 'alert-circle-outline'}
-                      size={15}
-                      color={routeCoordinates.length > 1 ? Colors.primary : Colors.gray[500]}
-                    />
-                  )}
-                  <Text style={styles.routeStatusText}>
-                    {isRouteLoading
-                      ? 'Calcul de l itineraire'
-                      : routeCoordinates.length > 1
-                        ? 'Itineraire Google'
-                        : 'Route a recalculer'}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-
             <View style={styles.publishRouteSheet}>
               <View style={styles.sheetHandle} />
               <View style={styles.rideSheetHeader}>
@@ -1293,16 +1411,19 @@ export default function PublishScreen() {
                     </TouchableOpacity>
                   </View>
                   {addressInputMode === 'manual' && (
-                    <TextInput
-                      style={styles.inlineManualInput}
-                      value={departureManualAddress}
-                      onChangeText={(value) => {
-                        setDepartureManualAddress(value);
-                        setDepartureLocation(null);
-                      }}
-                      placeholder="Ex: avenue Kasa-Vubu, Bandal"
-                      placeholderTextColor={Colors.gray[400]}
-                    />
+                    <>
+                      <TextInput
+                        style={styles.inlineManualInput}
+                        value={departureManualAddress}
+                        onChangeText={(value) => {
+                          setDepartureManualAddress(value);
+                          setDepartureLocation(null);
+                        }}
+                        placeholder="Ex: avenue Kasa-Vubu, Bandal"
+                        placeholderTextColor={Colors.gray[400]}
+                      />
+                      {renderManualGeocodeStatus(departureManualGeocodeStatus)}
+                    </>
                   )}
                   <View style={styles.referenceField}>
                     <Text style={styles.referenceLabel}>Repère de départ (optionnel)</Text>
@@ -1375,16 +1496,19 @@ export default function PublishScreen() {
                     </TouchableOpacity>
                   </View>
                   {addressInputMode === 'manual' && (
-                    <TextInput
-                      style={styles.inlineManualInput}
-                      value={arrivalManualAddress}
-                      onChangeText={(value) => {
-                        setArrivalManualAddress(value);
-                        setArrivalLocation(null);
-                      }}
-                      placeholder="Ex: rond-point Victoire"
-                      placeholderTextColor={Colors.gray[400]}
-                    />
+                    <>
+                      <TextInput
+                        style={styles.inlineManualInput}
+                        value={arrivalManualAddress}
+                        onChangeText={(value) => {
+                          setArrivalManualAddress(value);
+                          setArrivalLocation(null);
+                        }}
+                        placeholder="Ex: rond-point Victoire"
+                        placeholderTextColor={Colors.gray[400]}
+                      />
+                      {renderManualGeocodeStatus(arrivalManualGeocodeStatus)}
+                    </>
                   )}
                   <View style={styles.referenceField}>
                     <Text style={styles.referenceLabel}>Repère d’arrivée (optionnel)</Text>
@@ -1844,14 +1968,74 @@ export default function PublishScreen() {
         {/* Étape 5: Confirmation */}
         {step === 'confirm' && (
           <Animated.View entering={stepEntering} style={styles.stepContainer}>
-            <View style={styles.iconContainer}>
-              <View style={[styles.iconCircle, styles.iconCircleGreen]}>
-                <Ionicons name="checkmark-circle" size={40} color={Colors.success} />
+            <View style={[styles.iconContainer, styles.confirmIntro]}>
+              <View style={[styles.iconCircle, styles.iconCircleGreen, styles.confirmIntroIcon]}>
+                <Ionicons name="checkmark" size={24} color={Colors.success} />
               </View>
-              <Text style={styles.stepTitle}>Confirmation</Text>
-              <Text style={styles.stepSubtitle}>
+              <View style={styles.confirmIntroText}>
+                <Text style={[styles.stepTitle, styles.confirmIntroTitle]}>Confirmation</Text>
+                <Text style={[styles.stepSubtitle, styles.confirmIntroSubtitle]} numberOfLines={1}>
                 Vérifiez les informations avant de publier
-              </Text>
+                </Text>
+              </View>
+            </View>
+
+            <View style={[styles.publishMapPreview, styles.confirmMapPreview]}>
+              <MapView
+                style={styles.publishMapPreviewMap}
+                provider={PROVIDER_GOOGLE}
+                region={routePreviewRegion}
+                scrollEnabled={false}
+                zoomEnabled={false}
+                rotateEnabled={false}
+                pitchEnabled={false}
+                toolbarEnabled={false}
+              >
+                {departureLocation ? (
+                  <Marker
+                    coordinate={{
+                      latitude: departureLocation.latitude,
+                      longitude: departureLocation.longitude,
+                    }}
+                    pinColor={Colors.success}
+                    title="Depart"
+                  />
+                ) : null}
+                {arrivalLocation ? (
+                  <Marker
+                    coordinate={{
+                      latitude: arrivalLocation.latitude,
+                      longitude: arrivalLocation.longitude,
+                    }}
+                    pinColor={Colors.primary}
+                    title="Destination"
+                  />
+                ) : null}
+                {routeCoordinates.length > 1 ? (
+                  <Polyline coordinates={routeCoordinates} strokeColor={Colors.primary} strokeWidth={5} />
+                ) : null}
+              </MapView>
+              <View pointerEvents="none" style={styles.publishMapPreviewShade} />
+              {departureLocation && arrivalLocation ? (
+                <View pointerEvents="none" style={styles.routeStatusBadge}>
+                  {isRouteLoading ? (
+                    <ActivityIndicator color={Colors.primary} size="small" />
+                  ) : (
+                    <Ionicons
+                      name={routeCoordinates.length > 1 ? 'git-branch' : 'alert-circle-outline'}
+                      size={15}
+                      color={routeCoordinates.length > 1 ? Colors.primary : Colors.gray[500]}
+                    />
+                  )}
+                  <Text style={styles.routeStatusText}>
+                    {isRouteLoading
+                      ? 'Calcul de l itineraire'
+                      : routeCoordinates.length > 1
+                        ? 'Itineraire Google'
+                        : 'Route a recalculer'}
+                  </Text>
+                </View>
+              ) : null}
             </View>
 
             <View style={styles.confirmCard}>
@@ -1992,27 +2176,39 @@ export default function PublishScreen() {
         )}
       </ScrollView>
 
-        {step === 'route' && (
-          <View style={styles.fixedBottomBar}>
+        <View
+          style={[
+            styles.fixedBottomBar,
+            step !== 'route' && styles.fixedBottomBarRow,
+            { paddingBottom: Math.max(insets.bottom, 16) },
+          ]}
+        >
+          {previousStep && (
             <TouchableOpacity
-              style={[
-                styles.button,
-                styles.fixedButton,
-                (!hasDepartureAddress || !hasArrivalAddress) && styles.buttonDisabled,
-              ]}
-              onPress={handleNextStep}
-              disabled={!hasDepartureAddress || !hasArrivalAddress}
+              style={[styles.button, styles.buttonSecondary, styles.fixedFooterBackButton]}
+              onPress={() => goToStep(previousStep)}
+              disabled={isSubmittingTrip}
             >
-              <Text style={styles.buttonText}>
-                {!hasDepartureAddress
-                  ? 'Indiquez le départ'
-                  : !hasArrivalAddress
-                    ? "Indiquez l'arrivée"
-                    : 'Continuer'}
-              </Text>
+              <Text style={styles.buttonSecondaryText}>Retour</Text>
             </TouchableOpacity>
-          </View>
-        )}
+          )}
+          <TouchableOpacity
+            style={[
+              styles.button,
+              styles.fixedButton,
+              step !== 'route' && styles.fixedFooterPrimaryButton,
+              footerPrimaryDisabled && styles.buttonDisabled,
+            ]}
+            onPress={handleFooterPrimary}
+            disabled={footerPrimaryDisabled}
+          >
+            {step === 'confirm' && isSubmittingTrip ? (
+              <ActivityIndicator color={Colors.white} />
+            ) : (
+              <Text style={styles.buttonText}>{footerPrimaryLabel}</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       <LocationPickerModal
@@ -2329,6 +2525,29 @@ const styles = StyleSheet.create({
   iconContainer: {
     alignItems: 'center',
     marginBottom: Spacing.xxl,
+  },
+  confirmIntro: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  confirmIntroIcon: {
+    width: 48,
+    height: 48,
+    marginBottom: 0,
+  },
+  confirmIntroText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  confirmIntroTitle: {
+    fontSize: FontSizes.xl,
+    marginBottom: 2,
+  },
+  confirmIntroSubtitle: {
+    textAlign: 'left',
+    fontSize: FontSizes.sm,
   },
   iconCircle: {
     width: 80,
@@ -2713,6 +2932,7 @@ const styles = StyleSheet.create({
   },
   buttonRow: {
     flexDirection: 'row',
+    display: 'none',
   },
   confirmCard: {
     backgroundColor: Colors.white,
@@ -3292,6 +3512,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: Colors.gray[200],
   },
+  confirmMapPreview: {
+    borderRadius: BorderRadius.xl,
+    marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+  },
   publishMapPreviewMap: {
     ...StyleSheet.absoluteFillObject,
   },
@@ -3327,7 +3553,7 @@ const styles = StyleSheet.create({
   },
   publishRouteSheet: {
     marginHorizontal: Spacing.lg,
-    marginTop: -34,
+    marginTop: Spacing.md,
     borderRadius: BorderRadius.xl,
     backgroundColor: Colors.white,
     padding: Spacing.md,
@@ -3662,6 +3888,25 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     marginTop: Spacing.xs,
   },
+  manualGeocodeStatus: {
+    minHeight: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginTop: 2,
+    paddingHorizontal: 2,
+  },
+  manualGeocodeStatusText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+    color: Colors.primary,
+  },
+  manualGeocodeStatusTextFound: {
+    color: Colors.success,
+  },
+  manualGeocodeStatusTextMissing: {
+    color: Colors.danger,
+  },
   referenceField: {
     gap: Spacing.xs,
   },
@@ -3776,6 +4021,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.md,
     paddingBottom: Spacing.sm,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  fixedBottomBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  fixedFooterBackButton: {
+    minWidth: 108,
+    paddingVertical: Spacing.md,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  fixedFooterPrimaryButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
   },
   fixedButton: {
     shadowColor: Colors.primary,
