@@ -48,9 +48,10 @@ module.exports = {
       bundleIdentifier: "com.biso.zwanga",
       buildNumber: "3",
       supportsTablet: true,
-      ...(HAS_IOS_GOOGLE_SERVICES_FILE
-        ? { googleServicesFile: GOOGLE_IOS_SERVICES_FILE }
-        : {}),
+      googleServicesFile: './GoogleService-Info.plist',
+      buildProperties: {
+        USE_MODULAR_HEADERS: true,
+      },
       config: {
         googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
       },
@@ -202,6 +203,14 @@ module.exports = {
             backgroundColor: '#000000',
           },
         },
+      ],
+      [
+        'expo-build-properties',
+        {
+          ios:{
+            useFrameworks: 'static',
+          }
+        }
       ],
       './app.plugin.js',
       ...(HAS_META_APP_EVENTS

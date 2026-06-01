@@ -1,4 +1,30 @@
-const { withAndroidManifest, withGradleProperties, AndroidConfig } = require('@expo/config-plugins');
+const { withAndroidManifest, withGradleProperties, withPodfile, AndroidConfig } = require('@expo/config-plugins');
+
+const withIOSModularHeaders = (config) => {
+  return withPodfile(config, async (config) => {
+    const podfileContent = config.modResults.contents;
+    
+    // Only add if not already present
+    if (!podfileContent.includes('use_modular_headers!')) {
+      // Insert after platform declaration but before use_react_native!
+      const lines = podfileContent.split('\n');
+      const newLines = [];
+      let inserted = false;
+      
+      for (const line of lines) {
+        newLines.push(line);
+        // Insert after platform line and before react native
+        if (!inserted && line.trim().startsWith('platform :ios')) {
+          newLines.push('use_modular_headers!');
+          inserted = true;
+        }
+      }
+      
+      config.modResults.contents = newLines.join('\n');
+    }
+    return config;
+  });
+};
 
 const withAndroidLocationPermissions = (config) => {
   return withAndroidManifest(config, async (config) => {
@@ -64,6 +90,7 @@ const withModernEdgeToEdgeGradleProperties = (config) => {
 };
 
 module.exports = (config) => {
+  config = withIOSModularHeaders(config);
   config = withAndroidLocationPermissions(config);
   config = withAndroidLargeScreenCompatibility(config);
   config = withModernEdgeToEdgeGradleProperties(config);
