@@ -89,10 +89,28 @@ const withModernEdgeToEdgeGradleProperties = (config) => {
   });
 };
 
+const withReactNativeMapsFix = (config) => {
+  return withPodfile(config, async (config) => {
+    let content = config.modResults.contents;
+    
+    // Add modular headers for React-Core specifically
+    if (!content.includes("pod 'React-Core', :modular_headers => true")) {
+      // Replace the React-Core pod declaration
+      content = content.replace(
+        /pod\s+['"]React-Core['"]\s*(,?\s*[\s\S]*?)?(?=\n)/,
+        "pod 'React-Core', :modular_headers => true"
+      );
+      config.modResults.contents = content;
+    }
+    return config;
+  });
+};
+
 module.exports = (config) => {
   config = withIOSModularHeaders(config);
   config = withAndroidLocationPermissions(config);
   config = withAndroidLargeScreenCompatibility(config);
   config = withModernEdgeToEdgeGradleProperties(config);
+  config = withReactNativeMapsFix(config);
   return config;
 };
