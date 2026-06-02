@@ -4,9 +4,13 @@
  * Ce fichier remplace app.json et permet de charger les variables depuis .env
  */
 
-require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const dotenv = require('dotenv');
+
+['.env.local', 'env.local', '.env'].forEach((envFile) => {
+  dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+});
 
 // Public OAuth client IDs (safe to ship in the app).
 // Keep fallbacks so cloud builds still work even when .env is not uploaded.
@@ -49,9 +53,6 @@ module.exports = {
       buildNumber: "3",
       supportsTablet: true,
       googleServicesFile: './GoogleService-Info.plist',
-      buildProperties: {
-        USE_MODULAR_HEADERS: true,
-      },
       config: {
         googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
       },

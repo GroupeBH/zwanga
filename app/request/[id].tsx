@@ -35,6 +35,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -1486,13 +1487,24 @@ export default function TripRequestDetailsScreen() {
             {tripRequest.status === 'pending' && (
               <View style={styles.ownerHeroActions}>
                 {canEdit && (
-                  <TouchableOpacity style={styles.ownerHeroGhostButton} onPress={handleOpenEditForm}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.ownerHeroGhostButton,
+                      pressed && styles.ownerHeroButtonPressed,
+                    ]}
+                    onPress={handleOpenEditForm}
+                  >
                     <Ionicons name="create-outline" size={16} color={Colors.white} />
                     <Text style={styles.ownerHeroGhostButtonText}>Modifier</Text>
-                  </TouchableOpacity>
+                  </Pressable>
                 )}
-                <TouchableOpacity
-                  style={[styles.ownerHeroGhostButton, styles.ownerHeroGhostButtonDanger]}
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.ownerHeroGhostButton,
+                    styles.ownerHeroGhostButtonDanger,
+                    pressed && styles.ownerHeroButtonPressed,
+                    isCancelling && styles.ownerHeroButtonDisabled,
+                  ]}
                   onPress={handleCancelRequest}
                   disabled={isCancelling}
                 >
@@ -1504,7 +1516,7 @@ export default function TripRequestDetailsScreen() {
                       <Text style={styles.ownerHeroGhostButtonText}>Annuler</Text>
                     </>
                   )}
-                </TouchableOpacity>
+                </Pressable>
               </View>
             )}
           </LinearGradient>
@@ -3493,6 +3505,12 @@ const styles = StyleSheet.create({
   ownerHeroGhostButtonDanger: {
     backgroundColor: 'rgba(239,68,68,0.16)',
     borderColor: 'rgba(255,255,255,0.12)',
+  },
+  ownerHeroButtonPressed: {
+    opacity: 0.72,
+  },
+  ownerHeroButtonDisabled: {
+    opacity: 0.6,
   },
   ownerHeroGhostButtonText: {
     color: Colors.white,

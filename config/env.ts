@@ -13,6 +13,8 @@ interface EnvConfig {
   enableSignupOtp: boolean;
 }
 
+const DEFAULT_API_URL = 'https://zwanga-api.onrender.com/api/v1';
+
 /**
  * Récupère la configuration depuis les variables d'environnement
  */
@@ -24,7 +26,13 @@ function getEnvConfig(): EnvConfig {
   const apiUrl = 
     extra.EXPO_PUBLIC_API_URL || 
     process.env.EXPO_PUBLIC_API_URL || 
-    (__DEV__ ? 'http://192.168.226.134:5000/api/v1' : 'https://api.zwanga.cd/v1');
+    DEFAULT_API_URL;
+
+  if (__DEV__ && !extra.EXPO_PUBLIC_API_URL && !process.env.EXPO_PUBLIC_API_URL) {
+    console.warn(
+      `[env.ts] EXPO_PUBLIC_API_URL absent. Utilisation du fallback: ${DEFAULT_API_URL}`,
+    );
+  }
   
   // Détection robuste de l'environnement
   // Priorité : extra.EXPO_PUBLIC_ENV > process.env.EXPO_PUBLIC_ENV > __DEV__
@@ -89,4 +97,3 @@ export const isSignupOtpVerificationEnabled = envConfig.enableSignupOtp;
  * URL de base de l'API
  */
 export const API_BASE_URL = envConfig.apiUrl;
-

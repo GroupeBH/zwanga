@@ -71,22 +71,11 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "babel-preset-expo": "~54.0.11",
     "dotenv": "^17.2.3",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"
   },
-  "private": true,
-  "expo": {
-    "autolinking": {
-      "ios": {
-        "extraPods": [
-          {
-            "name": "react-native-maps",
-            "modular_headers": true
-          }
-        ]
-      }
-    }
-  }
+  "private": true
 }

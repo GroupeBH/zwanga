@@ -67,8 +67,12 @@ const VARIANT_CONFIG: Record<
 
 export function DialogProvider({ children }: { children: ReactNode }) {
   const [dialog, setDialog] = useState<DialogState | null>(null);
+  const [runningActionLabel, setRunningActionLabel] = useState<string | null>(null);
 
-  const hideDialog = useCallback(() => setDialog(null), []);
+  const hideDialog = useCallback(() => {
+    setDialog(null);
+    setRunningActionLabel(null);
+  }, []);
 
   const showDialog = useCallback(
     (options: DialogOptions) => {
@@ -94,11 +98,26 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const currentVariant = dialog?.variant ?? 'info';
   const variantStyle = VARIANT_CONFIG[currentVariant];
 
-  const handleActionPress = (action: DialogAction) => {
-    if (action.autoClose !== false) {
+  const handleActionPress = async (action: DialogAction) => {
+    if (runningActionLabel) return;
+
+    if (!action.onPress) {
       hideDialog();
+      return;
     }
-    action.onPress?.();
+
+    setRunningActionLabel(action.label);
+
+    try {
+      if (action.autoClose !== false) {
+        hideDialog();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      await action.onPress();
+    } finally {
+      setRunningActionLabel(null);
+    }
   };
 
   return (
@@ -119,11 +138,13 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                 <TouchableOpacity
                   key={action.label}
                   onPress={() => handleActionPress(action)}
+                  disabled={Boolean(runningActionLabel)}
                   style={[
                     styles.actionButton,
                     action.variant === 'primary' && styles.actionPrimary,
                     action.variant === 'secondary' && styles.actionSecondary,
                     action.variant === 'ghost' && styles.actionGhost,
+                    runningActionLabel && action.label !== runningActionLabel && styles.actionDisabled,
                   ]}
                 >
                   <Text
@@ -216,6 +237,9 @@ const styles = StyleSheet.create({
   actionGhost: {
     borderColor: 'transparent',
   },
+  actionDisabled: {
+    opacity: 0.5,
+  },
   actionText: {
     fontWeight: FontWeights.semibold,
     color: Colors.gray[800],
@@ -227,4 +251,3 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
   },
 });
-

@@ -30,6 +30,7 @@ yarn-error.*
 
 # local env files
 .env
+env.local
 .env.local
 .env.production.local
 .env.development.local
