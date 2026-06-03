@@ -34,6 +34,44 @@ export function PinStep({
   const isLoginValid = mode === 'login' && pin.length === 4;
   const isSignupValid = mode === 'signup' && pin.length === 4 && pinConfirm.length === 4;
   const isValid = mode === 'login' ? isLoginValid : isSignupValid;
+  const pinSlots = [0, 1, 2, 3];
+
+  const renderPinInput = (
+    value: string,
+    inputRef: React.RefObject<TextInput | null>,
+    onChangeText: (pin: string) => void,
+    accessibilityLabel: string
+  ) => (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      style={styles.pinEntryContainer}
+      onPress={() => inputRef.current?.focus()}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+    >
+      <TextInput
+        ref={inputRef}
+        style={styles.pinHiddenInput}
+        keyboardType="number-pad"
+        maxLength={4}
+        secureTextEntry
+        value={value}
+        onChangeText={onChangeText}
+        textContentType="password"
+        autoComplete="off"
+      />
+      <View style={styles.pinCodeContainer} pointerEvents="none">
+        {pinSlots.map((slot) => (
+          <View
+            key={`${accessibilityLabel}-${slot}`}
+            style={[styles.pinInput, value[slot] ? styles.pinInputFilled : null]}
+          >
+            <Text style={styles.pinDot}>{value[slot] ? '•' : ''}</Text>
+          </View>
+        ))}
+      </View>
+    </TouchableOpacity>
+  );
 
   return (
     <Animated.View entering={FadeInDown.springify()} exiting={FadeOutUp} style={styles.stepContainer}>
@@ -54,20 +92,7 @@ export function PinStep({
       {mode === 'login' ? (
         // Mode login : un seul champ PIN
         <>
-          <View style={styles.pinInputWrapper}>
-            <Ionicons name="lock-closed" size={18} color={Colors.gray[500]} style={styles.pinInputIcon} />
-            <TextInput
-              ref={pinInputRef}
-              style={styles.pinInputField}
-              keyboardType="number-pad"
-              maxLength={4}
-              secureTextEntry
-              value={pin}
-              onChangeText={onPinChange}
-              placeholder="••••"
-              placeholderTextColor={Colors.gray[400]}
-            />
-          </View>
+          {renderPinInput(pin, pinInputRef, onPinChange, 'Code PIN à 4 chiffres')}
 
           <TouchableOpacity
             style={[
@@ -89,7 +114,7 @@ export function PinStep({
 
           {onForgotPin && (
             <TouchableOpacity style={styles.forgotPinButton} onPress={onForgotPin}>
-              <Text style={styles.forgotPinText}>J'ai oublié mon PIN</Text>
+              <Text style={styles.forgotPinText}>{"J'ai oublié mon PIN"}</Text>
             </TouchableOpacity>
           )}
         </>
@@ -98,38 +123,12 @@ export function PinStep({
         <>
           <View style={styles.formSection}>
             <Text style={styles.inputLabel}>Mot de passe PIN</Text>
-            <View style={styles.pinInputWrapper}>
-              <Ionicons name="lock-closed" size={18} color={Colors.gray[500]} style={styles.pinInputIcon} />
-              <TextInput
-                ref={pinInputRef}
-                style={styles.pinInputField}
-                keyboardType="number-pad"
-                maxLength={4}
-                secureTextEntry
-                value={pin}
-                onChangeText={onPinChange}
-                placeholder="••••"
-                placeholderTextColor={Colors.gray[400]}
-              />
-            </View>
+            {renderPinInput(pin, pinInputRef, onPinChange, 'Nouveau code PIN à 4 chiffres')}
           </View>
 
           <View style={styles.formSection}>
             <Text style={styles.inputLabel}>Confirmer le mot de passe PIN</Text>
-            <View style={styles.pinInputWrapper}>
-              <Ionicons name="lock-closed" size={18} color={Colors.gray[500]} style={styles.pinInputIcon} />
-              <TextInput
-                ref={pinConfirmInputRef}
-                style={styles.pinInputField}
-                keyboardType="number-pad"
-                maxLength={4}
-                secureTextEntry
-                value={pinConfirm}
-                onChangeText={onPinConfirmChange}
-                placeholder="••••"
-                placeholderTextColor={Colors.gray[400]}
-              />
-            </View>
+            {renderPinInput(pinConfirm, pinConfirmInputRef, onPinConfirmChange, 'Confirmation du code PIN à 4 chiffres')}
           </View>
 
           <TouchableOpacity
@@ -148,4 +147,3 @@ export function PinStep({
     </Animated.View>
   );
 }
-

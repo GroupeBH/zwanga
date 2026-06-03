@@ -121,6 +121,9 @@ export const authStyles = StyleSheet.create({
   pinCodeContainer: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginVertical: 24 },
   pinInput: { width: 56, height: 64, borderWidth: 2, borderColor: '#D1D5DB', borderRadius: 16, textAlign: 'center', fontSize: 28, fontWeight: 'bold', color: Colors.gray[900], backgroundColor: '#F3F4F6' },
   pinInputFilled: { borderColor: Colors.secondary, backgroundColor: '#F0F9FF', borderWidth: 2.5 },
+  pinEntryContainer: { alignItems: 'center', justifyContent: 'center' },
+  pinHiddenInput: { position: 'absolute', width: 1, height: 1, opacity: 0 },
+  pinDot: { fontSize: 28, fontWeight: '800', color: Colors.gray[900], lineHeight: 60, textAlign: 'center' },
   
   pinInputWrapper: { 
     flexDirection: 'row', 
@@ -195,4 +198,3 @@ export const authStyles = StyleSheet.create({
   resendText: { fontSize: 14, color: Colors.gray[500] },
   resendLink: { fontSize: 14, fontWeight: '600', color: Colors.primary },
 });
-

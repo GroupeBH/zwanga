@@ -12,7 +12,7 @@
         "image": "latest"
       },
       "ios": {
-        "image": "macos-sequoia-15.6-xcode-16.4",
+        "image": "macos-sequoia-15.6-xcode-26.2",
         "simulator": false
       }
     },
@@ -24,7 +24,7 @@
         "image": "latest"
       },
       "ios": {
-        "image": "macos-sequoia-15.6-xcode-16.4",
+        "image": "macos-sequoia-15.6-xcode-26.2",
         "simulator": false
       },
       "env": {
