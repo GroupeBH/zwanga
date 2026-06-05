@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { API_BASE_URL } from '../../config/env';
 import { validateAndRefreshTokens } from '../../services/tokenRefresh';
 import { clearTokens, getTokens, storeTokens } from '../../services/tokenStorage';
-import { authApi } from '../api/authApi';
 import type { User } from '../../types';
 import { decodeJWT } from '../../utils/jwt';
 
@@ -39,9 +39,19 @@ export const performLogout = createAsyncThunk(
     // 1. Appeler le backend pour invalider le refresh token côté serveur
     // On ne bloque pas si ça échoue (l'utilisateur peut être offline)
     try {
-      await dispatch(authApi.endpoints.logout.initiate()).unwrap();
-      backendLogoutSucceeded = true;
-      console.log('[performLogout] Refresh token invalidé côté serveur');
+      const { accessToken } = await getTokens();
+      const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+      const response = await fetch(`${baseUrl}/auth/logout`, {
+        method: 'POST',
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+      });
+
+      if (response.ok) {
+        backendLogoutSucceeded = true;
+        console.log('[performLogout] Refresh token invalidé côté serveur');
+      } else {
+        console.warn(`[performLogout] Logout serveur refusé (HTTP ${response.status})`);
+      }
     } catch (backendError) {
       // Ignorer les erreurs backend (offline, token déjà invalide, etc.)
       console.warn('[performLogout] Impossible d\'invalider le token côté serveur:', backendError);
@@ -286,4 +296,3 @@ function applyTokenDataToState(state: AuthState, accessToken: string) {
   state.isAuthenticated = true;
   state.error = null;
 }
-

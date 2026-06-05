@@ -55,6 +55,26 @@ let hasTriedLoadingNotifee = false;
 
 type SocialAuthProvider = 'google' | 'apple';
 
+function getApiErrorMessage(error: any): string {
+  const errorData = error?.data;
+  if (typeof errorData === 'string') {
+    return errorData;
+  }
+  if (typeof errorData?.message === 'string') {
+    return errorData.message;
+  }
+  return typeof error?.message === 'string' ? error.message : '';
+}
+
+function shouldCompleteGoogleRegistration(error: any): boolean {
+  const message = getApiErrorMessage(error).toLowerCase();
+  const explicitlyRequestsRegistration =
+    /(phone|téléphone|telephone|numéro|numero)/i.test(message) ||
+    /(inscri|register|nouveau compte|new account|profil incomplet)/i.test(message);
+
+  return explicitlyRequestsRegistration && error?.status !== 'FETCH_ERROR';
+}
+
 function ensureAuthNotifeeLoaded() {
   if (hasTriedLoadingNotifee) {
     return;
@@ -318,8 +338,27 @@ export default function AuthScreen() {
       const result = await signInWithGoogle();
       setGoogleIdToken(result.idToken);
       setGoogleProfileName(result.name || result.email || 'Profil Google');
-      await googleMobile({ idToken: result.idToken }).unwrap();
-      await trackEvent('login_success', { method: 'google' });
+      setGoogleFirstName(result.givenName || null);
+      setGoogleLastName(result.familyName || null);
+      setGoogleEmail(result.email || null);
+
+      try {
+        await googleMobile({ idToken: result.idToken }).unwrap();
+        await trackEvent('login_success', { method: 'google' });
+      } catch (error: any) {
+        if (shouldCompleteGoogleRegistration(error)) {
+          setMode('signup');
+          setStep('phone');
+          setGoogleFlow('signup');
+          setGoogleSignupStep('phone');
+          setGooglePhone('');
+          setGoogleOtp(['', '', '', '', '']);
+          setIsGooglePhoneVerified(false);
+          await trackEvent('signup_started', { method: 'google', source: 'login' });
+          return;
+        }
+        throw error;
+      }
     } catch (error: any) {
       console.error('Google login error:', error);
       showDialog({
