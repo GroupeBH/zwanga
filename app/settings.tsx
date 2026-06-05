@@ -1,15 +1,20 @@
 import { IdentityVerification } from '@/components/IdentityVerification';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
+import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
+import { clearTokens } from '@/services/tokenStorage';
+import { baseApi } from '@/store/api/baseApi';
+import { useDeleteAccountMutation } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
-import { updateUser } from '@/store/slices/authSlice';
+import { logout, updateUser } from '@/store/slices/authSlice';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -17,6 +22,8 @@ export default function SettingsScreen() {
   const router = useRouter();
   const user = useAppSelector(selectUser);
   const dispatch = useAppDispatch();
+  const { showDialog, hideDialog } = useDialog();
+  const [deleteAccount, { isLoading: isDeletingAccount }] = useDeleteAccountMutation();
   const [showIdentityModal, setShowIdentityModal] = useState(false);
   const { changeProfilePhoto } = useProfilePhoto();
   const { shouldShow: shouldShowSettingsGuide, complete: completeSettingsGuide } =
@@ -57,6 +64,42 @@ export default function SettingsScreen() {
       dispatch(updateUser({ identityVerified: true }));
     }
     setShowIdentityModal(false);
+  };
+
+  const handleDeleteAccount = () => {
+    showDialog({
+      variant: 'danger',
+      title: 'Supprimer le compte',
+      message:
+        'Votre compte sera désactivé et vos données sensibles seront supprimées. Cette action est irréversible.',
+      actions: [
+        { label: 'Annuler', variant: 'ghost' },
+        {
+          label: 'Supprimer',
+          variant: 'primary',
+          autoClose: false,
+          onPress: async () => {
+            try {
+              await deleteAccount().unwrap();
+              hideDialog();
+              await clearTokens();
+              dispatch(logout());
+              dispatch(baseApi.util.resetApiState());
+              router.replace('/auth-entry');
+            } catch (error) {
+              showDialog({
+                variant: 'danger',
+                title: 'Suppression impossible',
+                message: getApiErrorMessage(
+                  error,
+                  'Impossible de supprimer le compte pour le moment.',
+                ),
+              });
+            }
+          },
+        },
+      ],
+    });
   };
 
   const accountItems = [
@@ -297,7 +340,7 @@ export default function SettingsScreen() {
         </Animated.View>
 
         {/* Aide & Support */}
-        <Animated.View entering={FadeInDown.delay(400)} style={[styles.section, { marginBottom: Spacing.xxl }]}>
+        <Animated.View entering={FadeInDown.delay(400)} style={styles.section}>
           <Text style={styles.sectionLabel}>AIDE & SUPPORT</Text>
           <TouchableOpacity
             style={styles.supportCard}
@@ -306,8 +349,27 @@ export default function SettingsScreen() {
             <View style={styles.supportIcon}>
               <Ionicons name="help-circle" size={20} color={Colors.primary} />
             </View>
-            <Text style={styles.menuText}>Centre d'aide</Text>
+            <Text style={styles.menuText}>Centre d&apos;aide</Text>
             <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+          </TouchableOpacity>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(500)} style={[styles.section, { marginBottom: Spacing.xxl }]}>
+          <Text style={styles.sectionLabel}>ZONE DANGEREUSE</Text>
+          <TouchableOpacity
+            style={[styles.supportCard, isDeletingAccount && styles.disabledMenuItem]}
+            onPress={handleDeleteAccount}
+            disabled={isDeletingAccount}
+          >
+            <View style={[styles.supportIcon, styles.menuIconDanger]}>
+              <Ionicons name="trash-outline" size={20} color={Colors.danger} />
+            </View>
+            <Text style={[styles.menuText, styles.dangerText]}>Supprimer mon compte</Text>
+            {isDeletingAccount ? (
+              <ActivityIndicator size="small" color={Colors.danger} />
+            ) : (
+              <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+            )}
           </TouchableOpacity>
         </Animated.View>
       </ScrollView>
@@ -324,7 +386,7 @@ export default function SettingsScreen() {
             <TouchableOpacity onPress={() => setShowIdentityModal(false)}>
               <Ionicons name="close" size={24} color={Colors.gray[800]} />
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>Vérification d'identité</Text>
+            <Text style={styles.modalTitle}>Vérification d&apos;identité</Text>
             <View style={{ width: 24 }} />
           </View>
           <IdentityVerification
@@ -456,11 +518,21 @@ const styles = StyleSheet.create({
   menuIconOrange: {
     backgroundColor: 'rgba(255, 107, 53, 0.1)',
   },
+  menuIconDanger: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+  },
   menuText: {
     flex: 1,
     color: Colors.gray[800],
     fontWeight: FontWeights.medium,
     fontSize: FontSizes.base,
+  },
+  dangerText: {
+    color: Colors.danger,
+    fontWeight: FontWeights.bold,
+  },
+  disabledMenuItem: {
+    opacity: 0.65,
   },
   menuValue: {
     color: Colors.gray[600],

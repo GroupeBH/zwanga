@@ -115,6 +115,23 @@ export const authStyles = StyleSheet.create({
     fontWeight: '600',
     color: '#000000',
   },
+  appleFallbackButton: {
+    marginTop: Spacing.sm,
+    height: 52,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#000000',
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+  },
+  appleFallbackButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000000',
+  },
   googleSignupCard: {
     marginTop: Spacing.lg,
     padding: Spacing.md,

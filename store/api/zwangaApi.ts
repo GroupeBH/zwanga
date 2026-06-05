@@ -48,6 +48,7 @@ export {
   useGetCurrentUserQuery,
   useGetUserByIdQuery,
   useUpdateUserMutation,
+  useDeleteAccountMutation,
   useUploadKycMutation,
   useGetKycStatusQuery
 } from './userApi';

@@ -33,8 +33,9 @@ export function PhoneStep({
   isAppleAvailable = false,
 }: PhoneStepProps) {
   const isPhoneValid = phone.length >= 10;
-  const showAppleAuth = Platform.OS === 'ios' && isAppleAvailable && onAppleAuth;
+  const showAppleAuth = Platform.OS === 'ios' && onAppleAuth;
   const isAnySocialLoading = isGoogleLoading || isAppleLoading;
+  const appleButtonLabel = mode === 'login' ? 'Continuer avec Apple' : 'S\'inscrire avec Apple';
   const appleButtonType =
     mode === 'login'
       ? AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN
@@ -117,6 +118,16 @@ export function PhoneStep({
               <ActivityIndicator color="#000000" />
               <Text style={styles.appleButtonLoadingText}>Connexion Apple...</Text>
             </View>
+          ) : !isAppleAvailable ? (
+            <TouchableOpacity
+              style={[styles.appleFallbackButton, isGoogleLoading && { opacity: 0.7 }]}
+              onPress={handleAppleAuthPress}
+              disabled={isAnySocialLoading}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="logo-apple" size={20} color="#000000" />
+              <Text style={styles.appleFallbackButtonText}>{appleButtonLabel}</Text>
+            </TouchableOpacity>
           ) : (
             <AppleAuthentication.AppleAuthenticationButton
               buttonType={appleButtonType}
