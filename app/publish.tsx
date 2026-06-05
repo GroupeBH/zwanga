@@ -43,7 +43,14 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 type PublishStep = 'route' | 'datetime' | 'vehicle' | 'pricing' | 'confirm';
 type LatLng = { latitude: number; longitude: number };
+type IosDateTimePickerProps = React.ComponentProps<typeof DateTimePicker> & {
+  locale?: string;
+  themeVariant?: 'dark' | 'light';
+  accentColor?: string;
+  textColor?: string;
+};
 const PUBLISH_STEP_ORDER: PublishStep[] = ['route', 'datetime', 'vehicle', 'pricing', 'confirm'];
+const IOSDateTimePicker = DateTimePicker as React.ComponentType<IosDateTimePickerProps>;
 const DEFAULT_PUBLISH_REGION: Region = {
   latitude: -4.441931,
   longitude: 15.266293,
@@ -433,6 +440,7 @@ export default function PublishScreen() {
   const [departureDateTime, setDepartureDateTime] = useState<Date | null>(null);
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
   const [iosPickerTarget, setIosPickerTarget] = useState<'departure' | 'recurringEndDate'>('departure');
+  const [iosPickerValue, setIosPickerValue] = useState<Date>(new Date());
   const [seats, setSeats] = useState('4');
   const [isFreeTrip, setIsFreeTrip] = useState(false);
   const [price, setPrice] = useState('');
@@ -645,26 +653,37 @@ export default function PublishScreen() {
         },
       });
     } else {
+      const value =
+        target === 'recurringEndDate'
+          ? recurringEndDate ?? departureDateTime ?? getBaseDateTime()
+          : getBaseDateTime();
+      setIosPickerValue(new Date(value));
       setIosPickerTarget(target);
       setIosPickerMode(mode);
     }
   };
 
   const handleIosPickerChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (!selectedDate || !iosPickerMode) {
+    if (!selectedDate) {
       return;
     }
+    setIosPickerValue(selectedDate);
+  };
 
+  const confirmIosPicker = () => {
+    if (!iosPickerMode) {
+      return;
+    }
     if (iosPickerTarget === 'recurringEndDate') {
-      const nextEndDate = new Date(selectedDate);
+      const nextEndDate = new Date(iosPickerValue);
       nextEndDate.setHours(0, 0, 0, 0);
       setRecurringEndDate(nextEndDate);
-      return;
+    } else {
+      setDepartureDateTime(
+        iosPickerMode === 'date' ? applyDatePart(iosPickerValue) : applyTimePart(iosPickerValue),
+      );
     }
-
-    setDepartureDateTime(
-      iosPickerMode === 'date' ? applyDatePart(selectedDate) : applyTimePart(selectedDate),
-    );
+    closeIosPicker();
   };
 
   const closeIosPicker = () => {
@@ -1658,31 +1677,6 @@ export default function PublishScreen() {
                   </View>
                 </TouchableOpacity>
               </View>
-              {Platform.OS === 'ios' && iosPickerMode && (
-                <View style={styles.iosPickerContainer}>
-                  <DateTimePicker
-                    value={
-                      iosPickerTarget === 'recurringEndDate'
-                        ? recurringEndDate ?? departureDateTime ?? getBaseDateTime()
-                        : getBaseDateTime()
-                    }
-                    mode={iosPickerMode}
-                    display="inline"
-                    minuteInterval={5}
-                    minimumDate={
-                      iosPickerMode === 'date'
-                        ? iosPickerTarget === 'recurringEndDate'
-                          ? departureDateTime ?? new Date()
-                          : new Date()
-                        : undefined
-                    }
-                    onChange={handleIosPickerChange}
-                  />
-                  <TouchableOpacity style={styles.iosPickerCloseButton} onPress={closeIosPicker}>
-                    <Text style={styles.iosPickerCloseText}>Terminé</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
             </View>
             <TouchableOpacity
               style={[styles.card, styles.recurringToggleCard]}
@@ -2247,6 +2241,85 @@ export default function PublishScreen() {
         onSelect={handleLocationSelected}
       />
 
+      <Modal
+        visible={Platform.OS === 'ios' && iosPickerMode !== null}
+        transparent
+        animationType="fade"
+        presentationStyle="overFullScreen"
+        onRequestClose={closeIosPicker}
+      >
+        <View style={styles.dateTimeModalOverlay}>
+          <TouchableOpacity
+            activeOpacity={1}
+            style={StyleSheet.absoluteFill}
+            onPress={closeIosPicker}
+            accessibilityLabel="Fermer le sélecteur"
+          />
+          <View style={styles.dateTimeModalCard}>
+            <View style={styles.dateTimeModalHeader}>
+              <View style={styles.dateTimeModalIcon}>
+                <Ionicons
+                  name={iosPickerMode === 'time' ? 'time' : 'calendar'}
+                  size={22}
+                  color={Colors.primary}
+                />
+              </View>
+              <View style={styles.dateTimeModalHeaderText}>
+                <Text style={styles.dateTimeModalTitle}>
+                  {iosPickerTarget === 'recurringEndDate'
+                    ? 'Date de fin'
+                    : iosPickerMode === 'time'
+                      ? 'Heure de départ'
+                      : 'Date de départ'}
+                </Text>
+                <Text style={styles.dateTimeModalSubtitle}>
+                  {iosPickerMode === 'time'
+                    ? 'Choisissez une heure précise'
+                    : 'Choisissez une date dans le calendrier'}
+                </Text>
+              </View>
+            </View>
+
+            {iosPickerMode && (
+              <IOSDateTimePicker
+                value={iosPickerValue}
+                mode={iosPickerMode}
+                display="spinner"
+                locale="fr-FR"
+                themeVariant="light"
+                accentColor={Colors.primary}
+                textColor={Colors.gray[900]}
+                minuteInterval={5}
+                minimumDate={
+                  iosPickerMode === 'date'
+                    ? iosPickerTarget === 'recurringEndDate'
+                      ? departureDateTime ?? new Date()
+                      : new Date()
+                    : undefined
+                }
+                onChange={handleIosPickerChange}
+                style={styles.dateTimeModalPicker}
+              />
+            )}
+
+            <View style={styles.dateTimeModalActions}>
+              <TouchableOpacity
+                style={[styles.dateTimeModalButton, styles.dateTimeModalCancelButton]}
+                onPress={closeIosPicker}
+              >
+                <Text style={styles.dateTimeModalCancelText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.dateTimeModalButton, styles.dateTimeModalConfirmButton]}
+                onPress={confirmIosPicker}
+              >
+                <Text style={styles.dateTimeModalConfirmText}>Confirmer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Driver Required Modal */}
       <Modal
         transparent
@@ -2750,21 +2823,86 @@ const styles = StyleSheet.create({
     marginTop: 2,
     flexShrink: 1,
   },
-  iosPickerContainer: {
-    marginTop: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.lg,
-    overflow: 'hidden',
-  },
-  iosPickerCloseButton: {
-    paddingVertical: Spacing.sm,
+  dateTimeModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
     alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.lg,
+  },
+  dateTimeModalCard: {
+    width: '100%',
+    maxWidth: 480,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xxl,
+    padding: Spacing.lg,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 12,
+  },
+  dateTimeModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingBottom: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[200],
+  },
+  dateTimeModalIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateTimeModalHeaderText: {
+    flex: 1,
+  },
+  dateTimeModalTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  dateTimeModalSubtitle: {
+    marginTop: 2,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  dateTimeModalPicker: {
+    alignSelf: 'stretch',
+    height: 220,
+  },
+  dateTimeModalActions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    paddingTop: Spacing.md,
     borderTopWidth: 1,
     borderTopColor: Colors.gray[200],
   },
-  iosPickerCloseText: {
-    color: Colors.primary,
+  dateTimeModalButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: BorderRadius.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateTimeModalCancelButton: {
+    backgroundColor: Colors.gray[100],
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+  },
+  dateTimeModalConfirmButton: {
+    backgroundColor: Colors.primary,
+  },
+  dateTimeModalCancelText: {
+    color: Colors.gray[700],
+    fontWeight: FontWeights.semibold,
+  },
+  dateTimeModalConfirmText: {
+    color: Colors.white,
     fontWeight: FontWeights.bold,
   },
   recurringSectionTitle: {
