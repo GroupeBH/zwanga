@@ -23,7 +23,7 @@ import Animated, {
   useSharedValue,
   withSpring,
   withTiming,
-} from 'react-native-reanimated';
+} from '@/utils/reanimated';
 
 
 export type MapLocationSelection = {

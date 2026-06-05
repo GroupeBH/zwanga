@@ -1,7 +1,7 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { LayoutAnimationConfig, ReduceMotion, ReducedMotionConfig } from 'react-native-reanimated';
+import { LayoutAnimationConfig, ReduceMotion, ReducedMotionConfig } from '@/utils/reanimated';
 import { Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -61,7 +61,6 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <ReducedMotionConfig mode={isAndroid ? ReduceMotion.Always : ReduceMotion.System} />
       {isAndroid ? (
         <LayoutAnimationConfig skipEntering skipExiting>
           {appTree}

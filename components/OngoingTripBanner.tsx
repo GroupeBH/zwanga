@@ -20,7 +20,7 @@ import Animated, {
   useSharedValue,
   withSpring,
   withTiming
-} from 'react-native-reanimated';
+} from '@/utils/reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export type OngoingTripBannerPosition = 'top' | 'bottom';

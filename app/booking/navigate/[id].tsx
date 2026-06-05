@@ -23,7 +23,7 @@ import {
   View,
 } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeInUp } from '@/utils/reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Fonction pour decoder les polylines Google

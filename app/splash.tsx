@@ -9,7 +9,7 @@ import Animated, {
   useSharedValue,
   withDelay,
   withTiming,
-} from 'react-native-reanimated';
+} from '@/utils/reanimated';
 
 const BACKGROUND_DISCLOSURE_KEY = 'hasSeenBackgroundLocationDisclosure';
 

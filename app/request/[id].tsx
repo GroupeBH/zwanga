@@ -46,7 +46,7 @@ import {
 } from 'react-native';
 import type { LatLng, Region } from 'react-native-maps';
 import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type RequestRouteMapData = {
