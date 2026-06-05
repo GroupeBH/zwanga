@@ -61,7 +61,6 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <ReducedMotionConfig mode={isAndroid ? ReduceMotion.Always : ReduceMotion.System} />
       {isAndroid ? (
         <LayoutAnimationConfig skipEntering skipExiting>
           {appTree}

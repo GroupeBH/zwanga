@@ -15,7 +15,6 @@ type AnalyticsUser = {
 type FirebaseAnalyticsInstance = {
   setAnalyticsCollectionEnabled(enabled: boolean): Promise<void>;
   logEvent(name: string, params?: Record<string, string | number>): Promise<void>;
-  logScreenView(params: { screen_name: string; screen_class?: string }): Promise<void>;
   setUserId(id: string | null): Promise<void>;
   setUserProperties(properties: Record<string, string | null>): Promise<void>;
 };
@@ -81,10 +80,6 @@ function getFirebaseAnalytics(): FirebaseAnalyticsInstance | null {
         name: string,
         params?: Record<string, string | number>,
       ) => Promise<void>;
-      logScreenView: (
-        analytics: unknown,
-        params: { screen_name: string; screen_class?: string },
-      ) => Promise<void>;
       setUserId: (analytics: unknown, id: string | null) => Promise<void>;
       setUserProperties: (
         analytics: unknown,
@@ -100,9 +95,6 @@ function getFirebaseAnalytics(): FirebaseAnalyticsInstance | null {
       },
       logEvent(name, params) {
         return analyticsModule.logEvent(firebaseAnalytics, name, params);
-      },
-      logScreenView(params) {
-        return analyticsModule.logScreenView(firebaseAnalytics, params);
       },
       setUserId(id) {
         return analyticsModule.setUserId(firebaseAnalytics, id);
@@ -171,7 +163,10 @@ function sanitizeParams(params?: AnalyticsParams): Record<string, string | numbe
 
   const sanitizedEntries = Object.entries(params)
     .map(([key, value]) => [sanitizeKey(key), sanitizeValue(value)] as const)
-    .filter(([key, value]) => Boolean(key) && value !== null);
+    .filter(
+      (entry): entry is readonly [string, string | number] =>
+        Boolean(entry[0]) && entry[1] !== null,
+    );
 
   if (sanitizedEntries.length === 0) {
     return undefined;
@@ -295,7 +290,7 @@ export async function trackScreen(pathname: string) {
   const metaSdk = getMetaSdk();
 
   try {
-    await firebaseAnalytics?.logScreenView({
+    await firebaseAnalytics?.logEvent('screen_view', {
       screen_name: screenName,
       screen_class: screenName,
     });

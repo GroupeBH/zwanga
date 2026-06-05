@@ -81,6 +81,10 @@ export async function validateAndRefreshTokens(): Promise<boolean> {
     }
 
     const latestTokens = await getTokens();
+    if (!latestTokens.accessToken && !latestTokens.refreshToken) {
+      return false;
+    }
+
     if (
       latestTokens.accessToken &&
       latestTokens.refreshToken &&
@@ -269,6 +273,10 @@ export async function proactiveTokenRefresh(): Promise<boolean> {
       }
 
       const latestTokens = await getTokens();
+      if (!latestTokens.accessToken && !latestTokens.refreshToken) {
+        return false;
+      }
+
       const hasValidLocalSession =
         !!latestTokens.accessToken &&
         !!latestTokens.refreshToken &&
@@ -324,6 +332,11 @@ export async function handle401Error(): Promise<boolean> {
   }
 
   const latestTokens = await getTokens();
+  if (!latestTokens.accessToken && !latestTokens.refreshToken) {
+    console.log('[handle401Error] Session already cleared after refresh failure');
+    return false;
+  }
+
   if (
     !latestTokens.accessToken ||
     !latestTokens.refreshToken ||

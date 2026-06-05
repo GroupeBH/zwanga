@@ -58,6 +58,11 @@ export async function signInWithApple(): Promise<AppleAuthResult> {
     if (error?.code === 'ERR_REQUEST_CANCELED') {
       throw new Error('Connexion annulée par l\'utilisateur');
     }
+    if (error?.code === 'ERR_REQUEST_UNKNOWN') {
+      throw new Error(
+        'Connexion Apple indisponible. Sur simulateur, connectez un compte Apple dans Réglages et utilisez un build signé avec la capacité Sign in with Apple.',
+      );
+    }
     throw error;
   }
 }
