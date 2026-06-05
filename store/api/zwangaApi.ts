@@ -39,6 +39,7 @@ export {
   useVerifyKYCMutation,
   useVerifyPhoneMutation,
   useGoogleMobileMutation,
+  useAppleMobileMutation,
 } from './authApi';
 
 export {

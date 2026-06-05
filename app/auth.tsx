@@ -2,9 +2,10 @@ import { KycCaptureResult, KycWizardModal } from '@/components/KycWizardModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { isSignupOtpVerificationEnabled } from '@/config/env';
 import { trackEvent } from '@/services/analytics';
+import { isAppleSignInAvailable, signInWithApple } from '@/services/appleAuth';
 import { configureGoogleSignIn, signInWithGoogle } from '@/services/googleAuth';
 import { useSendPhoneVerificationOtpMutation, useUploadKycMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
-import { useGoogleMobileMutation, useLoginMutation, useRegisterMutation } from '@/store/api/zwangaApi';
+import { useAppleMobileMutation, useGoogleMobileMutation, useLoginMutation, useRegisterMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated } from '@/store/selectors';
 import { saveTokensAndUpdateState } from '@/store/slices/authSlice';
@@ -51,6 +52,8 @@ type AndroidImportanceEnum = NotifeeModule['AndroidImportance'];
 let notifeeInstance: NotifeeDefault | null = null;
 let androidImportanceEnum: AndroidImportanceEnum | undefined;
 let hasTriedLoadingNotifee = false;
+
+type SocialAuthProvider = 'google' | 'apple';
 
 function ensureAuthNotifeeLoaded() {
   if (hasTriedLoadingNotifee) {
@@ -134,11 +137,16 @@ export default function AuthScreen() {
   const [googleFlow, setGoogleFlow] = useState<'login' | 'signup' | null>(null);
   const [googleSignupStep, setGoogleSignupStep] = useState<'phone' | 'otp' | 'profile'>('phone');
   const [isGooglePhoneVerified, setIsGooglePhoneVerified] = useState(false);
+  const [socialProvider, setSocialProvider] = useState<SocialAuthProvider | null>(null);
+  const [appleNonce, setAppleNonce] = useState<string | null>(null);
+  const [isAppleAvailable, setIsAppleAvailable] = useState(false);
+  const [isAppleLoading, setIsAppleLoading] = useState(false);
 
   // ============ API HOOKS ============
   const [login, { isLoading: isLoggingIn }] = useLoginMutation();
   const [register, { isLoading: isRegistering }] = useRegisterMutation();
   const [googleMobile, { isLoading: isGoogleMobileLoading }] = useGoogleMobileMutation();
+  const [appleMobile, { isLoading: isAppleMobileLoading }] = useAppleMobileMutation();
   const [uploadKyc] = useUploadKycMutation();
   const [sendPhoneVerificationOtp, { isLoading: isSendingOtpMutation }] = useSendPhoneVerificationOtpMutation();
   const [verifyPhoneOtp, { isLoading: isVerifyingOtp }] = useVerifyPhoneOtpMutation();
@@ -165,6 +173,26 @@ export default function AuthScreen() {
   // ============ EFFECTS ============
   useEffect(() => {
     configureGoogleSignIn();
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    isAppleSignInAvailable()
+      .then((available) => {
+        if (isMounted) {
+          setIsAppleAvailable(available);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setIsAppleAvailable(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const cancelPendingFocus = useCallback(() => {
@@ -272,6 +300,9 @@ export default function AuthScreen() {
     setGoogleFlow(null);
     setGoogleSignupStep('phone');
     setIsGooglePhoneVerified(false);
+    setSocialProvider(null);
+    setAppleNonce(null);
+    setIsAppleLoading(false);
   };
 
   const handleModeChange = (newMode: AuthMode) => {
@@ -283,6 +314,7 @@ export default function AuthScreen() {
   const handleGoogleLogin = async () => {
     try {
       setGoogleFlow('login');
+      setSocialProvider('google');
       const result = await signInWithGoogle();
       setGoogleIdToken(result.idToken);
       setGoogleProfileName(result.name || result.email || 'Profil Google');
@@ -296,12 +328,14 @@ export default function AuthScreen() {
         message: error?.data?.message || error?.message || 'Connexion Google impossible',
       });
       setGoogleFlow(null);
+      setSocialProvider(null);
     }
   };
 
   const handleGoogleSignupStart = async () => {
     try {
       setGoogleFlow('signup');
+      setSocialProvider('google');
       const result = await signInWithGoogle();
       setGoogleIdToken(result.idToken);
       setGoogleProfileName(result.name || result.email || 'Profil Google');
@@ -316,6 +350,66 @@ export default function AuthScreen() {
         message: error?.data?.message || error?.message || 'Inscription Google impossible',
       });
       setGoogleFlow(null);
+      setSocialProvider(null);
+    }
+  };
+
+  const handleAppleLogin = async () => {
+    try {
+      setIsAppleLoading(true);
+      setGoogleFlow('login');
+      setSocialProvider('apple');
+      const result = await signInWithApple();
+      setGoogleIdToken(result.identityToken);
+      setGoogleProfileName(result.name || result.email || 'Profil Apple');
+      setGoogleFirstName(result.givenName || null);
+      setGoogleLastName(result.familyName || null);
+      setGoogleEmail(result.email || null);
+      setAppleNonce(result.nonce);
+      await appleMobile({
+        idToken: result.identityToken,
+        firstName: result.givenName,
+        lastName: result.familyName,
+        nonce: result.nonce,
+      }).unwrap();
+      await trackEvent('login_success', { method: 'apple' });
+    } catch (error: any) {
+      console.error('Apple login error:', error);
+      showDialog({
+        variant: 'danger',
+        title: 'Connexion Apple',
+        message: error?.data?.message || error?.message || 'Connexion Apple impossible',
+      });
+      setGoogleFlow(null);
+      setSocialProvider(null);
+    } finally {
+      setIsAppleLoading(false);
+    }
+  };
+
+  const handleAppleSignupStart = async () => {
+    try {
+      setIsAppleLoading(true);
+      setGoogleFlow('signup');
+      setSocialProvider('apple');
+      const result = await signInWithApple();
+      setGoogleIdToken(result.identityToken);
+      setGoogleProfileName(result.name || result.email || 'Profil Apple');
+      setGoogleFirstName(result.givenName || null);
+      setGoogleLastName(result.familyName || null);
+      setGoogleEmail(result.email || null);
+      setAppleNonce(result.nonce);
+    } catch (error: any) {
+      console.error('Apple signup error:', error);
+      showDialog({
+        variant: 'danger',
+        title: 'Inscription Apple',
+        message: error?.data?.message || error?.message || 'Inscription Apple impossible',
+      });
+      setGoogleFlow(null);
+      setSocialProvider(null);
+    } finally {
+      setIsAppleLoading(false);
     }
   };
 
@@ -371,11 +465,13 @@ export default function AuthScreen() {
     setGoogleIdToken(null);
     setGoogleProfileName(null);
     setGooglePhone('');
+    setSocialProvider(null);
+    setAppleNonce(null);
   };
 
   const handleVerifyGoogleOtpAndContinue = async () => {
     if (!googleIdToken) {
-      showDialog({ variant: 'danger', title: 'Token manquant', message: 'Veuillez relancer la connexion Google.' });
+      showDialog({ variant: 'danger', title: 'Token manquant', message: 'Veuillez relancer la connexion sociale.' });
       return;
     }
     const code = googleOtp.join('');
@@ -720,7 +816,26 @@ export default function AuthScreen() {
       const requiresVehicle = role === 'driver';
       
       if (googleIdToken && isGooglePhoneVerified) {
-        const result = await googleMobile({ idToken: googleIdToken, phone }).unwrap();
+        const authMethod = socialProvider ?? 'google';
+        const result = authMethod === 'apple'
+          ? await appleMobile({
+              idToken: googleIdToken,
+              phone,
+              firstName: firstName.trim() || googleFirstName || undefined,
+              lastName: lastName.trim() || googleLastName || undefined,
+              nonce: appleNonce ?? undefined,
+              role,
+              isDriver: requiresVehicle,
+              vehicle: requiresVehicle
+                ? {
+                    brand: vehicleBrand.trim(),
+                    model: vehicleModel.trim(),
+                    color: vehicleColor.trim(),
+                    licensePlate: vehiclePlate.trim(),
+                  }
+                : undefined,
+            }).unwrap()
+          : await googleMobile({ idToken: googleIdToken, phone }).unwrap();
         await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
         
         if (requiresVehicle && kycFiles) {
@@ -728,14 +843,14 @@ export default function AuthScreen() {
           await uploadKyc(buildKycFormData(kycFiles)).unwrap();
           await trackEvent('kyc_completed', {
             source_screen: 'auth',
-            method: 'google',
+            method: authMethod,
             role,
           });
         }
 
         await triggerSignupSuccessNotification(firstName || googleProfileName || undefined);
         await trackEvent('signup_completed', {
-          method: 'google',
+          method: authMethod,
           role,
           is_driver: requiresVehicle,
         });
@@ -748,6 +863,8 @@ export default function AuthScreen() {
         setGoogleOtp(['', '', '', '', '']);
         setGoogleFlow(null);
         setIsGooglePhoneVerified(false);
+        setSocialProvider(null);
+        setAppleNonce(null);
         return;
       }
       
@@ -800,6 +917,7 @@ export default function AuthScreen() {
   // ============ RENDER ============
   const isGoogleSignupActive = googleFlow === 'signup' && googleIdToken;
   const showPhoneStep = step === 'phone' && !isGoogleSignupActive;
+  const isAppleAuthLoading = isAppleLoading || isAppleMobileLoading;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -831,8 +949,11 @@ export default function AuthScreen() {
               onPhoneChange={setPhone}
               onSubmit={handlePhoneSubmit}
               onGoogleAuth={mode === 'login' ? handleGoogleLogin : handleGoogleSignupStart}
+              onAppleAuth={mode === 'login' ? handleAppleLogin : handleAppleSignupStart}
               isLoading={isSendingOtpMutation}
               isGoogleLoading={isGoogleMobileLoading || isSendingGoogleOtp || isVerifyingGoogleOtp}
+              isAppleLoading={isAppleAuthLoading}
+              isAppleAvailable={isAppleAvailable}
             />
           )}
 
@@ -840,6 +961,7 @@ export default function AuthScreen() {
           {isGoogleSignupActive && googleSignupStep === 'phone' && (
             <GooglePhoneStep
               profileName={googleProfileName}
+              provider={socialProvider ?? 'google'}
               phone={googlePhone}
               onPhoneChange={setGooglePhone}
               onSubmit={handleSendGoogleOtp}

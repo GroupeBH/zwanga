@@ -52,6 +52,7 @@ module.exports = {
       bundleIdentifier: "com.biso.zwanga",
       buildNumber: "3",
       supportsTablet: true,
+      usesAppleSignIn: true,
       googleServicesFile: './GoogleService-Info.plist',
       config: {
         googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
@@ -154,6 +155,7 @@ module.exports = {
 
     plugins: [
       'expo-router',
+      'expo-apple-authentication',
       '@react-native-firebase/app',
       'expo-maps',
       [
