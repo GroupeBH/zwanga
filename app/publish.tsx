@@ -157,9 +157,22 @@ export default function PublishScreen() {
   const [kycBackImage, setKycBackImage] = useState<string | null>(null);
   const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
   const [kycSubmitting, setKycSubmitting] = useState(false);
+  const [kycApprovedInForm, setKycApprovedInForm] = useState(false);
 
-  const { refetch: refetchKycStatus } = useGetKycStatusQuery();
+  const { data: kycStatusData, refetch: refetchKycStatus } = useGetKycStatusQuery();
   const [uploadKyc, { isLoading: uploadingKyc }] = useUploadKycMutation();
+  const isPublishIdentityVerified =
+    isIdentityVerified || kycApprovedInForm || kycStatusData?.status === 'approved';
+
+  useEffect(() => {
+    if (kycStatusData?.status !== 'approved') {
+      return;
+    }
+
+    setKycApprovedInForm(true);
+    setKycModalVisible(false);
+    setKycWizardVisible(false);
+  }, [kycStatusData?.status]);
 
   const openKycModal = () => setKycModalVisible(true);
   const closeKycModal = () => {
@@ -223,18 +236,23 @@ export default function PublishScreen() {
       setKycModalVisible(false);
 
       // Refetch immédiatement pour obtenir le statut mis à jour
-      await refetchKycStatus();
+      const refreshedKycStatus = await refetchKycStatus();
 
       // Vérifier le statut retourné par le backend
-      const kycStatusAfterUpload = result?.status;
+      const kycStatusAfterUpload = result?.status ?? refreshedKycStatus.data?.status;
 
       if (kycStatusAfterUpload === 'approved') {
+        setKycApprovedInForm(true);
+        setKycWizardVisible(false);
         // KYC approuvé immédiatement (validation automatique réussie)
         showDialog({
           variant: 'success',
           title: 'KYC validé avec succès !',
           message: 'Votre identité a été vérifiée automatiquement. Vous pouvez maintenant publier vos trajets.',
         });
+        if (step === 'route' && hasDepartureAddress && hasArrivalAddress) {
+          goToStep('datetime');
+        }
       } else if (kycStatusAfterUpload === 'rejected') {
         // KYC rejeté (validation automatique échouée)
         const rejectionReason = result?.rejectionReason || 'Votre demande KYC a été rejetée.';
@@ -942,7 +960,7 @@ export default function PublishScreen() {
         });
         return;
       }
-      if (!isIdentityVerified) {
+      if (!isPublishIdentityVerified) {
         openKycModal();
         return;
       }
@@ -1054,7 +1072,7 @@ export default function PublishScreen() {
       return;
     }
 
-    if (!isIdentityVerified) {
+    if (!isPublishIdentityVerified) {
       openKycModal();
       return;
     }
@@ -1190,17 +1208,17 @@ export default function PublishScreen() {
     step === 'route'
       ? !hasDepartureAddress || !hasArrivalAddress || isManualAddressGeocoding
       : step === 'confirm'
-        ? isSubmittingTrip || !isIdentityVerified || isManualAddressGeocoding
+        ? isSubmittingTrip || !isPublishIdentityVerified || isManualAddressGeocoding
         : false;
 
   const footerPrimaryLabel = (() => {
     if (step === 'route') {
-      if (!hasDepartureAddress) return 'Indiquez le dÃ©part';
-      if (!hasArrivalAddress) return "Indiquez l'arrivÃ©e";
+      if (!hasDepartureAddress) return 'Indiquez le départ';
+      if (!hasArrivalAddress) return "Indiquez l'arrivée";
       return 'Continuer';
     }
     if (step === 'confirm') {
-      if (!isIdentityVerified) return 'KYC requis';
+      if (!isPublishIdentityVerified) return 'KYC requis';
       return isRecurringTrip ? 'Publier les trajets' : 'Publier';
     }
     return 'Continuer';
@@ -1587,7 +1605,7 @@ export default function PublishScreen() {
             </View>
 
             {/* KYC Warning si non vérifié */}
-            {!isIdentityVerified && (
+            {!isPublishIdentityVerified && (
               <TouchableOpacity
                 style={styles.inlineKycBanner}
                 onPress={handleStartKyc}
@@ -2154,16 +2172,16 @@ export default function PublishScreen() {
                 style={[
                   styles.button,
                   { flex: 1, marginLeft: Spacing.md },
-                  (isSubmittingTrip || !isIdentityVerified) && styles.buttonDisabled,
+                  (isSubmittingTrip || !isPublishIdentityVerified) && styles.buttonDisabled,
                 ]}
                 onPress={handlePublish}
-                disabled={isSubmittingTrip || !isIdentityVerified}
+                disabled={isSubmittingTrip || !isPublishIdentityVerified}
               >
                 {isSubmittingTrip ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
                   <Text style={styles.buttonText}>
-                    {isIdentityVerified
+                    {isPublishIdentityVerified
                       ? isRecurringTrip
                         ? 'Publier les trajets'
                         : 'Publier'

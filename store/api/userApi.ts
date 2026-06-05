@@ -160,6 +160,18 @@ export const userApi = baseApi.injectEndpoints({
       invalidatesTags: ['User'],
     }),
 
+    deleteAccount: builder.mutation<{ message: string }, void>({
+      query: () => ({
+        url: '/users/me',
+        method: 'DELETE',
+      }),
+      async onQueryStarted(_arg, { queryFulfilled }) {
+        await queryFulfilled;
+        await AsyncStorage.removeItem(FAVORITE_LOCATION_NOTES_KEY);
+      },
+      invalidatesTags: ['User', 'KycStatus', 'Vehicle', 'FavoriteLocations'],
+    }),
+
     getUserById: builder.query<User, string>({
       query: (id: string) => `/users/${id}`,
       providesTags: (_result: User | undefined, _error: unknown, id: string) => [{ type: 'User', id }],
@@ -463,6 +475,7 @@ export const {
   useGetProfileSummaryQuery,
   useGetCurrentUserQuery,
   useUpdateUserMutation,
+  useDeleteAccountMutation,
   useGetUserByIdQuery,
   useGetPublicUserInfoQuery,
   useUploadKycMutation,

@@ -144,6 +144,57 @@ export const authApi = baseApi.injectEndpoints({
       invalidatesTags: ['User'],
     }),
 
+    // Apple mobile (login ou signup)
+    appleMobile: builder.mutation<AuthResponse, {
+      idToken: string;
+      phone?: string;
+      firstName?: string;
+      lastName?: string;
+      nonce?: string;
+      role?: 'driver' | 'passenger';
+      isDriver?: boolean;
+      vehicle?: {
+        brand: string;
+        model: string;
+        color: string;
+        licensePlate: string;
+      };
+    }>({
+      query: (body) => ({
+        url: '/auth/apple/mobile',
+        method: 'POST',
+        body,
+      }),
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data } = await queryFulfilled;
+
+          console.log('[authApi] Apple mobile success - Saving tokens in SecureStore then updating state...');
+
+          await dispatch(saveTokensAndUpdateState({
+            accessToken: data.accessToken,
+            refreshToken: data.refreshToken
+          })).unwrap();
+
+          console.log('[authApi] Tokens saved and state updated successfully');
+
+          if (!data.user) {
+            const userResult = await dispatch(
+              userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true }),
+            );
+            if (userResult.data) {
+              dispatch(setUser(userResult.data));
+            }
+          } else {
+            dispatch(setUser(data.user));
+          }
+        } catch (error) {
+          console.error('[authApi] Erreur lors du login Apple mobile:', error);
+        }
+      },
+      invalidatesTags: ['User'],
+    }),
+
     // Vérification du numéro de téléphone avec code SMS
     verifyPhone: builder.mutation<{ verified: boolean }, { phone: string; code: string }>({
       query: (data: { phone: string; code: string }) => ({
@@ -239,7 +290,6 @@ export const {
   useVerifyKYCMutation,
   useRefreshTokenMutation,
   useGoogleMobileMutation,
+  useAppleMobileMutation,
   useLogoutMutation,
 } = authApi;
-
-

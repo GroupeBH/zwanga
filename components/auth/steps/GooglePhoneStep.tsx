@@ -7,6 +7,7 @@ import { authStyles as styles } from '../styles';
 
 interface GooglePhoneStepProps {
   profileName: string | null;
+  provider?: 'google' | 'apple';
   phone: string;
   onPhoneChange: (phone: string) => void;
   onSubmit: () => void;
@@ -17,6 +18,7 @@ interface GooglePhoneStepProps {
 
 export function GooglePhoneStep({
   profileName,
+  provider = 'google',
   phone,
   onPhoneChange,
   onSubmit,
@@ -25,6 +27,9 @@ export function GooglePhoneStep({
   submitLabel = 'Recevoir le code',
 }: GooglePhoneStepProps) {
   const isPhoneValid = phone.length >= 10;
+  const providerName = provider === 'apple' ? 'Apple' : 'Google';
+  const providerIcon = provider === 'apple' ? 'logo-apple' : 'logo-google';
+  const providerColor = provider === 'apple' ? '#111827' : '#4285F4';
 
   return (
     <Animated.View
@@ -34,10 +39,10 @@ export function GooglePhoneStep({
       style={styles.stepContainer}
     >
       <View style={styles.heroSection}>
-        <View style={[styles.logoContainer, { backgroundColor: '#4285F420' }]}>
-          <Ionicons name="logo-google" size={40} color="#4285F4" />
+        <View style={[styles.logoContainer, { backgroundColor: `${providerColor}20` }]}>
+          <Ionicons name={providerIcon} size={40} color={providerColor} />
         </View>
-        <Text style={styles.heroTitle}>Inscription Google</Text>
+        <Text style={styles.heroTitle}>Inscription {providerName}</Text>
         <Text style={styles.heroSubtitle}>
           {profileName ? `Bienvenue ${profileName} !` : 'Connectez votre numéro de téléphone'}
         </Text>

@@ -39,6 +39,7 @@ export {
   useVerifyKYCMutation,
   useVerifyPhoneMutation,
   useGoogleMobileMutation,
+  useAppleMobileMutation,
 } from './authApi';
 
 export {
@@ -47,6 +48,7 @@ export {
   useGetCurrentUserQuery,
   useGetUserByIdQuery,
   useUpdateUserMutation,
+  useDeleteAccountMutation,
   useUploadKycMutation,
   useGetKycStatusQuery
 } from './userApi';
