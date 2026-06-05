@@ -55,7 +55,7 @@ import Animated, {
   useSharedValue,
   withRepeat,
   withTiming,
-} from 'react-native-reanimated';
+} from '@/utils/reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const pointToLatLng = (point?: GeoPoint | null) => {

@@ -4,7 +4,7 @@ import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, FontSizes, FontWeights, CommonStyles } from '@/constants/styles';
-import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeOutUp } from '@/utils/reanimated';
 import { useDialog } from '@/components/ui/DialogProvider';
 
 type VerificationStep = 'idCard' | 'face' | 'completed';
@@ -172,9 +172,9 @@ export function IdentityVerification({ onComplete, onSkip, canSkip = true }: Ide
           <View style={[styles.iconCircle, styles.iconCircleBlue]}>
             <Ionicons name="id-card" size={48} color={Colors.info} />
           </View>
-          <Text style={styles.stepTitle}>Scanner votre carte d'identité</Text>
+          <Text style={styles.stepTitle}>Scanner votre carte d&apos;identité</Text>
           <Text style={styles.stepSubtitle}>
-            Prenez une photo claire de votre carte d'identité nationale
+            Prenez une photo claire de votre carte d&apos;identité nationale
           </Text>
         </View>
 
@@ -196,7 +196,7 @@ export function IdentityVerification({ onComplete, onSkip, canSkip = true }: Ide
         ) : (
           <TouchableOpacity style={styles.scanButton} onPress={handleScanIdCard}>
             <Ionicons name="camera" size={32} color={Colors.white} />
-            <Text style={styles.scanButtonText}>Scanner la carte d'identité</Text>
+            <Text style={styles.scanButtonText}>Scanner la carte d&apos;identité</Text>
           </TouchableOpacity>
         )}
 

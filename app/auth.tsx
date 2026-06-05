@@ -2,8 +2,8 @@ import { KycCaptureResult, KycWizardModal } from '@/components/KycWizardModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { isSignupOtpVerificationEnabled } from '@/config/env';
 import { trackEvent } from '@/services/analytics';
-import { isAppleSignInAvailable, signInWithApple } from '@/services/appleAuth';
-import { configureGoogleSignIn, signInWithGoogle } from '@/services/googleAuth';
+import { isAppleSignInAvailable, signInWithApple, type AppleAuthResult } from '@/services/appleAuth';
+import { configureGoogleSignIn, signInWithGoogle, type GoogleAuthResult } from '@/services/googleAuth';
 import { useSendPhoneVerificationOtpMutation, useUploadKycMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
 import { useAppleMobileMutation, useGoogleMobileMutation, useLoginMutation, useRegisterMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -54,6 +54,61 @@ let androidImportanceEnum: AndroidImportanceEnum | undefined;
 let hasTriedLoadingNotifee = false;
 
 type SocialAuthProvider = 'google' | 'apple';
+
+type SocialSignupSeed = {
+  provider: SocialAuthProvider;
+  idToken: string;
+  profileName: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  nonce?: string | null;
+};
+
+const getAuthErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === 'string' && error.trim()) {
+    return error;
+  }
+
+  if (!error || typeof error !== 'object') {
+    return fallback;
+  }
+
+  const authError = error as {
+    data?: { message?: unknown; error?: unknown };
+    message?: unknown;
+    error?: unknown;
+  };
+  const rawMessage =
+    authError.data?.message ??
+    authError.data?.error ??
+    authError.message ??
+    authError.error;
+
+  if (Array.isArray(rawMessage)) {
+    return rawMessage.filter((item): item is string => typeof item === 'string').join('\n') || fallback;
+  }
+
+  if (typeof rawMessage === 'string' && rawMessage.trim()) {
+    return rawMessage;
+  }
+
+  return fallback;
+};
+
+const normalizeAuthErrorMessage = (message: string) =>
+  message.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+const isSocialSignupRequiredError = (error: unknown, provider: SocialAuthProvider) => {
+  const message = normalizeAuthErrorMessage(getAuthErrorMessage(error, ''));
+
+  return (
+    message.includes(provider) &&
+    message.includes('telephone') &&
+    message.includes('inscription') &&
+    (message.includes('premiere') || message.includes('requis'))
+  );
+};
 
 function ensureAuthNotifeeLoaded() {
   if (hasTriedLoadingNotifee) {
@@ -310,22 +365,84 @@ export default function AuthScreen() {
     resetForm();
   };
 
+  const continueSocialSignupFromLogin = (seed: SocialSignupSeed) => {
+    const reusablePhone = phone.trim();
+
+    setMode('signup');
+    setStep('phone');
+    setPhone('');
+    setSmsCode(['', '', '', '', '']);
+    setPin('');
+    setPinConfirm('');
+    setResetPinStep('otp');
+    setResetOtpCode(['', '', '', '', '']);
+    setResetNewPin('');
+    setResetNewPinConfirm('');
+    setFirstName(seed.firstName ?? '');
+    setLastName(seed.lastName ?? '');
+    setEmail(seed.email ?? '');
+    setRole('passenger');
+    setProfilePicture(null);
+    setVehicleType(null);
+    setVehicleBrand('');
+    setVehicleModel('');
+    setVehicleColor('');
+    setVehiclePlate('');
+    setVehicleModalVisible(false);
+    setKycFiles(null);
+    setIsSendingOtp(false);
+    setGoogleIdToken(seed.idToken);
+    setGoogleProfileName(seed.profileName);
+    setGoogleFirstName(seed.firstName ?? null);
+    setGoogleLastName(seed.lastName ?? null);
+    setGoogleEmail(seed.email ?? null);
+    setGooglePhone(reusablePhone.length >= 10 ? reusablePhone : '');
+    setGoogleOtp(['', '', '', '', '']);
+    setGoogleFlow('signup');
+    setGoogleSignupStep('phone');
+    setIsGooglePhoneVerified(false);
+    setSocialProvider(seed.provider);
+    setAppleNonce(seed.provider === 'apple' ? seed.nonce ?? null : null);
+    void trackEvent('social_signup_redirected_from_login', {
+      method: seed.provider,
+    }).catch((error) => {
+      console.warn('Social signup redirect analytics error:', error);
+    });
+  };
+
   // Google Handlers
   const handleGoogleLogin = async () => {
+    let result: GoogleAuthResult | null = null;
     try {
       setGoogleFlow('login');
       setSocialProvider('google');
-      const result = await signInWithGoogle();
+      result = await signInWithGoogle();
       setGoogleIdToken(result.idToken);
       setGoogleProfileName(result.name || result.email || 'Profil Google');
+      setGoogleFirstName(result.givenName || null);
+      setGoogleLastName(result.familyName || null);
+      setGoogleEmail(result.email || null);
       await googleMobile({ idToken: result.idToken }).unwrap();
       await trackEvent('login_success', { method: 'google' });
     } catch (error: any) {
       console.error('Google login error:', error);
+
+      if (result && isSocialSignupRequiredError(error, 'google')) {
+        continueSocialSignupFromLogin({
+          provider: 'google',
+          idToken: result.idToken,
+          profileName: result.name || result.email || 'Profil Google',
+          firstName: result.givenName,
+          lastName: result.familyName,
+          email: result.email,
+        });
+        return;
+      }
+
       showDialog({
         variant: 'danger',
         title: 'Connexion Google',
-        message: error?.data?.message || error?.message || 'Connexion Google impossible',
+        message: getAuthErrorMessage(error, 'Connexion Google impossible'),
       });
       setGoogleFlow(null);
       setSocialProvider(null);
@@ -355,11 +472,12 @@ export default function AuthScreen() {
   };
 
   const handleAppleLogin = async () => {
+    let result: AppleAuthResult | null = null;
     try {
       setIsAppleLoading(true);
       setGoogleFlow('login');
       setSocialProvider('apple');
-      const result = await signInWithApple();
+      result = await signInWithApple();
       setGoogleIdToken(result.identityToken);
       setGoogleProfileName(result.name || result.email || 'Profil Apple');
       setGoogleFirstName(result.givenName || null);
@@ -375,10 +493,24 @@ export default function AuthScreen() {
       await trackEvent('login_success', { method: 'apple' });
     } catch (error: any) {
       console.error('Apple login error:', error);
+
+      if (result && isSocialSignupRequiredError(error, 'apple')) {
+        continueSocialSignupFromLogin({
+          provider: 'apple',
+          idToken: result.identityToken,
+          profileName: result.name || result.email || 'Profil Apple',
+          firstName: result.givenName,
+          lastName: result.familyName,
+          email: result.email,
+          nonce: result.nonce,
+        });
+        return;
+      }
+
       showDialog({
         variant: 'danger',
         title: 'Connexion Apple',
-        message: error?.data?.message || error?.message || 'Connexion Apple impossible',
+        message: getAuthErrorMessage(error, 'Connexion Apple impossible'),
       });
       setGoogleFlow(null);
       setSocialProvider(null);
