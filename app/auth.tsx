@@ -13,8 +13,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  KeyboardAvoidingView,
   InteractionManager,
+  KeyboardAvoidingView,
   NativeSyntheticEvent,
   Platform,
   ScrollView,
@@ -194,6 +194,8 @@ export default function AuthScreen() {
   const [isGooglePhoneVerified, setIsGooglePhoneVerified] = useState(false);
   const [socialProvider, setSocialProvider] = useState<SocialAuthProvider | null>(null);
   const [appleNonce, setAppleNonce] = useState<string | null>(null);
+  const [appleAuthorizationCode, setAppleAuthorizationCode] = useState<string | null>(null);
+  const [appleUser, setAppleUser] = useState<string | null>(null);
   const [isAppleAvailable, setIsAppleAvailable] = useState(false);
   const [isAppleLoading, setIsAppleLoading] = useState(false);
 
@@ -357,6 +359,8 @@ export default function AuthScreen() {
     setIsGooglePhoneVerified(false);
     setSocialProvider(null);
     setAppleNonce(null);
+    setAppleAuthorizationCode(null);
+    setAppleUser(null);
     setIsAppleLoading(false);
   };
 
@@ -484,13 +488,33 @@ export default function AuthScreen() {
       setGoogleLastName(result.familyName || null);
       setGoogleEmail(result.email || null);
       setAppleNonce(result.nonce);
-      await appleMobile({
-        idToken: result.identityToken,
-        firstName: result.givenName,
-        lastName: result.familyName,
-        nonce: result.nonce,
-      }).unwrap();
-      await trackEvent('login_success', { method: 'apple' });
+      setAppleAuthorizationCode(result.authorizationCode || null);
+      setAppleUser(result.user);
+      try {
+        await appleMobile({
+          idToken: result.identityToken,
+          authorizationCode: result.authorizationCode,
+          appleUser: result.user,
+          email: result.email,
+          firstName: result.givenName,
+          lastName: result.familyName,
+          nonce: result.nonce,
+        }).unwrap();
+        await trackEvent('login_success', { method: 'apple' });
+      } catch (error: any) {
+        if (shouldCompleteSocialRegistration(error)) {
+          setMode('signup');
+          setStep('phone');
+          setGoogleFlow('signup');
+          setGoogleSignupStep('phone');
+          setGooglePhone('');
+          setGoogleOtp(['', '', '', '', '']);
+          setIsGooglePhoneVerified(false);
+          await trackEvent('signup_started', { method: 'apple', source: 'login' });
+          return;
+        }
+        throw error;
+      }
     } catch (error: any) {
       console.error('Apple login error:', error);
 
@@ -531,6 +555,8 @@ export default function AuthScreen() {
       setGoogleLastName(result.familyName || null);
       setGoogleEmail(result.email || null);
       setAppleNonce(result.nonce);
+      setAppleAuthorizationCode(result.authorizationCode || null);
+      setAppleUser(result.user);
     } catch (error: any) {
       console.error('Apple signup error:', error);
       showDialog({
@@ -599,6 +625,8 @@ export default function AuthScreen() {
     setGooglePhone('');
     setSocialProvider(null);
     setAppleNonce(null);
+    setAppleAuthorizationCode(null);
+    setAppleUser(null);
   };
 
   const handleVerifyGoogleOtpAndContinue = async () => {
@@ -952,9 +980,12 @@ export default function AuthScreen() {
         const result = authMethod === 'apple'
           ? await appleMobile({
               idToken: googleIdToken,
+              authorizationCode: appleAuthorizationCode ?? undefined,
+              appleUser: appleUser ?? undefined,
               phone,
               firstName: firstName.trim() || googleFirstName || undefined,
               lastName: lastName.trim() || googleLastName || undefined,
+              email: googleEmail || undefined,
               nonce: appleNonce ?? undefined,
               role,
               isDriver: requiresVehicle,
