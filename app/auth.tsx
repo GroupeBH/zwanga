@@ -63,6 +63,8 @@ type SocialSignupSeed = {
   lastName?: string | null;
   email?: string | null;
   nonce?: string | null;
+  authorizationCode?: string | null;
+  appleUser?: string | null;
 };
 
 const getAuthErrorMessage = (error: unknown, fallback: string) => {
@@ -108,6 +110,45 @@ const isSocialSignupRequiredError = (error: unknown, provider: SocialAuthProvide
     message.includes('inscription') &&
     (message.includes('premiere') || message.includes('requis'))
   );
+};
+
+const shouldCompleteSocialRegistration = (error: unknown) => {
+  const message = normalizeAuthErrorMessage(getAuthErrorMessage(error, ''));
+
+  return (
+    message.includes('telephone') &&
+    message.includes('inscription') &&
+    (message.includes('premiere') || message.includes('requis'))
+  );
+};
+
+const getAppleIdentityName = (
+  firstName?: string | null,
+  lastName?: string | null,
+  profileName?: string | null,
+) => {
+  const trimmedFirstName = firstName?.trim();
+  const trimmedLastName = lastName?.trim();
+
+  if (trimmedFirstName || trimmedLastName) {
+    return {
+      firstName: trimmedFirstName || 'Utilisateur',
+      lastName: trimmedLastName || 'Apple',
+    };
+  }
+
+  const nameParts = (profileName ?? '').trim().split(/\s+/).filter(Boolean);
+  if (nameParts.length > 1) {
+    return {
+      firstName: nameParts[0],
+      lastName: nameParts.slice(1).join(' '),
+    };
+  }
+
+  return {
+    firstName: nameParts[0] || 'Utilisateur',
+    lastName: 'Apple',
+  };
 };
 
 function ensureAuthNotifeeLoaded() {
@@ -407,6 +448,8 @@ export default function AuthScreen() {
     setIsGooglePhoneVerified(false);
     setSocialProvider(seed.provider);
     setAppleNonce(seed.provider === 'apple' ? seed.nonce ?? null : null);
+    setAppleAuthorizationCode(seed.provider === 'apple' ? seed.authorizationCode ?? null : null);
+    setAppleUser(seed.provider === 'apple' ? seed.appleUser ?? null : null);
     void trackEvent('social_signup_redirected_from_login', {
       method: seed.provider,
     }).catch((error) => {
@@ -527,6 +570,8 @@ export default function AuthScreen() {
           lastName: result.familyName,
           email: result.email,
           nonce: result.nonce,
+          authorizationCode: result.authorizationCode,
+          appleUser: result.user,
         });
         return;
       }
@@ -912,7 +957,9 @@ export default function AuthScreen() {
   };
 
   const validateProfileAndContinue = () => {
-    if (!firstName.trim() || !lastName.trim()) {
+    const isAppleProfileSignup = Boolean(googleIdToken && isGooglePhoneVerified && socialProvider === 'apple');
+
+    if (!isAppleProfileSignup && (!firstName.trim() || !lastName.trim())) {
       showDialog({ variant: 'warning', title: 'Information manquante', message: 'Veuillez entrer votre nom et prénom.' });
       return;
     }
@@ -977,14 +1024,17 @@ export default function AuthScreen() {
       
       if (googleIdToken && isGooglePhoneVerified) {
         const authMethod = socialProvider ?? 'google';
+        const appleIdentityName = authMethod === 'apple'
+          ? getAppleIdentityName(googleFirstName, googleLastName, googleProfileName)
+          : null;
         const result = authMethod === 'apple'
           ? await appleMobile({
               idToken: googleIdToken,
               authorizationCode: appleAuthorizationCode ?? undefined,
               appleUser: appleUser ?? undefined,
               phone,
-              firstName: firstName.trim() || googleFirstName || undefined,
-              lastName: lastName.trim() || googleLastName || undefined,
+              firstName: appleIdentityName?.firstName,
+              lastName: appleIdentityName?.lastName,
               email: googleEmail || undefined,
               nonce: appleNonce ?? undefined,
               role,
@@ -1011,7 +1061,11 @@ export default function AuthScreen() {
           });
         }
 
-        await triggerSignupSuccessNotification(firstName || googleProfileName || undefined);
+        await triggerSignupSuccessNotification(
+          authMethod === 'apple'
+            ? appleIdentityName?.firstName || googleProfileName || undefined
+            : firstName || googleProfileName || undefined,
+        );
         await trackEvent('signup_completed', {
           method: authMethod,
           role,
@@ -1079,6 +1133,7 @@ export default function AuthScreen() {
 
   // ============ RENDER ============
   const isGoogleSignupActive = googleFlow === 'signup' && googleIdToken;
+  const isAppleSignupActive = isGoogleSignupActive && socialProvider === 'apple';
   const showPhoneStep = step === 'phone' && !isGoogleSignupActive;
   const isAppleAuthLoading = isAppleLoading || isAppleMobileLoading;
 
@@ -1206,6 +1261,7 @@ export default function AuthScreen() {
             <ProfileStep
               firstName={firstName}
               lastName={lastName}
+              showNameFields={!isAppleSignupActive}
               profilePicture={profilePicture}
               role={role}
               vehicleType={vehicleType}
