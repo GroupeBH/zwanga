@@ -24,6 +24,7 @@ interface ProfileStepProps {
   onVehicleTypeChange: (type: VehicleType) => void;
   onOpenVehicleModal: () => void;
   onContinue: () => void;
+  hideNameFields?: boolean;
 }
 
 export function ProfileStep({
@@ -44,6 +45,7 @@ export function ProfileStep({
   onVehicleTypeChange,
   onOpenVehicleModal,
   onContinue,
+  hideNameFields = false,
 }: ProfileStepProps) {
   return (
     <Animated.View entering={FadeInDown.springify()} exiting={FadeOutUp} style={styles.stepContainer}>
@@ -69,7 +71,11 @@ export function ProfileStep({
         </TouchableOpacity>
       </View>
 
+<<<<<<< HEAD
+      {!hideNameFields && (
+=======
       {showNameFields && (
+>>>>>>> 70d8b651f42a530deb1b16673bbd453aa0b81e18
         <View style={styles.formGrid}>
           <View style={styles.inputWrapper}>
             <Ionicons name="person-outline" size={20} color={Colors.gray[500]} style={styles.inputIcon} />

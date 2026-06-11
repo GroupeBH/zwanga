@@ -239,6 +239,7 @@ export default function AuthScreen() {
   const [appleUser, setAppleUser] = useState<string | null>(null);
   const [isAppleAvailable, setIsAppleAvailable] = useState(false);
   const [isAppleLoading, setIsAppleLoading] = useState(false);
+  const isAppleSignupFlow = googleFlow === 'signup' && socialProvider === 'apple' && Boolean(googleIdToken);
 
   // ============ API HOOKS ============
   const [login, { isLoading: isLoggingIn }] = useLoginMutation();
@@ -412,6 +413,7 @@ export default function AuthScreen() {
 
   const continueSocialSignupFromLogin = (seed: SocialSignupSeed) => {
     const reusablePhone = phone.trim();
+    const keepsProfileIdentity = seed.provider !== 'apple';
 
     setMode('signup');
     setStep('phone');
@@ -423,9 +425,9 @@ export default function AuthScreen() {
     setResetOtpCode(['', '', '', '', '']);
     setResetNewPin('');
     setResetNewPinConfirm('');
-    setFirstName(seed.firstName ?? '');
-    setLastName(seed.lastName ?? '');
-    setEmail(seed.email ?? '');
+    setFirstName(keepsProfileIdentity ? seed.firstName ?? '' : '');
+    setLastName(keepsProfileIdentity ? seed.lastName ?? '' : '');
+    setEmail(keepsProfileIdentity ? seed.email ?? '' : '');
     setRole('passenger');
     setProfilePicture(null);
     setVehicleType(null);
@@ -438,9 +440,9 @@ export default function AuthScreen() {
     setIsSendingOtp(false);
     setGoogleIdToken(seed.idToken);
     setGoogleProfileName(seed.profileName);
-    setGoogleFirstName(seed.firstName ?? null);
-    setGoogleLastName(seed.lastName ?? null);
-    setGoogleEmail(seed.email ?? null);
+    setGoogleFirstName(keepsProfileIdentity ? seed.firstName ?? null : null);
+    setGoogleLastName(keepsProfileIdentity ? seed.lastName ?? null : null);
+    setGoogleEmail(keepsProfileIdentity ? seed.email ?? null : null);
     setGooglePhone(reusablePhone.length >= 10 ? reusablePhone : '');
     setGoogleOtp(['', '', '', '', '']);
     setGoogleFlow('signup');
@@ -526,38 +528,16 @@ export default function AuthScreen() {
       setSocialProvider('apple');
       result = await signInWithApple();
       setGoogleIdToken(result.identityToken);
-      setGoogleProfileName(result.name || result.email || 'Profil Apple');
-      setGoogleFirstName(result.givenName || null);
-      setGoogleLastName(result.familyName || null);
-      setGoogleEmail(result.email || null);
+      setGoogleProfileName('Profil Apple');
+      setGoogleFirstName(null);
+      setGoogleLastName(null);
+      setGoogleEmail(null);
       setAppleNonce(result.nonce);
-      setAppleAuthorizationCode(result.authorizationCode || null);
-      setAppleUser(result.user);
-      try {
-        await appleMobile({
-          idToken: result.identityToken,
-          authorizationCode: result.authorizationCode,
-          appleUser: result.user,
-          email: result.email,
-          firstName: result.givenName,
-          lastName: result.familyName,
-          nonce: result.nonce,
-        }).unwrap();
-        await trackEvent('login_success', { method: 'apple' });
-      } catch (error: any) {
-        if (shouldCompleteSocialRegistration(error)) {
-          setMode('signup');
-          setStep('phone');
-          setGoogleFlow('signup');
-          setGoogleSignupStep('phone');
-          setGooglePhone('');
-          setGoogleOtp(['', '', '', '', '']);
-          setIsGooglePhoneVerified(false);
-          await trackEvent('signup_started', { method: 'apple', source: 'login' });
-          return;
-        }
-        throw error;
-      }
+      await appleMobile({
+        idToken: result.identityToken,
+        nonce: result.nonce,
+      }).unwrap();
+      await trackEvent('login_success', { method: 'apple' });
     } catch (error: any) {
       console.error('Apple login error:', error);
 
@@ -565,10 +545,7 @@ export default function AuthScreen() {
         continueSocialSignupFromLogin({
           provider: 'apple',
           idToken: result.identityToken,
-          profileName: result.name || result.email || 'Profil Apple',
-          firstName: result.givenName,
-          lastName: result.familyName,
-          email: result.email,
+          profileName: 'Profil Apple',
           nonce: result.nonce,
           authorizationCode: result.authorizationCode,
           appleUser: result.user,
@@ -595,10 +572,10 @@ export default function AuthScreen() {
       setSocialProvider('apple');
       const result = await signInWithApple();
       setGoogleIdToken(result.identityToken);
-      setGoogleProfileName(result.name || result.email || 'Profil Apple');
-      setGoogleFirstName(result.givenName || null);
-      setGoogleLastName(result.familyName || null);
-      setGoogleEmail(result.email || null);
+      setGoogleProfileName('Profil Apple');
+      setGoogleFirstName(null);
+      setGoogleLastName(null);
+      setGoogleEmail(null);
       setAppleNonce(result.nonce);
       setAppleAuthorizationCode(result.authorizationCode || null);
       setAppleUser(result.user);
@@ -957,9 +934,7 @@ export default function AuthScreen() {
   };
 
   const validateProfileAndContinue = () => {
-    const isAppleProfileSignup = Boolean(googleIdToken && isGooglePhoneVerified && socialProvider === 'apple');
-
-    if (!isAppleProfileSignup && (!firstName.trim() || !lastName.trim())) {
+    if (!isAppleSignupFlow && (!firstName.trim() || !lastName.trim())) {
       showDialog({ variant: 'warning', title: 'Information manquante', message: 'Veuillez entrer votre nom et prénom.' });
       return;
     }
@@ -1033,9 +1008,6 @@ export default function AuthScreen() {
               authorizationCode: appleAuthorizationCode ?? undefined,
               appleUser: appleUser ?? undefined,
               phone,
-              firstName: appleIdentityName?.firstName,
-              lastName: appleIdentityName?.lastName,
-              email: googleEmail || undefined,
               nonce: appleNonce ?? undefined,
               role,
               isDriver: requiresVehicle,
@@ -1276,6 +1248,7 @@ export default function AuthScreen() {
               onVehicleTypeChange={setVehicleType}
               onOpenVehicleModal={() => setVehicleModalVisible(true)}
               onContinue={validateProfileAndContinue}
+              hideNameFields={isAppleSignupFlow}
             />
           )}
 
