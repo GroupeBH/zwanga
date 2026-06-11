@@ -9,6 +9,7 @@ import { VehicleType, vehicleOptions } from '../types';
 interface ProfileStepProps {
   firstName: string;
   lastName: string;
+  showNameFields?: boolean;
   profilePicture: string | null;
   role: 'driver' | 'passenger';
   vehicleType: VehicleType | null;
@@ -29,6 +30,7 @@ interface ProfileStepProps {
 export function ProfileStep({
   firstName,
   lastName,
+  showNameFields = true,
   profilePicture,
   role,
   vehicleType,
@@ -49,7 +51,9 @@ export function ProfileStep({
     <Animated.View entering={FadeInDown.springify()} exiting={FadeOutUp} style={styles.stepContainer}>
       <View style={styles.heroSectionCompact}>
         <Text style={styles.heroTitle}>Créez votre profil</Text>
-        <Text style={styles.heroSubtitle}>Dites-nous en plus sur vous</Text>
+        <Text style={styles.heroSubtitle}>
+          {showNameFields ? 'Dites-nous en plus sur vous' : 'Choisissez votre rôle sur Zwanga'}
+        </Text>
       </View>
 
       <View style={styles.profileHeader}>
@@ -67,7 +71,11 @@ export function ProfileStep({
         </TouchableOpacity>
       </View>
 
+<<<<<<< HEAD
       {!hideNameFields && (
+=======
+      {showNameFields && (
+>>>>>>> 70d8b651f42a530deb1b16673bbd453aa0b81e18
         <View style={styles.formGrid}>
           <View style={styles.inputWrapper}>
             <Ionicons name="person-outline" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
@@ -186,4 +194,3 @@ export function ProfileStep({
     </Animated.View>
   );
 }
-

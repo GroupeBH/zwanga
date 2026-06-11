@@ -147,6 +147,9 @@ export const authApi = baseApi.injectEndpoints({
     // Apple mobile (login ou signup)
     appleMobile: builder.mutation<AuthResponse, {
       idToken: string;
+      authorizationCode?: string;
+      appleUser?: string;
+      email?: string;
       phone?: string;
       nonce?: string;
       role?: 'driver' | 'passenger';

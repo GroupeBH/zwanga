@@ -1,12 +1,30 @@
-const {
-  withAndroidManifest,
-  withAppDelegate,
-  withGradleProperties,
-  withPodfile,
-  AndroidConfig,
-} = require('@expo/config-plugins');
+const { withAndroidManifest, withGradleProperties, withPodfile, withXcodeProject, AndroidConfig } = require('@expo/config-plugins');
 
-const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+const withIOSModularHeaders = (config) => {
+  return withPodfile(config, async (config) => {
+    const podfileContent = config.modResults.contents;
+    
+    // Only add if not already present
+    if (!podfileContent.includes('use_modular_headers!')) {
+      // Insert after platform declaration but before use_react_native!
+      const lines = podfileContent.split('\n');
+      const newLines = [];
+      let inserted = false;
+      
+      for (const line of lines) {
+        newLines.push(line);
+        // Insert after platform line and before react native
+        if (!inserted && line.trim().startsWith('platform :ios')) {
+          newLines.push('use_modular_headers!');
+          inserted = true;
+        }
+      }
+      
+      config.modResults.contents = newLines.join('\n');
+    }
+    return config;
+  });
+};
 
 const withAndroidLocationPermissions = (config) => {
   return withAndroidManifest(config, async (config) => {
@@ -60,39 +78,6 @@ const withAndroidLargeScreenCompatibility = (config) => {
   });
 };
 
-const withAndroidGoogleMapsApiKey = (config) => {
-  return withAndroidManifest(config, async (config) => {
-    const androidManifest = config.modResults;
-    const mainApplication = androidManifest.manifest.application?.[0];
-
-    if (!mainApplication) {
-      return config;
-    }
-
-    if (!mainApplication['meta-data']) {
-      mainApplication['meta-data'] = [];
-    }
-
-    const metaData = mainApplication['meta-data'];
-    const existingEntry = metaData.find(
-      (entry) => entry.$?.['android:name'] === 'com.google.android.geo.API_KEY',
-    );
-
-    if (existingEntry) {
-      existingEntry.$['android:value'] = GOOGLE_MAPS_API_KEY || '';
-    } else {
-      metaData.push({
-        $: {
-          'android:name': 'com.google.android.geo.API_KEY',
-          'android:value': GOOGLE_MAPS_API_KEY || '',
-        },
-      });
-    }
-
-    return config;
-  });
-};
-
 const withModernEdgeToEdgeGradleProperties = (config) => {
   return withGradleProperties(config, (config) => {
     config.modResults = config.modResults.filter((property) => {
@@ -104,81 +89,49 @@ const withModernEdgeToEdgeGradleProperties = (config) => {
   });
 };
 
-const withReactNativeMapsFix = (config) => {
-  return withPodfile(config, async (config) => {
-    let content = config.modResults.contents;
-    const googleMapsPod = "  pod 'react-native-google-maps', path: '../node_modules/react-native-maps'";
+const withIOSUserScriptSandboxingDisabled = (config) => {
+  return withXcodeProject(config, (config) => {
+    const project = config.modResults;
 
-    if (!content.includes("pod 'react-native-google-maps'")) {
-      content = content.replace(
-        /(\s+config = use_native_modules!\(config_command\))/,
-        `\n${googleMapsPod}$1`,
-      );
-    }
+    project.addBuildProperty('ENABLE_USER_SCRIPT_SANDBOXING', 'NO');
 
-    const nativeModuleBuildSettings = `
-    # Some React Native pods import React headers while built as frameworks.
-    # Keep modules enabled for dependencies that use @import, but avoid treating
-    # these bridge pods as public Clang modules during archive builds.
-    react_native_bridge_targets = [
-      'react-native-maps',
-      'react-native-google-maps',
-      'RNFBApp',
-      'RNFBAnalytics',
-    ]
-
-    installer.pods_project.targets.each do |target|
-      if react_native_bridge_targets.include?(target.name)
-        target.build_configurations.each do |build_config|
-          build_config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
-          build_config.build_settings['CLANG_ENABLE_MODULES'] = 'YES'
-          build_config.build_settings['DEFINES_MODULE'] = 'NO'
-        end
-      end
-    end`;
-
-    if (!content.includes('react_native_bridge_targets')) {
-      content = content.replace(
-        /(react_native_post_install\([\s\S]*?\n\s*\))/,
-        `$1\n${nativeModuleBuildSettings}`,
-      );
-    }
-
-    config.modResults.contents = content;
     return config;
   });
 };
 
-const withIosGoogleMapsApiKey = (config) => {
-  return withAppDelegate(config, (config) => {
-    if (config.modResults.language !== 'swift') {
-      return config;
-    }
-
+const withReactNativeMapsFix = (config) => {
+  return withPodfile(config, async (config) => {
     let content = config.modResults.contents;
 
-    if (!content.includes('import GoogleMaps')) {
-      content = content.replace('import FirebaseCore\n', 'import FirebaseCore\nimport GoogleMaps\n');
-    }
+    const mapsBuildSettings = `
+    # react-native-maps imports React headers while built as a framework.
+    # Xcode 26 treats those imports as errors unless this is explicitly allowed.
+    installer.pods_project.targets.each do |target|
+      if ['react-native-maps', 'react-native-google-maps'].include?(target.name)
+        target.build_configurations.each do |build_config|
+          build_config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+        end
+      end
+    end`;
 
-    if (!content.includes('GMSServices.provideAPIKey')) {
+    if (!content.includes('CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES')) {
       content = content.replace(
-        '    let delegate = ReactNativeDelegate()',
-        `    GMSServices.provideAPIKey("${GOOGLE_MAPS_API_KEY || ''}")\n\n    let delegate = ReactNativeDelegate()`,
+        /(react_native_post_install\([\s\S]*?\n\s*\))/,
+        `$1\n${mapsBuildSettings}`,
       );
+      config.modResults.contents = content;
     }
 
-    config.modResults.contents = content;
     return config;
   });
 };
 
 module.exports = (config) => {
+  config = withIOSModularHeaders(config);
   config = withAndroidLocationPermissions(config);
   config = withAndroidLargeScreenCompatibility(config);
-  config = withAndroidGoogleMapsApiKey(config);
   config = withModernEdgeToEdgeGradleProperties(config);
+  config = withIOSUserScriptSandboxingDisabled(config);
   config = withReactNativeMapsFix(config);
-  config = withIosGoogleMapsApiKey(config);
   return config;
 };
