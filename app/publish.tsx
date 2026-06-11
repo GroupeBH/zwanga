@@ -43,6 +43,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 type PublishStep = 'route' | 'datetime' | 'vehicle' | 'pricing' | 'confirm';
 type LatLng = { latitude: number; longitude: number };
+type RoutePointStatus = 'confirmed' | 'suggested' | null;
 const PUBLISH_STEP_ORDER: PublishStep[] = ['route', 'datetime', 'vehicle', 'pricing', 'confirm'];
 const DEFAULT_PUBLISH_REGION: Region = {
   latitude: -4.441931,
@@ -250,7 +251,7 @@ export default function PublishScreen() {
           title: 'KYC validé avec succès !',
           message: 'Votre identité a été vérifiée automatiquement. Vous pouvez maintenant publier vos trajets.',
         });
-        if (step === 'route' && hasDepartureAddress && hasArrivalAddress) {
+        if (step === 'route' && hasDepartureCoordinates && hasArrivalCoordinates) {
           goToStep('datetime');
         }
       } else if (kycStatusAfterUpload === 'rejected') {
@@ -372,6 +373,8 @@ export default function PublishScreen() {
     setStep('route');
     setDepartureLocation(null);
     setArrivalLocation(null);
+    setDeparturePointStatus(null);
+    setArrivalPointStatus(null);
     setActiveLocationType(null);
     setDepartureDateTime(null);
     setIosPickerMode(null);
@@ -389,6 +392,7 @@ export default function PublishScreen() {
     setArrivalReference('');
     setAddressInputMode('map');
     setAddressSectionStep('method');
+    setLocationPickerInitialQuery('');
     setSelectedVehicleId(null);
     setShowVehicleForm(false);
     setVehicleBrand('');
@@ -418,6 +422,8 @@ export default function PublishScreen() {
   // Données du formulaire
   const [departureLocation, setDepartureLocation] = useState<MapLocationSelection | null>(null);
   const [arrivalLocation, setArrivalLocation] = useState<MapLocationSelection | null>(null);
+  const [departurePointStatus, setDeparturePointStatus] = useState<RoutePointStatus>(null);
+  const [arrivalPointStatus, setArrivalPointStatus] = useState<RoutePointStatus>(null);
   const [departureManualAddress, setDepartureManualAddress] = useState('');
   const [departureReference, setDepartureReference] = useState('');
   const [arrivalManualAddress, setArrivalManualAddress] = useState('');
@@ -430,6 +436,7 @@ export default function PublishScreen() {
   const [addressInputMode, setAddressInputMode] = useState<AddressInputMode>('map');
   const [, setAddressSectionStep] = useState<AddressSectionStep>('method');
   const [activeLocationType, setActiveLocationType] = useState<'departure' | 'arrival' | null>(null);
+  const [locationPickerInitialQuery, setLocationPickerInitialQuery] = useState('');
   const [departureDateTime, setDepartureDateTime] = useState<Date | null>(null);
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
   const [iosPickerTarget, setIosPickerTarget] = useState<'departure' | 'recurringEndDate'>('departure');
@@ -452,6 +459,10 @@ export default function PublishScreen() {
       : getLocationText(arrivalLocation, '');
   const hasDepartureAddress = departureAddress.length > 0;
   const hasArrivalAddress = arrivalAddress.length > 0;
+  const hasDepartureGpsSuggestion = Boolean(getMapCoordinate(departureLocation));
+  const hasArrivalGpsSuggestion = Boolean(getMapCoordinate(arrivalLocation));
+  const hasDepartureCoordinates = hasDepartureGpsSuggestion && departurePointStatus === 'confirmed';
+  const hasArrivalCoordinates = hasArrivalGpsSuggestion && arrivalPointStatus === 'confirmed';
   const routePreviewRegion = useMemo<Region>(() => {
     const selectedPoints = [getMapCoordinate(departureLocation), getMapCoordinate(arrivalLocation)].filter(
       (point): point is LatLng => Boolean(point),
@@ -499,8 +510,38 @@ export default function PublishScreen() {
           {isSearching
             ? 'Recherche des coordonnees...'
             : isFound
-              ? 'Coordonnees trouvees'
+              ? 'Coordonnees trouvees, verifiez sur la carte'
               : 'Adresse introuvable'}
+        </Text>
+      </View>
+    );
+  };
+  const renderGpsStatus = (
+    hasAddress: boolean,
+    hasGpsSuggestion: boolean,
+    isConfirmed: boolean,
+    label: string,
+  ) => {
+    if (!hasAddress && !hasGpsSuggestion) {
+      return null;
+    }
+
+    const isReady = isConfirmed;
+    const message = isReady
+      ? `${label} GPS confirme`
+      : hasGpsSuggestion
+        ? `${label} trouve, verifiez le point sur la carte`
+        : `${label} a confirmer sur la carte`;
+
+    return (
+      <View style={styles.gpsStatus}>
+        <Ionicons
+          name={isReady ? 'checkmark-circle' : 'alert-circle'}
+          size={14}
+          color={isReady ? Colors.success : Colors.warning}
+        />
+        <Text style={[styles.gpsStatusText, isReady && styles.gpsStatusTextReady]}>
+          {message}
         </Text>
       </View>
     );
@@ -555,18 +596,27 @@ export default function PublishScreen() {
     return weekday === 0 ? 7 : weekday;
   };
 
-  const openLocationPicker = (type: 'departure' | 'arrival') => setActiveLocationType(type);
+  const openLocationPicker = (type: 'departure' | 'arrival', initialQuery = '') => {
+    setLocationPickerInitialQuery(initialQuery);
+    setActiveLocationType(type);
+  };
 
-  const closeLocationPicker = () => setActiveLocationType(null);
+  const closeLocationPicker = () => {
+    setActiveLocationType(null);
+    setLocationPickerInitialQuery('');
+  };
 
   const swapRoutePoints = () => {
     const tempLoc = departureLocation;
+    const tempStatus = departurePointStatus;
     const tempManual = departureManualAddress;
     const tempRef = departureReference;
     setDepartureLocation(arrivalLocation);
+    setDeparturePointStatus(arrivalPointStatus);
     setDepartureManualAddress(arrivalManualAddress);
     setDepartureReference(arrivalReference);
     setArrivalLocation(tempLoc);
+    setArrivalPointStatus(tempStatus);
     setArrivalManualAddress(tempManual);
     setArrivalReference(tempRef);
   };
@@ -575,10 +625,12 @@ export default function PublishScreen() {
     setAddressInputMode('map');
     if (activeLocationType === 'departure') {
       setDepartureLocation(selection);
+      setDeparturePointStatus('confirmed');
       setDepartureManualAddress(selection.title || selection.address);
       setAddressSectionStep('arrival');
     } else if (activeLocationType === 'arrival') {
       setArrivalLocation(selection);
+      setArrivalPointStatus('confirmed');
       setArrivalManualAddress(selection.title || selection.address);
     }
     closeLocationPicker();
@@ -791,9 +843,11 @@ export default function PublishScreen() {
           const selection = mapGeocodeResponseToSelection(address, response);
           if (!selection) {
             setDepartureManualGeocodeStatus('missing');
+            setDeparturePointStatus(null);
             return;
           }
           setDepartureLocation(selection);
+          setDeparturePointStatus('suggested');
           setDepartureManualGeocodeStatus('found');
         })
         .catch((error) => {
@@ -840,9 +894,11 @@ export default function PublishScreen() {
           const selection = mapGeocodeResponseToSelection(address, response);
           if (!selection) {
             setArrivalManualGeocodeStatus('missing');
+            setArrivalPointStatus(null);
             return;
           }
           setArrivalLocation(selection);
+          setArrivalPointStatus('suggested');
           setArrivalManualGeocodeStatus('found');
         })
         .catch((error) => {
@@ -949,6 +1005,33 @@ export default function PublishScreen() {
     }
   };
 
+  const showRouteCoordinatesRequiredDialog = () => {
+    const missingType: 'departure' | 'arrival' = !hasDepartureCoordinates
+      ? 'departure'
+      : 'arrival';
+    const isDeparture = missingType === 'departure';
+
+    setAddressSectionStep(missingType);
+    showDialog({
+      variant: 'warning',
+      title: 'Point GPS requis',
+      message: isDeparture
+        ? 'Confirmez le point de depart sur la carte pour eviter une position approximative.'
+        : 'Confirmez la destination sur la carte pour eviter une position approximative.',
+      actions: [
+        { label: 'Plus tard', variant: 'ghost' },
+        {
+          label: 'Ouvrir la carte',
+          variant: 'primary',
+          onPress: () => {
+            setAddressInputMode('map');
+            openLocationPicker(missingType, isDeparture ? departureAddress : arrivalAddress);
+          },
+        },
+      ],
+    });
+  };
+
   const handleNextStep = () => {
     if (step === 'route') {
       if (!hasDepartureAddress || !hasArrivalAddress) {
@@ -958,6 +1041,10 @@ export default function PublishScreen() {
           title: 'Itineraire incomplet',
           message: 'Indiquez une adresse de depart et une destination, ou choisissez-les sur la carte.',
         });
+        return;
+      }
+      if (!hasDepartureCoordinates || !hasArrivalCoordinates) {
+        showRouteCoordinatesRequiredDialog();
         return;
       }
       if (!isPublishIdentityVerified) {
@@ -1028,6 +1115,11 @@ export default function PublishScreen() {
         title: 'Itineraire incomplet',
         message: 'Indiquez vos adresses de depart et d arrivee, ou choisissez-les sur la carte.',
       });
+      return;
+    }
+
+    if (!hasDepartureCoordinates || !hasArrivalCoordinates) {
+      showRouteCoordinatesRequiredDialog();
       return;
     }
 
@@ -1208,13 +1300,20 @@ export default function PublishScreen() {
     step === 'route'
       ? !hasDepartureAddress || !hasArrivalAddress || isManualAddressGeocoding
       : step === 'confirm'
-        ? isSubmittingTrip || !isPublishIdentityVerified || isManualAddressGeocoding
+        ? isSubmittingTrip ||
+          !isPublishIdentityVerified ||
+          isManualAddressGeocoding ||
+          !hasDepartureCoordinates ||
+          !hasArrivalCoordinates
         : false;
 
   const footerPrimaryLabel = (() => {
     if (step === 'route') {
       if (!hasDepartureAddress) return 'Indiquez le départ';
       if (!hasArrivalAddress) return "Indiquez l'arrivée";
+      if (isManualAddressGeocoding) return 'Recherche GPS...';
+      if (!hasDepartureCoordinates) return 'Confirmez le depart';
+      if (!hasArrivalCoordinates) return "Confirmez l'arrivee";
       return 'Continuer';
     }
     if (step === 'confirm') {
@@ -1381,15 +1480,15 @@ export default function PublishScreen() {
               </View>
               <View style={styles.routeInputs}>
                 {/* Départ */}
-                <View style={[styles.addressField, hasDepartureAddress && styles.addressFieldDepartureReady]}>
-                  <Text style={[styles.addressFieldLabel, hasDepartureAddress && styles.addressFieldLabelReady]}>
+                <View style={[styles.addressField, hasDepartureCoordinates && styles.addressFieldDepartureReady]}>
+                  <Text style={[styles.addressFieldLabel, hasDepartureCoordinates && styles.addressFieldLabelReady]}>
                     Départ
                   </Text>
                   <View style={styles.addressInputRow}>
                     <TouchableOpacity
                       style={[
                         styles.addressInputButton,
-                        hasDepartureAddress && styles.addressInputButtonDepartureActive,
+                        hasDepartureCoordinates && styles.addressInputButtonDepartureActive,
                       ]}
                       onPress={() => {
                         setAddressInputMode('map');
@@ -1398,9 +1497,9 @@ export default function PublishScreen() {
                       activeOpacity={0.85}
                     >
                       <Ionicons
-                        name={hasDepartureAddress ? "location" : "location-outline"}
+                        name={hasDepartureCoordinates ? "location" : "location-outline"}
                         size={18}
-                        color={hasDepartureAddress ? Colors.success : Colors.gray[500]}
+                        color={hasDepartureCoordinates ? Colors.success : Colors.gray[500]}
                       />
                       <Text
                         style={[
@@ -1436,12 +1535,19 @@ export default function PublishScreen() {
                         onChangeText={(value) => {
                           setDepartureManualAddress(value);
                           setDepartureLocation(null);
+                          setDeparturePointStatus(null);
                         }}
                         placeholder="Ex: avenue Kasa-Vubu, Bandal"
                         placeholderTextColor={Colors.gray[400]}
                       />
                       {renderManualGeocodeStatus(departureManualGeocodeStatus)}
                     </>
+                  )}
+                  {renderGpsStatus(
+                    hasDepartureAddress,
+                    hasDepartureGpsSuggestion,
+                    hasDepartureCoordinates,
+                    'Depart',
                   )}
                   <View style={styles.referenceField}>
                     <Text style={styles.referenceLabel}>Repère de départ (optionnel)</Text>
@@ -1466,15 +1572,15 @@ export default function PublishScreen() {
                 </TouchableOpacity>
 
                 {/* Arrivée */}
-                <View style={[styles.addressField, hasArrivalAddress && styles.addressFieldArrivalReady]}>
-                  <Text style={[styles.addressFieldLabel, hasArrivalAddress && styles.addressFieldLabelReady]}>
+                <View style={[styles.addressField, hasArrivalCoordinates && styles.addressFieldArrivalReady]}>
+                  <Text style={[styles.addressFieldLabel, hasArrivalCoordinates && styles.addressFieldLabelReady]}>
                     Arrivée
                   </Text>
                   <View style={styles.addressInputRow}>
                     <TouchableOpacity
                       style={[
                         styles.addressInputButton,
-                        hasArrivalAddress && styles.addressInputButtonArrivalActive,
+                        hasArrivalCoordinates && styles.addressInputButtonArrivalActive,
                       ]}
                       onPress={() => {
                         setAddressInputMode('map');
@@ -1483,9 +1589,9 @@ export default function PublishScreen() {
                       activeOpacity={0.85}
                     >
                       <Ionicons
-                        name={hasArrivalAddress ? "navigate" : "navigate-outline"}
+                        name={hasArrivalCoordinates ? "navigate" : "navigate-outline"}
                         size={18}
-                        color={hasArrivalAddress ? Colors.primary : Colors.gray[500]}
+                        color={hasArrivalCoordinates ? Colors.primary : Colors.gray[500]}
                       />
                       <Text
                         style={[
@@ -1521,12 +1627,19 @@ export default function PublishScreen() {
                         onChangeText={(value) => {
                           setArrivalManualAddress(value);
                           setArrivalLocation(null);
+                          setArrivalPointStatus(null);
                         }}
                         placeholder="Ex: rond-point Victoire"
                         placeholderTextColor={Colors.gray[400]}
                       />
                       {renderManualGeocodeStatus(arrivalManualGeocodeStatus)}
                     </>
+                  )}
+                  {renderGpsStatus(
+                    hasArrivalAddress,
+                    hasArrivalGpsSuggestion,
+                    hasArrivalCoordinates,
+                    'Arrivee',
                   )}
                   <View style={styles.referenceField}>
                     <Text style={styles.referenceLabel}>Repère d’arrivée (optionnel)</Text>
@@ -1576,14 +1689,9 @@ export default function PublishScreen() {
                       key={place.name}
                       style={styles.quickLandmarkChip}
                       onPress={() => {
-                        if (!departureLocation && !departureManualAddress) {
-                          setDepartureManualAddress(`${place.name}, ${place.commune}`);
-                        } else if (!arrivalLocation && !arrivalManualAddress) {
-                          setArrivalManualAddress(`${place.name}, ${place.commune}`);
-                        } else {
-                          setArrivalManualAddress(`${place.name}, ${place.commune}`);
-                        }
-                        setAddressInputMode('manual');
+                        const target = !hasDepartureCoordinates ? 'departure' : 'arrival';
+                        setAddressInputMode('map');
+                        openLocationPicker(target, `${place.name}, ${place.commune}, Kinshasa`);
                       }}
                     >
                       <Ionicons name="location" size={12} color={Colors.primary} />
@@ -2243,6 +2351,7 @@ export default function PublishScreen() {
               ? arrivalLocation
               : null
         }
+        initialSearchQuery={locationPickerInitialQuery}
         onClose={closeLocationPicker}
         onSelect={handleLocationSelected}
       />
@@ -3924,6 +4033,21 @@ const styles = StyleSheet.create({
   },
   manualGeocodeStatusTextMissing: {
     color: Colors.danger,
+  },
+  gpsStatus: {
+    minHeight: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: 2,
+  },
+  gpsStatusText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+    color: Colors.warningDark,
+  },
+  gpsStatusTextReady: {
+    color: Colors.success,
   },
   referenceField: {
     gap: Spacing.xs,

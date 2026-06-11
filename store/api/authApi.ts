@@ -148,8 +148,6 @@ export const authApi = baseApi.injectEndpoints({
     appleMobile: builder.mutation<AuthResponse, {
       idToken: string;
       phone?: string;
-      firstName?: string;
-      lastName?: string;
       nonce?: string;
       role?: 'driver' | 'passenger';
       isDriver?: boolean;
@@ -160,10 +158,17 @@ export const authApi = baseApi.injectEndpoints({
         licensePlate: string;
       };
     }>({
-      query: (body) => ({
+      query: ({ idToken, phone, nonce, role, isDriver, vehicle }) => ({
         url: '/auth/apple/mobile',
         method: 'POST',
-        body,
+        body: {
+          idToken,
+          ...(phone ? { phone } : {}),
+          ...(nonce ? { nonce } : {}),
+          ...(role ? { role } : {}),
+          ...(typeof isDriver === 'boolean' ? { isDriver } : {}),
+          ...(vehicle ? { vehicle } : {}),
+        },
       }),
       async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
         try {

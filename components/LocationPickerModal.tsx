@@ -42,6 +42,7 @@ type LocationPickerModalProps = {
   routeCoordinates?: { latitude: number; longitude: number }[];
   restrictToRoute?: boolean;
   autoLocateOnOpen?: boolean;
+  initialSearchQuery?: string;
 };
 
 type SearchResult = MapLocationSelection;
@@ -106,6 +107,7 @@ export default function LocationPickerModal({
   routeCoordinates,
   restrictToRoute = false,
   autoLocateOnOpen = true,
+  initialSearchQuery = '',
 }: LocationPickerModalProps) {
   const mapRef = useRef<MapView>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -214,8 +216,9 @@ export default function LocationPickerModal({
       return;
     }
 
-    setSearchQuery('');
+    setSearchQuery(initialSearchQuery.trim());
     setSearchResults([]);
+    setGoogleMapsSuggestions([]);
     
     // Toujours récupérer la localisation de l'utilisateur au démarrage
     // Si initialLocation existe, on l'utilise pour centrer la carte
@@ -554,23 +557,43 @@ export default function LocationPickerModal({
   }, [searchQuery, searchMapboxSuggestions]);
 
   const handleSearchSubmit = async () => {
-    if (!searchQuery.trim()) {
+    const query = searchQuery.trim();
+
+    if (!query) {
       setSearchResults([]);
       setGoogleMapsSuggestions([]);
       return;
     }
 
-    // Vérifier si la requête correspond exactement à une suggestion Mapbox
-    const exactMatch = googleMapsSuggestions.find(
-      (s) => s.name.toLowerCase() === searchQuery.trim().toLowerCase() ||
-        s.fullAddress?.toLowerCase() === searchQuery.trim().toLowerCase()
-    );
+    let rankedGoogleSuggestions = googleMapsSuggestions;
+    try {
+      setGoogleMapsLoading(true);
+      const proximity = selectedLocation
+        ? { longitude: selectedLocation.longitude, latitude: selectedLocation.latitude }
+        : undefined;
+      const freshSuggestions = await searchGoogleMapsPlaces(query, proximity, 5);
+      if (freshSuggestions.length > 0) {
+        rankedGoogleSuggestions = freshSuggestions;
+        setGoogleMapsSuggestions(freshSuggestions);
+      }
+    } catch (error) {
+      console.warn('Google places submit search failed', error);
+    } finally {
+      setGoogleMapsLoading(false);
+    }
 
-    // Si on a des suggestions Mapbox et qu'il y a une correspondance exacte, utiliser la suggestion correspondante
-    if (googleMapsSuggestions.length > 0 && exactMatch) {
+    // Vérifier si la requête correspond exactement à une suggestion Mapbox
+    const exactMatch = rankedGoogleSuggestions.find(
+      (s) => s.name.toLowerCase() === query.toLowerCase() ||
+        s.fullAddress?.toLowerCase() === query.toLowerCase()
+    );
+    const bestSuggestion = exactMatch ?? rankedGoogleSuggestions[0];
+
+    // Use the ranked suggestion first, even when it is not an exact text match.
+    if (bestSuggestion) {
       try {
         setSearchLoading(true);
-        const firstSuggestion = exactMatch; // Utiliser la suggestion qui correspond exactement
+        const firstSuggestion = bestSuggestion;
 
         if (!firstSuggestion || !firstSuggestion.id) {
           console.warn('Invalid suggestion:', firstSuggestion);
@@ -668,7 +691,6 @@ export default function LocationPickerModal({
     // Sinon, utiliser expo-location comme fallback
     try {
       setSearchLoading(true);
-      const query = searchQuery.trim();
       const results = await Location.geocodeAsync(query);
       if (!results || !Array.isArray(results) || results.length === 0) {
         setSearchResults([]);
