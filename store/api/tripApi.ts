@@ -450,6 +450,18 @@ export const tripApi = baseApi.injectEndpoints({
       }),
       transformResponse: (response: ServerTrip[]) => response.map(mapServerTripToClient),
     }),
+    getTripsByCoordinates: builder.query<Trip[], TripSearchByPointsPayload>({
+      query: (body: TripSearchByPointsPayload) => ({
+        url: '/trips/search/coordinates',
+        method: 'POST',
+        body: cleanObject(body),
+      }),
+      transformResponse: (response: ServerTrip[]) => response.map(mapServerTripToClient),
+      providesTags: (result: Trip[] | undefined) =>
+        result
+          ? [...result.map(({ id }) => ({ type: 'Trip' as const, id })), 'Trip']
+          : ['Trip'],
+    }),
 
 
     // Récupérer un trajet par son ID
@@ -626,6 +638,7 @@ export const tripApi = baseApi.injectEndpoints({
 
 export const {
   useGetTripsQuery,
+  useGetTripsByCoordinatesQuery,
   useGetAllTripsQuery,
   useLazyGetTripsQuery,
   useGetMyTripsQuery,

@@ -348,6 +348,25 @@ type CreateTripRequestPayload = {
   description?: string;
 };
 
+export type RecommendTripRequestPricePayload = {
+  departureLocation?: string;
+  departureReference?: string;
+  departureCoordinates?: [number, number];
+  arrivalLocation?: string;
+  arrivalReference?: string;
+  arrivalCoordinates?: [number, number];
+  numberOfSeats?: number;
+};
+
+export type TripRequestPriceRecommendation = {
+  currency: 'CDF';
+  distanceMeters: number | null;
+  numberOfSeats: number;
+  pricePerKmPerPassenger: number;
+  recommendedPricePerSeat: number | null;
+  recommendedTotalPrice: number | null;
+};
+
 type CreateDriverOfferPayload = {
   proposedDepartureDate: string; // ISO string date
   pricePerSeat: number;
@@ -389,6 +408,14 @@ export const tripRequestApi = baseApi.injectEndpoints({
     }),
 
     // Récupérer toutes les demandes de trajet disponibles (pour les drivers)
+    recommendTripRequestPrice: builder.mutation<TripRequestPriceRecommendation, RecommendTripRequestPricePayload>({
+      query: (payload: RecommendTripRequestPricePayload) => ({
+        url: '/trip-requests/recommended-price',
+        method: 'POST',
+        body: payload,
+      }),
+    }),
+
     getAvailableTripRequests: builder.query<TripRequest[], void>({
       query: () => '/trip-requests',
       transformResponse: (response: ServerTripRequest[]) =>
@@ -571,6 +598,7 @@ export const tripRequestApi = baseApi.injectEndpoints({
 
 export const {
   useCreateTripRequestMutation,
+  useRecommendTripRequestPriceMutation,
   useGetAvailableTripRequestsQuery,
   useGetMyTripRequestsQuery,
   useGetTripRequestByIdQuery,

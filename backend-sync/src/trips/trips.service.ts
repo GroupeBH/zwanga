@@ -6,7 +6,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Point, LessThan, MoreThan, In, Between, Brackets, Not, IsNull } from 'typeorm';
+import { Repository, Point, LessThan, MoreThan, In, Between, Brackets, Not, IsNull, SelectQueryBuilder } from 'typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Trip, TripStatus } from './entities/trip.entity';
 import {
@@ -95,6 +95,27 @@ export class TripsService {
   private readonly logger = new Logger(TripsService.name);
   private readonly CACHE_TTL = 300; // 5 minutes
   private readonly RECURRING_GENERATION_WINDOW_DAYS = 14;
+  private readonly LOCATION_SEARCH_ACCENTS = 'ÀÂÄÇÉÈÊËÎÏÔÖÙÛÜàâäçéèêëîïôöùûü';
+  private readonly LOCATION_SEARCH_ASCII = 'AAACEEEEIIOOUUUaaaceeeeiioouuu';
+  private readonly LOCATION_SEARCH_STOP_WORDS = new Set([
+    'a',
+    'au',
+    'aux',
+    'chez',
+    'd',
+    'dans',
+    'de',
+    'des',
+    'du',
+    'en',
+    'et',
+    'la',
+    'le',
+    'les',
+    'pour',
+    'sur',
+    'vers',
+  ]);
 
   constructor(
     @InjectRepository(Trip)
@@ -120,6 +141,65 @@ export class TripsService {
     private notificationService: NotificationService,
     private messagingService: MessagingService,
   ) { }
+
+  private normalizeLocationSearchText(value: string): string {
+    return value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  }
+
+  private getLocationSearchTerms(value?: string | null): string[] {
+    if (!value?.trim()) {
+      return [];
+    }
+
+    const normalized = this.normalizeLocationSearchText(value);
+
+    return Array.from(
+      new Set(
+        normalized
+          .split(/[^a-z0-9]+/)
+          .map((term) => term.trim())
+          .filter((term) => term.length >= 2 && !this.LOCATION_SEARCH_STOP_WORDS.has(term)),
+      ),
+    ).slice(0, 8);
+  }
+
+  private getLocationSearchExpression(column: string): string {
+    return `LOWER(translate(${column}, '${this.LOCATION_SEARCH_ACCENTS}', '${this.LOCATION_SEARCH_ASCII}'))`;
+  }
+
+  private applyLocationWordSearch(
+    queryBuilder: SelectQueryBuilder<Trip>,
+    value: string | undefined,
+    columns: string[],
+    parameterPrefix: string,
+  ): void {
+    const terms = this.getLocationSearchTerms(value);
+
+    if (terms.length === 0) {
+      return;
+    }
+
+    queryBuilder.andWhere(
+      new Brackets((qb) => {
+        terms.forEach((term, index) => {
+          const parameterName = `${parameterPrefix}${index}`;
+          const condition = columns
+            .map((column) => `${this.getLocationSearchExpression(column)} LIKE :${parameterName}`)
+            .join(' OR ');
+          const parameters = { [parameterName]: `%${term}%` };
+
+          if (index === 0) {
+            qb.where(condition, parameters);
+          } else {
+            qb.orWhere(condition, parameters);
+          }
+        });
+      }),
+    );
+  }
 
   async create(
     driverId: string,
@@ -278,40 +358,19 @@ export class TripsService {
       });
     }
 
-    if (searchTripsDto.keywords?.trim()) {
-      const keywords = Array.from(
-        new Set(
-          searchTripsDto.keywords
-            .trim()
-            .split(/\s+/)
-            .map((keyword) => keyword.trim())
-            .filter(Boolean),
-        ),
-      ).slice(0, 8);
+    this.applyLocationWordSearch(
+      queryBuilder,
+      searchTripsDto.keywords,
+      ['trip.departureLocation', 'trip.arrivalLocation'],
+      'keyword',
+    );
 
-      keywords.forEach((keyword, index) => {
-        const keywordParam = `keyword${index}`;
-        queryBuilder.andWhere(
-          new Brackets((qb) => {
-            qb.where(`trip.departureLocation ILIKE :${keywordParam}`)
-              .orWhere(`trip.arrivalLocation ILIKE :${keywordParam}`);
-          }),
-          { [keywordParam]: `%${keyword}%` },
-        );
-      });
-    }
-
-    if (searchTripsDto.departureLocation) {
-      queryBuilder.andWhere('trip.departureLocation ILIKE :departureLocation', {
-        departureLocation: `%${searchTripsDto.departureLocation}%`,
-      });
-    }
-
-    if (searchTripsDto.arrivalLocation) {
-      queryBuilder.andWhere('trip.arrivalLocation ILIKE :arrivalLocation', {
-        arrivalLocation: `%${searchTripsDto.arrivalLocation}%`,
-      });
-    }
+    this.applyLocationWordSearch(
+      queryBuilder,
+      [searchTripsDto.departureLocation, searchTripsDto.arrivalLocation].filter(Boolean).join(' '),
+      ['trip.departureLocation', 'trip.arrivalLocation'],
+      'routeLocationKeyword',
+    );
 
     if (searchTripsDto.minSeats) {
       queryBuilder.andWhere('trip.availableSeats >= :minSeats', {

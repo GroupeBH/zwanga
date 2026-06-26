@@ -1,7 +1,7 @@
-import AddressEntryModeSelector, { type AddressInputMode } from '@/components/AddressEntryModeSelector';
+import type { AddressInputMode } from '@/components/AddressEntryModeSelector';
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useStartTripMutation } from '@/store/api/tripApi';
 import {
@@ -26,7 +26,6 @@ import DateTimePicker, {
   DateTimePickerAndroid,
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -1227,7 +1226,6 @@ export default function TripRequestDetailsScreen() {
 
   const displayedRouteCoordinates = routeCoordinates ?? [];
   const receivedOffers = tripRequest.offers ?? [];
-  const shouldShowInlineMap = false;
   const shouldShowReceivedOffers = false;
 
   const statusConfigMap = {
@@ -1254,14 +1252,12 @@ export default function TripRequestDetailsScreen() {
   const ownerHero = (() => {
     if (tripRequest.tripId) {
       return {
-        colors: ['#0F766E', '#14B8A6'] as const,
         title: 'Votre course est prête',
         subtitle: 'Le trajet a déjà été créé. Vous pouvez maintenant suivre la course en direct.',
       };
     }
     if (tripRequest.status === 'driver_selected') {
       return {
-        colors: ['#166534', '#22C55E'] as const,
         title: tripRequest.selectedDriverName
           ? `${tripRequest.selectedDriverName} prépare votre prise en charge`
           : 'Votre conducteur a été confirmé',
@@ -1270,7 +1266,6 @@ export default function TripRequestDetailsScreen() {
     }
     if (tripRequest.status === 'offers_received' || pendingOffersCount > 0) {
       return {
-        colors: ['#0F766E', '#0EA5E9'] as const,
         title:
           pendingOffersCount > 1
             ? `${pendingOffersCount} conducteurs ont répondu`
@@ -1280,20 +1275,17 @@ export default function TripRequestDetailsScreen() {
     }
     if (tripRequest.status === 'cancelled') {
       return {
-        colors: ['#7F1D1D', '#DC2626'] as const,
         title: 'Votre demande est annulée',
         subtitle: "Cette demande n'est plus visible pour les conducteurs.",
       };
     }
     if (tripRequest.status === 'expired') {
       return {
-        colors: ['#374151', '#6B7280'] as const,
         title: 'Votre demande a expiré',
         subtitle: "Aucun conducteur ne s'est positionné à temps. Vous pouvez relancer une nouvelle demande.",
       };
     }
     return {
-      colors: ['#111827', Colors.primary] as const,
       title: 'Nous cherchons un conducteur',
       subtitle: 'Votre demande circule déjà auprès des conducteurs disponibles autour de votre trajet.',
     };
@@ -1306,7 +1298,6 @@ export default function TripRequestDetailsScreen() {
   const driverHero = (() => {
     if (canOpenAssignedTrip) {
       return {
-        colors: ['#0F766E', '#14B8A6'] as const,
         badge: 'Retenu',
         title: 'Vous pilotez cette course',
         subtitle: 'Le trajet est déjà prêt. Ouvrez-le pour suivre la course ou lancer votre prise en charge.',
@@ -1314,7 +1305,6 @@ export default function TripRequestDetailsScreen() {
     }
     if (canStartAssignedTrip) {
       return {
-        colors: ['#166534', '#22C55E'] as const,
         badge: 'Confirmé',
         title: 'Cette demande est pour vous',
         subtitle: 'Le passager est déjà réservé. Vous pouvez démarrer le trajet dès maintenant.',
@@ -1322,7 +1312,6 @@ export default function TripRequestDetailsScreen() {
     }
     if (myOffer?.status === 'pending') {
       return {
-        colors: ['#0F766E', '#0EA5E9'] as const,
         badge: 'En attente',
         title: 'Votre proposition attend la décision du passager',
         subtitle: 'Gardez un œil sur cette demande. Vous serez notifié dès qu\'une réponse arrive.',
@@ -1330,7 +1319,6 @@ export default function TripRequestDetailsScreen() {
     }
     if (myOffer?.status === 'rejected') {
       return {
-        colors: ['#374151', '#6B7280'] as const,
         badge: 'Clôturé',
         title: 'Votre proposition n\'a pas été retenue',
         subtitle: 'Vous pouvez consulter d\'autres demandes disponibles depuis l\'accueil ou la liste des demandes.',
@@ -1338,7 +1326,6 @@ export default function TripRequestDetailsScreen() {
     }
     if (!isDriverRole) {
       return {
-        colors: ['#111827', '#334155'] as const,
         badge: 'Profil',
         title: 'Activez votre profil conducteur',
         subtitle: 'Cette demande est ouverte, mais votre compte doit devenir conducteur pour envoyer une proposition.',
@@ -1346,7 +1333,6 @@ export default function TripRequestDetailsScreen() {
     }
     if (!isIdentityVerified) {
       return {
-        colors: ['#92400E', '#F59E0B'] as const,
         badge: 'KYC',
         title: 'Vérifiez votre identité pour répondre',
         subtitle: 'Une vérification rapide est nécessaire avant d\'envoyer une proposition au passager.',
@@ -1354,14 +1340,12 @@ export default function TripRequestDetailsScreen() {
     }
     if (canAcceptDirectly) {
       return {
-        colors: ['#111827', Colors.primary] as const,
         badge: 'Immédiat',
         title: 'Vous pouvez accepter cette course maintenant',
         subtitle: 'Le trajet sera créé tout de suite, avec une option pour le démarrer immédiatement si vous êtes prêt.',
       };
     }
     return {
-      colors: ['#111827', Colors.primary] as const,
       badge: statusConfig.label,
       title: 'Une course attend votre offre',
       subtitle: 'Analysez les besoins du passager puis proposez votre heure et votre tarif.',
@@ -1386,7 +1370,7 @@ export default function TripRequestDetailsScreen() {
       >
         {/* En-tête avec statut */}
         {isOwner ? (
-          <LinearGradient colors={ownerHero.colors} style={styles.ownerHeroCard}>
+          <View style={styles.ownerHeroCard}>
             <View style={styles.ownerHeroTopRow}>
               <View style={styles.ownerHeroStatusBadge}>
                 <Text style={styles.ownerHeroStatusText}>{statusConfig.label}</Text>
@@ -1424,20 +1408,20 @@ export default function TripRequestDetailsScreen() {
 
             <View style={styles.ownerHeroMetaRow}>
               <View style={styles.ownerHeroMetaChip}>
-                <Ionicons name="time-outline" size={14} color={Colors.white} />
+                <Ionicons name="time-outline" size={14} color={Colors.primary} />
                 <Text style={styles.ownerHeroMetaText}>
                   {formatDateWithRelativeLabel(tripRequest.departureDateMin, true)}
                 </Text>
               </View>
               <View style={styles.ownerHeroMetaChip}>
-                <Ionicons name="people-outline" size={14} color={Colors.white} />
+                <Ionicons name="people-outline" size={14} color={Colors.primary} />
                 <Text style={styles.ownerHeroMetaText}>
                   {tripRequest.numberOfSeats} place{tripRequest.numberOfSeats > 1 ? 's' : ''}
                 </Text>
               </View>
               {(tripRequest.selectedPricePerSeat || tripRequest.maxPricePerSeat) && (
                 <View style={styles.ownerHeroMetaChip}>
-                  <Ionicons name="cash-outline" size={14} color={Colors.white} />
+                  <Ionicons name="cash-outline" size={14} color={Colors.primary} />
                   <Text style={styles.ownerHeroMetaText}>
                     {tripRequest.selectedPricePerSeat || tripRequest.maxPricePerSeat} FC
                   </Text>
@@ -1474,12 +1458,12 @@ export default function TripRequestDetailsScreen() {
                 style={styles.ownerHeroPrimaryButton}
                 onPress={() => handleViewTrip(tripRequest.tripId!)}
               >
-                <Ionicons name="navigate-outline" size={18} color={Colors.gray[900]} />
+                <Ionicons name="navigate-outline" size={18} color={Colors.white} />
                 <Text style={styles.ownerHeroPrimaryButtonText}>Suivre la course</Text>
               </TouchableOpacity>
             ) : (
               <View style={styles.ownerHeroHintRow}>
-                <Ionicons name="notifications-outline" size={16} color={Colors.white} />
+                <Ionicons name="notifications-outline" size={16} color={Colors.primary} />
                 <Text style={styles.ownerHeroHintText}>{ownerHeroHintMessage}</Text>
               </View>
             )}
@@ -1494,7 +1478,7 @@ export default function TripRequestDetailsScreen() {
                     ]}
                     onPress={handleOpenEditForm}
                   >
-                    <Ionicons name="create-outline" size={16} color={Colors.white} />
+                    <Ionicons name="create-outline" size={16} color={Colors.primary} />
                     <Text style={styles.ownerHeroGhostButtonText}>Modifier</Text>
                   </Pressable>
                 )}
@@ -1513,15 +1497,17 @@ export default function TripRequestDetailsScreen() {
                   ) : (
                     <>
                       <Ionicons name="close-circle-outline" size={16} color={Colors.white} />
-                      <Text style={styles.ownerHeroGhostButtonText}>Annuler</Text>
+                      <Text style={[styles.ownerHeroGhostButtonText, styles.ownerHeroGhostButtonTextDanger]}>
+                        Annuler
+                      </Text>
                     </>
                   )}
                 </Pressable>
               </View>
             )}
-          </LinearGradient>
+          </View>
         ) : (
-          <LinearGradient colors={driverHero.colors} style={styles.ownerHeroCard}>
+          <View style={styles.ownerHeroCard}>
             <View style={styles.ownerHeroTopRow}>
               <View style={styles.ownerHeroStatusBadge}>
                 <Text style={styles.ownerHeroStatusText}>{driverHero.badge}</Text>
@@ -1571,20 +1557,20 @@ export default function TripRequestDetailsScreen() {
 
             <View style={styles.ownerHeroMetaRow}>
               <View style={styles.ownerHeroMetaChip}>
-                <Ionicons name="time-outline" size={14} color={Colors.white} />
+                <Ionicons name="time-outline" size={14} color={Colors.primary} />
                 <Text style={styles.ownerHeroMetaText}>
                   {formatDateWithRelativeLabel(tripRequest.departureDateMin, true)}
                 </Text>
               </View>
               <View style={styles.ownerHeroMetaChip}>
-                <Ionicons name="people-outline" size={14} color={Colors.white} />
+                <Ionicons name="people-outline" size={14} color={Colors.primary} />
                 <Text style={styles.ownerHeroMetaText}>
                   {tripRequest.numberOfSeats} place{tripRequest.numberOfSeats > 1 ? 's' : ''}
                 </Text>
               </View>
               {tripRequest.maxPricePerSeat && (
                 <View style={styles.ownerHeroMetaChip}>
-                  <Ionicons name="wallet-outline" size={14} color={Colors.white} />
+                  <Ionicons name="wallet-outline" size={14} color={Colors.primary} />
                   <Text style={styles.ownerHeroMetaText}>{tripRequest.maxPricePerSeat} FC max</Text>
                 </View>
               )}
@@ -1597,7 +1583,7 @@ export default function TripRequestDetailsScreen() {
                   style={styles.driverOverrideButton}
                   onPress={() => setRouteOverridePickerTarget('directDeparture')}
                 >
-                  <Ionicons name="location-outline" size={16} color={Colors.white} />
+                  <Ionicons name="location-outline" size={16} color={Colors.primary} />
                   <Text style={styles.driverOverrideButtonText}>
                     {directAcceptDepartureLocation?.title || 'Point de départ sur la carte'}
                   </Text>
@@ -1605,7 +1591,7 @@ export default function TripRequestDetailsScreen() {
                 <TextInput
                   style={styles.driverOverrideInput}
                   placeholder={LANDMARK_PLACEHOLDER}
-                  placeholderTextColor="rgba(255,255,255,0.58)"
+                  placeholderTextColor={Colors.gray[400]}
                   value={directAcceptDepartureReference}
                   onChangeText={setDirectAcceptDepartureReference}
                 />
@@ -1613,7 +1599,7 @@ export default function TripRequestDetailsScreen() {
                   style={styles.driverOverrideButton}
                   onPress={() => setRouteOverridePickerTarget('directArrival')}
                 >
-                  <Ionicons name="navigate-outline" size={16} color={Colors.white} />
+                  <Ionicons name="navigate-outline" size={16} color={Colors.primary} />
                   <Text style={styles.driverOverrideButtonText}>
                     {directAcceptArrivalLocation?.title || 'Point d’arrivée sur la carte'}
                   </Text>
@@ -1621,7 +1607,7 @@ export default function TripRequestDetailsScreen() {
                 <TextInput
                   style={styles.driverOverrideInput}
                   placeholder={LANDMARK_PLACEHOLDER}
-                  placeholderTextColor="rgba(255,255,255,0.58)"
+                  placeholderTextColor={Colors.gray[400]}
                   value={directAcceptArrivalReference}
                   onChangeText={setDirectAcceptArrivalReference}
                 />
@@ -1633,7 +1619,7 @@ export default function TripRequestDetailsScreen() {
                 style={styles.ownerHeroPrimaryButton}
                 onPress={() => handleViewTrip(tripRequest.tripId!)}
               >
-                <Ionicons name="navigate-outline" size={18} color={Colors.gray[900]} />
+                <Ionicons name="navigate-outline" size={18} color={Colors.white} />
                 <Text style={styles.ownerHeroPrimaryButtonText}>Ouvrir le trajet</Text>
               </TouchableOpacity>
             ) : canStartAssignedTrip ? (
@@ -1643,10 +1629,10 @@ export default function TripRequestDetailsScreen() {
                 disabled={isStartingTripFromRequest}
               >
                 {isStartingTripFromRequest ? (
-                  <ActivityIndicator size="small" color={Colors.gray[900]} />
+                  <ActivityIndicator size="small" color={Colors.white} />
                 ) : (
                   <>
-                    <Ionicons name="play-circle-outline" size={18} color={Colors.gray[900]} />
+                    <Ionicons name="play-circle-outline" size={18} color={Colors.white} />
                     <Text style={styles.ownerHeroPrimaryButtonText}>Démarrer le trajet</Text>
                   </>
                 )}
@@ -1659,125 +1645,46 @@ export default function TripRequestDetailsScreen() {
                   disabled={isAcceptingTripRequest || isStartingTrip}
                 >
                   {isAcceptingTripRequest || isStartingTrip ? (
-                    <ActivityIndicator size="small" color={Colors.gray[900]} />
+                    <ActivityIndicator size="small" color={Colors.white} />
                   ) : (
                     <>
-                      <Ionicons name="checkmark-circle-outline" size={18} color={Colors.gray[900]} />
+                      <Ionicons name="checkmark-circle-outline" size={18} color={Colors.white} />
                       <Text style={styles.ownerHeroPrimaryButtonText}>Accepter la demande</Text>
                     </>
                   )}
                 </TouchableOpacity>
                 <View style={[styles.ownerHeroActions, styles.ownerHeroSecondaryActions]}>
                   <TouchableOpacity style={styles.ownerHeroGhostButton} onPress={openOfferForm}>
-                    <Ionicons name="options-outline" size={16} color={Colors.white} />
+                    <Ionicons name="options-outline" size={16} color={Colors.primary} />
                     <Text style={styles.ownerHeroGhostButtonText}>Faire une proposition</Text>
                   </TouchableOpacity>
                 </View>
               </>
             ) : canMakeOffer ? (
               <TouchableOpacity style={styles.ownerHeroPrimaryButton} onPress={openOfferForm}>
-                <Ionicons name="send-outline" size={18} color={Colors.gray[900]} />
+                <Ionicons name="send-outline" size={18} color={Colors.white} />
                 <Text style={styles.ownerHeroPrimaryButtonText}>
                   {myOffer?.status === 'rejected' ? 'Faire une nouvelle proposition' : 'Faire une proposition'}
                 </Text>
               </TouchableOpacity>
             ) : !isDriverRole ? (
               <TouchableOpacity style={styles.ownerHeroPrimaryButton} onPress={() => router.push('/publish')}>
-                <Ionicons name="car-outline" size={18} color={Colors.gray[900]} />
+                <Ionicons name="car-outline" size={18} color={Colors.white} />
                 <Text style={styles.ownerHeroPrimaryButtonText}>Devenir conducteur</Text>
               </TouchableOpacity>
             ) : !isIdentityVerified ? (
               <TouchableOpacity style={styles.ownerHeroPrimaryButton} onPress={() => checkIdentity('publish')}>
-                <Ionicons name="shield-checkmark-outline" size={18} color={Colors.gray[900]} />
+                <Ionicons name="shield-checkmark-outline" size={18} color={Colors.white} />
                 <Text style={styles.ownerHeroPrimaryButtonText}>Vérifier mon identité</Text>
               </TouchableOpacity>
             ) : (
               <View style={styles.ownerHeroHintRow}>
-                <Ionicons name="information-circle-outline" size={16} color={Colors.white} />
+                <Ionicons name="information-circle-outline" size={16} color={Colors.primary} />
                 <Text style={styles.ownerHeroHintText}>
                   Faites défiler pour consulter tout le détail de la demande et votre proposition.
                 </Text>
               </View>
             )}
-          </LinearGradient>
-        )}
-
-        {/* Carte du trajet */}
-        {requestRouteMapData && shouldShowInlineMap && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Carte du trajet</Text>
-            <View style={styles.mapCard}>
-              <TouchableOpacity
-                activeOpacity={0.9}
-                onPress={() => setMapModalVisible(true)}
-                style={styles.mapTouchable}
-              >
-                <MapView
-                  provider={PROVIDER_GOOGLE}
-                  style={styles.mapView}
-                  scrollEnabled={false}
-                  zoomEnabled={false}
-                  pitchEnabled={false}
-                  rotateEnabled={false}
-                  initialRegion={requestRouteMapData.initialRegion}
-                >
-                  {/* Trajectoire réelle de circulation */}
-                  {displayedRouteCoordinates.length > 0 ? (
-                    <Polyline
-                      coordinates={displayedRouteCoordinates}
-                      strokeColor={Colors.primary}
-                      strokeWidth={4}
-                    />
-                  ) : (
-                    // Fallback sur ligne droite pendant le chargement ou en cas d'erreur
-                    <Polyline
-                      coordinates={requestRouteMapData.fallbackCoordinates}
-                      strokeColor={Colors.gray[400]}
-                      strokeWidth={3}
-                      lineDashPattern={[2, 2]}
-                    />
-                  )}
-
-                  {/* Marqueur de départ */}
-                  <Marker
-                    coordinate={requestRouteMapData.departureCoordinate}
-                  >
-                    <View style={styles.markerStartCircle}>
-                      <Ionicons name="location" size={18} color={Colors.white} />
-                    </View>
-                    <Callout>
-                      <View>
-                        <Text style={{ fontWeight: 'bold' }}>Départ</Text>
-                        <Text>{tripRequest.departure.name}</Text>
-                      </View>
-                    </Callout>
-                  </Marker>
-
-                  {/* Marqueur d'arrivée */}
-                  <Marker
-                    coordinate={requestRouteMapData.arrivalCoordinate}
-                  >
-                    <View style={styles.markerEndCircle}>
-                      <Ionicons name="navigate" size={18} color={Colors.white} />
-                    </View>
-                    <Callout>
-                      <View>
-                        <Text style={{ fontWeight: 'bold' }}>Destination</Text>
-                        <Text>{tripRequest.arrival.name}</Text>
-                      </View>
-                    </Callout>
-                  </Marker>
-                </MapView>
-                <View style={styles.mapOverlay}>
-                  <Text style={styles.mapOverlayText}>Touchez pour agrandir</Text>
-                </View>
-                <View style={styles.expandButton}>
-                  <View style={styles.expandButtonInner}>
-                    <Ionicons name="expand" size={20} color={Colors.gray[700]} />
-                  </View>
-                </View>
-              </TouchableOpacity>
-            </View>
           </View>
         )}
 
@@ -3048,7 +2955,7 @@ export default function TripRequestDetailsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.gray[50],
+    backgroundColor: Colors.white,
   },
   header: {
     flexDirection: 'row',
@@ -3058,7 +2965,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     backgroundColor: Colors.white,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[200],
+    borderBottomColor: Colors.gray[100],
   },
   backButton: {
     padding: Spacing.xs,
@@ -3272,18 +3179,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   content: {
-    padding: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xl,
+    backgroundColor: Colors.white,
   },
   ownerHeroCard: {
-    borderRadius: BorderRadius.xxl,
+    borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
     marginBottom: Spacing.lg,
     gap: Spacing.md,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    elevation: 6,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 1,
   },
   ownerHeroTopRow: {
     flexDirection: 'row',
@@ -3295,10 +3208,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: 6,
     borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: Colors.primary + '12',
   },
   ownerHeroStatusText: {
-    color: Colors.white,
+    color: Colors.primaryDark,
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
   },
@@ -3309,7 +3222,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.sm,
     paddingVertical: 6,
     borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: Colors.primary,
   },
   ownerHeroCounterText: {
     color: Colors.white,
@@ -3319,18 +3232,20 @@ const styles = StyleSheet.create({
   ownerHeroTitle: {
     fontSize: FontSizes.xxl,
     fontWeight: FontWeights.bold,
-    color: Colors.white,
+    color: Colors.gray[900],
     lineHeight: 30,
   },
   ownerHeroSubtitle: {
     fontSize: FontSizes.sm,
-    color: 'rgba(255,255,255,0.92)',
+    color: Colors.gray[600],
     lineHeight: 20,
   },
   ownerHeroRouteCard: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: BorderRadius.xl,
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.lg,
     padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
   },
   ownerHeroRouteRow: {
     flexDirection: 'row',
@@ -3345,7 +3260,7 @@ const styles = StyleSheet.create({
   },
   ownerHeroRouteSquare: {
     borderRadius: 3,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.primary,
   },
   ownerHeroRouteInfo: {
     flex: 1,
@@ -3354,19 +3269,19 @@ const styles = StyleSheet.create({
   ownerHeroRouteLabel: {
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
-    color: 'rgba(255,255,255,0.72)',
+    color: Colors.gray[500],
     textTransform: 'uppercase',
   },
   ownerHeroRouteText: {
     marginTop: 4,
     fontSize: FontSizes.base,
     fontWeight: FontWeights.semibold,
-    color: Colors.white,
+    color: Colors.gray[900],
   },
   ownerHeroRouteLine: {
     width: 1,
     height: 18,
-    backgroundColor: 'rgba(255,255,255,0.24)',
+    backgroundColor: Colors.gray[200],
     marginLeft: 5,
     marginVertical: 6,
   },
@@ -3382,24 +3297,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: Colors.gray[50],
+    borderWidth: 1,
+    borderColor: Colors.primary + '18',
   },
   ownerHeroMetaText: {
-    color: Colors.white,
+    color: Colors.gray[700],
     fontSize: FontSizes.sm,
-    fontWeight: FontWeights.medium,
+    fontWeight: FontWeights.semibold,
   },
   driverOverridePanel: {
     gap: Spacing.sm,
     padding: Spacing.md,
     borderRadius: BorderRadius.lg,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: Colors.gray[50],
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+    borderColor: Colors.gray[200],
     marginBottom: Spacing.md,
   },
   driverOverrideTitle: {
-    color: Colors.white,
+    color: Colors.gray[900],
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
   },
@@ -3407,27 +3324,27 @@ const styles = StyleSheet.create({
     minHeight: 42,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
+    borderColor: Colors.gray[200],
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: Colors.white,
   },
   driverOverrideButtonText: {
     flex: 1,
-    color: Colors.white,
+    color: Colors.gray[800],
     fontSize: FontSizes.sm,
-    fontWeight: FontWeights.medium,
+    fontWeight: FontWeights.semibold,
   },
   driverOverrideInput: {
     minHeight: 42,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
+    borderColor: Colors.gray[200],
     paddingHorizontal: Spacing.md,
-    color: Colors.white,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    color: Colors.gray[900],
+    backgroundColor: Colors.white,
   },
   ownerHeroSteps: {
     flexDirection: 'row',
@@ -3443,31 +3360,33 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 4,
     borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: Colors.gray[200],
   },
   ownerHeroStepDotActive: {
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.primary,
   },
   ownerHeroStepText: {
     fontSize: FontSizes.xs,
-    color: 'rgba(255,255,255,0.68)',
+    color: Colors.gray[500],
     fontWeight: FontWeights.medium,
   },
   ownerHeroStepTextActive: {
-    color: Colors.white,
+    color: Colors.primaryDark,
     fontWeight: FontWeights.bold,
   },
   ownerHeroPrimaryButton: {
     minHeight: 52,
-    borderRadius: BorderRadius.xl,
-    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.primary,
+    borderWidth: 1,
+    borderColor: Colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.sm,
   },
   ownerHeroPrimaryButtonText: {
-    color: Colors.gray[900],
+    color: Colors.white,
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
   },
@@ -3475,11 +3394,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    paddingHorizontal: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.gray[50],
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
   },
   ownerHeroHintText: {
     flex: 1,
-    color: 'rgba(255,255,255,0.9)',
+    color: Colors.gray[700],
     fontSize: FontSizes.sm,
     lineHeight: 20,
   },
@@ -3493,18 +3416,18 @@ const styles = StyleSheet.create({
   ownerHeroGhostButton: {
     flex: 1,
     minHeight: 46,
-    borderRadius: BorderRadius.xl,
+    borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderColor: Colors.primary + '22',
+    backgroundColor: Colors.primary + '10',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.xs,
   },
   ownerHeroGhostButtonDanger: {
-    backgroundColor: 'rgba(239,68,68,0.16)',
-    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: Colors.danger,
+    borderColor: Colors.danger,
   },
   ownerHeroButtonPressed: {
     opacity: 0.72,
@@ -3513,9 +3436,12 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   ownerHeroGhostButtonText: {
-    color: Colors.white,
+    color: Colors.primaryDark,
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
+  },
+  ownerHeroGhostButtonTextDanger: {
+    color: Colors.white,
   },
   driverHeroPassengerRow: {
     flexDirection: 'row',
@@ -3526,7 +3452,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -3535,14 +3461,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   driverHeroPassengerLabel: {
-    color: 'rgba(255,255,255,0.72)',
+    color: Colors.gray[500],
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
     textTransform: 'uppercase',
   },
   driverHeroPassengerName: {
     marginTop: 2,
-    color: Colors.white,
+    color: Colors.gray[900],
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
   },
@@ -3670,12 +3596,11 @@ const styles = StyleSheet.create({
     marginLeft: 28,
   },
   detailsCard: {
-    backgroundColor: '#FFFCF8',
-    borderRadius: BorderRadius.xxl,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
     borderWidth: 1,
-    borderColor: Colors.primary + '12',
-    ...CommonStyles.shadowSm,
+    borderColor: Colors.gray[200],
   },
   detailRow: {
     flexDirection: 'row',
@@ -3708,43 +3633,31 @@ const styles = StyleSheet.create({
   },
   offerCard: {
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xxl,
+    borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
     marginBottom: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.gray[200],
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 1,
   },
   offerCardPending: {
     borderColor: Colors.info,
-    borderWidth: 2,
+    borderWidth: 1,
     backgroundColor: Colors.info + '08',
-    shadowColor: Colors.info,
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 4,
   },
   offerCardAccepted: {
     borderColor: Colors.success,
-    borderWidth: 2,
+    borderWidth: 1,
     backgroundColor: Colors.success + '08',
-    shadowColor: Colors.success,
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 4,
   },
   offerCardRejected: {
     borderColor: Colors.danger,
-    borderWidth: 2,
+    borderWidth: 1,
     backgroundColor: Colors.danger + '08',
-    shadowColor: Colors.danger,
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
   },
   offersCountBadge: {
     backgroundColor: Colors.info,
@@ -3959,13 +3872,12 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
   },
   driverRequiredCard: {
-    backgroundColor: '#FFFCF8',
-    borderRadius: BorderRadius.xxl,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Colors.primary + '12',
-    ...CommonStyles.shadowSm,
+    borderColor: Colors.gray[200],
   },
   driverRequiredIconContainer: {
     width: 64,
@@ -4459,13 +4371,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
   },
   noOffersContainer: {
-    backgroundColor: '#FFFCF8',
-    borderRadius: BorderRadius.xxl,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
     padding: Spacing.xl,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Colors.info + '18',
-    ...CommonStyles.shadowSm,
+    borderColor: Colors.gray[200],
   },
   noOffersIconContainer: {
     width: 80,
@@ -4503,60 +4414,6 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontWeight: FontWeights.bold,
     fontSize: FontSizes.base,
-  },
-  mapCard: {
-    height: 220,
-    borderRadius: BorderRadius.xxl,
-    overflow: 'hidden',
-    backgroundColor: Colors.gray[200],
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    position: 'relative',
-  },
-  mapTouchable: {
-    flex: 1,
-  },
-  mapView: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  mapOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    paddingVertical: Spacing.xs,
-    paddingHorizontal: Spacing.sm,
-    alignItems: 'center',
-  },
-  mapOverlayText: {
-    color: Colors.white,
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.medium,
-  },
-  expandButton: {
-    position: 'absolute',
-    top: Spacing.sm,
-    right: Spacing.sm,
-    zIndex: 1,
-  },
-  expandButtonInner: {
-    width: 36,
-    height: 36,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
   },
   mapModalOverlay: {
     flex: 1,
@@ -4714,7 +4571,7 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.medium,
     marginBottom: Spacing.xs,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0,
   },
   editDateTimeRow: {
     flexDirection: 'row',
