@@ -101,7 +101,7 @@ export class CreateTripDto {
 export class SearchTripsDto {
   @ApiProperty({
     required: false,
-    description: "Mots-cles de recherche. Chaque mot est teste sur l'adresse de depart ou d'arrivee.",
+    description: "Mots-cles de recherche. Un mot correspondant dans l'adresse de depart ou d'arrivee suffit.",
     example: 'gombe aeroport',
   })
   @IsString()
@@ -110,7 +110,7 @@ export class SearchTripsDto {
 
   @ApiProperty({
     required: false,
-    description: 'Nom du lieu de départ (recherche textuelle)',
+    description: 'Nom du lieu de depart. Un mot correspondant dans une adresse du trajet suffit.',
   })
   @IsString()
   @IsOptional()
@@ -130,7 +130,7 @@ export class SearchTripsDto {
 
   @ApiProperty({
     required: false,
-    description: 'Nom du lieu d\'arrivée (recherche textuelle)',
+    description: 'Nom du lieu d\'arrivee. Un mot correspondant dans une adresse du trajet suffit.',
   })
   @IsString()
   @IsOptional()

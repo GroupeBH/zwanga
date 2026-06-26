@@ -1,4 +1,5 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { trackEvent } from '@/services/analytics';
 import {
   TripSearchByPointsPayload,
@@ -6,22 +7,19 @@ import {
   useGetTripsQuery,
   useSearchTripsByCoordinatesMutation,
 } from '@/store/api/tripApi';
-import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
-import { useGetLandmarksQuery, type LandmarkPlace } from '@/store/api/googleMapsApi';
+import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTrips } from '@/store/selectors';
-import type { FavoriteLocation, Trip } from '@/types';
-import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
+import type { Trip } from '@/types';
+import { formatTime } from '@/utils/dateHelpers';
 import { getTripRequestCreateHref } from '@/utils/requestNavigation';
-import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
-import { searchMapboxPlaces, type MapboxSearchSuggestion } from '@/utils/mapboxSearch';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -31,316 +29,305 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const FALLBACK_KINSHASA_LANDMARKS: LandmarkPlace[] = [
-  {
-    id: 'fallback-victoire',
-    name: 'Victoire',
-    query: 'Victoire, Kalamu, Kinshasa',
-    address: 'Avenue Victoire, Kalamu, Kinshasa',
-    commune: 'Kalamu',
-    category: 'rond-point',
-    keywords: ['victoire', 'kalamu'],
-  },
-  {
-    id: 'fallback-zando',
-    name: 'Zando',
-    query: 'Marche Central Zando, Gombe, Kinshasa',
-    address: 'Marche Central, Gombe, Kinshasa',
-    commune: 'Gombe',
-    category: 'marche',
-    keywords: ['zando', 'marche central'],
-  },
-  {
-    id: 'fallback-upn',
-    name: 'UPN',
-    query: 'Universite Pedagogique Nationale, Ngaliema, Kinshasa',
-    address: 'UPN, Ngaliema, Kinshasa',
-    commune: 'Ngaliema',
-    category: 'universite',
-    keywords: ['upn'],
-  },
-  {
-    id: 'fallback-ngaba',
-    name: 'Rond-point Ngaba',
-    query: 'Rond-point Ngaba, Ngaba, Kinshasa',
-    address: 'Rond-point Ngaba, Kinshasa',
-    commune: 'Ngaba',
-    category: 'rond-point',
-    keywords: ['ngaba'],
-  },
-  {
-    id: 'fallback-matonge',
-    name: 'Matonge',
-    query: 'Matonge, Kalamu, Kinshasa',
-    address: 'Matonge, Kalamu, Kinshasa',
-    commune: 'Kalamu',
-    category: 'quartier',
-    keywords: ['matonge'],
-  },
-  {
-    id: 'fallback-kintambo',
-    name: 'Kintambo Magasin',
-    query: 'Kintambo Magasin, Kintambo, Kinshasa',
-    address: 'Kintambo Magasin, Kinshasa',
-    commune: 'Kintambo',
-    category: 'quartier',
-    keywords: ['kintambo magasin'],
-  },
-];
+type SortMode = 'cheap' | 'early';
+
+const SEARCH_COLORS = {
+  ink: '#07112A',
+  body: '#4B2D28',
+  border: '#EAB8A9',
+  panel: '#F2F3F5',
+  softBlue: '#DDE8FF',
+};
+
+const vehicleLabel: Record<Trip['vehicleType'], string> = {
+  car: 'Voiture',
+  moto: 'Moto',
+  tricycle: 'Keke',
+};
+
+const SEARCH_STOP_WORDS = new Set([
+  'a',
+  'au',
+  'aux',
+  'chez',
+  'd',
+  'dans',
+  'de',
+  'des',
+  'du',
+  'en',
+  'et',
+  'la',
+  'le',
+  'les',
+  'pour',
+  'sur',
+  'vers',
+]);
+
+function parseNumberParam(value: unknown): number | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+
+  if (typeof raw !== 'string' || raw.length === 0) {
+    return undefined;
+  }
+
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function formatPrice(price?: number | null) {
+  const safePrice = Number(price ?? 0);
+
+  if (!Number.isFinite(safePrice) || safePrice <= 0) {
+    return 'Gratuit';
+  }
+
+  return `${String(Math.round(safePrice)).replace(/\B(?=(\d{3})+(?!\d))/g, '.')} FC`;
+}
+
+function formatDurationMinutes(startIso: string, endIso?: string | null) {
+  const start = new Date(startIso).getTime();
+  const end = endIso ? new Date(endIso).getTime() : Number.NaN;
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return 'Durée à confirmer';
+  }
+
+  const totalMinutes = Math.max(1, Math.round((end - start) / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours > 0 && minutes > 0) {
+    return `${hours}h ${minutes} min`;
+  }
+
+  if (hours > 0) {
+    return `${hours}h`;
+  }
+
+  return `${minutes} min`;
+}
+
+function getInitials(name?: string | null) {
+  if (!name) {
+    return 'ZW';
+  }
+
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+}
+
+function getPlaceName(place?: Trip['departure']) {
+  return place?.name || place?.address || 'Adresse à préciser';
+}
+
+function getVehicleName(trip: Trip) {
+  if (trip.vehicle?.brand || trip.vehicle?.model) {
+    return `${trip.vehicle.brand ?? ''} ${trip.vehicle.model ?? ''}`.trim();
+  }
+
+  return trip.vehicleInfo || vehicleLabel[trip.vehicleType || 'car'];
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function getSearchTerms(value: string) {
+  return Array.from(
+    new Set(
+      normalizeSearchText(value)
+        .split(/[^a-z0-9]+/)
+        .map((term) => term.trim())
+        .filter((term) => term.length >= 2 && !SEARCH_STOP_WORDS.has(term)),
+    ),
+  ).slice(0, 8);
+}
+
+function matchesSearch(value: string | undefined, query: string) {
+  const terms = getSearchTerms(query);
+
+  if (terms.length === 0) {
+    return true;
+  }
+
+  const normalizedValue = normalizeSearchText(value ?? '');
+  return terms.some((term) => normalizedValue.includes(term));
+}
+
+type SearchResultCardProps = {
+  trip: Trip;
+  onPress: () => void;
+};
+
+function SearchResultCard({ trip, onPress }: SearchResultCardProps) {
+  const calculatedArrivalTime = useTripArrivalTime(trip);
+  const arrivalIso = calculatedArrivalTime?.toISOString() ?? trip.arrivalTime;
+  const parsedRating = Number(trip.driverRating);
+  const hasRating = Number.isFinite(parsedRating) && parsedRating > 0;
+  const driverName = trip.driverName || 'Conducteur Zwanga';
+  const isVerified = Boolean(trip.driver?.premiumBadge || trip.driver?.premiumBadgeEnabled || trip.driver?.isPremium);
+  const vehicleName = getVehicleName(trip);
+  const seatsLabel = `${trip.availableSeats} place${trip.availableSeats > 1 ? 's' : ''} libre${trip.availableSeats > 1 ? 's' : ''}`;
+  const routeAccent = trip.vehicleType === 'moto' ? Colors.primaryDark : trip.vehicleType === 'tricycle' ? Colors.infoDark : Colors.success;
+
+  return (
+    <TouchableOpacity activeOpacity={0.9} style={styles.resultCard} onPress={onPress}>
+      <View style={styles.resultTop}>
+        <View style={styles.driverAvatarWrap}>
+          {trip.driverAvatar ? (
+            <Image source={{ uri: trip.driverAvatar }} style={styles.driverAvatar} resizeMode="cover" />
+          ) : (
+            <View style={[styles.driverAvatar, styles.driverAvatarFallback]}>
+              <Text style={styles.driverAvatarText}>{getInitials(driverName)}</Text>
+            </View>
+          )}
+          {isVerified && (
+            <View style={styles.driverVerifiedBadge}>
+              <Ionicons name="checkmark" size={12} color={Colors.white} />
+            </View>
+          )}
+        </View>
+
+        <View style={styles.driverCopy}>
+          <Text style={styles.driverName} numberOfLines={1}>
+            {driverName}
+          </Text>
+          <View style={styles.driverMetaRow}>
+            <Ionicons name={hasRating ? 'star' : 'star-outline'} size={15} color={Colors.successDark} />
+            <Text style={styles.driverMetaText}>
+              {hasRating ? parsedRating.toFixed(1) : 'Nouveau'}
+            </Text>
+            <Text style={styles.driverMetaDot}>•</Text>
+            <Text style={styles.driverMetaText}>
+              {trip.driver?.totalRatings ? `${trip.driver.totalRatings} trajets` : 'Trajets récents'}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.priceBlock}>
+          <Text style={styles.resultPrice}>{formatPrice(trip.price)}</Text>
+          {trip.price > 0 && <Text style={styles.priceUnit}>par personne</Text>}
+        </View>
+      </View>
+
+      <View style={styles.tripTimingPanel}>
+        <View style={[styles.timingAccent, { backgroundColor: routeAccent }]} />
+        <View style={styles.departureTimeBlock}>
+          <Text style={styles.departureTime}>{formatTime(trip.departureTime)}</Text>
+          <Text style={[styles.departureLabel, { color: routeAccent }]}>DÉPART</Text>
+        </View>
+        <View style={styles.durationBlock}>
+          <View style={styles.durationLine} />
+          <Text style={styles.durationText}>{formatDurationMinutes(trip.departureTime, arrivalIso)}</Text>
+          <Ionicons name="car-sport" size={16} color={SEARCH_COLORS.body} />
+        </View>
+        <View style={styles.vehicleBlock}>
+          <View style={styles.vehiclePill}>
+            <Text style={styles.vehiclePillText} numberOfLines={1}>
+              {vehicleName}
+            </Text>
+          </View>
+          <Text style={styles.vehicleSubtext} numberOfLines={2}>
+            {trip.description || `${vehicleLabel[trip.vehicleType || 'car']} • ${seatsLabel}`}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.routeSummary}>
+        <Text style={styles.routeSummaryText} numberOfLines={1}>
+          {getPlaceName(trip.departure)} → {getPlaceName(trip.arrival)}
+        </Text>
+      </View>
+
+      <View style={styles.resultBadges}>
+        {isVerified && (
+          <View style={styles.greenBadge}>
+            <Ionicons name="shield-checkmark-outline" size={14} color={Colors.successDark} />
+            <Text style={styles.greenBadgeText}>VÉRIFIÉ</Text>
+          </View>
+        )}
+        {trip.price > 0 ? (
+          <View style={styles.instantBadge}>
+            <Ionicons name="flash" size={13} color={Colors.primaryDark} />
+            <Text style={styles.instantBadgeText}>RÉSERVATION INSTANTANÉE</Text>
+          </View>
+        ) : (
+          <View style={styles.greenBadge}>
+            <Ionicons name="cash-outline" size={14} color={Colors.successDark} />
+            <Text style={styles.greenBadgeText}>GRATUIT</Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
 
 export default function SearchScreen() {
   const router = useRouter();
   const searchParams = useLocalSearchParams<{
-    departure?: string;
     arrival?: string;
-    mode?: string;
-    departureLat?: string;
-    departureLng?: string;
     arrivalLat?: string;
     arrivalLng?: string;
-    departureRadiusKm?: string;
     arrivalRadiusKm?: string;
-    departureLabel?: string;
-    arrivalLabel?: string;
+    departure?: string;
+    departureLat?: string;
+    departureLng?: string;
+    departureRadiusKm?: string;
+    mode?: string;
   }>();
   const storedTrips = useAppSelector(selectTrips);
-  const { data: favoriteLocations = [] } = useGetFavoriteLocationsQuery();
-  const { data: kinshasaLandmarks = [] } = useGetLandmarksQuery({
-    city: 'kinshasa',
-    limit: 8,
-  });
+  const { data: currentUser } = useGetCurrentUserQuery();
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
-  const [departureSuggestions, setDepartureSuggestions] = useState<MapboxSearchSuggestion[]>([]);
-  const [arrivalSuggestions, setArrivalSuggestions] = useState<MapboxSearchSuggestion[]>([]);
-  const [departureLoading, setDepartureLoading] = useState(false);
-  const [arrivalLoading, setArrivalLoading] = useState(false);
-  const [activeSearchField, setActiveSearchField] = useState<'departure' | 'arrival' | null>(null);
-  const departureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const arrivalTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const lastTrackedTextSearchKeyRef = useRef<string | null>(null);
+  const [draftDeparture, setDraftDeparture] = useState('');
+  const [draftArrival, setDraftArrival] = useState('');
   const [queryParams, setQueryParams] = useState<TripSearchParams>({});
   const [advancedTrips, setAdvancedTrips] = useState<Trip[] | null>(null);
   const [advancedError, setAdvancedError] = useState<string | null>(null);
-  const [lastAdvancedPayload, setLastAdvancedPayload] =
-    useState<TripSearchByPointsPayload | null>(null);
-  const [searchTripsByCoordinates, { isLoading: isAdvancedSearching }] =
-    useSearchTripsByCoordinatesMutation();
-  const landmarkShortcuts =
-    kinshasaLandmarks.length > 0 ? kinshasaLandmarks : FALLBACK_KINSHASA_LANDMARKS;
+  const [lastAdvancedPayload, setLastAdvancedPayload] = useState<TripSearchByPointsPayload | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>('cheap');
+  const [searchTripsByCoordinates, { isLoading: isAdvancedSearching }] = useSearchTripsByCoordinatesMutation();
+  const firstName = currentUser?.firstName || currentUser?.name?.split(' ')[0] || 'Kinshasa';
+  const avatarUri = currentUser?.profilePicture || currentUser?.avatar;
 
   const {
     data: remoteTrips,
     isLoading: queryLoading,
     isFetching: queryFetching,
+    refetch,
   } = useGetTripsQuery(queryParams, {
-    // Polling pour les résultats de recherche
     pollingInterval: 60000,
     refetchOnFocus: true,
     refetchOnReconnect: true,
   });
 
-  // Recherche avec suggestions Mapbox pour le départ
-  const searchDepartureSuggestions = useCallback(async (query: string) => {
-    if (!query.trim() || query.trim().length < 2) {
-      setDepartureSuggestions([]);
-      return;
-    }
-
-    try {
-      setDepartureLoading(true);
-      const suggestions = await searchMapboxPlaces(query, undefined, 5);
-      setDepartureSuggestions(suggestions);
-    } catch (error) {
-      console.warn('Mapbox search failed for departure', error);
-      setDepartureSuggestions([]);
-    } finally {
-      setDepartureLoading(false);
-    }
-  }, []);
-
-  // Recherche avec suggestions Mapbox pour l'arrivée
-  const searchArrivalSuggestions = useCallback(async (query: string) => {
-    if (!query.trim() || query.trim().length < 2) {
-      setArrivalSuggestions([]);
-      return;
-    }
-
-    try {
-      setArrivalLoading(true);
-      const suggestions = await searchMapboxPlaces(query, undefined, 5);
-      setArrivalSuggestions(suggestions);
-    } catch (error) {
-      console.warn('Mapbox search failed for arrival', error);
-      setArrivalSuggestions([]);
-    } finally {
-      setArrivalLoading(false);
-    }
-  }, []);
-
-  // Debounce pour les suggestions de départ
   useEffect(() => {
-    if (departureTimeoutRef.current) {
-      clearTimeout(departureTimeoutRef.current);
-    }
+    const departureParam = typeof searchParams.departure === 'string' ? searchParams.departure : '';
+    const arrivalParam = typeof searchParams.arrival === 'string' ? searchParams.arrival : '';
 
-    if (departure.trim().length >= 2 && activeSearchField === 'departure') {
-      departureTimeoutRef.current = setTimeout(() => {
-        searchDepartureSuggestions(departure);
-      }, 300);
-    } else {
-      setDepartureSuggestions([]);
-    }
-
-    return () => {
-      if (departureTimeoutRef.current) {
-        clearTimeout(departureTimeoutRef.current);
-      }
-    };
-  }, [departure, activeSearchField, searchDepartureSuggestions]);
-
-  // Debounce pour les suggestions d'arrivée
-  useEffect(() => {
-    if (arrivalTimeoutRef.current) {
-      clearTimeout(arrivalTimeoutRef.current);
-    }
-
-    if (arrival.trim().length >= 2 && activeSearchField === 'arrival') {
-      arrivalTimeoutRef.current = setTimeout(() => {
-        searchArrivalSuggestions(arrival);
-      }, 300);
-    } else {
-      setArrivalSuggestions([]);
-    }
-
-    return () => {
-      if (arrivalTimeoutRef.current) {
-        clearTimeout(arrivalTimeoutRef.current);
-      }
-    };
-  }, [arrival, activeSearchField, searchArrivalSuggestions]);
-
-  const handleDepartureSuggestionSelect = (suggestion: MapboxSearchSuggestion) => {
-    setDeparture(suggestion.name);
-    setDepartureSuggestions([]);
-    setActiveSearchField(null);
-  };
-
-  const handleArrivalSuggestionSelect = (suggestion: MapboxSearchSuggestion) => {
-    setArrival(suggestion.name);
-    setArrivalSuggestions([]);
-    setActiveSearchField(null);
-  };
-
-  const activeSuggestions = useMemo(
-    () => (activeSearchField === 'departure' ? departureSuggestions : arrivalSuggestions),
-    [activeSearchField, arrivalSuggestions, departureSuggestions],
-  );
-
-  const activeSuggestionQuery = activeSearchField === 'departure' ? departure : arrival;
-  const visibleSuggestions = useMemo(() => activeSuggestions.slice(0, 3), [activeSuggestions]);
-  const showSuggestionPanel = !!activeSearchField && visibleSuggestions.length > 0;
-  const textSearchKey = useMemo(
-    () =>
-      JSON.stringify({
-        departureLocation: queryParams.departureLocation ?? '',
-        arrivalLocation: queryParams.arrivalLocation ?? '',
-      }),
-    [queryParams.arrivalLocation, queryParams.departureLocation],
-  );
-
-  // Fonction pour mettre en évidence le texte recherché
-  const highlightText = (text: string, query: string) => {
-    if (!query || query.trim().length === 0) {
-      return <Text>{text}</Text>;
-    }
-
-    const parts = text.split(new RegExp(`(${query})`, 'gi'));
-    return (
-      <Text>
-        {parts.map((part, index) =>
-          part.toLowerCase() === query.toLowerCase() ? (
-            <Text key={index} style={{ color: Colors.primary, fontWeight: FontWeights.semibold }}>
-              {part}
-            </Text>
-          ) : (
-            <Text key={index}>{part}</Text>
-          ),
-        )}
-      </Text>
-    );
-  };
-
-  // Fonction pour obtenir l'icône selon le type de lieu
-  const getPlaceIcon = (suggestion: MapboxSearchSuggestion) => {
-    const placeType = suggestion.placeType?.[0] || '';
-    if (placeType.includes('poi') || placeType.includes('category')) {
-      return 'search';
-    }
-    if (placeType.includes('station') || placeType.includes('transit')) {
-      return 'train';
-    }
-    if (placeType.includes('cafe') || placeType.includes('restaurant')) {
-      return 'cafe';
-    }
-    return 'location';
-  };
-
-  const handleApplySearch = () => {
-    const nextParams = {
-      departureLocation: departure.trim() || undefined,
-      arrivalLocation: arrival.trim() || undefined,
-    };
-    setDepartureSuggestions([]);
-    setArrivalSuggestions([]);
-    setActiveSearchField(null);
-    clearAdvancedFilter();
-    lastTrackedTextSearchKeyRef.current = null;
-    setQueryParams(nextParams);
-    void trackEvent('search_submitted', {
-      search_mode: 'text',
-      has_departure: Boolean(nextParams.departureLocation),
-      has_arrival: Boolean(nextParams.arrivalLocation),
+    setDeparture(departureParam);
+    setArrival(arrivalParam);
+    setDraftDeparture(departureParam);
+    setDraftArrival(arrivalParam);
+    setQueryParams({
+      departureLocation: departureParam || undefined,
+      arrivalLocation: arrivalParam || undefined,
     });
-  };
-
-  const handleFavoriteLocationShortcut = (location: FavoriteLocation) => {
-    const value = location.address || location.name;
-
-    if (activeSearchField === 'arrival') {
-      setArrival(value);
-      setArrivalSuggestions([]);
-    } else if (activeSearchField === 'departure' || !departure.trim()) {
-      setDeparture(value);
-      setDepartureSuggestions([]);
-    } else {
-      setArrival(value);
-      setArrivalSuggestions([]);
-    }
-
-    setActiveSearchField(null);
-  };
-
-  const handleLandmarkShortcut = (landmark: LandmarkPlace) => {
-    const value = landmark.query || landmark.name;
-
-    if (activeSearchField === 'arrival') {
-      setArrival(value);
-      setArrivalSuggestions([]);
-    } else if (activeSearchField === 'departure' || !departure.trim()) {
-      setDeparture(value);
-      setDepartureSuggestions([]);
-    } else {
-      setArrival(value);
-      setArrivalSuggestions([]);
-    }
-
-    setActiveSearchField(null);
-  };
+  }, [searchParams.departure, searchParams.arrival]);
 
   const runAdvancedSearch = async (payload: TripSearchByPointsPayload) => {
     setAdvancedError(null);
     setAdvancedTrips(null);
+
     try {
       const results = await searchTripsByCoordinates(payload).unwrap();
       setAdvancedTrips(results);
@@ -356,52 +343,6 @@ export default function SearchScreen() {
       setAdvancedError(Array.isArray(message) ? message.join('\n') : message);
     }
   };
-
-  const clearAdvancedFilter = () => {
-    setAdvancedTrips(null);
-    setAdvancedError(null);
-    setLastAdvancedPayload(null);
-  };
-
-  const handleRetryAdvanced = () => {
-    if (lastAdvancedPayload) {
-      runAdvancedSearch(lastAdvancedPayload);
-    }
-  };
-
-  useEffect(() => {
-    if (!remoteTrips) {
-      return;
-    }
-
-    if (!queryParams.departureLocation && !queryParams.arrivalLocation) {
-      return;
-    }
-
-    if (lastTrackedTextSearchKeyRef.current === textSearchKey) {
-      return;
-    }
-
-    lastTrackedTextSearchKeyRef.current = textSearchKey;
-    void trackEvent('search_results_viewed', {
-      search_mode: 'text',
-      results_count: remoteTrips.length,
-      has_departure: Boolean(queryParams.departureLocation),
-      has_arrival: Boolean(queryParams.arrivalLocation),
-    });
-  }, [queryParams.arrivalLocation, queryParams.departureLocation, remoteTrips, textSearchKey]);
-
-  useEffect(() => {
-    const departureParam = typeof searchParams.departure === 'string' ? searchParams.departure : '';
-    const arrivalParam = typeof searchParams.arrival === 'string' ? searchParams.arrival : '';
-    setDeparture(departureParam);
-    setArrival(arrivalParam);
-    setQueryParams((prev) => ({
-      ...prev,
-      departureLocation: departureParam || undefined,
-      arrivalLocation: arrivalParam || undefined,
-    }));
-  }, [searchParams.departure, searchParams.arrival]);
 
   useEffect(() => {
     const mode = String(searchParams.mode || '');
@@ -448,375 +389,251 @@ export default function SearchScreen() {
     searchParams.arrivalRadiusKm,
   ]);
 
-  const baseTrips: Trip[] = useMemo(() => {
+  const baseTrips = useMemo(() => {
     if (advancedTrips) {
       return advancedTrips;
     }
+
     if (remoteTrips) {
       return remoteTrips;
     }
+
     return storedTrips;
   }, [advancedTrips, remoteTrips, storedTrips]);
 
   const filteredTrips = useMemo(() => {
-    const filtered = baseTrips.filter((trip) => {
-      const matchesDeparture = !departure || trip.departure.name.toLowerCase().includes(departure.toLowerCase());
-      const matchesArrival = !arrival || trip.arrival.name.toLowerCase().includes(arrival.toLowerCase());
-      return matchesDeparture && matchesArrival;
+    const visibleTrips = baseTrips.filter((trip) => {
+      const departureText = `${trip.departure?.name ?? ''} ${trip.departure?.address ?? ''}`;
+      const arrivalText = `${trip.arrival?.name ?? ''} ${trip.arrival?.address ?? ''}`;
+      const routeText = `${departureText} ${arrivalText}`;
+      const routeQuery = [departure, arrival].filter(Boolean).join(' ');
+
+      return matchesSearch(routeText, routeQuery);
     });
-    
-    // Trier par date de création (les plus récents en premier)
-    return filtered.sort((a, b) => {
-      const dateA = new Date(a.createdAt).getTime();
-      const dateB = new Date(b.createdAt).getTime();
-      return dateB - dateA; // dateB - dateA = du plus récent au plus ancien
+
+    return [...visibleTrips].sort((a, b) => {
+      if (sortMode === 'cheap') {
+        const priceA = Number(a.price ?? 0);
+        const priceB = Number(b.price ?? 0);
+
+        if (priceA !== priceB) {
+          return priceA - priceB;
+        }
+      }
+
+      const departureA = new Date(a.departureTime).getTime();
+      const departureB = new Date(b.departureTime).getTime();
+      const safeDepartureA = Number.isFinite(departureA) ? departureA : Number.MAX_SAFE_INTEGER;
+      const safeDepartureB = Number.isFinite(departureB) ? departureB : Number.MAX_SAFE_INTEGER;
+
+      return safeDepartureA - safeDepartureB;
     });
-  }, [baseTrips, departure, arrival]);
+  }, [arrival, baseTrips, departure, sortMode]);
+
+  const isLoadingResults = (queryLoading || isAdvancedSearching) && baseTrips.length === 0;
+  const isRefreshingResults = queryFetching || isAdvancedSearching;
+  const hasDraftSearchChanges = draftDeparture.trim() !== departure || draftArrival.trim() !== arrival;
+  const searchActionLabel = isRefreshingResults
+    ? 'Recherche...'
+    : hasDraftSearchChanges
+      ? 'Rechercher'
+      : 'Actualiser la recherche';
+
+  const handleApplySearch = () => {
+    const nextDeparture = draftDeparture.trim();
+    const nextArrival = draftArrival.trim();
+    setDeparture(nextDeparture);
+    setArrival(nextArrival);
+    setAdvancedTrips(null);
+    setAdvancedError(null);
+    setLastAdvancedPayload(null);
+    setQueryParams({
+      departureLocation: nextDeparture || undefined,
+      arrivalLocation: nextArrival || undefined,
+    });
+    void trackEvent('search_submitted', {
+      search_mode: 'text',
+      has_departure: Boolean(nextDeparture),
+      has_arrival: Boolean(nextArrival),
+    });
+  };
+
+  const handleRetry = () => {
+    if (lastAdvancedPayload) {
+      runAdvancedSearch(lastAdvancedPayload);
+      return;
+    }
+
+    refetch();
+  };
+
+  const handleCreateTripRequest = () => {
+    router.push(
+      getTripRequestCreateHref({
+        departure: draftDeparture || departure,
+        arrival: draftArrival || arrival,
+      }),
+    );
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Rechercher un trajet</Text>
-        </View>
-
-        {/* Barre de recherche */}
-        <View style={styles.searchBox}>
-          <View style={styles.searchRowContainer}>
-            <View style={styles.searchRow}>
-              <Ionicons name="location-outline" size={18} color={Colors.success} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Choisissez votre point de départ"
-                placeholderTextColor={Colors.gray[500]}
-                value={departure}
-                onChangeText={setDeparture}
-                onFocus={() => setActiveSearchField('departure')}
-                onBlur={() => {
-                  // Délai pour permettre le clic sur une suggestion
-                  setTimeout(() => {
-                    if (activeSearchField === 'departure') {
-                      setActiveSearchField(null);
-                    }
-                  }, 200);
-                }}
-              />
-              {departure.length > 0 && (
-                <TouchableOpacity
-                  onPress={() => {
-                    setDeparture('');
-                    setDepartureSuggestions([]);
-                  }}
-                  style={styles.clearButton}
-                >
-                  <Ionicons name="close-circle" size={20} color={Colors.gray[400]} />
-                </TouchableOpacity>
-              )}
-              {departureLoading && (
-                <ActivityIndicator size="small" color={Colors.primary} style={styles.loadingIndicator} />
-              )}
-            </View>
-          </View>
-          <View style={styles.searchDivider} />
-          <View style={styles.searchRowContainer}>
-            <View style={[styles.searchRow, styles.searchRowLast]}>
-              <Ionicons name="flag-outline" size={18} color={Colors.primary} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Choisissez votre point d'arrivée"
-                placeholderTextColor={Colors.gray[500]}
-                value={arrival}
-                onChangeText={setArrival}
-                onFocus={() => setActiveSearchField('arrival')}
-                onBlur={() => {
-                  // Délai pour permettre le clic sur une suggestion
-                  setTimeout(() => {
-                    if (activeSearchField === 'arrival') {
-                      setActiveSearchField(null);
-                    }
-                  }, 200);
-                }}
-              />
-              {arrival.length > 0 && (
-                <TouchableOpacity
-                  onPress={() => {
-                    setArrival('');
-                    setArrivalSuggestions([]);
-                  }}
-                  style={styles.clearButton}
-                >
-                  <Ionicons name="close-circle" size={20} color={Colors.gray[400]} />
-                </TouchableOpacity>
-              )}
-              {arrivalLoading && (
-                <ActivityIndicator size="small" color={Colors.primary} style={styles.loadingIndicator} />
-              )}
-            </View>
-          </View>
-        </View>
-        
-        {/* Suggestions affichées dans un panneau compact pour garder l'écran léger */}
-        {showSuggestionPanel && (
-          <View style={styles.suggestionsContainerAbsolute}>
-            <View style={styles.suggestionsPanelHeader}>
-              <View style={styles.suggestionsPanelBadge}>
-                <Ionicons
-                  name={activeSearchField === 'departure' ? 'location-outline' : 'flag-outline'}
-                  size={14}
-                  color={Colors.primary}
-                />
-                <Text style={styles.suggestionsPanelBadgeText}>
-                  {activeSearchField === 'departure' ? 'Départ' : 'Arrivée'}
-                </Text>
-              </View>
-              <Text style={styles.suggestionsPanelHint}>Touchez une suggestion</Text>
-            </View>
-            <FlatList
-              data={visibleSuggestions}
-              keyExtractor={(item, index) => `${item.id}-${index}`}
-              keyboardShouldPersistTaps="handled"
-              renderItem={({ item, index }) => (
-                <TouchableOpacity
-                  style={[
-                    styles.suggestionRow,
-                    index === visibleSuggestions.length - 1 && styles.suggestionRowLast,
-                  ]}
-                  onPress={() =>
-                    activeSearchField === 'departure'
-                      ? handleDepartureSuggestionSelect(item)
-                      : handleArrivalSuggestionSelect(item)
-                  }
-                >
-                  <View style={styles.suggestionIconBadge}>
-                    <Ionicons
-                      name={getPlaceIcon(item) as any}
-                      size={17}
-                      color={getPlaceIcon(item) === 'search' ? Colors.primary : Colors.gray[700]}
-                    />
-                  </View>
-                  <View style={styles.suggestionContent}>
-                    <Text style={styles.suggestionTitle} numberOfLines={1}>
-                      {highlightText(item.name, activeSuggestionQuery)}
-                    </Text>
-                    {item.fullAddress && (
-                      <Text style={styles.suggestionSubtitle} numberOfLines={1}>
-                        {item.fullAddress}
-                      </Text>
-                    )}
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
-                </TouchableOpacity>
-              )}
-              scrollEnabled={activeSuggestions.length > visibleSuggestions.length}
-            />
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.75}>
+          <Ionicons name="arrow-back" size={24} color={Colors.primaryDark} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          Bonjour, {firstName}
+        </Text>
+        {avatarUri ? (
+          <Image source={{ uri: avatarUri }} style={styles.headerAvatar} resizeMode="cover" />
+        ) : (
+          <View style={[styles.headerAvatar, styles.headerAvatarFallback]}>
+            <Text style={styles.headerAvatarText}>{getInitials(firstName)}</Text>
           </View>
         )}
-        <TouchableOpacity style={styles.searchButton} onPress={handleApplySearch}>
-          {queryFetching ? (
-            <ActivityIndicator color={Colors.white} />
-          ) : (
-            <Text style={styles.searchButtonText}>Rechercher</Text>
-          )}
-        </TouchableOpacity>
-
-        <View style={styles.favoriteShortcutsSection}>
-          <View style={styles.favoriteShortcutsHeader}>
-            <View>
-              <Text style={styles.favoriteShortcutsTitle}>Acces rapides</Text>
-              <Text style={styles.favoriteShortcutsHint}>Choisissez un repere sans quitter les resultats</Text>
-            </View>
-            {favoriteLocations.length > 0 && (
-              <TouchableOpacity onPress={() => router.push('/favorite-locations')}>
-                <Text style={styles.favoriteShortcutsLink}>Gerer</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.favoriteShortcutsScroll}
-          >
-            {favoriteLocations.slice(0, 4).map((location) => {
-              const icon =
-                location.type === 'home'
-                  ? 'home'
-                  : location.type === 'work'
-                    ? 'briefcase'
-                    : 'location';
-
-              return (
-                <TouchableOpacity
-                  key={location.id}
-                  style={[styles.favoriteShortcutChip, styles.favoriteShortcutChipFavorite]}
-                  onPress={() => handleFavoriteLocationShortcut(location)}
-                >
-                  <Ionicons name={icon} size={14} color={Colors.primary} />
-                  <Text style={styles.favoriteShortcutText} numberOfLines={1}>
-                    {location.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-
-            {landmarkShortcuts.slice(0, 6).map((landmark) => (
-              <TouchableOpacity
-                key={landmark.id}
-                style={styles.favoriteShortcutChip}
-                onPress={() => handleLandmarkShortcut(landmark)}
-              >
-                <Ionicons name="navigate" size={14} color={Colors.primary} />
-                <Text style={styles.favoriteShortcutText} numberOfLines={1}>
-                  {landmark.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
       </View>
 
-      {/* Résultats */}
-      <ScrollView 
-        style={styles.scrollView} 
-        contentContainerStyle={styles.scrollViewContent}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {(queryLoading || isAdvancedSearching) && !filteredTrips.length ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loadingText}>Recherche des trajets...</Text>
+        <View style={styles.routeSummaryCard}>
+          <View style={styles.routeSummaryPlaces}>
+            <View style={styles.routeSummaryRow}>
+              <View style={[styles.routeDot, styles.routeDotStart]} />
+              <TextInput
+                style={styles.routeInput}
+                value={draftDeparture}
+                onChangeText={setDraftDeparture}
+                onSubmitEditing={handleApplySearch}
+                placeholder="Point de départ"
+                placeholderTextColor={Colors.gray[500]}
+                returnKeyType="next"
+                autoCorrect={false}
+              />
+              {draftDeparture.length > 0 && (
+                <TouchableOpacity
+                  style={styles.clearRouteButton}
+                  onPress={() => setDraftDeparture('')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close-circle" size={18} color={Colors.gray[400]} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.routeInputDivider} />
+            <View style={styles.routeSummaryRow}>
+              <View style={[styles.routeDot, styles.routeDotEnd]} />
+              <TextInput
+                style={styles.routeInput}
+                value={draftArrival}
+                onChangeText={setDraftArrival}
+                onSubmitEditing={handleApplySearch}
+                placeholder="Destination"
+                placeholderTextColor={Colors.gray[500]}
+                returnKeyType="search"
+                autoCorrect={false}
+              />
+              {draftArrival.length > 0 && (
+                <TouchableOpacity
+                  style={styles.clearRouteButton}
+                  onPress={() => setDraftArrival('')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close-circle" size={18} color={Colors.gray[400]} />
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
-        ) : null}
+          <View style={styles.passengerBlock}>
+            <Text style={styles.passengerCount}>1</Text>
+            <Text style={styles.passengerLabel}>PERS.</Text>
+          </View>
+        </View>
 
-        {advancedError ? (
-          <TouchableOpacity style={styles.errorBanner} onPress={handleRetryAdvanced}>
-            <Ionicons name="alert-circle" size={18} color={Colors.white} />
+        <View style={styles.resultsToolbar}>
+          <View style={styles.resultsCountRow}>
+            <Text style={styles.resultsCount}>
+              {filteredTrips.length} trajet{filteredTrips.length > 1 ? 's' : ''} trouvé{filteredTrips.length > 1 ? 's' : ''}
+            </Text>
+            {isRefreshingResults && <ActivityIndicator size="small" color={Colors.primary} />}
+          </View>
+          <View style={styles.sortSegment}>
+            <TouchableOpacity
+              style={[styles.sortButton, sortMode === 'cheap' && styles.sortButtonActive]}
+              onPress={() => setSortMode('cheap')}
+              activeOpacity={0.82}
+            >
+              <Text style={[styles.sortButtonText, sortMode === 'cheap' && styles.sortButtonTextActive]}>
+                Moins cher
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.sortButton, sortMode === 'early' && styles.sortButtonActive]}
+              onPress={() => setSortMode('early')}
+              activeOpacity={0.82}
+            >
+              <Text style={[styles.sortButtonText, sortMode === 'early' && styles.sortButtonTextActive]}>
+                Plus tôt
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {isLoadingResults && (
+          <View style={styles.loaderCard}>
+            <ActivityIndicator color={Colors.primary} size="large" />
+            <Text style={styles.loaderTitle}>Recherche des trajets</Text>
+            <Text style={styles.loaderText}>On prépare les meilleures offres disponibles.</Text>
+          </View>
+        )}
+
+        {advancedError && !isLoadingResults && (
+          <View style={styles.errorCard}>
+            <Ionicons name="alert-circle-outline" size={24} color={Colors.danger} />
             <Text style={styles.errorText}>{advancedError}</Text>
-            <Ionicons name="refresh" size={18} color={Colors.white} />
-          </TouchableOpacity>
-        ) : null}
+            <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
+              <Text style={styles.retryText}>Réessayer</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
-        <Text style={styles.resultsCount}>
-          {filteredTrips.length} trajet{filteredTrips.length > 1 ? 's' : ''} trouvé{filteredTrips.length > 1 ? 's' : ''}
-        </Text>
-
-        {!isAdvancedSearching && filteredTrips.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIcon}>
-              <Ionicons name="search-outline" size={48} color={Colors.gray[500]} />
+        {!isLoadingResults && !advancedError && filteredTrips.length === 0 && (
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIconWrap}>
+              <Ionicons name="trail-sign-outline" size={30} color={Colors.primary} />
             </View>
             <Text style={styles.emptyTitle}>Aucun trajet trouvé</Text>
             <Text style={styles.emptyText}>
-              Essayez de modifier vos critères de recherche ou créez une demande de trajet
+              Demandez ce trajet et les conducteurs disponibles pourront vous proposer une course.
             </Text>
-            <TouchableOpacity
-              style={styles.createRequestButton}
-                onPress={() => router.push(getTripRequestCreateHref())}
-            >
-              <Ionicons name="add-circle" size={20} color={Colors.white} />
-              <Text style={styles.createRequestButtonText}>Créer une demande de trajet</Text>
+            <TouchableOpacity style={styles.emptyActionButton} onPress={handleCreateTripRequest} activeOpacity={0.86}>
+              <Ionicons name="paper-plane-outline" size={18} color={Colors.white} />
+              <Text style={styles.emptyActionText}>Demander ce trajet</Text>
             </TouchableOpacity>
           </View>
-        ) : (
-          filteredTrips.map((trip) => {
-            const TripCardWithArrival = () => {
-              const calculatedArrivalTime = useTripArrivalTime(trip);
-              const arrivalTimeDisplay = calculatedArrivalTime 
-                ? formatTime(calculatedArrivalTime.toISOString())
-                : formatTime(trip.arrivalTime);
-
-              return (
-                <View key={trip.id} style={styles.tripCard}>
-                  <View style={styles.tripHeader}>
-                    <View style={styles.tripDriverInfo}>
-                      {trip.driverAvatar ? (
-                        <Image
-                          source={{ uri: trip.driverAvatar }}
-                          style={styles.avatar}
-                        />
-                      ) : (
-                        <View style={styles.avatar} />
-                      )}
-                      <View style={styles.tripDriverDetails}>
-                        <Text style={styles.driverName}>{trip.driverName}</Text>
-                        <View style={styles.driverMeta}>
-                          <Ionicons name="star" size={14} color={Colors.secondary} />
-                          <Text style={styles.driverRating}>{trip.driverRating}</Text>
-                          <View style={styles.dot} />
-                          <Text style={styles.vehicleInfo}>
-                            {trip.vehicle
-                              ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
-                              : trip.vehicleInfo}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                    {trip.price === 0 ? (
-                      <View style={styles.freeBadge}>
-                        <Text style={styles.freeBadgeText}>Gratuit</Text>
-                      </View>
-                    ) : (
-                      <View style={styles.priceBadge}>
-                        <Text style={styles.priceText}>{trip.price} FC</Text>
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={styles.tripRoute}>
-                    <View style={styles.routeRow}>
-                      <Ionicons name="location" size={16} color={Colors.success} />
-                      <Text style={styles.routeText}>{trip.departure.name}</Text>
-                      <View style={styles.timeContainer}>
-                        <Text style={styles.routeDateLabel}>
-                          {formatDateWithRelativeLabel(trip.departureTime, false)}
-                        </Text>
-                        <Text style={styles.routeTime}>
-                          {formatTime(trip.departureTime)}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.routeRow}>
-                      <Ionicons name="navigate" size={16} color={Colors.primary} />
-                      <Text style={styles.routeText}>{trip.arrival.name}</Text>
-                      <View style={styles.timeContainer}>
-                        {calculatedArrivalTime && (
-                          <Text style={styles.routeDateLabel}>
-                            {formatDateWithRelativeLabel(calculatedArrivalTime.toISOString(), false)}
-                          </Text>
-                        )}
-                        <Text style={styles.routeTime}>
-                          {arrivalTimeDisplay}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  <View style={styles.tripFooter}>
-                    <View style={styles.tripFooterLeft}>
-                      <Ionicons name="people" size={16} color={Colors.gray[600]} />
-                      <Text style={styles.seatsText}>
-                        {trip.availableSeats} places disponibles
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.detailsButton}
-                      onPress={() => router.push(`/trip/${trip.id}`)}
-                    >
-                      <Text style={styles.detailsButtonText}>Voir détails</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            };
-
-            return <TripCardWithArrival key={trip.id} />;
-          })
         )}
+
+        {!isLoadingResults && !advancedError && (
+          <View style={styles.resultsList}>
+            {filteredTrips.map((trip) => (
+              <SearchResultCard key={trip.id} trip={trip} onPress={() => router.push(`/trip/${trip.id}`)} />
+            ))}
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={[styles.modifySearchButton, isRefreshingResults && styles.modifySearchButtonDisabled]}
+          onPress={hasDraftSearchChanges ? handleApplySearch : handleRetry}
+          disabled={isRefreshingResults}
+          activeOpacity={0.86}
+        >
+          <Ionicons name={hasDraftSearchChanges ? 'search' : 'refresh'} size={22} color={Colors.white} />
+          <Text style={styles.modifySearchText}>{searchActionLabel}</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -828,524 +645,491 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
   },
   header: {
-    backgroundColor: Colors.white,
+    minHeight: 58,
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[200],
-  },
-  headerTop: {
+    borderBottomColor: SEARCH_COLORS.border,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.md,
+    backgroundColor: Colors.gray[50],
   },
   backButton: {
-    marginRight: Spacing.lg,
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.xs,
   },
   headerTitle: {
+    flex: 1,
+    color: Colors.primaryDark,
     fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
   },
-  searchBox: {
-    backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
+  headerAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '14',
   },
-  searchButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.md,
+  headerAvatarFallback: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: Spacing.sm,
-    marginBottom: Spacing.sm,
   },
-  searchButtonText: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
-  },
-  favoriteShortcutsSection: {
-    marginBottom: Spacing.sm,
-  },
-  favoriteShortcutsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.sm,
-  },
-  favoriteShortcutsTitle: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[700],
-  },
-  favoriteShortcutsLink: {
-    fontSize: FontSizes.sm,
+  headerAvatarText: {
     color: Colors.primary,
-    fontWeight: FontWeights.bold,
-  },
-  favoriteShortcutsHint: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
-    fontWeight: FontWeights.medium,
-    marginTop: 2,
-  },
-  favoriteShortcutsScroll: {
-    gap: Spacing.sm,
-    paddingRight: Spacing.xl,
-  },
-  favoriteShortcutChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: Colors.primary + '20',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm - 2,
-  },
-  favoriteShortcutChipFavorite: {
-    backgroundColor: Colors.primary + '08',
-  },
-  favoriteShortcutText: {
-    maxWidth: 116,
-    color: Colors.gray[800],
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.medium,
-  },
-  searchRowContainer: {
-    position: 'relative',
-  },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-    paddingBottom: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[200],
-  },
-  searchRowLast: {
-    marginBottom: 0,
-    paddingBottom: 0,
-    borderBottomWidth: 0,
-  },
-  searchDivider: {
-    height: 1,
-    backgroundColor: Colors.gray[200],
-    marginBottom: Spacing.md,
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: Spacing.md,
     fontSize: FontSizes.base,
-    color: Colors.gray[800],
-  },
-  clearButton: {
-    marginLeft: Spacing.sm,
-    padding: Spacing.xs,
-  },
-  loadingIndicator: {
-    marginLeft: Spacing.sm,
-  },
-  suggestionsContainer: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.md,
-    marginTop: Spacing.xs,
-    maxHeight: 300,
-    zIndex: 1000,
-    ...CommonStyles.shadowLg,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-  },
-  suggestionsContainerAbsolute: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    marginTop: -Spacing.sm,
-    marginBottom: Spacing.md,
-    marginHorizontal: Spacing.xl,
-    maxHeight: 240,
-    zIndex: 1000,
-    ...CommonStyles.shadowLg,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-  },
-  suggestionsPanelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[100],
-    gap: Spacing.sm,
-  },
-  suggestionsPanelBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 6,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary + '10',
-  },
-  suggestionsPanelBadgeText: {
-    fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
-    color: Colors.primary,
-    textTransform: 'uppercase',
-  },
-  suggestionsPanelHint: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
-    fontWeight: FontWeights.medium,
-  },
-  suggestionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm + 2,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[100],
-  },
-  suggestionRowLast: {
-    borderBottomWidth: 0,
-  },
-  suggestionIconBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.gray[100],
-  },
-  suggestionContent: {
-    flex: 1,
-    marginLeft: Spacing.sm,
-  },
-  suggestionTitle: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[900],
-    fontWeight: FontWeights.semibold,
-  },
-  suggestionSubtitle: {
-    marginTop: 2,
-    fontSize: FontSizes.xs,
-    color: Colors.gray[600],
-  },
-  filterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: Spacing.sm,
-  },
-  filterButtonLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  filterText: {
-    color: Colors.gray[700],
-    fontWeight: FontWeights.medium,
-    marginLeft: Spacing.sm,
-    fontSize: FontSizes.base,
-  },
-  filterDot: {
-    backgroundColor: Colors.primary,
-    width: 8,
-    height: 8,
-    borderRadius: BorderRadius.full,
-    marginLeft: Spacing.xs,
-  },
-  filtersContainer: {
-    paddingTop: Spacing.md,
-    gap: Spacing.md,
-  },
-  filterSection: {
-    marginBottom: Spacing.md,
-  },
-  filterSectionTitle: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[700],
-    marginBottom: Spacing.sm,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-  },
-  filterTag: {
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.full,
-    marginBottom: Spacing.sm,
-    backgroundColor: Colors.gray[200],
-  },
-  filterTagActive: {
-    backgroundColor: Colors.primary,
-  },
-  filterTagText: {
-    color: Colors.gray[700],
-    fontSize: FontSizes.sm,
-  },
-  filterTagTextActive: {
-    color: Colors.white,
-    fontWeight: FontWeights.semibold,
   },
   scrollView: {
     flex: 1,
   },
-  scrollViewContent: {
-    flexGrow: 1,
+  scrollContent: {
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.xxl,
+    paddingTop: Spacing.xl,
+    paddingBottom: 136,
   },
-  loadingContainer: {
-    alignItems: 'center',
-    paddingVertical: Spacing.xl,
-  },
-  loadingText: {
-    marginTop: Spacing.sm,
-    color: Colors.gray[500],
-  },
-  errorBanner: {
+  routeSummaryCard: {
+    minHeight: 96,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: SEARCH_COLORS.border,
+    backgroundColor: Colors.white,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.danger,
-    padding: Spacing.md,
-    borderRadius: BorderRadius.md,
-    marginBottom: Spacing.md,
+    ...CommonStyles.shadowSm,
+  },
+  routeSummaryPlaces: {
+    flex: 1,
+    paddingRight: Spacing.lg,
+  },
+  routeSummaryRow: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  routeInputDivider: {
+    height: 1,
+    marginLeft: 22,
+    backgroundColor: Colors.gray[100],
+  },
+  routeDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  routeDotStart: {
+    backgroundColor: Colors.successDark,
+  },
+  routeDotEnd: {
+    backgroundColor: Colors.primaryDark,
+  },
+  routeInput: {
+    flex: 1,
+    color: Colors.gray[900],
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    minHeight: 40,
+    paddingVertical: 0,
+  },
+  clearRouteButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  passengerBlock: {
+    width: 82,
+    minHeight: 58,
+    borderLeftWidth: 1,
+    borderLeftColor: SEARCH_COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  passengerCount: {
+    color: Colors.primaryDark,
+    fontSize: FontSizes.xxl,
+    fontWeight: FontWeights.bold,
+    lineHeight: 28,
+  },
+  passengerLabel: {
+    color: SEARCH_COLORS.body,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  resultsToolbar: {
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  resultsCountRow: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  resultsCount: {
+    color: SEARCH_COLORS.body,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  sortSegment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  sortButton: {
+    minHeight: 40,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[200],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sortButtonActive: {
+    backgroundColor: Colors.primaryDark,
+  },
+  sortButtonText: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
+  sortButtonTextActive: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+  },
+  loaderCard: {
+    minHeight: 220,
+    borderRadius: BorderRadius.xl,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: SEARCH_COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+    gap: Spacing.sm,
+    ...CommonStyles.shadowSm,
+  },
+  loaderTitle: {
+    color: SEARCH_COLORS.ink,
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+  },
+  loaderText: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+    textAlign: 'center',
+  },
+  errorCard: {
+    borderRadius: BorderRadius.xl,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.dangerLight,
+    padding: Spacing.xl,
+    alignItems: 'center',
     gap: Spacing.sm,
   },
   errorText: {
-    flex: 1,
-    color: Colors.white,
+    color: Colors.gray[800],
+    fontSize: FontSizes.sm,
+    textAlign: 'center',
   },
-  radiusCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-    ...CommonStyles.shadowSm,
-  },
-  radiusIcon: {
-    width: 36,
-    height: 36,
+  retryButton: {
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary + '15',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: Colors.primary + '14',
   },
-  radiusContent: {
-    flex: 1,
-    marginHorizontal: Spacing.md,
-  },
-  radiusTitle: {
+  retryText: {
+    color: Colors.primary,
     fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
   },
-  radiusSubtitle: {
-    color: Colors.gray[600],
-    marginTop: Spacing.xs,
-    fontSize: FontSizes.sm,
+  emptyCard: {
+    borderRadius: BorderRadius.xl,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: SEARCH_COLORS.border,
+    padding: Spacing.xxl,
+    alignItems: 'center',
+    gap: Spacing.sm,
   },
-  radiusClear: {
-    padding: Spacing.xs,
-  },
-  resultsCount: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    marginBottom: Spacing.lg,
-  },
-  emptyContainer: {
+  emptyIconWrap: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: Colors.primary + '14',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Spacing.xxl * 2,
-  },
-  emptyIcon: {
-    width: 96,
-    height: 96,
-    backgroundColor: Colors.gray[200],
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.lg,
   },
   emptyTitle: {
+    color: SEARCH_COLORS.ink,
     fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    marginBottom: Spacing.sm,
   },
   emptyText: {
     color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+    lineHeight: 20,
     textAlign: 'center',
-    fontSize: FontSizes.base,
-    marginBottom: Spacing.md,
   },
-  createRequestButton: {
+  emptyActionButton: {
+    marginTop: Spacing.md,
+    minHeight: 48,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.xl,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    marginTop: Spacing.md,
+    gap: Spacing.sm,
   },
-  createRequestButtonText: {
+  emptyActionText: {
     color: Colors.white,
     fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    marginLeft: Spacing.sm,
+    fontWeight: FontWeights.bold,
   },
-  tripCard: {
-    backgroundColor: Colors.white,
+  resultsList: {
+    gap: Spacing.xl,
+  },
+  resultCard: {
     borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: SEARCH_COLORS.border,
+    backgroundColor: Colors.white,
     padding: Spacing.lg,
-    marginBottom: Spacing.lg,
     ...CommonStyles.shadowSm,
   },
-  tripHeader: {
+  resultTop: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: Spacing.md,
+    gap: Spacing.md,
   },
-  tripDriverInfo: {
-    flexDirection: 'row',
+  driverAvatarWrap: {
+    position: 'relative',
+    width: 62,
+    height: 62,
+  },
+  driverAvatar: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: Colors.gray[100],
+  },
+  driverAvatarFallback: {
     alignItems: 'center',
-    flex: 1,
+    justifyContent: 'center',
   },
-  avatar: {
-    width: 48,
-    height: 48,
-    backgroundColor: Colors.gray[300],
-    borderRadius: BorderRadius.full,
-    marginRight: Spacing.md,
+  driverAvatarText: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
   },
-  tripDriverDetails: {
+  driverVerifiedBadge: {
+    position: 'absolute',
+    right: 0,
+    bottom: 2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: Colors.successDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.white,
+  },
+  driverCopy: {
     flex: 1,
+    minWidth: 0,
+    paddingTop: 4,
   },
   driverName: {
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    fontSize: FontSizes.base,
-    marginBottom: Spacing.xs,
-  },
-  driverMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  driverRating: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    marginLeft: Spacing.xs,
-  },
-  dot: {
-    width: 4,
-    height: 4,
-    backgroundColor: Colors.gray[400],
-    borderRadius: BorderRadius.full,
-    marginHorizontal: Spacing.sm,
-  },
-  vehicleInfo: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-  },
-  priceBadge: {
-    backgroundColor: 'rgba(46, 204, 113, 0.1)',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.full,
-  },
-  priceText: {
-    color: Colors.success,
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.sm,
-  },
-  freeBadge: {
-    backgroundColor: Colors.success + '15',
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-  },
-  freeBadgeText: {
-    color: Colors.success,
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.base,
-  },
-  tripRoute: {
-    marginBottom: Spacing.md,
-  },
-  routeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-  },
-  routeText: {
-    color: Colors.gray[700],
-    marginLeft: Spacing.sm,
-    flex: 1,
-    fontSize: FontSizes.base,
-  },
-  timeContainer: {
-    alignItems: 'flex-end',
-  },
-  routeDateLabel: {
-    fontSize: FontSizes.xs,
-    color: Colors.primary,
+    color: SEARCH_COLORS.ink,
+    fontSize: FontSizes.xl,
     fontWeight: FontWeights.medium,
-    marginBottom: 2,
   },
-  routeTime: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[500],
-  },
-  tripFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray[100],
-  },
-  tripFooterLeft: {
+  driverMetaRow: {
+    marginTop: 4,
     flexDirection: 'row',
     alignItems: 'center',
   },
-  seatsText: {
+  driverMetaText: {
+    color: Colors.gray[900],
     fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    marginLeft: Spacing.xs,
-  },
-  detailsButton: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.md,
-  },
-  detailsButtonText: {
-    color: Colors.white,
     fontWeight: FontWeights.semibold,
+    marginLeft: 4,
+  },
+  driverMetaDot: {
+    color: Colors.gray[700],
     fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    marginHorizontal: 4,
+  },
+  priceBlock: {
+    alignItems: 'flex-end',
+    minWidth: 104,
+  },
+  resultPrice: {
+    color: Colors.primaryDark,
+    fontSize: FontSizes.xxl,
+    fontWeight: FontWeights.bold,
+    lineHeight: 32,
+  },
+  priceUnit: {
+    marginTop: 4,
+    color: SEARCH_COLORS.body,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+  },
+  tripTimingPanel: {
+    marginTop: Spacing.lg,
+    minHeight: 98,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: SEARCH_COLORS.panel,
+    flexDirection: 'row',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  timingAccent: {
+    alignSelf: 'stretch',
+    width: 4,
+  },
+  departureTimeBlock: {
+    width: 96,
+    paddingLeft: Spacing.md,
+  },
+  departureTime: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.xxl,
+    fontWeight: FontWeights.bold,
+  },
+  departureLabel: {
+    marginTop: 5,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  durationBlock: {
+    width: 82,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  durationLine: {
+    width: 34,
+    borderTopWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: SEARCH_COLORS.border,
+  },
+  durationText: {
+    color: SEARCH_COLORS.body,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+  },
+  vehicleBlock: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: Spacing.md,
+  },
+  vehiclePill: {
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 4,
+    backgroundColor: SEARCH_COLORS.softBlue,
+  },
+  vehiclePillText: {
+    color: Colors.gray[700],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  vehicleSubtext: {
+    marginTop: 5,
+    color: SEARCH_COLORS.body,
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+  },
+  routeSummary: {
+    marginTop: Spacing.md,
+  },
+  routeSummaryText: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
+  resultBadges: {
+    marginTop: Spacing.md,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  greenBadge: {
+    minHeight: 30,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#65F396',
+  },
+  greenBadgeText: {
+    color: '#053B1B',
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  instantBadge: {
+    minHeight: 30,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#F9D8CF',
+  },
+  instantBadgeText: {
+    color: SEARCH_COLORS.body,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  modifySearchButton: {
+    alignSelf: 'center',
+    marginTop: Spacing.xxl,
+    minHeight: 58,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primaryDark,
+    paddingHorizontal: Spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    ...Platform.select({
+      ios: {
+        shadowColor: Colors.primaryDark,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.2,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  modifySearchButtonDisabled: {
+    opacity: 0.72,
+  },
+  modifySearchText: {
+    color: Colors.white,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
   },
 });
-
-function parseNumberParam(value?: string | string[]): number | undefined {
-  if (!value) return undefined;
-  const raw = Array.isArray(value) ? value[0] : value;
-  if (raw === undefined) return undefined;
-  const parsed = Number(raw);
-  return Number.isNaN(parsed) ? undefined : parsed;
-}

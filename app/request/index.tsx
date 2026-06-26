@@ -22,7 +22,7 @@ import DateTimePicker, {
   type DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
 import * as Location from 'expo-location';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -223,6 +223,10 @@ function buildRoutePreviewRegion(points: LatLng[]): Region {
 
 export default function RequestTripScreen() {
   const router = useRouter();
+  const requestParams = useLocalSearchParams<{
+    arrival?: string;
+    departure?: string;
+  }>();
   const insets = useSafeAreaInsets();
   const { showDialog } = useDialog();
   const { data: favoriteLocations = [] } = useGetFavoriteLocationsQuery();
@@ -255,6 +259,7 @@ export default function RequestTripScreen() {
   const [requestFormStep, setRequestFormStep] = useState<RequestFormStep>('route');
   const [routeCoordinates, setRouteCoordinates] = useState<LatLng[]>([]);
   const [isRouteLoading, setIsRouteLoading] = useState(false);
+  const [hasAppliedRoutePrefill, setHasAppliedRoutePrefill] = useState(false);
 
   const departureDateMax = useMemo(
     () => new Date(departureDateMin.getTime() + flexibilityMinutes * 60000),
@@ -273,6 +278,41 @@ export default function RequestTripScreen() {
     routeCoordinates,
   ]);
   const favoriteSuggestions = useMemo(() => favoriteLocations.slice(0, 4), [favoriteLocations]);
+
+  useEffect(() => {
+    if (hasAppliedRoutePrefill) {
+      return;
+    }
+
+    const departureParam = typeof requestParams.departure === 'string' ? requestParams.departure.trim() : '';
+    const arrivalParam = typeof requestParams.arrival === 'string' ? requestParams.arrival.trim() : '';
+
+    if (!departureParam && !arrivalParam) {
+      setHasAppliedRoutePrefill(true);
+      return;
+    }
+
+    setAddressInputMode('manual');
+    setRequestFormStep('route');
+
+    if (departureParam) {
+      setDepartureLocation(null);
+      setDepartureManualAddress(departureParam);
+    }
+
+    if (arrivalParam) {
+      setArrivalLocation(null);
+      setArrivalManualAddress(arrivalParam);
+    }
+
+    setAddressSectionStep(!departureParam ? 'departure' : 'arrival');
+    setHasAppliedRoutePrefill(true);
+  }, [
+    hasAppliedRoutePrefill,
+    requestParams.arrival,
+    requestParams.departure,
+  ]);
+
   const departureAddress = getLocationText(departureLocation, departureManualAddress);
   const arrivalAddress = getLocationText(arrivalLocation, arrivalManualAddress);
   const hasDepartureAddress = departureAddress.length > 0;
