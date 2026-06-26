@@ -1,13 +1,18 @@
 import { getTabBarMetrics } from '@/constants/navigation';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
+import { useUserLocation } from '@/hooks/useUserLocation';
 import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
 import { useGetNotificationsQuery } from '@/store/api/notificationApi';
-import { useGetTripsQuery } from '@/store/api/tripApi';
+import {
+  type TripSearchByPointsPayload,
+  useGetTripsByCoordinatesQuery,
+  useGetTripsQuery,
+} from '@/store/api/tripApi';
 import { useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { selectAvailableTrips } from '@/store/selectors';
+import { selectAvailableTrips, selectLocationRadius } from '@/store/selectors';
 import { setTrips } from '@/store/slices/tripsSlice';
 import type { Trip } from '@/types';
 import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
@@ -30,6 +35,7 @@ import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const RECENT_TRIPS_LIMIT = 10;
+const HOME_MIN_AVAILABLE_SEATS = 1;
 
 const KINSHASA_REGION: Region = {
   latitude: -4.325,
@@ -118,6 +124,36 @@ function getLocationCoordinate(location?: Trip['departure']): MapCoordinate | nu
   }
 
   return { latitude, longitude };
+}
+
+function getGeoPointCoordinate(point?: Trip['currentLocation']): MapCoordinate | null {
+  if (!point?.coordinates) {
+    return null;
+  }
+
+  const [longitude, latitude] = point.coordinates;
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+
+  if (latitude === 0 && longitude === 0) {
+    return null;
+  }
+
+  return { latitude, longitude };
+}
+
+function getTripMapCoordinate(trip: Trip): MapCoordinate | null {
+  if (trip.status === 'ongoing') {
+    return getGeoPointCoordinate(trip.currentLocation) ?? getLocationCoordinate(trip.departure);
+  }
+
+  return getLocationCoordinate(trip.departure);
+}
+
+function roundCoordinate(value: number) {
+  return Number(value.toFixed(5));
 }
 
 function TripPreviewCard({
@@ -225,22 +261,77 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const storedTrips = useAppSelector(selectAvailableTrips);
+  const locationRadiusKm = useAppSelector(selectLocationRadius);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [tripsSheetExpanded, setTripsSheetExpanded] = useState(false);
+  const { lastKnownLocation } = useUserLocation({ autoRequest: true });
   const { data: currentUser } = useGetCurrentUserQuery();
+
+  const nearbyTripsPayload = useMemo<TripSearchByPointsPayload | null>(() => {
+    const latitude = lastKnownLocation?.coords?.latitude;
+    const longitude = lastKnownLocation?.coords?.longitude;
+
+    if (
+      typeof latitude !== 'number' ||
+      typeof longitude !== 'number' ||
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude)
+    ) {
+      return null;
+    }
+
+    return {
+      departureCoordinates: [
+        roundCoordinate(longitude),
+        roundCoordinate(latitude),
+      ],
+      departureRadiusKm: locationRadiusKm,
+      minSeats: HOME_MIN_AVAILABLE_SEATS,
+    };
+  }, [
+    lastKnownLocation?.coords?.latitude,
+    lastKnownLocation?.coords?.longitude,
+    locationRadiusKm,
+  ]);
+
   const {
-    data: remoteTrips,
-    isLoading: tripsLoading,
-    isError: tripsError,
-    refetch: refetchTrips,
+    data: generalTrips,
+    isLoading: generalTripsLoading,
+    isError: generalTripsError,
+    refetch: refetchGeneralTrips,
   } = useGetTripsQuery(
-    {},
+    { minSeats: HOME_MIN_AVAILABLE_SEATS },
     {
+      skip: Boolean(nearbyTripsPayload),
       pollingInterval: 60000,
       refetchOnFocus: true,
       refetchOnReconnect: true,
     },
   );
+
+  const {
+    data: nearbyTrips,
+    isLoading: nearbyTripsLoading,
+    isError: nearbyTripsError,
+    refetch: refetchNearbyTrips,
+  } = useGetTripsByCoordinatesQuery(
+    nearbyTripsPayload ?? {
+      departureCoordinates: [0, 0] as [number, number],
+      minSeats: HOME_MIN_AVAILABLE_SEATS,
+    },
+    {
+      skip: !nearbyTripsPayload,
+      pollingInterval: 60000,
+      refetchOnFocus: true,
+      refetchOnReconnect: true,
+    },
+  );
+
+  const remoteTrips = nearbyTripsPayload ? nearbyTrips : generalTrips;
+  const tripsLoading = nearbyTripsPayload ? nearbyTripsLoading : generalTripsLoading;
+  const tripsError = nearbyTripsPayload ? nearbyTripsError : generalTripsError;
+  const refetchTrips = nearbyTripsPayload ? refetchNearbyTrips : refetchGeneralTrips;
+
   const { data: notificationsData } = useGetNotificationsQuery(undefined, {
     refetchOnMountOrArgChange: true,
   });
@@ -400,8 +491,8 @@ export default function HomeScreen() {
       .slice(0, RECENT_TRIPS_LIMIT);
   }, [remoteTrips, storedTrips, currentUser?.id, completedBookingTripIds]);
 
-  const tripsWithDepartureCoordinates = useMemo(
-    () => latestTrips.filter((trip) => Boolean(getLocationCoordinate(trip.departure))),
+  const tripsWithMapCoordinates = useMemo(
+    () => latestTrips.filter((trip) => Boolean(getTripMapCoordinate(trip))),
     [latestTrips],
   );
 
@@ -415,8 +506,8 @@ export default function HomeScreen() {
       return;
     }
 
-    setSelectedTripId(tripsWithDepartureCoordinates[0]?.id ?? latestTrips[0].id);
-  }, [latestTrips, selectedTripId, tripsWithDepartureCoordinates]);
+    setSelectedTripId(tripsWithMapCoordinates[0]?.id ?? latestTrips[0].id);
+  }, [latestTrips, selectedTripId, tripsWithMapCoordinates]);
 
   const selectedTrip = useMemo(
     () => latestTrips.find((trip) => trip.id === selectedTripId) ?? latestTrips[0] ?? null,
@@ -425,10 +516,11 @@ export default function HomeScreen() {
 
   const mapRegion = useMemo<Region>(() => {
     const selectedDeparture = selectedTrip ? getLocationCoordinate(selectedTrip.departure) : null;
-    const fallbackDeparture = tripsWithDepartureCoordinates[0]
-      ? getLocationCoordinate(tripsWithDepartureCoordinates[0].departure)
+    const selectedMapCoordinate = selectedTrip ? getTripMapCoordinate(selectedTrip) : null;
+    const fallbackDeparture = tripsWithMapCoordinates[0]
+      ? getTripMapCoordinate(tripsWithMapCoordinates[0])
       : null;
-    const coordinate = selectedDeparture ?? fallbackDeparture;
+    const coordinate = selectedMapCoordinate ?? selectedDeparture ?? fallbackDeparture;
 
     if (!coordinate) {
       return KINSHASA_REGION;
@@ -439,7 +531,7 @@ export default function HomeScreen() {
       latitudeDelta: 0.065,
       longitudeDelta: 0.065,
     };
-  }, [selectedTrip, tripsWithDepartureCoordinates]);
+  }, [selectedTrip, tripsWithMapCoordinates]);
 
   useEffect(() => {
     mapRef.current?.animateToRegion(mapRegion, 420);
@@ -483,8 +575,8 @@ export default function HomeScreen() {
         showsMyLocationButton={false}
         toolbarEnabled={false}
       >
-        {tripsWithDepartureCoordinates.map((trip) => {
-          const coordinate = getLocationCoordinate(trip.departure);
+        {tripsWithMapCoordinates.map((trip) => {
+          const coordinate = getTripMapCoordinate(trip);
           const isSelected = trip.id === selectedTrip?.id;
 
           if (!coordinate) {

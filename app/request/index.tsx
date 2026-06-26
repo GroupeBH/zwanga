@@ -60,6 +60,8 @@ const TIME_PRESETS: {
 ];
 
 const FLEX_OPTIONS = [0, 30, 60, 120];
+const MIN_REQUEST_SEATS = 1;
+const MAX_REQUEST_SEATS = 2;
 const TIME_PRESET_SYNC_INTERVAL_MS = 30000;
 const DEFAULT_REQUEST_REGION: Region = {
   latitude: -4.441931,
@@ -157,6 +159,25 @@ function getLocationCoordinates(selection: MapLocationSelection | null): [number
   return [selection.longitude, selection.latitude];
 }
 
+function parseNumberParam(value: unknown): number | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+
+  if (typeof raw !== 'string' || raw.length === 0) {
+    return undefined;
+  }
+
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function clampRequestSeats(value: number | undefined) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return MIN_REQUEST_SEATS;
+  }
+
+  return Math.min(MAX_REQUEST_SEATS, Math.max(MIN_REQUEST_SEATS, Math.floor(value)));
+}
+
 function getMapCoordinate(selection: MapLocationSelection | null): LatLng | null {
   if (!selection || !Number.isFinite(selection.latitude) || !Number.isFinite(selection.longitude)) {
     return null;
@@ -226,6 +247,8 @@ export default function RequestTripScreen() {
   const requestParams = useLocalSearchParams<{
     arrival?: string;
     departure?: string;
+    minSeats?: string;
+    seats?: string;
   }>();
   const insets = useSafeAreaInsets();
   const { showDialog } = useDialog();
@@ -250,7 +273,7 @@ export default function RequestTripScreen() {
   const [departureDateMin, setDepartureDateMin] = useState(initialWindow.min);
   const [flexibilityMinutes, setFlexibilityMinutes] = useState(initialWindow.flex);
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
-  const [numberOfSeats, setNumberOfSeats] = useState(1);
+  const [numberOfSeats, setNumberOfSeats] = useState(MIN_REQUEST_SEATS);
   const [maxPricePerSeat, setMaxPricePerSeat] = useState('');
   const [description, setDescription] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -286,6 +309,11 @@ export default function RequestTripScreen() {
 
     const departureParam = typeof requestParams.departure === 'string' ? requestParams.departure.trim() : '';
     const arrivalParam = typeof requestParams.arrival === 'string' ? requestParams.arrival.trim() : '';
+    const seatsParam = parseNumberParam(requestParams.seats) ?? parseNumberParam(requestParams.minSeats);
+
+    if (seatsParam !== undefined) {
+      setNumberOfSeats(clampRequestSeats(seatsParam));
+    }
 
     if (!departureParam && !arrivalParam) {
       setHasAppliedRoutePrefill(true);
@@ -311,6 +339,8 @@ export default function RequestTripScreen() {
     hasAppliedRoutePrefill,
     requestParams.arrival,
     requestParams.departure,
+    requestParams.minSeats,
+    requestParams.seats,
   ]);
 
   const departureAddress = getLocationText(departureLocation, departureManualAddress);
@@ -1187,12 +1217,36 @@ export default function RequestTripScreen() {
                 <Text style={styles.detailsFieldHint}>{numberOfSeats} personne{numberOfSeats > 1 ? 's' : ''}</Text>
               </View>
               <View style={styles.counterCompact}>
-                <TouchableOpacity style={styles.counterBtnCompact} onPress={() => setNumberOfSeats((value) => Math.max(1, value - 1))}>
-                  <Ionicons name="remove" size={18} color={Colors.gray[900]} />
+                <TouchableOpacity
+                  style={[
+                    styles.counterBtnCompact,
+                    numberOfSeats <= MIN_REQUEST_SEATS && styles.counterBtnCompactDisabled,
+                  ]}
+                  onPress={() => setNumberOfSeats((value) => clampRequestSeats(value - 1))}
+                  disabled={numberOfSeats <= MIN_REQUEST_SEATS}
+                  activeOpacity={0.75}
+                >
+                  <Ionicons
+                    name="remove"
+                    size={18}
+                    color={numberOfSeats <= MIN_REQUEST_SEATS ? Colors.gray[400] : Colors.gray[900]}
+                  />
                 </TouchableOpacity>
                 <Text style={styles.counterValueCompact}>{numberOfSeats}</Text>
-                <TouchableOpacity style={styles.counterBtnCompact} onPress={() => setNumberOfSeats((value) => value + 1)}>
-                  <Ionicons name="add" size={18} color={Colors.gray[900]} />
+                <TouchableOpacity
+                  style={[
+                    styles.counterBtnCompact,
+                    numberOfSeats >= MAX_REQUEST_SEATS && styles.counterBtnCompactDisabled,
+                  ]}
+                  onPress={() => setNumberOfSeats((value) => clampRequestSeats(value + 1))}
+                  disabled={numberOfSeats >= MAX_REQUEST_SEATS}
+                  activeOpacity={0.75}
+                >
+                  <Ionicons
+                    name="add"
+                    size={18}
+                    color={numberOfSeats >= MAX_REQUEST_SEATS ? Colors.gray[400] : Colors.gray[900]}
+                  />
                 </TouchableOpacity>
               </View>
             </View>
@@ -1441,6 +1495,7 @@ const styles = StyleSheet.create({
   detailsDivider: { height: 1, backgroundColor: Colors.gray[100] },
   counterCompact: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.gray[50], borderRadius: BorderRadius.sm, padding: 4 },
   counterBtnCompact: { width: 34, height: 34, borderRadius: BorderRadius.sm, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
+  counterBtnCompactDisabled: { backgroundColor: Colors.gray[100] },
   counterValueCompact: { minWidth: 28, textAlign: 'center', fontSize: FontSizes.lg, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   priceBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.gray[50], borderRadius: BorderRadius.sm, paddingHorizontal: Spacing.lg, height: 52, borderWidth: 1, borderColor: Colors.gray[100] },
   priceInput: { flex: 1, fontSize: FontSizes.xl, fontWeight: FontWeights.bold, color: Colors.gray[900] },

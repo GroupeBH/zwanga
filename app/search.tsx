@@ -30,6 +30,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type SortMode = 'cheap' | 'early';
+const MIN_SEARCH_SEATS = 1;
+const MAX_SEARCH_SEATS = 2;
 
 const SEARCH_COLORS = {
   ink: '#07112A',
@@ -74,6 +76,14 @@ function parseNumberParam(value: unknown): number | undefined {
 
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function clampSearchSeats(value: number | undefined) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return MIN_SEARCH_SEATS;
+  }
+
+  return Math.min(MAX_SEARCH_SEATS, Math.max(MIN_SEARCH_SEATS, Math.floor(value)));
 }
 
 function formatPrice(price?: number | null) {
@@ -282,7 +292,9 @@ export default function SearchScreen() {
     departureLat?: string;
     departureLng?: string;
     departureRadiusKm?: string;
+    minSeats?: string;
     mode?: string;
+    seats?: string;
   }>();
   const storedTrips = useAppSelector(selectTrips);
   const { data: currentUser } = useGetCurrentUserQuery();
@@ -290,6 +302,8 @@ export default function SearchScreen() {
   const [arrival, setArrival] = useState('');
   const [draftDeparture, setDraftDeparture] = useState('');
   const [draftArrival, setDraftArrival] = useState('');
+  const [desiredSeats, setDesiredSeats] = useState(MIN_SEARCH_SEATS);
+  const [appliedSeats, setAppliedSeats] = useState(MIN_SEARCH_SEATS);
   const [queryParams, setQueryParams] = useState<TripSearchParams>({});
   const [advancedTrips, setAdvancedTrips] = useState<Trip[] | null>(null);
   const [advancedError, setAdvancedError] = useState<string | null>(null);
@@ -313,16 +327,22 @@ export default function SearchScreen() {
   useEffect(() => {
     const departureParam = typeof searchParams.departure === 'string' ? searchParams.departure : '';
     const arrivalParam = typeof searchParams.arrival === 'string' ? searchParams.arrival : '';
+    const seatsParam = clampSearchSeats(
+      parseNumberParam(searchParams.minSeats) ?? parseNumberParam(searchParams.seats),
+    );
 
     setDeparture(departureParam);
     setArrival(arrivalParam);
     setDraftDeparture(departureParam);
     setDraftArrival(arrivalParam);
+    setDesiredSeats(seatsParam);
+    setAppliedSeats(seatsParam);
     setQueryParams({
       departureLocation: departureParam || undefined,
       arrivalLocation: arrivalParam || undefined,
+      minSeats: seatsParam,
     });
-  }, [searchParams.departure, searchParams.arrival]);
+  }, [searchParams.departure, searchParams.arrival, searchParams.minSeats, searchParams.seats]);
 
   const runAdvancedSearch = async (payload: TripSearchByPointsPayload) => {
     setAdvancedError(null);
@@ -357,6 +377,7 @@ export default function SearchScreen() {
 
     if (mode === 'map' && (hasDepartureCoordinates || hasArrivalCoordinates)) {
       const payload = {
+        minSeats: desiredSeats,
         ...(hasDepartureCoordinates
           ? {
               departureCoordinates: [depLng, depLat] as [number, number],
@@ -372,6 +393,7 @@ export default function SearchScreen() {
       };
 
       setLastAdvancedPayload(payload);
+      setAppliedSeats(desiredSeats);
       runAdvancedSearch(payload);
     } else {
       setAdvancedTrips(null);
@@ -387,6 +409,7 @@ export default function SearchScreen() {
     searchParams.arrivalLng,
     searchParams.departureRadiusKm,
     searchParams.arrivalRadiusKm,
+    desiredSeats,
   ]);
 
   const baseTrips = useMemo(() => {
@@ -408,7 +431,7 @@ export default function SearchScreen() {
       const routeText = `${departureText} ${arrivalText}`;
       const routeQuery = [departure, arrival].filter(Boolean).join(' ');
 
-      return matchesSearch(routeText, routeQuery);
+      return trip.availableSeats >= desiredSeats && matchesSearch(routeText, routeQuery);
     });
 
     return [...visibleTrips].sort((a, b) => {
@@ -428,34 +451,34 @@ export default function SearchScreen() {
 
       return safeDepartureA - safeDepartureB;
     });
-  }, [arrival, baseTrips, departure, sortMode]);
+  }, [arrival, baseTrips, departure, desiredSeats, sortMode]);
 
   const isLoadingResults = (queryLoading || isAdvancedSearching) && baseTrips.length === 0;
   const isRefreshingResults = queryFetching || isAdvancedSearching;
-  const hasDraftSearchChanges = draftDeparture.trim() !== departure || draftArrival.trim() !== arrival;
-  const searchActionLabel = isRefreshingResults
-    ? 'Recherche...'
-    : hasDraftSearchChanges
-      ? 'Rechercher'
-      : 'Actualiser la recherche';
-
   const handleApplySearch = () => {
     const nextDeparture = draftDeparture.trim();
     const nextArrival = draftArrival.trim();
     setDeparture(nextDeparture);
     setArrival(nextArrival);
+    setAppliedSeats(desiredSeats);
     setAdvancedTrips(null);
     setAdvancedError(null);
     setLastAdvancedPayload(null);
     setQueryParams({
       departureLocation: nextDeparture || undefined,
       arrivalLocation: nextArrival || undefined,
+      minSeats: desiredSeats,
     });
     void trackEvent('search_submitted', {
       search_mode: 'text',
       has_departure: Boolean(nextDeparture),
       has_arrival: Boolean(nextArrival),
+      seats: desiredSeats,
     });
+  };
+
+  const updateDesiredSeats = (nextSeats: number) => {
+    setDesiredSeats(clampSearchSeats(nextSeats));
   };
 
   const handleRetry = () => {
@@ -472,6 +495,7 @@ export default function SearchScreen() {
       getTripRequestCreateHref({
         departure: draftDeparture || departure,
         arrival: draftArrival || arrival,
+        seats: desiredSeats,
       }),
     );
   };
@@ -549,8 +573,28 @@ export default function SearchScreen() {
             </View>
           </View>
           <View style={styles.passengerBlock}>
-            <Text style={styles.passengerCount}>1</Text>
-            <Text style={styles.passengerLabel}>PERS.</Text>
+            <View style={styles.passengerStepper}>
+              <TouchableOpacity
+                style={[styles.passengerStepButton, desiredSeats <= MIN_SEARCH_SEATS && styles.passengerStepButtonDisabled]}
+                onPress={() => updateDesiredSeats(desiredSeats - 1)}
+                disabled={desiredSeats <= MIN_SEARCH_SEATS}
+                activeOpacity={0.75}
+              >
+                <Ionicons name="remove" size={16} color={desiredSeats <= MIN_SEARCH_SEATS ? Colors.gray[400] : Colors.primaryDark} />
+              </TouchableOpacity>
+              <View style={styles.passengerCountBlock}>
+                <Text style={styles.passengerCount}>{desiredSeats}</Text>
+                <Text style={styles.passengerLabel}>PERS.</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.passengerStepButton, desiredSeats >= MAX_SEARCH_SEATS && styles.passengerStepButtonDisabled]}
+                onPress={() => updateDesiredSeats(desiredSeats + 1)}
+                disabled={desiredSeats >= MAX_SEARCH_SEATS}
+                activeOpacity={0.75}
+              >
+                <Ionicons name="add" size={16} color={desiredSeats >= MAX_SEARCH_SEATS ? Colors.gray[400] : Colors.primaryDark} />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -624,16 +668,6 @@ export default function SearchScreen() {
             ))}
           </View>
         )}
-
-        <TouchableOpacity
-          style={[styles.modifySearchButton, isRefreshingResults && styles.modifySearchButtonDisabled]}
-          onPress={hasDraftSearchChanges ? handleApplySearch : handleRetry}
-          disabled={isRefreshingResults}
-          activeOpacity={0.86}
-        >
-          <Ionicons name={hasDraftSearchChanges ? 'search' : 'refresh'} size={22} color={Colors.white} />
-          <Text style={styles.modifySearchText}>{searchActionLabel}</Text>
-        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -745,12 +779,33 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   passengerBlock: {
-    width: 82,
+    width: 116,
     minHeight: 58,
     borderLeftWidth: 1,
     borderLeftColor: SEARCH_COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  passengerStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+  },
+  passengerStepButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary + '12',
+  },
+  passengerStepButtonDisabled: {
+    backgroundColor: Colors.gray[100],
+  },
+  passengerCountBlock: {
+    minWidth: 32,
+    alignItems: 'center',
   },
   passengerCount: {
     color: Colors.primaryDark,
