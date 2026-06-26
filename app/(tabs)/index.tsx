@@ -31,7 +31,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import MapView, { Callout, Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const RECENT_TRIPS_LIMIT = 10;
@@ -81,6 +81,11 @@ type TripPreviewCardProps = {
   isSelected: boolean;
   onOpen: () => void;
   onSelect: () => void;
+  trip: Trip;
+};
+
+type TripMapMarkerProps = {
+  isSelected: boolean;
   trip: Trip;
 };
 
@@ -254,6 +259,28 @@ function TripPreviewCard({
   );
 }
 
+function TripMapMarker({ isSelected, trip }: TripMapMarkerProps) {
+  const tripVehicleType = trip.vehicleType || 'car';
+  const markerIcon = isSelected ? 'car' : vehicleIcon[tripVehicleType];
+
+  return (
+    <View style={styles.tripMapMarkerFrame}>
+      <View style={[styles.tripMapMarkerBubble, isSelected && styles.tripMapMarkerBubbleSelected]}>
+        <View style={[styles.tripMapMarkerIconDisc, isSelected && styles.tripMapMarkerIconDiscSelected]}>
+          <Ionicons
+            name={markerIcon}
+            size={isSelected ? 18 : 17}
+            color={isSelected ? Colors.white : Colors.primary}
+          />
+        </View>
+        {isSelected ? <Text style={styles.tripMapMarkerLabel}>Trajet</Text> : null}
+      </View>
+      <View style={[styles.tripMapMarkerPointer, isSelected && styles.tripMapMarkerPointerSelected]} />
+      <View style={styles.tripMapMarkerGround} />
+    </View>
+  );
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
@@ -302,7 +329,6 @@ export default function HomeScreen() {
   } = useGetTripsQuery(
     { minSeats: HOME_MIN_AVAILABLE_SEATS },
     {
-      skip: Boolean(nearbyTripsPayload),
       pollingInterval: 60000,
       refetchOnFocus: true,
       refetchOnReconnect: true,
@@ -327,10 +353,43 @@ export default function HomeScreen() {
     },
   );
 
-  const remoteTrips = nearbyTripsPayload ? nearbyTrips : generalTrips;
-  const tripsLoading = nearbyTripsPayload ? nearbyTripsLoading : generalTripsLoading;
-  const tripsError = nearbyTripsPayload ? nearbyTripsError : generalTripsError;
-  const refetchTrips = nearbyTripsPayload ? refetchNearbyTrips : refetchGeneralTrips;
+  const remoteTrips = useMemo(() => {
+    if (!nearbyTripsPayload) {
+      return generalTrips;
+    }
+
+    if (!nearbyTrips?.length && !generalTrips) {
+      return undefined;
+    }
+
+    const tripsById = new Map<string, Trip>();
+
+    (nearbyTrips ?? []).forEach((trip) => {
+      tripsById.set(trip.id, trip);
+    });
+
+    (generalTrips ?? []).forEach((trip) => {
+      if (!tripsById.has(trip.id)) {
+        tripsById.set(trip.id, trip);
+      }
+    });
+
+    return Array.from(tripsById.values());
+  }, [nearbyTripsPayload, nearbyTrips, generalTrips]);
+
+  const tripsLoading = nearbyTripsPayload
+    ? (nearbyTripsLoading || generalTripsLoading) && !remoteTrips?.length && storedTrips.length === 0
+    : generalTripsLoading && !generalTrips && storedTrips.length === 0;
+  const tripsError = nearbyTripsPayload
+    ? nearbyTripsError && generalTripsError && !remoteTrips?.length && storedTrips.length === 0
+    : generalTripsError && !generalTrips && storedTrips.length === 0;
+  const refetchTrips = () => {
+    if (nearbyTripsPayload) {
+      void refetchNearbyTrips();
+    }
+
+    return refetchGeneralTrips();
+  };
 
   const { data: notificationsData } = useGetNotificationsQuery(undefined, {
     refetchOnMountOrArgChange: true,
@@ -587,13 +646,34 @@ export default function HomeScreen() {
             <Marker
               key={trip.id}
               coordinate={coordinate}
-              pinColor={Colors.primary}
+              anchor={{ x: 0.5, y: 0.9 }}
               title={`${formatPrice(trip.price)} - ${trip.driverName || 'Conducteur Zwanga'}`}
               description={`${formatTime(trip.departureTime)} · ${placeName(trip.departure)} vers ${placeName(trip.arrival)} · ${trip.availableSeats} place${trip.availableSeats > 1 ? 's' : ''}`}
               onPress={() => setSelectedTripId(trip.id)}
               onCalloutPress={() => router.push(`/trip/${trip.id}`)}
               zIndex={isSelected ? 10 : 1}
-            />
+            >
+              <TripMapMarker trip={trip} isSelected={isSelected} />
+              <Callout tooltip onPress={() => router.push(`/trip/${trip.id}`)}>
+                <View style={styles.tripMapCallout}>
+                  <View style={styles.tripMapCalloutTop}>
+                    <Text style={styles.tripMapCalloutTitle} numberOfLines={1}>
+                      {formatPrice(trip.price)}
+                    </Text>
+                    <Text style={styles.tripMapCalloutTime}>{formatTime(trip.departureTime)}</Text>
+                  </View>
+                  <Text style={styles.tripMapCalloutRoute} numberOfLines={1}>
+                    {placeName(trip.departure)} vers {placeName(trip.arrival)}
+                  </Text>
+                  <View style={styles.tripMapCalloutFooter}>
+                    <Ionicons name="people-outline" size={13} color={HOME_COLORS.navy} />
+                    <Text style={styles.tripMapCalloutMeta}>
+                      {trip.availableSeats} place{trip.availableSeats > 1 ? 's' : ''} libre{trip.availableSeats > 1 ? 's' : ''}
+                    </Text>
+                  </View>
+                </View>
+              </Callout>
+            </Marker>
           );
         })}
       </MapView>
@@ -825,6 +905,123 @@ const styles = StyleSheet.create({
   mapVeil: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(248,249,250,0.12)',
+  },
+  tripMapMarkerFrame: {
+    width: 118,
+    height: 70,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    overflow: 'visible',
+  },
+  tripMapMarkerBubble: {
+    minWidth: 44,
+    height: 40,
+    borderRadius: 20,
+    paddingHorizontal: 6,
+    backgroundColor: Colors.white,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    ...Platform.select({
+      ios: {
+        shadowColor: Colors.black,
+        shadowOffset: { width: 0, height: 5 },
+        shadowOpacity: 0.16,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
+  },
+  tripMapMarkerBubbleSelected: {
+    minWidth: 88,
+    backgroundColor: Colors.primary,
+    borderColor: Colors.white,
+  },
+  tripMapMarkerIconDisc: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary + '14',
+  },
+  tripMapMarkerIconDiscSelected: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  tripMapMarkerLabel: {
+    color: Colors.white,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    paddingRight: 3,
+  },
+  tripMapMarkerPointer: {
+    width: 13,
+    height: 13,
+    marginTop: -7,
+    borderRightWidth: 2,
+    borderBottomWidth: 2,
+    borderColor: Colors.primary,
+    backgroundColor: Colors.white,
+    transform: [{ rotate: '45deg' }],
+  },
+  tripMapMarkerPointerSelected: {
+    borderColor: Colors.white,
+    backgroundColor: Colors.primary,
+  },
+  tripMapMarkerGround: {
+    width: 18,
+    height: 5,
+    borderRadius: 9,
+    marginTop: 2,
+    backgroundColor: 'rgba(7,17,42,0.16)',
+  },
+  tripMapCallout: {
+    width: 226,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: HOME_COLORS.softLine,
+    ...CommonStyles.shadowMd,
+  },
+  tripMapCalloutTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  tripMapCalloutTitle: {
+    flex: 1,
+    color: Colors.primary,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+  },
+  tripMapCalloutTime: {
+    color: HOME_COLORS.ink,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  tripMapCalloutRoute: {
+    marginTop: 4,
+    color: HOME_COLORS.text,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
+  tripMapCalloutFooter: {
+    marginTop: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  tripMapCalloutMeta: {
+    color: HOME_COLORS.navy,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
   },
   topOverlay: {
     position: 'absolute',
