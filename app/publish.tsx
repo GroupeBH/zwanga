@@ -1,4 +1,3 @@
-import { type AddressInputMode } from '@/components/AddressEntryModeSelector';
 import { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardModal';
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
@@ -44,8 +43,16 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 type PublishStep = 'route' | 'datetime' | 'vehicle' | 'pricing' | 'confirm';
 type LatLng = { latitude: number; longitude: number };
 type RoutePointStatus = 'confirmed' | 'suggested' | null;
+type IOSDateTimePickerProps = React.ComponentProps<typeof DateTimePicker> & {
+  accentColor?: string;
+  display?: 'default' | 'compact' | 'inline' | 'spinner';
+  locale?: string;
+  minuteInterval?: number;
+  textColor?: string;
+  themeVariant?: 'dark' | 'light';
+};
 const PUBLISH_STEP_ORDER: PublishStep[] = ['route', 'datetime', 'vehicle', 'pricing', 'confirm'];
-const IOSDateTimePicker = DateTimePicker as React.ComponentType<IosDateTimePickerProps>;
+const IOSDateTimePicker = DateTimePicker as React.ComponentType<IOSDateTimePickerProps>;
 const DEFAULT_PUBLISH_REGION: Region = {
   latitude: -4.441931,
   longitude: 15.266293,
@@ -391,9 +398,12 @@ export default function PublishScreen() {
     setDepartureReference('');
     setArrivalManualAddress('');
     setArrivalReference('');
-    setAddressInputMode('map');
+    setShowDepartureReference(false);
+    setShowArrivalReference(false);
+    setManualAddressTarget(null);
     setAddressSectionStep('method');
     setLocationPickerInitialQuery('');
+    setShowQuickLandmarks(false);
     setSelectedVehicleId(null);
     setShowVehicleForm(false);
     setVehicleBrand('');
@@ -429,12 +439,14 @@ export default function PublishScreen() {
   const [departureReference, setDepartureReference] = useState('');
   const [arrivalManualAddress, setArrivalManualAddress] = useState('');
   const [arrivalReference, setArrivalReference] = useState('');
+  const [showDepartureReference, setShowDepartureReference] = useState(false);
+  const [showArrivalReference, setShowArrivalReference] = useState(false);
   const [departureManualGeocodeStatus, setDepartureManualGeocodeStatus] =
     useState<ManualGeocodeStatus>('idle');
   const [arrivalManualGeocodeStatus, setArrivalManualGeocodeStatus] =
     useState<ManualGeocodeStatus>('idle');
-  const [showQuickLandmarks, setShowQuickLandmarks] = useState(true);
-  const [addressInputMode, setAddressInputMode] = useState<AddressInputMode>('map');
+  const [showQuickLandmarks, setShowQuickLandmarks] = useState(false);
+  const [manualAddressTarget, setManualAddressTarget] = useState<'departure' | 'arrival' | null>(null);
   const [, setAddressSectionStep] = useState<AddressSectionStep>('method');
   const [activeLocationType, setActiveLocationType] = useState<'departure' | 'arrival' | null>(null);
   const [locationPickerInitialQuery, setLocationPickerInitialQuery] = useState('');
@@ -452,11 +464,11 @@ export default function PublishScreen() {
   const [routeCoordinates, setRouteCoordinates] = useState<LatLng[]>([]);
   const [isRouteLoading, setIsRouteLoading] = useState(false);
   const departureAddress =
-    addressInputMode === 'manual'
+    manualAddressTarget === 'departure'
       ? departureManualAddress.trim()
       : getLocationText(departureLocation, '');
   const arrivalAddress =
-    addressInputMode === 'manual'
+    manualAddressTarget === 'arrival'
       ? arrivalManualAddress.trim()
       : getLocationText(arrivalLocation, '');
   const hasDepartureAddress = departureAddress.length > 0;
@@ -465,6 +477,8 @@ export default function PublishScreen() {
   const hasArrivalGpsSuggestion = Boolean(getMapCoordinate(arrivalLocation));
   const hasDepartureCoordinates = hasDepartureGpsSuggestion && departurePointStatus === 'confirmed';
   const hasArrivalCoordinates = hasArrivalGpsSuggestion && arrivalPointStatus === 'confirmed';
+  const shouldShowDepartureReference = showDepartureReference || departureReference.trim().length > 0;
+  const shouldShowArrivalReference = showArrivalReference || arrivalReference.trim().length > 0;
   const routePreviewRegion = useMemo<Region>(() => {
     const selectedPoints = [getMapCoordinate(departureLocation), getMapCoordinate(arrivalLocation)].filter(
       (point): point is LatLng => Boolean(point),
@@ -477,11 +491,6 @@ export default function PublishScreen() {
     departureLocation,
     routeCoordinates,
   ]);
-  const routeSummary = useMemo(() => {
-    if (hasDepartureAddress && hasArrivalAddress) return `${departureAddress} \u2192 ${arrivalAddress}`;
-    if (hasDepartureAddress) return `Depart : ${departureAddress}`;
-    return 'Choisissez le depart et la destination';
-  }, [arrivalAddress, departureAddress, hasArrivalAddress, hasDepartureAddress]);
   const renderManualGeocodeStatus = (status: ManualGeocodeStatus) => {
     if (status === 'idle') {
       return null;
@@ -613,18 +622,21 @@ export default function PublishScreen() {
     const tempStatus = departurePointStatus;
     const tempManual = departureManualAddress;
     const tempRef = departureReference;
+    const tempShowRef = showDepartureReference;
     setDepartureLocation(arrivalLocation);
     setDeparturePointStatus(arrivalPointStatus);
     setDepartureManualAddress(arrivalManualAddress);
     setDepartureReference(arrivalReference);
+    setShowDepartureReference(showArrivalReference);
     setArrivalLocation(tempLoc);
     setArrivalPointStatus(tempStatus);
     setArrivalManualAddress(tempManual);
     setArrivalReference(tempRef);
+    setShowArrivalReference(tempShowRef);
   };
 
   const handleLocationSelected = (selection: MapLocationSelection) => {
-    setAddressInputMode('map');
+    setManualAddressTarget(null);
     if (activeLocationType === 'departure') {
       setDepartureLocation(selection);
       setDeparturePointStatus('confirmed');
@@ -800,8 +812,8 @@ export default function PublishScreen() {
 
   const isSubmittingTrip = isPublishing || isPublishingRecurring;
   const isManualAddressGeocoding =
-    addressInputMode === 'manual' &&
-    (departureManualGeocodeStatus === 'searching' || arrivalManualGeocodeStatus === 'searching');
+    (manualAddressTarget === 'departure' && departureManualGeocodeStatus === 'searching') ||
+    (manualAddressTarget === 'arrival' && arrivalManualGeocodeStatus === 'searching');
 
   const toggleRecurringTrip = () => {
     setIsRecurringTrip((current) => {
@@ -826,7 +838,7 @@ export default function PublishScreen() {
   };
 
   useEffect(() => {
-    if (addressInputMode !== 'manual') {
+    if (manualAddressTarget !== 'departure') {
       setDepartureManualGeocodeStatus('idle');
       return;
     }
@@ -874,10 +886,10 @@ export default function PublishScreen() {
       isCurrent = false;
       clearTimeout(timeout);
     };
-  }, [addressInputMode, departureLocation, departureManualAddress, geocodeManualAddress]);
+  }, [manualAddressTarget, departureLocation, departureManualAddress, geocodeManualAddress]);
 
   useEffect(() => {
-    if (addressInputMode !== 'manual') {
+    if (manualAddressTarget !== 'arrival') {
       setArrivalManualGeocodeStatus('idle');
       return;
     }
@@ -925,7 +937,7 @@ export default function PublishScreen() {
       isCurrent = false;
       clearTimeout(timeout);
     };
-  }, [addressInputMode, arrivalLocation, arrivalManualAddress, geocodeManualAddress]);
+  }, [manualAddressTarget, arrivalLocation, arrivalManualAddress, geocodeManualAddress]);
 
   useEffect(() => {
     const origin = getMapCoordinate(departureLocation);
@@ -1037,7 +1049,7 @@ export default function PublishScreen() {
           label: 'Ouvrir la carte',
           variant: 'primary',
           onPress: () => {
-            setAddressInputMode('map');
+            setManualAddressTarget(null);
             openLocationPicker(missingType, isDeparture ? departureAddress : arrivalAddress);
           },
         },
@@ -1051,8 +1063,8 @@ export default function PublishScreen() {
         setAddressSectionStep(!hasDepartureAddress ? 'departure' : 'arrival');
         showDialog({
           variant: 'warning',
-          title: 'Itineraire incomplet',
-          message: 'Indiquez une adresse de depart et une destination, ou choisissez-les sur la carte.',
+          title: 'Itinéraire incomplet',
+          message: 'Indiquez une adresse de départ et une destination, ou choisissez-les sur la carte.',
         });
         return;
       }
@@ -1078,7 +1090,7 @@ export default function PublishScreen() {
         showDialog({
           variant: 'warning',
           title: 'Jours manquants',
-          message: 'Selectionnez au moins un jour pour votre trajet recurrent.',
+          message: 'Sélectionnez au moins un jour pour ce trajet habituel.',
         });
         return;
       }
@@ -1125,8 +1137,8 @@ export default function PublishScreen() {
       setAddressSectionStep(!hasDepartureAddress ? 'departure' : 'arrival');
       showDialog({
         variant: 'warning',
-        title: 'Itineraire incomplet',
-        message: 'Indiquez vos adresses de depart et d arrivee, ou choisissez-les sur la carte.',
+        title: 'Itinéraire incomplet',
+        message: 'Indiquez vos adresses de départ et d’arrivée, ou choisissez-les sur la carte.',
       });
       return;
     }
@@ -1158,7 +1170,7 @@ export default function PublishScreen() {
       showDialog({
         variant: 'warning',
         title: 'Jours manquants',
-        message: 'Selectionnez au moins un jour pour publier ce trajet recurrent.',
+        message: 'Sélectionnez au moins un jour pour publier ce trajet habituel.',
       });
       return;
     }
@@ -1237,18 +1249,18 @@ export default function PublishScreen() {
       resetForm();
       showDialog({
         variant: 'success',
-        title: publishedRecurring ? 'Trajet recurrent cree' : 'Trajet publie',
+        title: publishedRecurring ? 'Trajets programmés' : 'Trajet publié',
         message: publishedRecurring
-          ? 'Les prochaines occurrences ont ete generees automatiquement.'
-          : 'Votre trajet a ete publie avec succes !',
+          ? 'Nous publierons ce trajet les jours que vous avez choisis.'
+          : 'Votre trajet a été publié avec succès !',
         actions: [
           {
-            label: publishedRecurring ? 'Publier des autres' : 'Publier un autre',
+            label: publishedRecurring ? 'Publier un autre' : 'Publier un autre',
             variant: 'secondary',
             onPress: () => { },
           },
           {
-            label: publishedRecurring ? 'Gerer mes trajets' : 'Voir mes trajets',
+            label: publishedRecurring ? 'Voir mes trajets' : 'Voir mes trajets',
             variant: 'primary',
             onPress: () => router.push(publishedRecurring ? '/recurring-trips' : '/trips'),
           },
@@ -1325,8 +1337,8 @@ export default function PublishScreen() {
       if (!hasDepartureAddress) return 'Indiquez le départ';
       if (!hasArrivalAddress) return "Indiquez l'arrivée";
       if (isManualAddressGeocoding) return 'Recherche GPS...';
-      if (!hasDepartureCoordinates) return 'Confirmez le depart';
-      if (!hasArrivalCoordinates) return "Confirmez l'arrivee";
+      if (!hasDepartureCoordinates) return 'Confirmez le départ';
+      if (!hasArrivalCoordinates) return "Confirmez l'arrivée";
       return 'Continuer';
     }
     if (step === 'confirm') {
@@ -1474,12 +1486,11 @@ export default function PublishScreen() {
         {step === 'route' && (
           <Animated.View entering={stepEntering} style={[styles.stepContainer, styles.routeStepContainer]}>
             <View style={styles.publishRouteSheet}>
-              <View style={styles.sheetHandle} />
               <View style={styles.rideSheetHeader}>
                 <View style={styles.routeSheetHeaderCopy}>
-                  <Text style={styles.sectionTitle}>Publier votre trajet</Text>
+                  <Text style={styles.sectionTitle}>Votre itinéraire</Text>
                   <Text style={styles.routeSheetSubtitle} numberOfLines={1}>
-                    {routeSummary}
+                    Choisissez le départ et la destination sur la carte
                   </Text>
                 </View>
               </View>
@@ -1504,7 +1515,7 @@ export default function PublishScreen() {
                         hasDepartureCoordinates && styles.addressInputButtonDepartureActive,
                       ]}
                       onPress={() => {
-                        setAddressInputMode('map');
+                        setManualAddressTarget(null);
                         openLocationPicker('departure');
                       }}
                       activeOpacity={0.85}
@@ -1527,20 +1538,22 @@ export default function PublishScreen() {
                     <TouchableOpacity
                       style={[
                         styles.modeToggle,
-                        addressInputMode === 'manual' && styles.modeToggleActive,
+                        manualAddressTarget === 'departure' && styles.modeToggleActive,
                       ]}
                       onPress={() => {
-                        setAddressInputMode(addressInputMode === 'manual' ? 'map' : 'manual');
+                        setManualAddressTarget(
+                          manualAddressTarget === 'departure' ? null : 'departure',
+                        );
                       }}
                     >
                       <Ionicons
                         name="create-outline"
                         size={16}
-                        color={addressInputMode === 'manual' ? Colors.primary : Colors.gray[500]}
+                        color={manualAddressTarget === 'departure' ? Colors.primary : Colors.gray[500]}
                       />
                     </TouchableOpacity>
                   </View>
-                  {addressInputMode === 'manual' && (
+                  {manualAddressTarget === 'departure' && (
                     <>
                       <TextInput
                         style={styles.inlineManualInput}
@@ -1560,18 +1573,35 @@ export default function PublishScreen() {
                     hasDepartureAddress,
                     hasDepartureGpsSuggestion,
                     hasDepartureCoordinates,
-                    'Depart',
+                    'Départ',
                   )}
-                  <View style={styles.referenceField}>
-                    <Text style={styles.referenceLabel}>Repère de départ (optionnel)</Text>
-                    <TextInput
-                      style={styles.referenceInput}
-                      value={departureReference}
-                      onChangeText={setDepartureReference}
-                      placeholder="Ex: station, portail bleu"
-                      placeholderTextColor={Colors.gray[400]}
-                    />
-                  </View>
+                  {shouldShowDepartureReference ? (
+                    <View style={styles.referenceField}>
+                      <View style={styles.referenceHeader}>
+                        <Text style={styles.referenceLabel}>Repère de départ</Text>
+                        {!departureReference.trim() && (
+                          <TouchableOpacity onPress={() => setShowDepartureReference(false)}>
+                            <Ionicons name="close" size={16} color={Colors.gray[500]} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      <TextInput
+                        style={styles.referenceInput}
+                        value={departureReference}
+                        onChangeText={setDepartureReference}
+                        placeholder="Ex: station, portail bleu"
+                        placeholderTextColor={Colors.gray[400]}
+                      />
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.referenceAddButton}
+                      onPress={() => setShowDepartureReference(true)}
+                    >
+                      <Ionicons name="add" size={15} color={Colors.gray[600]} />
+                      <Text style={styles.referenceAddText}>Ajouter un repère</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 {/* Swap button */}
@@ -1596,7 +1626,7 @@ export default function PublishScreen() {
                         hasArrivalCoordinates && styles.addressInputButtonArrivalActive,
                       ]}
                       onPress={() => {
-                        setAddressInputMode('map');
+                        setManualAddressTarget(null);
                         openLocationPicker('arrival');
                       }}
                       activeOpacity={0.85}
@@ -1619,20 +1649,22 @@ export default function PublishScreen() {
                     <TouchableOpacity
                       style={[
                         styles.modeToggle,
-                        addressInputMode === 'manual' && styles.modeToggleActive,
+                        manualAddressTarget === 'arrival' && styles.modeToggleActive,
                       ]}
                       onPress={() => {
-                        setAddressInputMode(addressInputMode === 'manual' ? 'map' : 'manual');
+                        setManualAddressTarget(
+                          manualAddressTarget === 'arrival' ? null : 'arrival',
+                        );
                       }}
                     >
                       <Ionicons
                         name="create-outline"
                         size={16}
-                        color={addressInputMode === 'manual' ? Colors.primary : Colors.gray[500]}
+                        color={manualAddressTarget === 'arrival' ? Colors.primary : Colors.gray[500]}
                       />
                     </TouchableOpacity>
                   </View>
-                  {addressInputMode === 'manual' && (
+                  {manualAddressTarget === 'arrival' && (
                     <>
                       <TextInput
                         style={styles.inlineManualInput}
@@ -1652,21 +1684,50 @@ export default function PublishScreen() {
                     hasArrivalAddress,
                     hasArrivalGpsSuggestion,
                     hasArrivalCoordinates,
-                    'Arrivee',
+                    'Arrivée',
                   )}
-                  <View style={styles.referenceField}>
-                    <Text style={styles.referenceLabel}>Repère d’arrivée (optionnel)</Text>
-                    <TextInput
-                      style={styles.referenceInput}
-                      value={arrivalReference}
-                      onChangeText={setArrivalReference}
-                      placeholder="Ex: entrée principale"
-                      placeholderTextColor={Colors.gray[400]}
-                    />
-                  </View>
+                  {shouldShowArrivalReference ? (
+                    <View style={styles.referenceField}>
+                      <View style={styles.referenceHeader}>
+                        <Text style={styles.referenceLabel}>Repère d’arrivée</Text>
+                        {!arrivalReference.trim() && (
+                          <TouchableOpacity onPress={() => setShowArrivalReference(false)}>
+                            <Ionicons name="close" size={16} color={Colors.gray[500]} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      <TextInput
+                        style={styles.referenceInput}
+                        value={arrivalReference}
+                        onChangeText={setArrivalReference}
+                        placeholder="Ex: entrée principale"
+                        placeholderTextColor={Colors.gray[400]}
+                      />
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.referenceAddButton}
+                      onPress={() => setShowArrivalReference(true)}
+                    >
+                      <Ionicons name="add" size={15} color={Colors.gray[600]} />
+                      <Text style={styles.referenceAddText}>Ajouter un repère</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             </View>
+
+            {!showQuickLandmarks && (
+              <TouchableOpacity
+                style={styles.quickLandmarksOpenButton}
+                onPress={() => setShowQuickLandmarks(true)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="navigate-outline" size={15} color={Colors.primary} />
+                <Text style={styles.quickLandmarksOpenText}>Repères rapides</Text>
+                <Ionicons name="chevron-down" size={15} color={Colors.gray[500]} />
+              </TouchableOpacity>
+            )}
 
             {/* Repères rapides Kinshasa */}
             {showQuickLandmarks && (
@@ -1703,7 +1764,7 @@ export default function PublishScreen() {
                       style={styles.quickLandmarkChip}
                       onPress={() => {
                         const target = !hasDepartureCoordinates ? 'departure' : 'arrival';
-                        setAddressInputMode('map');
+                        setManualAddressTarget(null);
                         openLocationPicker(target, `${place.name}, ${place.commune}, Kinshasa`);
                       }}
                     >
@@ -1716,14 +1777,6 @@ export default function PublishScreen() {
                 </ScrollView>
               </View>
             )}
-
-            {/* Info */}
-            <View style={styles.infoBox}>
-              <Ionicons name="information-circle-outline" size={20} color={Colors.info} />
-              <Text style={styles.infoText}>
-                Touchez une puce pour remplir rapidement, ou utilisez la carte pour une précision GPS.
-              </Text>
-            </View>
 
             {/* KYC Warning si non vérifié */}
             {!isPublishIdentityVerified && (
@@ -1781,14 +1834,18 @@ export default function PublishScreen() {
               </View>
             </View>
             <TouchableOpacity
-              style={[styles.card, styles.recurringToggleCard]}
+              style={[
+                styles.card,
+                styles.recurringToggleCard,
+                isRecurringTrip && styles.recurringToggleCardActive,
+              ]}
               onPress={toggleRecurringTrip}
               activeOpacity={0.85}
             >
               <View style={styles.freeTripContent}>
-                <Text style={styles.freeTripTitle}>Trajet recurrent</Text>
+                <Text style={styles.freeTripTitle}>Vous effectuez souvent ce trajet ?</Text>
                 <Text style={styles.freeTripSubtitle}>
-                  Repeter automatiquement ce trajet selon vos jours habituels
+                  Choisissez vos jours habituels, Zwanga le publiera pour vous.
                 </Text>
               </View>
               <View style={[styles.toggleSwitch, isRecurringTrip && styles.toggleSwitchActive]}>
@@ -1798,8 +1855,8 @@ export default function PublishScreen() {
 
             {isRecurringTrip && (
               <View style={styles.card}>
-                <Text style={styles.cardLabel}>PLANIFICATION RECURRENTE</Text>
-                <Text style={styles.recurringSectionTitle}>Jours de repetition</Text>
+                <Text style={styles.cardLabel}>TRAJET HABITUEL</Text>
+                <Text style={styles.recurringSectionTitle}>Quels jours ?</Text>
                 <View style={styles.recurringDayRow}>
                   {recurringWeekdayOptions.map((option) => {
                     const isSelected = recurringWeekdays.includes(option.value);
@@ -1828,9 +1885,9 @@ export default function PublishScreen() {
                 <View style={styles.recurringSummaryCard}>
                   <Ionicons name="repeat" size={18} color={Colors.primary} />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.recurringSummaryLabel}>Resume</Text>
+                    <Text style={styles.recurringSummaryLabel}>Vos jours</Text>
                     <Text style={styles.recurringSummaryValue}>
-                      {recurringDaysSummary || 'Choisissez au moins un jour'} a {formattedTimeLabel}
+                      {recurringDaysSummary || 'Choisissez au moins un jour'} à {formattedTimeLabel}
                     </Text>
                   </View>
                 </View>
@@ -2112,7 +2169,7 @@ export default function PublishScreen() {
                       longitude: departureLocation.longitude,
                     }}
                     pinColor={Colors.success}
-                    title="Depart"
+                    title="Départ"
                   />
                 ) : null}
                 {arrivalLocation ? (
@@ -2143,10 +2200,10 @@ export default function PublishScreen() {
                   )}
                   <Text style={styles.routeStatusText}>
                     {isRouteLoading
-                      ? 'Calcul de l itineraire'
+                      ? "Calcul de l'itinéraire"
                       : routeCoordinates.length > 1
-                        ? 'Itineraire Google'
-                        : 'Route a recalculer'}
+                        ? 'Itinéraire Google'
+                        : 'Route à recalculer'}
                   </Text>
                 </View>
               ) : null}
@@ -2707,8 +2764,8 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.xxl,
   },
   routeScrollViewContent: {
-    paddingHorizontal: 0,
-    paddingTop: 0,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.sm,
   },
   stepContainer: {
     marginTop: 0,
@@ -2791,7 +2848,11 @@ const styles = StyleSheet.create({
   },
   recurringToggleCard: {
     borderWidth: 1,
-    borderColor: Colors.primary + '18',
+    borderColor: Colors.gray[200],
+  },
+  recurringToggleCardActive: {
+    borderColor: Colors.primary + '35',
+    backgroundColor: Colors.primary + '06',
   },
   freeTripContent: {
     flex: 1,
@@ -2801,6 +2862,7 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
     fontWeight: FontWeights.semibold,
     color: Colors.gray[900],
+    lineHeight: 21,
   },
   freeTripSubtitle: {
     fontSize: FontSizes.sm,
@@ -3058,7 +3120,7 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.xs,
     color: Colors.gray[500],
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    letterSpacing: 0,
   },
   recurringSummaryValue: {
     fontSize: FontSizes.sm,
@@ -3811,25 +3873,19 @@ const styles = StyleSheet.create({
     color: Colors.gray[800],
   },
   publishRouteSheet: {
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.md,
-    borderRadius: BorderRadius.xl,
+    marginHorizontal: 0,
+    marginTop: 0,
+    borderRadius: BorderRadius.lg,
     backgroundColor: Colors.white,
-    padding: Spacing.md,
+    padding: Spacing.lg,
     gap: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
     shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.14,
-    shadowRadius: 24,
-    elevation: 10,
-  },
-  sheetHandle: {
-    alignSelf: 'center',
-    width: 42,
-    height: 4,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.gray[200],
-    marginBottom: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 1,
   },
   rideSheetHeader: {
     flexDirection: 'row',
@@ -3847,18 +3903,18 @@ const styles = StyleSheet.create({
     color: Colors.gray[500],
   },
   sectionTitle: {
-    fontSize: FontSizes.xl,
+    fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
     marginBottom: 0,
   },
   routeCard: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: Colors.white,
     borderRadius: BorderRadius.lg,
-    padding: Spacing.sm,
+    padding: 0,
     flexDirection: 'row',
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
+    borderWidth: 0,
+    borderColor: 'transparent',
     marginBottom: 0,
   },
   routeVisual: {
@@ -3893,7 +3949,7 @@ const styles = StyleSheet.create({
   routeInputs: {
     flex: 1,
     marginLeft: Spacing.md,
-    gap: 0,
+    gap: Spacing.sm,
   },
   addressBlock: {
     gap: Spacing.sm,
@@ -3943,7 +3999,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: FontWeights.bold,
     color: Colors.gray[400],
-    letterSpacing: 1,
+    letterSpacing: 0,
   },
   locationValue: {
     fontSize: FontSizes.base,
@@ -3971,11 +4027,11 @@ const styles = StyleSheet.create({
   },
   infoBox: {
     flexDirection: 'row',
-    backgroundColor: Colors.info + '10',
+    backgroundColor: Colors.gray[50],
     padding: Spacing.md,
-    borderRadius: BorderRadius.sm,
+    borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.info + '20',
+    borderColor: Colors.gray[100],
     marginBottom: 0,
     alignItems: 'center',
   },
@@ -3989,20 +4045,22 @@ const styles = StyleSheet.create({
   // Card Styles (from request.tsx)
   card: {
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
+    borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
     marginBottom: Spacing.md,
-    shadowColor: '#000',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 15,
-    elevation: 2,
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 1,
   },
   cardLabel: {
     fontSize: 10,
     fontWeight: FontWeights.bold,
     color: Colors.gray[400],
-    letterSpacing: 1,
+    letterSpacing: 0,
     marginBottom: Spacing.md,
   },
   row: {
@@ -4060,19 +4118,19 @@ const styles = StyleSheet.create({
   },
   // === NOUVEAUX STYLES UX ROUTE ===
   addressField: {
-    gap: Spacing.xs,
+    gap: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.gray[200],
     backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.md,
-    padding: Spacing.sm,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
   },
   addressFieldDepartureReady: {
-    borderColor: Colors.success + '55',
+    borderColor: Colors.success + '40',
     backgroundColor: Colors.success + '06',
   },
   addressFieldArrivalReady: {
-    borderColor: Colors.primary + '55',
+    borderColor: Colors.primary + '35',
     backgroundColor: Colors.primary + '06',
   },
   addressFieldLabel: {
@@ -4095,21 +4153,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    minHeight: 46,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
+    minHeight: 44,
+    borderWidth: 0,
+    borderColor: 'transparent',
     borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: 0,
     paddingVertical: Spacing.xs,
-    backgroundColor: Colors.white,
+    backgroundColor: 'transparent',
   },
   addressInputButtonDepartureActive: {
-    borderColor: Colors.success,
-    backgroundColor: Colors.success + '10',
+    borderColor: 'transparent',
+    backgroundColor: 'transparent',
   },
   addressInputButtonArrivalActive: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primary + '10',
+    borderColor: 'transparent',
+    backgroundColor: 'transparent',
   },
   addressInputText: {
     flex: 1,
@@ -4122,12 +4180,12 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   modeToggle: {
-    width: 46,
-    height: 46,
-    borderRadius: BorderRadius.md,
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.full,
     borderWidth: 1,
     borderColor: Colors.gray[200],
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.gray[50],
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -4138,13 +4196,13 @@ const styles = StyleSheet.create({
   inlineManualInput: {
     minHeight: 44,
     borderWidth: 1,
-    borderColor: Colors.primary + '50',
+    borderColor: Colors.gray[200],
     borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs,
     fontSize: FontSizes.base,
     color: Colors.gray[900],
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.gray[50],
     marginTop: Spacing.xs,
   },
   manualGeocodeStatus: {
@@ -4184,6 +4242,12 @@ const styles = StyleSheet.create({
   referenceField: {
     gap: Spacing.xs,
   },
+  referenceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
   referenceLabel: {
     fontSize: 11,
     fontWeight: FontWeights.semibold,
@@ -4198,7 +4262,19 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs,
     fontSize: FontSizes.sm,
     color: Colors.gray[800],
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.gray[50],
+  },
+  referenceAddButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingVertical: 2,
+  },
+  referenceAddText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[600],
   },
   swapButton: {
     alignItems: 'center',
@@ -4210,16 +4286,11 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary + '12',
+    backgroundColor: Colors.white,
     borderWidth: 1,
-    borderColor: Colors.primary + '30',
+    borderColor: Colors.primary + '20',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: Colors.primary,
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
   quickLandmarksSection: {
     marginBottom: 0,
@@ -4227,7 +4298,24 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.sm,
     borderWidth: 0,
     borderColor: 'transparent',
-    paddingVertical: Spacing.sm,
+    paddingVertical: 0,
+  },
+  quickLandmarksOpenButton: {
+    alignSelf: 'flex-start',
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '08',
+    borderWidth: 1,
+    borderColor: Colors.primary + '14',
+  },
+  quickLandmarksOpenText: {
+    color: Colors.primaryDark,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
   },
   quickLandmarksHeader: {
     flexDirection: 'row',
@@ -4258,13 +4346,13 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.full,
     borderWidth: 1,
-    borderColor: Colors.primary + '25',
-    backgroundColor: Colors.primary + '08',
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
   },
   quickLandmarkText: {
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.medium,
-    color: Colors.primary,
+    color: Colors.gray[700],
     maxWidth: 120,
   },
   inlineKycBanner: {
