@@ -19,7 +19,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -303,7 +302,6 @@ export default function SearchScreen() {
   const [draftDeparture, setDraftDeparture] = useState('');
   const [draftArrival, setDraftArrival] = useState('');
   const [desiredSeats, setDesiredSeats] = useState(MIN_SEARCH_SEATS);
-  const [appliedSeats, setAppliedSeats] = useState(MIN_SEARCH_SEATS);
   const [queryParams, setQueryParams] = useState<TripSearchParams>({});
   const [advancedTrips, setAdvancedTrips] = useState<Trip[] | null>(null);
   const [advancedError, setAdvancedError] = useState<string | null>(null);
@@ -336,7 +334,6 @@ export default function SearchScreen() {
     setDraftDeparture(departureParam);
     setDraftArrival(arrivalParam);
     setDesiredSeats(seatsParam);
-    setAppliedSeats(seatsParam);
     setQueryParams({
       departureLocation: departureParam || undefined,
       arrivalLocation: arrivalParam || undefined,
@@ -393,7 +390,6 @@ export default function SearchScreen() {
       };
 
       setLastAdvancedPayload(payload);
-      setAppliedSeats(desiredSeats);
       runAdvancedSearch(payload);
     } else {
       setAdvancedTrips(null);
@@ -455,12 +451,41 @@ export default function SearchScreen() {
 
   const isLoadingResults = (queryLoading || isAdvancedSearching) && baseTrips.length === 0;
   const isRefreshingResults = queryFetching || isAdvancedSearching;
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      const nextDeparture = draftDeparture.trim();
+      const nextArrival = draftArrival.trim();
+
+      if (nextDeparture === departure && nextArrival === arrival) {
+        return;
+      }
+
+      setDeparture(nextDeparture);
+      setArrival(nextArrival);
+      setAdvancedTrips(null);
+      setAdvancedError(null);
+      setLastAdvancedPayload(null);
+      setQueryParams({
+        departureLocation: nextDeparture || undefined,
+        arrivalLocation: nextArrival || undefined,
+        minSeats: desiredSeats,
+      });
+    }, 450);
+
+    return () => clearTimeout(timeout);
+  }, [
+    arrival,
+    departure,
+    desiredSeats,
+    draftArrival,
+    draftDeparture,
+  ]);
+
   const handleApplySearch = () => {
     const nextDeparture = draftDeparture.trim();
     const nextArrival = draftArrival.trim();
     setDeparture(nextDeparture);
     setArrival(nextArrival);
-    setAppliedSeats(desiredSeats);
     setAdvancedTrips(null);
     setAdvancedError(null);
     setLastAdvancedPayload(null);
@@ -723,7 +748,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.xl,
-    paddingBottom: 136,
+    paddingBottom: Spacing.xxl,
   },
   routeSummaryCard: {
     minHeight: 96,
@@ -1154,37 +1179,6 @@ const styles = StyleSheet.create({
   instantBadgeText: {
     color: SEARCH_COLORS.body,
     fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-  },
-  modifySearchButton: {
-    alignSelf: 'center',
-    marginTop: Spacing.xxl,
-    minHeight: 58,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primaryDark,
-    paddingHorizontal: Spacing.xl,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    ...Platform.select({
-      ios: {
-        shadowColor: Colors.primaryDark,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.2,
-        shadowRadius: 16,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
-  },
-  modifySearchButtonDisabled: {
-    opacity: 0.72,
-  },
-  modifySearchText: {
-    color: Colors.white,
-    fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
   },
 });

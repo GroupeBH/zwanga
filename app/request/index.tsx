@@ -5,7 +5,7 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { trackEvent } from '@/services/analytics';
 import { useGeocodeMutation } from '@/store/api/googleMapsApi';
-import { useCreateTripRequestMutation } from '@/store/api/tripRequestApi';
+import { useCreateTripRequestMutation, useRecommendTripRequestPriceMutation } from '@/store/api/tripRequestApi';
 import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
 import type { FavoriteLocation } from '@/types';
 import {
@@ -32,6 +32,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -62,6 +63,8 @@ const TIME_PRESETS: {
 const FLEX_OPTIONS = [0, 30, 60, 120];
 const MIN_REQUEST_SEATS = 1;
 const MAX_REQUEST_SEATS = 2;
+const MIN_REQUEST_PRICE = 500;
+const REQUEST_PRICE_STEP = 500;
 const TIME_PRESET_SYNC_INTERVAL_MS = 30000;
 const DEFAULT_REQUEST_REGION: Region = {
   latitude: -4.441931,
@@ -178,6 +181,29 @@ function clampRequestSeats(value: number | undefined) {
   return Math.min(MAX_REQUEST_SEATS, Math.max(MIN_REQUEST_SEATS, Math.floor(value)));
 }
 
+function clampRequestPrice(value: number | undefined) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return MIN_REQUEST_PRICE;
+  }
+
+  const steppedValue = Math.round(value / REQUEST_PRICE_STEP) * REQUEST_PRICE_STEP;
+  return Math.max(MIN_REQUEST_PRICE, steppedValue);
+}
+
+function formatCdfPrice(value: number) {
+  return `${String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} FC`;
+}
+
+function formatDistanceKm(distanceMeters: number | null) {
+  if (typeof distanceMeters !== 'number' || !Number.isFinite(distanceMeters) || distanceMeters <= 0) {
+    return null;
+  }
+
+  const distanceKm = distanceMeters / 1000;
+  const roundedDistance = distanceKm < 10 ? distanceKm.toFixed(1) : String(Math.round(distanceKm));
+  return `${roundedDistance.replace('.', ',')} km`;
+}
+
 function getMapCoordinate(selection: MapLocationSelection | null): LatLng | null {
   if (!selection || !Number.isFinite(selection.latitude) || !Number.isFinite(selection.longitude)) {
     return null;
@@ -254,6 +280,7 @@ export default function RequestTripScreen() {
   const { showDialog } = useDialog();
   const { data: favoriteLocations = [] } = useGetFavoriteLocationsQuery();
   const [createTripRequest, { isLoading: isCreating }] = useCreateTripRequestMutation();
+  const [recommendTripRequestPrice, { isLoading: isPriceLoading }] = useRecommendTripRequestPriceMutation();
   const [geocodeManualAddress] = useGeocodeMutation();
   const [initialWindow] = useState(() => buildPresetWindow('now'));
   const [departureLocation, setDepartureLocation] = useState<MapLocationSelection | null>(null);
@@ -275,12 +302,16 @@ export default function RequestTripScreen() {
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
   const [numberOfSeats, setNumberOfSeats] = useState(MIN_REQUEST_SEATS);
   const [maxPricePerSeat, setMaxPricePerSeat] = useState('');
+  const [hasEditedBudget, setHasEditedBudget] = useState(false);
   const [description, setDescription] = useState('');
+  const [preferBudgetOffers, setPreferBudgetOffers] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showQuickLandmarks, setShowQuickLandmarks] = useState(true);
   const [isLocating, setIsLocating] = useState(false);
   const [requestFormStep, setRequestFormStep] = useState<RequestFormStep>('route');
   const [routeCoordinates, setRouteCoordinates] = useState<LatLng[]>([]);
+  const [routeDistanceMeters, setRouteDistanceMeters] = useState<number | null>(null);
+  const [recommendedPricePerSeat, setRecommendedPricePerSeat] = useState<number | null>(null);
   const [isRouteLoading, setIsRouteLoading] = useState(false);
   const [hasAppliedRoutePrefill, setHasAppliedRoutePrefill] = useState(false);
 
@@ -393,6 +424,15 @@ export default function RequestTripScreen() {
     if (flexibilityMinutes === 0) return `${formatDateLabel(departureDateMin)} à ${formatTimeLabel(departureDateMin)}`;
     return `${formatDateLabel(departureDateMin)} entre ${formatTimeLabel(departureDateMin)} et ${formatTimeLabel(departureDateMax)}`;
   }, [departureDateMax, departureDateMin, flexibilityMinutes]);
+  const budgetValue = maxPricePerSeat.trim()
+    ? clampRequestPrice(Number.parseFloat(maxPricePerSeat))
+    : recommendedPricePerSeat ?? 0;
+  const budgetLabel = budgetValue > 0
+    ? formatCdfPrice(budgetValue)
+    : isPriceLoading
+      ? 'Calcul...'
+      : 'Prix a calculer';
+  const routeDistanceLabel = formatDistanceKm(routeDistanceMeters);
 
   const getCurrentDepartureWindow = () => {
     if (timePreset === 'custom') {
@@ -573,6 +613,67 @@ export default function RequestTripScreen() {
     departureLocation,
   ]);
 
+  useEffect(() => {
+    if (!hasDepartureAddress || !hasArrivalAddress) {
+      setRouteDistanceMeters(null);
+      setRecommendedPricePerSeat(null);
+      if (!hasEditedBudget) {
+        setMaxPricePerSeat('');
+      }
+      return;
+    }
+
+    let isCurrent = true;
+    recommendTripRequestPrice({
+      departureLocation: departureAddress,
+      departureReference: departureReference.trim() || undefined,
+      departureCoordinates: getLocationCoordinates(departureLocation),
+      arrivalLocation: arrivalAddress,
+      arrivalReference: arrivalReference.trim() || undefined,
+      arrivalCoordinates: getLocationCoordinates(arrivalLocation),
+      numberOfSeats,
+    })
+      .unwrap()
+      .then((recommendation) => {
+        if (!isCurrent) return;
+        setRouteDistanceMeters(recommendation.distanceMeters);
+        setRecommendedPricePerSeat(recommendation.recommendedPricePerSeat);
+
+        if (!hasEditedBudget) {
+          setMaxPricePerSeat(
+            recommendation.recommendedPricePerSeat === null
+              ? ''
+              : String(recommendation.recommendedPricePerSeat),
+          );
+        }
+      })
+      .catch((error) => {
+        if (!isCurrent) return;
+        console.warn('Impossible de recuperer le prix recommande', error);
+        setRouteDistanceMeters(null);
+        setRecommendedPricePerSeat(null);
+        if (!hasEditedBudget) {
+          setMaxPricePerSeat('');
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [
+    arrivalAddress,
+    arrivalLocation,
+    arrivalReference,
+    departureAddress,
+    departureLocation,
+    departureReference,
+    hasArrivalAddress,
+    hasDepartureAddress,
+    hasEditedBudget,
+    numberOfSeats,
+    recommendTripRequestPrice,
+  ]);
+
   const primaryLabel =
     requestFormStep === 'route'
       ? !hasDepartureAddress
@@ -588,6 +689,11 @@ export default function RequestTripScreen() {
     const next = buildPresetWindow(preset);
     setDepartureDateMin(next.min);
     setFlexibilityMinutes(next.flex);
+  };
+
+  const updateBudget = (value: number) => {
+    setHasEditedBudget(true);
+    setMaxPricePerSeat(String(clampRequestPrice(value)));
   };
 
   const openCustomPicker = (mode: 'date' | 'time') => {
@@ -751,10 +857,12 @@ export default function RequestTripScreen() {
       setFlexibilityMinutes(departureWindow.flex);
     }
     if (!validate(departureWindow)) return;
-    const parsedBudget = Number.parseFloat(maxPricePerSeat);
-    if (!Number.isFinite(parsedBudget) || parsedBudget <= 0) {
+    const parsedBudget = hasEditedBudget && maxPricePerSeat.trim()
+      ? Number.parseFloat(maxPricePerSeat)
+      : undefined;
+    if (parsedBudget !== undefined && (!Number.isFinite(parsedBudget) || parsedBudget <= 0)) {
       showDialog({
-        title: 'Budget requis',
+        title: 'Budget invalide',
         message: "Indiquez le montant que vous avez prévu pour la course avant d'envoyer la demande.",
         variant: 'warning',
       });
@@ -763,6 +871,12 @@ export default function RequestTripScreen() {
     try {
       const departureCoordinates = getLocationCoordinates(departureLocation);
       const arrivalCoordinates = getLocationCoordinates(arrivalLocation);
+      const requestNotes = [
+        description.trim(),
+        preferBudgetOffers && parsedBudget !== undefined
+          ? `Preference: offres jusqu'a ${formatCdfPrice(parsedBudget)} par place.`
+          : '',
+      ].filter(Boolean).join('\n');
       const createdRequest = await createTripRequest({
         departureLocation: departureAddress,
         departureReference: departureReference.trim() || undefined,
@@ -773,12 +887,12 @@ export default function RequestTripScreen() {
         departureDateMin: departureWindow.min.toISOString(),
         departureDateMax: departureWindow.max.toISOString(),
         numberOfSeats,
-        maxPricePerSeat: parsedBudget,
-        description: description.trim() || undefined,
+        ...(parsedBudget !== undefined ? { maxPricePerSeat: parsedBudget } : {}),
+        description: requestNotes || undefined,
       }).unwrap();
       await trackEvent('trip_request_created', {
         seats: numberOfSeats,
-        max_price_per_seat: parsedBudget,
+        max_price_per_seat: parsedBudget ?? null,
         has_description: Boolean(description.trim()),
         flexibility_minutes: departureWindow.flex,
       });
@@ -859,467 +973,455 @@ export default function RequestTripScreen() {
           keyboardShouldPersistTaps="handled"
         >
           {requestFormStep === 'route' && (
-            <>
-              <Animated.View entering={FadeIn} style={styles.rideSheet}>
-                <View style={styles.sheetHandle} />
-                <View style={styles.rideSheetHeader}>
-                  <View>
-                    <Text style={styles.rideSheetTitle}>Où allez-vous ?</Text>
-                    <Text style={styles.rideSheetSubtitle}>
-                      Choisissez un départ et une destination.
-                    </Text>
-                  </View>
-                  <TouchableOpacity style={styles.sheetSwapButton} onPress={swapRoutePoints} activeOpacity={0.85}>
-                    <Ionicons name="swap-vertical" size={18} color={Colors.primary} />
-                  </TouchableOpacity>
-                </View>
+            <Animated.View entering={FadeIn} style={styles.routeSetup}>
+              <View style={styles.routeSetupHeader}>
+                <Text style={styles.routeSetupTitle}>Votre trajet</Text>
+                <TouchableOpacity style={styles.routeSetupSwap} onPress={swapRoutePoints} activeOpacity={0.85}>
+                  <Ionicons name="swap-vertical" size={18} color={Colors.primary} />
+                </TouchableOpacity>
+              </View>
 
-                <View style={styles.rideRouteBox}>
-                  <View style={styles.rideRail}>
-                    <View style={[styles.rideRailDot, styles.rideRailDotStart]} />
-                    <View style={styles.rideRailLine} />
-                    <View style={[styles.rideRailDot, styles.rideRailDotEnd]} />
-                  </View>
-
-                  <View style={styles.rideFields}>
-                    <View
-                      style={[
-                        styles.rideLocationBlock,
-                        addressSectionStep === 'departure' && styles.rideLocationBlockFocused,
-                      ]}
-                    >
-                      <TouchableOpacity
-                        style={styles.rideLocationButton}
-                        onPress={() => openPickerFor('departure')}
-                        activeOpacity={0.88}
-                      >
-                        <View style={styles.rideLocationTextBlock}>
-                          <Text style={styles.rideLocationLabel}>Départ</Text>
-                          <Text
-                            style={[
-                              styles.rideLocationValue,
-                              !hasDepartureAddress && styles.rideLocationPlaceholder,
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {departureAddress || 'Votre position ou un lieu'}
-                          </Text>
-                        </View>
-                        <TouchableOpacity
-                          style={styles.rideEditButton}
-                          onPress={() => {
-                            setAddressInputMode('manual');
-                            setAddressSectionStep('departure');
-                          }}
-                        >
-                          <Ionicons name="create-outline" size={16} color={Colors.gray[600]} />
-                        </TouchableOpacity>
-                      </TouchableOpacity>
-                      {addressInputMode === 'manual' && addressSectionStep === 'departure' ? (
-                        <>
-                          <TextInput
-                            style={styles.rideManualInput}
-                            value={departureManualAddress}
-                            onChangeText={(value) => {
-                              setDepartureManualAddress(value);
-                              setDepartureLocation(null);
-                            }}
-                          placeholder="Saisir le départ"
-                            placeholderTextColor={Colors.gray[400]}
-                          />
-                          {renderManualGeocodeStatus(departureManualGeocodeStatus)}
-                        </>
-                      ) : null}
-                      {hasDepartureAddress ? (
-                        <TextInput
-                          style={styles.rideReferenceInput}
-                          value={departureReference}
-                          onChangeText={setDepartureReference}
-                          placeholder="Repère de départ (facultatif)"
-                          placeholderTextColor={Colors.gray[400]}
-                        />
-                      ) : null}
-                    </View>
-
-                    <View style={styles.rideDivider} />
-
-                    <View
-                      style={[
-                        styles.rideLocationBlock,
-                        addressSectionStep === 'arrival' && styles.rideLocationBlockFocused,
-                      ]}
-                    >
-                      <TouchableOpacity
-                        style={styles.rideLocationButton}
-                        onPress={() => openPickerFor('arrival')}
-                        activeOpacity={0.88}
-                      >
-                        <View style={styles.rideLocationTextBlock}>
-                          <Text style={styles.rideLocationLabel}>Destination</Text>
-                          <Text
-                            style={[
-                              styles.rideLocationValue,
-                              !hasArrivalAddress && styles.rideLocationPlaceholder,
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {arrivalAddress || 'Où voulez-vous aller ?'}
-                          </Text>
-                        </View>
-                        <TouchableOpacity
-                          style={styles.rideEditButton}
-                          onPress={() => {
-                            setAddressInputMode('manual');
-                            setAddressSectionStep('arrival');
-                          }}
-                        >
-                          <Ionicons name="create-outline" size={16} color={Colors.gray[600]} />
-                        </TouchableOpacity>
-                      </TouchableOpacity>
-                      {addressInputMode === 'manual' && addressSectionStep === 'arrival' ? (
-                        <>
-                          <TextInput
-                            style={styles.rideManualInput}
-                            value={arrivalManualAddress}
-                            onChangeText={(value) => {
-                              setArrivalManualAddress(value);
-                              setArrivalLocation(null);
-                            }}
-                          placeholder="Saisir la destination"
-                            placeholderTextColor={Colors.gray[400]}
-                          />
-                          {renderManualGeocodeStatus(arrivalManualGeocodeStatus)}
-                        </>
-                      ) : null}
-                      {hasArrivalAddress ? (
-                        <TextInput
-                          style={styles.rideReferenceInput}
-                          value={arrivalReference}
-                          onChangeText={setArrivalReference}
-                          placeholder="Repère d’arrivée (facultatif)"
-                          placeholderTextColor={Colors.gray[400]}
-                        />
-                      ) : null}
-                    </View>
-                  </View>
-                </View>
-
-                <View style={styles.quickActionsRow}>
+              <View style={styles.routeInputStack}>
+                <View style={styles.routePickerItem}>
                   <TouchableOpacity
-                    style={styles.quickActionButton}
-                    onPress={handleUseCurrentLocation}
-                    disabled={isLocating}
-                    activeOpacity={0.85}
+                    style={styles.routePickerButton}
+                    onPress={() => openPickerFor('departure')}
+                    activeOpacity={0.88}
                   >
-                    {isLocating ? (
-                      <ActivityIndicator color={Colors.primary} size="small" />
-                    ) : (
-                      <Ionicons name="navigate" size={16} color={Colors.primary} />
-                    )}
-                    <Text style={styles.quickActionText}>Partir d’ici</Text>
+                    <View style={[styles.routePickerIcon, styles.routePickerIconStart]}>
+                      <Ionicons name="navigate" size={18} color={Colors.success} />
+                    </View>
+                    <View style={styles.routePickerCopy}>
+                      <Text style={styles.routePickerLabel}>Départ</Text>
+                      <Text
+                        style={[styles.routePickerValue, !hasDepartureAddress && styles.routePickerPlaceholder]}
+                        numberOfLines={1}
+                      >
+                        {departureAddress || 'Point de départ'}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.quickActionButton} onPress={() => openPickerFor('arrival')}>
-                    <Ionicons name="search" size={16} color={Colors.primary} />
-                    <Text style={styles.quickActionText}>Chercher un lieu</Text>
-                  </TouchableOpacity>
+                  {addressInputMode === 'manual' && addressSectionStep === 'departure' ? (
+                    <View style={styles.routeManualWrap}>
+                      <TextInput
+                        style={styles.routeManualInput}
+                        value={departureManualAddress}
+                        onChangeText={(value) => {
+                          setDepartureManualAddress(value);
+                          setDepartureLocation(null);
+                        }}
+                        placeholder="Saisir le départ"
+                        placeholderTextColor={Colors.gray[400]}
+                      />
+                      {renderManualGeocodeStatus(departureManualGeocodeStatus)}
+                    </View>
+                  ) : null}
                 </View>
 
-                <View style={styles.suggestionsSection}>
+                <View style={styles.routeStackDivider} />
+
+                <View style={styles.routePickerItem}>
+                  <TouchableOpacity
+                    style={styles.routePickerButton}
+                    onPress={() => openPickerFor('arrival')}
+                    activeOpacity={0.88}
+                  >
+                    <View style={[styles.routePickerIcon, styles.routePickerIconEnd]}>
+                      <Ionicons name="flag" size={18} color={Colors.primary} />
+                    </View>
+                    <View style={styles.routePickerCopy}>
+                      <Text style={styles.routePickerLabel}>Destination</Text>
+                      <Text
+                        style={[styles.routePickerValue, !hasArrivalAddress && styles.routePickerPlaceholder]}
+                        numberOfLines={1}
+                      >
+                        {arrivalAddress || 'Point d’arrivée'}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
+                  </TouchableOpacity>
+                  {addressInputMode === 'manual' && addressSectionStep === 'arrival' ? (
+                    <View style={styles.routeManualWrap}>
+                      <TextInput
+                        style={styles.routeManualInput}
+                        value={arrivalManualAddress}
+                        onChangeText={(value) => {
+                          setArrivalManualAddress(value);
+                          setArrivalLocation(null);
+                        }}
+                        placeholder="Saisir la destination"
+                        placeholderTextColor={Colors.gray[400]}
+                      />
+                      {renderManualGeocodeStatus(arrivalManualGeocodeStatus)}
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+
+              <View style={styles.routeQuickRow}>
+                <TouchableOpacity
+                  style={styles.routeQuickButton}
+                  onPress={handleUseCurrentLocation}
+                  disabled={isLocating}
+                  activeOpacity={0.85}
+                >
+                  {isLocating ? (
+                    <ActivityIndicator color={Colors.primary} size="small" />
+                  ) : (
+                    <Ionicons name="locate" size={16} color={Colors.primary} />
+                  )}
+                  <Text style={styles.routeQuickText}>Partir d’ici</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.routeQuickButton}
+                  onPress={() => {
+                    setAddressInputMode('manual');
+                    setAddressSectionStep(!hasDepartureAddress ? 'departure' : 'arrival');
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="create-outline" size={16} color={Colors.primary} />
+                  <Text style={styles.routeQuickText}>Saisir</Text>
+                </TouchableOpacity>
+              </View>
+
+              {(favoriteSuggestions.length > 0 || showQuickLandmarks) && (
+                <View style={styles.routeSuggestions}>
                   <View style={styles.suggestionsHeader}>
-                    <Text style={styles.suggestionsTitle}>Suggestions</Text>
-                    {showQuickLandmarks ? (
-                      <TouchableOpacity onPress={() => setShowQuickLandmarks(false)}>
-                        <Text style={styles.suggestionsToggle}>Masquer</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity onPress={() => setShowQuickLandmarks(true)}>
-                        <Text style={styles.suggestionsToggle}>Afficher</Text>
-                      </TouchableOpacity>
-                    )}
+                    <Text style={styles.suggestionsTitle}>Lieux rapides</Text>
+                    <TouchableOpacity onPress={() => setShowQuickLandmarks((value) => !value)}>
+                      <Text style={styles.suggestionsToggle}>{showQuickLandmarks ? 'Masquer' : 'Afficher'}</Text>
+                    </TouchableOpacity>
                   </View>
-                  {(favoriteSuggestions.length > 0 || showQuickLandmarks) && (
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.suggestionsScroll}
-                    >
-                      {favoriteSuggestions.map((favorite) => (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.suggestionsScroll}
+                  >
+                    {favoriteSuggestions.map((favorite) => (
+                      <TouchableOpacity
+                        key={favorite.id}
+                        style={styles.suggestionChip}
+                        onPress={() =>
+                          applySelectionToNextSlot({
+                            title: favorite.name,
+                            address: favorite.address,
+                            latitude: favorite.coordinates.latitude,
+                            longitude: favorite.coordinates.longitude,
+                          })
+                        }
+                        activeOpacity={0.86}
+                      >
+                        <View style={styles.suggestionIcon}>
+                          <Ionicons name={favoriteIcon(favorite.type)} size={14} color={Colors.primary} />
+                        </View>
+                        <Text style={styles.suggestionText} numberOfLines={1}>
+                          {favorite.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                    {showQuickLandmarks &&
+                      POPULAR_PLACES.map((place) => (
                         <TouchableOpacity
-                          key={favorite.id}
+                          key={place.name}
                           style={styles.suggestionChip}
-                          onPress={() =>
-                            applySelectionToNextSlot({
-                              title: favorite.name,
-                              address: favorite.address,
-                              latitude: favorite.coordinates.latitude,
-                              longitude: favorite.coordinates.longitude,
-                            })
-                          }
+                          onPress={() => applyManualPlaceToNextSlot(`${place.name}, ${place.commune}`)}
                           activeOpacity={0.86}
                         >
                           <View style={styles.suggestionIcon}>
-                            <Ionicons name={favoriteIcon(favorite.type)} size={14} color={Colors.primary} />
+                            <Ionicons name="location" size={14} color={Colors.primary} />
                           </View>
                           <Text style={styles.suggestionText} numberOfLines={1}>
-                            {favorite.name}
+                            {place.name}
                           </Text>
                         </TouchableOpacity>
                       ))}
-                      {showQuickLandmarks &&
-                        POPULAR_PLACES.map((place) => (
-                          <TouchableOpacity
-                            key={place.name}
-                            style={styles.suggestionChip}
-                            onPress={() => applyManualPlaceToNextSlot(`${place.name}, ${place.commune}`)}
-                            activeOpacity={0.86}
-                          >
-                            <View style={styles.suggestionIcon}>
-                              <Ionicons name="location" size={14} color={Colors.primary} />
-                            </View>
-                            <Text style={styles.suggestionText} numberOfLines={1}>
-                              {place.name}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                    </ScrollView>
-                  )}
+                  </ScrollView>
                 </View>
-              </Animated.View>
-            </>
-          )}
-
-          {requestFormStep === 'details' && (
-          <>
-          <View style={styles.stepIntroCard}>
-            <View style={styles.stepIntroIcon}>
-              <Ionicons name="options-outline" size={18} color={Colors.primary} />
-            </View>
-            <View style={styles.stepIntroText}>
-              <Text style={styles.stepIntroTitle}>Détails</Text>
-              <Text style={styles.stepIntroSubtitle} numberOfLines={1}>
-                {routeSummary}
-              </Text>
-            </View>
-          </View>
-
-          <View style={[styles.mapPreview, styles.detailsMapPreview]}>
-            <MapView
-              style={styles.mapPreviewMap}
-              provider={PROVIDER_GOOGLE}
-              region={routePreviewRegion}
-              scrollEnabled={false}
-              zoomEnabled={false}
-              rotateEnabled={false}
-              pitchEnabled={false}
-              toolbarEnabled={false}
-            >
-              {departureLocation ? (
-                <Marker
-                  coordinate={{
-                    latitude: departureLocation.latitude,
-                    longitude: departureLocation.longitude,
-                  }}
-                  pinColor={Colors.success}
-                  title="Depart"
-                />
-              ) : null}
-              {arrivalLocation ? (
-                <Marker
-                  coordinate={{
-                    latitude: arrivalLocation.latitude,
-                    longitude: arrivalLocation.longitude,
-                  }}
-                  pinColor={Colors.primary}
-                  title="Destination"
-                />
-              ) : null}
-              {routeCoordinates.length > 1 ? (
-                <Polyline
-                  coordinates={routeCoordinates}
-                  strokeColor={Colors.primary}
-                  strokeWidth={5}
-                />
-              ) : null}
-            </MapView>
-            <View pointerEvents="none" style={styles.mapPreviewShade} />
-            {departureLocation && arrivalLocation ? (
-              <View pointerEvents="none" style={styles.routeStatusBadge}>
-                {isRouteLoading ? (
-                  <ActivityIndicator color={Colors.primary} size="small" />
-                ) : (
-                  <Ionicons
-                    name={routeCoordinates.length > 1 ? 'git-branch' : 'alert-circle-outline'}
-                    size={15}
-                    color={routeCoordinates.length > 1 ? Colors.primary : Colors.gray[500]}
-                  />
-                )}
-                <Text style={styles.routeStatusText}>
-                  {isRouteLoading
-                    ? 'Calcul de l itineraire'
-                    : routeCoordinates.length > 1
-                      ? 'Itineraire Google'
-                      : 'Route a recalculer'}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-
-          <View style={[styles.card, styles.detailsCard]}>
-            <Text style={styles.cardTitle}>Quand voulez-vous partir ?</Text>
-            <View style={styles.presetGrid}>
-              {TIME_PRESETS.map((preset) => {
-                const active = timePreset === preset.id;
-                return (
-                  <TouchableOpacity key={preset.id} style={[styles.preset, active && styles.presetActive]} onPress={() => applyPreset(preset.id)}>
-                    <Ionicons name={preset.icon} size={16} color={active ? Colors.primary : Colors.gray[500]} />
-                    <Text style={[styles.presetLabel, active && styles.presetLabelActive]} numberOfLines={1}>{preset.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <View style={styles.infoCard}>
-              <Ionicons name="time" size={18} color={Colors.secondary} />
-              <Text style={styles.infoCardText}>{timeSummary}</Text>
-            </View>
-
-            {timePreset === 'custom' && (
-              <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.customWrap}>
-                <TouchableOpacity style={styles.inputLike} onPress={() => openCustomPicker('date')}>
-                  <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
-                  <Text style={styles.inputLikeText}>{formatDateLabel(departureDateMin)}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.inputLike} onPress={() => openCustomPicker('time')}>
-                  <Ionicons name="time-outline" size={18} color={Colors.primary} />
-                  <Text style={styles.inputLikeText}>{formatTimeLabel(departureDateMin)}</Text>
-                </TouchableOpacity>
-                <View style={styles.chipRow}>
-                  {FLEX_OPTIONS.map((option) => (
-                    <TouchableOpacity
-                      key={option}
-                      style={[styles.chip, flexibilityMinutes === option && styles.flexChipActive]}
-                      onPress={() => setFlexibilityMinutes(option)}
-                    >
-                      <Text style={[styles.chipText, flexibilityMinutes === option && styles.flexChipTextActive]}>
-                        {option === 0 ? 'Exact' : option === 60 ? '1 h' : option === 120 ? '2 h' : `${option} min`}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </Animated.View>
-            )}
-          </View>
-
-          <View style={styles.detailsPanel}>
-            <View style={styles.detailsFieldRow}>
-              <View style={styles.detailsFieldLabelBlock}>
-                <Text style={styles.detailsFieldTitle}>Places</Text>
-                <Text style={styles.detailsFieldHint}>{numberOfSeats} personne{numberOfSeats > 1 ? 's' : ''}</Text>
-              </View>
-              <View style={styles.counterCompact}>
-                <TouchableOpacity
-                  style={[
-                    styles.counterBtnCompact,
-                    numberOfSeats <= MIN_REQUEST_SEATS && styles.counterBtnCompactDisabled,
-                  ]}
-                  onPress={() => setNumberOfSeats((value) => clampRequestSeats(value - 1))}
-                  disabled={numberOfSeats <= MIN_REQUEST_SEATS}
-                  activeOpacity={0.75}
-                >
-                  <Ionicons
-                    name="remove"
-                    size={18}
-                    color={numberOfSeats <= MIN_REQUEST_SEATS ? Colors.gray[400] : Colors.gray[900]}
-                  />
-                </TouchableOpacity>
-                <Text style={styles.counterValueCompact}>{numberOfSeats}</Text>
-                <TouchableOpacity
-                  style={[
-                    styles.counterBtnCompact,
-                    numberOfSeats >= MAX_REQUEST_SEATS && styles.counterBtnCompactDisabled,
-                  ]}
-                  onPress={() => setNumberOfSeats((value) => clampRequestSeats(value + 1))}
-                  disabled={numberOfSeats >= MAX_REQUEST_SEATS}
-                  activeOpacity={0.75}
-                >
-                  <Ionicons
-                    name="add"
-                    size={18}
-                    color={numberOfSeats >= MAX_REQUEST_SEATS ? Colors.gray[400] : Colors.gray[900]}
-                  />
-                </TouchableOpacity>
-              </View>
-            </View>
-            <View style={styles.detailsDivider} />
-            <View style={styles.detailsFieldRow}>
-              <View style={styles.detailsFieldLabelBlock}>
-                <Text style={styles.detailsFieldTitle}>Budget max</Text>
-                <Text style={styles.detailsFieldHint}>Par place</Text>
-              </View>
-              <View style={styles.priceBoxCompact}>
-                <TextInput
-                  style={styles.priceInputCompact}
-                  value={maxPricePerSeat}
-                  onChangeText={setMaxPricePerSeat}
-                  keyboardType="number-pad"
-                  placeholder="2500"
-                  placeholderTextColor={Colors.gray[400]}
-                />
-                <Text style={styles.currency}>FC</Text>
-              </View>
-            </View>
-          </View>
-
-          <TouchableOpacity style={styles.cardHeadCompact} onPress={() => setShowAdvanced((value) => !value)}>
-            <View>
-              <Text style={styles.cardTitle}>Ajouter une note</Text>
-              <Text style={styles.cardSubtitle}>Facultatif</Text>
-            </View>
-            <Ionicons name={showAdvanced ? 'chevron-up' : 'chevron-down'} size={20} color={Colors.gray[500]} />
-          </TouchableOpacity>
-
-          {showAdvanced && (
-            <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.card}>
-              <Text style={styles.smallLabel}>Petit message pour les conducteurs</Text>
-              <TextInput
-                style={styles.textArea}
-                value={description}
-                onChangeText={setDescription}
-                multiline
-                placeholder="Ex: J ai un bagage, je voyage avec un enfant..."
-                placeholderTextColor={Colors.gray[400]}
-              />
+              )}
             </Animated.View>
           )}
 
-          <View style={styles.summary}>
-            <Text style={styles.summaryTitle}>Resume rapide</Text>
-            <Text style={styles.summaryText} numberOfLines={1}>{routeSummary}</Text>
-            <Text style={styles.summaryText} numberOfLines={1}>{timeSummary}</Text>
-            <Text style={styles.summaryText}>{numberOfSeats} personne{numberOfSeats > 1 ? 's' : ''}</Text>
-            {maxPricePerSeat ? <Text style={styles.summaryText}>Maximum {maxPricePerSeat} FC / place</Text> : null}
-          </View>
-          </>
+          {requestFormStep === 'details' && (
+            <Animated.View entering={FadeIn} style={styles.offerFlow}>
+              <View style={styles.offerMap}>
+                <MapView
+                  style={styles.mapPreviewMap}
+                  provider={PROVIDER_GOOGLE}
+                  region={routePreviewRegion}
+                  scrollEnabled={false}
+                  zoomEnabled={false}
+                  rotateEnabled={false}
+                  pitchEnabled={false}
+                  toolbarEnabled={false}
+                >
+                  {departureLocation ? (
+                    <Marker
+                      coordinate={{
+                        latitude: departureLocation.latitude,
+                        longitude: departureLocation.longitude,
+                      }}
+                      pinColor={Colors.success}
+                      title="Départ"
+                    />
+                  ) : null}
+                  {arrivalLocation ? (
+                    <Marker
+                      coordinate={{
+                        latitude: arrivalLocation.latitude,
+                        longitude: arrivalLocation.longitude,
+                      }}
+                      pinColor={Colors.primary}
+                      title="Destination"
+                    />
+                  ) : null}
+                  {routeCoordinates.length > 1 ? (
+                    <Polyline
+                      coordinates={routeCoordinates}
+                      strokeColor={Colors.primaryDark}
+                      strokeWidth={5}
+                    />
+                  ) : null}
+                </MapView>
+                <View pointerEvents="none" style={styles.offerMapShade} />
+                <TouchableOpacity
+                  style={styles.offerMapBack}
+                  onPress={() => setRequestFormStep('route')}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="arrow-back" size={22} color={Colors.gray[900]} />
+                </TouchableOpacity>
+                <View style={styles.offerRouteCard}>
+                  <View style={styles.offerRouteRow}>
+                    <Ionicons name="navigate" size={16} color={Colors.success} />
+                    <Text style={styles.offerRouteText} numberOfLines={1}>{departureAddress}</Text>
+                  </View>
+                  <View style={styles.offerRouteDivider} />
+                  <View style={styles.offerRouteRow}>
+                    <Ionicons name="flag" size={16} color={Colors.primary} />
+                    <Text style={styles.offerRouteText} numberOfLines={1}>{arrivalAddress}</Text>
+                  </View>
+                </View>
+                <View pointerEvents="none" style={styles.routeStatusBadge}>
+                  {isRouteLoading ? (
+                    <ActivityIndicator color={Colors.primary} size="small" />
+                  ) : (
+                    <Ionicons
+                      name={routeCoordinates.length > 1 ? 'git-branch' : 'map-outline'}
+                      size={15}
+                      color={Colors.primary}
+                    />
+                  )}
+                  <Text style={styles.routeStatusText}>
+                    {isRouteLoading
+                      ? 'Calcul itinéraire'
+                      : routeDistanceLabel
+                        ? routeDistanceLabel
+                        : routeCoordinates.length > 1
+                          ? 'Itinéraire prêt'
+                          : 'Zone estimée'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.offerSheet}>
+                <View style={styles.rideTypeCard}>
+                  <View style={styles.rideTypeIcon}>
+                    <Ionicons name="car-sport" size={28} color={Colors.gray[900]} />
+                  </View>
+                  <View style={styles.rideTypeCopy}>
+                    <Text style={styles.rideTypeTitle}>Course</Text>
+                    <Text style={styles.rideTypeMeta}>
+                      {numberOfSeats} personne{numberOfSeats > 1 ? 's' : ''} • {routeDistanceLabel || 'Prix abordables'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity style={styles.rideTypeEdit} onPress={() => setRequestFormStep('route')}>
+                    <Ionicons name="create-outline" size={16} color={Colors.gray[700]} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.offerPriceControl}>
+                  <TouchableOpacity
+                    style={[styles.offerPriceButton, budgetValue <= MIN_REQUEST_PRICE && styles.offerPriceButtonDisabled]}
+                    onPress={() => updateBudget(budgetValue - REQUEST_PRICE_STEP)}
+                    disabled={budgetValue <= MIN_REQUEST_PRICE}
+                    activeOpacity={0.78}
+                  >
+                    <Ionicons name="remove" size={26} color={budgetValue <= MIN_REQUEST_PRICE ? Colors.gray[400] : Colors.gray[900]} />
+                  </TouchableOpacity>
+                  <View style={styles.offerPriceCenter}>
+                    <Text style={styles.offerPriceValue}>{budgetLabel}</Text>
+                    <Text style={styles.offerPriceHint}>Prix recommandé par place</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.offerPriceButton}
+                    onPress={() => updateBudget(budgetValue + REQUEST_PRICE_STEP)}
+                    activeOpacity={0.78}
+                  >
+                    <Ionicons name="add" size={26} color={Colors.gray[900]} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.offerOptionsRow}>
+                  <View style={styles.offerOptionCopy}>
+                    <Ionicons name="people" size={17} color={Colors.primary} />
+                    <Text style={styles.offerOptionText}>{numberOfSeats} place{numberOfSeats > 1 ? 's' : ''}</Text>
+                  </View>
+                  <View style={styles.counterCompact}>
+                    <TouchableOpacity
+                      style={[
+                        styles.counterBtnCompact,
+                        numberOfSeats <= MIN_REQUEST_SEATS && styles.counterBtnCompactDisabled,
+                      ]}
+                      onPress={() => setNumberOfSeats((value) => clampRequestSeats(value - 1))}
+                      disabled={numberOfSeats <= MIN_REQUEST_SEATS}
+                      activeOpacity={0.75}
+                    >
+                      <Ionicons
+                        name="remove"
+                        size={18}
+                        color={numberOfSeats <= MIN_REQUEST_SEATS ? Colors.gray[400] : Colors.gray[900]}
+                      />
+                    </TouchableOpacity>
+                    <Text style={styles.counterValueCompact}>{numberOfSeats}</Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.counterBtnCompact,
+                        numberOfSeats >= MAX_REQUEST_SEATS && styles.counterBtnCompactDisabled,
+                      ]}
+                      onPress={() => setNumberOfSeats((value) => clampRequestSeats(value + 1))}
+                      disabled={numberOfSeats >= MAX_REQUEST_SEATS}
+                      activeOpacity={0.75}
+                    >
+                      <Ionicons
+                        name="add"
+                        size={18}
+                        color={numberOfSeats >= MAX_REQUEST_SEATS ? Colors.gray[400] : Colors.gray[900]}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={styles.offerTimeBlock}>
+                  <Text style={styles.offerSectionLabel}>Départ</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.offerPresetScroll}>
+                    {TIME_PRESETS.map((preset) => {
+                      const active = timePreset === preset.id;
+                      return (
+                        <TouchableOpacity
+                          key={preset.id}
+                          style={[styles.offerPreset, active && styles.offerPresetActive]}
+                          onPress={() => applyPreset(preset.id)}
+                          activeOpacity={0.82}
+                        >
+                          <Ionicons name={preset.icon} size={15} color={active ? Colors.white : Colors.gray[600]} />
+                          <Text style={[styles.offerPresetText, active && styles.offerPresetTextActive]} numberOfLines={1}>
+                            {preset.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                  <View style={styles.offerTimeSummary}>
+                    <Ionicons name="time-outline" size={17} color={Colors.primary} />
+                    <Text style={styles.offerTimeText} numberOfLines={2}>{timeSummary}</Text>
+                  </View>
+                  {timePreset === 'custom' && (
+                    <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.customWrap}>
+                      <TouchableOpacity style={styles.inputLike} onPress={() => openCustomPicker('date')}>
+                        <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
+                        <Text style={styles.inputLikeText}>{formatDateLabel(departureDateMin)}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.inputLike} onPress={() => openCustomPicker('time')}>
+                        <Ionicons name="time-outline" size={18} color={Colors.primary} />
+                        <Text style={styles.inputLikeText}>{formatTimeLabel(departureDateMin)}</Text>
+                      </TouchableOpacity>
+                      <View style={styles.chipRow}>
+                        {FLEX_OPTIONS.map((option) => (
+                          <TouchableOpacity
+                            key={option}
+                            style={[styles.chip, flexibilityMinutes === option && styles.flexChipActive]}
+                            onPress={() => setFlexibilityMinutes(option)}
+                          >
+                            <Text style={[styles.chipText, flexibilityMinutes === option && styles.flexChipTextActive]}>
+                              {option === 0 ? 'Exact' : option === 60 ? '1 h' : option === 120 ? '2 h' : `${option} min`}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </Animated.View>
+                  )}
+                </View>
+
+                <View style={styles.offerPreferenceRow}>
+                  <View style={styles.offerPreferenceIcon}>
+                    <Ionicons name="send" size={18} color={Colors.primary} />
+                  </View>
+                  <View style={styles.offerPreferenceCopy}>
+                    <Text style={styles.offerPreferenceTitle}>Recevoir les offres dans ce budget</Text>
+                    <Text style={styles.offerPreferenceText}>{budgetLabel} par place</Text>
+                  </View>
+                  <Switch
+                    value={preferBudgetOffers}
+                    onValueChange={setPreferBudgetOffers}
+                    trackColor={{ false: Colors.gray[200], true: Colors.primary + '55' }}
+                    thumbColor={preferBudgetOffers ? Colors.primary : Colors.white}
+                  />
+                </View>
+
+                <TouchableOpacity style={styles.offerNoteToggle} onPress={() => setShowAdvanced((value) => !value)}>
+                  <Text style={styles.offerNoteToggleText}>{showAdvanced ? 'Masquer la note' : 'Ajouter une note'}</Text>
+                  <Ionicons name={showAdvanced ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.gray[500]} />
+                </TouchableOpacity>
+
+                {showAdvanced && (
+                  <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.offerNotePanel}>
+                    <TextInput
+                      style={styles.textArea}
+                      value={description}
+                      onChangeText={setDescription}
+                      multiline
+                      placeholder="Ex: j’ai un bagage, je voyage avec un enfant..."
+                      placeholderTextColor={Colors.gray[400]}
+                    />
+                  </Animated.View>
+                )}
+              </View>
+            </Animated.View>
           )}
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <View style={[styles.footer, requestFormStep === 'details' && styles.footerCompact, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
-        {requestFormStep === 'route' && (
-          <>
-            <Text style={styles.footerTitle} numberOfLines={1}>{routeSummary}</Text>
-            <Text style={styles.footerText} numberOfLines={1}>{timeSummary}</Text>
-          </>
-        )}
-        <View style={[styles.footerActions, requestFormStep === 'details' && styles.footerActionsRow]}>
-          {requestFormStep === 'details' && (
-            <TouchableOpacity style={styles.footerSecondaryButton} onPress={() => setRequestFormStep('route')}>
-              <Text style={styles.footerSecondaryButtonText}>Retour</Text>
-            </TouchableOpacity>
-          )}
-          {renderPrimaryButton(requestFormStep === 'details')}
+      {requestFormStep === 'route' && (
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
+          <Text style={styles.footerTitle} numberOfLines={1}>{routeSummary}</Text>
+          <Text style={styles.footerText} numberOfLines={1}>{timeSummary}</Text>
+          <View style={styles.footerActions}>
+            {renderPrimaryButton(false)}
+          </View>
         </View>
-      </View>
+      )}
+
+      {requestFormStep === 'details' && (
+        <View style={[styles.offerStickyFooter, { paddingBottom: Math.max(insets.bottom, 16) + 14 }]}>
+          <TouchableOpacity
+            style={[styles.offerSubmitButton, primaryButtonDisabled && styles.mainButtonDisabled]}
+            onPress={handleCreateRequest}
+            disabled={primaryButtonDisabled}
+            activeOpacity={0.9}
+          >
+            {isCreating ? (
+              <ActivityIndicator color={Colors.white} />
+            ) : (
+              <>
+                <Text style={styles.offerSubmitText}>Chercher un driver</Text>
+                <Ionicons name="arrow-forward" size={20} color={Colors.white} />
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
 
       <LocationPickerModal
         visible={activePicker !== null}
@@ -1367,16 +1469,81 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: FontSizes.lg, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   headerSpacer: { width: 40, height: 40 },
   content: { paddingBottom: Spacing.lg },
-  routeContent: { paddingHorizontal: 0 },
-  detailsContent: { paddingHorizontal: Spacing.lg, gap: Spacing.xs },
+  routeContent: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.md },
+  detailsContent: { paddingHorizontal: 0, paddingBottom: 116 },
   mapPreview: { height: 240, overflow: 'hidden', backgroundColor: Colors.gray[200] },
   detailsMapPreview: { height: 190, borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: Colors.gray[200] },
   mapPreviewMap: { ...StyleSheet.absoluteFillObject },
   mapPreviewShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 78, backgroundColor: 'rgba(238,242,246,0.72)' },
   mapLocateButton: { position: 'absolute', right: Spacing.lg, top: Spacing.md, minHeight: 42, borderRadius: BorderRadius.full, paddingHorizontal: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, backgroundColor: Colors.white, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 12, elevation: 4 },
   mapLocateButtonText: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[900] },
-  routeStatusBadge: { position: 'absolute', left: Spacing.lg, top: Spacing.md, minHeight: 38, borderRadius: BorderRadius.full, paddingHorizontal: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, backgroundColor: Colors.white, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 4 },
+  routeStatusBadge: { position: 'absolute', left: Spacing.lg, bottom: Spacing.lg, minHeight: 38, borderRadius: BorderRadius.full, paddingHorizontal: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, backgroundColor: Colors.white, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 4 },
   routeStatusText: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[800] },
+  routeSetup: { backgroundColor: Colors.white, borderRadius: BorderRadius.lg, padding: Spacing.lg, gap: Spacing.lg, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
+  routeSetupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  routeSetupTitle: { fontSize: FontSizes.xl, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  routeSetupSwap: { width: 42, height: 42, borderRadius: BorderRadius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.primary + '12' },
+  routeInputStack: { borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.gray[200], overflow: 'hidden', backgroundColor: Colors.white },
+  routePickerItem: { backgroundColor: Colors.white },
+  routePickerButton: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingHorizontal: Spacing.md },
+  routePickerIcon: { width: 42, height: 42, borderRadius: BorderRadius.sm, alignItems: 'center', justifyContent: 'center' },
+  routePickerIconStart: { backgroundColor: Colors.success + '14' },
+  routePickerIconEnd: { backgroundColor: Colors.primary + '14' },
+  routePickerCopy: { flex: 1, minWidth: 0 },
+  routePickerLabel: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[500], textTransform: 'uppercase' },
+  routePickerValue: { marginTop: 3, fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  routePickerPlaceholder: { color: Colors.gray[500], fontWeight: FontWeights.semibold },
+  routeManualWrap: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.md, gap: Spacing.xs },
+  routeManualInput: { minHeight: 46, borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: Spacing.md, fontSize: FontSizes.base, color: Colors.gray[900] },
+  routeStackDivider: { height: 1, backgroundColor: Colors.gray[100], marginLeft: 66 },
+  routeQuickRow: { flexDirection: 'row', gap: Spacing.sm },
+  routeQuickButton: { flex: 1, minHeight: 48, borderRadius: BorderRadius.full, backgroundColor: Colors.primary + '10', borderWidth: 1, borderColor: Colors.primary + '20', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.xs },
+  routeQuickText: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.primary },
+  routeSuggestions: { gap: Spacing.sm },
+  offerFlow: { flex: 1, backgroundColor: '#EEF2F6' },
+  offerMap: { height: 300, overflow: 'hidden', backgroundColor: Colors.gray[200] },
+  offerMapShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 96, backgroundColor: 'rgba(238,242,246,0.35)' },
+  offerMapBack: { position: 'absolute', left: Spacing.lg, bottom: Spacing.xl, width: 48, height: 48, borderRadius: BorderRadius.full, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 12, elevation: 4 },
+  offerRouteCard: { position: 'absolute', left: Spacing.lg, right: Spacing.lg, top: Spacing.md, borderRadius: BorderRadius.lg, backgroundColor: Colors.white, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 18, elevation: 6 },
+  offerRouteRow: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  offerRouteDivider: { height: 1, backgroundColor: Colors.gray[100], marginLeft: 26 },
+  offerRouteText: { flex: 1, fontSize: FontSizes.base, fontWeight: FontWeights.semibold, color: Colors.gray[900] },
+  offerSheet: { marginTop: -18, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, backgroundColor: Colors.white, paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: Spacing.lg, gap: Spacing.sm },
+  rideTypeCard: { minHeight: 72, borderRadius: BorderRadius.lg, backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[100], flexDirection: 'row', alignItems: 'center', padding: Spacing.sm, gap: Spacing.md },
+  rideTypeIcon: { width: 48, height: 48, borderRadius: BorderRadius.md, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
+  rideTypeCopy: { flex: 1, minWidth: 0 },
+  rideTypeTitle: { fontSize: FontSizes.lg, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  rideTypeMeta: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[600] },
+  rideTypeEdit: { width: 38, height: 38, borderRadius: BorderRadius.full, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
+  offerPriceControl: { minHeight: 88, borderRadius: BorderRadius.lg, backgroundColor: '#F7F8FA', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.md },
+  offerPriceButton: { width: 50, height: 50, borderRadius: BorderRadius.full, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 3 },
+  offerPriceButtonDisabled: { backgroundColor: Colors.gray[100] },
+  offerPriceCenter: { flex: 1, alignItems: 'center', paddingHorizontal: Spacing.sm },
+  offerPriceValue: { fontSize: FontSizes.xxl, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  offerPriceHint: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[600], textAlign: 'center' },
+  offerOptionsRow: { minHeight: 52, borderRadius: BorderRadius.lg, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[100], flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.md },
+  offerOptionCopy: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  offerOptionText: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  offerTimeBlock: { gap: Spacing.sm },
+  offerSectionLabel: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  offerPresetScroll: { gap: Spacing.sm, paddingRight: Spacing.lg },
+  offerPreset: { minHeight: 40, borderRadius: BorderRadius.full, backgroundColor: Colors.gray[100], paddingHorizontal: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  offerPresetActive: { backgroundColor: Colors.primary },
+  offerPresetText: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[700] },
+  offerPresetTextActive: { color: Colors.white },
+  offerTimeSummary: { minHeight: 42, borderRadius: BorderRadius.md, backgroundColor: Colors.primary + '0D', flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.md },
+  offerTimeText: { flex: 1, fontSize: FontSizes.sm, fontWeight: FontWeights.semibold, color: Colors.gray[900], lineHeight: 19 },
+  offerPreferenceRow: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: Spacing.md, borderRadius: BorderRadius.lg, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[100], paddingHorizontal: Spacing.md },
+  offerPreferenceIcon: { width: 42, height: 42, borderRadius: BorderRadius.full, backgroundColor: Colors.primary + '12', alignItems: 'center', justifyContent: 'center' },
+  offerPreferenceCopy: { flex: 1, minWidth: 0 },
+  offerPreferenceTitle: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  offerPreferenceText: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[600] },
+  offerSubmitButton: { minHeight: 58, borderRadius: BorderRadius.lg, backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, shadowColor: Colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.24, shadowRadius: 14, elevation: 6 },
+  offerStickyFooter: { backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 14, elevation: 10 },
+  offerSubmitText: { color: Colors.white, fontSize: FontSizes.lg, fontWeight: FontWeights.bold },
+  offerNoteToggle: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.xs },
+  offerNoteToggleText: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[700] },
+  offerNotePanel: { gap: Spacing.sm },
   rideSheet: { marginHorizontal: Spacing.lg, marginTop: Spacing.md, borderRadius: BorderRadius.xl, backgroundColor: Colors.white, padding: Spacing.md, gap: Spacing.md, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.14, shadowRadius: 24, elevation: 10 },
   sheetHandle: { alignSelf: 'center', width: 42, height: 4, borderRadius: BorderRadius.full, backgroundColor: Colors.gray[200], marginBottom: 2 },
   rideSheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.md },
