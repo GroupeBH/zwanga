@@ -10,6 +10,7 @@ import { useGeocodeMutation } from '@/store/api/googleMapsApi';
 import { useCreateRecurringTripMutation, useCreateTripMutation } from '@/store/api/tripApi';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
+import type { Vehicle } from '@/types';
 import { createBecomeDriverAction, getApiErrorMessage, isDriverRequiredError } from '@/utils/errorHelpers';
 import {
   buildManualGeocodeQuery,
@@ -27,6 +28,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { startTransition, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   Modal,
   Platform,
   ScrollView,
@@ -319,31 +321,41 @@ export default function PublishScreen() {
   // Driver and Vehicle Management
   const { data: profileSummary, refetch: refetchProfile } = useGetProfileSummaryQuery();
   const user = profileSummary?.user;
-  // Déterminer si l'utilisateur est conducteur basé sur le role ET isDriver
-  // Déterminer si l'utilisateur est conducteur basé uniquement sur le role
   const isDriver = useMemo(() => {
     const role = user?.role;
-    return role === 'driver' || role === 'both';
-  }, [user?.role]);
+    return role === 'driver' || role === 'both' || Boolean(user?.isDriver);
+  }, [user?.isDriver, user?.role]);
   const [showDriverRequiredModal, setShowDriverRequiredModal] = useState(false);
 
   const {
-    data: vehicles = [], 
+    data: vehicles = [],
     refetch: refetchVehicles,
     isLoading: isLoadingVehicles,
-    isFetching: isFetchingVehicles,
   } = useGetVehiclesQuery(undefined, {
-    skip: !isDriver,
     refetchOnMountOrArgChange: true,
     refetchOnFocus: true,
     refetchOnReconnect: true,
   });
-  
-  // Filtrer pour n'afficher que les véhicules actifs
+
+  const [createdVehicle, setCreatedVehicle] = useState<Vehicle | null>(null);
+
+  // Keep the POST response visible while the profile and vehicle caches refresh.
   const activeVehicles = useMemo(() => {
-    return vehicles.filter((vehicle) => vehicle.isActive === true);
-  }, [vehicles]);
-  
+    const vehiclesById = new Map<string, Vehicle>();
+
+    if (createdVehicle && createdVehicle.isActive !== false) {
+      vehiclesById.set(createdVehicle.id, createdVehicle);
+    }
+
+    vehicles.forEach((vehicle) => {
+      if (vehicle.isActive !== false) {
+        vehiclesById.set(vehicle.id, vehicle);
+      }
+    });
+
+    return Array.from(vehiclesById.values());
+  }, [createdVehicle, vehicles]);
+
   const [createVehicle, { isLoading: isCreatingVehicle }] = useCreateVehicleMutation();
 
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
@@ -352,6 +364,9 @@ export default function PublishScreen() {
   const [vehicleModel, setVehicleModel] = useState('');
   const [vehicleColor, setVehicleColor] = useState('');
   const [vehicleLicensePlate, setVehicleLicensePlate] = useState('');
+  const [vehicleFormError, setVehicleFormError] = useState<string | null>(null);
+  const [vehicleCreationMessage, setVehicleCreationMessage] = useState<string | null>(null);
+  const [isFinalizingVehicleCreation, setIsFinalizingVehicleCreation] = useState(false);
 
   useEffect(() => {
     if (activeVehicles.length === 0) {
@@ -405,11 +420,15 @@ export default function PublishScreen() {
     setLocationPickerInitialQuery('');
     setShowQuickLandmarks(false);
     setSelectedVehicleId(null);
+    setCreatedVehicle(null);
     setShowVehicleForm(false);
     setVehicleBrand('');
     setVehicleModel('');
     setVehicleColor('');
     setVehicleLicensePlate('');
+    setVehicleFormError(null);
+    setVehicleCreationMessage(null);
+    setIsFinalizingVehicleCreation(false);
   };
 
   const resetVehicleForm = () => {
@@ -422,6 +441,16 @@ export default function PublishScreen() {
   const closeVehicleForm = () => {
     setShowVehicleForm(false);
     resetVehicleForm();
+    setVehicleFormError(null);
+    setIsFinalizingVehicleCreation(false);
+  };
+
+  const openVehicleForm = () => {
+    resetVehicleForm();
+    setVehicleFormError(null);
+    setVehicleCreationMessage(null);
+    setIsFinalizingVehicleCreation(false);
+    setShowVehicleForm(true);
   };
 
   const vehicleModalCopy = {
@@ -987,13 +1016,11 @@ export default function PublishScreen() {
 
   const handleCreateVehicle = async () => {
     if (!vehicleBrand.trim() || !vehicleModel.trim() || !vehicleColor.trim() || !vehicleLicensePlate.trim()) {
-      showDialog({
-        variant: 'warning',
-        title: 'Informations manquantes',
-        message: 'Veuillez remplir tous les champs du véhicule.',
-      });
+      setVehicleFormError('Veuillez remplir tous les champs du véhicule.');
       return;
     }
+
+    setVehicleFormError(null);
 
     try {
       const newVehicle = await createVehicle({
@@ -1003,30 +1030,25 @@ export default function PublishScreen() {
         licensePlate: vehicleLicensePlate.trim(),
       }).unwrap();
 
-      // Refetch le profil utilisateur pour mettre à jour isDriver si nécessaire
-      // (le backend peut mettre isDriver=true après la création du premier véhicule)
-      void Promise.allSettled([refetchProfile(), refetchVehicles()]);
-      
-      // Refetch les véhicules (maintenant que isDriver peut être mis à jour)
-      
+      Keyboard.dismiss();
+      setIsFinalizingVehicleCreation(true);
+      setCreatedVehicle(newVehicle);
       setSelectedVehicleId(newVehicle.id);
-      closeVehicleForm();
+      setVehicleCreationMessage(
+        `${newVehicle.brand} ${newVehicle.model} a été ajouté et sélectionné pour ce trajet.`,
+      );
+      setShowVehicleForm(false);
+      resetVehicleForm();
 
-      showDialog({
-        variant: 'success',
-        title: 'Véhicule ajouté',
-        message: 'Votre véhicule a été ajouté avec succès.',
-      });
+      // The POST response already updates the form; these calls synchronize the remaining caches.
+      void Promise.allSettled([refetchProfile(), refetchVehicles()]);
     } catch (error: any) {
       const message = getApiErrorMessage(
         error,
         'Impossible d\'ajouter le véhicule pour le moment.',
       );
-      showDialog({
-        variant: 'danger',
-        title: 'Erreur',
-        message,
-      });
+      setVehicleFormError(message);
+      setIsFinalizingVehicleCreation(false);
     }
   };
 
@@ -1175,7 +1197,7 @@ export default function PublishScreen() {
       return;
     }
 
-    if (!isDriver) {
+    if (!isDriver && !createdVehicle) {
       setShowDriverRequiredModal(true);
       return;
     }
@@ -1949,7 +1971,18 @@ export default function PublishScreen() {
                   Un vehicule actif est deja selectionne par defaut.
                 </Text>
               )}
-              {isLoadingVehicles || isFetchingVehicles ? (
+              {vehicleCreationMessage ? (
+                <View style={styles.vehicleSuccessBanner} accessibilityRole="alert">
+                  <View style={styles.vehicleSuccessIcon}>
+                    <Ionicons name="checkmark" size={18} color={Colors.white} />
+                  </View>
+                  <View style={styles.vehicleSuccessContent}>
+                    <Text style={styles.vehicleSuccessTitle}>Véhicule prêt</Text>
+                    <Text style={styles.vehicleSuccessText}>{vehicleCreationMessage}</Text>
+                  </View>
+                </View>
+              ) : null}
+              {isLoadingVehicles && activeVehicles.length === 0 ? (
                 <View style={styles.vehicleLoadingState}>
                   <ActivityIndicator size="large" color={Colors.primary} />
                   <Text style={styles.vehicleLoadingText}>Chargement de vos véhicules...</Text>
@@ -1963,7 +1996,7 @@ export default function PublishScreen() {
                   </Text>
                   <TouchableOpacity
                     style={styles.addVehicleButton}
-                    onPress={() => setShowVehicleForm(true)}
+                    onPress={openVehicleForm}
                   >
                     <Ionicons name="add-circle" size={20} color={Colors.white} />
                     <Text style={styles.addVehicleButtonText}>Ajouter un véhicule</Text>
@@ -2009,7 +2042,7 @@ export default function PublishScreen() {
 
                   <TouchableOpacity
                     style={styles.addVehicleButtonSecondary}
-                    onPress={() => setShowVehicleForm(true)}
+                    onPress={openVehicleForm}
                   >
                     <Ionicons name="add" size={18} color={Colors.primary} />
                     <Text style={styles.addVehicleButtonSecondaryText}>Ajouter un autre véhicule</Text>
@@ -2598,13 +2631,26 @@ export default function PublishScreen() {
         model={vehicleModel}
         color={vehicleColor}
         licensePlate={vehicleLicensePlate}
-        onBrandChange={setVehicleBrand}
-        onModelChange={setVehicleModel}
-        onColorChange={setVehicleColor}
-        onLicensePlateChange={setVehicleLicensePlate}
+        onBrandChange={(value) => {
+          setVehicleBrand(value);
+          setVehicleFormError(null);
+        }}
+        onModelChange={(value) => {
+          setVehicleModel(value);
+          setVehicleFormError(null);
+        }}
+        onColorChange={(value) => {
+          setVehicleColor(value);
+          setVehicleFormError(null);
+        }}
+        onLicensePlateChange={(value) => {
+          setVehicleLicensePlate(value);
+          setVehicleFormError(null);
+        }}
         onClose={closeVehicleForm}
         onSubmit={handleCreateVehicle}
-        submitting={isCreatingVehicle}
+        submitting={isCreatingVehicle || isFinalizingVehicleCreation}
+        errorMessage={vehicleFormError}
       />
     </SafeAreaView>
   );
@@ -3557,6 +3603,40 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.xs,
     color: Colors.gray[500],
     marginBottom: Spacing.sm,
+  },
+  vehicleSuccessBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    backgroundColor: 'rgba(46, 204, 113, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(46, 204, 113, 0.28)',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  vehicleSuccessIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.success,
+  },
+  vehicleSuccessContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  vehicleSuccessTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    marginBottom: 2,
+  },
+  vehicleSuccessText: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    lineHeight: 18,
   },
   vehicleEmptyState: {
     alignItems: 'center',
