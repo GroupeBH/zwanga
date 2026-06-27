@@ -22,6 +22,7 @@ type VehicleFormModalProps = {
   subtitle?: string;
   submitLabel?: string;
   submitting?: boolean;
+  errorMessage?: string | null;
   brand: string;
   model: string;
   color: string;
@@ -46,6 +47,7 @@ export function VehicleFormModal({
   subtitle = DEFAULT_SUBTITLE,
   submitLabel = DEFAULT_SUBMIT_LABEL,
   submitting = false,
+  errorMessage = null,
   brand,
   model,
   color,
@@ -79,11 +81,16 @@ export function VehicleFormModal({
 
   const keyboardOffset = Platform.OS === 'android' ? Math.max(keyboardHeight - insets.bottom, 0) : 0;
   const contentBottomPadding = Math.max(insets.bottom, 16) + Spacing.xl + keyboardOffset;
+  const handleClose = () => {
+    if (!submitting) {
+      onClose();
+    }
+  };
 
   return (
-    <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
+    <Modal transparent animationType="slide" visible={visible} onRequestClose={handleClose}>
       <View style={styles.overlay}>
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
+        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={handleClose} />
 
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -93,7 +100,7 @@ export function VehicleFormModal({
           <View style={[styles.card, keyboardOffset > 0 && { marginBottom: keyboardOffset }]}>
             <SafeAreaView edges={['bottom']} style={styles.safeArea}>
               <View style={styles.header}>
-                <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+                <TouchableOpacity style={styles.closeButton} onPress={handleClose} disabled={submitting}>
                   <Ionicons name="close" size={24} color={Colors.gray[500]} />
                 </TouchableOpacity>
               </View>
@@ -167,6 +174,13 @@ export function VehicleFormModal({
                     returnKeyType="done"
                   />
                 </View>
+
+                {errorMessage ? (
+                  <View style={styles.errorBanner} accessibilityRole="alert">
+                    <Ionicons name="alert-circle" size={20} color={Colors.danger} />
+                    <Text style={styles.errorText}>{errorMessage}</Text>
+                  </View>
+                ) : null}
 
                 <View style={styles.actions}>
                   <TouchableOpacity
@@ -287,6 +301,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: FontSizes.base,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.24)',
+    padding: Spacing.md,
+  },
+  errorText: {
+    flex: 1,
+    color: Colors.danger,
+    fontSize: FontSizes.sm,
+    lineHeight: 20,
   },
   actions: {
     flexDirection: 'row',
