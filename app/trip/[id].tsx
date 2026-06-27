@@ -1,4 +1,3 @@
-import AddressEntryModeSelector, { type AddressInputMode } from '@/components/AddressEntryModeSelector';
 import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardModal';
 import LocationPickerModal, { type MapLocationSelection } from '@/components/LocationPickerModal';
 import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
@@ -47,6 +46,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View
 } from 'react-native';
 import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
@@ -91,7 +91,6 @@ const arrayToLatLng = (coordinates?: [number, number] | null) => {
   };
 };
 
-const LANDMARK_PLACEHOLDER = 'Ex: devant la station, portail bleu, entr\u00E9e principale';
 const USE_CUSTOM_MAP_MARKERS = Platform.OS !== 'android';
 const USE_ANDROID_MAP_MARKER_IMAGES = Platform.OS === 'android';
 const TRIP_DETAIL_MAP_MIN_DELTA = 0.035;
@@ -185,6 +184,7 @@ export default function TripDetailsScreen() {
   }, [router]);
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
+  const { height: viewportHeight } = useWindowDimensions();
   const tripId = typeof params.id === 'string' ? (params.id as string) : '';
   const trackParam = Array.isArray(params.track) ? params.track.includes('true') : params.track === 'true'; // Permet le suivi via lien partagé
   const tripFromStore = useAppSelector((state) => selectTripById(tripId)(state));
@@ -622,18 +622,13 @@ export default function TripDetailsScreen() {
   const [confirmDropoffByPassenger, { isLoading: isConfirmingDropoff }] = useConfirmDropoffByPassengerMutation();
   const [createConversation, { isLoading: isCreatingConversation }] = useCreateConversationMutation();
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
-  const [bookingStep, setBookingStep] = useState<1 | 2 | 3>(1); // 1: places, 2: récupération, 3: destination
+  const [bookingStep, setBookingStep] = useState<1 | 2 | 3>(1); // 1: places, 2: points, 3: preview
   const [bookingSeats, setBookingSeats] = useState('1');
   const [bookingModalError, setBookingModalError] = useState('');
   const [passengerOrigin, setPassengerOrigin] = useState<MapLocationSelection | null>(null);
-  const [passengerOriginManualAddress, setPassengerOriginManualAddress] = useState('');
-  const [passengerOriginReference, setPassengerOriginReference] = useState('');
   const [showOriginPicker, setShowOriginPicker] = useState(false);
   const [passengerDestination, setPassengerDestination] = useState<MapLocationSelection | null>(null);
-  const [passengerDestinationManualAddress, setPassengerDestinationManualAddress] = useState('');
-  const [passengerDestinationReference, setPassengerDestinationReference] = useState('');
   const [showDestinationPicker, setShowDestinationPicker] = useState(false);
-  const [bookingAddressInputMode, setBookingAddressInputMode] = useState<AddressInputMode>('map');
   const [shouldAutofillPassengerOrigin, setShouldAutofillPassengerOrigin] = useState(false);
   const [isValidatingDestination, setIsValidatingDestination] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState<{ visible: boolean; seats: number }>({
@@ -914,7 +909,7 @@ export default function TripDetailsScreen() {
       return null;
     }
     return {
-      title: trip?.arrival?.name || 'Arrivee du trajet',
+      title: trip?.arrival?.name || trip?.arrival?.address || 'Arrivée du trajet',
       address: trip?.arrival?.address || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
       latitude,
       longitude,
@@ -925,14 +920,7 @@ export default function TripDetailsScreen() {
     setBookingSeats('1');
     setBookingModalError('');
     setPassengerOrigin(autoOrigin);
-    setPassengerOriginManualAddress(autoOrigin?.title || autoOrigin?.address || '');
-    setPassengerOriginReference('');
     setPassengerDestination(defaultPassengerDestinationSelection);
-    setPassengerDestinationManualAddress(
-      defaultPassengerDestinationSelection?.title || defaultPassengerDestinationSelection?.address || '',
-    );
-    setPassengerDestinationReference('');
-    setBookingAddressInputMode('map');
     setShouldAutofillPassengerOrigin(!autoOrigin);
     setBookingStep(1);
     setBookingModalVisible(true);
@@ -987,7 +975,6 @@ export default function TripDetailsScreen() {
       return;
     }
     setPassengerOrigin(defaultPassengerOriginSelection);
-    setPassengerOriginManualAddress(defaultPassengerOriginSelection.title || defaultPassengerOriginSelection.address);
     setShouldAutofillPassengerOrigin(false);
   }, [
     bookingModalVisible,
@@ -1011,6 +998,7 @@ export default function TripDetailsScreen() {
       setBookingModalError('');
       setBookingStep(2);
     } else if (bookingStep === 2) {
+      setBookingModalError('');
       setBookingStep(3);
     }
   };
@@ -1137,15 +1125,8 @@ export default function TripDetailsScreen() {
 
     const tripArrivalLatitude = Number(trip.arrival?.lat);
     const tripArrivalLongitude = Number(trip.arrival?.lng);
-    const passengerOriginText =
-      bookingAddressInputMode === 'manual'
-        ? passengerOriginManualAddress.trim()
-        : getLocationText(passengerOrigin, '');
-    const passengerDestinationText =
-      bookingAddressInputMode === 'manual'
-        ? passengerDestinationManualAddress.trim()
-        : getLocationText(passengerDestination, '');
-    const defaultArrivalText = (trip.arrival?.name || trip.arrival?.address || '').trim();
+    const passengerOriginText = getLocationText(passengerOrigin, '');
+    const passengerDestinationText = getLocationText(passengerDestination, '');
     const hasTripArrivalCoordinates =
       Number.isFinite(tripArrivalLatitude) && Number.isFinite(tripArrivalLongitude);
     const isDefaultTripArrivalDestination = Boolean(
@@ -1154,15 +1135,10 @@ export default function TripDetailsScreen() {
       Math.abs(passengerDestination.latitude - tripArrivalLatitude) < 0.000001 &&
       Math.abs(passengerDestination.longitude - tripArrivalLongitude) < 0.000001,
     );
-    const hasCustomPassengerDestination = Boolean(
-      (passengerDestination && !isDefaultTripArrivalDestination) ||
-      (passengerDestinationText && passengerDestinationText !== defaultArrivalText) ||
-      passengerDestinationReference.trim(),
-    );
+    const hasCustomPassengerDestination = Boolean(passengerDestination && !isDefaultTripArrivalDestination);
 
     // Valider la destination seulement si le passager a choisi une destination personnalisée
     if (
-      bookingAddressInputMode === 'map' &&
       hasCustomPassengerDestination &&
       passengerDestination &&
       routeCoordinates &&
@@ -1201,17 +1177,12 @@ export default function TripDetailsScreen() {
         tripId: trip.id,
         numberOfSeats: seatsValue,
         passengerOrigin: passengerOriginText || undefined,
-        passengerOriginReference: passengerOriginReference.trim() || undefined,
-        passengerOriginCoordinates:
-          bookingAddressInputMode === 'map' ? getLocationCoordinatesObject(passengerOrigin) : undefined,
+        passengerOriginCoordinates: getLocationCoordinatesObject(passengerOrigin),
         passengerDestination: hasCustomPassengerDestination
           ? passengerDestinationText || undefined
           : undefined,
-        passengerDestinationReference: passengerDestinationReference.trim() || undefined,
         passengerDestinationCoordinates: hasCustomPassengerDestination
-          ? bookingAddressInputMode === 'map'
-            ? getLocationCoordinatesObject(passengerDestination)
-            : undefined
+          ? getLocationCoordinatesObject(passengerDestination)
           : undefined,
       }).unwrap();
       void trackEvent('booking_created', {
@@ -1224,11 +1195,7 @@ export default function TripDetailsScreen() {
       setBookingModalVisible(false);
       setBookingModalError('');
       setPassengerOrigin(null);
-      setPassengerOriginManualAddress('');
-      setPassengerOriginReference('');
       setPassengerDestination(null);
-      setPassengerDestinationManualAddress('');
-      setPassengerDestinationReference('');
       setShouldAutofillPassengerOrigin(false);
       setBookingStep(1);
       openBookingSuccessModal(seatsValue);
@@ -2712,6 +2679,15 @@ export default function TripDetailsScreen() {
               <View style={[styles.bookingStepDot, bookingStep >= 3 && styles.bookingStepDotActive]} />
             </View>
 
+            <ScrollView
+              style={[
+                styles.bookingStepContent,
+                { maxHeight: Math.min(560, Math.max(360, viewportHeight * 0.62)) },
+              ]}
+              contentContainerStyle={styles.bookingStepContentInner}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
             {/* Step 1: Nombre de places */}
             {bookingStep === 1 && (
               <>
@@ -2760,188 +2736,78 @@ export default function TripDetailsScreen() {
               </>
             )}
 
-            {/* Step 2: Point de récupération */}
+            {/* Step 2: Points du trajet */}
             {bookingStep === 2 && (
               <>
-                <Text style={styles.bookingModalTitle}>Point de récupération</Text>
+                <Text style={styles.bookingModalTitle}>Où monter et descendre ?</Text>
                 <Text style={styles.bookingModalDescription}>
-                  Choisissez d’abord la méthode. Elle servira aussi pour votre destination.
+                  Touchez un point pour le modifier.
                 </Text>
 
-                <View style={styles.bookingDestinationSection}>
-                  <AddressEntryModeSelector
-                    mode={bookingAddressInputMode}
-                    onChange={setBookingAddressInputMode}
-                    title="Comment renseigner les adresses ?"
-                    hint="Un seul choix pour la prise en charge et la destination."
-                    style={styles.bookingAddressModeSelector}
-                  />
-                  {bookingAddressInputMode === 'map' && (
-                    <>
-                      <Text style={styles.bookingChoiceLabel}>Point de prise en charge</Text>
-                      <TouchableOpacity
-                        style={[
-                          styles.bookingDestinationButton,
-                          passengerOrigin && styles.bookingDestinationButtonSelected,
-                        ]}
-                        onPress={() => setShowOriginPicker(true)}
-                        disabled={isBooking}
-                      >
-                        <Ionicons
-                          name={passengerOrigin ? 'location' : 'location-outline'}
-                          size={18}
-                          color={passengerOrigin ? Colors.secondary : Colors.gray[600]}
-                        />
-                        <Text
-                          style={[
-                            styles.bookingDestinationButtonText,
-                            passengerOrigin && styles.bookingDestinationButtonTextSelected,
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {passengerOrigin
-                            ? passengerOrigin.title || passengerOrigin.address
-                            : 'Choisir sur la carte ou utiliser ma position'}
-                        </Text>
-                        {passengerOrigin && (
-                          <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              setPassengerOrigin(null);
-                              setShouldAutofillPassengerOrigin(false);
-                            }}
-                            style={styles.bookingDestinationRemoveButton}
-                          >
-                            <Ionicons name="close-circle" size={18} color={Colors.danger} />
-                          </TouchableOpacity>
-                        )}
-                      </TouchableOpacity>
-                      <Text style={styles.bookingDestinationHint}>
-                        Si vous ne changez rien, le départ du trajet sera utilisé : {trip?.departure?.address}
+                <View style={styles.bookingRouteCard}>
+                  <TouchableOpacity
+                    style={styles.bookingRoutePoint}
+                    onPress={() => setShowOriginPicker(true)}
+                    disabled={isBooking}
+                    activeOpacity={0.88}
+                  >
+                    <View style={[styles.bookingPointIcon, styles.bookingPointIconDeparture]}>
+                      <Ionicons name="location" size={20} color={Colors.white} />
+                    </View>
+                    <View style={styles.bookingRouteCopy}>
+                      <Text style={[styles.bookingDestinationButtonLabel, styles.bookingDestinationButtonLabelDeparture]}>
+                        Départ / prise en charge
                       </Text>
-                    </>
-                  )}
-                  <View style={styles.bookingManualHeader}>
-                    <Ionicons name="create-outline" size={16} color={Colors.primary} />
-                    <Text style={styles.bookingChoiceLabel}>
-                      {bookingAddressInputMode === 'manual' ? 'Adresse de départ' : 'Repère de départ (optionnel)'}
-                    </Text>
-                  </View>
-                  {bookingAddressInputMode === 'manual' && (
-                    <TextInput
-                      style={styles.bookingManualInput}
-                      value={passengerOriginManualAddress}
-                      onChangeText={setPassengerOriginManualAddress}
-                      placeholder="Ex: avenue Kasa-Vubu, Bandal"
-                      placeholderTextColor={Colors.gray[400]}
-                      editable={!isBooking}
-                    />
-                  )}
-                  {bookingAddressInputMode === 'manual' && (
-                    <Text style={styles.bookingFieldLabel}>Repère de départ (optionnel)</Text>
-                  )}
-                  <TextInput
-                    style={styles.bookingManualInput}
-                    value={passengerOriginReference}
-                    onChangeText={setPassengerOriginReference}
-                    placeholder={LANDMARK_PLACEHOLDER}
-                    placeholderTextColor={Colors.gray[400]}
-                    editable={!isBooking}
-                  />
+                      <Text style={styles.bookingRouteValue} numberOfLines={1}>
+                        {passengerOrigin?.title || passengerOrigin?.address || trip?.departure?.address || 'Choisir le point de départ'}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                  </TouchableOpacity>
+
+                  <View style={styles.bookingRouteDivider} />
+
+                  <TouchableOpacity
+                    style={styles.bookingRoutePoint}
+                    onPress={() => setShowDestinationPicker(true)}
+                    disabled={isBooking || isValidatingDestination}
+                    activeOpacity={0.88}
+                  >
+                    <View style={[styles.bookingPointIcon, styles.bookingPointIconArrival]}>
+                      <Ionicons name="flag" size={19} color={Colors.white} />
+                    </View>
+                    <View style={styles.bookingRouteCopy}>
+                      <Text style={[styles.bookingDestinationButtonLabel, styles.bookingDestinationButtonLabelArrival]}>
+                        Arrivée / destination
+                      </Text>
+                      <Text style={styles.bookingRouteValue} numberOfLines={1}>
+                        {passengerDestination?.title || passengerDestination?.address || trip?.arrival?.address || "Choisir le point d'arrivée"}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                  </TouchableOpacity>
                 </View>
               </>
             )}
 
-            {/* Step 3: Destination */}
+            {/* Step 3: Preview */}
             {bookingStep === 3 && (
               <>
-                <Text style={styles.bookingModalTitle}>Ma destination</Text>
+                <Text style={styles.bookingModalTitle}>Prévisualisation</Text>
                 <Text style={styles.bookingModalDescription}>
-                  Même méthode que la prise en charge. Vous pouvez garder l’arrivée du trajet.
+                  Vérifiez les informations avant d&apos;envoyer votre demande au conducteur.
                 </Text>
 
-                <View style={styles.bookingDestinationSection}>
-                  <View style={styles.bookingModeSummary}>
-                    <Ionicons
-                      name={bookingAddressInputMode === 'map' ? 'map-outline' : 'create-outline'}
-                      size={16}
-                      color={Colors.primary}
-                    />
-                    <Text style={styles.bookingModeSummaryText}>
-                      Mode choisi : {bookingAddressInputMode === 'map' ? 'Choisir sur la carte' : 'Saisie manuelle'}
+                <View style={styles.bookingPreviewHero}>
+                  <View style={styles.bookingPreviewIcon}>
+                    <Ionicons name="checkmark-circle" size={24} color={Colors.white} />
+                  </View>
+                  <View style={styles.bookingPreviewCopy}>
+                    <Text style={styles.bookingPreviewTitle}>Vérifiez votre réservation</Text>
+                    <Text style={styles.bookingPreviewText}>
+                      Le conducteur recevra ces informations pour accepter votre place.
                     </Text>
                   </View>
-                  {bookingAddressInputMode === 'map' && (
-                    <>
-                      <Text style={styles.bookingChoiceLabel}>Point d’arrivée</Text>
-                      <TouchableOpacity
-                        style={[
-                          styles.bookingDestinationButton,
-                          passengerDestination && styles.bookingDestinationButtonSelected,
-                        ]}
-                        onPress={() => setShowDestinationPicker(true)}
-                        disabled={isBooking || isValidatingDestination}
-                      >
-                        <Ionicons
-                          name={passengerDestination ? 'flag' : 'flag-outline'}
-                          size={18}
-                          color={passengerDestination ? Colors.primary : Colors.gray[600]}
-                        />
-                        <Text
-                          style={[
-                            styles.bookingDestinationButtonText,
-                            passengerDestination && styles.bookingDestinationButtonTextSelected,
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {passengerDestination
-                            ? passengerDestination.title || passengerDestination.address
-                            : 'Choisir sur la carte'}
-                        </Text>
-                        {passengerDestination && (
-                          <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              setPassengerDestination(null);
-                            }}
-                            style={styles.bookingDestinationRemoveButton}
-                          >
-                            <Ionicons name="close-circle" size={18} color={Colors.danger} />
-                          </TouchableOpacity>
-                        )}
-                      </TouchableOpacity>
-                      <Text style={styles.bookingDestinationHint}>
-                        Si vous laissez vide, l&apos;arrivée du trajet sera utilisée : {trip?.arrival?.address}
-                      </Text>
-                    </>
-                  )}
-                  <View style={styles.bookingManualHeader}>
-                    <Ionicons name="create-outline" size={16} color={Colors.primary} />
-                    <Text style={styles.bookingChoiceLabel}>
-                      {bookingAddressInputMode === 'manual' ? 'Adresse d’arrivée' : 'Repère d’arrivée (optionnel)'}
-                    </Text>
-                  </View>
-                  {bookingAddressInputMode === 'manual' && (
-                    <TextInput
-                      style={styles.bookingManualInput}
-                      value={passengerDestinationManualAddress}
-                      onChangeText={setPassengerDestinationManualAddress}
-                      placeholder="Ex: rond-point Victoire"
-                      placeholderTextColor={Colors.gray[400]}
-                      editable={!isBooking && !isValidatingDestination}
-                    />
-                  )}
-                  {bookingAddressInputMode === 'manual' && (
-                    <Text style={styles.bookingFieldLabel}>Repère d’arrivée (optionnel)</Text>
-                  )}
-                  <TextInput
-                    style={styles.bookingManualInput}
-                    value={passengerDestinationReference}
-                    onChangeText={setPassengerDestinationReference}
-                    placeholder={LANDMARK_PLACEHOLDER}
-                    placeholderTextColor={Colors.gray[400]}
-                    editable={!isBooking && !isValidatingDestination}
-                  />
                 </View>
 
                 {/* Récapitulatif */}
@@ -2951,34 +2817,32 @@ export default function TripDetailsScreen() {
                     <Ionicons name="people" size={16} color={Colors.gray[600]} />
                     <Text style={styles.bookingSummaryText}>{bookingSeats} place{parseInt(bookingSeats) > 1 ? 's' : ''}</Text>
                   </View>
-                  <View style={styles.bookingSummaryRow}>
-                    <Ionicons name="location" size={16} color={Colors.secondary} />
-                    <Text style={styles.bookingSummaryText} numberOfLines={1}>
-                      {passengerOriginManualAddress.trim() || passengerOrigin?.title || passengerOrigin?.address || trip?.departure?.address}
-                    </Text>
-                  </View>
-                  {passengerOriginReference.trim() ? (
-                    <View style={styles.bookingSummaryRow}>
-                      <Ionicons name="trail-sign" size={16} color={Colors.secondary} />
+                  <View style={styles.bookingSummaryPointRow}>
+                    <View style={[styles.bookingSummaryPointIcon, styles.bookingSummaryPointIconDeparture]}>
+                      <Ionicons name="location" size={15} color={Colors.white} />
+                    </View>
+                    <View style={styles.bookingSummaryPointCopy}>
+                      <Text style={[styles.bookingSummaryPointLabel, styles.bookingSummaryPointLabelDeparture]}>
+                        D&eacute;part / prise en charge
+                      </Text>
                       <Text style={styles.bookingSummaryText} numberOfLines={1}>
-                        {passengerOriginReference.trim()}
+                        {passengerOrigin?.title || passengerOrigin?.address || trip?.departure?.address}
                       </Text>
                     </View>
-                  ) : null}
-                  <View style={styles.bookingSummaryRow}>
-                    <Ionicons name="flag" size={16} color={Colors.primary} />
-                    <Text style={styles.bookingSummaryText} numberOfLines={1}>
-                      {passengerDestinationManualAddress.trim() || passengerDestination?.title || passengerDestination?.address || trip?.arrival?.address}
-                    </Text>
                   </View>
-                  {passengerDestinationReference.trim() ? (
-                    <View style={styles.bookingSummaryRow}>
-                      <Ionicons name="trail-sign" size={16} color={Colors.primary} />
+                  <View style={styles.bookingSummaryPointRow}>
+                    <View style={[styles.bookingSummaryPointIcon, styles.bookingSummaryPointIconArrival]}>
+                      <Ionicons name="flag" size={14} color={Colors.white} />
+                    </View>
+                    <View style={styles.bookingSummaryPointCopy}>
+                      <Text style={[styles.bookingSummaryPointLabel, styles.bookingSummaryPointLabelArrival]}>
+                        Arriv&eacute;e / destination
+                      </Text>
                       <Text style={styles.bookingSummaryText} numberOfLines={1}>
-                        {passengerDestinationReference.trim()}
+                        {passengerDestination?.title || passengerDestination?.address || trip?.arrival?.address}
                       </Text>
                     </View>
-                  ) : null}
+                  </View>
                   <View style={styles.bookingSummaryRow}>
                     <Ionicons name="cash" size={16} color={Colors.success} />
                     <Text style={styles.bookingSummaryText}>
@@ -2988,6 +2852,8 @@ export default function TripDetailsScreen() {
                 </View>
               </>
             )}
+
+            </ScrollView>
 
             {bookingModalError ? (
               <Text style={styles.bookingModalError}>{bookingModalError}</Text>
@@ -3049,9 +2915,7 @@ export default function TripDetailsScreen() {
         restrictToRoute={true}
         onClose={() => setShowOriginPicker(false)}
         onSelect={(location) => {
-          setBookingAddressInputMode('map');
           setPassengerOrigin(location);
-          setPassengerOriginManualAddress(location.title || location.address);
           setShouldAutofillPassengerOrigin(false);
           setShowOriginPicker(false);
           setBookingModalError('');
@@ -3067,9 +2931,7 @@ export default function TripDetailsScreen() {
         restrictToRoute={true}
         onClose={() => setShowDestinationPicker(false)}
         onSelect={(location) => {
-          setBookingAddressInputMode('map');
           setPassengerDestination(location);
-          setPassengerDestinationManualAddress(location.title || location.address);
           setShowDestinationPicker(false);
           setBookingModalError('');
         }}
@@ -4698,6 +4560,47 @@ const styles = StyleSheet.create({
   bookingStepLineActive: {
     backgroundColor: Colors.primary,
   },
+  bookingStepContent: {
+    marginBottom: Spacing.md,
+  },
+  bookingStepContentInner: {
+    paddingBottom: Spacing.xs,
+  },
+  bookingPreviewHero: {
+    minHeight: 76,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.primary + '10',
+    borderWidth: 1,
+    borderColor: Colors.primary + '22',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  bookingPreviewIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bookingPreviewCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  bookingPreviewTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginBottom: 3,
+  },
+  bookingPreviewText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    lineHeight: 19,
+  },
   bookingSummary: {
     backgroundColor: Colors.gray[50],
     borderRadius: BorderRadius.lg,
@@ -4716,6 +4619,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
     marginBottom: 6,
+  },
+  bookingSummaryPointRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: 10,
+  },
+  bookingSummaryPointIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bookingSummaryPointIconDeparture: {
+    backgroundColor: Colors.success,
+  },
+  bookingSummaryPointIconArrival: {
+    backgroundColor: Colors.primary,
+  },
+  bookingSummaryPointCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  bookingSummaryPointLabel: {
+    fontSize: 11,
+    fontWeight: FontWeights.bold,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  bookingSummaryPointLabelDeparture: {
+    color: Colors.successDark,
+  },
+  bookingSummaryPointLabelArrival: {
+    color: Colors.primaryDark,
   },
   bookingSummaryText: {
     flex: 1,
@@ -4809,111 +4747,65 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontWeight: FontWeights.bold,
   },
-  bookingDestinationSection: {
+  bookingRouteCard: {
     marginBottom: Spacing.xl,
+    borderRadius: BorderRadius.lg,
     borderWidth: 1,
     borderColor: Colors.gray[100],
-    borderRadius: BorderRadius.sm,
     backgroundColor: Colors.white,
-    padding: Spacing.md,
-    gap: Spacing.sm,
+    overflow: 'hidden',
     shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.05,
     shadowRadius: 14,
     elevation: 2,
   },
-  bookingChoiceLabel: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[500],
-    textTransform: 'uppercase',
-    marginBottom: Spacing.xs,
-  },
-  bookingAddressModeSelector: {
-    marginBottom: Spacing.sm,
-  },
-  bookingModeSummary: {
-    minHeight: 44,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    borderColor: Colors.primary + '25',
-    backgroundColor: Colors.primary + '08',
+  bookingRoutePoint: {
+    minHeight: 76,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  bookingModeSummaryText: {
-    flex: 1,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[800],
-  },
-  bookingManualHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    marginTop: Spacing.sm,
-  },
-  bookingFieldLabel: {
-    marginTop: Spacing.sm,
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[600],
-  },
-  bookingDestinationLabel: {
-    fontSize: 14,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    marginBottom: 12,
-  },
-  bookingDestinationButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.sm,
-    padding: Spacing.md,
-    backgroundColor: Colors.gray[50],
-    minHeight: 58,
-  },
-  bookingDestinationButtonSelected: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primary + '08',
-  },
-  bookingDestinationButtonText: {
-    flex: 1,
-    marginLeft: 12,
-    fontSize: 14,
-    color: Colors.gray[500],
-  },
-  bookingDestinationButtonTextSelected: {
-    color: Colors.gray[900],
-    fontWeight: FontWeights.bold,
-  },
-  bookingDestinationRemoveButton: {
-    marginLeft: 8,
-    padding: 4,
-  },
-  bookingDestinationHint: {
-    fontSize: 12,
-    color: Colors.gray[400],
-    marginTop: 8,
-    lineHeight: 18,
-  },
-  bookingManualInput: {
-    minHeight: 48,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    backgroundColor: Colors.white,
+    gap: Spacing.md,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
-    marginTop: Spacing.sm,
+  },
+  bookingRouteCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  bookingRouteValue: {
     fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
     color: Colors.gray[900],
+  },
+  bookingRouteDivider: {
+    height: 1,
+    marginLeft: 68,
+    backgroundColor: Colors.gray[100],
+  },
+  bookingPointIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bookingPointIconDeparture: {
+    backgroundColor: Colors.success,
+  },
+  bookingPointIconArrival: {
+    backgroundColor: Colors.primary,
+  },
+  bookingDestinationButtonLabel: {
+    fontSize: 11,
+    fontWeight: FontWeights.bold,
+    textTransform: 'uppercase',
+    marginBottom: 3,
+  },
+  bookingDestinationButtonLabelDeparture: {
+    color: Colors.successDark,
+  },
+  bookingDestinationButtonLabelArrival: {
+    color: Colors.primaryDark,
   },
   reviewsModalOverlay: {
     flex: 1,

@@ -27,6 +27,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
+  type ImageRequireSource,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -71,6 +72,11 @@ const DEFAULT_REQUEST_REGION: Region = {
   longitude: 15.266293,
   latitudeDelta: 0.08,
   longitudeDelta: 0.08,
+};
+const REQUEST_MAP_MARKER_ANCHOR = { x: 0.5, y: 0.86 };
+const requestMapMarkerImages: Record<'departure' | 'arrival', ImageRequireSource> = {
+  departure: require('@/assets/images/map-markers/trip-detail-marker-departure.png'),
+  arrival: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
 };
 const POPULAR_PLACES = [
   { name: 'Gare Centrale', commune: 'Gombe' },
@@ -1162,7 +1168,8 @@ export default function RequestTripScreen() {
                         latitude: departureLocation.latitude,
                         longitude: departureLocation.longitude,
                       }}
-                      pinColor={Colors.success}
+                      anchor={REQUEST_MAP_MARKER_ANCHOR}
+                      image={requestMapMarkerImages.departure}
                       title="Départ"
                     />
                   ) : null}
@@ -1172,7 +1179,8 @@ export default function RequestTripScreen() {
                         latitude: arrivalLocation.latitude,
                         longitude: arrivalLocation.longitude,
                       }}
-                      pinColor={Colors.primary}
+                      anchor={REQUEST_MAP_MARKER_ANCHOR}
+                      image={requestMapMarkerImages.arrival}
                       title="Destination"
                     />
                   ) : null}
