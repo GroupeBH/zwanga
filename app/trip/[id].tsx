@@ -38,6 +38,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Image,
+  type ImageRequireSource,
   Modal,
   Platform,
   RefreshControl,
@@ -92,6 +93,15 @@ const arrayToLatLng = (coordinates?: [number, number] | null) => {
 
 const LANDMARK_PLACEHOLDER = 'Ex: devant la station, portail bleu, entr\u00E9e principale';
 const USE_CUSTOM_MAP_MARKERS = Platform.OS !== 'android';
+const USE_ANDROID_MAP_MARKER_IMAGES = Platform.OS === 'android';
+const TRIP_DETAIL_MAP_MIN_DELTA = 0.035;
+const TRIP_DETAIL_MAP_PADDING = 1.35;
+const ANDROID_TRIP_DETAIL_MARKER_ANCHOR = { x: 0.5, y: 0.86 };
+const androidTripDetailMarkerImages: Record<'departure' | 'arrival' | 'passenger', ImageRequireSource> = {
+  departure: require('@/assets/images/map-markers/trip-detail-marker-departure.png'),
+  arrival: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
+  passenger: require('@/assets/images/map-markers/trip-detail-marker-passenger.png'),
+};
 const DEFAULT_MAP_REGION = {
   latitude: -4.325,
   longitude: 15.322,
@@ -1656,9 +1666,11 @@ export default function TripDetailsScreen() {
     const latitudeCenter = (departureCoordinate.latitude + arrivalCoordinate.latitude) / 2;
     const longitudeCenter = (departureCoordinate.longitude + arrivalCoordinate.longitude) / 2;
     const latitudeDelta =
-      Math.max(Math.abs(departureCoordinate.latitude - arrivalCoordinate.latitude), 0.05) * 1.6;
+      Math.max(Math.abs(departureCoordinate.latitude - arrivalCoordinate.latitude), TRIP_DETAIL_MAP_MIN_DELTA) *
+      TRIP_DETAIL_MAP_PADDING;
     const longitudeDelta =
-      Math.max(Math.abs(departureCoordinate.longitude - arrivalCoordinate.longitude), 0.05) * 1.6;
+      Math.max(Math.abs(departureCoordinate.longitude - arrivalCoordinate.longitude), TRIP_DETAIL_MAP_MIN_DELTA) *
+      TRIP_DETAIL_MAP_PADDING;
 
     return {
       latitude: latitudeCenter,
@@ -1769,7 +1781,9 @@ export default function TripDetailsScreen() {
 
                 <Marker
                   coordinate={departureCoordinate}
-                  pinColor={Colors.success}
+                  anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
+                  image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.departure : undefined}
+                  pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.success}
                   title="Depart"
                   description={trip?.departure?.address}
                   tracksViewChanges={false}
@@ -1783,7 +1797,9 @@ export default function TripDetailsScreen() {
 
                 <Marker
                   coordinate={arrivalCoordinate}
-                  pinColor={Colors.primary}
+                  anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
+                  image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.arrival : undefined}
+                  pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.primary}
                   title="Arrivee"
                   description={trip?.arrival?.address}
                   tracksViewChanges={false}
@@ -1800,7 +1816,9 @@ export default function TripDetailsScreen() {
                   <Marker
                     key={`passenger-dest-${marker.id}`}
                     coordinate={marker.coordinate}
-                    pinColor={Colors.secondary}
+                    anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
+                    image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.passenger : undefined}
+                    pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.secondary}
                     title={marker.title}
                     description={marker.description}
                     tracksViewChanges={false}
@@ -1849,7 +1867,9 @@ export default function TripDetailsScreen() {
 
                   <Marker
                     coordinate={departureCoordinate}
-                    pinColor={Colors.success}
+                    anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
+                    image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.departure : undefined}
+                    pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.success}
                     title="Depart"
                     description={trip?.departure.address}
                     tracksViewChanges={false}
@@ -1871,7 +1891,9 @@ export default function TripDetailsScreen() {
 
                   <Marker
                     coordinate={arrivalCoordinate}
-                    pinColor={Colors.primary}
+                    anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
+                    image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.arrival : undefined}
+                    pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.primary}
                     title="Arrivee"
                     description={trip?.arrival?.address}
                     tracksViewChanges={false}
@@ -1896,7 +1918,9 @@ export default function TripDetailsScreen() {
                     <Marker
                       key={`passenger-dest-fullscreen-${marker.id}`}
                       coordinate={marker.coordinate}
-                      pinColor={Colors.secondary}
+                      anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
+                      image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.passenger : undefined}
+                      pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.secondary}
                       title={marker.title}
                       description={marker.description}
                       tracksViewChanges={false}
