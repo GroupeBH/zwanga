@@ -1,60 +1,57 @@
-import { useEffect, useRef } from 'react';
 import * as Location from 'expo-location';
+import { useCallback, useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
+
+import { selectPermissionStatus, selectUserTrackedLocation } from '@/store/selectors';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
   setLastKnownLocation,
   setLocationPermission,
   setTrackingEnabled,
 } from '@/store/slices/locationSlice';
-import { selectPermissionStatus, selectUserTrackedLocation } from '@/store/selectors';
 
-export function useUserLocation(options: { autoRequest?: boolean } = { autoRequest: true }) {
+type UserLocationOptions = {
+  autoRequest?: boolean;
+  trackingProfile?: 'nearby' | 'navigation';
+};
+
+export function useUserLocation(options: UserLocationOptions = { autoRequest: true }) {
   const dispatch = useAppDispatch();
   const permissionStatus = useAppSelector(selectPermissionStatus);
   const lastKnownLocation = useAppSelector(selectUserTrackedLocation);
   const watcherRef = useRef<Location.LocationSubscription | null>(null);
+  const watcherGenerationRef = useRef(0);
+  const isNearbyTracking = options.trackingProfile === 'nearby';
 
-  useEffect(() => {
-    if (!options.autoRequest) {
-      return;
-    }
+  const stopWatching = useCallback(() => {
+    watcherGenerationRef.current += 1;
+    watcherRef.current?.remove();
+    watcherRef.current = null;
+    dispatch(setTrackingEnabled(false));
+  }, [dispatch]);
 
-    requestPermission();
-    return () => {
-      watcherRef.current?.remove();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const startWatching = useCallback(async () => {
+    const generation = watcherGenerationRef.current + 1;
+    watcherGenerationRef.current = generation;
+    watcherRef.current?.remove();
+    watcherRef.current = null;
 
-  const requestPermission = async () => {
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      dispatch(setLocationPermission(status as any));
-
-      if (status === Location.PermissionStatus.GRANTED) {
-        startWatching();
-      }
-    } catch (error) {
-      console.warn('Permission localisation refusée', error);
-      dispatch(setLocationPermission('denied'));
-    }
-  };
-
-  const startWatching = async () => {
     try {
       const enabled = await Location.hasServicesEnabledAsync();
-      dispatch(setTrackingEnabled(enabled));
+      if (generation !== watcherGenerationRef.current) {
+        return;
+      }
 
+      dispatch(setTrackingEnabled(enabled));
       if (!enabled) {
         return;
       }
 
-      watcherRef.current?.remove();
-      watcherRef.current = await Location.watchPositionAsync(
+      const subscription = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.High,
-          timeInterval: 5000,
-          distanceInterval: 25,
+          accuracy: isNearbyTracking ? Location.Accuracy.Balanced : Location.Accuracy.High,
+          timeInterval: isNearbyTracking ? 15000 : 5000,
+          distanceInterval: isNearbyTracking ? 50 : 25,
         },
         (location) => {
           dispatch(
@@ -69,16 +66,59 @@ export function useUserLocation(options: { autoRequest?: boolean } = { autoReque
           );
         },
       );
+
+      if (generation !== watcherGenerationRef.current) {
+        subscription.remove();
+        return;
+      }
+
+      watcherRef.current = subscription;
     } catch (error) {
       console.warn('Impossible de suivre la position', error);
     }
-  };
+  }, [dispatch, isNearbyTracking]);
 
-  const stopWatching = () => {
-    watcherRef.current?.remove();
-    watcherRef.current = null;
-    dispatch(setTrackingEnabled(false));
-  };
+  const requestPermission = useCallback(async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      dispatch(setLocationPermission(status as any));
+
+      if (status === Location.PermissionStatus.GRANTED) {
+        await startWatching();
+      }
+    } catch (error) {
+      console.warn('Permission localisation refusée', error);
+      dispatch(setLocationPermission('denied'));
+    }
+  }, [dispatch, startWatching]);
+
+  useEffect(() => {
+    if (!options.autoRequest) {
+      return;
+    }
+
+    let cancelled = false;
+    const syncWatcherWithAppState = (state = AppState.currentState) => {
+      if (state === 'active') {
+        void requestPermission().then(() => {
+          if (cancelled || AppState.currentState !== 'active') {
+            stopWatching();
+          }
+        });
+      } else {
+        stopWatching();
+      }
+    };
+
+    syncWatcherWithAppState();
+    const subscription = AppState.addEventListener('change', syncWatcherWithAppState);
+
+    return () => {
+      cancelled = true;
+      subscription.remove();
+      stopWatching();
+    };
+  }, [options.autoRequest, requestPermission, stopWatching]);
 
   return {
     permissionStatus,
@@ -88,4 +128,3 @@ export function useUserLocation(options: { autoRequest?: boolean } = { autoReque
     stopWatching,
   };
 }
-

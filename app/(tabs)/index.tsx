@@ -18,6 +18,7 @@ import type { Trip } from '@/types';
 import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
 import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
+import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -302,6 +303,7 @@ function TripMapMarker({ isSelected, trip }: TripMapMarkerProps) {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const isFocused = useIsFocused();
   const dispatch = useAppDispatch();
   const mapRef = useRef<MapView>(null);
   const tripMarkerRefs = useRef<Record<string, MapMarker | null>>({});
@@ -311,7 +313,10 @@ export default function HomeScreen() {
   const locationRadiusKm = useAppSelector(selectLocationRadius);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [tripsSheetExpanded, setTripsSheetExpanded] = useState(false);
-  const { lastKnownLocation } = useUserLocation({ autoRequest: true });
+  const { lastKnownLocation } = useUserLocation({
+    autoRequest: isFocused,
+    trackingProfile: 'nearby',
+  });
   const { data: currentUser } = useGetCurrentUserQuery();
 
   const nearbyTripsPayload = useMemo<TripSearchByPointsPayload | null>(() => {
@@ -349,9 +354,10 @@ export default function HomeScreen() {
   } = useGetTripsQuery(
     { minSeats: HOME_MIN_AVAILABLE_SEATS },
     {
-      pollingInterval: 60000,
-      refetchOnFocus: true,
-      refetchOnReconnect: true,
+      pollingInterval: isFocused ? 60000 : 0,
+      skipPollingIfUnfocused: true,
+      refetchOnFocus: isFocused,
+      refetchOnReconnect: isFocused,
     },
   );
 
@@ -367,9 +373,10 @@ export default function HomeScreen() {
     },
     {
       skip: !nearbyTripsPayload,
-      pollingInterval: 60000,
-      refetchOnFocus: true,
-      refetchOnReconnect: true,
+      pollingInterval: isFocused ? 60000 : 0,
+      skipPollingIfUnfocused: true,
+      refetchOnFocus: isFocused,
+      refetchOnReconnect: isFocused,
     },
   );
 
@@ -417,9 +424,10 @@ export default function HomeScreen() {
   const { data: myBookings } = useGetMyBookingsQuery();
   const { data: myTripRequests = [] } = useGetMyTripRequestsQuery(undefined, {
     skip: !currentUser?.id,
-    pollingInterval: 30000,
-    refetchOnFocus: true,
-    refetchOnReconnect: true,
+    pollingInterval: isFocused ? 30000 : 0,
+    skipPollingIfUnfocused: true,
+    refetchOnFocus: isFocused,
+    refetchOnReconnect: isFocused,
   });
 
   useEffect(() => {
@@ -613,8 +621,10 @@ export default function HomeScreen() {
   }, [selectedTrip, tripsWithMapCoordinates]);
 
   useEffect(() => {
-    mapRef.current?.animateToRegion(mapRegion, 420);
-  }, [mapRegion]);
+    if (isFocused) {
+      mapRef.current?.animateToRegion(mapRegion, 420);
+    }
+  }, [isFocused, mapRegion]);
 
   const firstName = currentUser?.firstName || currentUser?.name?.split(' ')[0] || 'Kinshasa';
   const avatarUri = currentUser?.profilePicture || currentUser?.avatar;
@@ -696,9 +706,13 @@ export default function HomeScreen() {
           return (
             <Marker
               ref={(marker) => {
-                tripMarkerRefs.current[trip.id] = marker;
+                if (marker) {
+                  tripMarkerRefs.current[trip.id] = marker;
+                } else {
+                  delete tripMarkerRefs.current[trip.id];
+                }
               }}
-              key={trip.id}
+              key={`${trip.id}:${trip.vehicleType || 'car'}:${isSelected ? 'selected' : 'default'}`}
               identifier={trip.id}
               coordinate={coordinate}
               anchor={USE_ANDROID_TRIP_MARKER_IMAGE ? ANDROID_TRIP_MARKER_ANCHOR : { x: 0.5, y: 0.9 }}
@@ -708,7 +722,7 @@ export default function HomeScreen() {
               onPress={() => handleTripMarkerPress(trip.id, isSelected)}
               onCalloutPress={() => openTripDetail(trip.id)}
               tappable
-              tracksViewChanges={USE_ANDROID_TRIP_MARKER_IMAGE ? false : undefined}
+              tracksViewChanges={false}
               zIndex={isSelected ? 10 : 1}
             >
               {!USE_ANDROID_TRIP_MARKER_IMAGE && <TripMapMarker trip={trip} isSelected={isSelected} />}

@@ -17,6 +17,7 @@ import DateTimePicker, {
   DateTimePickerAndroid,
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
+import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -52,8 +53,27 @@ const getLocationCoordinatesTuple = (
   return [selection.longitude, selection.latitude];
 };
 
+function ArrivalTimeBlock({ trip }: { trip: Trip }) {
+  const calculatedArrivalTime = useTripArrivalTime(trip);
+  const arrivalTimeDisplay = calculatedArrivalTime
+    ? formatTime(calculatedArrivalTime.toISOString())
+    : formatTime(trip.arrivalTime);
+
+  return (
+    <View style={styles.timeContainer}>
+      {calculatedArrivalTime ? (
+        <Text style={styles.routeDateLabel}>
+          {formatDateWithRelativeLabel(calculatedArrivalTime.toISOString(), false)}
+        </Text>
+      ) : null}
+      <Text style={styles.routeTime}>{arrivalTimeDisplay}</Text>
+    </View>
+  );
+}
+
 export default function TripsScreen() {
   const router = useRouter();
+  const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const [mainTab, setMainTab] = useState<MainTab>('published');
   const [subTab, setSubTab] = useState<SubTab>('upcoming');
@@ -65,10 +85,10 @@ export default function TripsScreen() {
     isError: tripsError,
     refetch: refetchTrips,
   } = useGetMyTripsQuery(undefined, {
-    // Polling fixe pour éviter les références avant déclaration dans les options du hook
-    pollingInterval: 60000,
-    refetchOnFocus: true,
-    refetchOnReconnect: true,
+    pollingInterval: isFocused ? 60000 : 0,
+    skipPollingIfUnfocused: true,
+    refetchOnFocus: isFocused,
+    refetchOnReconnect: isFocused,
   });
   const {
     data: myBookings,
@@ -77,10 +97,10 @@ export default function TripsScreen() {
     isError: bookingsError,
     refetch: refetchBookings,
   } = useGetMyBookingsQuery(undefined, {
-    // Polling fixe pour éviter les références avant déclaration dans les options du hook
-    pollingInterval: 60000,
-    refetchOnFocus: true,
-    refetchOnReconnect: true,
+    pollingInterval: isFocused ? 60000 : 0,
+    skipPollingIfUnfocused: true,
+    refetchOnFocus: isFocused,
+    refetchOnReconnect: isFocused,
   });
   const { data: recurringTemplates = [] } = useGetMyRecurringTripsQuery();
   const [updateTripMutation, { isLoading: isSavingTrip }] = useUpdateTripMutation();
@@ -798,12 +818,6 @@ export default function TripsScreen() {
         ) : (
           mainTab === 'published'
             ? displayTrips.map((trip) => {
-            const TripCardWithArrival = () => {
-              const calculatedArrivalTime = useTripArrivalTime(trip);
-              const arrivalTimeDisplay = calculatedArrivalTime
-                ? formatTime(calculatedArrivalTime.toISOString())
-                : formatTime(trip.arrivalTime);
-
               const statusConfig = getStatusConfig(trip);
 
               return (
@@ -862,16 +876,7 @@ export default function TripsScreen() {
                     <View style={styles.routeRow}>
                       <Ionicons name="navigate" size={16} color={Colors.primary} />
                       <Text style={styles.routeText}>{trip.arrival.name}</Text>
-                      <View style={styles.timeContainer}>
-                        {calculatedArrivalTime && (
-                          <Text style={styles.routeDateLabel}>
-                            {formatDateWithRelativeLabel(calculatedArrivalTime.toISOString(), false)}
-                          </Text>
-                        )}
-                        <Text style={styles.routeTime}>
-                          {arrivalTimeDisplay}
-                        </Text>
-                      </View>
+                      <ArrivalTimeBlock trip={trip} />
                     </View>
                   </View>
 
@@ -932,21 +937,12 @@ export default function TripsScreen() {
                   </View>
                 </View>
               );
-            };
-
-            return <TripCardWithArrival key={trip.id} />;
           })
             : displayBookings.map((booking) => {
                 const trip = booking.trip;
                 if (!trip) return null;
 
-                const BookingCardWithArrival = () => {
-                  const calculatedArrivalTime = useTripArrivalTime(trip);
-                  const arrivalTimeDisplay = calculatedArrivalTime
-                    ? formatTime(calculatedArrivalTime.toISOString())
-                    : formatTime(trip.arrivalTime);
-
-                  const getBookingStatusConfig = () => {
+                const getBookingStatusConfig = () => {
                     switch (booking.status) {
                       case 'pending':
                         return { bgColor: 'rgba(247, 184, 1, 0.1)', textColor: Colors.secondary, label: 'En attente' };
@@ -963,9 +959,9 @@ export default function TripsScreen() {
                     }
                   };
 
-                  const statusConfig = getBookingStatusConfig();
+                const statusConfig = getBookingStatusConfig();
 
-                  return (
+                return (
                     <View key={booking.id} style={styles.tripCard}>
                       {/* Header */}
                       <View style={styles.tripHeader}>
@@ -1018,14 +1014,7 @@ export default function TripsScreen() {
                           <Text style={styles.routeText}>
                             {booking.passengerDestination || trip.arrival.name}
                           </Text>
-                          <View style={styles.timeContainer}>
-                            {calculatedArrivalTime && (
-                              <Text style={styles.routeDateLabel}>
-                                {formatDateWithRelativeLabel(calculatedArrivalTime.toISOString(), false)}
-                              </Text>
-                            )}
-                            <Text style={styles.routeTime}>{arrivalTimeDisplay}</Text>
-                          </View>
+                          <ArrivalTimeBlock trip={trip} />
                         </View>
                       </View>
 
@@ -1056,10 +1045,7 @@ export default function TripsScreen() {
                         </TouchableOpacity>
                       </View>
                     </View>
-                  );
-                };
-
-                return <BookingCardWithArrival key={booking.id} />;
+                );
               })
         )}
       </ScrollView>

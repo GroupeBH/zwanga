@@ -581,6 +581,7 @@ export default function PassengerNavigationScreen() {
           <Marker
             coordinate={driverLocation}
             anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={false}
           >
             <View style={styles.driverMarker}>
               <Ionicons name="car-sport" size={20} color={Colors.white} />
@@ -590,7 +591,7 @@ export default function PassengerNavigationScreen() {
 
         {/* Point de recuperation */}
         {pickupCoordinate && !booking.pickedUp && (
-          <Marker coordinate={pickupCoordinate}>
+          <Marker coordinate={pickupCoordinate} tracksViewChanges={false}>
             <View style={styles.pickupMarker}>
               <Ionicons name="person-add" size={16} color={Colors.white} />
             </View>
@@ -599,7 +600,7 @@ export default function PassengerNavigationScreen() {
 
         {/* Point de depose */}
         {dropoffCoordinate && (
-          <Marker coordinate={dropoffCoordinate}>
+          <Marker coordinate={dropoffCoordinate} tracksViewChanges={false}>
             <View style={styles.dropoffMarker}>
               <Ionicons name="flag" size={16} color={Colors.white} />
             </View>

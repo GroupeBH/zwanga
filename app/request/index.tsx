@@ -1171,6 +1171,7 @@ export default function RequestTripScreen() {
                       anchor={REQUEST_MAP_MARKER_ANCHOR}
                       image={requestMapMarkerImages.departure}
                       title="Départ"
+                      tracksViewChanges={false}
                     />
                   ) : null}
                   {arrivalLocation ? (
@@ -1182,6 +1183,7 @@ export default function RequestTripScreen() {
                       anchor={REQUEST_MAP_MARKER_ANCHOR}
                       image={requestMapMarkerImages.arrival}
                       title="Destination"
+                      tracksViewChanges={false}
                     />
                   ) : null}
                   {routeCoordinates.length > 1 ? (
