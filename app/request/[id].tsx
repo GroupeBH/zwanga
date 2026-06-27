@@ -20,7 +20,7 @@ import type { Vehicle } from '@/types';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { createBecomeDriverAction, isDriverRequiredError } from '@/utils/errorHelpers';
 import { getTripRequestCreateHref } from '@/utils/requestNavigation';
-import { getRouteCoordinates } from '@/utils/routeHelpers';
+import { getRouteCoordinates } from '@/utils/routeApi';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -2605,6 +2605,7 @@ export default function TripRequestDetailsScreen() {
                   {/* Marqueur de départ */}
                   <Marker
                     coordinate={requestRouteMapData.departureCoordinate}
+                    tracksViewChanges={false}
                   >
                     <View style={styles.markerStartCircle}>
                       <Ionicons name="location" size={18} color={Colors.white} />
@@ -2620,6 +2621,7 @@ export default function TripRequestDetailsScreen() {
                   {/* Marqueur d'arrivée */}
                   <Marker
                     coordinate={requestRouteMapData.arrivalCoordinate}
+                    tracksViewChanges={false}
                   >
                     <View style={styles.markerEndCircle}>
                       <Ionicons name="navigate" size={18} color={Colors.white} />

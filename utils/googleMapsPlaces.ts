@@ -492,25 +492,31 @@ export async function searchGoogleMapsPlaces(
 
   try {
     const autocompletePromise = store.dispatch(
-      googleMapsApi.endpoints.placesAutocomplete.initiate({
-        input: trimmedQuery,
-        locationLat: effectiveProximity.latitude,
-        locationLng: effectiveProximity.longitude,
-        radius: 50000,
-        region: 'cd',
-        language: 'fr',
-      }),
+      googleMapsApi.endpoints.placesAutocomplete.initiate(
+        {
+          input: trimmedQuery,
+          locationLat: effectiveProximity.latitude,
+          locationLng: effectiveProximity.longitude,
+          radius: 50000,
+          region: 'cd',
+          language: 'fr',
+        },
+        { subscribe: false },
+      ),
     );
 
     const textSearchPromise = shouldRunPreciseTextSearch(queryAnalysis)
       ? store.dispatch(
-          googleMapsApi.endpoints.placesSearch.initiate({
-            query: buildPreciseTextSearchQuery(trimmedQuery, detectedCityConfig, proximity),
-            locationLat: effectiveProximity.latitude,
-            locationLng: effectiveProximity.longitude,
-            radius: 50000,
-            language: 'fr',
-          }),
+          googleMapsApi.endpoints.placesSearch.initiate(
+            {
+              query: buildPreciseTextSearchQuery(trimmedQuery, detectedCityConfig, proximity),
+              locationLat: effectiveProximity.latitude,
+              locationLng: effectiveProximity.longitude,
+              radius: 50000,
+              language: 'fr',
+            },
+            { subscribe: false },
+          ),
         )
       : Promise.resolve(null);
 
@@ -598,10 +604,13 @@ export async function getGoogleMapsPlaceDetails(
 
   try {
     const result = await store.dispatch(
-      googleMapsApi.endpoints.getPlaceDetails.initiate({
-        placeId,
-        language: 'fr',
-      }),
+      googleMapsApi.endpoints.getPlaceDetails.initiate(
+        {
+          placeId,
+          language: 'fr',
+        },
+        { subscribe: false },
+      ),
     );
 
     if (result.error || !result.data) {
