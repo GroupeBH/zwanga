@@ -23,6 +23,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  type ImageRequireSource,
   Platform,
   ScrollView,
   StyleSheet,
@@ -31,11 +32,13 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import MapView, { Callout, Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import MapView, { Callout, Marker, PROVIDER_GOOGLE, type MapMarker, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const RECENT_TRIPS_LIMIT = 10;
 const HOME_MIN_AVAILABLE_SEATS = 1;
+const USE_ANDROID_TRIP_MARKER_IMAGE = Platform.OS === 'android';
+const ANDROID_TRIP_MARKER_ANCHOR = { x: 0.5, y: 0.84 };
 
 const KINSHASA_REGION: Region = {
   latitude: -4.325,
@@ -69,6 +72,14 @@ const vehicleIcon: Record<Trip['vehicleType'], keyof typeof Ionicons.glyphMap> =
   moto: 'bicycle-outline',
   tricycle: 'bus-outline',
 };
+
+const androidTripMarkerImages: Record<Trip['vehicleType'], ImageRequireSource> = {
+  car: require('@/assets/images/map-markers/trip-marker-car.png'),
+  moto: require('@/assets/images/map-markers/trip-marker-moto.png'),
+  tricycle: require('@/assets/images/map-markers/trip-marker-tricycle.png'),
+};
+
+const androidSelectedTripMarkerImage: ImageRequireSource = require('@/assets/images/map-markers/trip-marker-selected.png');
 
 type MapCoordinate = {
   latitude: number;
@@ -159,6 +170,14 @@ function getTripMapCoordinate(trip: Trip): MapCoordinate | null {
 
 function roundCoordinate(value: number) {
   return Number(value.toFixed(5));
+}
+
+function getAndroidTripMarkerImage(trip: Trip, isSelected: boolean) {
+  if (isSelected) {
+    return androidSelectedTripMarkerImage;
+  }
+
+  return androidTripMarkerImages[trip.vehicleType || 'car'];
 }
 
 function TripPreviewCard({
@@ -264,8 +283,8 @@ function TripMapMarker({ isSelected, trip }: TripMapMarkerProps) {
   const markerIcon = isSelected ? 'car' : vehicleIcon[tripVehicleType];
 
   return (
-    <View style={styles.tripMapMarkerFrame}>
-      <View style={[styles.tripMapMarkerBubble, isSelected && styles.tripMapMarkerBubbleSelected]}>
+    <View collapsable={false} style={styles.tripMapMarkerFrame}>
+      <View collapsable={false} style={[styles.tripMapMarkerBubble, isSelected && styles.tripMapMarkerBubbleSelected]}>
         <View style={[styles.tripMapMarkerIconDisc, isSelected && styles.tripMapMarkerIconDiscSelected]}>
           <Ionicons
             name={markerIcon}
@@ -285,6 +304,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const mapRef = useRef<MapView>(null);
+  const tripMarkerRefs = useRef<Record<string, MapMarker | null>>({});
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const storedTrips = useAppSelector(selectAvailableTrips);
@@ -607,6 +627,32 @@ export default function HomeScreen() {
   const tripCardWidth = Math.min(width - 56, 342);
   const availableTripsLabel = `${latestTrips.length} trajet${latestTrips.length > 1 ? 's' : ''}`;
   const showInitialHomeLoader = tripsLoading && !remoteTrips && storedTrips.length === 0;
+  const openTripDetail = (tripId: string) => {
+    router.push(`/trip/${tripId}`);
+  };
+
+  const showTripMarkerCallout = (tripId: string) => {
+    [90, 520].forEach((delay) => {
+      setTimeout(() => {
+        tripMarkerRefs.current[tripId]?.showCallout();
+      }, delay);
+    });
+  };
+
+  const handleTripMarkerPress = (tripId: string, isSelected: boolean) => {
+    if (!USE_ANDROID_TRIP_MARKER_IMAGE) {
+      setSelectedTripId(tripId);
+      return;
+    }
+
+    if (isSelected) {
+      openTripDetail(tripId);
+      return;
+    }
+
+    setSelectedTripId(tripId);
+    showTripMarkerCallout(tripId);
+  };
 
   if (showInitialHomeLoader) {
     return (
@@ -632,6 +678,7 @@ export default function HomeScreen() {
         initialRegion={mapRegion}
         showsCompass={false}
         showsMyLocationButton={false}
+        moveOnMarkerPress={!USE_ANDROID_TRIP_MARKER_IMAGE}
         toolbarEnabled={false}
       >
         {tripsWithMapCoordinates.map((trip) => {
@@ -642,19 +689,30 @@ export default function HomeScreen() {
             return null;
           }
 
+          const androidTripMarkerImage = USE_ANDROID_TRIP_MARKER_IMAGE
+            ? getAndroidTripMarkerImage(trip, isSelected)
+            : undefined;
+
           return (
             <Marker
+              ref={(marker) => {
+                tripMarkerRefs.current[trip.id] = marker;
+              }}
               key={trip.id}
+              identifier={trip.id}
               coordinate={coordinate}
-              anchor={{ x: 0.5, y: 0.9 }}
+              anchor={USE_ANDROID_TRIP_MARKER_IMAGE ? ANDROID_TRIP_MARKER_ANCHOR : { x: 0.5, y: 0.9 }}
+              image={androidTripMarkerImage}
               title={`${formatPrice(trip.price)} - ${trip.driverName || 'Conducteur Zwanga'}`}
               description={`${formatTime(trip.departureTime)} · ${placeName(trip.departure)} vers ${placeName(trip.arrival)} · ${trip.availableSeats} place${trip.availableSeats > 1 ? 's' : ''}`}
-              onPress={() => setSelectedTripId(trip.id)}
-              onCalloutPress={() => router.push(`/trip/${trip.id}`)}
+              onPress={() => handleTripMarkerPress(trip.id, isSelected)}
+              onCalloutPress={() => openTripDetail(trip.id)}
+              tappable
+              tracksViewChanges={USE_ANDROID_TRIP_MARKER_IMAGE ? false : undefined}
               zIndex={isSelected ? 10 : 1}
             >
-              <TripMapMarker trip={trip} isSelected={isSelected} />
-              <Callout tooltip onPress={() => router.push(`/trip/${trip.id}`)}>
+              {!USE_ANDROID_TRIP_MARKER_IMAGE && <TripMapMarker trip={trip} isSelected={isSelected} />}
+              <Callout tooltip onPress={() => openTripDetail(trip.id)}>
                 <View style={styles.tripMapCallout}>
                   <View style={styles.tripMapCalloutTop}>
                     <Text style={styles.tripMapCalloutTitle} numberOfLines={1}>
