@@ -24,6 +24,8 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Image,
   type ImageRequireSource,
   Platform,
@@ -298,6 +300,221 @@ function TripMapMarker({ isSelected, trip }: TripMapMarkerProps) {
       </View>
       <View style={[styles.tripMapMarkerPointer, isSelected && styles.tripMapMarkerPointerSelected]} />
       <View style={styles.tripMapMarkerGround} />
+    </View>
+  );
+}
+
+function HomeTripsLoadingScreen() {
+  const pulse = useRef(new Animated.Value(0)).current;
+  const vehicleProgress = useRef(new Animated.Value(0)).current;
+  const shimmerProgress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const pulseAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    const vehicleAnimation = Animated.loop(
+      Animated.timing(vehicleProgress, {
+        toValue: 1,
+        duration: 1800,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    );
+    const shimmerAnimation = Animated.loop(
+      Animated.timing(shimmerProgress, {
+        toValue: 1,
+        duration: 1500,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+
+    pulseAnimation.start();
+    vehicleAnimation.start();
+    shimmerAnimation.start();
+
+    return () => {
+      pulseAnimation.stop();
+      vehicleAnimation.stop();
+      shimmerAnimation.stop();
+    };
+  }, [pulse, shimmerProgress, vehicleProgress]);
+
+  const pulseScale = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.28],
+  });
+  const pulseOpacity = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.35, 0],
+  });
+  const vehicleTranslateX = vehicleProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-8, 172],
+  });
+  const shimmerTranslateX = shimmerProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-120, 260],
+  });
+
+  return (
+    <SafeAreaView style={styles.homeLoaderContainer}>
+      <View style={styles.homeLoaderShell}>
+        <View style={styles.homeLoaderMapPane}>
+          <View style={[styles.homeLoaderRoad, styles.homeLoaderRoadVertical]} />
+          <View style={[styles.homeLoaderRoad, styles.homeLoaderRoadDiagonal]} />
+          <View style={[styles.homeLoaderRoad, styles.homeLoaderRoadSoft]} />
+
+          <View style={styles.homeLoaderPulseAnchor}>
+            <Animated.View
+              style={[
+                styles.homeLoaderPulseRing,
+                {
+                  opacity: pulseOpacity,
+                  transform: [{ scale: pulseScale }],
+                },
+              ]}
+            />
+            <View style={styles.homeLoaderGpsDot}>
+              <Ionicons name="navigate" size={15} color={Colors.white} />
+            </View>
+          </View>
+
+          <View style={styles.homeLoaderRouteTrack}>
+            <View style={styles.homeLoaderRouteLine} />
+            <View style={[styles.homeLoaderRoutePoint, styles.homeLoaderRouteStartPoint]} />
+            <Animated.View style={[styles.homeLoaderVehicle, { transform: [{ translateX: vehicleTranslateX }] }]}>
+              <Ionicons name="car-sport-outline" size={17} color={Colors.white} />
+            </Animated.View>
+            <View style={[styles.homeLoaderRoutePoint, styles.homeLoaderRouteEndPoint]} />
+          </View>
+        </View>
+
+        <View style={styles.homeLoaderCopy}>
+          <View style={styles.homeLoaderLogoRow}>
+            <View style={styles.homeLoaderLogo}>
+              <Text style={styles.homeLoaderLogoText}>Z</Text>
+            </View>
+            <View style={styles.homeLoaderTitleBlock}>
+              <Text style={styles.homeLoaderTitle}>Recherche des trajets proches</Text>
+              <Text style={styles.homeLoaderText}>Places, horaires et conducteurs autour de vous.</Text>
+            </View>
+          </View>
+
+          <View style={styles.homeLoaderStatusRow}>
+            <View style={styles.homeLoaderStatusPill}>
+              <Ionicons name="location-outline" size={14} color={HOME_COLORS.success} />
+              <Text style={styles.homeLoaderStatusText}>Départ détecté</Text>
+            </View>
+            <View style={styles.homeLoaderStatusPill}>
+              <Ionicons name="car-sport-outline" size={14} color={Colors.primary} />
+              <Text style={styles.homeLoaderStatusText}>Trajets actifs</Text>
+            </View>
+          </View>
+
+          <View style={styles.homeLoaderTripPreview}>
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.homeLoaderShimmer, { transform: [{ translateX: shimmerTranslateX }] }]}
+            />
+            <View style={styles.homeLoaderTripTopRow}>
+              <View style={styles.homeLoaderAvatarSkeleton} />
+              <View style={styles.homeLoaderTripCopy}>
+                <View style={styles.homeLoaderLineStrong} />
+                <View style={styles.homeLoaderLineShort} />
+              </View>
+              <View style={styles.homeLoaderPriceSkeleton} />
+            </View>
+            <View style={styles.homeLoaderRoutePreview}>
+              <View style={styles.homeLoaderRoutePreviewRail}>
+                <View style={[styles.homeLoaderMiniDot, styles.homeLoaderMiniStart]} />
+                <View style={styles.homeLoaderMiniLine} />
+                <View style={[styles.homeLoaderMiniDot, styles.homeLoaderMiniEnd]} />
+              </View>
+              <View style={styles.homeLoaderTripCopy}>
+                <View style={styles.homeLoaderWideLine} />
+                <View style={styles.homeLoaderMediumLine} />
+              </View>
+            </View>
+            <View style={styles.homeLoaderChipRow}>
+              <View style={styles.homeLoaderChipSkeleton} />
+              <View style={styles.homeLoaderChipSkeletonWide} />
+            </View>
+          </View>
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function HomeSheetLoadingState() {
+  const shimmerProgress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const shimmerAnimation = Animated.loop(
+      Animated.timing(shimmerProgress, {
+        toValue: 1,
+        duration: 1400,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+
+    shimmerAnimation.start();
+
+    return () => {
+      shimmerAnimation.stop();
+    };
+  }, [shimmerProgress]);
+
+  const shimmerTranslateX = shimmerProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-90, 230],
+  });
+
+  return (
+    <View style={styles.sheetLoadingState}>
+      <View style={styles.sheetLoadingHeader}>
+        <View style={styles.sheetLoadingIcon}>
+          <Ionicons name="car-sport-outline" size={20} color={Colors.primary} />
+        </View>
+        <View style={styles.sheetLoadingCopy}>
+          <Text style={styles.sheetLoadingTitle}>Recherche des meilleurs départs</Text>
+          <Text style={styles.sheetLoadingText}>On actualise les trajets disponibles.</Text>
+        </View>
+      </View>
+      <View style={styles.sheetLoadingPreview}>
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.sheetLoadingShimmer, { transform: [{ translateX: shimmerTranslateX }] }]}
+        />
+        <View style={styles.sheetLoadingPreviewTop}>
+          <View style={styles.sheetLoadingAvatar} />
+          <View style={styles.sheetLoadingLines}>
+            <View style={styles.sheetLoadingLineStrong} />
+            <View style={styles.sheetLoadingLineSoft} />
+          </View>
+        </View>
+        <View style={styles.sheetLoadingRouteRow}>
+          <View style={styles.sheetLoadingRouteDot} />
+          <View style={styles.sheetLoadingRouteLine} />
+          <View style={[styles.sheetLoadingRouteDot, styles.sheetLoadingRouteDotEnd]} />
+        </View>
+      </View>
     </View>
   );
 }
@@ -722,18 +939,7 @@ export default function HomeScreen() {
   };
 
   if (showInitialHomeLoader) {
-    return (
-      <SafeAreaView style={styles.homeLoaderContainer}>
-        <View style={styles.homeLoaderCard}>
-          <View style={styles.homeLoaderLogo}>
-            <Text style={styles.homeLoaderLogoText}>Z</Text>
-          </View>
-          <ActivityIndicator color={Colors.primary} size="large" />
-          <Text style={styles.homeLoaderTitle}>Chargement des trajets</Text>
-          <Text style={styles.homeLoaderText}>Préparation des offres disponibles autour de vous.</Text>
-        </View>
-      </SafeAreaView>
-    );
+    return <HomeTripsLoadingScreen />;
   }
 
   return (
@@ -949,10 +1155,7 @@ export default function HomeScreen() {
         </View>
 
         {tripsSheetOpen && tripsLoading && (
-          <View style={styles.sheetState}>
-            <ActivityIndicator color={Colors.primary} />
-            <Text style={styles.sheetStateText}>Chargement des trajets...</Text>
-          </View>
+          <HomeSheetLoadingState />
         )}
 
         {tripsSheetOpen && tripsError && !tripsLoading && (
@@ -1009,18 +1212,6 @@ const styles = StyleSheet.create({
     backgroundColor: HOME_COLORS.surface,
     paddingHorizontal: Spacing.xl,
   },
-  homeLoaderCard: {
-    width: '100%',
-    maxWidth: 340,
-    borderRadius: BorderRadius.xxl,
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: HOME_COLORS.softLine,
-    padding: Spacing.xxl,
-    alignItems: 'center',
-    gap: Spacing.md,
-    ...CommonStyles.shadowMd,
-  },
   homeLoaderLogo: {
     width: 62,
     height: 62,
@@ -1040,13 +1231,270 @@ const styles = StyleSheet.create({
     color: HOME_COLORS.ink,
     fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   homeLoaderText: {
     color: Colors.gray[600],
     fontSize: FontSizes.sm,
     lineHeight: 20,
-    textAlign: 'center',
+    textAlign: 'left',
+  },
+  homeLoaderShell: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: 30,
+    overflow: 'hidden',
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: HOME_COLORS.softLine,
+    ...CommonStyles.shadowMd,
+  },
+  homeLoaderMapPane: {
+    height: 190,
+    overflow: 'hidden',
+    backgroundColor: '#EEF4F3',
+  },
+  homeLoaderRoad: {
+    position: 'absolute',
+    borderRadius: 999,
+    backgroundColor: '#D8E4E9',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.8)',
+  },
+  homeLoaderRoadVertical: {
+    width: 58,
+    height: 240,
+    left: 42,
+    top: -22,
+    transform: [{ rotate: '8deg' }],
+  },
+  homeLoaderRoadDiagonal: {
+    width: 52,
+    height: 260,
+    right: 74,
+    top: -36,
+    transform: [{ rotate: '-33deg' }],
+  },
+  homeLoaderRoadSoft: {
+    width: 42,
+    height: 180,
+    right: -8,
+    bottom: -18,
+    opacity: 0.7,
+    transform: [{ rotate: '20deg' }],
+  },
+  homeLoaderPulseAnchor: {
+    position: 'absolute',
+    left: 52,
+    top: 44,
+    width: 54,
+    height: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  homeLoaderPulseRing: {
+    position: 'absolute',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: Colors.primary,
+  },
+  homeLoaderGpsDot: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    borderWidth: 3,
+    borderColor: Colors.white,
+    ...CommonStyles.shadowSm,
+  },
+  homeLoaderRouteTrack: {
+    position: 'absolute',
+    left: 86,
+    right: 70,
+    bottom: 44,
+    height: 54,
+    justifyContent: 'center',
+  },
+  homeLoaderRouteLine: {
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(48,75,119,0.22)',
+  },
+  homeLoaderRoutePoint: {
+    position: 'absolute',
+    top: 18,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 4,
+    backgroundColor: Colors.white,
+  },
+  homeLoaderRouteStartPoint: {
+    left: -4,
+    borderColor: HOME_COLORS.success,
+  },
+  homeLoaderRouteEndPoint: {
+    right: -4,
+    borderColor: Colors.primary,
+  },
+  homeLoaderVehicle: {
+    position: 'absolute',
+    left: 0,
+    top: 7,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    borderWidth: 3,
+    borderColor: Colors.white,
+    ...CommonStyles.shadowSm,
+  },
+  homeLoaderCopy: {
+    padding: Spacing.lg,
+    gap: Spacing.md,
+  },
+  homeLoaderLogoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  homeLoaderTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: Spacing.md,
+  },
+  homeLoaderStatusRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  homeLoaderStatusPill: {
+    minHeight: 34,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.gray[50],
+    borderWidth: 1,
+    borderColor: HOME_COLORS.softLine,
+  },
+  homeLoaderStatusText: {
+    color: HOME_COLORS.ink,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  homeLoaderTripPreview: {
+    position: 'relative',
+    overflow: 'hidden',
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.md,
+    backgroundColor: '#FFFDFC',
+    borderWidth: 1,
+    borderColor: HOME_COLORS.line,
+  },
+  homeLoaderShimmer: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 74,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+  },
+  homeLoaderTripTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  homeLoaderAvatarSkeleton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: Colors.gray[100],
+  },
+  homeLoaderTripCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 8,
+  },
+  homeLoaderLineStrong: {
+    width: '68%',
+    height: 12,
+    borderRadius: 999,
+    backgroundColor: '#DDE5EA',
+  },
+  homeLoaderLineShort: {
+    width: '46%',
+    height: 9,
+    borderRadius: 999,
+    backgroundColor: '#E9EEF2',
+  },
+  homeLoaderPriceSkeleton: {
+    width: 58,
+    height: 18,
+    borderRadius: 999,
+    backgroundColor: Colors.primary + '22',
+  },
+  homeLoaderRoutePreview: {
+    marginTop: Spacing.md,
+    flexDirection: 'row',
+  },
+  homeLoaderRoutePreviewRail: {
+    width: 18,
+    alignItems: 'center',
+    marginRight: Spacing.md,
+  },
+  homeLoaderMiniDot: {
+    width: 15,
+    height: 15,
+    borderRadius: 8,
+    borderWidth: 4,
+    backgroundColor: Colors.white,
+  },
+  homeLoaderMiniStart: {
+    borderColor: HOME_COLORS.success,
+  },
+  homeLoaderMiniEnd: {
+    borderColor: Colors.primary,
+  },
+  homeLoaderMiniLine: {
+    height: 28,
+    borderLeftWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: HOME_COLORS.body,
+    marginVertical: 4,
+  },
+  homeLoaderWideLine: {
+    width: '88%',
+    height: 13,
+    borderRadius: 999,
+    backgroundColor: '#DDE5EA',
+  },
+  homeLoaderMediumLine: {
+    width: '62%',
+    height: 13,
+    borderRadius: 999,
+    backgroundColor: '#E9EEF2',
+  },
+  homeLoaderChipRow: {
+    marginTop: Spacing.md,
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  homeLoaderChipSkeleton: {
+    width: 92,
+    height: 34,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[100],
+  },
+  homeLoaderChipSkeletonWide: {
+    width: 116,
+    height: 34,
+    borderRadius: BorderRadius.full,
+    backgroundColor: HOME_COLORS.navySoft,
   },
   container: {
     flex: 1,
@@ -1668,6 +2116,112 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.primary,
+  },
+  sheetLoadingState: {
+    marginHorizontal: Spacing.xl,
+    minHeight: 148,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.md,
+    backgroundColor: '#FFFDFC',
+    borderWidth: 1,
+    borderColor: HOME_COLORS.line,
+    gap: Spacing.md,
+    overflow: 'hidden',
+  },
+  sheetLoadingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sheetLoadingIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary + '14',
+    marginRight: Spacing.sm,
+  },
+  sheetLoadingCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  sheetLoadingTitle: {
+    color: HOME_COLORS.ink,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  sheetLoadingText: {
+    marginTop: 2,
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.medium,
+  },
+  sheetLoadingPreview: {
+    position: 'relative',
+    overflow: 'hidden',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: HOME_COLORS.softLine,
+  },
+  sheetLoadingShimmer: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 68,
+    backgroundColor: 'rgba(255,255,255,0.58)',
+  },
+  sheetLoadingPreviewTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sheetLoadingAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.gray[100],
+    marginRight: Spacing.sm,
+  },
+  sheetLoadingLines: {
+    flex: 1,
+    minWidth: 0,
+    gap: 7,
+  },
+  sheetLoadingLineStrong: {
+    width: '72%',
+    height: 11,
+    borderRadius: 999,
+    backgroundColor: '#DDE5EA',
+  },
+  sheetLoadingLineSoft: {
+    width: '44%',
+    height: 9,
+    borderRadius: 999,
+    backgroundColor: '#E9EEF2',
+  },
+  sheetLoadingRouteRow: {
+    marginTop: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sheetLoadingRouteDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 4,
+    borderColor: HOME_COLORS.success,
+    backgroundColor: Colors.white,
+  },
+  sheetLoadingRouteDotEnd: {
+    borderColor: Colors.primary,
+  },
+  sheetLoadingRouteLine: {
+    flex: 1,
+    height: 2,
+    marginHorizontal: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(75,45,40,0.24)',
   },
   sheetState: {
     marginHorizontal: Spacing.xl,
