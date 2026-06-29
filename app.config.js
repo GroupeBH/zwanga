@@ -50,7 +50,7 @@ module.exports = {
 
     ios: {
       bundleIdentifier: "com.biso.zwanga",
-      buildNumber: "3",
+      buildNumber: "42",
       supportsTablet: true,
       usesAppleSignIn: true,
       googleServicesFile: './GoogleService-Info.plist',

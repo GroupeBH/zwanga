@@ -3,6 +3,7 @@ import { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackEvent } from '@/services/analytics';
 import { useGeocodeMutation } from '@/store/api/googleMapsApi';
 import { useCreateTripRequestMutation, useRecommendTripRequestPriceMutation } from '@/store/api/tripRequestApi';
@@ -14,6 +15,7 @@ import {
   mapGeocodeResponseToSelection,
   type ManualGeocodeStatus,
 } from '@/utils/manualAddressGeocode';
+import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { getRouteCoordinates } from '@/utils/routeApi';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,9 +23,8 @@ import DateTimePicker, {
   DateTimePickerAndroid,
   type DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
-import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
@@ -118,29 +119,6 @@ function applyTimePart(date: Date, current: Date) {
   const next = new Date(current);
   next.setHours(date.getHours(), date.getMinutes(), 0, 0);
   return next;
-}
-
-function formatAddress(data?: Partial<Location.LocationGeocodedAddress>) {
-  if (!data) return '';
-  const street = [data.streetNumber, data.street].filter(Boolean).join(' ').trim();
-  return [data.name, street, data.district, data.city || data.subregion, data.region]
-    .map((value) => value?.toString().trim())
-    .filter(Boolean)
-    .join(', ');
-}
-
-function buildSelection(
-  coordinate: { latitude: number; longitude: number },
-  address?: Partial<Location.LocationGeocodedAddress>,
-): MapLocationSelection {
-  return {
-    title: address?.name || address?.street || 'Ma position',
-    address:
-      formatAddress(address) ||
-      `${coordinate.latitude.toFixed(5)}, ${coordinate.longitude.toFixed(5)}`,
-    latitude: coordinate.latitude,
-    longitude: coordinate.longitude,
-  };
 }
 
 function formatDateLabel(date: Date) {
@@ -284,6 +262,12 @@ export default function RequestTripScreen() {
   }>();
   const insets = useSafeAreaInsets();
   const { showDialog } = useDialog();
+  const { getCurrentLocation, lastKnownLocation } = useUserLocation({
+    autoRequest: false,
+    trackingProfile: 'nearby',
+  });
+  const departureAutoFillStartedRef = useRef(false);
+  const departureTouchedRef = useRef(false);
   const { data: favoriteLocations = [] } = useGetFavoriteLocationsQuery();
   const [createTripRequest, { isLoading: isCreating }] = useCreateTripRequestMutation();
   const [recommendTripRequestPrice, { isLoading: isPriceLoading }] = useRecommendTripRequestPriceMutation();
@@ -361,6 +345,7 @@ export default function RequestTripScreen() {
     setRequestFormStep('route');
 
     if (departureParam) {
+      departureTouchedRef.current = true;
       setDepartureLocation(null);
       setDepartureManualAddress(departureParam);
     }
@@ -378,6 +363,75 @@ export default function RequestTripScreen() {
     requestParams.departure,
     requestParams.minSeats,
     requestParams.seats,
+  ]);
+
+  useEffect(() => {
+    if (
+      !hasAppliedRoutePrefill ||
+      departureAutoFillStartedRef.current ||
+      departureTouchedRef.current ||
+      departureLocation ||
+      departureManualAddress.trim()
+    ) {
+      return;
+    }
+
+    departureAutoFillStartedRef.current = true;
+
+    const initializeDeparture = async () => {
+      const applyCoordinate = async (coordinate: LatLng) => {
+        const selection = await buildCurrentLocationSelection(coordinate);
+        if (departureTouchedRef.current) {
+          return false;
+        }
+
+        setDepartureLocation(selection);
+        setDepartureManualAddress(selection.title || selection.address);
+        setAddressSectionStep('arrival');
+        return true;
+      };
+      const knownLatitude = Number(lastKnownLocation?.coords.latitude);
+      const knownLongitude = Number(lastKnownLocation?.coords.longitude);
+      const knownTimestamp = Number(lastKnownLocation?.timestamp);
+      const knownCoordinate =
+        Number.isFinite(knownLatitude) &&
+        Number.isFinite(knownLongitude) &&
+        Number.isFinite(knownTimestamp) &&
+        Date.now() - knownTimestamp <= 15 * 60 * 1000
+          ? { latitude: knownLatitude, longitude: knownLongitude }
+          : null;
+
+      if (knownCoordinate) {
+        await applyCoordinate(knownCoordinate);
+      }
+
+      if (departureTouchedRef.current) {
+        return;
+      }
+
+      const position = await getCurrentLocation();
+      if (!position || departureTouchedRef.current) {
+        return;
+      }
+
+      const currentCoordinate = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      };
+      if (knownCoordinate && areSameCoordinate(knownCoordinate, currentCoordinate)) {
+        return;
+      }
+
+      await applyCoordinate(currentCoordinate);
+    };
+
+    void initializeDeparture();
+  }, [
+    departureLocation,
+    departureManualAddress,
+    getCurrentLocation,
+    hasAppliedRoutePrefill,
+    lastKnownLocation,
   ]);
 
   const departureAddress = getLocationText(departureLocation, departureManualAddress);
@@ -731,10 +785,11 @@ export default function RequestTripScreen() {
 
   const handleUseCurrentLocation = async () => {
     try {
+      departureTouchedRef.current = true;
       setAddressInputMode('map');
       setIsLocating(true);
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== Location.PermissionStatus.GRANTED) {
+      const position = await getCurrentLocation();
+      if (!position) {
         showDialog({
           title: 'Localisation non disponible',
           message:
@@ -743,10 +798,8 @@ export default function RequestTripScreen() {
         });
         return;
       }
-      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const coordinate = { latitude: position.coords.latitude, longitude: position.coords.longitude };
-      const [address] = await Location.reverseGeocodeAsync(coordinate);
-      const selection = buildSelection(coordinate, address);
+      const selection = await buildCurrentLocationSelection(coordinate);
       setDepartureLocation(selection);
       setDepartureManualAddress(selection.title || selection.address);
       setAddressSectionStep('arrival');
@@ -763,12 +816,16 @@ export default function RequestTripScreen() {
   };
 
   const openPickerFor = (target: PickerTarget) => {
+    if (target === 'departure') {
+      departureTouchedRef.current = true;
+    }
     setAddressInputMode('map');
     setAddressSectionStep(target);
     setActivePicker(target);
   };
 
   const swapRoutePoints = () => {
+    departureTouchedRef.current = true;
     const tempLoc = departureLocation;
     const tempManual = departureManualAddress;
     const tempRef = departureReference;
@@ -783,6 +840,7 @@ export default function RequestTripScreen() {
   const applySelectionToNextSlot = (selection: MapLocationSelection) => {
     setAddressInputMode('map');
     if (!hasDepartureAddress) {
+      departureTouchedRef.current = true;
       setDepartureLocation(selection);
       setDepartureManualAddress(selection.title || selection.address);
       setAddressSectionStep('arrival');
@@ -797,6 +855,7 @@ export default function RequestTripScreen() {
   const applyManualPlaceToNextSlot = (place: string) => {
     setAddressInputMode('manual');
     if (!hasDepartureAddress) {
+      departureTouchedRef.current = true;
       setDepartureLocation(null);
       setDepartureManualAddress(place);
       setAddressSectionStep('arrival');
@@ -1014,6 +1073,7 @@ export default function RequestTripScreen() {
                         style={styles.routeManualInput}
                         value={departureManualAddress}
                         onChangeText={(value) => {
+                          departureTouchedRef.current = true;
                           setDepartureManualAddress(value);
                           setDepartureLocation(null);
                         }}
@@ -1082,6 +1142,9 @@ export default function RequestTripScreen() {
                 <TouchableOpacity
                   style={styles.routeQuickButton}
                   onPress={() => {
+                    if (!hasDepartureAddress) {
+                      departureTouchedRef.current = true;
+                    }
                     setAddressInputMode('manual');
                     setAddressSectionStep(!hasDepartureAddress ? 'departure' : 'arrival');
                   }}
@@ -1443,6 +1506,7 @@ export default function RequestTripScreen() {
           const target = activePicker;
           setActivePicker(null);
           if (target === 'departure') {
+            departureTouchedRef.current = true;
             setAddressInputMode('map');
             setDepartureLocation(location);
             setDepartureManualAddress(location.title || location.address);
