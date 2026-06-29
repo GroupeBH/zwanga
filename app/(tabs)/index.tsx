@@ -16,6 +16,7 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectAvailableTrips, selectLocationRadius } from '@/store/selectors';
 import { setTrips } from '@/store/slices/tripsSlice';
 import type { Trip } from '@/types';
+import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
 import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
 import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
@@ -42,7 +43,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 const RECENT_TRIPS_LIMIT = 10;
 const HOME_MIN_AVAILABLE_SEATS = 1;
 const USE_ANDROID_TRIP_MARKER_IMAGE = Platform.OS === 'android';
-const ANDROID_TRIP_MARKER_ANCHOR = { x: 0.5, y: 0.84 };
+const TRIP_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
+const USER_LOCATION_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
 
 const KINSHASA_REGION: Region = {
   latitude: -4.325,
@@ -83,7 +85,13 @@ const androidTripMarkerImages: Record<Trip['vehicleType'], ImageRequireSource> =
   tricycle: require('@/assets/images/map-markers/trip-marker-tricycle.png'),
 };
 
-const androidSelectedTripMarkerImage: ImageRequireSource = require('@/assets/images/map-markers/trip-marker-selected.png');
+const selectedTripMarkerImages: Record<Trip['vehicleType'], ImageRequireSource> = {
+  car: require('@/assets/images/map-markers/trip-marker-car-selected.png'),
+  moto: require('@/assets/images/map-markers/trip-marker-moto-selected.png'),
+  tricycle: require('@/assets/images/map-markers/trip-marker-tricycle-selected.png'),
+};
+
+const userLocationMarkerImage: ImageRequireSource = require('@/assets/images/map-markers/user-location-marker.png');
 
 type MapCoordinate = {
   latitude: number;
@@ -102,6 +110,12 @@ type TripPreviewCardProps = {
 type TripMapMarkerProps = {
   isSelected: boolean;
   trip: Trip;
+};
+
+type UserLocationMarkerState = {
+  address: string;
+  coordinate: MapCoordinate;
+  title: string;
 };
 
 function formatPrice(price?: number | null) {
@@ -176,12 +190,14 @@ function roundCoordinate(value: number) {
   return Number(value.toFixed(5));
 }
 
-function getAndroidTripMarkerImage(trip: Trip, isSelected: boolean) {
+function getTripMarkerImage(trip: Trip, isSelected: boolean) {
+  const tripVehicleType = trip.vehicleType || 'car';
+
   if (isSelected) {
-    return androidSelectedTripMarkerImage;
+    return selectedTripMarkerImages[tripVehicleType];
   }
 
-  return androidTripMarkerImages[trip.vehicleType || 'car'];
+  return androidTripMarkerImages[tripVehicleType];
 }
 
 function TripPreviewCard({
@@ -283,23 +299,23 @@ function TripPreviewCard({
 }
 
 function TripMapMarker({ isSelected, trip }: TripMapMarkerProps) {
-  const tripVehicleType = trip.vehicleType || 'car';
-  const markerIcon = isSelected ? 'car' : vehicleIcon[tripVehicleType];
+  const markerImage = getTripMarkerImage(trip, isSelected);
 
   return (
-    <View collapsable={false} style={styles.tripMapMarkerFrame}>
-      <View collapsable={false} style={[styles.tripMapMarkerBubble, isSelected && styles.tripMapMarkerBubbleSelected]}>
-        <View style={[styles.tripMapMarkerIconDisc, isSelected && styles.tripMapMarkerIconDiscSelected]}>
-          <Ionicons
-            name={markerIcon}
-            size={isSelected ? 18 : 17}
-            color={isSelected ? Colors.white : Colors.primary}
-          />
-        </View>
-        {isSelected ? <Text style={styles.tripMapMarkerLabel}>Trajet</Text> : null}
-      </View>
-      <View style={[styles.tripMapMarkerPointer, isSelected && styles.tripMapMarkerPointerSelected]} />
-      <View style={styles.tripMapMarkerGround} />
+    <View collapsable={false} style={[styles.tripMapMarkerFrame, isSelected && styles.tripMapMarkerFrameSelected]}>
+      <Image
+        source={markerImage}
+        style={[styles.tripMapMarkerImage, isSelected && styles.tripMapMarkerImageSelected]}
+        resizeMode="contain"
+      />
+    </View>
+  );
+}
+
+function UserLocationMapMarker() {
+  return (
+    <View collapsable={false} style={styles.userLocationMarkerFrame}>
+      <Image source={userLocationMarkerImage} style={styles.userLocationMarkerImage} resizeMode="contain" />
     </View>
   );
 }
@@ -526,6 +542,7 @@ export default function HomeScreen() {
   const dispatch = useAppDispatch();
   const mapRef = useRef<MapView>(null);
   const tripMarkerRefs = useRef<Record<string, MapMarker | null>>({});
+  const userLocationMarkerRef = useRef<MapMarker | null>(null);
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const storedTrips = useAppSelector(selectAvailableTrips);
@@ -534,6 +551,7 @@ export default function HomeScreen() {
   const [tripsSheetOpen, setTripsSheetOpen] = useState(true);
   const [isCenteringOnUser, setIsCenteringOnUser] = useState(false);
   const [mapFocusedOnUser, setMapFocusedOnUser] = useState(false);
+  const [userLocationMarker, setUserLocationMarker] = useState<UserLocationMarkerState | null>(null);
   const { getCurrentLocation, lastKnownLocation } = useUserLocation({
     autoRequest: isFocused,
     trackingProfile: 'nearby',
@@ -869,6 +887,14 @@ export default function HomeScreen() {
     setSelectedTripId(tripId);
   };
 
+  const showUserLocationCallout = () => {
+    [140, 620].forEach((delay) => {
+      setTimeout(() => {
+        userLocationMarkerRef.current?.showCallout();
+      }, delay);
+    });
+  };
+
   const handleReturnToUserLocation = async () => {
     if (isCenteringOnUser) {
       return;
@@ -883,14 +909,14 @@ export default function HomeScreen() {
         Number.isFinite(knownLatitude) && Number.isFinite(knownLongitude)
           ? { latitude: knownLatitude, longitude: knownLongitude }
           : null;
-      const currentLocation = knownCoordinate ? null : await getCurrentLocation();
-      const coordinate = knownCoordinate ??
+      const currentLocation = await getCurrentLocation();
+      const coordinate =
         (currentLocation
           ? {
               latitude: currentLocation.coords.latitude,
               longitude: currentLocation.coords.longitude,
             }
-          : null);
+          : null) ?? knownCoordinate;
 
       if (!coordinate) {
         showDialog({
@@ -901,6 +927,11 @@ export default function HomeScreen() {
         return;
       }
 
+      setUserLocationMarker({
+        coordinate,
+        title: 'Ma position',
+        address: "Recherche de l'adresse actuelle...",
+      });
       setMapFocusedOnUser(true);
       mapRef.current?.animateToRegion(
         {
@@ -910,6 +941,15 @@ export default function HomeScreen() {
         },
         480,
       );
+      showUserLocationCallout();
+
+      const selection = await buildCurrentLocationSelection(coordinate);
+      setUserLocationMarker({
+        coordinate,
+        title: selection.title || 'Ma position',
+        address: selection.address,
+      });
+      showUserLocationCallout();
     } finally {
       setIsCenteringOnUser(false);
     }
@@ -950,7 +990,7 @@ export default function HomeScreen() {
         style={styles.map}
         initialRegion={mapRegion}
         showsCompass={false}
-        showsUserLocation={Boolean(lastKnownLocation?.coords)}
+        showsUserLocation={!userLocationMarker && Boolean(lastKnownLocation?.coords)}
         showsMyLocationButton={false}
         moveOnMarkerPress={!USE_ANDROID_TRIP_MARKER_IMAGE}
         toolbarEnabled={false}
@@ -964,7 +1004,7 @@ export default function HomeScreen() {
           }
 
           const androidTripMarkerImage = USE_ANDROID_TRIP_MARKER_IMAGE
-            ? getAndroidTripMarkerImage(trip, isSelected)
+            ? getTripMarkerImage(trip, isSelected)
             : undefined;
 
           return (
@@ -979,7 +1019,7 @@ export default function HomeScreen() {
               key={`${trip.id}:${trip.vehicleType || 'car'}:${isSelected ? 'selected' : 'default'}`}
               identifier={trip.id}
               coordinate={coordinate}
-              anchor={USE_ANDROID_TRIP_MARKER_IMAGE ? ANDROID_TRIP_MARKER_ANCHOR : { x: 0.5, y: 0.9 }}
+              anchor={TRIP_MARKER_ANCHOR}
               image={androidTripMarkerImage}
               title={`${formatPrice(trip.price)} - ${trip.driverName || 'Conducteur Zwanga'}`}
               description={`${formatTime(trip.departureTime)} · ${placeName(trip.departure)} vers ${placeName(trip.arrival)} · ${trip.availableSeats} place${trip.availableSeats > 1 ? 's' : ''}`}
@@ -1012,6 +1052,39 @@ export default function HomeScreen() {
             </Marker>
           );
         })}
+        {userLocationMarker && (
+          <Marker
+            ref={(marker) => {
+              userLocationMarkerRef.current = marker;
+            }}
+            identifier="home-user-location"
+            coordinate={userLocationMarker.coordinate}
+            anchor={USER_LOCATION_MARKER_ANCHOR}
+            image={USE_ANDROID_TRIP_MARKER_IMAGE ? userLocationMarkerImage : undefined}
+            title={userLocationMarker.title}
+            description={userLocationMarker.address}
+            onPress={showUserLocationCallout}
+            tracksViewChanges={false}
+            zIndex={30}
+          >
+            {!USE_ANDROID_TRIP_MARKER_IMAGE && <UserLocationMapMarker />}
+            <Callout tooltip>
+              <View style={styles.userLocationCallout}>
+                <View style={styles.userLocationCalloutTop}>
+                  <View style={styles.userLocationCalloutIcon}>
+                    <Ionicons name="navigate" size={14} color={Colors.white} />
+                  </View>
+                  <Text style={styles.userLocationCalloutTitle} numberOfLines={1}>
+                    {userLocationMarker.title}
+                  </Text>
+                </View>
+                <Text style={styles.userLocationCalloutAddress} numberOfLines={2}>
+                  {userLocationMarker.address}
+                </Text>
+              </View>
+            </Callout>
+          </Marker>
+        )}
       </MapView>
 
       <View style={styles.mapVeil} pointerEvents="none" />
@@ -1532,78 +1605,34 @@ const styles = StyleSheet.create({
     }),
   },
   tripMapMarkerFrame: {
-    width: 118,
-    height: 70,
+    width: 64,
+    height: 64,
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
     overflow: 'visible',
   },
-  tripMapMarkerBubble: {
-    minWidth: 44,
-    height: 40,
-    borderRadius: 20,
-    paddingHorizontal: 6,
-    backgroundColor: Colors.white,
-    borderWidth: 2,
-    borderColor: Colors.primary,
-    flexDirection: 'row',
+  tripMapMarkerFrameSelected: {
+    width: 70,
+    height: 70,
+  },
+  tripMapMarkerImage: {
+    width: 56,
+    height: 56,
+  },
+  tripMapMarkerImageSelected: {
+    width: 62,
+    height: 62,
+  },
+  userLocationMarkerFrame: {
+    width: 64,
+    height: 64,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    ...Platform.select({
-      ios: {
-        shadowColor: Colors.black,
-        shadowOffset: { width: 0, height: 5 },
-        shadowOpacity: 0.16,
-        shadowRadius: 10,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
+    overflow: 'visible',
   },
-  tripMapMarkerBubbleSelected: {
-    minWidth: 88,
-    backgroundColor: Colors.primary,
-    borderColor: Colors.white,
-  },
-  tripMapMarkerIconDisc: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.primary + '14',
-  },
-  tripMapMarkerIconDiscSelected: {
-    backgroundColor: 'rgba(255,255,255,0.18)',
-  },
-  tripMapMarkerLabel: {
-    color: Colors.white,
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-    paddingRight: 3,
-  },
-  tripMapMarkerPointer: {
-    width: 13,
-    height: 13,
-    marginTop: -7,
-    borderRightWidth: 2,
-    borderBottomWidth: 2,
-    borderColor: Colors.primary,
-    backgroundColor: Colors.white,
-    transform: [{ rotate: '45deg' }],
-  },
-  tripMapMarkerPointerSelected: {
-    borderColor: Colors.white,
-    backgroundColor: Colors.primary,
-  },
-  tripMapMarkerGround: {
-    width: 18,
-    height: 5,
-    borderRadius: 9,
-    marginTop: 2,
-    backgroundColor: 'rgba(7,17,42,0.16)',
+  userLocationMarkerImage: {
+    width: 58,
+    height: 58,
   },
   tripMapCallout: {
     width: 226,
@@ -1647,6 +1676,41 @@ const styles = StyleSheet.create({
     color: HOME_COLORS.navy,
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.semibold,
+  },
+  userLocationCallout: {
+    width: 236,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: HOME_COLORS.softLine,
+    ...CommonStyles.shadowMd,
+  },
+  userLocationCalloutTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  userLocationCalloutIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: HOME_COLORS.navy,
+  },
+  userLocationCalloutTitle: {
+    flex: 1,
+    color: HOME_COLORS.ink,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+  },
+  userLocationCalloutAddress: {
+    marginTop: Spacing.sm,
+    color: Colors.gray[700],
+    fontSize: FontSizes.sm,
+    lineHeight: 19,
+    fontWeight: FontWeights.medium,
   },
   topOverlay: {
     position: 'absolute',
