@@ -93,8 +93,9 @@ const arrayToLatLng = (coordinates?: [number, number] | null) => {
 
 const USE_CUSTOM_MAP_MARKERS = Platform.OS !== 'android';
 const USE_ANDROID_MAP_MARKER_IMAGES = Platform.OS === 'android';
-const TRIP_DETAIL_MAP_MIN_DELTA = 0.035;
-const TRIP_DETAIL_MAP_PADDING = 1.35;
+const TRIP_DETAIL_MAP_MIN_DELTA = 0.006;
+const TRIP_DETAIL_MAP_MAX_DELTA = 0.014;
+const TRIP_DETAIL_MAP_PADDING = 1.02;
 const ANDROID_TRIP_DETAIL_MARKER_ANCHOR = { x: 0.5, y: 0.86 };
 const androidTripDetailMarkerImages: Record<'departure' | 'arrival' | 'passenger', ImageRequireSource> = {
   departure: require('@/assets/images/map-markers/trip-detail-marker-departure.png'),
@@ -113,6 +114,7 @@ const isValidMapCoordinate = (coordinate?: { latitude: number; longitude: number
     coordinate &&
     Number.isFinite(coordinate.latitude) &&
     Number.isFinite(coordinate.longitude) &&
+    !(coordinate.latitude === 0 && coordinate.longitude === 0) &&
     Math.abs(coordinate.latitude) <= 90 &&
     Math.abs(coordinate.longitude) <= 180,
   );
@@ -1630,14 +1632,26 @@ export default function TripDetailsScreen() {
     if (!hasValidRouteEndpoints) {
       return DEFAULT_MAP_REGION;
     }
-    const latitudeCenter = (departureCoordinate.latitude + arrivalCoordinate.latitude) / 2;
-    const longitudeCenter = (departureCoordinate.longitude + arrivalCoordinate.longitude) / 2;
-    const latitudeDelta =
-      Math.max(Math.abs(departureCoordinate.latitude - arrivalCoordinate.latitude), TRIP_DETAIL_MAP_MIN_DELTA) *
-      TRIP_DETAIL_MAP_PADDING;
-    const longitudeDelta =
-      Math.max(Math.abs(departureCoordinate.longitude - arrivalCoordinate.longitude), TRIP_DETAIL_MAP_MIN_DELTA) *
-      TRIP_DETAIL_MAP_PADDING;
+    const routeFocusCoordinate =
+      routeMapCoordinates.length > 2
+        ? routeMapCoordinates[Math.floor(routeMapCoordinates.length / 2)]
+        : null;
+    const latitudeCenter =
+      routeFocusCoordinate?.latitude ?? (departureCoordinate.latitude + arrivalCoordinate.latitude) / 2;
+    const longitudeCenter =
+      routeFocusCoordinate?.longitude ?? (departureCoordinate.longitude + arrivalCoordinate.longitude) / 2;
+    const rawLatitudeDelta =
+      Math.abs(departureCoordinate.latitude - arrivalCoordinate.latitude) * TRIP_DETAIL_MAP_PADDING;
+    const rawLongitudeDelta =
+      Math.abs(departureCoordinate.longitude - arrivalCoordinate.longitude) * TRIP_DETAIL_MAP_PADDING;
+    const latitudeDelta = Math.min(
+      Math.max(rawLatitudeDelta, TRIP_DETAIL_MAP_MIN_DELTA),
+      TRIP_DETAIL_MAP_MAX_DELTA,
+    );
+    const longitudeDelta = Math.min(
+      Math.max(rawLongitudeDelta, TRIP_DETAIL_MAP_MIN_DELTA),
+      TRIP_DETAIL_MAP_MAX_DELTA,
+    );
 
     return {
       latitude: latitudeCenter,
@@ -1645,9 +1659,37 @@ export default function TripDetailsScreen() {
       latitudeDelta,
       longitudeDelta,
     };
-  }, [arrivalCoordinate, departureCoordinate, hasValidRouteEndpoints]);
+  }, [arrivalCoordinate, departureCoordinate, hasValidRouteEndpoints, routeMapCoordinates]);
 
   const canRenderTripMap = trip?.status !== 'ongoing' && hasValidRouteEndpoints;
+  const tripDepartureName = trip?.departure?.name || trip?.departure?.address || 'Depart';
+  const tripArrivalName = trip?.arrival?.name || trip?.arrival?.address || 'Arrivee';
+  const tripDepartureAddress = trip?.departure?.address || tripDepartureName;
+  const tripArrivalAddress = trip?.arrival?.address || tripArrivalName;
+  const tripDepartureTimeLabel = trip?.departureTime ? formatTime(trip.departureTime) : '--:--';
+  const tripArrivalTimeLabel = calculatedArrivalTime
+    ? formatTime(calculatedArrivalTime.toISOString())
+    : trip?.arrivalTime
+      ? formatTime(trip.arrivalTime)
+      : '--:--';
+  const tripPriceLabel = trip?.price === 0 ? 'Gratuit' : `${trip?.price ?? 0} FC`;
+  const tripSeatsLabel =
+    availableSeats <= 0 ? 'Complet' : `${availableSeats} place${availableSeats > 1 ? 's' : ''}`;
+  const tripRouteDistanceLabel = routeInfo?.distance
+    ? `${Math.max(routeInfo.distance / 1000, 0.1).toFixed(1)} km`
+    : 'Trajet';
+  const tripVehicleLabel = trip?.vehicle
+    ? `${trip.vehicle.brand} ${trip.vehicle.model}`.trim()
+    : trip?.vehicleType === 'moto'
+      ? 'Moto'
+      : trip?.vehicleType === 'tricycle'
+        ? 'Tricycle'
+        : 'Voiture';
+  const tripVehicleMetaLabel = trip?.vehicle
+    ? [trip.vehicle.color, trip.vehicle.licensePlate].filter(Boolean).join(' • ')
+    : trip?.vehicleInfo && trip.vehicleInfo !== 'Informations véhicule fournies par le conducteur'
+      ? trip.vehicleInfo
+      : 'Vehicule confirme apres reservation';
 
   // Early return AFTER all hooks to avoid hook order violation
   if (tripLoading && !trip) {
@@ -1684,17 +1726,20 @@ export default function TripDetailsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, canRenderTripMap && styles.headerFloating]}>
         <View style={styles.headerTop}>
-          <TouchableOpacity onPress={goHome}>
+          <TouchableOpacity onPress={goHome} style={styles.headerCircleButton} activeOpacity={0.85}>
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Détails du trajet</Text>
+          <Text style={[styles.headerTitle, canRenderTripMap && styles.headerTitleFloating]}>
+            Détails du trajet
+          </Text>
           <View style={styles.headerActions}>
             <TouchableOpacity
               onPress={openTripSecurityModal}
               style={[styles.shareButton, !canAccessTripSecurity && styles.shareButtonDisabled]}
               disabled={!canAccessTripSecurity}
+              activeOpacity={0.85}
             >
               <Ionicons
                 name="shield-checkmark-outline"
@@ -1705,6 +1750,7 @@ export default function TripDetailsScreen() {
             <TouchableOpacity
               onPress={() => setShareModalVisible(true)}
               style={styles.shareButton}
+              activeOpacity={0.85}
             >
               <Ionicons name="share-outline" size={24} color={Colors.primary} />
             </TouchableOpacity>
@@ -1727,7 +1773,7 @@ export default function TripDetailsScreen() {
             onPress={() => setMapModalVisible(true)}
             activeOpacity={0.95}
           >
-            <View style={styles.mapPreview}>
+            <View style={[styles.mapPreview, { height: Math.min(214, Math.max(172, viewportHeight * 0.27)) }]}>
               <MapView
                 provider={PROVIDER_GOOGLE}
                 style={styles.mapView}
@@ -1735,7 +1781,7 @@ export default function TripDetailsScreen() {
                 zoomEnabled={false}
                 pitchEnabled={false}
                 rotateEnabled={false}
-                initialRegion={mapRegion}
+                region={mapRegion}
               >
                 {routeMapCoordinates.length >= 2 && (
                   <Polyline
@@ -1800,7 +1846,12 @@ export default function TripDetailsScreen() {
               </MapView>
 
               <View style={styles.mapOverlay}>
-                <Text style={styles.mapOverlayText}>Touchez pour agrandir</Text>
+                <View>
+                  <Text style={styles.mapOverlayLabel}>DEPART</Text>
+                  <Text style={styles.mapOverlayValue}>{tripDepartureTimeLabel}</Text>
+                </View>
+                <View style={styles.mapOverlayDivider} />
+                <Text style={styles.mapOverlayText}>Agrandir</Text>
               </View>
 
               <View style={styles.expandButton}>
@@ -1917,6 +1968,187 @@ export default function TripDetailsScreen() {
           </Modal>
         )}
 
+        <View style={[styles.tripDetailSheet, !canRenderTripMap && styles.tripDetailSheetNoMap]}>
+          <View style={styles.tripSheetHandle} />
+
+          <Animated.View entering={FadeInDown.delay(120)} style={styles.tripHeroSummary}>
+            <View style={styles.tripHeroTopRow}>
+              <View style={styles.tripHeroTitleBlock}>
+                <View style={styles.tripHeroStatusRow}>
+                  <View style={[styles.tripHeroStatusDot, { backgroundColor: config.color }]} />
+                  <Text style={styles.tripHeroEyebrow}>{config.label}</Text>
+                </View>
+                <Text style={styles.tripHeroTitle} numberOfLines={2}>
+                  {tripDepartureName} vers {tripArrivalName}
+                </Text>
+              </View>
+              <View style={styles.tripPriceBadge}>
+                <Text style={styles.tripPriceBadgeText}>{tripPriceLabel}</Text>
+                {trip?.price !== 0 ? <Text style={styles.tripPriceBadgeHint}>par place</Text> : null}
+              </View>
+            </View>
+
+            <View style={styles.tripQuickFacts}>
+              <View style={styles.tripQuickFact}>
+                <View style={styles.tripQuickFactIcon}>
+                  <Ionicons name="time-outline" size={16} color={Colors.primary} />
+                </View>
+                <View>
+                  <Text style={styles.tripQuickFactLabel}>Depart</Text>
+                  <Text style={styles.tripQuickFactValue}>{tripDepartureTimeLabel}</Text>
+                </View>
+              </View>
+              <View style={styles.tripQuickFact}>
+                <View style={styles.tripQuickFactIcon}>
+                  <Ionicons name="flag-outline" size={16} color={Colors.success} />
+                </View>
+                <View>
+                  <Text style={styles.tripQuickFactLabel}>Arrivee</Text>
+                  <Text style={styles.tripQuickFactValue}>{tripArrivalTimeLabel}</Text>
+                </View>
+              </View>
+              <View style={styles.tripQuickFact}>
+                <View style={styles.tripQuickFactIcon}>
+                  <Ionicons name="people-outline" size={16} color={Colors.primary} />
+                </View>
+                <View>
+                  <Text style={styles.tripQuickFactLabel}>Places</Text>
+                  <Text style={styles.tripQuickFactValue}>{tripSeatsLabel}</Text>
+                </View>
+              </View>
+              <View style={styles.tripQuickFact}>
+                <View style={styles.tripQuickFactIcon}>
+                  <Ionicons name="navigate-outline" size={16} color={Colors.info} />
+                </View>
+                <View>
+                  <Text style={styles.tripQuickFactLabel}>Distance</Text>
+                  <Text style={styles.tripQuickFactValue}>{tripRouteDistanceLabel}</Text>
+                </View>
+              </View>
+            </View>
+
+            {trip?.status === 'ongoing' && (
+              <View style={styles.tripInlineProgress}>
+                <View style={styles.tripInlineProgressTop}>
+                  <Text style={styles.tripInlineProgressLabel}>Progression</Text>
+                  <Text style={styles.tripInlineProgressValue}>{progress}%</Text>
+                </View>
+                <View style={styles.tripInlineProgressTrack}>
+                  <View style={[styles.tripInlineProgressFill, { width: `${progress}%` }]} />
+                </View>
+                <Text style={styles.tripInlineProgressEta}>
+                  Arrivee estimee: {estimatedArrivalTime ? formatTime(estimatedArrivalTime.toISOString()) : tripArrivalTimeLabel}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.tripCompactRoute}>
+              <View style={styles.tripCompactRail}>
+                <View style={[styles.tripCompactDot, styles.tripCompactStartDot]} />
+                <View style={styles.tripCompactLine} />
+                <View style={[styles.tripCompactDot, styles.tripCompactEndDot]} />
+              </View>
+              <View style={styles.tripCompactRouteCopy}>
+                <View style={styles.tripCompactStop}>
+                  <View style={styles.tripCompactStopTop}>
+                    <Text style={[styles.tripCompactStopLabel, styles.tripCompactDepartureLabel]}>Depart</Text>
+                    <Text style={styles.tripCompactStopTime}>{tripDepartureTimeLabel}</Text>
+                  </View>
+                  <Text style={styles.tripCompactStopName} numberOfLines={1}>{tripDepartureName}</Text>
+                  <Text style={styles.tripCompactStopAddress} numberOfLines={1}>{tripDepartureAddress}</Text>
+                </View>
+                <View style={styles.tripCompactStop}>
+                  <View style={styles.tripCompactStopTop}>
+                    <Text style={[styles.tripCompactStopLabel, styles.tripCompactArrivalLabel]}>Arrivee</Text>
+                    <Text style={styles.tripCompactStopTime}>{tripArrivalTimeLabel}</Text>
+                  </View>
+                  <Text style={styles.tripCompactStopName} numberOfLines={1}>{tripArrivalName}</Text>
+                  <Text style={styles.tripCompactStopAddress} numberOfLines={1}>{tripArrivalAddress}</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.tripDirectInfoRow}>
+              <TouchableOpacity
+                style={styles.tripDriverCompact}
+                onPress={() => {
+                  if (trip?.driverId) {
+                    router.push({
+                      pathname: '/driver/[id]',
+                      params: { id: trip.driverId },
+                    });
+                  }
+                }}
+                activeOpacity={0.82}
+              >
+                {trip?.driverAvatar ? (
+                  <Image source={{ uri: trip.driverAvatar }} style={styles.tripDriverCompactAvatar} />
+                ) : (
+                  <View style={styles.tripDriverCompactAvatar}>
+                    <Ionicons name="person" size={20} color={Colors.gray[500]} />
+                  </View>
+                )}
+                <View style={styles.tripDriverCompactCopy}>
+                  <Text style={styles.tripDriverCompactLabel}>Conducteur</Text>
+                  <Text style={styles.tripDriverCompactName} numberOfLines={1}>{trip?.driverName || 'Conducteur'}</Text>
+                  <View style={styles.tripDriverCompactMeta}>
+                    <Ionicons name="star" size={12} color={Colors.secondary} />
+                    <Text style={styles.tripDriverCompactRating}>{driverReviewAverage.toFixed(1)}</Text>
+                  </View>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
+              </TouchableOpacity>
+
+              <View style={styles.tripVehicleCompact}>
+                <View style={styles.tripVehicleCompactIcon}>
+                  <Ionicons
+                    name={
+                      trip?.vehicleType === 'moto'
+                        ? 'bicycle'
+                        : trip?.vehicleType === 'tricycle'
+                          ? 'car-sport'
+                          : 'car'
+                    }
+                    size={18}
+                    color={Colors.primary}
+                  />
+                </View>
+                <View style={styles.tripVehicleCompactCopy}>
+                  <Text style={styles.tripDriverCompactLabel}>Vehicule</Text>
+                  <Text style={styles.tripVehicleCompactName} numberOfLines={1}>{tripVehicleLabel}</Text>
+                  <Text style={styles.tripVehicleCompactMeta} numberOfLines={1}>{tripVehicleMetaLabel}</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.tripInlineActions}>
+              <TouchableOpacity
+                style={styles.tripInlineActionButton}
+                onPress={handleContactDriver}
+                disabled={isCreatingConversation}
+                activeOpacity={0.86}
+              >
+                {isCreatingConversation ? (
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                ) : (
+                  <>
+                    <Ionicons name="chatbubble-ellipses-outline" size={17} color={Colors.primary} />
+                    <Text style={styles.tripInlineActionText}>Message</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tripInlineActionButton, !driverPhone && styles.tripInlineActionButtonDisabled]}
+                disabled={!driverPhone}
+                onPress={() => setContactModalVisible(true)}
+                activeOpacity={0.86}
+              >
+                <Ionicons name="logo-whatsapp" size={17} color={driverPhone ? '#25D366' : Colors.gray[400]} />
+                <Text style={[styles.tripInlineActionText, driverPhone && styles.tripInlineWhatsappText]}>WhatsApp</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+
         {canTrackTrip && trip?.status !== 'ongoing' && (
           <View style={styles.trackingBanner}>
             <View style={styles.trackingBannerLeft}>
@@ -1945,269 +2177,6 @@ export default function TripDetailsScreen() {
             )}
           </View>
         )}
-
-        {/* Statut du trajet */}
-        <View style={styles.statusContainer}>
-          <View style={[styles.statusCard, { backgroundColor: config.bgColor }]}>
-            <View style={styles.statusHeader}>
-              <View style={styles.statusHeaderLeft}>
-                <View style={[styles.statusDot, { backgroundColor: config.color }]} />
-                <Text style={styles.statusLabel}>{config.label}</Text>
-              </View>
-              {trip?.status === 'ongoing' && (
-                <Text style={styles.progressText}>{progress}% complété</Text>
-              )}
-            </View>
-
-            {trip?.status === 'ongoing' && (
-              <>
-                <View style={styles.progressBar}>
-                  <View style={[styles.progressFill, { width: `${progress}%` }]} />
-                </View>
-                <Text style={styles.etaText}>
-                  Arrivée estimée: {estimatedArrivalTime ? formatTime(estimatedArrivalTime.toISOString()) : calculatedArrivalTime ? formatTime(calculatedArrivalTime.toISOString()) : formatTime(trip.arrivalTime)}
-                </Text>
-              </>
-            )}
-          </View>
-        </View>
-
-        {/* Itinéraire */}
-        <Animated.View entering={FadeInDown.delay(200)} style={styles.section}>
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>ITINÉRAIRE</Text>
-
-            <View style={styles.routeContainer}>
-              <View style={styles.routeIconContainer}>
-                <View style={styles.routeIconStart}>
-                  <Ionicons name="location" size={16} color={Colors.success} />
-                </View>
-                <View style={styles.routeDivider} />
-              </View>
-              <View style={styles.routeContent}>
-                <Text style={styles.routeName}>{trip?.departure.name}</Text>
-                <Text style={styles.routeAddress} numberOfLines={2}>{trip?.departure.address}</Text>
-                <Text style={styles.routeTime}>
-                  Départ: {trip?.departureTime ? formatTime(trip.departureTime) : ''}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.routeContainer}>
-              <View style={styles.routeIconContainer}>
-                <View style={styles.routeIconEnd}>
-                  <Ionicons name="navigate" size={16} color={Colors.primary} />
-                </View>
-              </View>
-              <View style={styles.routeContent}>
-                <Text style={styles.routeName}>{trip?.arrival.name}</Text>
-                <Text style={styles.routeAddress} numberOfLines={2}>{trip?.arrival.address}</Text>
-                <Text style={styles.routeTime}>
-                  Arrivée: {calculatedArrivalTime ? formatTime(calculatedArrivalTime.toISOString()) : (trip?.arrivalTime ? formatTime(trip.arrivalTime!) : '')}
-                </Text>
-              </View>
-            </View>
-          </View>
-        </Animated.View>
-
-        {/* Informations du conducteur */}
-        <Animated.View entering={FadeInDown.delay(300)} style={styles.section}>
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>CONDUCTEUR</Text>
-
-            <TouchableOpacity
-              style={styles.driverInfo}
-              onPress={() => {
-                if (trip?.driverId) {
-                  router.push({
-                    pathname: '/driver/[id]',
-                    params: { id: trip.driverId }
-                  });
-                }
-              }}
-              activeOpacity={0.7}
-            >
-              {trip?.driverAvatar ? (
-                <TouchableOpacity
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    setSelectedImageUri(trip?.driverAvatar!);
-                    setImageModalVisible(true);
-                  }}
-                >
-                  <Image
-                    source={{ uri: trip?.driverAvatar }}
-                    style={styles.driverAvatar}
-                  />
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.driverAvatar}>
-                  <Ionicons name="person" size={28} color={Colors.gray[400]} />
-                </View>
-              )}
-              <View style={styles.driverDetails}>
-                <View style={styles.driverNameRow}>
-                  <Text style={styles.driverName} numberOfLines={1}>{trip?.driverName}</Text>
-                  {(trip?.driver?.premiumBadge || trip?.driver?.premiumBadgeEnabled) && (
-                    <View style={styles.driverProBadge}>
-                      <Ionicons name="shield-checkmark" size={12} color={Colors.white} />
-                      <Text style={styles.driverProBadgeText}>Pro</Text>
-                    </View>
-                  )}
-                  <Ionicons name="chevron-forward" size={18} color={Colors.gray[300]} />
-                </View>
-                <View style={styles.driverMeta}>
-                  <Ionicons name="star" size={14} color={Colors.secondary} />
-                  <Text style={styles.driverRating}>{driverReviewAverage.toFixed(1)}</Text>
-                  <View style={styles.driverDot} />
-                  <Text style={styles.driverVehicle} numberOfLines={1}>
-                    {trip?.vehicle
-                      ? `${trip.vehicle.brand} ${trip.vehicle.model}`
-                      : trip?.vehicleInfo}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.driverReviewLink}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    setReviewsModalVisible(true);
-                  }}
-                  disabled={driverReviewCount === 0}
-                >
-                  <Text
-                    style={[
-                      styles.driverReviewLinkText,
-                      driverReviewCount === 0 && styles.driverReviewLinkTextDisabled,
-                    ]}
-                  >
-                    {driverReviewCount > 0
-                      ? `${driverReviewCount} avis`
-                      : 'Pas encore d\'avis'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-
-            <View style={styles.driverActions}>
-              <TouchableOpacity
-                style={styles.driverActionButton}
-                onPress={handleContactDriver}
-                disabled={isCreatingConversation}
-              >
-                {isCreatingConversation ? (
-                  <ActivityIndicator size="small" color={Colors.primary} />
-                ) : (
-                  <>
-                    <Ionicons name="chatbubble-ellipses" size={18} color={Colors.primary} />
-                    <Text style={styles.driverActionText}>Message</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.driverActionButton, styles.driverActionButtonGreen]}
-                disabled={!driverPhone}
-                onPress={() => {
-                  if (driverPhone) {
-                    setContactModalVisible(true);
-                  }
-                }}
-              >
-                <Ionicons
-                  name="logo-whatsapp"
-                  size={18}
-                  color={driverPhone ? '#25D366' : Colors.gray[300]}
-                />
-                <Text
-                  style={[
-                    styles.driverActionText,
-                    { color: driverPhone ? '#25D366' : Colors.gray[400] },
-                  ]}
-                >
-                  WhatsApp
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Animated.View>
-
-        {/* Détails */}
-        <Animated.View entering={FadeInDown.delay(400)} style={styles.section}>
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>DÉTAILS</Text>
-
-            <View style={styles.detailsList}>
-              <View style={styles.detailRow}>
-                <View style={styles.detailLeft}>
-                  <Ionicons name="people" size={20} color={availableSeats <= 0 ? Colors.danger : Colors.primary} />
-                  <Text style={styles.detailLabel}>Places disponibles</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  {availableSeats <= 0 && (
-                    <Ionicons name="alert-circle" size={18} color={Colors.danger} />
-                  )}
-                  <Text style={[
-                    styles.detailValue,
-                    availableSeats <= 0 && { color: Colors.danger, fontWeight: FontWeights.bold }
-                  ]}>
-                    {availableSeats <= 0 ? 'Complet' : `${trip?.availableSeats}/${trip?.totalSeats}`}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.detailRow}>
-                <View style={styles.detailLeft}>
-                  <Ionicons name="cash" size={20} color={Colors.success} />
-                  <Text style={styles.detailLabel}>Prix</Text>
-                </View>
-                <Text style={[styles.detailValue, { color: Colors.success }]}>
-                  {trip?.price === 0 ? 'Gratuit' : `${trip?.price} FC`}
-                </Text>
-              </View>
-
-              <View style={styles.detailRow}>
-                <View style={styles.detailLeft}>
-                  <Ionicons
-                    name={
-                      trip?.vehicleType === 'moto'
-                        ? 'bicycle'
-                        : trip?.vehicleType === 'tricycle'
-                          ? 'car-sport'
-                          : 'car'
-                    }
-                    size={20}
-                    color={Colors.gray[600]}
-                  />
-                  <Text style={styles.detailLabel}>Véhicule</Text>
-                </View>
-                <View style={styles.vehicleInfoContainer}>
-                  {trip?.vehicle ? (
-                    <>
-                      <Text style={styles.detailValue}>
-                        {trip?.vehicle.brand} {trip?.vehicle.model}
-                      </Text>
-                      <Text style={styles.vehicleDetails}>
-                        {trip?.vehicle.color} • {trip?.vehicle.licensePlate}
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <Text style={styles.detailValue}>
-                        {trip?.vehicleType === 'moto'
-                          ? 'Moto'
-                          : trip?.vehicleType === 'tricycle'
-                            ? 'Tricycle'
-                            : 'Voiture'}
-                      </Text>
-                      {trip?.vehicleInfo && trip?.vehicleInfo !== 'Informations véhicule fournies par le conducteur' && (
-                        <Text style={styles.vehicleDetails}>{trip?.vehicleInfo}</Text>
-                      )}
-                    </>
-                  )}
-                </View>
-              </View>
-            </View>
-          </View>
-        </Animated.View>
 
         {showPassengerSecurityAccess && (
           <Animated.View entering={FadeInDown.delay(460)} style={styles.section}>
@@ -2363,6 +2332,7 @@ export default function TripDetailsScreen() {
             </View>
           </Animated.View>
         )}
+        </View>
       </ScrollView>
 
       {/* Sticky Footer for Actions */}
@@ -2580,6 +2550,7 @@ export default function TripDetailsScreen() {
                     style={styles.actionButton}
                     onPress={openBookingModal}
                   >
+                    <Ionicons name="car-sport-outline" size={20} color={Colors.white} />
                     <Text style={styles.actionButtonText}>Réserver • {trip.price === 0 ? 'Gratuit' : `${trip.price} FC`}</Text>
                   </TouchableOpacity>
                 )}
@@ -3628,16 +3599,46 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.gray[100],
     zIndex: 10,
   },
+  headerFloating: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'transparent',
+    borderBottomWidth: 0,
+    zIndex: 30,
+  },
   headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingTop: 8,
   },
+  headerCircleButton: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 5,
+  },
   headerTitle: {
     fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
+  },
+  headerTitleFloating: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    overflow: 'hidden',
+    fontSize: FontSizes.base,
   },
   headerActions: {
     flexDirection: 'row',
@@ -3645,9 +3646,17 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   shareButton: {
-    padding: 8,
-    backgroundColor: Colors.primary + '10',
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.94)',
     borderRadius: BorderRadius.full,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 4,
   },
   shareButtonDisabled: {
     backgroundColor: Colors.gray[100],
@@ -3657,38 +3666,62 @@ const styles = StyleSheet.create({
   },
   scrollViewContent: {
     flexGrow: 1,
-    paddingBottom: 100, // Space for sticky footer
+    paddingBottom: 112, // Space for sticky footer
   },
   mapContainer: {
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.lg,
+    paddingHorizontal: 0,
+    paddingTop: 0,
   },
   mapPreview: {
-    height: 240,
-    borderRadius: 24,
+    height: 214,
+    borderRadius: 0,
     overflow: 'hidden',
     backgroundColor: Colors.gray[200],
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
   },
   mapView: {
     ...StyleSheet.absoluteFillObject,
   },
   mapOverlay: {
     position: 'absolute',
-    bottom: Spacing.md,
-    left: Spacing.md,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.full,
+    top: 82,
+    left: Spacing.xl,
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    borderRadius: BorderRadius.lg,
     borderWidth: 1,
     borderColor: Colors.gray[200],
+    overflow: 'hidden',
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  mapOverlayLabel: {
+    paddingHorizontal: Spacing.md,
+    color: Colors.primary,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  mapOverlayValue: {
+    paddingHorizontal: Spacing.md,
+    marginTop: 2,
+    color: Colors.gray[900],
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+  },
+  mapOverlayDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: Colors.gray[100],
   },
   mapOverlayText: {
+    paddingHorizontal: Spacing.md,
     color: Colors.gray[800],
-    fontSize: 12,
-    fontWeight: FontWeights.semibold,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
   },
   markerStartCircle: {
     width: 32,
@@ -3737,8 +3770,8 @@ const styles = StyleSheet.create({
   },
   expandButton: {
     position: 'absolute',
-    bottom: Spacing.md,
-    right: Spacing.md,
+    top: 82,
+    right: Spacing.xl,
   },
   expandButtonInner: {
     width: 44,
@@ -3752,6 +3785,354 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
+  },
+  tripDetailSheet: {
+    marginTop: -26,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.sm,
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 34,
+    borderTopRightRadius: 34,
+    overflow: 'hidden',
+  },
+  tripDetailSheetNoMap: {
+    marginTop: Spacing.md,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+  },
+  tripSheetHandle: {
+    alignSelf: 'center',
+    width: 44,
+    height: 5,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[200],
+    marginBottom: Spacing.md,
+  },
+  tripHeroSummary: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.sm,
+  },
+  tripHeroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.md,
+  },
+  tripHeroTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  tripHeroStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  tripHeroStatusDot: {
+    width: 9,
+    height: 9,
+    borderRadius: BorderRadius.full,
+  },
+  tripHeroEyebrow: {
+    color: Colors.gray[500],
+    fontSize: 11,
+    fontWeight: FontWeights.bold,
+    textTransform: 'uppercase',
+  },
+  tripHeroTitle: {
+    color: Colors.gray[900],
+    fontSize: 21,
+    lineHeight: 25,
+    fontWeight: FontWeights.bold,
+  },
+  tripPriceBadge: {
+    minWidth: 86,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 7,
+    backgroundColor: Colors.gray[900],
+  },
+  tripPriceBadgeText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  tripPriceBadgeHint: {
+    marginTop: 2,
+    color: 'rgba(255,255,255,0.68)',
+    fontSize: 10,
+    fontWeight: FontWeights.medium,
+  },
+  tripQuickFacts: {
+    marginTop: Spacing.md,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  tripQuickFact: {
+    width: '48%',
+    minHeight: 48,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    backgroundColor: Colors.gray[50],
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  tripQuickFactIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tripQuickFactLabel: {
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+  },
+  tripQuickFactValue: {
+    marginTop: 1,
+    color: Colors.gray[900],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  tripInlineProgress: {
+    marginTop: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.info + '08',
+    borderWidth: 1,
+    borderColor: Colors.info + '18',
+    padding: Spacing.sm,
+  },
+  tripInlineProgressTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.xs,
+  },
+  tripInlineProgressLabel: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+  },
+  tripInlineProgressValue: {
+    color: Colors.info,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  tripInlineProgressTrack: {
+    height: 5,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+    overflow: 'hidden',
+  },
+  tripInlineProgressFill: {
+    height: '100%',
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.info,
+  },
+  tripInlineProgressEta: {
+    marginTop: Spacing.xs,
+    color: Colors.gray[600],
+    fontSize: 11,
+    fontWeight: FontWeights.medium,
+  },
+  tripCompactRoute: {
+    marginTop: Spacing.sm,
+    flexDirection: 'row',
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    backgroundColor: Colors.white,
+    padding: Spacing.sm,
+  },
+  tripCompactRail: {
+    width: 28,
+    alignItems: 'center',
+    paddingTop: 4,
+  },
+  tripCompactDot: {
+    width: 12,
+    height: 12,
+    borderRadius: BorderRadius.full,
+    borderWidth: 3,
+    borderColor: Colors.white,
+  },
+  tripCompactStartDot: {
+    backgroundColor: Colors.success,
+  },
+  tripCompactEndDot: {
+    backgroundColor: Colors.primary,
+  },
+  tripCompactLine: {
+    width: 2,
+    flex: 1,
+    minHeight: 34,
+    marginVertical: 3,
+    backgroundColor: Colors.gray[300],
+  },
+  tripCompactRouteCopy: {
+    flex: 1,
+    gap: Spacing.sm,
+  },
+  tripCompactStop: {
+    minWidth: 0,
+  },
+  tripCompactStopTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  tripCompactStopLabel: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    textTransform: 'uppercase',
+  },
+  tripCompactDepartureLabel: {
+    color: Colors.successDark,
+  },
+  tripCompactArrivalLabel: {
+    color: Colors.primaryDark,
+  },
+  tripCompactStopTime: {
+    color: Colors.gray[800],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  tripCompactStopName: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  tripCompactStopAddress: {
+    marginTop: 1,
+    color: Colors.gray[500],
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  tripDirectInfoRow: {
+    marginTop: Spacing.sm,
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  tripDriverCompact: {
+    flex: 1,
+    minHeight: 64,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    backgroundColor: Colors.white,
+    padding: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  tripDriverCompactAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  tripDriverCompactCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  tripDriverCompactLabel: {
+    color: Colors.gray[500],
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    textTransform: 'uppercase',
+  },
+  tripDriverCompactName: {
+    marginTop: 1,
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  tripDriverCompactMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 1,
+  },
+  tripDriverCompactRating: {
+    color: Colors.gray[700],
+    fontSize: 11,
+    fontWeight: FontWeights.bold,
+  },
+  tripVehicleCompact: {
+    flex: 1,
+    minHeight: 64,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    backgroundColor: Colors.white,
+    padding: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  tripVehicleCompactIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '10',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tripVehicleCompactCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  tripVehicleCompactName: {
+    marginTop: 1,
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  tripVehicleCompactMeta: {
+    marginTop: 1,
+    color: Colors.gray[500],
+    fontSize: 11,
+    fontWeight: FontWeights.medium,
+  },
+  tripInlineActions: {
+    marginTop: Spacing.sm,
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  tripInlineActionButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+  },
+  tripInlineActionButtonDisabled: {
+    backgroundColor: Colors.gray[50],
+  },
+  tripInlineActionText: {
+    color: Colors.gray[800],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  tripInlineWhatsappText: {
+    color: '#25D366',
   },
   mapModalOverlay: {
     flex: 1,
@@ -3783,7 +4164,8 @@ const styles = StyleSheet.create({
   },
   trackingBanner: {
     marginHorizontal: Spacing.lg,
-    marginTop: Spacing.lg,
+    marginTop: 0,
+    marginBottom: Spacing.md,
     padding: Spacing.md,
     backgroundColor: Colors.info + '08',
     borderRadius: 16,
@@ -3833,12 +4215,14 @@ const styles = StyleSheet.create({
   },
   statusContainer: {
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.lg,
+    paddingTop: 0,
     paddingBottom: Spacing.md,
   },
   statusCard: {
-    borderRadius: 20,
-    padding: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
   },
   statusHeader: {
     flexDirection: 'row',
@@ -3887,8 +4271,8 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.md,
   },
   sectionCard: {
-    backgroundColor: Colors.white,
-    borderRadius: 24,
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
     borderWidth: 1,
     borderColor: Colors.gray[100],
@@ -3898,7 +4282,7 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     color: Colors.gray[400],
     marginBottom: Spacing.lg,
-    letterSpacing: 1,
+    letterSpacing: 0,
   },
   passengerSecurityCard: {
     borderColor: Colors.primary + '35',
@@ -4047,25 +4431,25 @@ const styles = StyleSheet.create({
     width: 32,
   },
   routeIconStart: {
-    width: 28,
-    height: 28,
-    backgroundColor: Colors.success + '15',
-    borderRadius: 10,
+    width: 32,
+    height: 32,
+    backgroundColor: Colors.success,
+    borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
   routeIconEnd: {
-    width: 28,
-    height: 28,
-    backgroundColor: Colors.primary + '15',
-    borderRadius: 10,
+    width: 32,
+    height: 32,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
   routeDivider: {
     width: 2,
     height: 44,
-    backgroundColor: Colors.gray[100],
+    backgroundColor: Colors.gray[300],
     marginVertical: 4,
   },
   routeContent: {
@@ -4085,23 +4469,25 @@ const styles = StyleSheet.create({
   },
   routeTime: {
     fontSize: 13,
-    color: Colors.primary,
+    color: Colors.gray[900],
     fontWeight: FontWeights.bold,
     marginTop: 6,
   },
   driverInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.gray[50],
+    backgroundColor: Colors.white,
     padding: Spacing.md,
-    borderRadius: 20,
+    borderRadius: BorderRadius.lg,
     marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
   },
   driverAvatar: {
     width: 56,
     height: 56,
     backgroundColor: Colors.gray[200],
-    borderRadius: 18,
+    borderRadius: BorderRadius.full,
     marginRight: Spacing.md,
     overflow: 'hidden',
     alignItems: 'center',
@@ -4165,7 +4551,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.white,
     paddingVertical: 12,
-    borderRadius: 14,
+    borderRadius: BorderRadius.lg,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -4199,9 +4585,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: Colors.gray[50],
+    backgroundColor: Colors.white,
     padding: Spacing.md,
-    borderRadius: 16,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
   },
   detailLeft: {
     flexDirection: 'row',
@@ -4237,13 +4625,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,
     // paddingBottom is set dynamically via useSafeAreaInsets
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray[100],
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
     elevation: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -10 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
   },
   actionsContainer: {
     // Container inside sticky footer
@@ -4251,7 +4639,7 @@ const styles = StyleSheet.create({
   actionButton: {
     backgroundColor: Colors.primary,
     height: 56,
-    borderRadius: 18,
+    borderRadius: BorderRadius.lg,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

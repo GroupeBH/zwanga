@@ -2092,34 +2092,53 @@ export default function PublishScreen() {
                     style={styles.vehicleScrollView}
                     contentContainerStyle={styles.vehicleScrollContent}
                   >
-                    {activeVehicles.map((vehicle) => (
-                      <TouchableOpacity
-                        key={vehicle.id}
-                        style={[
-                          styles.vehicleCard,
-                          selectedVehicleId === vehicle.id && styles.vehicleCardActive,
-                        ]}
-                        onPress={() => setSelectedVehicleId(vehicle.id)}
-                      >
-                        <View style={styles.vehicleCardHeader}>
-                          <Ionicons
-                            name="car"
-                            size={24}
-                            color={selectedVehicleId === vehicle.id ? Colors.primary : Colors.gray[600]}
-                          />
-                          {selectedVehicleId === vehicle.id && (
-                            <View style={styles.vehicleCardBadge}>
-                              <Ionicons name="checkmark" size={14} color={Colors.white} />
+                    {activeVehicles.map((vehicle) => {
+                      const isSelected = selectedVehicleId === vehicle.id;
+                      const vehicleName = `${vehicle.brand} ${vehicle.model}`.trim();
+
+                      return (
+                        <TouchableOpacity
+                          key={vehicle.id}
+                          style={[
+                            styles.vehicleCard,
+                            isSelected && styles.vehicleCardActive,
+                          ]}
+                          onPress={() => setSelectedVehicleId(vehicle.id)}
+                          activeOpacity={0.86}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: isSelected }}
+                        >
+                          <View style={[styles.vehicleCardAccent, isSelected && styles.vehicleCardAccentActive]} />
+                          <View style={styles.vehicleCardHeader}>
+                            <View style={[styles.vehicleCardIconWrap, isSelected && styles.vehicleCardIconWrapActive]}>
+                              <Ionicons
+                                name="car-sport"
+                                size={22}
+                                color={isSelected ? Colors.white : Colors.primary}
+                              />
                             </View>
-                          )}
-                        </View>
-                        <Text style={styles.vehicleCardBrand}>{vehicle.brand}</Text>
-                        <Text style={styles.vehicleCardModel}>{vehicle.model}</Text>
-                        <Text style={styles.vehicleCardDetails}>
-                          {vehicle.color} • {vehicle.licensePlate}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                            <View style={[styles.vehicleCardStatus, isSelected && styles.vehicleCardStatusActive]}>
+                              {isSelected ? <Ionicons name="checkmark" size={12} color={Colors.white} /> : null}
+                              <Text style={[styles.vehicleCardStatusText, isSelected && styles.vehicleCardStatusTextActive]}>
+                                {isSelected ? 'Choisi' : 'Actif'}
+                              </Text>
+                            </View>
+                          </View>
+                          <Text style={styles.vehicleCardBrand} numberOfLines={1}>
+                            {vehicleName || 'Vehicule'}
+                          </Text>
+                          <View style={styles.vehiclePlatePill}>
+                            <Ionicons name="card-outline" size={13} color={Colors.gray[500]} />
+                            <Text style={styles.vehiclePlateText} numberOfLines={1}>
+                              {vehicle.licensePlate}
+                            </Text>
+                          </View>
+                          <Text style={styles.vehicleCardDetails} numberOfLines={1}>
+                            {vehicle.color || 'Couleur non precisee'}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </ScrollView>
 
                   <TouchableOpacity
@@ -3759,33 +3778,76 @@ const styles = StyleSheet.create({
     paddingRight: Spacing.md,
   },
   vehicleCard: {
-    width: 140,
+    width: 178,
+    minHeight: 158,
     padding: Spacing.md,
     backgroundColor: Colors.white,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: Colors.gray[200],
     borderRadius: BorderRadius.xl,
-    gap: Spacing.xs,
+    overflow: 'hidden',
     shadowColor: Colors.black,
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 2,
   },
   vehicleCardActive: {
     borderColor: Colors.primary,
-    backgroundColor: Colors.primary + '08',
+    backgroundColor: '#FFF7F3',
     shadowColor: Colors.primary,
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
     elevation: 4,
-    transform: [{ scale: 1.02 }],
+  },
+  vehicleCardAccent: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 4,
+    backgroundColor: Colors.gray[200],
+  },
+  vehicleCardAccentActive: {
+    backgroundColor: Colors.primary,
   },
   vehicleCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  vehicleCardIconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 18,
+    backgroundColor: Colors.primary + '12',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleCardIconWrapActive: {
+    backgroundColor: Colors.primary,
+  },
+  vehicleCardStatus: {
+    minHeight: 28,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.gray[100],
+  },
+  vehicleCardStatusActive: {
+    backgroundColor: Colors.primary,
+  },
+  vehicleCardStatusText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[600],
+  },
+  vehicleCardStatusTextActive: {
+    color: Colors.white,
   },
   vehicleCardBadge: {
     width: 20,
@@ -3797,16 +3859,32 @@ const styles = StyleSheet.create({
   },
   vehicleCardBrand: {
     fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
+    fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-  },
-  vehicleCardModel: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
+    marginBottom: Spacing.sm,
   },
   vehicleCardDetails: {
+    marginTop: Spacing.sm,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    fontWeight: FontWeights.medium,
+  },
+  vehiclePlatePill: {
+    minHeight: 32,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[50],
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    paddingHorizontal: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  vehiclePlateText: {
+    flex: 1,
     fontSize: FontSizes.xs,
-    color: Colors.gray[500],
+    color: Colors.gray[800],
+    fontWeight: FontWeights.bold,
   },
   addVehicleButtonSecondary: {
     flexDirection: 'row',
