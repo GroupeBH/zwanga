@@ -5,6 +5,7 @@ import { VehicleFormModal } from '@/components/VehicleFormModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackEvent } from '@/services/analytics';
 import { useGeocodeMutation } from '@/store/api/googleMapsApi';
 import { useCreateRecurringTripMutation, useCreateTripMutation } from '@/store/api/tripApi';
@@ -18,6 +19,7 @@ import {
   mapGeocodeResponseToSelection,
   type ManualGeocodeStatus,
 } from '@/utils/manualAddressGeocode';
+import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
 import { getRouteCoordinates } from '@/utils/routeApi';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
@@ -25,7 +27,7 @@ import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { startTransition, useEffect, useMemo, useState } from 'react';
+import React, { startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
@@ -161,6 +163,12 @@ export default function PublishScreen() {
   const [createRecurringTrip, { isLoading: isPublishingRecurring }] = useCreateRecurringTripMutation();
   const [geocodeManualAddress] = useGeocodeMutation();
   const { showDialog } = useDialog();
+  const { getCurrentLocation, lastKnownLocation } = useUserLocation({
+    autoRequest: false,
+    trackingProfile: 'nearby',
+  });
+  const departureAutoFillStartedRef = useRef(false);
+  const departureTouchedRef = useRef(false);
 
   const [kycModalVisible, setKycModalVisible] = useState(false);
   const [kycWizardVisible, setKycWizardVisible] = useState(false);
@@ -393,6 +401,8 @@ export default function PublishScreen() {
   }, [activeVehicles, selectedVehicleId, user?.vehicle?.id]);
 
   const resetForm = () => {
+    departureAutoFillStartedRef.current = false;
+    departureTouchedRef.current = false;
     setStep('route');
     setDepartureLocation(null);
     setArrivalLocation(null);
@@ -520,6 +530,71 @@ export default function PublishScreen() {
     departureLocation,
     routeCoordinates,
   ]);
+
+  useEffect(() => {
+    if (
+      departureAutoFillStartedRef.current ||
+      departureTouchedRef.current ||
+      departureLocation ||
+      departureManualAddress.trim()
+    ) {
+      return;
+    }
+
+    departureAutoFillStartedRef.current = true;
+
+    const initializeDeparture = async () => {
+      const applyCoordinate = async (coordinate: LatLng) => {
+        const selection = await buildCurrentLocationSelection(coordinate);
+        if (departureTouchedRef.current) {
+          return false;
+        }
+
+        setManualAddressTarget(null);
+        setDepartureLocation(selection);
+        setDeparturePointStatus('confirmed');
+        setDepartureManualAddress(selection.title || selection.address);
+        setAddressSectionStep('arrival');
+        return true;
+      };
+      const knownLatitude = Number(lastKnownLocation?.coords.latitude);
+      const knownLongitude = Number(lastKnownLocation?.coords.longitude);
+      const knownTimestamp = Number(lastKnownLocation?.timestamp);
+      const knownCoordinate =
+        Number.isFinite(knownLatitude) &&
+        Number.isFinite(knownLongitude) &&
+        Number.isFinite(knownTimestamp) &&
+        Date.now() - knownTimestamp <= 15 * 60 * 1000
+          ? { latitude: knownLatitude, longitude: knownLongitude }
+          : null;
+
+      if (knownCoordinate) {
+        await applyCoordinate(knownCoordinate);
+      }
+
+      if (departureTouchedRef.current) {
+        return;
+      }
+
+      const position = await getCurrentLocation();
+      if (!position || departureTouchedRef.current) {
+        return;
+      }
+
+      const currentCoordinate = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      };
+      if (knownCoordinate && areSameCoordinate(knownCoordinate, currentCoordinate)) {
+        return;
+      }
+
+      await applyCoordinate(currentCoordinate);
+    };
+
+    void initializeDeparture();
+  }, [departureLocation, departureManualAddress, getCurrentLocation, lastKnownLocation]);
+
   const renderManualGeocodeStatus = (status: ManualGeocodeStatus) => {
     if (status === 'idle') {
       return null;
@@ -637,6 +712,9 @@ export default function PublishScreen() {
   };
 
   const openLocationPicker = (type: 'departure' | 'arrival', initialQuery = '') => {
+    if (type === 'departure') {
+      departureTouchedRef.current = true;
+    }
     setLocationPickerInitialQuery(initialQuery);
     setActiveLocationType(type);
   };
@@ -647,6 +725,7 @@ export default function PublishScreen() {
   };
 
   const swapRoutePoints = () => {
+    departureTouchedRef.current = true;
     const tempLoc = departureLocation;
     const tempStatus = departurePointStatus;
     const tempManual = departureManualAddress;
@@ -667,6 +746,7 @@ export default function PublishScreen() {
   const handleLocationSelected = (selection: MapLocationSelection) => {
     setManualAddressTarget(null);
     if (activeLocationType === 'departure') {
+      departureTouchedRef.current = true;
       setDepartureLocation(selection);
       setDeparturePointStatus('confirmed');
       setDepartureManualAddress(selection.title || selection.address);
@@ -1563,6 +1643,7 @@ export default function PublishScreen() {
                         manualAddressTarget === 'departure' && styles.modeToggleActive,
                       ]}
                       onPress={() => {
+                        departureTouchedRef.current = true;
                         setManualAddressTarget(
                           manualAddressTarget === 'departure' ? null : 'departure',
                         );
@@ -1581,6 +1662,7 @@ export default function PublishScreen() {
                         style={styles.inlineManualInput}
                         value={departureManualAddress}
                         onChangeText={(value) => {
+                          departureTouchedRef.current = true;
                           setDepartureManualAddress(value);
                           setDepartureLocation(null);
                           setDeparturePointStatus(null);

@@ -1,4 +1,5 @@
 import { getTabBarMetrics } from '@/constants/navigation';
+import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { useUserLocation } from '@/hooks/useUserLocation';
@@ -303,6 +304,7 @@ function TripMapMarker({ isSelected, trip }: TripMapMarkerProps) {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { showDialog } = useDialog();
   const isFocused = useIsFocused();
   const dispatch = useAppDispatch();
   const mapRef = useRef<MapView>(null);
@@ -312,8 +314,10 @@ export default function HomeScreen() {
   const storedTrips = useAppSelector(selectAvailableTrips);
   const locationRadiusKm = useAppSelector(selectLocationRadius);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
-  const [tripsSheetExpanded, setTripsSheetExpanded] = useState(false);
-  const { lastKnownLocation } = useUserLocation({
+  const [tripsSheetOpen, setTripsSheetOpen] = useState(true);
+  const [isCenteringOnUser, setIsCenteringOnUser] = useState(false);
+  const [mapFocusedOnUser, setMapFocusedOnUser] = useState(false);
+  const { getCurrentLocation, lastKnownLocation } = useUserLocation({
     autoRequest: isFocused,
     trackingProfile: 'nearby',
   });
@@ -621,10 +625,10 @@ export default function HomeScreen() {
   }, [selectedTrip, tripsWithMapCoordinates]);
 
   useEffect(() => {
-    if (isFocused) {
+    if (isFocused && !mapFocusedOnUser) {
       mapRef.current?.animateToRegion(mapRegion, 420);
     }
-  }, [isFocused, mapRegion]);
+  }, [isFocused, mapFocusedOnUser, mapRegion]);
 
   const firstName = currentUser?.firstName || currentUser?.name?.split(' ')[0] || 'Kinshasa';
   const avatarUri = currentUser?.profilePicture || currentUser?.avatar;
@@ -632,13 +636,66 @@ export default function HomeScreen() {
   const isCompactScreen = width <= 360;
   const tabBarMetrics = getTabBarMetrics(insets.bottom);
   const sheetBottomOffset = Platform.OS === 'ios' ? Math.max(tabBarMetrics.height - 2, 0) : 0;
-  const collapsedSheetHeight = Math.min(Math.max(height * 0.34, isCompactScreen ? 296 : 318), 348);
-  const sheetHeight = tripsSheetExpanded ? Math.min(height * 0.68, 540) : collapsedSheetHeight;
+  const openSheetHeight = Math.min(Math.max(height * 0.34, isCompactScreen ? 296 : 318), 348);
+  const retractedSheetHeight = 78;
+  const sheetHeight = tripsSheetOpen ? openSheetHeight : retractedSheetHeight;
+  const locationButtonBottom = sheetBottomOffset + sheetHeight + Spacing.md;
   const tripCardWidth = Math.min(width - 56, 342);
   const availableTripsLabel = `${latestTrips.length} trajet${latestTrips.length > 1 ? 's' : ''}`;
   const showInitialHomeLoader = tripsLoading && !remoteTrips && storedTrips.length === 0;
   const openTripDetail = (tripId: string) => {
     router.push(`/trip/${tripId}`);
+  };
+
+  const selectTripOnMap = (tripId: string) => {
+    setMapFocusedOnUser(false);
+    setSelectedTripId(tripId);
+  };
+
+  const handleReturnToUserLocation = async () => {
+    if (isCenteringOnUser) {
+      return;
+    }
+
+    setIsCenteringOnUser(true);
+
+    try {
+      const knownLatitude = Number(lastKnownLocation?.coords?.latitude);
+      const knownLongitude = Number(lastKnownLocation?.coords?.longitude);
+      const knownCoordinate =
+        Number.isFinite(knownLatitude) && Number.isFinite(knownLongitude)
+          ? { latitude: knownLatitude, longitude: knownLongitude }
+          : null;
+      const currentLocation = knownCoordinate ? null : await getCurrentLocation();
+      const coordinate = knownCoordinate ??
+        (currentLocation
+          ? {
+              latitude: currentLocation.coords.latitude,
+              longitude: currentLocation.coords.longitude,
+            }
+          : null);
+
+      if (!coordinate) {
+        showDialog({
+          variant: 'warning',
+          title: 'Localisation indisponible',
+          message: 'Activez la localisation pour revenir à votre position sur la carte.',
+        });
+        return;
+      }
+
+      setMapFocusedOnUser(true);
+      mapRef.current?.animateToRegion(
+        {
+          ...coordinate,
+          latitudeDelta: 0.025,
+          longitudeDelta: 0.025,
+        },
+        480,
+      );
+    } finally {
+      setIsCenteringOnUser(false);
+    }
   };
 
   const showTripMarkerCallout = (tripId: string) => {
@@ -651,7 +708,7 @@ export default function HomeScreen() {
 
   const handleTripMarkerPress = (tripId: string, isSelected: boolean) => {
     if (!USE_ANDROID_TRIP_MARKER_IMAGE) {
-      setSelectedTripId(tripId);
+      selectTripOnMap(tripId);
       return;
     }
 
@@ -660,7 +717,7 @@ export default function HomeScreen() {
       return;
     }
 
-    setSelectedTripId(tripId);
+    selectTripOnMap(tripId);
     showTripMarkerCallout(tripId);
   };
 
@@ -687,6 +744,7 @@ export default function HomeScreen() {
         style={styles.map}
         initialRegion={mapRegion}
         showsCompass={false}
+        showsUserLocation={Boolean(lastKnownLocation?.coords)}
         showsMyLocationButton={false}
         moveOnMarkerPress={!USE_ANDROID_TRIP_MARKER_IMAGE}
         toolbarEnabled={false}
@@ -751,6 +809,21 @@ export default function HomeScreen() {
       </MapView>
 
       <View style={styles.mapVeil} pointerEvents="none" />
+
+      <TouchableOpacity
+        activeOpacity={0.82}
+        accessibilityRole="button"
+        accessibilityLabel="Revenir à ma position"
+        style={[styles.locationButton, { bottom: locationButtonBottom }]}
+        onPress={handleReturnToUserLocation}
+        disabled={isCenteringOnUser}
+      >
+        {isCenteringOnUser ? (
+          <ActivityIndicator size="small" color={HOME_COLORS.navy} />
+        ) : (
+          <Ionicons name="locate" size={22} color={HOME_COLORS.navy} />
+        )}
+      </TouchableOpacity>
 
       <View style={[styles.topOverlay, { top: insets.top + Spacing.sm }]}>
         <View style={styles.headerCard}>
@@ -842,39 +915,47 @@ export default function HomeScreen() {
       </View>
 
       <View style={[styles.tripsSheet, { bottom: sheetBottomOffset, height: sheetHeight }]}>
-        <TouchableOpacity
-          activeOpacity={0.86}
-          style={styles.sheetHeader}
-          onPress={() => setTripsSheetExpanded((current) => !current)}
-        >
-          <View>
+        <View style={styles.sheetHeader}>
+          <TouchableOpacity
+            activeOpacity={0.78}
+            accessibilityRole="button"
+            accessibilityLabel={tripsSheetOpen ? 'Rétracter la liste des trajets' : 'Afficher la liste des trajets'}
+            style={styles.sheetHeaderCopy}
+            onPress={() => setTripsSheetOpen((current) => !current)}
+          >
             <Text style={styles.sheetTitle}>Trajets autour de vous</Text>
             <Text style={styles.sheetSubtitle}>
               {latestTrips.length > 0 ? `${availableTripsLabel} à parcourir` : 'Aucune offre pour le moment'}
             </Text>
-          </View>
+          </TouchableOpacity>
           <View style={styles.sheetHeaderActions}>
             <TouchableOpacity activeOpacity={0.75} onPress={() => router.push('/search')}>
               <Text style={styles.seeAllText}>Voir tout</Text>
             </TouchableOpacity>
-            <View style={styles.sheetToggle}>
+            <TouchableOpacity
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel={tripsSheetOpen ? 'Rétracter la liste des trajets' : 'Afficher la liste des trajets'}
+              style={styles.sheetToggle}
+              onPress={() => setTripsSheetOpen((current) => !current)}
+            >
               <Ionicons
-                name={tripsSheetExpanded ? 'chevron-down' : 'chevron-up'}
+                name={tripsSheetOpen ? 'chevron-down' : 'chevron-up'}
                 size={18}
                 color={HOME_COLORS.ink}
               />
-            </View>
+            </TouchableOpacity>
           </View>
-        </TouchableOpacity>
+        </View>
 
-        {tripsLoading && (
+        {tripsSheetOpen && tripsLoading && (
           <View style={styles.sheetState}>
             <ActivityIndicator color={Colors.primary} />
             <Text style={styles.sheetStateText}>Chargement des trajets...</Text>
           </View>
         )}
 
-        {tripsError && !tripsLoading && (
+        {tripsSheetOpen && tripsError && !tripsLoading && (
           <View style={styles.sheetState}>
             <Ionicons name="alert-circle-outline" size={24} color={Colors.danger} />
             <Text style={styles.sheetStateText}>Impossible de charger les trajets.</Text>
@@ -884,7 +965,7 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {!tripsLoading && !tripsError && latestTrips.length === 0 && (
+        {tripsSheetOpen && !tripsLoading && !tripsError && latestTrips.length === 0 && (
           <View style={styles.emptyCard}>
             <View style={styles.emptyIcon}>
               <Ionicons name="car-outline" size={24} color={HOME_COLORS.navy} />
@@ -896,7 +977,7 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {!tripsLoading && !tripsError && latestTrips.length > 0 && (
+        {tripsSheetOpen && !tripsLoading && !tripsError && latestTrips.length > 0 && (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -909,7 +990,7 @@ export default function HomeScreen() {
                 trip={trip}
                 isBooked={bookedTripIds.has(trip.id)}
                 isSelected={trip.id === selectedTrip?.id}
-                onSelect={() => setSelectedTripId(trip.id)}
+                onSelect={() => selectTripOnMap(trip.id)}
                 onOpen={() => router.push(`/trip/${trip.id}`)}
               />
             ))}
@@ -977,6 +1058,30 @@ const styles = StyleSheet.create({
   mapVeil: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(248,249,250,0.12)',
+  },
+  locationButton: {
+    position: 'absolute',
+    right: Spacing.lg,
+    zIndex: 8,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderWidth: 1,
+    borderColor: HOME_COLORS.softLine,
+    ...Platform.select({
+      ios: {
+        shadowColor: Colors.black,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.14,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
   },
   tripMapMarkerFrame: {
     width: 118,
@@ -1343,6 +1448,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  sheetHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 2,
   },
   sheetTitle: {
     color: HOME_COLORS.text,

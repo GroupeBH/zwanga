@@ -92,6 +92,68 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
     }
   }, [dispatch, startWatching]);
 
+  const getCurrentLocation = useCallback(async () => {
+    try {
+      let { status } = await Location.getForegroundPermissionsAsync();
+      if (status !== Location.PermissionStatus.GRANTED) {
+        const permission = await Location.requestForegroundPermissionsAsync();
+        status = permission.status;
+      }
+
+      dispatch(setLocationPermission(status as any));
+      if (status !== Location.PermissionStatus.GRANTED) {
+        return null;
+      }
+
+      const enabled = await Location.hasServicesEnabledAsync();
+      dispatch(setTrackingEnabled(enabled));
+      if (!enabled) {
+        return null;
+      }
+
+      const preferredAccuracy = isNearbyTracking
+        ? Location.Accuracy.Balanced
+        : Location.Accuracy.High;
+      let location = await Location.getLastKnownPositionAsync({
+        maxAge: 2 * 60 * 1000,
+        requiredAccuracy: isNearbyTracking ? 250 : 100,
+      });
+
+      if (!location) {
+        try {
+          location = await Location.getCurrentPositionAsync({
+            accuracy: preferredAccuracy,
+          });
+        } catch (currentLocationError) {
+          location = await Location.getLastKnownPositionAsync({
+            maxAge: 15 * 60 * 1000,
+            requiredAccuracy: 1000,
+          });
+
+          if (!location) {
+            throw currentLocationError;
+          }
+        }
+      }
+
+      dispatch(
+        setLastKnownLocation({
+          coords: {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          },
+          timestamp: location.timestamp,
+          accuracy: location.coords.accuracy,
+        }),
+      );
+
+      return location;
+    } catch (error) {
+      console.warn('Impossible de récupérer la position actuelle', error);
+      return null;
+    }
+  }, [dispatch, isNearbyTracking]);
+
   useEffect(() => {
     if (!options.autoRequest) {
       return;
@@ -124,6 +186,7 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
     permissionStatus,
     lastKnownLocation,
     requestPermission,
+    getCurrentLocation,
     startWatching,
     stopWatching,
   };
