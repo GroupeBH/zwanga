@@ -7,6 +7,17 @@ import locationReducer from './slices/locationSlice';
 import tripsReducer from './slices/tripsSlice';
 import { setStoreAccessor } from './storeAccessor';
 
+const apiQueryActionTypes = [
+  `${zwangaApi.reducerPath}/executeQuery/fulfilled`,
+  `${zwangaApi.reducerPath}/executeMutation/fulfilled`,
+];
+
+const largeStatePaths = [
+  'trips.items',
+  'messages.conversations',
+  zwangaApi.reducerPath,
+];
+
 export const store = configureStore({
   reducer: {
     auth: authReducer,
@@ -17,10 +28,14 @@ export const store = configureStore({
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
+      immutableCheck: {
+        warnAfter: 128,
+        ignoredPaths: largeStatePaths,
+      },
       serializableCheck: {
         warnAfter: 128,
         // Ignore these action types
-        ignoredActions: ['trips/addTrip', 'trips/updateTrip'],
+        ignoredActions: ['trips/addTrip', 'trips/updateTrip', ...apiQueryActionTypes],
         // Ignore these field paths in all actions
         ignoredActionPaths: [
           'payload.departureTime', 
@@ -32,7 +47,7 @@ export const store = configureStore({
           'meta.arg.originalArgs',
         ],
         // Ignore these paths in the state
-        ignoredPaths: ['trips.items', 'messages.conversations', zwangaApi.reducerPath],
+        ignoredPaths: largeStatePaths,
       },
     }).concat(zwangaApi.middleware),
 });

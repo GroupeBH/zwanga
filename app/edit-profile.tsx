@@ -99,7 +99,7 @@ export default function EditProfileScreen() {
           isDriver: updated.isDriver,
         }),
       );
-      await refetch();
+      void refetch();
       const successMessage = wantsToBeDriver && canBecomeDriver
         ? 'Profil mis à jour. N\'oubliez pas d\'ajouter un véhicule et de compléter la vérification KYC pour devenir conducteur.'
         : 'Profil mis à jour avec succès.';
@@ -120,7 +120,7 @@ export default function EditProfileScreen() {
 
   const handleChangePhoto = async () => {
     await changeProfilePhoto();
-    await refetch();
+    void refetch();
   };
 
   return (

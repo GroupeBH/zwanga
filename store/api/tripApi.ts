@@ -323,6 +323,10 @@ const cleanObject = <T extends Record<string, unknown>>(value: T): Partial<T> =>
   ) as Partial<T>;
 };
 
+const tripListTag = { type: 'Trip' as const, id: 'LIST' };
+const myTripsListTag = { type: 'MyTrips' as const, id: 'LIST' };
+const recurringTripListTag = { type: 'RecurringTrip' as const, id: 'LIST' };
+
 /**
  * API trajets
  * Gère la création, recherche, réservation et gestion des trajets
@@ -408,8 +412,8 @@ export const tripApi = baseApi.injectEndpoints({
       transformResponse: (response: ServerTrip[]) => response.map(mapServerTripToClient),
       providesTags: (result: Trip[] | undefined) =>
         result
-          ? [...result.map(({ id }) => ({ type: 'Trip' as const, id })), 'Trip']
-          : ['Trip'],
+          ? [...result.map(({ id }) => ({ type: 'Trip' as const, id })), tripListTag]
+          : [tripListTag],
     }),
     getAllTrips: builder.query<Trip[], any>({
       query: () => ({
@@ -418,8 +422,8 @@ export const tripApi = baseApi.injectEndpoints({
       transformResponse: (response: ServerTrip[]) => response.map(mapServerTripToClient),
       providesTags: (result: Trip[] | undefined) =>
         result
-          ? [...result.map(({ id }) => ({ type: 'Trip' as const, id })), 'Trip']
-          : ['Trip'],
+          ? [...result.map(({ id }) => ({ type: 'Trip' as const, id })), tripListTag]
+          : [tripListTag],
     }),
     getMyTrips: builder.query<Trip[], void>({
       query: () => ({
@@ -428,8 +432,8 @@ export const tripApi = baseApi.injectEndpoints({
       transformResponse: (response: ServerTrip[]) => response.map(mapServerTripToClient),
       providesTags: (result) =>
         result
-          ? [...result.map(({ id }) => ({ type: 'MyTrips' as const, id })), 'MyTrips']
-          : ['MyTrips'],
+          ? [...result.map(({ id }) => ({ type: 'MyTrips' as const, id })), myTripsListTag]
+          : [myTripsListTag],
     }),
     getMyRecurringTrips: builder.query<RecurringTripTemplate[], void>({
       query: () => ({
@@ -439,8 +443,8 @@ export const tripApi = baseApi.injectEndpoints({
         response.map(mapServerRecurringTripToClient),
       providesTags: (result) =>
         result
-          ? [...result.map(({ id }) => ({ type: 'RecurringTrip' as const, id })), 'RecurringTrip']
-          : ['RecurringTrip'],
+          ? [...result.map(({ id }) => ({ type: 'RecurringTrip' as const, id })), recurringTripListTag]
+          : [recurringTripListTag],
     }),
     searchTripsByCoordinates: builder.mutation<Trip[], TripSearchByPointsPayload>({
       query: (body: TripSearchByPointsPayload) => ({
@@ -459,8 +463,8 @@ export const tripApi = baseApi.injectEndpoints({
       transformResponse: (response: ServerTrip[]) => response.map(mapServerTripToClient),
       providesTags: (result: Trip[] | undefined) =>
         result
-          ? [...result.map(({ id }) => ({ type: 'Trip' as const, id })), 'Trip']
-          : ['Trip'],
+          ? [...result.map(({ id }) => ({ type: 'Trip' as const, id })), tripListTag]
+          : [tripListTag],
     }),
 
 
@@ -479,7 +483,7 @@ export const tripApi = baseApi.injectEndpoints({
         body: trip,
       }),
       transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
-      invalidatesTags: ['Trip', 'MyTrips'],
+      invalidatesTags: [tripListTag, myTripsListTag],
     }),
     createRecurringTrip: builder.mutation<RecurringTripTemplate, CreateRecurringTripPayload>({
       query: (trip: CreateRecurringTripPayload) => ({
@@ -489,7 +493,7 @@ export const tripApi = baseApi.injectEndpoints({
       }),
       transformResponse: (response: ServerRecurringTripTemplate) =>
         mapServerRecurringTripToClient(response),
-      invalidatesTags: ['RecurringTrip', 'Trip', 'MyTrips'],
+      invalidatesTags: [recurringTripListTag, tripListTag, myTripsListTag],
     }),
     pauseRecurringTrip: builder.mutation<RecurringTripTemplate, string>({
       query: (id: string) => ({
@@ -500,9 +504,9 @@ export const tripApi = baseApi.injectEndpoints({
         mapServerRecurringTripToClient(response),
       invalidatesTags: (_result, _error, id) => [
         { type: 'RecurringTrip', id },
-        'RecurringTrip',
-        'Trip',
-        'MyTrips',
+        recurringTripListTag,
+        tripListTag,
+        myTripsListTag,
       ],
     }),
     resumeRecurringTrip: builder.mutation<RecurringTripTemplate, string>({
@@ -514,9 +518,9 @@ export const tripApi = baseApi.injectEndpoints({
         mapServerRecurringTripToClient(response),
       invalidatesTags: (_result, _error, id) => [
         { type: 'RecurringTrip', id },
-        'RecurringTrip',
-        'Trip',
-        'MyTrips',
+        recurringTripListTag,
+        tripListTag,
+        myTripsListTag,
       ],
     }),
 
@@ -531,8 +535,8 @@ export const tripApi = baseApi.injectEndpoints({
       invalidatesTags: (_result, _error, { id }: { id: string }) => [
         { type: 'Trip', id },
         { type: 'MyTrips', id },
-        'Trip',
-        'MyTrips',
+        tripListTag,
+        myTripsListTag,
       ],
     }),
 
@@ -545,8 +549,8 @@ export const tripApi = baseApi.injectEndpoints({
       invalidatesTags: (_result, _error, id: string) => [
         { type: 'Trip', id },
         { type: 'MyTrips', id },
-        'Trip',
-        'MyTrips',
+        tripListTag,
+        myTripsListTag,
       ],
     }),
 
@@ -560,8 +564,8 @@ export const tripApi = baseApi.injectEndpoints({
       invalidatesTags: (_result, _error, id: string) => [
         { type: 'Trip', id },
         { type: 'MyTrips', id },
-        'Trip',
-        'MyTrips',
+        tripListTag,
+        myTripsListTag,
       ],
     }),
 
@@ -575,8 +579,8 @@ export const tripApi = baseApi.injectEndpoints({
       invalidatesTags: (_result, _error, id: string) => [
         { type: 'Trip', id },
         { type: 'MyTrips', id },
-        'Trip',
-        'MyTrips',
+        tripListTag,
+        myTripsListTag,
       ],
     }),
 
@@ -592,7 +596,6 @@ export const tripApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: (_result, _error, { tripId }: { tripId: string }) => [
         { type: 'Trip', id: tripId },
-        'Trip',
       ],
     }),
 
@@ -614,7 +617,7 @@ export const tripApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: (_result, _error, { tripId }: { tripId: string }) => [
         { type: 'Trip', id: tripId },
-        'Trip',
+        tripListTag,
       ],
     }),
     setDriverEmergencyContacts: builder.mutation<
@@ -629,8 +632,7 @@ export const tripApi = baseApi.injectEndpoints({
       invalidatesTags: (_result, _error, { tripId }) => [
         { type: 'Trip', id: tripId },
         { type: 'MyTrips', id: tripId },
-        'Trip',
-        'MyTrips',
+        myTripsListTag,
       ],
     }),
   }),

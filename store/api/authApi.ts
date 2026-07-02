@@ -7,6 +7,8 @@ import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 import { userApi } from './userApi';
 
+const currentUserTag = { type: 'User' as const, id: 'CURRENT' };
+
 /**
  * Interface de réponse d'authentification avec tokens JWT
  * Note: Le backend ne retourne plus l'utilisateur dans la réponse (commenté)
@@ -62,7 +64,7 @@ export const authApi = baseApi.injectEndpoints({
           console.error('[authApi] Erreur lors du stockage des tokens après login:', error);
         }
       },
-      invalidatesTags: ['User'],
+      invalidatesTags: [currentUserTag],
     }),
 
     // Inscription d'un nouvel utilisateur
@@ -141,7 +143,7 @@ export const authApi = baseApi.injectEndpoints({
           console.error('[authApi] Erreur lors du login Google mobile:', error);
         }
       },
-      invalidatesTags: ['User'],
+      invalidatesTags: [currentUserTag],
     }),
 
     // Apple mobile (login ou signup)
@@ -197,7 +199,7 @@ export const authApi = baseApi.injectEndpoints({
           console.error('[authApi] Erreur lors du login Apple mobile:', error);
         }
       },
-      invalidatesTags: ['User'],
+      invalidatesTags: [currentUserTag],
     }),
 
     // Vérification du numéro de téléphone avec code SMS
@@ -216,7 +218,7 @@ export const authApi = baseApi.injectEndpoints({
         method: 'POST',
         body: data,
       }),
-      invalidatesTags: ['User'],
+      invalidatesTags: [currentUserTag],
     }),
 
     // Déconnexion - invalide le refresh token côté serveur

@@ -14,14 +14,17 @@ type UpdateVehiclePayload = Partial<CreateVehiclePayload> & {
   isActive?: boolean;
 };
 
+const vehicleListTag = { type: 'Vehicle' as const, id: 'LIST' };
+const currentUserTag = { type: 'User' as const, id: 'CURRENT' };
+
 export const vehicleApi = baseApi.injectEndpoints({
   endpoints: (builder: BaseEndpointBuilder) => ({
     getVehicles: builder.query<Vehicle[], void>({
       query: () => '/vehicles',
       providesTags: (result: Vehicle[] | undefined) =>
         result
-          ? [...result.map(({ id }) => ({ type: 'Vehicle' as const, id })), 'Vehicle']
-          : ['Vehicle'],
+          ? [...result.map(({ id }) => ({ type: 'Vehicle' as const, id })), vehicleListTag]
+          : [vehicleListTag],
     }),
     createVehicle: builder.mutation<Vehicle, CreateVehiclePayload>({
       query: (body: CreateVehiclePayload) => ({
@@ -45,7 +48,7 @@ export const vehicleApi = baseApi.injectEndpoints({
           // L'erreur est gérée par le composant appelant.
         }
       },
-      invalidatesTags: ['Vehicle', 'User'],
+      invalidatesTags: [vehicleListTag, currentUserTag],
     }),
     updateVehicle: builder.mutation<Vehicle, { id: string; data: UpdateVehiclePayload }>({
       query: ({ id, data }: { id: string; data: UpdateVehiclePayload }) => ({
@@ -55,8 +58,8 @@ export const vehicleApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: (_result, _error, { id }: { id: string }) => [
         { type: 'Vehicle', id },
-        'Vehicle',
-        'User',
+        vehicleListTag,
+        currentUserTag,
       ],
     }),
     deleteVehicle: builder.mutation<{ message: string }, string>({
@@ -64,7 +67,11 @@ export const vehicleApi = baseApi.injectEndpoints({
         url: `/vehicles/${id}`,
         method: 'DELETE',
       }),
-      invalidatesTags: (_result, _error, id: string) => [{ type: 'Vehicle', id }, 'Vehicle', 'User'],
+      invalidatesTags: (_result, _error, id: string) => [
+        { type: 'Vehicle', id },
+        vehicleListTag,
+        currentUserTag,
+      ],
     }),
   }),
 });

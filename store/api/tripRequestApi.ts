@@ -367,6 +367,14 @@ export type TripRequestPriceRecommendation = {
   recommendedTotalPrice: number | null;
 };
 
+const tripRequestListTag = { type: 'TripRequest' as const, id: 'LIST' };
+const myTripRequestsListTag = { type: 'MyTripRequests' as const, id: 'LIST' };
+const driverOfferListTag = { type: 'DriverOffer' as const, id: 'LIST' };
+const myDriverOffersListTag = { type: 'MyDriverOffers' as const, id: 'LIST' };
+const tripListTag = { type: 'Trip' as const, id: 'LIST' };
+const myTripsListTag = { type: 'MyTrips' as const, id: 'LIST' };
+const bookingListTag = { type: 'Booking' as const, id: 'LIST' };
+
 type CreateDriverOfferPayload = {
   proposedDepartureDate: string; // ISO string date
   pricePerSeat: number;
@@ -404,7 +412,7 @@ export const tripRequestApi = baseApi.injectEndpoints({
         body: payload,
       }),
       transformResponse: (response: ServerTripRequest) => mapServerTripRequestToClient(response),
-      invalidatesTags: ['TripRequest', 'MyTripRequests'],
+      invalidatesTags: [tripRequestListTag, myTripRequestsListTag],
     }),
 
     // Récupérer toutes les demandes de trajet disponibles (pour les drivers)
@@ -424,9 +432,9 @@ export const tripRequestApi = baseApi.injectEndpoints({
         result
           ? [
               ...result.map(({ id }) => ({ type: 'TripRequest' as const, id })),
-              'TripRequest',
+              tripRequestListTag,
             ]
-          : ['TripRequest'],
+          : [tripRequestListTag],
     }),
 
     // Récupérer mes demandes de trajet (pour le passager)
@@ -438,9 +446,9 @@ export const tripRequestApi = baseApi.injectEndpoints({
         result
           ? [
               ...result.map(({ id }) => ({ type: 'TripRequest' as const, id })),
-              'MyTripRequests',
+              myTripRequestsListTag,
             ]
-          : ['MyTripRequests'],
+          : [myTripRequestsListTag],
     }),
 
     // Récupérer une demande de trajet par ID
@@ -460,8 +468,8 @@ export const tripRequestApi = baseApi.injectEndpoints({
       transformResponse: (response: ServerTripRequest) => mapServerTripRequestToClient(response),
       invalidatesTags: (_result, _error, { id }: { id: string }) => [
         { type: 'TripRequest', id },
-        'TripRequest',
-        'MyTripRequests',
+        tripRequestListTag,
+        myTripRequestsListTag,
       ],
     }),
 
@@ -473,8 +481,8 @@ export const tripRequestApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: (_result, _error, id: string) => [
         { type: 'TripRequest', id },
-        'TripRequest',
-        'MyTripRequests',
+        tripRequestListTag,
+        myTripRequestsListTag,
       ],
     }),
 
@@ -490,8 +498,8 @@ export const tripRequestApi = baseApi.injectEndpoints({
         { type: 'TripRequest', id: tripRequestId },
         // Ne pas invalider 'TripRequest' globalement pour éviter de refetch toutes les demandes
         // Le backend devrait continuer à renvoyer les demandes tant qu'aucune offre n'est acceptée
-        'DriverOffer',
-        'MyDriverOffers',
+        driverOfferListTag,
+        myDriverOffersListTag,
       ],
     }),
 
@@ -504,10 +512,10 @@ export const tripRequestApi = baseApi.injectEndpoints({
         result
           ? [
               ...result.map(({ id }) => ({ type: 'DriverOffer' as const, id })),
-              'DriverOffer',
-              'MyDriverOffers',
+              driverOfferListTag,
+              myDriverOffersListTag,
             ]
-          : ['MyDriverOffers', 'DriverOffer'],
+          : [myDriverOffersListTag, driverOfferListTag],
     }),
 
     // Accepter une offre de driver
@@ -520,11 +528,11 @@ export const tripRequestApi = baseApi.injectEndpoints({
       transformResponse: (response: ServerTripRequest) => mapServerTripRequestToClient(response),
       invalidatesTags: (_result, _error, { tripRequestId }: { tripRequestId: string }) => [
         { type: 'TripRequest', id: tripRequestId },
-        'TripRequest',
-        'MyTripRequests',
-        'DriverOffer',
-        'MyDriverOffers',
-        'Trip',
+        tripRequestListTag,
+        myTripRequestsListTag,
+        driverOfferListTag,
+        myDriverOffersListTag,
+        tripListTag,
       ],
     }),
 
@@ -537,10 +545,10 @@ export const tripRequestApi = baseApi.injectEndpoints({
       transformResponse: (response: ServerDriverOffer) => mapServerDriverOfferToClient(response),
       invalidatesTags: (_result, _error, { tripRequestId }: { tripRequestId: string }) => [
         { type: 'TripRequest', id: tripRequestId },
-        'TripRequest',
-        'MyTripRequests',
-        'DriverOffer',
-        'MyDriverOffers',
+        tripRequestListTag,
+        myTripRequestsListTag,
+        driverOfferListTag,
+        myDriverOffersListTag,
       ],
     }),
 
@@ -559,11 +567,11 @@ export const tripRequestApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: (_result, _error, tripRequestId: string) => [
         { type: 'TripRequest', id: tripRequestId },
-        'TripRequest',
-        'MyTripRequests',
-        'Trip',
-        'MyTrips',
-        'Booking',
+        tripRequestListTag,
+        myTripRequestsListTag,
+        tripListTag,
+        myTripsListTag,
+        bookingListTag,
       ],
     }),
 
@@ -584,13 +592,13 @@ export const tripRequestApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: (_result, _error, { tripRequestId }: { tripRequestId: string }) => [
         { type: 'TripRequest', id: tripRequestId },
-        'TripRequest',
-        'MyTripRequests',
-        'Trip',
-        'MyTrips',
-        'Booking',
-        'DriverOffer',
-        'MyDriverOffers',
+        tripRequestListTag,
+        myTripRequestsListTag,
+        tripListTag,
+        myTripsListTag,
+        bookingListTag,
+        driverOfferListTag,
+        myDriverOffersListTag,
       ],
     }),
   }),

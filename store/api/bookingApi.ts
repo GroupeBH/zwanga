@@ -103,6 +103,10 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
   safetyEmergencyContactIds: booking.safetyEmergencyContactIds ?? [],
 });
 
+const bookingListTag = { type: 'Booking' as const, id: 'LIST' };
+const tripListTag = { type: 'Trip' as const, id: 'LIST' };
+const myTripsListTag = { type: 'MyTrips' as const, id: 'LIST' };
+
 export const bookingApi = baseApi.injectEndpoints({
   overrideExisting: true,
   endpoints: (builder: BaseEndpointBuilder) => ({
@@ -125,7 +129,12 @@ export const bookingApi = baseApi.injectEndpoints({
         body,
       }),
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
-      invalidatesTags: ['Booking', 'Trip', 'MyTrips'],
+      invalidatesTags: (_result, _error, { tripId }) => [
+        bookingListTag,
+        { type: 'Trip' as const, id: tripId },
+        tripListTag,
+        myTripsListTag,
+      ],
     }),
     getMyBookings: builder.query<Booking[], void>({
       query: () => '/bookings/my-bookings',
@@ -133,8 +142,8 @@ export const bookingApi = baseApi.injectEndpoints({
         response.map((booking) => mapServerBookingToClient(booking)),
       providesTags: (result) =>
         result
-          ? [...result.map(({ id }) => ({ type: 'Booking' as const, id })), 'Booking']
-          : ['Booking'],
+          ? [...result.map(({ id }) => ({ type: 'Booking' as const, id })), bookingListTag]
+          : [bookingListTag],
     }),
     getTripBookings: builder.query<Booking[], string>({
       query: (tripId: string) => `/bookings/trip/${tripId}`,
@@ -145,9 +154,9 @@ export const bookingApi = baseApi.injectEndpoints({
           ? [
               ...result.map(({ id }) => ({ type: 'Booking' as const, id })),
               { type: 'Trip', id: arg },
-              'Booking',
+              bookingListTag,
             ]
-          : [{ type: 'Trip', id: arg }, 'Booking'],
+          : [{ type: 'Trip', id: arg }, bookingListTag],
     }),
     getBookingById: builder.query<Booking, string>({
       query: (id: string) => `/bookings/${id}`,
@@ -171,17 +180,22 @@ export const bookingApi = baseApi.injectEndpoints({
           ? [
               { type: 'Booking', id: result.id },
               { type: 'Trip', id: result.tripId },
-              'Booking',
-              'Trip',
+              bookingListTag,
+              tripListTag,
             ]
-          : ['Booking', 'Trip'],
+          : [bookingListTag, tripListTag],
     }),
     cancelBooking: builder.mutation<void, string>({
       query: (id: string) => ({
         url: `/bookings/${id}/cancel`,
         method: 'PUT',
       }),
-      invalidatesTags: (_result, _error, id: string) => [{ type: 'Booking', id }, 'Booking', 'Trip'],
+      invalidatesTags: (_result, _error, id: string) => [
+        { type: 'Booking', id },
+        bookingListTag,
+        tripListTag,
+        myTripsListTag,
+      ],
     }),
     acceptBooking: builder.mutation<Booking, string>({
       query: (id: string) => ({
@@ -194,10 +208,11 @@ export const bookingApi = baseApi.injectEndpoints({
           ? [
               { type: 'Booking', id: result.id },
               { type: 'Trip', id: result.tripId },
-              'Booking',
-              'Trip',
+              bookingListTag,
+              tripListTag,
+              myTripsListTag,
             ]
-          : ['Booking', 'Trip'],
+          : [bookingListTag, tripListTag, myTripsListTag],
     }),
     rejectBooking: builder.mutation<Booking, { id: string; reason: string }>({
       query: ({ id, reason }: { id: string; reason: string }) => ({
@@ -211,10 +226,11 @@ export const bookingApi = baseApi.injectEndpoints({
           ? [
               { type: 'Booking', id: result.id },
               { type: 'Trip', id: result.tripId },
-              'Booking',
-              'Trip',
+              bookingListTag,
+              tripListTag,
+              myTripsListTag,
             ]
-          : ['Booking', 'Trip'],
+          : [bookingListTag, tripListTag, myTripsListTag],
     }),
     getWhatsAppNotificationData: builder.mutation<
       WhatsAppNotificationData,
@@ -235,7 +251,10 @@ export const bookingApi = baseApi.injectEndpoints({
         method: 'POST',
         body: { emergencyContactIds },
       }),
-      invalidatesTags: (_result, _error, { bookingId }) => [{ type: 'Booking', id: bookingId }, 'Booking'],
+      invalidatesTags: (_result, _error, { bookingId }) => [
+        { type: 'Booking', id: bookingId },
+        bookingListTag,
+      ],
     }),
 
     // Confirmer la récupération du passager (par le driver)
@@ -251,10 +270,11 @@ export const bookingApi = baseApi.injectEndpoints({
           ? [
               { type: 'Booking', id: result.id },
               { type: 'Trip', id: result.tripId },
-              'Booking',
-              'Trip',
+              bookingListTag,
+              tripListTag,
+              myTripsListTag,
             ]
-          : ['Booking', 'Trip'],
+          : [bookingListTag, tripListTag, myTripsListTag],
     }),
 
     // Confirmer la récupération du passager (par le passager)
@@ -270,10 +290,11 @@ export const bookingApi = baseApi.injectEndpoints({
           ? [
               { type: 'Booking', id: result.id },
               { type: 'Trip', id: result.tripId },
-              'Booking',
-              'Trip',
+              bookingListTag,
+              tripListTag,
+              myTripsListTag,
             ]
-          : ['Booking', 'Trip'],
+          : [bookingListTag, tripListTag, myTripsListTag],
     }),
 
     // Confirmer la dépose du passager (par le driver)
@@ -289,10 +310,11 @@ export const bookingApi = baseApi.injectEndpoints({
           ? [
               { type: 'Booking', id: result.id },
               { type: 'Trip', id: result.tripId },
-              'Booking',
-              'Trip',
+              bookingListTag,
+              tripListTag,
+              myTripsListTag,
             ]
-          : ['Booking', 'Trip'],
+          : [bookingListTag, tripListTag, myTripsListTag],
     }),
 
     // Confirmer la dépose du passager (par le passager)
@@ -308,10 +330,11 @@ export const bookingApi = baseApi.injectEndpoints({
           ? [
               { type: 'Booking', id: result.id },
               { type: 'Trip', id: result.tripId },
-              'Booking',
-              'Trip',
+              bookingListTag,
+              tripListTag,
+              myTripsListTag,
             ]
-          : ['Booking', 'Trip'],
+          : [bookingListTag, tripListTag, myTripsListTag],
     }),
   }),
 });
