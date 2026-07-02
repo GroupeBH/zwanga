@@ -161,6 +161,8 @@ export default function LocationPickerModal({
   const lastMarkerUpdateRef = useRef<{ latitude: number; longitude: number } | null>(null);
   const isUpdatingMarkerRef = useRef(false);
   const geocodeSequenceRef = useRef(0);
+  const programmaticTargetRef = useRef<{ latitude: number; longitude: number } | null>(null);
+  const programmaticUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Animation for the center pin
   const pinTranslateY = useSharedValue(0);
@@ -280,11 +282,11 @@ export default function LocationPickerModal({
 
   // clean geocoding timeout when component unmount
   useEffect(() => {
-    const geocodeTimeout = geocodeTimeoutRef.current;
     return () => {
-      if (geocodeTimeout) {
-        clearTimeout(geocodeTimeout);
-      }
+      // Timers are assigned after mount, so cleanup must read their latest refs.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      if (geocodeTimeoutRef.current) clearTimeout(geocodeTimeoutRef.current);
+      if (programmaticUnlockTimerRef.current) clearTimeout(programmaticUnlockTimerRef.current);
     };
   }, []);
 
@@ -313,6 +315,10 @@ export default function LocationPickerModal({
       isUserInteractionRef.current = false;
       isUpdatingMarkerRef.current = true;
       lastMarkerUpdateRef.current = { latitude, longitude };
+      programmaticTargetRef.current = { latitude, longitude };
+      if (programmaticUnlockTimerRef.current) {
+        clearTimeout(programmaticUnlockTimerRef.current);
+      }
 
       // Si skipMarkerUpdate est false, mettre à jour le marqueur aussi
       if (!skipMarkerUpdate) {
@@ -339,12 +345,17 @@ export default function LocationPickerModal({
 
       // Réinitialiser après l'animation et déclencher le geocoding si demandé
       setTimeout(() => {
-        isUpdatingMarkerRef.current = false;
-        isUserInteractionRef.current = true;
         if (triggerGeocodeAfter) {
           updateLocationFromCoordinates({ latitude, longitude });
         }
-      }, 400); // Légèrement après la durée de l'animation
+      }, 400);
+      // Safety fallback for devices that never emit onRegionChangeComplete.
+      programmaticUnlockTimerRef.current = setTimeout(() => {
+        programmaticTargetRef.current = null;
+        isUpdatingMarkerRef.current = false;
+        isUserInteractionRef.current = true;
+        programmaticUnlockTimerRef.current = null;
+      }, 2500);
     } catch (error) {
       console.error('Error animating to coordinate:', error);
       isUpdatingMarkerRef.current = false;
@@ -420,7 +431,7 @@ export default function LocationPickerModal({
   const handleCameraChanged = (region: Region) => {
     // Programmatic animations emit onRegionChange too. Do not let an
     // intermediate camera frame overwrite an explicitly selected place.
-    if (isUpdatingMarkerRef.current) {
+    if (programmaticTargetRef.current || isUpdatingMarkerRef.current) {
       setRegion(region);
       return;
     }
@@ -478,6 +489,37 @@ export default function LocationPickerModal({
   };
 
   const handleMapIdle = (region: Region) => {
+    const programmaticTarget = programmaticTargetRef.current;
+    if (programmaticTarget) {
+      const reachedTarget =
+        Math.abs(region.latitude - programmaticTarget.latitude) < 0.00015 &&
+        Math.abs(region.longitude - programmaticTarget.longitude) < 0.00015;
+
+      if (!reachedTarget) {
+        mapRef.current?.animateToRegion(
+          {
+            ...programmaticTarget,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          },
+          180,
+        );
+        return;
+      }
+
+      if (programmaticUnlockTimerRef.current) {
+        clearTimeout(programmaticUnlockTimerRef.current);
+        programmaticUnlockTimerRef.current = null;
+      }
+      programmaticTargetRef.current = null;
+      isUpdatingMarkerRef.current = false;
+      isUserInteractionRef.current = true;
+      setRegion(region);
+      setIsPanning(false);
+      dropPin();
+      return;
+    }
+
     // Ignorer si on est déjà en train de mettre à jour le marqueur programmatiquement
     if (isUpdatingMarkerRef.current) {
       return;
@@ -1038,9 +1080,10 @@ export default function LocationPickerModal({
         return;
       }
 
+      const pendingTarget = programmaticTargetRef.current;
       const normalizedCoordinate = normalizePossibleSwappedCoordinate(
-        Number(finalLocation.latitude),
-        Number(finalLocation.longitude),
+        Number(pendingTarget?.latitude ?? finalLocation.latitude),
+        Number(pendingTarget?.longitude ?? finalLocation.longitude),
       );
       if (!isFiniteCoordinate(normalizedCoordinate.latitude, normalizedCoordinate.longitude)) {
         console.warn('[LocationPickerModal] Coordonnées refusées:', finalLocation);

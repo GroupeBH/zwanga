@@ -248,7 +248,14 @@ function TripPreviewCard({
           </View>
         </View>
         <View style={styles.tripPreviewPriceBlock}>
-          <Text style={styles.tripPreviewPrice}>{formatPrice(trip.price)}</Text>
+          <Text
+            style={styles.tripPreviewPrice}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.78}
+          >
+            {formatPrice(trip.price)}
+          </Text>
           {trip.price > 0 && <Text style={styles.tripPreviewPriceNote}>par place</Text>}
         </View>
       </View>
@@ -278,11 +285,11 @@ function TripPreviewCard({
       <View style={styles.tripPreviewFooter}>
         <View style={styles.tripPreviewChips}>
           <View style={styles.tripPreviewChip}>
-            <Text style={styles.tripPreviewChipText}>{seatsLabel}</Text>
+            <Text style={styles.tripPreviewChipText} numberOfLines={1}>{seatsLabel}</Text>
           </View>
           <View style={styles.tripPreviewVehicleChip}>
             <Ionicons name={vehicleIcon[tripVehicleType]} size={13} color={HOME_COLORS.navy} />
-            <Text style={styles.tripPreviewVehicleText}>{vehicleLabel[tripVehicleType]}</Text>
+            <Text style={styles.tripPreviewVehicleText} numberOfLines={1}>{vehicleLabel[tripVehicleType]}</Text>
           </View>
           {isBooked && (
             <View style={styles.tripPreviewBookedChip}>
@@ -1132,7 +1139,9 @@ export default function HomeScreen() {
               </Text>
               <View style={styles.statusRow}>
                 <View style={styles.statusDot} />
-                <Text style={styles.statusText}>{availableTripsLabel} disponible{latestTrips.length > 1 ? 's' : ''}</Text>
+                <Text style={styles.statusText} numberOfLines={1}>
+                  {availableTripsLabel} disponible{latestTrips.length > 1 ? 's' : ''}
+                </Text>
               </View>
             </View>
           </View>
@@ -1158,8 +1167,10 @@ export default function HomeScreen() {
             <Ionicons name="navigate-outline" size={22} color={Colors.white} />
           </View>
           <View style={styles.searchCopy}>
-            <Text style={styles.searchTitle}>Où allez-vous ?</Text>
-            <Text style={styles.searchSubtitle}>Départ et destination</Text>
+            <Text style={styles.searchTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.9}>
+              Où allez-vous ?
+            </Text>
+            <Text style={styles.searchSubtitle} numberOfLines={1}>Départ et destination</Text>
           </View>
           <Ionicons name="chevron-forward" size={22} color={HOME_COLORS.navy} />
         </TouchableOpacity>
@@ -1171,7 +1182,7 @@ export default function HomeScreen() {
             onPress={() => router.push('/publish')}
           >
             <Ionicons name="add-circle-outline" size={20} color={Colors.white} />
-            <Text style={[styles.actionButtonText, styles.actionButtonTextStrong]}>Publier</Text>
+            <Text style={[styles.actionButtonText, styles.actionButtonTextStrong]} numberOfLines={1}>Publier</Text>
           </TouchableOpacity>
           <TouchableOpacity
             activeOpacity={0.88}
@@ -1179,7 +1190,7 @@ export default function HomeScreen() {
             onPress={() => router.push(getTripRequestCreateHref())}
           >
             <Ionicons name="paper-plane-outline" size={18} color={Colors.white} />
-            <Text style={[styles.actionButtonText, styles.actionButtonTextStrong]}>Demander</Text>
+            <Text style={[styles.actionButtonText, styles.actionButtonTextStrong]} numberOfLines={1}>Demander</Text>
           </TouchableOpacity>
           <TouchableOpacity
             activeOpacity={0.88}
@@ -1187,7 +1198,7 @@ export default function HomeScreen() {
             onPress={() => router.push('/search')}
           >
             <Ionicons name="search" size={17} color={HOME_COLORS.navy} />
-            <Text style={styles.actionSearchText}>Chercher</Text>
+            <Text style={styles.actionSearchText} numberOfLines={1}>Chercher</Text>
           </TouchableOpacity>
         </View>
 
@@ -1222,14 +1233,16 @@ export default function HomeScreen() {
             style={styles.sheetHeaderCopy}
             onPress={() => setTripsSheetOpen((current) => !current)}
           >
-            <Text style={styles.sheetTitle}>Trajets autour de vous</Text>
-            <Text style={styles.sheetSubtitle}>
+            <Text style={styles.sheetTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+              Trajets autour de vous
+            </Text>
+            <Text style={styles.sheetSubtitle} numberOfLines={1}>
               {latestTrips.length > 0 ? `${availableTripsLabel} à parcourir` : 'Aucune offre pour le moment'}
             </Text>
           </TouchableOpacity>
           <View style={styles.sheetHeaderActions}>
             <TouchableOpacity activeOpacity={0.75} onPress={() => router.push('/search')}>
-              <Text style={styles.seeAllText}>Voir tout</Text>
+              <Text style={styles.seeAllText} numberOfLines={1}>Voir tout</Text>
             </TouchableOpacity>
             <TouchableOpacity
               activeOpacity={0.75}

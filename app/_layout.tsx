@@ -1,9 +1,10 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { LayoutAnimationConfig, ReduceMotion, ReducedMotionConfig } from '@/utils/reanimated';
+import { LayoutAnimationConfig } from '@/utils/reanimated';
 import { Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { configureFontScaling } from '@/utils/configureFontScaling';
 
 import { AnalyticsTracker } from '@/components/AnalyticsTracker';
 import { ReduxProvider } from '@/components/ReduxProvider';
@@ -12,6 +13,8 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import '@/services/backgroundNotificationTask';
 import '@/services/notifeeBackgroundHandler';
 import '@/services/notifeeForegroundService';
+
+configureFontScaling();
 
 export const unstable_settings = {
   initialRouteName: 'splash',
@@ -40,8 +43,8 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="publish" options={{ headerShown: false, presentation: 'modal' }} />
             <Stack.Screen name="recurring-trips" options={{ headerShown: false }} />
-            <Stack.Screen name="request-create" options={{ headerShown: false, presentation: 'modal' }} />
-            <Stack.Screen name="request/index" options={{ headerShown: false, presentation: 'modal' }} />
+            <Stack.Screen name="request-create" options={{ headerShown: false, presentation: 'card' }} />
+            <Stack.Screen name="request/index" options={{ headerShown: false, presentation: 'card' }} />
             <Stack.Screen name="request/[id]" options={{ headerShown: false }} />
             <Stack.Screen name="request-details/[id]" options={{ headerShown: false }} />
             <Stack.Screen name="search" options={{ headerShown: false, presentation: 'modal' }} />
