@@ -41,6 +41,13 @@ type MainTab = 'published' | 'bookings';
 type SubTab = 'upcoming' | 'completed';
 type EditTripStep = 1 | 2;
 
+const normalizeSearchText = (value: unknown) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
 const getLocationText = (selection: MapLocationSelection | null, manualAddress: string) =>
   (manualAddress.trim() || selection?.title || selection?.address || '').trim();
 
@@ -77,6 +84,7 @@ export default function TripsScreen() {
   const insets = useSafeAreaInsets();
   const [mainTab, setMainTab] = useState<MainTab>('published');
   const [subTab, setSubTab] = useState<SubTab>('upcoming');
+  const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const {
     data: myTrips,
@@ -282,7 +290,42 @@ export default function TripsScreen() {
 
   const displayTrips = subTab === 'upcoming' ? upcomingTrips : completedTrips;
   const displayBookings = subTab === 'upcoming' ? upcomingBookings : completedBookingsList;
-  const displayData = mainTab === 'published' ? displayTrips : displayBookings;
+  const normalizedSearchQuery = normalizeSearchText(searchQuery);
+  const filteredTrips = useMemo(() => {
+    if (!normalizedSearchQuery) return displayTrips;
+
+    return displayTrips.filter((trip) =>
+      normalizeSearchText([
+        trip.departure?.name,
+        trip.departure?.address,
+        trip.arrival?.name,
+        trip.arrival?.address,
+        trip.driverName,
+        trip.vehicle?.brand,
+        trip.vehicle?.model,
+        trip.vehicleInfo,
+      ].join(' ')).includes(normalizedSearchQuery),
+    );
+  }, [displayTrips, normalizedSearchQuery]);
+  const filteredBookings = useMemo(() => {
+    if (!normalizedSearchQuery) return displayBookings;
+
+    return displayBookings.filter((booking) => {
+      const trip = booking.trip;
+      return normalizeSearchText([
+        trip?.departure?.name,
+        trip?.departure?.address,
+        booking.passengerDestination,
+        trip?.arrival?.name,
+        trip?.arrival?.address,
+        trip?.driverName,
+        trip?.vehicle?.brand,
+        trip?.vehicle?.model,
+        trip?.vehicleInfo,
+      ].join(' ')).includes(normalizedSearchQuery);
+    });
+  }, [displayBookings, normalizedSearchQuery]);
+  const displayData = mainTab === 'published' ? filteredTrips : filteredBookings;
   const showLoader = (mainTab === 'published' ? tripsLoading : bookingsLoading) && (mainTab === 'published' ? trips.length === 0 : (myBookings?.length ?? 0) === 0);
   const isError = mainTab === 'published' ? tripsError : bookingsError;
   const isFetching = mainTab === 'published' ? tripsFetching : bookingsFetching;
@@ -641,7 +684,6 @@ export default function TripsScreen() {
   const getStatusConfig = (trip: Trip) => {
     // Vérifier si le trajet est expiré (date de départ passée)
     const isExpired = trip.departureTime && new Date(trip.departureTime) < new Date();
-    const borderRadiusSm = BorderRadius.sm;
     // Si le trajet est expiré mais n'a pas le status 'completed', afficher "Expiré"
     if (isExpired && trip.status !== 'completed') {
       return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: 'Expiré' };
@@ -663,7 +705,20 @@ export default function TripsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Mes trajets</Text>
+        <View style={styles.headerTopRow}>
+          <View style={styles.headerCopy}>
+            <Text style={styles.headerEyebrow}>VOTRE ACTIVITÉ</Text>
+            <Text style={styles.headerTitle}>Mes trajets</Text>
+            <Text style={styles.headerSubtitle}>Suivez et gérez tous vos déplacements.</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.headerPublishButton}
+            onPress={() => router.push('/publish')}
+            accessibilityLabel="Publier un trajet"
+          >
+            <Ionicons name="add" size={24} color={Colors.white} />
+          </TouchableOpacity>
+        </View>
 
         {/* Main Tabs */}
         <View style={styles.mainTabsContainer}>
@@ -709,6 +764,24 @@ export default function TripsScreen() {
               Terminés ({mainTab === 'published' ? completedTrips.length : completedBookingsList.length})
             </Text>
           </TouchableOpacity>
+        </View>
+
+        <View style={styles.searchContainer}>
+          <Ionicons name="search-outline" size={20} color={Colors.gray[500]} />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder={mainTab === 'published' ? 'Rechercher un trajet...' : 'Rechercher une réservation...'}
+            placeholderTextColor={Colors.gray[400]}
+            style={styles.searchInput}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+          />
+          {searchQuery.length > 0 && Platform.OS !== 'ios' ? (
+            <TouchableOpacity style={styles.searchClearButton} onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={20} color={Colors.gray[400]} />
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 
@@ -789,16 +862,20 @@ export default function TripsScreen() {
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIcon}>
               <Ionicons
-                name={mainTab === 'published' ? 'car-outline' : 'calendar-outline'}
+                name={normalizedSearchQuery ? 'search-outline' : mainTab === 'published' ? 'car-outline' : 'calendar-outline'}
                 size={48}
                 color={Colors.gray[500]}
               />
             </View>
             <Text style={styles.emptyTitle}>
-              {mainTab === 'published' ? 'Aucun trajet' : 'Aucune réservation'}
+              {normalizedSearchQuery
+                ? 'Aucun résultat'
+                : mainTab === 'published' ? 'Aucun trajet' : 'Aucune réservation'}
             </Text>
             <Text style={styles.emptyText}>
-              {mainTab === 'published'
+              {normalizedSearchQuery
+                ? `Aucun trajet ne correspond à « ${searchQuery.trim()} ».`
+                : mainTab === 'published'
                 ? subTab === 'upcoming'
                   ? 'Vous n\'avez pas de trajet à venir'
                   : 'Vous n\'avez pas encore terminé de trajet'
@@ -806,7 +883,11 @@ export default function TripsScreen() {
                   ? 'Vous n\'avez pas de réservation à venir'
                   : 'Vous n\'avez pas encore terminé de réservation'}
             </Text>
-            {mainTab === 'published' && subTab === 'upcoming' && (
+            {normalizedSearchQuery ? (
+              <TouchableOpacity style={styles.emptySecondaryButton} onPress={() => setSearchQuery('')}>
+                <Text style={styles.emptySecondaryButtonText}>Effacer la recherche</Text>
+              </TouchableOpacity>
+            ) : mainTab === 'published' && subTab === 'upcoming' && (
               <TouchableOpacity
                 style={styles.emptyButton}
                 onPress={() => router.push('/publish')}
@@ -817,7 +898,7 @@ export default function TripsScreen() {
           </View>
         ) : (
           mainTab === 'published'
-            ? displayTrips.map((trip) => {
+            ? filteredTrips.map((trip) => {
               const statusConfig = getStatusConfig(trip);
 
               return (
@@ -938,7 +1019,7 @@ export default function TripsScreen() {
                 </View>
               );
           })
-            : displayBookings.map((booking) => {
+            : filteredBookings.map((booking) => {
                 const trip = booking.trip;
                 if (!trip) return null;
 
@@ -1422,25 +1503,51 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.lg,
-    paddingBottom: Spacing.md,
+    paddingBottom: Spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[200],
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  headerCopy: {
+    flex: 1,
+  },
+  headerEyebrow: {
+    marginBottom: 3,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    letterSpacing: 1.1,
+    color: Colors.primary,
   },
   headerTitle: {
     fontSize: FontSizes.xxl,
     fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    marginBottom: Spacing.lg,
+    color: Colors.gray[900],
+  },
+  headerSubtitle: {
+    marginTop: 3,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+  },
+  headerPublishButton: {
+    width: 46,
+    height: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: Spacing.md,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+    ...CommonStyles.shadowSm,
   },
   mainTabsContainer: {
     flexDirection: 'row',
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
-    padding: 2,
+    backgroundColor: Colors.gray[100],
+    borderRadius: BorderRadius.xl,
+    padding: 4,
     marginBottom: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    ...CommonStyles.shadowSm,
   },
   mainTab: {
     flex: 1,
@@ -1450,7 +1557,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   mainTabActive: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.white,
+    ...CommonStyles.shadowSm,
   },
   mainTabText: {
     textAlign: 'center',
@@ -1459,27 +1567,22 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
   },
   mainTabTextActive: {
-    color: Colors.white,
+    color: Colors.primary,
   },
   subTabsContainer: {
     flexDirection: 'row',
-    backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.sm,
-    padding: 2,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
+    gap: Spacing.sm,
   },
   subTab: {
     flex: 1,
-    paddingVertical: Spacing.xs + 2,
-    borderRadius: BorderRadius.sm / 2,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: Colors.gray[100],
   },
   subTabActive: {
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: Colors.gray[300],
+    backgroundColor: Colors.primary + '12',
   },
   subTabText: {
     textAlign: 'center',
@@ -1488,8 +1591,30 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
   },
   subTabTextActive: {
-    color: Colors.gray[800],
+    color: Colors.primary,
     fontWeight: FontWeights.semibold,
+  },
+  searchContainer: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.xl,
+    backgroundColor: Colors.gray[50],
+  },
+  searchInput: {
+    flex: 1,
+    height: 46,
+    marginLeft: Spacing.sm,
+    paddingVertical: 0,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+  },
+  searchClearButton: {
+    padding: Spacing.xs,
   },
   recurringHubCard: {
     flexDirection: 'row',
@@ -1637,11 +1762,26 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     fontSize: FontSizes.base,
   },
+  emptySecondaryButton: {
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+  },
+  emptySecondaryButtonText: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+  },
   tripCard: {
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
+    borderRadius: BorderRadius.xxl,
     padding: Spacing.lg,
     marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
     ...CommonStyles.shadowSm,
   },
   tripHeader: {
