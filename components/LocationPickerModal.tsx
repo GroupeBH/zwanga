@@ -54,6 +54,36 @@ const DEFAULT_REGION: Region = {
   longitudeDelta: 0.1,
 };
 
+const RDC_BOUNDS = { minLatitude: -13.5, maxLatitude: 5.4, minLongitude: 12, maxLongitude: 31.3 };
+
+function isFiniteCoordinate(latitude: number, longitude: number) {
+  return (
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180 &&
+    !(Math.abs(latitude) < 0.0001 && Math.abs(longitude) < 0.0001)
+  );
+}
+
+function isInRdcBounds(latitude: number, longitude: number) {
+  return (
+    latitude >= RDC_BOUNDS.minLatitude &&
+    latitude <= RDC_BOUNDS.maxLatitude &&
+    longitude >= RDC_BOUNDS.minLongitude &&
+    longitude <= RDC_BOUNDS.maxLongitude
+  );
+}
+
+function normalizePossibleSwappedCoordinate(latitude: number, longitude: number) {
+  if (!isInRdcBounds(latitude, longitude) && isInRdcBounds(longitude, latitude)) {
+    return { latitude: longitude, longitude: latitude };
+  }
+  return { latitude, longitude };
+}
+
 function formatAddressFromGeocode(
   data?: Partial<Location.LocationGeocodedAddress> | Location.LocationGeocodedLocation,
 ) {
@@ -130,6 +160,7 @@ export default function LocationPickerModal({
   const isUserInteractionRef = useRef(false);
   const lastMarkerUpdateRef = useRef<{ latitude: number; longitude: number } | null>(null);
   const isUpdatingMarkerRef = useRef(false);
+  const geocodeSequenceRef = useRef(0);
 
   // Animation for the center pin
   const pinTranslateY = useSharedValue(0);
@@ -259,19 +290,13 @@ export default function LocationPickerModal({
 
   const animateToCoordinate = (latitude: number, longitude: number, skipMarkerUpdate = false, triggerGeocodeAfter = false) => {
     try {
+      const normalizedCoordinate = normalizePossibleSwappedCoordinate(latitude, longitude);
+      latitude = normalizedCoordinate.latitude;
+      longitude = normalizedCoordinate.longitude;
+      geocodeSequenceRef.current += 1;
+
       // Valider les coordonnées avant d'animer
-      if (
-        typeof latitude !== 'number' ||
-        typeof longitude !== 'number' ||
-        isNaN(latitude) ||
-        isNaN(longitude) ||
-        !isFinite(latitude) ||
-        !isFinite(longitude) ||
-        latitude < -90 ||
-        latitude > 90 ||
-        longitude < -180 ||
-        longitude > 180
-      ) {
+      if (!isFiniteCoordinate(latitude, longitude)) {
         console.warn('Invalid coordinates for animation:', { latitude, longitude });
         return;
       }
@@ -344,7 +369,8 @@ export default function LocationPickerModal({
       if (animate) {
         animateToCoordinate(snapped.latitude, snapped.longitude);
       }
-      
+
+      const geocodeSequence = ++geocodeSequenceRef.current;
       const [address] = await Location.reverseGeocodeAsync(snapped);
       const userLocation = buildSelectionFromCoordinate(
         snapped,
@@ -352,7 +378,7 @@ export default function LocationPickerModal({
         'Ma position',
       );
       
-      if (setAsSelected) {
+      if (setAsSelected && geocodeSequence === geocodeSequenceRef.current) {
         setSelectedLocation(userLocation);
       }
       
@@ -368,25 +394,37 @@ export default function LocationPickerModal({
 
 
   const updateLocationFromCoordinates = async (coordinate: { latitude: number; longitude: number }) => {
+    const geocodeSequence = ++geocodeSequenceRef.current;
     try {
       setIsGeocoding(true);
       const [address] = await Location.reverseGeocodeAsync(coordinate);
-      setSelectedLocation(buildSelectionFromCoordinate(coordinate, address));
+      if (geocodeSequence === geocodeSequenceRef.current) {
+        setSelectedLocation(buildSelectionFromCoordinate(coordinate, address));
+      }
     } catch (error) {
       console.warn('Reverse geocoding failed', error);
       // Garder la sélection même si le reverse geocoding échoue
-      setSelectedLocation({
-        title: 'Point sélectionné',
-        address: `${coordinate.latitude.toFixed(5)}, ${coordinate.longitude.toFixed(5)}`,
-        latitude: coordinate.latitude,
-        longitude: coordinate.longitude,
-      });
+      if (geocodeSequence === geocodeSequenceRef.current) {
+        setSelectedLocation({
+          title: 'Point sélectionné',
+          address: `${coordinate.latitude.toFixed(5)}, ${coordinate.longitude.toFixed(5)}`,
+          latitude: coordinate.latitude,
+          longitude: coordinate.longitude,
+        });
+      }
     } finally {
       setIsGeocoding(false);
     }
   };
 
   const handleCameraChanged = (region: Region) => {
+    // Programmatic animations emit onRegionChange too. Do not let an
+    // intermediate camera frame overwrite an explicitly selected place.
+    if (isUpdatingMarkerRef.current) {
+      setRegion(region);
+      return;
+    }
+
     // Si on n'est pas déjà en déplacement, "soulever" le marqueur
     if (!isPanning && !isUpdatingMarkerRef.current) {
       liftPin();
@@ -999,10 +1037,20 @@ export default function LocationPickerModal({
         console.warn('[LocationPickerModal] Impossible de confirmer: aucune location disponible');
         return;
       }
+
+      const normalizedCoordinate = normalizePossibleSwappedCoordinate(
+        Number(finalLocation.latitude),
+        Number(finalLocation.longitude),
+      );
+      if (!isFiniteCoordinate(normalizedCoordinate.latitude, normalizedCoordinate.longitude)) {
+        console.warn('[LocationPickerModal] Coordonnées refusées:', finalLocation);
+        return;
+      }
       
       const hasAddress = finalLocation.address && finalLocation.address.length > 0;
       const selection: MapLocationSelection = {
         ...finalLocation,
+        ...normalizedCoordinate,
         address: hasAddress ? finalLocation.address : finalLocation.title,
       };
       

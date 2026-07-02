@@ -20,6 +20,7 @@ import { useCreateConversationMutation } from '@/store/api/messageApi';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
 import { useGetTripByIdQuery, useUpdateTripMutation } from '@/store/api/tripApi';
 import { useGetKycStatusQuery, useUploadKycMutation } from '@/store/api/userApi';
+import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
 import type { BookingStatus, GeoPoint } from '@/types';
@@ -267,6 +268,11 @@ export default function TripDetailsScreen() {
     setLiveDriverUpdatedAt(trip?.lastLocationUpdateAt ?? null);
   }, [trip?.lastLocationUpdateAt]);
   const [updateTripMutation, { isLoading: isSavingTrip }] = useUpdateTripMutation();
+  const { data: userVehicles = [], isLoading: editVehiclesLoading } = useGetVehiclesQuery();
+  const activeEditVehicles = useMemo(
+    () => userVehicles.filter((vehicle) => vehicle.isActive !== false),
+    [userVehicles],
+  );
   const [editTripModalVisible, setEditTripModalVisible] = useState(false);
   const [editStep, setEditStep] = useState<EditTripStep>(1);
   const [editKeyboardHeight, setEditKeyboardHeight] = useState(0);
@@ -280,6 +286,7 @@ export default function TripDetailsScreen() {
   const [editDepartureManualAddress, setEditDepartureManualAddress] = useState('');
   const [editArrivalManualAddress, setEditArrivalManualAddress] = useState('');
   const [editRoutePickerTarget, setEditRoutePickerTarget] = useState<'departure' | 'arrival' | null>(null);
+  const [editVehicleId, setEditVehicleId] = useState<string | null>(null);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -394,6 +401,7 @@ export default function TripDetailsScreen() {
     setEditArrivalManualAddress((trip.arrival?.address || trip.arrival?.name || '').trim());
     setEditRouteMode(departureSelection && arrivalSelection ? 'map' : 'manual');
     setEditRoutePickerTarget(null);
+    setEditVehicleId(trip.vehicle?.id ?? trip.vehicleId ?? null);
     setEditStep(1);
     setEditTripModalVisible(true);
   };
@@ -412,6 +420,7 @@ export default function TripDetailsScreen() {
     setEditDepartureManualAddress('');
     setEditArrivalManualAddress('');
     setEditRoutePickerTarget(null);
+    setEditVehicleId(null);
   };
 
   const swapEditRoutePoints = () => {
@@ -485,6 +494,15 @@ export default function TripDetailsScreen() {
       return;
     }
 
+    if (!editVehicleId) {
+      showDialog({
+        variant: 'warning',
+        title: 'Véhicule requis',
+        message: 'Sélectionnez le véhicule utilisé pour ce trajet.',
+      });
+      return;
+    }
+
     const seatsValue = parseInt(editSeats, 10);
     const priceValue = parseFloat(editPrice);
     if (Number.isNaN(seatsValue) || Number.isNaN(priceValue) || seatsValue <= 0 || priceValue < 0) {
@@ -533,10 +551,12 @@ export default function TripDetailsScreen() {
       arrivalLocation?: string;
       departureCoordinates?: [number, number];
       arrivalCoordinates?: [number, number];
+      vehicleId?: string;
     } = {
       totalSeats: seatsValue,
       pricePerSeat: priceValue,
       departureDate: editDateTime.toISOString(),
+      vehicleId: editVehicleId,
     };
 
     if (departureAddress !== currentDepartureAddress) {
@@ -3491,6 +3511,49 @@ export default function TripDetailsScreen() {
               ) : (
                 <>
               <View style={styles.editSectionHeader}>
+                <View style={styles.editSectionIconWrap}>
+                  <Ionicons name="car-sport-outline" size={15} color={Colors.primary} />
+                </View>
+                <Text style={styles.editSectionTitle}>Véhicule</Text>
+              </View>
+              {editVehiclesLoading ? (
+                <View style={styles.editVehicleState}>
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                  <Text style={styles.editVehicleStateText}>Chargement des véhicules...</Text>
+                </View>
+              ) : activeEditVehicles.length === 0 ? (
+                <View style={styles.editVehicleState}>
+                  <Ionicons name="car-outline" size={20} color={Colors.gray[500]} />
+                  <Text style={styles.editVehicleStateText}>Aucun véhicule actif dans votre profil.</Text>
+                </View>
+              ) : (
+                <View style={styles.editVehicleList}>
+                  {activeEditVehicles.map((vehicle) => {
+                    const selected = editVehicleId === vehicle.id;
+                    return (
+                      <TouchableOpacity
+                        key={vehicle.id}
+                        style={[styles.editVehicleOption, selected && styles.editVehicleOptionSelected]}
+                        onPress={() => setEditVehicleId(vehicle.id)}
+                      >
+                        <View style={styles.editVehicleCopy}>
+                          <Text style={styles.editVehicleName}>{vehicle.brand} {vehicle.model}</Text>
+                          <Text style={styles.editVehicleMeta}>
+                            {[vehicle.color, vehicle.licensePlate].filter(Boolean).join(' • ')}
+                          </Text>
+                        </View>
+                        <Ionicons
+                          name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={22}
+                          color={selected ? Colors.primary : Colors.gray[300]}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              <View style={styles.editSectionHeader}>
                 <View style={[styles.editSectionIconWrap, { backgroundColor: Colors.secondary + '18' }]}>
                   <Ionicons name="calendar-outline" size={15} color={Colors.secondary} />
                 </View>
@@ -5916,6 +5979,52 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
     color: Colors.gray[800],
+  },
+  editVehicleState: {
+    minHeight: 60,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.gray[50],
+  },
+  editVehicleStateText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  editVehicleList: {
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  editVehicleOption: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.white,
+  },
+  editVehicleOptionSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '08',
+  },
+  editVehicleCopy: {
+    flex: 1,
+  },
+  editVehicleName: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  editVehicleMeta: {
+    marginTop: 2,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
   },
   editSwapBtn: {
     flexDirection: 'row',

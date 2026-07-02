@@ -10,6 +10,7 @@ import {
   useGetMyTripsQuery,
   useUpdateTripMutation,
 } from '@/store/api/tripApi';
+import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import type { Trip } from '@/types';
 import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
@@ -111,6 +112,11 @@ export default function TripsScreen() {
     refetchOnReconnect: isFocused,
   });
   const { data: recurringTemplates = [] } = useGetMyRecurringTripsQuery();
+  const { data: userVehicles = [], isLoading: vehiclesLoading } = useGetVehiclesQuery();
+  const activeUserVehicles = useMemo(
+    () => userVehicles.filter((vehicle) => vehicle.isActive !== false),
+    [userVehicles],
+  );
   const [updateTripMutation, { isLoading: isSavingTrip }] = useUpdateTripMutation();
   const [deleteTripMutation, { isLoading: isDeletingTrip }] = useDeleteTripMutation();
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
@@ -127,6 +133,8 @@ export default function TripsScreen() {
   const [editDepartureManualAddress, setEditDepartureManualAddress] = useState('');
   const [editArrivalManualAddress, setEditArrivalManualAddress] = useState('');
   const [editRoutePickerTarget, setEditRoutePickerTarget] = useState<'departure' | 'arrival' | null>(null);
+  const [editVehicleId, setEditVehicleId] = useState<string | null>(null);
+  const [editModalSuspended, setEditModalSuspended] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
     null,
   );
@@ -426,6 +434,7 @@ export default function TripsScreen() {
     setEditArrivalManualAddress((trip.arrival?.address || trip.arrival?.name || '').trim());
     setEditRouteMode(departureSelection && arrivalSelection ? 'map' : 'manual');
     setEditRoutePickerTarget(null);
+    setEditVehicleId(trip.vehicle?.id ?? trip.vehicleId ?? null);
     setEditStep(1);
   };
 
@@ -443,6 +452,8 @@ export default function TripsScreen() {
     setEditDepartureManualAddress('');
     setEditArrivalManualAddress('');
     setEditRoutePickerTarget(null);
+    setEditVehicleId(null);
+    setEditModalSuspended(false);
   };
 
   const swapEditRoutePoints = () => {
@@ -450,6 +461,17 @@ export default function TripsScreen() {
     setEditArrivalSelection(editDepartureSelection);
     setEditDepartureManualAddress(editArrivalManualAddress);
     setEditArrivalManualAddress(editDepartureManualAddress);
+  };
+
+  const openEditRoutePicker = (target: 'departure' | 'arrival') => {
+    Keyboard.dismiss();
+    setEditModalSuspended(true);
+    setTimeout(() => setEditRoutePickerTarget(target), 320);
+  };
+
+  const restoreEditModalAfterPicker = () => {
+    setEditRoutePickerTarget(null);
+    setTimeout(() => setEditModalSuspended(false), 320);
   };
 
   const handleContinueEditTrip = () => {
@@ -556,6 +578,11 @@ export default function TripsScreen() {
       return;
     }
 
+    if (!editVehicleId) {
+      showFeedback('error', 'Sélectionnez le véhicule utilisé pour ce trajet.');
+      return;
+    }
+
     const seatsValue = parseInt(editSeats, 10);
     const priceValue = parseFloat(editPrice);
     if (Number.isNaN(seatsValue) || Number.isNaN(priceValue) || seatsValue <= 0 || priceValue < 0) {
@@ -592,10 +619,12 @@ export default function TripsScreen() {
       arrivalLocation?: string;
       departureCoordinates?: [number, number];
       arrivalCoordinates?: [number, number];
+      vehicleId?: string;
     } = {
       totalSeats: seatsValue,
       pricePerSeat: priceValue,
       departureDate: editDateTime.toISOString(),
+      vehicleId: editVehicleId,
     };
 
     if (departureAddress !== currentDepartureAddress) {
@@ -1147,7 +1176,7 @@ export default function TripsScreen() {
         presentationStyle={Platform.OS === 'ios' ? 'pageSheet' : 'overFullScreen'}
         statusBarTranslucent={Platform.OS === 'android'}
         navigationBarTranslucent={Platform.OS === 'android'}
-        visible={Boolean(editingTrip)}
+        visible={Boolean(editingTrip) && !editModalSuspended}
         onRequestClose={closeEditModal}
       >
         <KeyboardAvoidingView
@@ -1233,7 +1262,7 @@ export default function TripsScreen() {
                       editRouteMode === 'map' && styles.modalRouteModeChipTextActive,
                     ]}
                   >
-                    Carte
+                    Sélection sur carte
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -1254,7 +1283,7 @@ export default function TripsScreen() {
                       editRouteMode === 'manual' && styles.modalRouteModeChipTextActive,
                     ]}
                   >
-                    Saisie
+                    Saisie manuelle
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1285,7 +1314,7 @@ export default function TripsScreen() {
                 <>
                   <TouchableOpacity
                     style={styles.modalRoutePointButton}
-                    onPress={() => setEditRoutePickerTarget('departure')}
+                    onPress={() => openEditRoutePicker('departure')}
                   >
                     <View style={styles.modalRoutePointIcon}>
                       <Ionicons name="location" size={15} color={Colors.success} />
@@ -1301,7 +1330,7 @@ export default function TripsScreen() {
 
                   <TouchableOpacity
                     style={styles.modalRoutePointButton}
-                    onPress={() => setEditRoutePickerTarget('arrival')}
+                    onPress={() => openEditRoutePicker('arrival')}
                   >
                     <View style={styles.modalRoutePointIcon}>
                       <Ionicons name="navigate" size={15} color={Colors.primary} />
@@ -1320,6 +1349,56 @@ export default function TripsScreen() {
                 </>
               ) : (
                 <>
+
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>Véhicule du trajet</Text>
+              {vehiclesLoading ? (
+                <View style={styles.modalVehicleLoading}>
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                  <Text style={styles.modalVehicleLoadingText}>Chargement des véhicules...</Text>
+                </View>
+              ) : activeUserVehicles.length === 0 ? (
+                <View style={styles.modalVehicleEmpty}>
+                  <Ionicons name="car-outline" size={20} color={Colors.gray[500]} />
+                  <Text style={styles.modalVehicleEmptyText}>
+                    Aucun véhicule actif. Ajoutez-en un depuis votre profil.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.modalVehicleList}>
+                  {activeUserVehicles.map((vehicle) => {
+                    const selected = editVehicleId === vehicle.id;
+                    return (
+                      <TouchableOpacity
+                        key={vehicle.id}
+                        style={[styles.modalVehicleOption, selected && styles.modalVehicleOptionSelected]}
+                        onPress={() => setEditVehicleId(vehicle.id)}
+                        activeOpacity={0.82}
+                      >
+                        <View style={[styles.modalVehicleIcon, selected && styles.modalVehicleIconSelected]}>
+                          <Ionicons
+                            name="car-sport-outline"
+                            size={20}
+                            color={selected ? Colors.white : Colors.primary}
+                          />
+                        </View>
+                        <View style={styles.modalVehicleCopy}>
+                          <Text style={styles.modalVehicleName}>{vehicle.brand} {vehicle.model}</Text>
+                          <Text style={styles.modalVehicleMeta}>
+                            {[vehicle.color, vehicle.licensePlate].filter(Boolean).join(' • ')}
+                          </Text>
+                        </View>
+                        <Ionicons
+                          name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={22}
+                          color={selected ? Colors.primary : Colors.gray[300]}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
 
             <View style={styles.modalField}>
               <Text style={styles.modalLabel}>Places disponibles</Text>
@@ -1429,20 +1508,18 @@ export default function TripsScreen() {
           editRoutePickerTarget === 'departure' ? editDepartureSelection : editArrivalSelection
         }
         autoLocateOnOpen={false}
-        onClose={() => setEditRoutePickerTarget(null)}
+        onClose={restoreEditModalAfterPicker}
         onSelect={(location) => {
           const target = editRoutePickerTarget;
-          setEditRoutePickerTarget(null);
           setEditRouteMode('map');
           if (target === 'departure') {
             setEditDepartureSelection(location);
             setEditDepartureManualAddress(location.title || location.address);
-            return;
-          }
-          if (target === 'arrival') {
+          } else if (target === 'arrival') {
             setEditArrivalSelection(location);
             setEditArrivalManualAddress(location.title || location.address);
           }
+          restoreEditModalAfterPicker();
         }}
       />
 
@@ -2171,6 +2248,76 @@ const styles = StyleSheet.create({
   },
   modalField: {
     marginBottom: Spacing.lg,
+  },
+  modalVehicleLoading: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.gray[50],
+  },
+  modalVehicleLoadingText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  modalVehicleEmpty: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.gray[100],
+  },
+  modalVehicleEmptyText: {
+    flex: 1,
+    fontSize: FontSizes.sm,
+    lineHeight: 19,
+    color: Colors.gray[600],
+  },
+  modalVehicleList: {
+    gap: Spacing.sm,
+  },
+  modalVehicleOption: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.white,
+  },
+  modalVehicleOptionSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '08',
+  },
+  modalVehicleIcon: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.primary + '12',
+  },
+  modalVehicleIconSelected: {
+    backgroundColor: Colors.primary,
+  },
+  modalVehicleCopy: {
+    flex: 1,
+  },
+  modalVehicleName: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  modalVehicleMeta: {
+    marginTop: 2,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
   },
   modalLabel: {
     fontSize: FontSizes.sm,
