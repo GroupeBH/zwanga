@@ -128,6 +128,11 @@ const removeFavoriteLocationNote = async (favoriteLocationId: string) => {
   await saveFavoriteLocationNotes(notesById);
 };
 
+const currentUserTag = { type: 'User' as const, id: 'CURRENT' };
+const kycStatusTag = { type: 'KycStatus' as const, id: 'CURRENT' };
+const vehicleListTag = { type: 'Vehicle' as const, id: 'LIST' };
+const favoriteLocationsListTag = { type: 'FavoriteLocations' as const, id: 'LIST' };
+
 /**
  * API utilisateurs
  * Gère les opérations CRUD sur les utilisateurs
@@ -136,7 +141,7 @@ export const userApi = baseApi.injectEndpoints({
   endpoints: (builder: BaseEndpointBuilder) => ({
     getProfileSummary: builder.query<ProfileSummary, void>({
       query: () => '/users/me',
-      providesTags: ['User'],
+      providesTags: [currentUserTag],
       transformResponse: (response: { user: ServerUser; stats: ProfileStats }) =>
         mapProfileSummary(response),
     }),
@@ -144,7 +149,7 @@ export const userApi = baseApi.injectEndpoints({
     // Récupérer l'utilisateur actuellement connecté
     getCurrentUser: builder.query<User, void>({
       query: () => '/users/me',
-      providesTags: ['User'],
+      providesTags: [currentUserTag],
       transformResponse: (response: { user: ServerUser; stats: ProfileStats }) =>
         mapServerUser(response.user),
     }),
@@ -157,7 +162,8 @@ export const userApi = baseApi.injectEndpoints({
         body: formData,
       }),
       transformResponse: (response: ServerUser) => mapServerUser(response),
-      invalidatesTags: ['User'],
+      invalidatesTags: (result) =>
+        result ? [currentUserTag, { type: 'User' as const, id: result.id }] : [currentUserTag],
     }),
 
     deleteAccount: builder.mutation<{ message: string }, void>({
@@ -169,7 +175,7 @@ export const userApi = baseApi.injectEndpoints({
         await queryFulfilled;
         await AsyncStorage.removeItem(FAVORITE_LOCATION_NOTES_KEY);
       },
-      invalidatesTags: ['User', 'KycStatus', 'Vehicle', 'FavoriteLocations'],
+      invalidatesTags: [currentUserTag, kycStatusTag, vehicleListTag, favoriteLocationsListTag],
     }),
 
     getUserById: builder.query<User, string>({
@@ -200,7 +206,7 @@ export const userApi = baseApi.injectEndpoints({
           await queryFulfilled;
 
           // Invalider immédiatement le cache KYC pour forcer un refetch
-          dispatch(userApi.util.invalidateTags(['KycStatus']));
+          dispatch(userApi.util.invalidateTags([kycStatusTag]));
 
           // Get current refresh token from secure storage
           const refreshToken = await getRefreshToken();
@@ -245,7 +251,7 @@ export const userApi = baseApi.injectEndpoints({
 
             // Invalider les tags User et KycStatus pour forcer un refetch immédiat
             // Cela garantit que tous les composants utilisant ces données se mettent à jour
-            dispatch(userApi.util.invalidateTags(['User', 'KycStatus']));
+            dispatch(userApi.util.invalidateTags([currentUserTag, kycStatusTag]));
 
             // Forcer un refetch immédiat du statut KYC et du profil utilisateur
             dispatch(userApi.endpoints.getKycStatus.initiate(undefined, { forceRefetch: true }));
@@ -253,7 +259,7 @@ export const userApi = baseApi.injectEndpoints({
           } else {
             console.warn('No refresh token available after KYC upload');
             // Même sans refresh token, forcer un refetch du statut KYC
-            dispatch(userApi.util.invalidateTags(['KycStatus']));
+            dispatch(userApi.util.invalidateTags([kycStatusTag]));
             dispatch(userApi.endpoints.getKycStatus.initiate(undefined, { forceRefetch: true }));
           }
         } catch (error) {
@@ -261,16 +267,16 @@ export const userApi = baseApi.injectEndpoints({
           // The user can still continue using the app with the old token
           console.error('Error refreshing tokens after KYC upload:', error);
           // Même en cas d'erreur, invalider les tags et forcer un refetch du statut KYC
-          dispatch(userApi.util.invalidateTags(['KycStatus']));
+          dispatch(userApi.util.invalidateTags([kycStatusTag]));
           dispatch(userApi.endpoints.getKycStatus.initiate(undefined, { forceRefetch: true }));
         }
       },
-      invalidatesTags: ['User', 'KycStatus'],
+      invalidatesTags: [currentUserTag, kycStatusTag],
     }),
 
     getKycStatus: builder.query<KycDocument | null, void>({
       query: () => '/users/kyc/status',
-      providesTags: ['KycStatus'],
+      providesTags: [kycStatusTag],
     }),
 
     updateFcmToken: builder.mutation<{ message: string }, { fcmToken: string }>({
@@ -279,7 +285,7 @@ export const userApi = baseApi.injectEndpoints({
         method: 'POST',
         body: { fcmToken },
       }),
-      invalidatesTags: ['User'],
+      invalidatesTags: [],
     }),
 
     // Envoyer un code OTP pour la vérification du numéro de téléphone
@@ -331,7 +337,7 @@ export const userApi = baseApi.injectEndpoints({
         method: 'PUT',
         body: { newPin },
       }),
-      invalidatesTags: ['User'],
+      invalidatesTags: [currentUserTag],
     }),
 
     // Modifier le PIN avec OTP (quand l'utilisateur a oublié son PIN)
@@ -341,7 +347,7 @@ export const userApi = baseApi.injectEndpoints({
         method: 'PUT',
         body: { newPin },
       }),
-      invalidatesTags: ['User'],
+      invalidatesTags: [currentUserTag],
     }),
 
     // ==================== Favorite Locations Endpoints ====================
@@ -359,7 +365,7 @@ export const userApi = baseApi.injectEndpoints({
           data: await mergeFavoriteLocationNotes(result.data as FavoriteLocation[]),
         } as any;
       },
-      providesTags: ['FavoriteLocations'],
+      providesTags: [favoriteLocationsListTag],
     }),
 
     // Récupérer le lieu favori par défaut (optionnellement filtré par type)
@@ -376,7 +382,7 @@ export const userApi = baseApi.injectEndpoints({
           data: await mergeFavoriteLocationNote((result.data as FavoriteLocation | null) ?? null),
         } as any;
       },
-      providesTags: ['FavoriteLocations'],
+      providesTags: [favoriteLocationsListTag],
     }),
 
     // Récupérer un lieu favori par ID
@@ -419,7 +425,7 @@ export const userApi = baseApi.injectEndpoints({
           data: await persistFavoriteLocationNote(result.data as FavoriteLocation, notes),
         } as any;
       },
-      invalidatesTags: ['FavoriteLocations'],
+      invalidatesTags: [favoriteLocationsListTag],
     }),
 
     // Mettre à jour un lieu favori
@@ -447,7 +453,10 @@ export const userApi = baseApi.injectEndpoints({
           data: await persistFavoriteLocationNote(result.data as FavoriteLocation, notes),
         } as any;
       },
-      invalidatesTags: (_result, _error, { id }) => [{ type: 'FavoriteLocations', id }, 'FavoriteLocations'],
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'FavoriteLocations', id },
+        favoriteLocationsListTag,
+      ],
     }),
 
     // Supprimer un lieu favori
@@ -466,7 +475,10 @@ export const userApi = baseApi.injectEndpoints({
 
         return { data: result.data as { message: string } } as any;
       },
-      invalidatesTags: (_result, _error, id) => [{ type: 'FavoriteLocations', id }, 'FavoriteLocations'],
+      invalidatesTags: (_result, _error, id) => [
+        { type: 'FavoriteLocations', id },
+        favoriteLocationsListTag,
+      ],
     }),
   }),
 });
