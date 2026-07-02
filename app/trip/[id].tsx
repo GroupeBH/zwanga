@@ -30,6 +30,7 @@ import { isPointOnRoute, splitRouteByProgress } from '@/utils/routeHelpers';
 import { shareTrip, shareTripViaWhatsApp } from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerAndroid, type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { useIsFocused } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -38,6 +39,7 @@ import {
   KeyboardAvoidingView,
   Image,
   type ImageRequireSource,
+  InteractionManager,
   Modal,
   Platform,
   RefreshControl,
@@ -182,6 +184,7 @@ const BOOKING_STATUS_CONFIG: Record<
 
 export default function TripDetailsScreen() {
   const router = useRouter();
+  const isFocused = useIsFocused();
   const goHome = useCallback(() => {
     router.replace('/(tabs)');
   }, [router]);
@@ -654,6 +657,7 @@ export default function TripDetailsScreen() {
     seats: 0,
   });
   const [mapModalVisible, setMapModalVisible] = useState(false);
+  const [isDetailMapReady, setIsDetailMapReady] = useState(false);
   const [reviewsModalVisible, setReviewsModalVisible] = useState(false);
   const [selectedReviewUserId, setSelectedReviewUserId] = useState<string | null>(null);
   const [selectedReviewUserName, setSelectedReviewUserName] = useState<string | null>(null);
@@ -671,6 +675,8 @@ export default function TripDetailsScreen() {
   const [contactModalVisible, setContactModalVisible] = useState(false);
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [securityModalVisible, setSecurityModalVisible] = useState(false);
+  const securityModalTransitionRef = useRef(false);
+  const securityModalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [kycFrontImage, setKycFrontImage] = useState<string | null>(null);
   const [kycBackImage, setKycBackImage] = useState<string | null>(null);
   const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
@@ -685,6 +691,34 @@ export default function TripDetailsScreen() {
   });
 
   const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    if (!isFocused) {
+      setIsDetailMapReady(false);
+      setMapModalVisible(false);
+      return;
+    }
+
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const interactionTask = InteractionManager.runAfterInteractions(() => {
+      // Give the previous screen's native map one frame to detach after the
+      // navigation animation. Mounting both maps together can terminate iOS.
+      timeoutId = setTimeout(() => {
+        if (!cancelled) setIsDetailMapReady(true);
+      }, 120);
+    });
+
+    return () => {
+      cancelled = true;
+      interactionTask.cancel();
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [isFocused, tripId]);
+
+  useEffect(() => () => {
+    if (securityModalTimerRef.current) clearTimeout(securityModalTimerRef.current);
+  }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -959,7 +993,27 @@ export default function TripDetailsScreen() {
     void refetchTrip();
     void refetchMyBookings();
     void refetchTripBookings();
-    setSecurityModalVisible(true);
+    if (securityModalTransitionRef.current) return;
+
+    securityModalTransitionRef.current = true;
+    setIsDetailMapReady(false);
+    securityModalTimerRef.current = setTimeout(() => {
+      setSecurityModalVisible(true);
+      securityModalTransitionRef.current = false;
+      securityModalTimerRef.current = null;
+    }, 100);
+  };
+
+  const closeTripSecurityModal = () => {
+    if (securityModalTransitionRef.current) return;
+
+    securityModalTransitionRef.current = true;
+    setSecurityModalVisible(false);
+    securityModalTimerRef.current = setTimeout(() => {
+      if (isFocused) setIsDetailMapReady(true);
+      securityModalTransitionRef.current = false;
+      securityModalTimerRef.current = null;
+    }, 400);
   };
 
   const openEmergencyContacts = () => {
@@ -1697,7 +1751,8 @@ export default function TripDetailsScreen() {
     };
   }, [arrivalCoordinate, departureCoordinate, hasValidRouteEndpoints, routeMapCoordinates]);
 
-  const canRenderTripMap = trip?.status !== 'ongoing' && hasValidRouteEndpoints;
+  const hasRenderableTripMap = trip?.status !== 'ongoing' && hasValidRouteEndpoints;
+  const canRenderTripMap = hasRenderableTripMap && isDetailMapReady;
   const tripDepartureName = trip?.departure?.name || trip?.departure?.address || 'Depart';
   const tripArrivalName = trip?.arrival?.name || trip?.arrival?.address || 'Arrivee';
   const tripDepartureAddress = trip?.departure?.address || tripDepartureName;
@@ -1767,8 +1822,8 @@ export default function TripDetailsScreen() {
         pointerEvents="box-none"
         style={[
           styles.header,
-          canRenderTripMap && styles.headerFloating,
-          canRenderTripMap && { paddingTop: headerFloatingOffset },
+          hasRenderableTripMap && styles.headerFloating,
+          hasRenderableTripMap && { paddingTop: headerFloatingOffset },
         ]}
       >
         <View pointerEvents="box-none" style={styles.headerTop}>
@@ -1780,7 +1835,7 @@ export default function TripDetailsScreen() {
           >
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, canRenderTripMap && styles.headerTitleFloating]}>
+          <Text style={[styles.headerTitle, hasRenderableTripMap && styles.headerTitleFloating]}>
             Détails du trajet
           </Text>
           <View style={styles.headerActions}>
@@ -1815,6 +1870,21 @@ export default function TripDetailsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
         }
       >
+        {hasRenderableTripMap && !isDetailMapReady && (
+          <View style={styles.mapContainer}>
+            <View
+              style={[
+                styles.mapPreview,
+                styles.mapLoadingPlaceholder,
+                { height: Math.min(214, Math.max(172, viewportHeight * 0.27)) },
+              ]}
+            >
+              <ActivityIndicator size="small" color={Colors.primary} />
+              <Text style={styles.mapLoadingText}>Préparation de la carte...</Text>
+            </View>
+          </View>
+        )}
+
         {/* Carte interactive - masquée quand le trajet est en cours */}
         {canRenderTripMap && (
           <TouchableOpacity
@@ -2017,7 +2087,7 @@ export default function TripDetailsScreen() {
           </Modal>
         )}
 
-        <View style={[styles.tripDetailSheet, !canRenderTripMap && styles.tripDetailSheetNoMap]}>
+        <View style={[styles.tripDetailSheet, !hasRenderableTripMap && styles.tripDetailSheetNoMap]}>
           <View style={styles.tripSheetHandle} />
 
           <Animated.View entering={FadeInDown.delay(120)} style={styles.tripHeroSummary}>
@@ -2638,13 +2708,14 @@ export default function TripDetailsScreen() {
         visible={securityModalVisible}
         animationType="slide"
         transparent
-        onRequestClose={() => setSecurityModalVisible(false)}
+        presentationStyle="overFullScreen"
+        onRequestClose={closeTripSecurityModal}
       >
         <View style={styles.securityModalOverlay}>
           <TouchableOpacity
             style={styles.securityModalBackdrop}
             activeOpacity={1}
-            onPress={() => setSecurityModalVisible(false)}
+            onPress={closeTripSecurityModal}
           />
           <View
             style={[
@@ -2656,7 +2727,7 @@ export default function TripDetailsScreen() {
               <Text style={styles.securityModalTitle}>Securite du trajet</Text>
               <TouchableOpacity
                 style={styles.securityModalCloseButton}
-                onPress={() => setSecurityModalVisible(false)}
+                onPress={closeTripSecurityModal}
               >
                 <Ionicons name="close" size={22} color={Colors.gray[700]} />
               </TouchableOpacity>
@@ -3728,6 +3799,17 @@ const styles = StyleSheet.create({
     borderRadius: 0,
     overflow: 'hidden',
     backgroundColor: Colors.gray[200],
+  },
+  mapLoadingPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.gray[100],
+  },
+  mapLoadingText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[600],
   },
   mapView: {
     ...StyleSheet.absoluteFillObject,

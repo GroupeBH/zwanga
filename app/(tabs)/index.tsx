@@ -103,7 +103,6 @@ type TripPreviewCardProps = {
   isBooked: boolean;
   isSelected: boolean;
   onOpen: () => void;
-  onSelect: () => void;
   trip: Trip;
 };
 
@@ -205,7 +204,6 @@ function TripPreviewCard({
   isBooked,
   isSelected,
   onOpen,
-  onSelect,
   trip,
 }: TripPreviewCardProps) {
   const calculatedArrivalTime = useTripArrivalTime(trip);
@@ -221,7 +219,9 @@ function TripPreviewCard({
   return (
     <TouchableOpacity
       activeOpacity={0.9}
-      onPress={onSelect}
+      accessibilityRole="button"
+      accessibilityLabel={`Voir le trajet de ${placeName(trip.departure)} à ${placeName(trip.arrival)}`}
+      onPress={onOpen}
       style={[styles.tripPreviewCard, isSelected && styles.tripPreviewCardSelected, { width: cardWidth }]}
     >
       <View style={styles.tripPreviewTopRow}>
@@ -290,9 +290,9 @@ function TripPreviewCard({
             </View>
           )}
         </View>
-        <TouchableOpacity activeOpacity={0.85} style={styles.tripPreviewOpenButton} onPress={onOpen}>
+        <View style={styles.tripPreviewOpenButton}>
           <Ionicons name="chevron-forward" size={22} color={Colors.white} />
-        </TouchableOpacity>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -543,6 +543,7 @@ export default function HomeScreen() {
   const mapRef = useRef<MapView>(null);
   const tripMarkerRefs = useRef<Record<string, MapMarker | null>>({});
   const userLocationMarkerRef = useRef<MapMarker | null>(null);
+  const openingTripRef = useRef(false);
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const storedTrips = useAppSelector(selectAvailableTrips);
@@ -879,8 +880,15 @@ export default function HomeScreen() {
   const availableTripsLabel = `${latestTrips.length} trajet${latestTrips.length > 1 ? 's' : ''}`;
   const showInitialHomeLoader = tripsLoading && !remoteTrips && storedTrips.length === 0;
   const openTripDetail = (tripId: string) => {
+    if (openingTripRef.current) return;
+
+    openingTripRef.current = true;
     router.push(`/trip/${tripId}`);
   };
+
+  useEffect(() => {
+    if (isFocused) openingTripRef.current = false;
+  }, [isFocused]);
 
   const selectTripOnMap = (tripId: string) => {
     setMapFocusedOnUser(false);
@@ -984,6 +992,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={[]}>
+      {isFocused ? (
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
@@ -1086,6 +1095,9 @@ export default function HomeScreen() {
           </Marker>
         )}
       </MapView>
+      ) : (
+        <View style={styles.map} />
+      )}
 
       <View style={styles.mapVeil} pointerEvents="none" />
 
@@ -1274,8 +1286,7 @@ export default function HomeScreen() {
                 trip={trip}
                 isBooked={bookedTripIds.has(trip.id)}
                 isSelected={trip.id === selectedTrip?.id}
-                onSelect={() => selectTripOnMap(trip.id)}
-                onOpen={() => router.push(`/trip/${trip.id}`)}
+                onOpen={() => openTripDetail(trip.id)}
               />
             ))}
           </ScrollView>

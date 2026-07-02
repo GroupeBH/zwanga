@@ -2,8 +2,8 @@ import { POLICE_CONTACTS } from '@/constants/policeContacts';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
-import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { ActivityIndicator, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 type PoliceContactPanelProps = {
   compact?: boolean;
@@ -14,66 +14,94 @@ const normalizePhone = (phone: string) => phone.replace(/[^\d+]/g, '');
 
 export function PoliceContactPanel({ compact = false, presentation = 'full' }: PoliceContactPanelProps) {
   const { showDialog } = useDialog();
+  const [chooserVisible, setChooserVisible] = useState(false);
+  const [callingPhone, setCallingPhone] = useState<string | null>(null);
+  const [callError, setCallError] = useState<string | null>(null);
 
   const callPolice = async (phone: string) => {
     const url = `tel:${normalizePhone(phone)}`;
+    if (callingPhone) return;
+
+    setCallingPhone(phone);
+    setCallError(null);
     try {
-      const supported = await Linking.canOpenURL(url);
-      if (!supported) {
-        showDialog({
-          variant: 'warning',
-          title: 'Appel indisponible',
-          message: 'Votre appareil ne permet pas de lancer un appel pour le moment.',
-        });
-        return;
-      }
       await Linking.openURL(url);
     } catch {
-      showDialog({
-        variant: 'danger',
-        title: "Impossible d'appeler",
-        message: 'Reessayez ou composez le numero directement depuis votre telephone.',
-      });
+      const message = 'Réessayez ou composez directement le numéro depuis votre téléphone.';
+      if (presentation === 'strip') {
+        setCallError(message);
+      } else {
+        showDialog({
+          variant: 'danger',
+          title: "Impossible d'appeler",
+          message,
+        });
+      }
+    } finally {
+      setCallingPhone(null);
     }
   };
 
   const openPoliceChooser = () => {
-    showDialog({
-      variant: 'danger',
-      title: 'Appeler la police',
-      message: 'Choisissez le numero a appeler maintenant.',
-      actions: [
-        ...POLICE_CONTACTS.map((contact) => ({
-          label: `${contact.label} - ${contact.phone}`,
-          variant: 'primary' as const,
-          onPress: () => void callPolice(contact.phone),
-        })),
-        { label: 'Annuler', variant: 'ghost' as const },
-      ],
-    });
+    setChooserVisible((current) => !current);
   };
 
   if (presentation === 'strip') {
     return (
-      <TouchableOpacity
-        style={[styles.strip, compact && styles.stripCompact]}
-        onPress={openPoliceChooser}
-        activeOpacity={0.88}
-      >
-        <View style={styles.stripIcon}>
-          <Ionicons name="call" size={17} color={Colors.danger} />
-        </View>
-        <View style={styles.stripText}>
-          <Text style={styles.stripTitle}>Urgence police</Text>
-          <Text style={styles.stripSubtitle} numberOfLines={1}>
-            4 numeros disponibles
-          </Text>
-        </View>
-        <View style={styles.stripAction}>
-          <Text style={styles.stripActionText}>Appeler</Text>
-          <Ionicons name="chevron-forward" size={15} color={Colors.white} />
-        </View>
-      </TouchableOpacity>
+      <View style={styles.stripWrapper}>
+        <TouchableOpacity
+          style={[styles.strip, compact && styles.stripCompact]}
+          onPress={openPoliceChooser}
+          activeOpacity={0.88}
+        >
+          <View style={styles.stripIcon}>
+            <Ionicons name="call" size={17} color={Colors.danger} />
+          </View>
+          <View style={styles.stripText}>
+            <Text style={styles.stripTitle}>Urgence police</Text>
+            <Text style={styles.stripSubtitle} numberOfLines={1}>
+              4 numéros disponibles
+            </Text>
+          </View>
+          <View style={styles.stripAction}>
+            <Text style={styles.stripActionText}>{chooserVisible ? 'Fermer' : 'Appeler'}</Text>
+            <Ionicons
+              name={chooserVisible ? 'chevron-up' : 'chevron-down'}
+              size={15}
+              color={Colors.white}
+            />
+          </View>
+        </TouchableOpacity>
+
+        {chooserVisible ? (
+          <View style={styles.inlineChooser}>
+            <Text style={styles.inlineChooserTitle}>Choisissez un numéro</Text>
+            {callError ? <Text style={styles.inlineCallError}>{callError}</Text> : null}
+            {POLICE_CONTACTS.map((contact) => {
+              const isCalling = callingPhone === contact.phone;
+              return (
+                <TouchableOpacity
+                  key={contact.id}
+                  style={styles.inlineCallButton}
+                  onPress={() => void callPolice(contact.phone)}
+                  disabled={Boolean(callingPhone)}
+                  activeOpacity={0.82}
+                >
+                  <View style={styles.inlineCallCopy}>
+                    <Text style={styles.inlineCallLabel}>{contact.label}</Text>
+                    <Text style={styles.inlineCallPhone}>{contact.phone}</Text>
+                  </View>
+                  {isCalling ? (
+                    <ActivityIndicator size="small" color={Colors.white} />
+                  ) : (
+                    <Ionicons name="call" size={17} color={Colors.white} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : null}
+      </View>
     );
   }
 
@@ -114,6 +142,9 @@ export function PoliceContactPanel({ compact = false, presentation = 'full' }: P
 }
 
 const styles = StyleSheet.create({
+  stripWrapper: {
+    gap: Spacing.sm,
+  },
   strip: {
     minHeight: 58,
     borderRadius: BorderRadius.sm,
@@ -165,6 +196,45 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
+  },
+  inlineChooser: {
+    gap: Spacing.sm,
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.danger + '22',
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.white,
+  },
+  inlineChooserTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+  },
+  inlineCallError: {
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+    color: Colors.danger,
+  },
+  inlineCallButton: {
+    minHeight: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.danger,
+  },
+  inlineCallCopy: {
+    flex: 1,
+  },
+  inlineCallLabel: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
+  },
+  inlineCallPhone: {
+    marginTop: 1,
+    fontSize: FontSizes.xs,
+    color: 'rgba(255,255,255,0.82)',
   },
   card: {
     backgroundColor: Colors.white,
