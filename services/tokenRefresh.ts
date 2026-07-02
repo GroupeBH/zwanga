@@ -26,6 +26,7 @@ const getNormalizedBaseUrl = () => {
 
 const refreshBaseQuery = fetchBaseQuery({
   baseUrl: getNormalizedBaseUrl(),
+  timeout: 20_000,
 });
 
 async function forceLocalLogout(reason: string): Promise<void> {

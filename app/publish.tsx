@@ -45,6 +45,7 @@ import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type PublishStep = 'route' | 'datetime' | 'vehicle' | 'pricing' | 'confirm';
+type PublicationSuccess = { recurring: boolean } | null;
 type LatLng = { latitude: number; longitude: number };
 type RoutePointStatus = 'confirmed' | 'suggested' | null;
 type IOSDateTimePickerProps = React.ComponentProps<typeof DateTimePicker> & {
@@ -161,6 +162,9 @@ export default function PublishScreen() {
   const stepEntering = Platform.OS === 'android' ? undefined : FadeInDown.duration(180);
   const [createTrip, { isLoading: isPublishing }] = useCreateTripMutation();
   const [createRecurringTrip, { isLoading: isPublishingRecurring }] = useCreateRecurringTripMutation();
+  const publishInFlightRef = useRef(false);
+  const publicationSuccessActionRef = useRef(false);
+  const [publicationSuccess, setPublicationSuccess] = useState<PublicationSuccess>(null);
   const [geocodeManualAddress] = useGeocodeMutation();
   const { showDialog } = useDialog();
   const { getCurrentLocation, lastKnownLocation } = useUserLocation({
@@ -1233,7 +1237,9 @@ export default function PublishScreen() {
   };
 
   const handlePublish = async () => {
-    if (isSubmittingTrip) return;
+    // RTK Query's isLoading is updated on the next render. The ref also blocks
+    // two taps occurring in the same frame from creating duplicate trips.
+    if (publishInFlightRef.current || isSubmittingTrip) return;
 
     if (!hasDepartureAddress || !hasArrivalAddress) {
       setAddressSectionStep(!hasDepartureAddress ? 'departure' : 'arrival');
@@ -1296,6 +1302,8 @@ export default function PublishScreen() {
       return;
     }
 
+    publishInFlightRef.current = true;
+
     try {
       const departureCoordinates = getLocationCoordinates(departureLocation);
       const arrivalCoordinates = getLocationCoordinates(arrivalLocation);
@@ -1318,7 +1326,7 @@ export default function PublishScreen() {
           description: description.trim() || undefined,
           vehicleId: selectedVehicleId,
         }).unwrap();
-        await trackEvent('recurring_trip_created', {
+        void trackEvent('recurring_trip_created', {
           seats: seatsValue,
           is_free: isFreeTrip,
           has_description: Boolean(description.trim()),
@@ -1339,7 +1347,7 @@ export default function PublishScreen() {
           description: description.trim() || undefined,
           vehicleId: selectedVehicleId,
         }).unwrap();
-        await trackEvent('trip_published', {
+        void trackEvent('trip_published', {
           seats: seatsValue,
           price_per_seat: priceValue,
           is_free: isFreeTrip,
@@ -1347,27 +1355,9 @@ export default function PublishScreen() {
         });
       }
 
-      const publishedRecurring = isRecurringTrip;
-      resetForm();
-      showDialog({
-        variant: 'success',
-        title: publishedRecurring ? 'Trajets programmés' : 'Trajet publié',
-        message: publishedRecurring
-          ? 'Nous publierons ce trajet les jours que vous avez choisis.'
-          : 'Votre trajet a été publié avec succès !',
-        actions: [
-          {
-            label: publishedRecurring ? 'Publier un autre' : 'Publier un autre',
-            variant: 'secondary',
-            onPress: () => { },
-          },
-          {
-            label: publishedRecurring ? 'Voir mes trajets' : 'Voir mes trajets',
-            variant: 'primary',
-            onPress: () => router.push(publishedRecurring ? '/recurring-trips' : '/trips'),
-          },
-        ],
-      });
+      // Keep the confirmation screen mounted behind the success modal. Resetting
+      // its MapView while opening a native Modal can freeze Android devices.
+      setPublicationSuccess({ recurring: isRecurringTrip });
     } catch (error: any) {
       const message =
         error?.data?.message ??
@@ -1397,6 +1387,8 @@ export default function PublishScreen() {
             ]
           : undefined,
       });
+    } finally {
+      publishInFlightRef.current = false;
     }
   };
 
@@ -1456,6 +1448,31 @@ export default function PublishScreen() {
       return;
     }
     handleNextStep();
+  };
+
+  const finishPublicationSuccess = (action: 'home' | 'trips' | 'another') => {
+    if (publicationSuccessActionRef.current) return;
+
+    publicationSuccessActionRef.current = true;
+    const wasRecurring = publicationSuccess?.recurring ?? false;
+    setPublicationSuccess(null);
+
+    // Let React Native finish dismissing the native modal before changing the
+    // navigation stack or remounting the publication MapView.
+    setTimeout(() => {
+      if (action === 'another') {
+        resetForm();
+        publicationSuccessActionRef.current = false;
+        return;
+      }
+
+      if (action === 'trips') {
+        router.replace(wasRecurring ? '/recurring-trips' : '/trips');
+        return;
+      }
+
+      router.back();
+    }, 300);
   };
 
   return (
@@ -2536,6 +2553,49 @@ export default function PublishScreen() {
       />
 
       <Modal
+        transparent
+        animationType="fade"
+        visible={publicationSuccess !== null}
+        onRequestClose={() => finishPublicationSuccess('home')}
+      >
+        <View style={styles.publicationSuccessOverlay}>
+          <View style={styles.publicationSuccessCard}>
+            <View style={styles.publicationSuccessIcon}>
+              <Ionicons name="checkmark" size={38} color={Colors.white} />
+            </View>
+            <Text style={styles.publicationSuccessTitle}>
+              {publicationSuccess?.recurring ? 'Trajets programmés' : 'Trajet publié'}
+            </Text>
+            <Text style={styles.publicationSuccessMessage}>
+              {publicationSuccess?.recurring
+                ? 'Vos trajets ont bien été programmés pour les jours sélectionnés.'
+                : 'Votre trajet a bien été publié. Il est maintenant visible par les passagers.'}
+            </Text>
+            <TouchableOpacity
+              style={styles.publicationSuccessPrimaryButton}
+              onPress={() => finishPublicationSuccess('home')}
+            >
+              <Text style={styles.publicationSuccessPrimaryText}>Retour à l’accueil</Text>
+            </TouchableOpacity>
+            <View style={styles.publicationSuccessSecondaryRow}>
+              <TouchableOpacity
+                style={styles.publicationSuccessSecondaryButton}
+                onPress={() => finishPublicationSuccess('another')}
+              >
+                <Text style={styles.publicationSuccessSecondaryText}>Publier un autre</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.publicationSuccessSecondaryButton}
+                onPress={() => finishPublicationSuccess('trips')}
+              >
+                <Text style={styles.publicationSuccessSecondaryText}>Mes trajets</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={Platform.OS === 'ios' && iosPickerMode !== null}
         transparent
         animationType="fade"
@@ -3095,6 +3155,73 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
+  },
+  publicationSuccessOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: Spacing.xl,
+    backgroundColor: 'rgba(15, 23, 42, 0.68)',
+  },
+  publicationSuccessCard: {
+    alignItems: 'center',
+    padding: Spacing.xl,
+    borderRadius: BorderRadius.xxl,
+    backgroundColor: Colors.white,
+  },
+  publicationSuccessIcon: {
+    width: 76,
+    height: 76,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.lg,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.success,
+  },
+  publicationSuccessTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    textAlign: 'center',
+  },
+  publicationSuccessMessage: {
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xl,
+    fontSize: FontSizes.base,
+    lineHeight: 22,
+    color: Colors.gray[600],
+    textAlign: 'center',
+  },
+  publicationSuccessPrimaryButton: {
+    width: '100%',
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+  },
+  publicationSuccessPrimaryText: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.white,
+  },
+  publicationSuccessSecondaryRow: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginTop: Spacing.sm,
+  },
+  publicationSuccessSecondaryButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[50],
+  },
+  publicationSuccessSecondaryText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
   },
   datetimeButtons: {
     flexDirection: 'row',

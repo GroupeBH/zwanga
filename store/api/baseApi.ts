@@ -10,6 +10,8 @@ import type { RootState } from '../index';
  */
 const baseQueryWithAuth = fetchBaseQuery({
   baseUrl: API_BASE_URL,
+  // Never leave the whole UI waiting forever when the mobile connection stalls.
+  timeout: 20_000,
   prepareHeaders: async (headers, { getState }) => {
     // Récupérer un access token valide (rafraîchi automatiquement si nécessaire)
     const accessToken = await getValidAccessToken();
