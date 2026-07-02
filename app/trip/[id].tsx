@@ -96,6 +96,7 @@ const USE_ANDROID_MAP_MARKER_IMAGES = Platform.OS === 'android';
 const TRIP_DETAIL_MAP_MIN_DELTA = 0.006;
 const TRIP_DETAIL_MAP_MAX_DELTA = 0.014;
 const TRIP_DETAIL_MAP_PADDING = 1.02;
+const LOCATION_PICKER_OPEN_DELAY_MS = Platform.OS === 'ios' ? 250 : 0;
 const ANDROID_TRIP_DETAIL_MARKER_ANCHOR = { x: 0.5, y: 0.86 };
 const androidTripDetailMarkerImages: Record<'departure' | 'arrival' | 'passenger', ImageRequireSource> = {
   departure: require('@/assets/images/map-markers/trip-detail-marker-departure.png'),
@@ -415,6 +416,21 @@ export default function TripDetailsScreen() {
     setEditArrivalSelection(editDepartureSelection);
     setEditDepartureManualAddress(editArrivalManualAddress);
     setEditArrivalManualAddress(editDepartureManualAddress);
+  };
+
+  const openEditRoutePicker = (target: 'departure' | 'arrival') => {
+    Keyboard.dismiss();
+    setEditTripModalVisible(false);
+    setTimeout(() => {
+      setEditRoutePickerTarget(target);
+    }, LOCATION_PICKER_OPEN_DELAY_MS);
+  };
+
+  const restoreEditModalAfterRoutePicker = () => {
+    setEditRoutePickerTarget(null);
+    setTimeout(() => {
+      setEditTripModalVisible(true);
+    }, LOCATION_PICKER_OPEN_DELAY_MS);
   };
 
   const handleContinueEditTrip = () => {
@@ -965,6 +981,26 @@ export default function TripDetailsScreen() {
     setBookingModalVisible(false);
     setBookingStep(1);
     setShouldAutofillPassengerOrigin(false);
+  };
+
+  const openBookingLocationPicker = (target: 'origin' | 'destination') => {
+    Keyboard.dismiss();
+    setBookingModalVisible(false);
+    setTimeout(() => {
+      if (target === 'origin') {
+        setShowOriginPicker(true);
+      } else {
+        setShowDestinationPicker(true);
+      }
+    }, LOCATION_PICKER_OPEN_DELAY_MS);
+  };
+
+  const restoreBookingModalAfterLocationPicker = () => {
+    setShowOriginPicker(false);
+    setShowDestinationPicker(false);
+    setTimeout(() => {
+      setBookingModalVisible(true);
+    }, LOCATION_PICKER_OPEN_DELAY_MS);
   };
 
   useEffect(() => {
@@ -1690,6 +1726,7 @@ export default function TripDetailsScreen() {
     : trip?.vehicleInfo && trip.vehicleInfo !== 'Informations véhicule fournies par le conducteur'
       ? trip.vehicleInfo
       : 'Vehicule confirme apres reservation';
+  const headerFloatingOffset = Math.max(insets.top, 12) + 10;
 
   // Early return AFTER all hooks to avoid hook order violation
   if (tripLoading && !trip) {
@@ -1726,9 +1763,21 @@ export default function TripDetailsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={[styles.header, canRenderTripMap && styles.headerFloating]}>
-        <View style={styles.headerTop}>
-          <TouchableOpacity onPress={goHome} style={styles.headerCircleButton} activeOpacity={0.85}>
+      <View
+        pointerEvents="box-none"
+        style={[
+          styles.header,
+          canRenderTripMap && styles.headerFloating,
+          canRenderTripMap && { paddingTop: headerFloatingOffset },
+        ]}
+      >
+        <View pointerEvents="box-none" style={styles.headerTop}>
+          <TouchableOpacity
+            onPress={goHome}
+            style={styles.headerCircleButton}
+            activeOpacity={0.85}
+            hitSlop={{ top: 16, right: 16, bottom: 16, left: 16 }}
+          >
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, canRenderTripMap && styles.headerTitleFloating]}>
@@ -2718,7 +2767,7 @@ export default function TripDetailsScreen() {
                 <View style={styles.bookingRouteCard}>
                   <TouchableOpacity
                     style={styles.bookingRoutePoint}
-                    onPress={() => setShowOriginPicker(true)}
+                    onPress={() => openBookingLocationPicker('origin')}
                     disabled={isBooking}
                     activeOpacity={0.88}
                   >
@@ -2740,7 +2789,7 @@ export default function TripDetailsScreen() {
 
                   <TouchableOpacity
                     style={styles.bookingRoutePoint}
-                    onPress={() => setShowDestinationPicker(true)}
+                    onPress={() => openBookingLocationPicker('destination')}
                     disabled={isBooking || isValidatingDestination}
                     activeOpacity={0.88}
                   >
@@ -2884,11 +2933,11 @@ export default function TripDetailsScreen() {
         initialLocation={passengerOrigin}
         routeCoordinates={routeCoordinates || undefined}
         restrictToRoute={true}
-        onClose={() => setShowOriginPicker(false)}
+        onClose={restoreBookingModalAfterLocationPicker}
         onSelect={(location) => {
           setPassengerOrigin(location);
           setShouldAutofillPassengerOrigin(false);
-          setShowOriginPicker(false);
+          restoreBookingModalAfterLocationPicker();
           setBookingModalError('');
         }}
       />
@@ -2900,10 +2949,10 @@ export default function TripDetailsScreen() {
         initialLocation={passengerDestination}
         routeCoordinates={routeCoordinates || undefined}
         restrictToRoute={true}
-        onClose={() => setShowDestinationPicker(false)}
+        onClose={restoreBookingModalAfterLocationPicker}
         onSelect={(location) => {
           setPassengerDestination(location);
-          setShowDestinationPicker(false);
+          restoreBookingModalAfterLocationPicker();
           setBookingModalError('');
         }}
       />
@@ -3334,7 +3383,7 @@ export default function TripDetailsScreen() {
                 <View style={styles.editRouteCard}>
                   <TouchableOpacity
                     style={styles.editRouteMapBtn}
-                    onPress={() => setEditRoutePickerTarget('departure')}
+                    onPress={() => openEditRoutePicker('departure')}
                     activeOpacity={0.75}
                   >
                     <View style={[styles.editRouteMapDot, { backgroundColor: Colors.success + '20' }]}>
@@ -3351,7 +3400,7 @@ export default function TripDetailsScreen() {
 
                   <TouchableOpacity
                     style={styles.editRouteMapBtn}
-                    onPress={() => setEditRoutePickerTarget('arrival')}
+                    onPress={() => openEditRoutePicker('arrival')}
                     activeOpacity={0.75}
                   >
                     <View style={[styles.editRouteMapDot, { backgroundColor: Colors.primary + '18' }]}>
@@ -3507,20 +3556,21 @@ export default function TripDetailsScreen() {
           editRoutePickerTarget === 'departure' ? editDepartureSelection : editArrivalSelection
         }
         autoLocateOnOpen={false}
-        onClose={() => setEditRoutePickerTarget(null)}
+        onClose={restoreEditModalAfterRoutePicker}
         onSelect={(location) => {
           const target = editRoutePickerTarget;
-          setEditRoutePickerTarget(null);
           setEditRouteMode('map');
           if (target === 'departure') {
             setEditDepartureSelection(location);
             setEditDepartureManualAddress(location.title || location.address);
+            restoreEditModalAfterRoutePicker();
             return;
           }
           if (target === 'arrival') {
             setEditArrivalSelection(location);
             setEditArrivalManualAddress(location.title || location.address);
           }
+          restoreEditModalAfterRoutePicker();
         }}
       />
     </SafeAreaView>
@@ -3606,7 +3656,8 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: 'transparent',
     borderBottomWidth: 0,
-    zIndex: 30,
+    zIndex: 80,
+    elevation: 80,
   },
   headerTop: {
     flexDirection: 'row',
@@ -3615,8 +3666,8 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   headerCircleButton: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     borderRadius: BorderRadius.full,
     backgroundColor: 'rgba(255,255,255,0.94)',
     alignItems: 'center',

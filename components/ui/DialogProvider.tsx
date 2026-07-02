@@ -106,15 +106,14 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    const activeDialog = dialog;
     setRunningActionLabel(action.label);
 
     try {
-      if (action.autoClose !== false) {
-        hideDialog();
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      }
-
       await action.onPress();
+      if (action.autoClose !== false) {
+        setDialog((currentDialog) => (currentDialog === activeDialog ? null : currentDialog));
+      }
     } finally {
       setRunningActionLabel(null);
     }

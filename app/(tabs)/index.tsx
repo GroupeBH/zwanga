@@ -1153,21 +1153,29 @@ export default function HomeScreen() {
         </TouchableOpacity>
 
         <View style={styles.actionDock}>
-          <TouchableOpacity activeOpacity={0.88} style={styles.actionPrimary} onPress={() => router.push('/search')}>
-            <Ionicons name="search" size={18} color={Colors.white} />
-            <Text style={styles.actionPrimaryText}>Chercher</Text>
-          </TouchableOpacity>
-          <TouchableOpacity activeOpacity={0.88} style={styles.actionButton} onPress={() => router.push('/publish')}>
-              <Ionicons name="add" size={19} color={Colors.primary} />
-            <Text style={styles.actionButtonText}>Publier</Text>
+          <TouchableOpacity
+            activeOpacity={0.88}
+            style={[styles.actionButton, styles.actionPublishButton]}
+            onPress={() => router.push('/publish')}
+          >
+            <Ionicons name="add-circle-outline" size={20} color={Colors.white} />
+            <Text style={[styles.actionButtonText, styles.actionButtonTextStrong]}>Publier</Text>
           </TouchableOpacity>
           <TouchableOpacity
             activeOpacity={0.88}
-            style={styles.actionButton}
+            style={[styles.actionButton, styles.actionRequestButton]}
             onPress={() => router.push(getTripRequestCreateHref())}
           >
-            <Ionicons name="paper-plane-outline" size={17} color={HOME_COLORS.navy} />
-            <Text style={styles.actionButtonText}>Demander</Text>
+            <Ionicons name="paper-plane-outline" size={18} color={Colors.white} />
+            <Text style={[styles.actionButtonText, styles.actionButtonTextStrong]}>Demander</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.88}
+            style={styles.actionSearchButton}
+            onPress={() => router.push('/search')}
+          >
+            <Ionicons name="search" size={17} color={HOME_COLORS.navy} />
+            <Text style={styles.actionSearchText}>Chercher</Text>
           </TouchableOpacity>
         </View>
 
@@ -1855,25 +1863,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
   },
-  actionPrimary: {
+  actionButton: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 54,
     borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.primary,
-    flexDirection: 'row',
+    borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.xs,
-    paddingHorizontal: Spacing.md,
-    ...CommonStyles.shadowSm,
+    gap: 3,
+    paddingHorizontal: Spacing.sm,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 5,
   },
-  actionPrimaryText: {
-    color: Colors.white,
-    fontSize: FontSizes.base,
+  actionPublishButton: {
+    backgroundColor: Colors.primary,
+  },
+  actionRequestButton: {
+    backgroundColor: HOME_COLORS.navy,
+  },
+  actionButtonText: {
+    color: HOME_COLORS.ink,
+    fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
   },
-  actionButton: {
-    width: 94,
+  actionButtonTextStrong: {
+    color: Colors.white,
+  },
+  actionSearchButton: {
+    width: 82,
     minHeight: 48,
     borderRadius: BorderRadius.lg,
     backgroundColor: 'rgba(255,255,255,0.96)',
@@ -1884,9 +1904,9 @@ const styles = StyleSheet.create({
     gap: 2,
     ...CommonStyles.shadowSm,
   },
-  actionButtonText: {
-    color: HOME_COLORS.ink,
-    fontSize: FontSizes.xs,
+  actionSearchText: {
+    color: HOME_COLORS.navy,
+    fontSize: 11,
     fontWeight: FontWeights.bold,
   },
   activeRequestCard: {
