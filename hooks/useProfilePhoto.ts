@@ -53,14 +53,18 @@ export function useProfilePhoto() {
           mediaTypes: 'images',
           allowsEditing: true,
           aspect: [1, 1],
-          quality: 0.8,
+          quality: 0.65,
+          base64: false,
+          exif: false,
         });
       } else {
         result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: 'images',
           allowsEditing: true,
           aspect: [1, 1],
-          quality: 0.8,
+          quality: 0.65,
+          base64: false,
+          exif: false,
         });
       }
 

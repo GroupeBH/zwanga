@@ -243,7 +243,7 @@ export async function getValidAccessToken(): Promise<string | null> {
 }
 
 /**
- * Proactive refresh on app start / app foreground.
+ * Proactive refresh on foreground/manual checks.
  */
 export async function proactiveTokenRefresh(): Promise<boolean> {
   try {
@@ -260,10 +260,10 @@ export async function proactiveTokenRefresh(): Promise<boolean> {
       return false;
     }
 
-    const HOURS_24_IN_MINUTES = 24 * 60;
+    const ACCESS_TOKEN_REFRESH_WINDOW_MINUTES = 10;
     if (
       isTokenExpired(accessToken) ||
-      isTokenExpiringSoon(accessToken, HOURS_24_IN_MINUTES)
+      isTokenExpiringSoon(accessToken, ACCESS_TOKEN_REFRESH_WINDOW_MINUTES)
     ) {
       console.log(
         '[proactiveTokenRefresh] Access token expired/expiring soon, refreshing...'

@@ -191,7 +191,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
         easing: Easing.inOut(Easing.ease),
       });
     }
-  }, [shouldHide, ongoingTrip]);
+  }, [shouldHide, ongoingTrip, translateY]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
@@ -212,13 +212,10 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
     }
   };
 
-  // Gradient colors based on role
-  const gradientColors = isDriver
-    ? ['#6366F1', '#8B5CF6', '#A855F7'] as const // Purple gradient for driver
-    : ['#0EA5E9', '#06B6D4', '#14B8A6'] as const; // Cyan/Teal gradient for passenger
-
+  const gradientColors = ['#FFFFFF', '#FFF7F2', '#FFF1E8'] as const;
   const iconName = isDriver ? 'car-sport' : 'navigate-circle';
-  const statusBadgeColor = isDriver ? '#A855F7' : '#14B8A6';
+  const roleLabel = isDriver ? 'Conducteur' : 'Passager';
+  const roleAccent = isDriver ? Colors.primary : Colors.infoDark;
 
   const bottomPadding = getFloatingBannerBottomOffset(insets.bottom);
 
@@ -241,40 +238,44 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
           end={{ x: 1, y: 1 }}
           style={styles.gradient}
         >
-          {/* Glassmorphism overlay */}
-          <View style={styles.glassOverlay} />
+          <View style={styles.accentRail} />
 
           <View style={styles.content}>
-            {/* Icon with glow effect */}
             <View style={styles.iconWrapper}>
-              <View style={[styles.iconGlow, { backgroundColor: statusBadgeColor }]} />
-              <View style={styles.iconContainer}>
-                <Ionicons name={iconName} size={24} color={Colors.white} />
+              <View
+                style={[
+                  styles.iconContainer,
+                  {
+                    backgroundColor: roleAccent + '14',
+                    borderColor: roleAccent + '25',
+                  },
+                ]}
+              >
+                <Ionicons name={iconName} size={22} color={roleAccent} />
               </View>
             </View>
 
-            {/* Text content */}
             <View style={styles.textContainer}>
               <View style={styles.titleRow}>
-                <Text style={styles.title}>
+                <Text style={styles.title} numberOfLines={1}>
                   {isDriver ? 'Trajet en cours' : 'Vous êtes en route'}
                 </Text>
-                <View style={[styles.statusBadge, { backgroundColor: statusBadgeColor }]}>
-                  <Text style={styles.statusBadgeText}>
-                    {isDriver ? 'Conducteur' : 'Passager'}
+                <View style={[styles.statusBadge, { backgroundColor: roleAccent + '14' }]}>
+                  <Text style={[styles.statusBadgeText, { color: roleAccent }]}>
+                    {roleLabel}
                   </Text>
                 </View>
               </View>
 
               <View style={styles.routeRow}>
-                <Ionicons name="location" size={14} color={Colors.white} style={styles.routeIcon} />
+                <View style={styles.routeDot} />
                 <Text style={styles.routeText} numberOfLines={1}>
                   {trip.departure.name}
                 </Text>
               </View>
 
               <View style={styles.routeRow}>
-                <Ionicons name="navigate" size={14} color={Colors.white} style={styles.routeIcon} />
+                <Ionicons name="navigate" size={14} color={Colors.primary} style={styles.routeIcon} />
                 <Text style={styles.routeText} numberOfLines={1}>
                   {trip.arrival.name}
                 </Text>
@@ -282,7 +283,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
 
               {trip.departureTime && (
                 <View style={styles.timeRow}>
-                  <Ionicons name="time-outline" size={14} color={Colors.white} style={styles.routeIcon} />
+                  <Ionicons name="time-outline" size={14} color={Colors.gray[500]} style={styles.routeIcon} />
                   <Text style={styles.timeText}>
                     Départ à {formatTime(trip.departureTime)}
                   </Text>
@@ -290,9 +291,8 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
               )}
             </View>
 
-            {/* Chevron */}
             <View style={styles.chevronContainer}>
-              <Ionicons name="chevron-forward" size={24} color={Colors.white} />
+              <Ionicons name="chevron-forward" size={22} color={Colors.primary} />
             </View>
           </View>
         </LinearGradient>
@@ -310,16 +310,18 @@ const styles = StyleSheet.create({
   },
   touchable: {
     borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: Colors.primary + '24',
     overflow: 'hidden',
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.3,
-        shadowRadius: 12,
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.12,
+        shadowRadius: 18,
       },
       android: {
-        elevation: 12,
+        elevation: 8,
       },
     }),
   },
@@ -327,41 +329,36 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xl,
     overflow: 'hidden',
   },
-  glassOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  accentRail: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 5,
+    backgroundColor: Colors.primary,
   },
   content: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Spacing.lg,
+    paddingLeft: Spacing.lg + Spacing.xs,
+    paddingRight: Spacing.md,
     paddingVertical: Spacing.md,
   },
   iconWrapper: {
     position: 'relative',
     marginRight: Spacing.md,
   },
-  iconGlow: {
-    position: 'absolute',
-    width: 56,
-    height: 56,
-    borderRadius: BorderRadius.full,
-    opacity: 0.3,
-    top: -4,
-    left: -4,
-  },
   iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.4)',
+    borderWidth: 1,
   },
   textContainer: {
     flex: 1,
+    minWidth: 0,
     marginRight: Spacing.sm,
   },
   titleRow: {
@@ -373,21 +370,20 @@ const styles = StyleSheet.create({
   title: {
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
-    color: Colors.white,
-    letterSpacing: 0.3,
+    color: Colors.gray[900],
+    flexShrink: 1,
+    letterSpacing: 0,
   },
   statusBadge: {
     paddingHorizontal: Spacing.sm,
     paddingVertical: 2,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: BorderRadius.full,
   },
   statusBadgeText: {
     fontSize: FontSizes.xs - 1,
     fontWeight: FontWeights.semibold,
-    color: Colors.white,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0,
   },
   routeRow: {
     flexDirection: 'row',
@@ -396,13 +392,19 @@ const styles = StyleSheet.create({
   },
   routeIcon: {
     marginRight: Spacing.xs,
-    opacity: 0.9,
+  },
+  routeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+    marginRight: Spacing.xs + 1,
   },
   routeText: {
     fontSize: FontSizes.sm,
-    color: Colors.white,
-    opacity: 0.95,
+    color: Colors.gray[800],
     flex: 1,
+    fontWeight: FontWeights.medium,
   },
   timeRow: {
     flexDirection: 'row',
@@ -411,17 +413,18 @@ const styles = StyleSheet.create({
   },
   timeText: {
     fontSize: FontSizes.xs,
-    color: Colors.white,
-    opacity: 0.85,
+    color: Colors.gray[500],
     fontWeight: FontWeights.medium,
   },
   chevronContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 34,
+    height: 34,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.white,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.primary + '20',
   },
 });
 

@@ -872,7 +872,7 @@ export default function AuthScreen() {
             onPress: async () => {
               const { status: camStatus } = await ImagePicker.requestCameraPermissionsAsync();
               if (camStatus !== 'granted') return;
-              const result = await ImagePicker.launchCameraAsync({ mediaTypes: 'images', allowsEditing: true, aspect: [1, 1], quality: 0.8 });
+              const result = await ImagePicker.launchCameraAsync({ mediaTypes: 'images', allowsEditing: true, aspect: [1, 1], quality: 0.65, base64: false, exif: false });
               if (!result.canceled && result.assets[0]) setProfilePicture(result.assets[0].uri);
             }
           },
@@ -880,7 +880,7 @@ export default function AuthScreen() {
             label: 'Galerie',
             variant: 'secondary',
             onPress: async () => {
-              const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', allowsEditing: true, aspect: [1, 1], quality: 0.8 });
+              const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', allowsEditing: true, aspect: [1, 1], quality: 0.65, base64: false, exif: false });
               if (!result.canceled && result.assets[0]) setProfilePicture(result.assets[0].uri);
             }
           },

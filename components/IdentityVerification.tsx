@@ -49,7 +49,9 @@ export function IdentityVerification({ onComplete, onSkip, canSkip = true }: Ide
           mediaTypes: 'images',
           allowsEditing: true,
           aspect: [3, 2],
-          quality: 0.8,
+          quality: 0.65,
+          base64: false,
+          exif: false,
         });
 
         if (!result.canceled && result.assets[0]) {
@@ -85,7 +87,9 @@ export function IdentityVerification({ onComplete, onSkip, canSkip = true }: Ide
           mediaTypes: 'images',
           allowsEditing: true,
           aspect: [3, 2],
-          quality: 0.8,
+          quality: 0.65,
+          base64: false,
+          exif: false,
         });
 
         if (!result.canceled && result.assets[0]) {
@@ -126,7 +130,9 @@ export function IdentityVerification({ onComplete, onSkip, canSkip = true }: Ide
         mediaTypes: 'images',
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.65,
+        base64: false,
+        exif: false,
       });
 
       if (!result.canceled && result.assets[0]) {
