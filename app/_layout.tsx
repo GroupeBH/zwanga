@@ -1,9 +1,10 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { LayoutAnimationConfig, ReduceMotion, ReducedMotionConfig } from '@/utils/reanimated';
+import { LayoutAnimationConfig } from '@/utils/reanimated';
 import { Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { configureFontScaling } from '@/utils/configureFontScaling';
 
 import { AnalyticsTracker } from '@/components/AnalyticsTracker';
 import { ReduxProvider } from '@/components/ReduxProvider';
@@ -13,6 +14,8 @@ import '@/services/backgroundNotificationTask';
 import '@/services/notifeeBackgroundHandler';
 import '@/services/notifeeForegroundService';
 
+configureFontScaling();
+
 export const unstable_settings = {
   initialRouteName: 'splash',
 };
@@ -20,6 +23,7 @@ export const unstable_settings = {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const isAndroid = Platform.OS === 'android';
+  const modalPresentation = isAndroid ? 'card' : 'modal';
 
   const appTree = (
     <ReduxProvider>
@@ -29,7 +33,7 @@ export default function RootLayout() {
           <Stack
             screenOptions={{
               headerShown: false,
-              ...(isAndroid ? ({ animation: 'none' } as const) : {}),
+              ...(isAndroid ? ({ animation: 'none', freezeOnBlur: false } as const) : {}),
             }}
           >
             <Stack.Screen name="splash" options={{ headerShown: false }} />
@@ -38,20 +42,20 @@ export default function RootLayout() {
             <Stack.Screen name="background-location-disclosure" options={{ headerShown: false }} />
             <Stack.Screen name="auth" options={{ headerShown: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="publish" options={{ headerShown: false, presentation: 'modal' }} />
+            <Stack.Screen name="publish" options={{ headerShown: false, presentation: modalPresentation }} />
             <Stack.Screen name="recurring-trips" options={{ headerShown: false }} />
-            <Stack.Screen name="request-create" options={{ headerShown: false, presentation: 'modal' }} />
-            <Stack.Screen name="request/index" options={{ headerShown: false, presentation: 'modal' }} />
+            <Stack.Screen name="request-create" options={{ headerShown: false, presentation: 'card' }} />
+            <Stack.Screen name="request/index" options={{ headerShown: false, presentation: 'card' }} />
             <Stack.Screen name="request/[id]" options={{ headerShown: false }} />
             <Stack.Screen name="request-details/[id]" options={{ headerShown: false }} />
-            <Stack.Screen name="search" options={{ headerShown: false, presentation: 'modal' }} />
+            <Stack.Screen name="search" options={{ headerShown: false, presentation: modalPresentation }} />
             <Stack.Screen name="settings" options={{ headerShown: false }} />
             <Stack.Screen name="support" options={{ headerShown: false }} />
             <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
             <Stack.Screen name="trip/[id]" options={{ headerShown: false }} />
             <Stack.Screen name="verification" options={{ headerShown: false }} />
-            <Stack.Screen name="rate/[id]" options={{ headerShown: false, presentation: 'modal' }} />
-            <Stack.Screen name="invite" options={{ headerShown: false, presentation: 'modal' }} />
+            <Stack.Screen name="rate/[id]" options={{ headerShown: false, presentation: modalPresentation }} />
+            <Stack.Screen name="invite" options={{ headerShown: false, presentation: modalPresentation }} />
           </Stack>
           <StatusBar style="auto" />
         </View>

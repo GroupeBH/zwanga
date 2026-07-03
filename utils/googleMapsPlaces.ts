@@ -317,6 +317,37 @@ const isInRdcBounds = (latitude: number | null, longitude: number | null) => {
   );
 };
 
+const normalizeSearchProximity = (
+  proximity?: { longitude: number; latitude: number },
+): { longitude: number; latitude: number } | null => {
+  if (!proximity) return null;
+
+  const latitude = Number(proximity.latitude);
+  const longitude = Number(proximity.longitude);
+  if (
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180 &&
+    isInRdcBounds(latitude, longitude)
+  ) {
+    return { latitude, longitude };
+  }
+
+  // Recover the common GeoJSON/LatLng inversion when the swapped pair is in RDC.
+  if (
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    isInRdcBounds(longitude, latitude)
+  ) {
+    return { latitude: longitude, longitude: latitude };
+  }
+
+  return null;
+};
+
 const findCityConfigInText = (value: string): MajorCityConfig | null => {
   for (const cityConfig of Object.values(MAJOR_CITIES)) {
     if (cityConfig.aliases.some((alias) => containsAlias(value, alias))) {
@@ -485,9 +516,10 @@ export async function searchGoogleMapsPlaces(
   const validLimit = Math.min(Math.max(limit, 1), 10);
   const queryAnalysis = analyzeQuery(trimmedQuery);
   const detectedCityConfig = findCityConfigInText(trimmedQuery);
+  const safeProximity = normalizeSearchProximity(proximity);
   const effectiveProximity =
     detectedCityConfig?.center ??
-    proximity ??
+    safeProximity ??
     DEFAULT_PROXIMITY;
 
   try {
@@ -509,7 +541,7 @@ export async function searchGoogleMapsPlaces(
       ? store.dispatch(
           googleMapsApi.endpoints.placesSearch.initiate(
             {
-              query: buildPreciseTextSearchQuery(trimmedQuery, detectedCityConfig, proximity),
+              query: buildPreciseTextSearchQuery(trimmedQuery, detectedCityConfig, safeProximity ?? undefined),
               locationLat: effectiveProximity.latitude,
               locationLng: effectiveProximity.longitude,
               radius: 50000,

@@ -20,6 +20,7 @@ import { useCreateConversationMutation } from '@/store/api/messageApi';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
 import { useGetTripByIdQuery, useUpdateTripMutation } from '@/store/api/tripApi';
 import { useGetKycStatusQuery, useUploadKycMutation } from '@/store/api/userApi';
+import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
 import type { BookingStatus, GeoPoint } from '@/types';
@@ -30,6 +31,7 @@ import { isPointOnRoute, splitRouteByProgress } from '@/utils/routeHelpers';
 import { shareTrip, shareTripViaWhatsApp } from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerAndroid, type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { useIsFocused } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -38,6 +40,7 @@ import {
   KeyboardAvoidingView,
   Image,
   type ImageRequireSource,
+  InteractionManager,
   Modal,
   Platform,
   RefreshControl,
@@ -96,6 +99,7 @@ const USE_ANDROID_MAP_MARKER_IMAGES = Platform.OS === 'android';
 const TRIP_DETAIL_MAP_MIN_DELTA = 0.006;
 const TRIP_DETAIL_MAP_MAX_DELTA = 0.014;
 const TRIP_DETAIL_MAP_PADDING = 1.02;
+const LOCATION_PICKER_OPEN_DELAY_MS = Platform.OS === 'ios' ? 250 : 0;
 const ANDROID_TRIP_DETAIL_MARKER_ANCHOR = { x: 0.5, y: 0.86 };
 const androidTripDetailMarkerImages: Record<'departure' | 'arrival' | 'passenger', ImageRequireSource> = {
   departure: require('@/assets/images/map-markers/trip-detail-marker-departure.png'),
@@ -181,6 +185,7 @@ const BOOKING_STATUS_CONFIG: Record<
 
 export default function TripDetailsScreen() {
   const router = useRouter();
+  const isFocused = useIsFocused();
   const goHome = useCallback(() => {
     router.replace('/(tabs)');
   }, [router]);
@@ -263,6 +268,11 @@ export default function TripDetailsScreen() {
     setLiveDriverUpdatedAt(trip?.lastLocationUpdateAt ?? null);
   }, [trip?.lastLocationUpdateAt]);
   const [updateTripMutation, { isLoading: isSavingTrip }] = useUpdateTripMutation();
+  const { data: userVehicles = [], isLoading: editVehiclesLoading } = useGetVehiclesQuery();
+  const activeEditVehicles = useMemo(
+    () => userVehicles.filter((vehicle) => vehicle.isActive !== false),
+    [userVehicles],
+  );
   const [editTripModalVisible, setEditTripModalVisible] = useState(false);
   const [editStep, setEditStep] = useState<EditTripStep>(1);
   const [editKeyboardHeight, setEditKeyboardHeight] = useState(0);
@@ -276,6 +286,7 @@ export default function TripDetailsScreen() {
   const [editDepartureManualAddress, setEditDepartureManualAddress] = useState('');
   const [editArrivalManualAddress, setEditArrivalManualAddress] = useState('');
   const [editRoutePickerTarget, setEditRoutePickerTarget] = useState<'departure' | 'arrival' | null>(null);
+  const [editVehicleId, setEditVehicleId] = useState<string | null>(null);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -390,6 +401,7 @@ export default function TripDetailsScreen() {
     setEditArrivalManualAddress((trip.arrival?.address || trip.arrival?.name || '').trim());
     setEditRouteMode(departureSelection && arrivalSelection ? 'map' : 'manual');
     setEditRoutePickerTarget(null);
+    setEditVehicleId(trip.vehicle?.id ?? trip.vehicleId ?? null);
     setEditStep(1);
     setEditTripModalVisible(true);
   };
@@ -408,6 +420,7 @@ export default function TripDetailsScreen() {
     setEditDepartureManualAddress('');
     setEditArrivalManualAddress('');
     setEditRoutePickerTarget(null);
+    setEditVehicleId(null);
   };
 
   const swapEditRoutePoints = () => {
@@ -415,6 +428,21 @@ export default function TripDetailsScreen() {
     setEditArrivalSelection(editDepartureSelection);
     setEditDepartureManualAddress(editArrivalManualAddress);
     setEditArrivalManualAddress(editDepartureManualAddress);
+  };
+
+  const openEditRoutePicker = (target: 'departure' | 'arrival') => {
+    Keyboard.dismiss();
+    setEditTripModalVisible(false);
+    setTimeout(() => {
+      setEditRoutePickerTarget(target);
+    }, LOCATION_PICKER_OPEN_DELAY_MS);
+  };
+
+  const restoreEditModalAfterRoutePicker = () => {
+    setEditRoutePickerTarget(null);
+    setTimeout(() => {
+      setEditTripModalVisible(true);
+    }, LOCATION_PICKER_OPEN_DELAY_MS);
   };
 
   const handleContinueEditTrip = () => {
@@ -462,6 +490,15 @@ export default function TripDetailsScreen() {
         variant: 'warning',
         title: 'Action non autorisee',
         message: 'Seul le conducteur de ce trajet peut le modifier.',
+      });
+      return;
+    }
+
+    if (!editVehicleId) {
+      showDialog({
+        variant: 'warning',
+        title: 'Véhicule requis',
+        message: 'Sélectionnez le véhicule utilisé pour ce trajet.',
       });
       return;
     }
@@ -514,10 +551,12 @@ export default function TripDetailsScreen() {
       arrivalLocation?: string;
       departureCoordinates?: [number, number];
       arrivalCoordinates?: [number, number];
+      vehicleId?: string;
     } = {
       totalSeats: seatsValue,
       pricePerSeat: priceValue,
       departureDate: editDateTime.toISOString(),
+      vehicleId: editVehicleId,
     };
 
     if (departureAddress !== currentDepartureAddress) {
@@ -638,6 +677,7 @@ export default function TripDetailsScreen() {
     seats: 0,
   });
   const [mapModalVisible, setMapModalVisible] = useState(false);
+  const [isDetailMapReady, setIsDetailMapReady] = useState(false);
   const [reviewsModalVisible, setReviewsModalVisible] = useState(false);
   const [selectedReviewUserId, setSelectedReviewUserId] = useState<string | null>(null);
   const [selectedReviewUserName, setSelectedReviewUserName] = useState<string | null>(null);
@@ -655,6 +695,8 @@ export default function TripDetailsScreen() {
   const [contactModalVisible, setContactModalVisible] = useState(false);
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [securityModalVisible, setSecurityModalVisible] = useState(false);
+  const securityModalTransitionRef = useRef(false);
+  const securityModalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [kycFrontImage, setKycFrontImage] = useState<string | null>(null);
   const [kycBackImage, setKycBackImage] = useState<string | null>(null);
   const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
@@ -669,6 +711,34 @@ export default function TripDetailsScreen() {
   });
 
   const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    if (!isFocused) {
+      setIsDetailMapReady(false);
+      setMapModalVisible(false);
+      return;
+    }
+
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const interactionTask = InteractionManager.runAfterInteractions(() => {
+      // Give the previous screen's native map one frame to detach after the
+      // navigation animation. Mounting both maps together can terminate iOS.
+      timeoutId = setTimeout(() => {
+        if (!cancelled) setIsDetailMapReady(true);
+      }, 120);
+    });
+
+    return () => {
+      cancelled = true;
+      interactionTask.cancel();
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [isFocused, tripId]);
+
+  useEffect(() => () => {
+    if (securityModalTimerRef.current) clearTimeout(securityModalTimerRef.current);
+  }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -943,7 +1013,27 @@ export default function TripDetailsScreen() {
     void refetchTrip();
     void refetchMyBookings();
     void refetchTripBookings();
-    setSecurityModalVisible(true);
+    if (securityModalTransitionRef.current) return;
+
+    securityModalTransitionRef.current = true;
+    setIsDetailMapReady(false);
+    securityModalTimerRef.current = setTimeout(() => {
+      setSecurityModalVisible(true);
+      securityModalTransitionRef.current = false;
+      securityModalTimerRef.current = null;
+    }, 100);
+  };
+
+  const closeTripSecurityModal = () => {
+    if (securityModalTransitionRef.current) return;
+
+    securityModalTransitionRef.current = true;
+    setSecurityModalVisible(false);
+    securityModalTimerRef.current = setTimeout(() => {
+      if (isFocused) setIsDetailMapReady(true);
+      securityModalTransitionRef.current = false;
+      securityModalTimerRef.current = null;
+    }, 400);
   };
 
   const openEmergencyContacts = () => {
@@ -965,6 +1055,26 @@ export default function TripDetailsScreen() {
     setBookingModalVisible(false);
     setBookingStep(1);
     setShouldAutofillPassengerOrigin(false);
+  };
+
+  const openBookingLocationPicker = (target: 'origin' | 'destination') => {
+    Keyboard.dismiss();
+    setBookingModalVisible(false);
+    setTimeout(() => {
+      if (target === 'origin') {
+        setShowOriginPicker(true);
+      } else {
+        setShowDestinationPicker(true);
+      }
+    }, LOCATION_PICKER_OPEN_DELAY_MS);
+  };
+
+  const restoreBookingModalAfterLocationPicker = () => {
+    setShowOriginPicker(false);
+    setShowDestinationPicker(false);
+    setTimeout(() => {
+      setBookingModalVisible(true);
+    }, LOCATION_PICKER_OPEN_DELAY_MS);
   };
 
   useEffect(() => {
@@ -1661,7 +1771,8 @@ export default function TripDetailsScreen() {
     };
   }, [arrivalCoordinate, departureCoordinate, hasValidRouteEndpoints, routeMapCoordinates]);
 
-  const canRenderTripMap = trip?.status !== 'ongoing' && hasValidRouteEndpoints;
+  const hasRenderableTripMap = trip?.status !== 'ongoing' && hasValidRouteEndpoints;
+  const canRenderTripMap = hasRenderableTripMap && isDetailMapReady;
   const tripDepartureName = trip?.departure?.name || trip?.departure?.address || 'Depart';
   const tripArrivalName = trip?.arrival?.name || trip?.arrival?.address || 'Arrivee';
   const tripDepartureAddress = trip?.departure?.address || tripDepartureName;
@@ -1690,6 +1801,7 @@ export default function TripDetailsScreen() {
     : trip?.vehicleInfo && trip.vehicleInfo !== 'Informations véhicule fournies par le conducteur'
       ? trip.vehicleInfo
       : 'Vehicule confirme apres reservation';
+  const headerFloatingOffset = Math.max(insets.top, 12) + 10;
 
   // Early return AFTER all hooks to avoid hook order violation
   if (tripLoading && !trip) {
@@ -1726,12 +1838,24 @@ export default function TripDetailsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={[styles.header, canRenderTripMap && styles.headerFloating]}>
-        <View style={styles.headerTop}>
-          <TouchableOpacity onPress={goHome} style={styles.headerCircleButton} activeOpacity={0.85}>
+      <View
+        pointerEvents="box-none"
+        style={[
+          styles.header,
+          hasRenderableTripMap && styles.headerFloating,
+          hasRenderableTripMap && { paddingTop: headerFloatingOffset },
+        ]}
+      >
+        <View pointerEvents="box-none" style={styles.headerTop}>
+          <TouchableOpacity
+            onPress={goHome}
+            style={styles.headerCircleButton}
+            activeOpacity={0.85}
+            hitSlop={{ top: 16, right: 16, bottom: 16, left: 16 }}
+          >
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, canRenderTripMap && styles.headerTitleFloating]}>
+          <Text style={[styles.headerTitle, hasRenderableTripMap && styles.headerTitleFloating]}>
             Détails du trajet
           </Text>
           <View style={styles.headerActions}>
@@ -1766,6 +1890,21 @@ export default function TripDetailsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
         }
       >
+        {hasRenderableTripMap && !isDetailMapReady && (
+          <View style={styles.mapContainer}>
+            <View
+              style={[
+                styles.mapPreview,
+                styles.mapLoadingPlaceholder,
+                { height: Math.min(214, Math.max(172, viewportHeight * 0.27)) },
+              ]}
+            >
+              <ActivityIndicator size="small" color={Colors.primary} />
+              <Text style={styles.mapLoadingText}>Préparation de la carte...</Text>
+            </View>
+          </View>
+        )}
+
         {/* Carte interactive - masquée quand le trajet est en cours */}
         {canRenderTripMap && (
           <TouchableOpacity
@@ -1968,7 +2107,7 @@ export default function TripDetailsScreen() {
           </Modal>
         )}
 
-        <View style={[styles.tripDetailSheet, !canRenderTripMap && styles.tripDetailSheetNoMap]}>
+        <View style={[styles.tripDetailSheet, !hasRenderableTripMap && styles.tripDetailSheetNoMap]}>
           <View style={styles.tripSheetHandle} />
 
           <Animated.View entering={FadeInDown.delay(120)} style={styles.tripHeroSummary}>
@@ -2589,13 +2728,14 @@ export default function TripDetailsScreen() {
         visible={securityModalVisible}
         animationType="slide"
         transparent
-        onRequestClose={() => setSecurityModalVisible(false)}
+        presentationStyle="overFullScreen"
+        onRequestClose={closeTripSecurityModal}
       >
         <View style={styles.securityModalOverlay}>
           <TouchableOpacity
             style={styles.securityModalBackdrop}
             activeOpacity={1}
-            onPress={() => setSecurityModalVisible(false)}
+            onPress={closeTripSecurityModal}
           />
           <View
             style={[
@@ -2607,7 +2747,7 @@ export default function TripDetailsScreen() {
               <Text style={styles.securityModalTitle}>Securite du trajet</Text>
               <TouchableOpacity
                 style={styles.securityModalCloseButton}
-                onPress={() => setSecurityModalVisible(false)}
+                onPress={closeTripSecurityModal}
               >
                 <Ionicons name="close" size={22} color={Colors.gray[700]} />
               </TouchableOpacity>
@@ -2718,7 +2858,7 @@ export default function TripDetailsScreen() {
                 <View style={styles.bookingRouteCard}>
                   <TouchableOpacity
                     style={styles.bookingRoutePoint}
-                    onPress={() => setShowOriginPicker(true)}
+                    onPress={() => openBookingLocationPicker('origin')}
                     disabled={isBooking}
                     activeOpacity={0.88}
                   >
@@ -2740,7 +2880,7 @@ export default function TripDetailsScreen() {
 
                   <TouchableOpacity
                     style={styles.bookingRoutePoint}
-                    onPress={() => setShowDestinationPicker(true)}
+                    onPress={() => openBookingLocationPicker('destination')}
                     disabled={isBooking || isValidatingDestination}
                     activeOpacity={0.88}
                   >
@@ -2884,11 +3024,11 @@ export default function TripDetailsScreen() {
         initialLocation={passengerOrigin}
         routeCoordinates={routeCoordinates || undefined}
         restrictToRoute={true}
-        onClose={() => setShowOriginPicker(false)}
+        onClose={restoreBookingModalAfterLocationPicker}
         onSelect={(location) => {
           setPassengerOrigin(location);
           setShouldAutofillPassengerOrigin(false);
-          setShowOriginPicker(false);
+          restoreBookingModalAfterLocationPicker();
           setBookingModalError('');
         }}
       />
@@ -2900,10 +3040,10 @@ export default function TripDetailsScreen() {
         initialLocation={passengerDestination}
         routeCoordinates={routeCoordinates || undefined}
         restrictToRoute={true}
-        onClose={() => setShowDestinationPicker(false)}
+        onClose={restoreBookingModalAfterLocationPicker}
         onSelect={(location) => {
           setPassengerDestination(location);
-          setShowDestinationPicker(false);
+          restoreBookingModalAfterLocationPicker();
           setBookingModalError('');
         }}
       />
@@ -3334,7 +3474,7 @@ export default function TripDetailsScreen() {
                 <View style={styles.editRouteCard}>
                   <TouchableOpacity
                     style={styles.editRouteMapBtn}
-                    onPress={() => setEditRoutePickerTarget('departure')}
+                    onPress={() => openEditRoutePicker('departure')}
                     activeOpacity={0.75}
                   >
                     <View style={[styles.editRouteMapDot, { backgroundColor: Colors.success + '20' }]}>
@@ -3351,7 +3491,7 @@ export default function TripDetailsScreen() {
 
                   <TouchableOpacity
                     style={styles.editRouteMapBtn}
-                    onPress={() => setEditRoutePickerTarget('arrival')}
+                    onPress={() => openEditRoutePicker('arrival')}
                     activeOpacity={0.75}
                   >
                     <View style={[styles.editRouteMapDot, { backgroundColor: Colors.primary + '18' }]}>
@@ -3370,6 +3510,49 @@ export default function TripDetailsScreen() {
                 </>
               ) : (
                 <>
+              <View style={styles.editSectionHeader}>
+                <View style={styles.editSectionIconWrap}>
+                  <Ionicons name="car-sport-outline" size={15} color={Colors.primary} />
+                </View>
+                <Text style={styles.editSectionTitle}>Véhicule</Text>
+              </View>
+              {editVehiclesLoading ? (
+                <View style={styles.editVehicleState}>
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                  <Text style={styles.editVehicleStateText}>Chargement des véhicules...</Text>
+                </View>
+              ) : activeEditVehicles.length === 0 ? (
+                <View style={styles.editVehicleState}>
+                  <Ionicons name="car-outline" size={20} color={Colors.gray[500]} />
+                  <Text style={styles.editVehicleStateText}>Aucun véhicule actif dans votre profil.</Text>
+                </View>
+              ) : (
+                <View style={styles.editVehicleList}>
+                  {activeEditVehicles.map((vehicle) => {
+                    const selected = editVehicleId === vehicle.id;
+                    return (
+                      <TouchableOpacity
+                        key={vehicle.id}
+                        style={[styles.editVehicleOption, selected && styles.editVehicleOptionSelected]}
+                        onPress={() => setEditVehicleId(vehicle.id)}
+                      >
+                        <View style={styles.editVehicleCopy}>
+                          <Text style={styles.editVehicleName}>{vehicle.brand} {vehicle.model}</Text>
+                          <Text style={styles.editVehicleMeta}>
+                            {[vehicle.color, vehicle.licensePlate].filter(Boolean).join(' • ')}
+                          </Text>
+                        </View>
+                        <Ionicons
+                          name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={22}
+                          color={selected ? Colors.primary : Colors.gray[300]}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
               <View style={styles.editSectionHeader}>
                 <View style={[styles.editSectionIconWrap, { backgroundColor: Colors.secondary + '18' }]}>
                   <Ionicons name="calendar-outline" size={15} color={Colors.secondary} />
@@ -3507,20 +3690,21 @@ export default function TripDetailsScreen() {
           editRoutePickerTarget === 'departure' ? editDepartureSelection : editArrivalSelection
         }
         autoLocateOnOpen={false}
-        onClose={() => setEditRoutePickerTarget(null)}
+        onClose={restoreEditModalAfterRoutePicker}
         onSelect={(location) => {
           const target = editRoutePickerTarget;
-          setEditRoutePickerTarget(null);
           setEditRouteMode('map');
           if (target === 'departure') {
             setEditDepartureSelection(location);
             setEditDepartureManualAddress(location.title || location.address);
+            restoreEditModalAfterRoutePicker();
             return;
           }
           if (target === 'arrival') {
             setEditArrivalSelection(location);
             setEditArrivalManualAddress(location.title || location.address);
           }
+          restoreEditModalAfterRoutePicker();
         }}
       />
     </SafeAreaView>
@@ -3606,7 +3790,8 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: 'transparent',
     borderBottomWidth: 0,
-    zIndex: 30,
+    zIndex: 80,
+    elevation: 80,
   },
   headerTop: {
     flexDirection: 'row',
@@ -3615,8 +3800,8 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   headerCircleButton: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     borderRadius: BorderRadius.full,
     backgroundColor: 'rgba(255,255,255,0.94)',
     alignItems: 'center',
@@ -3677,6 +3862,17 @@ const styles = StyleSheet.create({
     borderRadius: 0,
     overflow: 'hidden',
     backgroundColor: Colors.gray[200],
+  },
+  mapLoadingPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.gray[100],
+  },
+  mapLoadingText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[600],
   },
   mapView: {
     ...StyleSheet.absoluteFillObject,
@@ -5783,6 +5979,52 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
     color: Colors.gray[800],
+  },
+  editVehicleState: {
+    minHeight: 60,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.gray[50],
+  },
+  editVehicleStateText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  editVehicleList: {
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  editVehicleOption: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.white,
+  },
+  editVehicleOptionSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '08',
+  },
+  editVehicleCopy: {
+    flex: 1,
+  },
+  editVehicleName: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  editVehicleMeta: {
+    marginTop: 2,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
   },
   editSwapBtn: {
     flexDirection: 'row',

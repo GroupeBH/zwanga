@@ -6,16 +6,21 @@ import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constan
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackEvent } from '@/services/analytics';
 import { useGeocodeMutation } from '@/store/api/googleMapsApi';
-import { useCreateTripRequestMutation, useRecommendTripRequestPriceMutation } from '@/store/api/tripRequestApi';
+import {
+  useCreateTripRequestMutation,
+  useLazyGetMyTripRequestsQuery,
+  useRecommendTripRequestPriceMutation,
+} from '@/store/api/tripRequestApi';
 import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
 import type { FavoriteLocation } from '@/types';
+import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
 import {
   buildManualGeocodeQuery,
   MANUAL_GEOCODE_DEBOUNCE_MS,
   mapGeocodeResponseToSelection,
   type ManualGeocodeStatus,
 } from '@/utils/manualAddressGeocode';
-import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
+import Animated, { FadeIn, FadeOut } from '@/utils/reanimated';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { getRouteCoordinates } from '@/utils/routeApi';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,7 +33,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
-  type ImageRequireSource,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -39,8 +43,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  type ImageRequireSource,
 } from 'react-native';
-import Animated, { FadeIn, FadeOut } from '@/utils/reanimated';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -268,8 +272,12 @@ export default function RequestTripScreen() {
   });
   const departureAutoFillStartedRef = useRef(false);
   const departureTouchedRef = useRef(false);
+  const createRequestInFlightRef = useRef(false);
+  const screenMountedRef = useRef(true);
+  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { data: favoriteLocations = [] } = useGetFavoriteLocationsQuery();
   const [createTripRequest, { isLoading: isCreating }] = useCreateTripRequestMutation();
+  const [getMyTripRequests] = useLazyGetMyTripRequestsQuery();
   const [recommendTripRequestPrice, { isLoading: isPriceLoading }] = useRecommendTripRequestPriceMutation();
   const [geocodeManualAddress] = useGeocodeMutation();
   const [initialWindow] = useState(() => buildPresetWindow('now'));
@@ -304,6 +312,17 @@ export default function RequestTripScreen() {
   const [recommendedPricePerSeat, setRecommendedPricePerSeat] = useState<number | null>(null);
   const [isRouteLoading, setIsRouteLoading] = useState(false);
   const [hasAppliedRoutePrefill, setHasAppliedRoutePrefill] = useState(false);
+  const [createdRequestId, setCreatedRequestId] = useState<string | null>(null);
+  const [submissionRecoveryMessage, setSubmissionRecoveryMessage] = useState<string | null>(null);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    screenMountedRef.current = true;
+    return () => {
+      screenMountedRef.current = false;
+      if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
+    };
+  }, []);
 
   const departureDateMax = useMemo(
     () => new Date(departureDateMin.getTime() + flexibilityMinutes * 60000),
@@ -916,6 +935,9 @@ export default function RequestTripScreen() {
   };
 
   const handleCreateRequest = async () => {
+    if (createRequestInFlightRef.current || isCreating) return;
+    setSubmissionError(null);
+
     const departureWindow = getCurrentDepartureWindow();
     if (timePreset !== 'custom') {
       setDepartureDateMin(departureWindow.min);
@@ -933,6 +955,18 @@ export default function RequestTripScreen() {
       });
       return;
     }
+    createRequestInFlightRef.current = true;
+    const submissionStartedAt = Date.now();
+
+    const scheduleDetailRedirect = (requestId: string, delay = 350) => {
+      setCreatedRequestId(requestId);
+      redirectTimerRef.current = setTimeout(() => {
+        if (screenMountedRef.current) {
+          router.replace(getTripRequestDetailHref(requestId));
+        }
+      }, delay);
+    };
+
     try {
       const departureCoordinates = getLocationCoordinates(departureLocation);
       const arrivalCoordinates = getLocationCoordinates(arrivalLocation);
@@ -955,19 +989,68 @@ export default function RequestTripScreen() {
         ...(parsedBudget !== undefined ? { maxPricePerSeat: parsedBudget } : {}),
         description: requestNotes || undefined,
       }).unwrap();
-      await trackEvent('trip_request_created', {
+      void trackEvent('trip_request_created', {
         seats: numberOfSeats,
         max_price_per_seat: parsedBudget ?? null,
         has_description: Boolean(description.trim()),
         flexibility_minutes: departureWindow.flex,
       });
-      router.push(getTripRequestDetailHref(createdRequest.id));
+      scheduleDetailRedirect(String(createdRequest.id));
     } catch (error: any) {
-      showDialog({
-        title: 'Envoi impossible',
-        message: error?.data?.message || 'Impossible de créer la demande pour le moment.',
-        variant: 'danger',
-      });
+      const status = error?.status;
+      if (status === 'FETCH_ERROR' || status === 'TIMEOUT_ERROR') {
+        setSubmissionRecoveryMessage(
+          'Demande envoyée. Récupération du détail en cours…',
+        );
+
+        let recoveredRequestId: string | null = null;
+        for (let attempt = 0; attempt < 3 && !recoveredRequestId; attempt += 1) {
+          if (attempt > 0) {
+            await new Promise((resolve) => setTimeout(resolve, 700));
+          }
+          try {
+            const requests = await getMyTripRequests(undefined, false).unwrap();
+            const normalizedDeparture = departureAddress.trim().toLowerCase();
+            const normalizedArrival = arrivalAddress.trim().toLowerCase();
+            const matchingRequest = [...requests]
+              .filter((request) => {
+                const createdAt = new Date(request.createdAt).getTime();
+                return (
+                  Number.isFinite(createdAt) &&
+                  createdAt >= submissionStartedAt - 10_000 &&
+                  request.departure.name.trim().toLowerCase() === normalizedDeparture &&
+                  request.arrival.name.trim().toLowerCase() === normalizedArrival
+                );
+              })
+              .sort(
+                (left, right) =>
+                  new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+              )[0];
+            recoveredRequestId = matchingRequest?.id ? String(matchingRequest.id) : null;
+          } catch {
+            // Retry: the POST may be committed before the list endpoint catches up.
+          }
+        }
+
+        if (recoveredRequestId) {
+          setSubmissionRecoveryMessage(null);
+          scheduleDetailRedirect(recoveredRequestId, 150);
+        } else {
+          setSubmissionRecoveryMessage('Demande envoyée. Ouverture de vos demandes…');
+          redirectTimerRef.current = setTimeout(() => {
+            if (screenMountedRef.current) router.replace('/my-requests');
+          }, 500);
+        }
+      } else {
+        const rawMessage = error?.data?.message ?? error?.error;
+        setSubmissionError(
+          Array.isArray(rawMessage)
+            ? rawMessage.join('\n')
+            : rawMessage || 'Impossible de créer la demande pour le moment.',
+        );
+      }
+    } finally {
+      createRequestInFlightRef.current = false;
     }
   };
 
@@ -1212,7 +1295,7 @@ export default function RequestTripScreen() {
             </Animated.View>
           )}
 
-          {requestFormStep === 'details' && (
+          {requestFormStep === 'details' && !createdRequestId && !submissionRecoveryMessage && (
             <Animated.View entering={FadeIn} style={styles.offerFlow}>
               <View style={styles.offerMap}>
                 <MapView
@@ -1476,8 +1559,14 @@ export default function RequestTripScreen() {
         </View>
       )}
 
-      {requestFormStep === 'details' && (
+      {requestFormStep === 'details' && !submissionRecoveryMessage && !createdRequestId && (
         <View style={[styles.offerStickyFooter, { paddingBottom: Math.max(insets.bottom, 16) + 14 }]}>
+          {submissionError ? (
+            <View style={styles.submissionErrorBanner}>
+              <Ionicons name="alert-circle" size={18} color={Colors.danger} />
+              <Text style={styles.submissionErrorText}>{submissionError}</Text>
+            </View>
+          ) : null}
           <TouchableOpacity
             style={[styles.offerSubmitButton, primaryButtonDisabled && styles.mainButtonDisabled]}
             onPress={handleCreateRequest}
@@ -1488,13 +1577,34 @@ export default function RequestTripScreen() {
               <ActivityIndicator color={Colors.white} />
             ) : (
               <>
-                <Text style={styles.offerSubmitText}>Chercher un driver</Text>
+                <Text style={styles.offerSubmitText}>Chercher un chauffeur</Text>
                 <Ionicons name="arrow-forward" size={20} color={Colors.white} />
               </>
             )}
           </TouchableOpacity>
         </View>
       )}
+
+      {createdRequestId || submissionRecoveryMessage ? (
+        <View style={styles.requestSuccessOverlay}>
+          <View style={styles.requestSuccessCard}>
+            <View style={styles.requestSuccessIcon}>
+              <Ionicons
+                name={createdRequestId ? 'checkmark' : 'cloud-offline-outline'}
+                size={38}
+                color={Colors.white}
+              />
+            </View>
+            <Text style={styles.requestSuccessTitle}>
+              {createdRequestId ? 'Demande envoyée' : 'Envoi terminé'}
+            </Text>
+            <Text style={styles.requestSuccessText}>
+              {submissionRecoveryMessage ?? 'Votre demande est créée. Ouverture du suivi en cours…'}
+            </Text>
+            <ActivityIndicator size="small" color={Colors.primary} />
+          </View>
+        </View>
+      ) : null}
 
       <LocationPickerModal
         visible={activePicker !== null}
@@ -1761,6 +1871,17 @@ const styles = StyleSheet.create({
   mainButtonCompact: { minHeight: 52, marginTop: 0 },
   mainButtonDisabled: { opacity: 0.65 },
   mainButtonText: { color: Colors.white, fontSize: FontSizes.base, fontWeight: FontWeights.bold },
+  submissionErrorBanner: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm, padding: Spacing.sm, borderRadius: BorderRadius.sm, backgroundColor: Colors.danger + '10' },
+  submissionErrorText: { flex: 1, fontSize: FontSizes.sm, lineHeight: 18, color: Colors.danger },
+  requestSuccessOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 2000, elevation: 30, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl, backgroundColor: 'rgba(15,23,42,0.72)' },
+  requestSuccessCard: { width: '100%', maxWidth: 420, alignItems: 'center', padding: Spacing.xl, borderRadius: BorderRadius.xxl, backgroundColor: Colors.white },
+  requestSuccessIcon: { width: 76, height: 76, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.lg, borderRadius: BorderRadius.full, backgroundColor: Colors.success },
+  requestSuccessTitle: { fontSize: FontSizes.xl, fontWeight: FontWeights.bold, color: Colors.gray[900], textAlign: 'center' },
+  requestSuccessText: { marginTop: Spacing.sm, marginBottom: Spacing.xl, fontSize: FontSizes.base, lineHeight: 22, color: Colors.gray[600], textAlign: 'center' },
+  requestSuccessPrimary: { width: '100%', minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, borderRadius: BorderRadius.full, backgroundColor: Colors.primary },
+  requestSuccessPrimaryText: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.white },
+  requestSuccessSecondary: { width: '100%', minHeight: 48, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.sm, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.gray[200] },
+  requestSuccessSecondaryText: { fontSize: FontSizes.base, fontWeight: FontWeights.semibold, color: Colors.gray[700] },
   iosOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.35)' },
   iosSheet: { backgroundColor: Colors.white, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, paddingTop: Spacing.md },
   iosDone: { padding: Spacing.lg, alignItems: 'center', borderTopWidth: 1, borderTopColor: Colors.gray[100] },

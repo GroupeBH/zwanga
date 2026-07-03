@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Image,
   Modal,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -50,6 +51,54 @@ const DOCUMENT_STEPS: { key: KycCaptureKey; title: string; description: string }
 
 const STABILITY_THRESHOLD = 0.045;
 const STABILITY_DURATION_MS = 1500;
+const KYC_CAPTURE_MAX_EDGE = 1600;
+const KYC_CAPTURE_MIN_EDGE = 720;
+const KYC_CAPTURE_QUALITY = 0.6;
+
+const parsePictureSize = (size: string) => {
+  const match = /^(\d+)x(\d+)$/.exec(size);
+  if (!match) {
+    return null;
+  }
+
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isFinite(width) || !Number.isFinite(height)) {
+    return null;
+  }
+
+  return {
+    size,
+    width,
+    height,
+    area: width * height,
+    maxEdge: Math.max(width, height),
+    minEdge: Math.min(width, height),
+  };
+};
+
+const chooseKycPictureSize = (sizes: string[]) => {
+  const parsedSizes = sizes
+    .map(parsePictureSize)
+    .filter((size): size is NonNullable<ReturnType<typeof parsePictureSize>> => Boolean(size));
+
+  if (parsedSizes.length === 0) {
+    return undefined;
+  }
+
+  const readableSizes = parsedSizes.filter((size) => size.minEdge >= KYC_CAPTURE_MIN_EDGE);
+  const cappedSizes = readableSizes.filter((size) => size.maxEdge <= KYC_CAPTURE_MAX_EDGE);
+
+  if (cappedSizes.length > 0) {
+    return [...cappedSizes].sort((a, b) => b.area - a.area)[0].size;
+  }
+
+  if (readableSizes.length > 0) {
+    return [...readableSizes].sort((a, b) => a.area - b.area)[0].size;
+  }
+
+  return [...parsedSizes].sort((a, b) => b.area - a.area)[0].size;
+};
 
 export function KycWizardModal({
   visible,
@@ -70,6 +119,7 @@ export function KycWizardModal({
   const [captureCountdown, setCaptureCountdown] = useState<number | null>(null);
   const [manualCaptureAvailable, setManualCaptureAvailable] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [androidPictureSize, setAndroidPictureSize] = useState<string | undefined>();
   const isCapturingRef = useRef(false);
   const stabilityTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastMeasurementRef = useRef<AccelerometerMeasurement | null>(null);
@@ -106,6 +156,7 @@ export function KycWizardModal({
       setCaptureCountdown(null);
       setIsDeviceStable(false);
       setManualCaptureAvailable(false);
+      setAndroidPictureSize(undefined);
       isCapturingRef.current = false;
     } else {
       cleanupStabilityTracking();
@@ -177,6 +228,10 @@ export function KycWizardModal({
     }
   }, [captureCountdown, currentCaptureValue, isDeviceStable, needsCamera]);
 
+  useEffect(() => {
+    setAndroidPictureSize(undefined);
+  }, [currentCaptureKey]);
+
   const cleanupStabilityTracking = () => {
     if (stabilityTimerRef.current) {
       clearTimeout(stabilityTimerRef.current);
@@ -186,6 +241,19 @@ export function KycWizardModal({
     setIsDeviceStable(false);
     setCaptureCountdown(null);
   };
+
+  const handleCameraReady = useCallback(async () => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+
+    try {
+      const availableSizes = await cameraRef.current?.getAvailablePictureSizesAsync();
+      setAndroidPictureSize(chooseKycPictureSize(availableSizes ?? []));
+    } catch (error) {
+      console.warn('Unable to select a compact KYC picture size:', error);
+    }
+  }, []);
 
   const captureCurrentFrame = useCallback(async (showManualFallback = false) => {
     if (!cameraRef.current || isCapturingRef.current || !currentCaptureKey) {
@@ -200,8 +268,9 @@ export function KycWizardModal({
     let didCapture = false;
     try {
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.85,
+        quality: KYC_CAPTURE_QUALITY,
         base64: false,
+        exif: false,
         skipProcessing: false,
       });
       if (photo?.uri) {
@@ -321,7 +390,12 @@ export function KycWizardModal({
     if (currentCaptureValue) {
       return (
         <View style={styles.previewContainer}>
-          <Image source={{ uri: currentCaptureValue }} style={styles.previewImage} />
+          <Image
+            source={{ uri: currentCaptureValue }}
+            style={styles.previewImage}
+            resizeMode="cover"
+            fadeDuration={0}
+          />
           <TouchableOpacity
             style={styles.retakeButton}
             onPress={() => handleRetake(currentCaptureKey!)}
@@ -342,6 +416,8 @@ export function KycWizardModal({
           style={styles.camera}
           facing={currentCaptureKey === 'selfie' ? 'front' : 'back'}
           autofocus="on"
+          onCameraReady={handleCameraReady}
+          pictureSize={Platform.OS === 'android' ? androidPictureSize : undefined}
         />
         <View pointerEvents="box-none" style={styles.cameraOverlay}>
             <View
@@ -401,7 +477,12 @@ export function KycWizardModal({
       <View style={styles.reviewGrid}>
         {(['front', 'back', 'selfie'] as KycCaptureKey[]).map((key) => (
           <View key={key} style={styles.reviewItem}>
-            <Image source={{ uri: captures[key]! }} style={styles.reviewImage} />
+            <Image
+              source={{ uri: captures[key]! }}
+              style={styles.reviewImage}
+              resizeMode="cover"
+              fadeDuration={0}
+            />
             <View style={styles.reviewLabelRow}>
               <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
               <Text style={styles.reviewLabel}>

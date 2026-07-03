@@ -31,10 +31,33 @@ export function PhoneStep({
   isAppleLoading = false,
   isAppleAvailable = false,
 }: PhoneStepProps) {
-  const isPhoneValid = phone.length >= 10;
+  const phoneDigits = phone.replace(/\D/g, '');
+  const displayPhone = phoneDigits.startsWith('243') ? phoneDigits.slice(3) : phoneDigits;
+  const isPhoneValid = phoneDigits.length >= 12;
   const showAppleAuth = Platform.OS === 'ios' && isAppleAvailable && onAppleAuth;
   const isAnySocialLoading = isGoogleLoading || isAppleLoading;
   const appleButtonLabel = mode === 'login' ? 'Continuer avec Apple' : 'S\'inscrire avec Apple';
+  const handlePhoneChange = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+
+    if (!digits) {
+      onPhoneChange('');
+      return;
+    }
+
+    if (digits.startsWith('243')) {
+      onPhoneChange(`+${digits.slice(0, 12)}`);
+      return;
+    }
+
+    if (digits.startsWith('0')) {
+      onPhoneChange(`+243${digits.slice(1, 10)}`);
+      return;
+    }
+
+    onPhoneChange(`+243${digits.slice(0, 9)}`);
+  };
+
   const handleAppleAuthPress = () => {
     if (!isAnySocialLoading) {
       onAppleAuth?.();
@@ -42,28 +65,35 @@ export function PhoneStep({
   };
 
   return (
-    <Animated.View entering={FadeInDown.springify()} exiting={FadeOutUp} style={styles.stepContainer}>
-      <View style={styles.heroSection}>
-        <View style={styles.logoContainer}>
-          <Ionicons name="car-sport" size={50} color={Colors.primary} />
+    <Animated.View entering={FadeInDown.springify()} exiting={FadeOutUp} style={[styles.stepContainer, styles.phoneStepContainer]}>
+      <View style={styles.brandHero}>
+        <View style={styles.brandIcon}>
+          <Ionicons name="car-sport" size={42} color={Colors.primaryDark} />
         </View>
-        <Text style={styles.heroTitle}>
-          {mode === 'login' ? 'Bon retour !' : 'Rejoignez Zwanga'}
-        </Text>
-        <Text style={styles.heroSubtitle}>La mobilité simplifiée, pour tous.</Text>
+        <Text style={styles.brandName}>Zwanga</Text>
       </View>
 
-      <View style={styles.formSection}>
+      <View style={styles.introBlock}>
+        <Text style={styles.introTitle}>
+          {mode === 'login' ? 'Bon retour !' : 'Rejoignez Zwanga'}
+        </Text>
+        <Text style={styles.introSubtitle}>La mobilité simplifiée, pour tous.</Text>
+      </View>
+
+      <View style={styles.authCard}>
         <Text style={styles.inputLabel}>Numéro de téléphone</Text>
-        <View style={styles.inputWrapper}>
-          <Ionicons name="call-outline" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+        <View style={styles.phoneInputShell}>
+          <View style={styles.countryPrefix}>
+            <Ionicons name="flag-outline" size={22} color={Colors.gray[500]} />
+            <Text style={styles.countryPrefixText}>+243</Text>
+          </View>
           <TextInput
-            style={styles.input}
-            placeholder="+243 000 000 000"
-            placeholderTextColor={Colors.gray[400]}
+            style={styles.phoneTextInput}
+            placeholder="000 000 000"
+            placeholderTextColor="#DDBEB3"
             keyboardType="phone-pad"
-            value={phone}
-            onChangeText={onPhoneChange}
+            value={displayPhone}
+            onChangeText={handlePhoneChange}
           />
         </View>
 
@@ -80,12 +110,17 @@ export function PhoneStep({
           ) : (
             <>
               <Text style={styles.mainButtonText}>Continuer</Text>
-              <Ionicons name="arrow-forward" size={20} color="white" />
+              <Ionicons name="arrow-forward" size={22} color="white" />
             </>
           )}
         </TouchableOpacity>
 
-        {/* Google auth */}
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>OU</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
         <TouchableOpacity
           style={[styles.googleButton, isAnySocialLoading && { opacity: 0.7 }]}
           onPress={onGoogleAuth}
@@ -126,6 +161,13 @@ export function PhoneStep({
           )
         )}
       </View>
+
+      <Text style={styles.legalText}>
+        En continuant, vous acceptez nos{' '}
+        <Text style={styles.legalLink}>Conditions d&apos;Utilisation</Text>
+        {' '}et notre{' '}
+        <Text style={styles.legalLink}>Politique de Confidentialité</Text>.
+      </Text>
     </Animated.View>
   );
 }

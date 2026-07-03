@@ -411,7 +411,18 @@ export const tripRequestApi = baseApi.injectEndpoints({
         method: 'POST',
         body: payload,
       }),
-      transformResponse: (response: ServerTripRequest) => mapServerTripRequestToClient(response),
+      transformResponse: (
+        response: ServerTripRequest | { data?: ServerTripRequest; tripRequest?: ServerTripRequest },
+      ) => {
+        const wrappedResponse = response as { data?: ServerTripRequest; tripRequest?: ServerTripRequest };
+        const request = wrappedResponse.data ?? wrappedResponse.tripRequest ?? (response as ServerTripRequest);
+        // Some production deployments return only the created id. The detail
+        // screen will fetch the complete object after navigation.
+        if (request?.id && !request.passenger) {
+          return { id: request.id } as TripRequest;
+        }
+        return mapServerTripRequestToClient(request);
+      },
       invalidatesTags: [tripRequestListTag, myTripRequestsListTag],
     }),
 
@@ -609,6 +620,7 @@ export const {
   useRecommendTripRequestPriceMutation,
   useGetAvailableTripRequestsQuery,
   useGetMyTripRequestsQuery,
+  useLazyGetMyTripRequestsQuery,
   useGetTripRequestByIdQuery,
   useUpdateTripRequestMutation,
   useCancelTripRequestMutation,
@@ -619,4 +631,3 @@ export const {
   useStartTripFromRequestMutation,
   useAcceptTripRequestMutation,
 } = tripRequestApi;
-

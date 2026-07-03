@@ -65,6 +65,7 @@ export default function TabLayout() {
             tabBarMetrics,
           ],
           tabBarLabelStyle: styles.tabBarLabel,
+          tabBarAllowFontScaling: false,
           tabBarItemStyle: styles.tabBarItem,
           tabBarHideOnKeyboard: true,
         }}>

@@ -8,7 +8,7 @@ import { authStyles as styles } from '../styles';
 interface GoogleOtpStepProps {
   phone: string;
   otp: string[];
-  otpRefs: React.MutableRefObject<Array<TextInput | null>>;
+  otpRefs: React.MutableRefObject<(TextInput | null)[]>;
   onOtpChange: (otp: string[]) => void;
   onVerify: () => void;
   onResend: () => void;
@@ -125,7 +125,7 @@ export function GoogleOtpStep({
         <TouchableOpacity
           style={[
             styles.mainButton,
-            styles.mainButtonActive,
+            isOtpComplete ? styles.mainButtonActive : styles.mainButtonDisabled,
             isVerifying && { opacity: 0.7 },
           ]}
           onPress={onVerify}

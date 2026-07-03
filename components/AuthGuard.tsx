@@ -44,7 +44,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const isLoggingOut = useRef(false);
   const lastAuthTime = useRef<number | null>(null);
   const isRedirectingAfterLogout = useRef(false);
-  const hasCheckedTokensOnMount = useRef(false);
   const lastFcmSyncAccessToken = useRef<string | null>(null);
 
   // Validate SecureStore tokens before hydrating Redux (ex: hot reload).
@@ -88,7 +87,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     checkSecureStore();
   }, [isLoading, accessToken, refreshToken, isAuthenticated, dispatch]);
 
-  // Proactive refresh on startup and on foreground.
+  // Proactive refresh on foreground. Startup refresh is handled by initializeAuth().
   useEffect(() => {
     if (isLoading || !isAuthenticated || !refreshToken) return;
 
@@ -98,30 +97,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         : Infinity;
       return timeSinceAuth < 5000;
     };
-
-    if (!hasCheckedTokensOnMount.current) {
-      hasCheckedTokensOnMount.current = true;
-
-      if (justAuthenticated()) {
-        if (__DEV__) {
-          console.log(
-            '[AuthGuard] Recent login/signup detected - skip startup proactive refresh'
-          );
-        }
-      } else {
-        if (__DEV__) {
-          console.log('[AuthGuard] Startup proactive token check...');
-        }
-        proactiveTokenRefresh().then((valid) => {
-          if (!valid) {
-            if (__DEV__) {
-              console.log('[AuthGuard] Invalid session at startup - local logout');
-            }
-            dispatch({ type: 'auth/logout' });
-          }
-        });
-      }
-    }
 
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {

@@ -25,7 +25,7 @@ export default function AuthEntryScreen() {
 
   return (
     <LinearGradient
-      colors={[Colors.primary, '#0b1727']}
+      colors={[Colors.white, '#FFF8F3', '#F3F6F9']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={styles.gradient}
@@ -48,7 +48,7 @@ export default function AuthEntryScreen() {
           </View>
 
           <View style={styles.badge}>
-            <Ionicons name="shield-checkmark" size={18} color={Colors.success} />
+            <Ionicons name="shield-checkmark" size={18} color={Colors.primaryDark} />
             <Text style={styles.badgeText}>Sécurisé & vérifié</Text>
           </View>
         </View>
@@ -62,7 +62,7 @@ export default function AuthEntryScreen() {
 
           <View style={styles.highlightsRow}>
             <View style={styles.highlightCard}>
-              <View style={[styles.highlightIcon, { backgroundColor: 'rgba(59,130,246,0.15)' }]}>
+              <View style={[styles.highlightIcon, { backgroundColor: Colors.primary + '14' }]}>
                 <Ionicons name="car-sport" size={22} color={Colors.primary} />
               </View>
               <Text style={styles.highlightTitle}>Rapide</Text>
@@ -70,7 +70,7 @@ export default function AuthEntryScreen() {
             </View>
 
             <View style={styles.highlightCard}>
-              <View style={[styles.highlightIcon, { backgroundColor: 'rgba(16,185,129,0.15)' }]}>
+              <View style={[styles.highlightIcon, { backgroundColor: Colors.success + '14' }]}>
                 <Ionicons name="people" size={22} color={Colors.success} />
               </View>
               <Text style={styles.highlightTitle}>Communautaire</Text>
@@ -96,7 +96,7 @@ export default function AuthEntryScreen() {
 
           <TouchableOpacity style={styles.secondaryButton} onPress={handleLoginPress}>
             <View style={styles.secondaryButtonContent}>
-              <Ionicons name="log-in-outline" size={22} color={Colors.primary} />
+              <Ionicons name="log-in-outline" size={22} color={Colors.primaryDark} />
               <Text style={styles.secondaryButtonText}>J&apos;ai déjà un compte</Text>
             </View>
           </TouchableOpacity>
@@ -135,11 +135,11 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(15,23,42,0.9)',
+    backgroundColor: '#FFF7F2',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.6)',
+    borderColor: '#E9C8BD',
   },
   logoImage: {
     width: 40,
@@ -148,12 +148,12 @@ const styles = StyleSheet.create({
   appName: {
     fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
-    color: Colors.white,
-    letterSpacing: 1.2,
+    color: Colors.primaryDark,
+    letterSpacing: 0,
   },
   appTagline: {
     fontSize: FontSizes.sm,
-    color: 'rgba(226,232,240,0.9)',
+    color: Colors.gray[600],
   },
   badge: {
     flexDirection: 'row',
@@ -161,14 +161,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.sm,
     paddingVertical: 4,
     borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(15,118,110,0.18)',
+    backgroundColor: Colors.white,
     borderWidth: 1,
-    borderColor: 'rgba(45,212,191,0.6)',
+    borderColor: '#E9C8BD',
     gap: 6,
   },
   badgeText: {
     fontSize: 11,
-    color: 'rgba(226,232,240,0.9)',
+    color: Colors.gray[700],
     fontWeight: FontWeights.medium,
   },
   content: {
@@ -177,12 +177,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: FontWeights.bold,
-    color: Colors.white,
+    color: Colors.gray[900],
     marginBottom: Spacing.sm,
   },
   subtitle: {
     fontSize: FontSizes.base,
-    color: 'rgba(226,232,240,0.9)',
+    color: Colors.gray[600],
     lineHeight: 22,
   },
   highlightsRow: {
@@ -194,9 +194,14 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: Spacing.md,
     borderRadius: 18,
-    backgroundColor: 'rgba(15,23,42,0.9)',
+    backgroundColor: Colors.white,
     borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.25)',
+    borderColor: '#E9C8BD',
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    elevation: 2,
   },
   highlightIcon: {
     width: 36,
@@ -209,12 +214,12 @@ const styles = StyleSheet.create({
   highlightTitle: {
     fontSize: FontSizes.base,
     fontWeight: FontWeights.semibold,
-    color: Colors.white,
+    color: Colors.gray[900],
     marginBottom: 2,
   },
   highlightText: {
     fontSize: FontSizes.sm,
-    color: 'rgba(148,163,184,0.95)',
+    color: Colors.gray[600],
     lineHeight: 18,
   },
   actions: {
@@ -223,9 +228,14 @@ const styles = StyleSheet.create({
   primaryButton: {
     borderRadius: 20,
     overflow: 'hidden',
-    backgroundColor: 'rgba(15,23,42,0.85)',
+    backgroundColor: Colors.primaryDark,
     borderWidth: 1,
-    borderColor: 'rgba(59,130,246,0.9)',
+    borderColor: Colors.primaryDark,
+    shadowColor: Colors.primaryDark,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 4,
   },
   primaryButtonContent: {
     flexDirection: 'row',
@@ -241,13 +251,15 @@ const styles = StyleSheet.create({
   },
   primaryButtonSub: {
     fontSize: FontSizes.sm,
-    color: 'rgba(148,163,184,0.95)',
+    color: 'rgba(255,255,255,0.78)',
     marginTop: 2,
   },
   secondaryButton: {
     height: 52,
     borderRadius: 18,
-    backgroundColor: 'rgba(241,245,249,0.98)',
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: '#E9C8BD',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -259,11 +271,11 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     fontSize: FontSizes.base,
     fontWeight: FontWeights.semibold,
-    color: Colors.primary,
+    color: Colors.primaryDark,
   },
   footerHint: {
     fontSize: 11,
-    color: 'rgba(148,163,184,0.9)',
+    color: Colors.gray[600],
     textAlign: 'center',
     marginTop: Spacing.xs,
   },

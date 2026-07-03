@@ -101,7 +101,7 @@ export function ProfileStep({
             style={[styles.roleCard, role === 'passenger' && styles.roleCardActive]}
             onPress={() => onRoleChange('passenger')}
           >
-            <View style={styles.roleIconBadge}>
+            <View style={[styles.roleIconBadge, role === 'passenger' && styles.roleIconBadgeActive]}>
               <Ionicons
                 name="person"
                 size={24}
@@ -117,7 +117,7 @@ export function ProfileStep({
             style={[styles.roleCard, role === 'driver' && styles.roleCardActive]}
             onPress={() => onRoleChange('driver')}
           >
-            <View style={styles.roleIconBadge}>
+            <View style={[styles.roleIconBadge, role === 'driver' && styles.roleIconBadgeActive]}>
               <Ionicons
                 name="car"
                 size={24}

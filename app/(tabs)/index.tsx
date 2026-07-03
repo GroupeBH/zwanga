@@ -103,7 +103,6 @@ type TripPreviewCardProps = {
   isBooked: boolean;
   isSelected: boolean;
   onOpen: () => void;
-  onSelect: () => void;
   trip: Trip;
 };
 
@@ -205,7 +204,6 @@ function TripPreviewCard({
   isBooked,
   isSelected,
   onOpen,
-  onSelect,
   trip,
 }: TripPreviewCardProps) {
   const calculatedArrivalTime = useTripArrivalTime(trip);
@@ -221,7 +219,9 @@ function TripPreviewCard({
   return (
     <TouchableOpacity
       activeOpacity={0.9}
-      onPress={onSelect}
+      accessibilityRole="button"
+      accessibilityLabel={`Voir le trajet de ${placeName(trip.departure)} à ${placeName(trip.arrival)}`}
+      onPress={onOpen}
       style={[styles.tripPreviewCard, isSelected && styles.tripPreviewCardSelected, { width: cardWidth }]}
     >
       <View style={styles.tripPreviewTopRow}>
@@ -248,7 +248,14 @@ function TripPreviewCard({
           </View>
         </View>
         <View style={styles.tripPreviewPriceBlock}>
-          <Text style={styles.tripPreviewPrice}>{formatPrice(trip.price)}</Text>
+          <Text
+            style={styles.tripPreviewPrice}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.78}
+          >
+            {formatPrice(trip.price)}
+          </Text>
           {trip.price > 0 && <Text style={styles.tripPreviewPriceNote}>par place</Text>}
         </View>
       </View>
@@ -278,11 +285,11 @@ function TripPreviewCard({
       <View style={styles.tripPreviewFooter}>
         <View style={styles.tripPreviewChips}>
           <View style={styles.tripPreviewChip}>
-            <Text style={styles.tripPreviewChipText}>{seatsLabel}</Text>
+            <Text style={styles.tripPreviewChipText} numberOfLines={1}>{seatsLabel}</Text>
           </View>
           <View style={styles.tripPreviewVehicleChip}>
             <Ionicons name={vehicleIcon[tripVehicleType]} size={13} color={HOME_COLORS.navy} />
-            <Text style={styles.tripPreviewVehicleText}>{vehicleLabel[tripVehicleType]}</Text>
+            <Text style={styles.tripPreviewVehicleText} numberOfLines={1}>{vehicleLabel[tripVehicleType]}</Text>
           </View>
           {isBooked && (
             <View style={styles.tripPreviewBookedChip}>
@@ -290,9 +297,9 @@ function TripPreviewCard({
             </View>
           )}
         </View>
-        <TouchableOpacity activeOpacity={0.85} style={styles.tripPreviewOpenButton} onPress={onOpen}>
+        <View style={styles.tripPreviewOpenButton}>
           <Ionicons name="chevron-forward" size={22} color={Colors.white} />
-        </TouchableOpacity>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -543,6 +550,7 @@ export default function HomeScreen() {
   const mapRef = useRef<MapView>(null);
   const tripMarkerRefs = useRef<Record<string, MapMarker | null>>({});
   const userLocationMarkerRef = useRef<MapMarker | null>(null);
+  const openingTripRef = useRef(false);
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const storedTrips = useAppSelector(selectAvailableTrips);
@@ -879,8 +887,15 @@ export default function HomeScreen() {
   const availableTripsLabel = `${latestTrips.length} trajet${latestTrips.length > 1 ? 's' : ''}`;
   const showInitialHomeLoader = tripsLoading && !remoteTrips && storedTrips.length === 0;
   const openTripDetail = (tripId: string) => {
+    if (openingTripRef.current) return;
+
+    openingTripRef.current = true;
     router.push(`/trip/${tripId}`);
   };
+
+  useEffect(() => {
+    if (isFocused) openingTripRef.current = false;
+  }, [isFocused]);
 
   const selectTripOnMap = (tripId: string) => {
     setMapFocusedOnUser(false);
@@ -984,6 +999,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={[]}>
+      {isFocused ? (
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
@@ -1086,6 +1102,9 @@ export default function HomeScreen() {
           </Marker>
         )}
       </MapView>
+      ) : (
+        <View style={styles.map} />
+      )}
 
       <View style={styles.mapVeil} pointerEvents="none" />
 
@@ -1120,7 +1139,9 @@ export default function HomeScreen() {
               </Text>
               <View style={styles.statusRow}>
                 <View style={styles.statusDot} />
-                <Text style={styles.statusText}>{availableTripsLabel} disponible{latestTrips.length > 1 ? 's' : ''}</Text>
+                <Text style={styles.statusText} numberOfLines={1}>
+                  {availableTripsLabel} disponible{latestTrips.length > 1 ? 's' : ''}
+                </Text>
               </View>
             </View>
           </View>
@@ -1146,28 +1167,38 @@ export default function HomeScreen() {
             <Ionicons name="navigate-outline" size={22} color={Colors.white} />
           </View>
           <View style={styles.searchCopy}>
-            <Text style={styles.searchTitle}>Où allez-vous ?</Text>
-            <Text style={styles.searchSubtitle}>Départ et destination</Text>
+            <Text style={styles.searchTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.9}>
+              Où allez-vous ?
+            </Text>
+            <Text style={styles.searchSubtitle} numberOfLines={1}>Départ et destination</Text>
           </View>
           <Ionicons name="chevron-forward" size={22} color={HOME_COLORS.navy} />
         </TouchableOpacity>
 
         <View style={styles.actionDock}>
-          <TouchableOpacity activeOpacity={0.88} style={styles.actionPrimary} onPress={() => router.push('/search')}>
-            <Ionicons name="search" size={18} color={Colors.white} />
-            <Text style={styles.actionPrimaryText}>Chercher</Text>
-          </TouchableOpacity>
-          <TouchableOpacity activeOpacity={0.88} style={styles.actionButton} onPress={() => router.push('/publish')}>
-              <Ionicons name="add" size={19} color={Colors.primary} />
-            <Text style={styles.actionButtonText}>Publier</Text>
+          <TouchableOpacity
+            activeOpacity={0.88}
+            style={[styles.actionButton, styles.actionPublishButton]}
+            onPress={() => router.push('/publish')}
+          >
+            <Ionicons name="add-circle-outline" size={20} color={Colors.white} />
+            <Text style={[styles.actionButtonText, styles.actionButtonTextStrong]} numberOfLines={1}>Publier</Text>
           </TouchableOpacity>
           <TouchableOpacity
             activeOpacity={0.88}
-            style={styles.actionButton}
+            style={[styles.actionButton, styles.actionRequestButton]}
             onPress={() => router.push(getTripRequestCreateHref())}
           >
-            <Ionicons name="paper-plane-outline" size={17} color={HOME_COLORS.navy} />
-            <Text style={styles.actionButtonText}>Demander</Text>
+            <Ionicons name="paper-plane-outline" size={18} color={Colors.white} />
+            <Text style={[styles.actionButtonText, styles.actionButtonTextStrong]} numberOfLines={1}>Demander</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.88}
+            style={styles.actionSearchButton}
+            onPress={() => router.push('/search')}
+          >
+            <Ionicons name="search" size={17} color={HOME_COLORS.navy} />
+            <Text style={styles.actionSearchText} numberOfLines={1}>Chercher</Text>
           </TouchableOpacity>
         </View>
 
@@ -1202,14 +1233,16 @@ export default function HomeScreen() {
             style={styles.sheetHeaderCopy}
             onPress={() => setTripsSheetOpen((current) => !current)}
           >
-            <Text style={styles.sheetTitle}>Trajets autour de vous</Text>
-            <Text style={styles.sheetSubtitle}>
+            <Text style={styles.sheetTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+              Trajets autour de vous
+            </Text>
+            <Text style={styles.sheetSubtitle} numberOfLines={1}>
               {latestTrips.length > 0 ? `${availableTripsLabel} à parcourir` : 'Aucune offre pour le moment'}
             </Text>
           </TouchableOpacity>
           <View style={styles.sheetHeaderActions}>
             <TouchableOpacity activeOpacity={0.75} onPress={() => router.push('/search')}>
-              <Text style={styles.seeAllText}>Voir tout</Text>
+              <Text style={styles.seeAllText} numberOfLines={1}>Voir tout</Text>
             </TouchableOpacity>
             <TouchableOpacity
               activeOpacity={0.75}
@@ -1266,8 +1299,7 @@ export default function HomeScreen() {
                 trip={trip}
                 isBooked={bookedTripIds.has(trip.id)}
                 isSelected={trip.id === selectedTrip?.id}
-                onSelect={() => selectTripOnMap(trip.id)}
-                onOpen={() => router.push(`/trip/${trip.id}`)}
+                onOpen={() => openTripDetail(trip.id)}
               />
             ))}
           </ScrollView>
@@ -1855,25 +1887,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
   },
-  actionPrimary: {
+  actionButton: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 54,
     borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.primary,
-    flexDirection: 'row',
+    borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.xs,
-    paddingHorizontal: Spacing.md,
-    ...CommonStyles.shadowSm,
+    gap: 3,
+    paddingHorizontal: Spacing.sm,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 5,
   },
-  actionPrimaryText: {
-    color: Colors.white,
-    fontSize: FontSizes.base,
+  actionPublishButton: {
+    backgroundColor: Colors.primary,
+  },
+  actionRequestButton: {
+    backgroundColor: HOME_COLORS.navy,
+  },
+  actionButtonText: {
+    color: HOME_COLORS.ink,
+    fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
   },
-  actionButton: {
-    width: 94,
+  actionButtonTextStrong: {
+    color: Colors.white,
+  },
+  actionSearchButton: {
+    width: 82,
     minHeight: 48,
     borderRadius: BorderRadius.lg,
     backgroundColor: 'rgba(255,255,255,0.96)',
@@ -1884,9 +1928,9 @@ const styles = StyleSheet.create({
     gap: 2,
     ...CommonStyles.shadowSm,
   },
-  actionButtonText: {
-    color: HOME_COLORS.ink,
-    fontSize: FontSizes.xs,
+  actionSearchText: {
+    color: HOME_COLORS.navy,
+    fontSize: 11,
     fontWeight: FontWeights.bold,
   },
   activeRequestCard: {

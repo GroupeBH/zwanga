@@ -10,6 +10,7 @@ import {
   useGetMyTripsQuery,
   useUpdateTripMutation,
 } from '@/store/api/tripApi';
+import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import type { Trip } from '@/types';
 import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,6 +41,13 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 type MainTab = 'published' | 'bookings';
 type SubTab = 'upcoming' | 'completed';
 type EditTripStep = 1 | 2;
+
+const normalizeSearchText = (value: unknown) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 
 const getLocationText = (selection: MapLocationSelection | null, manualAddress: string) =>
   (manualAddress.trim() || selection?.title || selection?.address || '').trim();
@@ -77,6 +85,7 @@ export default function TripsScreen() {
   const insets = useSafeAreaInsets();
   const [mainTab, setMainTab] = useState<MainTab>('published');
   const [subTab, setSubTab] = useState<SubTab>('upcoming');
+  const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const {
     data: myTrips,
@@ -103,6 +112,11 @@ export default function TripsScreen() {
     refetchOnReconnect: isFocused,
   });
   const { data: recurringTemplates = [] } = useGetMyRecurringTripsQuery();
+  const { data: userVehicles = [], isLoading: vehiclesLoading } = useGetVehiclesQuery();
+  const activeUserVehicles = useMemo(
+    () => userVehicles.filter((vehicle) => vehicle.isActive !== false),
+    [userVehicles],
+  );
   const [updateTripMutation, { isLoading: isSavingTrip }] = useUpdateTripMutation();
   const [deleteTripMutation, { isLoading: isDeletingTrip }] = useDeleteTripMutation();
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
@@ -119,6 +133,8 @@ export default function TripsScreen() {
   const [editDepartureManualAddress, setEditDepartureManualAddress] = useState('');
   const [editArrivalManualAddress, setEditArrivalManualAddress] = useState('');
   const [editRoutePickerTarget, setEditRoutePickerTarget] = useState<'departure' | 'arrival' | null>(null);
+  const [editVehicleId, setEditVehicleId] = useState<string | null>(null);
+  const [editModalSuspended, setEditModalSuspended] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
     null,
   );
@@ -282,7 +298,42 @@ export default function TripsScreen() {
 
   const displayTrips = subTab === 'upcoming' ? upcomingTrips : completedTrips;
   const displayBookings = subTab === 'upcoming' ? upcomingBookings : completedBookingsList;
-  const displayData = mainTab === 'published' ? displayTrips : displayBookings;
+  const normalizedSearchQuery = normalizeSearchText(searchQuery);
+  const filteredTrips = useMemo(() => {
+    if (!normalizedSearchQuery) return displayTrips;
+
+    return displayTrips.filter((trip) =>
+      normalizeSearchText([
+        trip.departure?.name,
+        trip.departure?.address,
+        trip.arrival?.name,
+        trip.arrival?.address,
+        trip.driverName,
+        trip.vehicle?.brand,
+        trip.vehicle?.model,
+        trip.vehicleInfo,
+      ].join(' ')).includes(normalizedSearchQuery),
+    );
+  }, [displayTrips, normalizedSearchQuery]);
+  const filteredBookings = useMemo(() => {
+    if (!normalizedSearchQuery) return displayBookings;
+
+    return displayBookings.filter((booking) => {
+      const trip = booking.trip;
+      return normalizeSearchText([
+        trip?.departure?.name,
+        trip?.departure?.address,
+        booking.passengerDestination,
+        trip?.arrival?.name,
+        trip?.arrival?.address,
+        trip?.driverName,
+        trip?.vehicle?.brand,
+        trip?.vehicle?.model,
+        trip?.vehicleInfo,
+      ].join(' ')).includes(normalizedSearchQuery);
+    });
+  }, [displayBookings, normalizedSearchQuery]);
+  const displayData = mainTab === 'published' ? filteredTrips : filteredBookings;
   const showLoader = (mainTab === 'published' ? tripsLoading : bookingsLoading) && (mainTab === 'published' ? trips.length === 0 : (myBookings?.length ?? 0) === 0);
   const isError = mainTab === 'published' ? tripsError : bookingsError;
   const isFetching = mainTab === 'published' ? tripsFetching : bookingsFetching;
@@ -383,6 +434,7 @@ export default function TripsScreen() {
     setEditArrivalManualAddress((trip.arrival?.address || trip.arrival?.name || '').trim());
     setEditRouteMode(departureSelection && arrivalSelection ? 'map' : 'manual');
     setEditRoutePickerTarget(null);
+    setEditVehicleId(trip.vehicle?.id ?? trip.vehicleId ?? null);
     setEditStep(1);
   };
 
@@ -400,6 +452,8 @@ export default function TripsScreen() {
     setEditDepartureManualAddress('');
     setEditArrivalManualAddress('');
     setEditRoutePickerTarget(null);
+    setEditVehicleId(null);
+    setEditModalSuspended(false);
   };
 
   const swapEditRoutePoints = () => {
@@ -407,6 +461,17 @@ export default function TripsScreen() {
     setEditArrivalSelection(editDepartureSelection);
     setEditDepartureManualAddress(editArrivalManualAddress);
     setEditArrivalManualAddress(editDepartureManualAddress);
+  };
+
+  const openEditRoutePicker = (target: 'departure' | 'arrival') => {
+    Keyboard.dismiss();
+    setEditModalSuspended(true);
+    setTimeout(() => setEditRoutePickerTarget(target), 320);
+  };
+
+  const restoreEditModalAfterPicker = () => {
+    setEditRoutePickerTarget(null);
+    setTimeout(() => setEditModalSuspended(false), 320);
   };
 
   const handleContinueEditTrip = () => {
@@ -513,6 +578,11 @@ export default function TripsScreen() {
       return;
     }
 
+    if (!editVehicleId) {
+      showFeedback('error', 'Sélectionnez le véhicule utilisé pour ce trajet.');
+      return;
+    }
+
     const seatsValue = parseInt(editSeats, 10);
     const priceValue = parseFloat(editPrice);
     if (Number.isNaN(seatsValue) || Number.isNaN(priceValue) || seatsValue <= 0 || priceValue < 0) {
@@ -549,10 +619,12 @@ export default function TripsScreen() {
       arrivalLocation?: string;
       departureCoordinates?: [number, number];
       arrivalCoordinates?: [number, number];
+      vehicleId?: string;
     } = {
       totalSeats: seatsValue,
       pricePerSeat: priceValue,
       departureDate: editDateTime.toISOString(),
+      vehicleId: editVehicleId,
     };
 
     if (departureAddress !== currentDepartureAddress) {
@@ -641,7 +713,6 @@ export default function TripsScreen() {
   const getStatusConfig = (trip: Trip) => {
     // Vérifier si le trajet est expiré (date de départ passée)
     const isExpired = trip.departureTime && new Date(trip.departureTime) < new Date();
-    const borderRadiusSm = BorderRadius.sm;
     // Si le trajet est expiré mais n'a pas le status 'completed', afficher "Expiré"
     if (isExpired && trip.status !== 'completed') {
       return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: 'Expiré' };
@@ -663,7 +734,20 @@ export default function TripsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Mes trajets</Text>
+        <View style={styles.headerTopRow}>
+          <View style={styles.headerCopy}>
+            <Text style={styles.headerEyebrow}>VOTRE ACTIVITÉ</Text>
+            <Text style={styles.headerTitle}>Mes trajets</Text>
+            <Text style={styles.headerSubtitle}>Suivez et gérez tous vos déplacements.</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.headerPublishButton}
+            onPress={() => router.push('/publish')}
+            accessibilityLabel="Publier un trajet"
+          >
+            <Ionicons name="add" size={24} color={Colors.white} />
+          </TouchableOpacity>
+        </View>
 
         {/* Main Tabs */}
         <View style={styles.mainTabsContainer}>
@@ -709,6 +793,24 @@ export default function TripsScreen() {
               Terminés ({mainTab === 'published' ? completedTrips.length : completedBookingsList.length})
             </Text>
           </TouchableOpacity>
+        </View>
+
+        <View style={styles.searchContainer}>
+          <Ionicons name="search-outline" size={20} color={Colors.gray[500]} />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder={mainTab === 'published' ? 'Rechercher un trajet...' : 'Rechercher une réservation...'}
+            placeholderTextColor={Colors.gray[400]}
+            style={styles.searchInput}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+          />
+          {searchQuery.length > 0 && Platform.OS !== 'ios' ? (
+            <TouchableOpacity style={styles.searchClearButton} onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={20} color={Colors.gray[400]} />
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 
@@ -789,16 +891,20 @@ export default function TripsScreen() {
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIcon}>
               <Ionicons
-                name={mainTab === 'published' ? 'car-outline' : 'calendar-outline'}
+                name={normalizedSearchQuery ? 'search-outline' : mainTab === 'published' ? 'car-outline' : 'calendar-outline'}
                 size={48}
                 color={Colors.gray[500]}
               />
             </View>
             <Text style={styles.emptyTitle}>
-              {mainTab === 'published' ? 'Aucun trajet' : 'Aucune réservation'}
+              {normalizedSearchQuery
+                ? 'Aucun résultat'
+                : mainTab === 'published' ? 'Aucun trajet' : 'Aucune réservation'}
             </Text>
             <Text style={styles.emptyText}>
-              {mainTab === 'published'
+              {normalizedSearchQuery
+                ? `Aucun trajet ne correspond à « ${searchQuery.trim()} ».`
+                : mainTab === 'published'
                 ? subTab === 'upcoming'
                   ? 'Vous n\'avez pas de trajet à venir'
                   : 'Vous n\'avez pas encore terminé de trajet'
@@ -806,7 +912,11 @@ export default function TripsScreen() {
                   ? 'Vous n\'avez pas de réservation à venir'
                   : 'Vous n\'avez pas encore terminé de réservation'}
             </Text>
-            {mainTab === 'published' && subTab === 'upcoming' && (
+            {normalizedSearchQuery ? (
+              <TouchableOpacity style={styles.emptySecondaryButton} onPress={() => setSearchQuery('')}>
+                <Text style={styles.emptySecondaryButtonText}>Effacer la recherche</Text>
+              </TouchableOpacity>
+            ) : mainTab === 'published' && subTab === 'upcoming' && (
               <TouchableOpacity
                 style={styles.emptyButton}
                 onPress={() => router.push('/publish')}
@@ -817,7 +927,7 @@ export default function TripsScreen() {
           </View>
         ) : (
           mainTab === 'published'
-            ? displayTrips.map((trip) => {
+            ? filteredTrips.map((trip) => {
               const statusConfig = getStatusConfig(trip);
 
               return (
@@ -938,7 +1048,7 @@ export default function TripsScreen() {
                 </View>
               );
           })
-            : displayBookings.map((booking) => {
+            : filteredBookings.map((booking) => {
                 const trip = booking.trip;
                 if (!trip) return null;
 
@@ -1066,7 +1176,7 @@ export default function TripsScreen() {
         presentationStyle={Platform.OS === 'ios' ? 'pageSheet' : 'overFullScreen'}
         statusBarTranslucent={Platform.OS === 'android'}
         navigationBarTranslucent={Platform.OS === 'android'}
-        visible={Boolean(editingTrip)}
+        visible={Boolean(editingTrip) && !editModalSuspended}
         onRequestClose={closeEditModal}
       >
         <KeyboardAvoidingView
@@ -1152,7 +1262,7 @@ export default function TripsScreen() {
                       editRouteMode === 'map' && styles.modalRouteModeChipTextActive,
                     ]}
                   >
-                    Carte
+                    Sélection sur carte
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -1173,7 +1283,7 @@ export default function TripsScreen() {
                       editRouteMode === 'manual' && styles.modalRouteModeChipTextActive,
                     ]}
                   >
-                    Saisie
+                    Saisie manuelle
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1204,7 +1314,7 @@ export default function TripsScreen() {
                 <>
                   <TouchableOpacity
                     style={styles.modalRoutePointButton}
-                    onPress={() => setEditRoutePickerTarget('departure')}
+                    onPress={() => openEditRoutePicker('departure')}
                   >
                     <View style={styles.modalRoutePointIcon}>
                       <Ionicons name="location" size={15} color={Colors.success} />
@@ -1220,7 +1330,7 @@ export default function TripsScreen() {
 
                   <TouchableOpacity
                     style={styles.modalRoutePointButton}
-                    onPress={() => setEditRoutePickerTarget('arrival')}
+                    onPress={() => openEditRoutePicker('arrival')}
                   >
                     <View style={styles.modalRoutePointIcon}>
                       <Ionicons name="navigate" size={15} color={Colors.primary} />
@@ -1239,6 +1349,56 @@ export default function TripsScreen() {
                 </>
               ) : (
                 <>
+
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>Véhicule du trajet</Text>
+              {vehiclesLoading ? (
+                <View style={styles.modalVehicleLoading}>
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                  <Text style={styles.modalVehicleLoadingText}>Chargement des véhicules...</Text>
+                </View>
+              ) : activeUserVehicles.length === 0 ? (
+                <View style={styles.modalVehicleEmpty}>
+                  <Ionicons name="car-outline" size={20} color={Colors.gray[500]} />
+                  <Text style={styles.modalVehicleEmptyText}>
+                    Aucun véhicule actif. Ajoutez-en un depuis votre profil.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.modalVehicleList}>
+                  {activeUserVehicles.map((vehicle) => {
+                    const selected = editVehicleId === vehicle.id;
+                    return (
+                      <TouchableOpacity
+                        key={vehicle.id}
+                        style={[styles.modalVehicleOption, selected && styles.modalVehicleOptionSelected]}
+                        onPress={() => setEditVehicleId(vehicle.id)}
+                        activeOpacity={0.82}
+                      >
+                        <View style={[styles.modalVehicleIcon, selected && styles.modalVehicleIconSelected]}>
+                          <Ionicons
+                            name="car-sport-outline"
+                            size={20}
+                            color={selected ? Colors.white : Colors.primary}
+                          />
+                        </View>
+                        <View style={styles.modalVehicleCopy}>
+                          <Text style={styles.modalVehicleName}>{vehicle.brand} {vehicle.model}</Text>
+                          <Text style={styles.modalVehicleMeta}>
+                            {[vehicle.color, vehicle.licensePlate].filter(Boolean).join(' • ')}
+                          </Text>
+                        </View>
+                        <Ionicons
+                          name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={22}
+                          color={selected ? Colors.primary : Colors.gray[300]}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
 
             <View style={styles.modalField}>
               <Text style={styles.modalLabel}>Places disponibles</Text>
@@ -1348,20 +1508,18 @@ export default function TripsScreen() {
           editRoutePickerTarget === 'departure' ? editDepartureSelection : editArrivalSelection
         }
         autoLocateOnOpen={false}
-        onClose={() => setEditRoutePickerTarget(null)}
+        onClose={restoreEditModalAfterPicker}
         onSelect={(location) => {
           const target = editRoutePickerTarget;
-          setEditRoutePickerTarget(null);
           setEditRouteMode('map');
           if (target === 'departure') {
             setEditDepartureSelection(location);
             setEditDepartureManualAddress(location.title || location.address);
-            return;
-          }
-          if (target === 'arrival') {
+          } else if (target === 'arrival') {
             setEditArrivalSelection(location);
             setEditArrivalManualAddress(location.title || location.address);
           }
+          restoreEditModalAfterPicker();
         }}
       />
 
@@ -1422,25 +1580,51 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.lg,
-    paddingBottom: Spacing.md,
+    paddingBottom: Spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[200],
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  headerCopy: {
+    flex: 1,
+  },
+  headerEyebrow: {
+    marginBottom: 3,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    letterSpacing: 1.1,
+    color: Colors.primary,
   },
   headerTitle: {
     fontSize: FontSizes.xxl,
     fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    marginBottom: Spacing.lg,
+    color: Colors.gray[900],
+  },
+  headerSubtitle: {
+    marginTop: 3,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+  },
+  headerPublishButton: {
+    width: 46,
+    height: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: Spacing.md,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+    ...CommonStyles.shadowSm,
   },
   mainTabsContainer: {
     flexDirection: 'row',
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
-    padding: 2,
+    backgroundColor: Colors.gray[100],
+    borderRadius: BorderRadius.xl,
+    padding: 4,
     marginBottom: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    ...CommonStyles.shadowSm,
   },
   mainTab: {
     flex: 1,
@@ -1450,7 +1634,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   mainTabActive: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.white,
+    ...CommonStyles.shadowSm,
   },
   mainTabText: {
     textAlign: 'center',
@@ -1459,27 +1644,22 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
   },
   mainTabTextActive: {
-    color: Colors.white,
+    color: Colors.primary,
   },
   subTabsContainer: {
     flexDirection: 'row',
-    backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.sm,
-    padding: 2,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
+    gap: Spacing.sm,
   },
   subTab: {
     flex: 1,
-    paddingVertical: Spacing.xs + 2,
-    borderRadius: BorderRadius.sm / 2,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: Colors.gray[100],
   },
   subTabActive: {
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: Colors.gray[300],
+    backgroundColor: Colors.primary + '12',
   },
   subTabText: {
     textAlign: 'center',
@@ -1488,8 +1668,30 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
   },
   subTabTextActive: {
-    color: Colors.gray[800],
+    color: Colors.primary,
     fontWeight: FontWeights.semibold,
+  },
+  searchContainer: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.xl,
+    backgroundColor: Colors.gray[50],
+  },
+  searchInput: {
+    flex: 1,
+    height: 46,
+    marginLeft: Spacing.sm,
+    paddingVertical: 0,
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+  },
+  searchClearButton: {
+    padding: Spacing.xs,
   },
   recurringHubCard: {
     flexDirection: 'row',
@@ -1637,11 +1839,26 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     fontSize: FontSizes.base,
   },
+  emptySecondaryButton: {
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+  },
+  emptySecondaryButtonText: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+  },
   tripCard: {
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
+    borderRadius: BorderRadius.xxl,
     padding: Spacing.lg,
     marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
     ...CommonStyles.shadowSm,
   },
   tripHeader: {
@@ -2031,6 +2248,76 @@ const styles = StyleSheet.create({
   },
   modalField: {
     marginBottom: Spacing.lg,
+  },
+  modalVehicleLoading: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.gray[50],
+  },
+  modalVehicleLoadingText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  modalVehicleEmpty: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.gray[100],
+  },
+  modalVehicleEmptyText: {
+    flex: 1,
+    fontSize: FontSizes.sm,
+    lineHeight: 19,
+    color: Colors.gray[600],
+  },
+  modalVehicleList: {
+    gap: Spacing.sm,
+  },
+  modalVehicleOption: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.white,
+  },
+  modalVehicleOptionSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '08',
+  },
+  modalVehicleIcon: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.primary + '12',
+  },
+  modalVehicleIconSelected: {
+    backgroundColor: Colors.primary,
+  },
+  modalVehicleCopy: {
+    flex: 1,
+  },
+  modalVehicleName: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  modalVehicleMeta: {
+    marginTop: 2,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
   },
   modalLabel: {
     fontSize: FontSizes.sm,

@@ -23,45 +23,54 @@ export function AuthHeader({
   progress,
   motivationalMessage,
 }: AuthHeaderProps) {
+  const showSignupProgress = mode === 'signup' && progress > 0 && progress < 100;
+
   return (
     <View style={styles.header}>
-      <View style={styles.headerTop}>
+      <View style={[styles.headerTop, canGoBack && styles.headerTopCentered]}>
         {canGoBack ? (
           <TouchableOpacity style={styles.backButton} onPress={onBack}>
-            <Ionicons name="arrow-back" size={24} color={Colors.gray[800]} />
+            <Ionicons name="arrow-back" size={28} color={Colors.primaryDark} />
           </TouchableOpacity>
         ) : (
-          <View style={{ width: 24 }} />
+          <View style={{ width: 0 }} />
         )}
 
-        <View style={styles.toggleContainer}>
-          <TouchableOpacity
-            style={[styles.toggleButton, mode === 'login' && styles.toggleButtonActive]}
-            onPress={() => onModeChange('login')}
-          >
-            <Text style={[styles.toggleText, mode === 'login' && styles.toggleTextActive]}>
-              Connexion
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.toggleButton, mode === 'signup' && styles.toggleButtonActive]}
-            onPress={() => onModeChange('signup')}
-          >
-            <Text style={[styles.toggleText, mode === 'signup' && styles.toggleTextActive]}>
-              Inscription
-            </Text>
-          </TouchableOpacity>
-        </View>
-        <View style={{ width: 24 }} />
+        {canGoBack ? (
+          <Text style={styles.headerBrand}>Zwanga</Text>
+        ) : (
+          <View style={styles.toggleContainer}>
+            <TouchableOpacity
+              style={[styles.toggleButton, mode === 'login' && styles.toggleButtonActive]}
+              onPress={() => onModeChange('login')}
+            >
+              <Text style={[styles.toggleText, mode === 'login' && styles.toggleTextActive]}>
+                Connexion
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toggleButton, mode === 'signup' && styles.toggleButtonActive]}
+              onPress={() => onModeChange('signup')}
+            >
+              <Text style={[styles.toggleText, mode === 'signup' && styles.toggleTextActive]}>
+                Inscription
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {!canGoBack && <View style={{ width: 0 }} />}
       </View>
 
-      <View style={styles.progressContainer}>
-        <View style={styles.progressBarBg}>
-          <Animated.View style={[styles.progressBarFill, { width: `${progress}%` }]} />
+      {showSignupProgress && (
+        <View style={styles.progressContainer}>
+          <View style={styles.progressBarBg}>
+            <Animated.View style={[styles.progressBarFill, { width: `${progress}%` }]} />
+          </View>
         </View>
-      </View>
+      )}
 
-      {motivationalMessage ? (
+      {showSignupProgress && motivationalMessage ? (
         <Text style={styles.motivationalText}>{motivationalMessage}</Text>
       ) : null}
     </View>

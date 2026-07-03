@@ -27,10 +27,11 @@ import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -192,6 +193,14 @@ export default function TripRequestDetailsScreen() {
   const [editIosPickerModeMax, setEditIosPickerModeMax] = useState<'date' | 'time' | null>(null);
   const [editActivePicker, setEditActivePicker] = useState<'departure' | 'arrival' | null>(null);
   const [editLocationPickerType, setEditLocationPickerType] = useState<'departure' | 'arrival' | null>(null);
+  const editPickerTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editPickerRestorePendingRef = useRef(false);
+
+  useEffect(() => () => {
+    if (editPickerTransitionTimerRef.current) {
+      clearTimeout(editPickerTransitionTimerRef.current);
+    }
+  }, []);
 
   // États pour le formulaire d'offre
   const [showOfferForm, setShowOfferForm] = useState(false);
@@ -1049,6 +1058,29 @@ export default function TripRequestDetailsScreen() {
     setShowEditForm(true);
   };
 
+  const openEditLocationPicker = (target: 'departure' | 'arrival') => {
+    Keyboard.dismiss();
+    editPickerRestorePendingRef.current = false;
+    setShowEditForm(false);
+    editPickerTransitionTimerRef.current = setTimeout(() => {
+      setEditLocationPickerType(target);
+      setEditActivePicker(target);
+      editPickerTransitionTimerRef.current = null;
+    }, Platform.OS === 'ios' ? 350 : 80);
+  };
+
+  const restoreEditFormAfterLocationPicker = () => {
+    if (editPickerRestorePendingRef.current) return;
+    editPickerRestorePendingRef.current = true;
+    setEditActivePicker(null);
+    setEditLocationPickerType(null);
+    editPickerTransitionTimerRef.current = setTimeout(() => {
+      setShowEditForm(true);
+      editPickerRestorePendingRef.current = false;
+      editPickerTransitionTimerRef.current = null;
+    }, Platform.OS === 'ios' ? 350 : 80);
+  };
+
   const handleUpdateRequest = async () => {
     if (!id || !editDepartureAddress || !editArrivalAddress) {
       showDialog({
@@ -1081,12 +1113,14 @@ export default function TripRequestDetailsScreen() {
 
       setShowEditForm(false);
       refetch();
-      
-      showDialog({
-        title: 'Demande modifiée',
-        message: 'Votre demande a été modifiée avec succès',
-        variant: 'success',
-      });
+
+      setTimeout(() => {
+        showDialog({
+          title: 'Demande modifiée',
+          message: 'Votre demande a été modifiée avec succès',
+          variant: 'success',
+        });
+      }, Platform.OS === 'ios' ? 350 : 0);
     } catch (error: any) {
       showDialog({
         title: 'Erreur',
@@ -2745,7 +2779,7 @@ export default function TripRequestDetailsScreen() {
                       <View style={styles.editRouteCard}>
                         <TouchableOpacity
                           style={styles.editRouteMapBtn}
-                          onPress={() => { setEditLocationPickerType('departure'); setEditActivePicker('departure'); }}
+                          onPress={() => openEditLocationPicker('departure')}
                           activeOpacity={0.75}
                         >
                           <View style={[styles.editRouteMapDot, { backgroundColor: Colors.success + '20' }]}>
@@ -2764,7 +2798,7 @@ export default function TripRequestDetailsScreen() {
 
                         <TouchableOpacity
                           style={styles.editRouteMapBtn}
-                          onPress={() => { setEditLocationPickerType('arrival'); setEditActivePicker('arrival'); }}
+                          onPress={() => openEditLocationPicker('arrival')}
                           activeOpacity={0.75}
                         >
                           <View style={[styles.editRouteMapDot, { backgroundColor: Colors.primary + '18' }]}>
@@ -2906,10 +2940,7 @@ export default function TripRequestDetailsScreen() {
         {editLocationPickerType && (
           <LocationPickerModal
             visible={editActivePicker !== null}
-            onClose={() => {
-              setEditActivePicker(null);
-              setEditLocationPickerType(null);
-            }}
+            onClose={restoreEditFormAfterLocationPicker}
             onSelect={(location) => {
               if (editLocationPickerType === 'departure') {
                 setEditDepartureLocation(location);
@@ -2918,8 +2949,8 @@ export default function TripRequestDetailsScreen() {
                 setEditArrivalLocation(location);
                 setEditArrivalManualAddress(location.title || location.address);
               }
-              setEditActivePicker(null);
-              setEditLocationPickerType(null);
+              setEditAddressInputMode('map');
+              restoreEditFormAfterLocationPicker();
             }}
             initialLocation={
               editLocationPickerType === 'departure' ? editDepartureLocation : editArrivalLocation
