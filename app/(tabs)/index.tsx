@@ -551,6 +551,7 @@ export default function HomeScreen() {
   const tripMarkerRefs = useRef<Record<string, MapMarker | null>>({});
   const userLocationMarkerRef = useRef<MapMarker | null>(null);
   const openingTripRef = useRef(false);
+  const openingTripTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const storedTrips = useAppSelector(selectAvailableTrips);
@@ -560,6 +561,7 @@ export default function HomeScreen() {
   const [isCenteringOnUser, setIsCenteringOnUser] = useState(false);
   const [mapFocusedOnUser, setMapFocusedOnUser] = useState(false);
   const [userLocationMarker, setUserLocationMarker] = useState<UserLocationMarkerState | null>(null);
+  const [openingTripId, setOpeningTripId] = useState<string | null>(null);
   const { getCurrentLocation, lastKnownLocation } = useUserLocation({
     autoRequest: isFocused,
     trackingProfile: 'nearby',
@@ -890,12 +892,20 @@ export default function HomeScreen() {
     if (openingTripRef.current) return;
 
     openingTripRef.current = true;
-    router.push(`/trip/${tripId}`);
+    setOpeningTripId(tripId);
+    openingTripTimerRef.current = setTimeout(() => {
+      router.replace(`/trip/${tripId}`);
+      openingTripTimerRef.current = null;
+    }, Platform.OS === 'ios' ? 140 : 40);
   };
 
   useEffect(() => {
-    if (isFocused) openingTripRef.current = false;
-  }, [isFocused]);
+    if (isFocused && !openingTripId) openingTripRef.current = false;
+  }, [isFocused, openingTripId]);
+
+  useEffect(() => () => {
+    if (openingTripTimerRef.current) clearTimeout(openingTripTimerRef.current);
+  }, []);
 
   const selectTripOnMap = (tripId: string) => {
     setMapFocusedOnUser(false);
@@ -980,7 +990,7 @@ export default function HomeScreen() {
 
   const handleTripMarkerPress = (tripId: string, isSelected: boolean) => {
     if (!USE_ANDROID_TRIP_MARKER_IMAGE) {
-      selectTripOnMap(tripId);
+      openTripDetail(tripId);
       return;
     }
 
@@ -999,7 +1009,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={[]}>
-      {isFocused ? (
+      {isFocused && !openingTripId ? (
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
@@ -1032,7 +1042,7 @@ export default function HomeScreen() {
                   delete tripMarkerRefs.current[trip.id];
                 }
               }}
-              key={`${trip.id}:${trip.vehicleType || 'car'}:${isSelected ? 'selected' : 'default'}`}
+              key={`${trip.id}:${trip.vehicleType || 'car'}`}
               identifier={trip.id}
               coordinate={coordinate}
               anchor={TRIP_MARKER_ANCHOR}
