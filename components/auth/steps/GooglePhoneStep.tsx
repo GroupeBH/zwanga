@@ -26,32 +26,10 @@ export function GooglePhoneStep({
   isLoading,
   submitLabel = 'Recevoir le code',
 }: GooglePhoneStepProps) {
-  const phoneDigits = phone.replace(/\D/g, '');
-  const displayPhone = phoneDigits.startsWith('243') ? phoneDigits.slice(3) : phoneDigits;
-  const isPhoneValid = phoneDigits.length >= 12;
+  const isPhoneValid = phone.length >= 10;
   const providerName = provider === 'apple' ? 'Apple' : 'Google';
   const providerIcon = provider === 'apple' ? 'logo-apple' : 'logo-google';
   const providerColor = provider === 'apple' ? '#111827' : '#4285F4';
-  const handlePhoneChange = (value: string) => {
-    const digits = value.replace(/\D/g, '');
-
-    if (!digits) {
-      onPhoneChange('');
-      return;
-    }
-
-    if (digits.startsWith('243')) {
-      onPhoneChange(`+${digits.slice(0, 12)}`);
-      return;
-    }
-
-    if (digits.startsWith('0')) {
-      onPhoneChange(`+243${digits.slice(1, 10)}`);
-      return;
-    }
-
-    onPhoneChange(`+243${digits.slice(0, 9)}`);
-  };
 
   return (
     <Animated.View
@@ -74,18 +52,15 @@ export function GooglePhoneStep({
         <Text style={styles.inputLabel}>Numéro de téléphone</Text>
         <Text style={styles.inputLabelSmall}>Ce numéro sera associé à votre compte</Text>
 
-        <View style={styles.phoneInputShell}>
-          <View style={styles.countryPrefix}>
-            <Ionicons name="flag-outline" size={22} color={Colors.gray[500]} />
-            <Text style={styles.countryPrefixText}>+243</Text>
-          </View>
+        <View style={styles.inputWrapper}>
+          <Ionicons name="call-outline" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
           <TextInput
-            style={styles.phoneTextInput}
-            placeholder="000 000 000"
-            placeholderTextColor="#DDBEB3"
+            style={styles.input}
+            placeholder="+243 000 000 000"
+            placeholderTextColor={Colors.gray[400]}
             keyboardType="phone-pad"
-            value={displayPhone}
-            onChangeText={handlePhoneChange}
+            value={phone}
+            onChangeText={onPhoneChange}
             autoFocus={Platform.OS !== 'android'}
           />
         </View>
