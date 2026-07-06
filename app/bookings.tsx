@@ -7,8 +7,12 @@ import {
   useConfirmDropoffByPassengerMutation,
   useConfirmPickupByPassengerMutation,
   useGetMyBookingsQuery,
+  useInitiateBookingPaymentMutation,
+  useUpdateBookingPaymentModeMutation,
 } from '@/store/api/bookingApi';
-import type { BookingStatus } from '@/types';
+import { useAppSelector } from '@/store/hooks';
+import { selectUser } from '@/store/selectors';
+import type { Booking, BookingStatus, TripPaymentMode } from '@/types';
 import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
 import { openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +21,7 @@ import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Linking,
   Modal,
   RefreshControl,
   ScrollView,
@@ -66,9 +71,41 @@ const STATUS_CONFIG: Record<
   },
 };
 
+const TRIP_PAYMENT_MODE_OPTIONS: {
+  id: TripPaymentMode;
+  label: string;
+  description: string;
+}[] = [
+  {
+    id: 'electronic',
+    label: 'Paiement electronique',
+    description: 'FlexPay Mobile Money',
+  },
+  {
+    id: 'points',
+    label: 'Points Zwanga',
+    description: 'Utiliser votre solde de points',
+  },
+  {
+    id: 'cash',
+    label: "Paiement a l'arrivee",
+    description: 'Regler directement aupres du conducteur',
+  },
+];
+
+const DRC_PAYMENT_PHONE_REGEX = /^\+243\d{9}$/;
+const formatTripPaymentPhone = (value?: string | null) => {
+  const digits = (value ?? '').replace(/\D/g, '');
+  if (!digits) return undefined;
+  if (digits.startsWith('243')) return `+${digits}`;
+  if (digits.startsWith('0')) return `+243${digits.slice(1)}`;
+  return `+243${digits}`;
+};
+
 export default function BookingsScreen() {
   const router = useRouter();
   const { showDialog } = useDialog();
+  const user = useAppSelector(selectUser);
   const [activeTab, setActiveTab] = useState<BookingTab>('active');
   const [contactModalVisible, setContactModalVisible] = useState(false);
   const [selectedDriverPhone, setSelectedDriverPhone] = useState<string | null>(null);
@@ -84,6 +121,10 @@ export default function BookingsScreen() {
   const [cancelBooking, { isLoading: isCancelling }] = useCancelBookingMutation();
   const [confirmPickupByPassenger, { isLoading: isConfirmingPickup }] = useConfirmPickupByPassengerMutation();
   const [confirmDropoffByPassenger, { isLoading: isConfirmingDropoff }] = useConfirmDropoffByPassengerMutation();
+  const [updateBookingPaymentMode, { isLoading: isUpdatingPaymentMode }] =
+    useUpdateBookingPaymentModeMutation();
+  const [initiateBookingPayment, { isLoading: isInitiatingPayment }] =
+    useInitiateBookingPaymentMutation();
 
   const activeBookings = useMemo(
     () => {
@@ -206,12 +247,95 @@ export default function BookingsScreen() {
     }
   };
 
-  const handleConfirmDropoff = async (bookingId: string) => {
+  const getBookingPaymentAmount = (booking: Booking) => {
+    const storedAmount = Number(booking.paymentAmount ?? 0);
+    if (Number.isFinite(storedAmount) && storedAmount > 0) return storedAmount;
+    const tripPrice = Number(booking.trip?.price ?? 0);
+    return tripPrice > 0 ? booking.numberOfSeats * tripPrice : 0;
+  };
+
+  const startElectronicPaymentForBooking = async (booking: Booking) => {
+    const phone = formatTripPaymentPhone(user?.phone);
+    if (!phone || !DRC_PAYMENT_PHONE_REGEX.test(phone)) {
+      showDialog({
+        variant: 'warning',
+        title: 'Numero Mobile Money requis',
+        message:
+          'Ajoutez un numero congolais valide dans votre profil avant de lancer le paiement FlexPay.',
+      });
+      return;
+    }
+
     try {
-      await confirmDropoffByPassenger(bookingId).unwrap();
+      const response = await initiateBookingPayment({
+        bookingId: booking.id,
+        method: 'mobile_money',
+        phone,
+      }).unwrap();
+
+      if (response.payment.paymentUrl) {
+        await Linking.openURL(response.payment.paymentUrl);
+      }
+
+      showDialog({
+        variant: response.payment.status === 'succeeded' ? 'success' : 'info',
+        title: response.payment.status === 'succeeded' ? 'Paiement confirme' : 'Paiement lance',
+        message:
+          response.payment.message ??
+          'Confirmez la demande FlexPay sur votre telephone.',
+      });
+      refetch();
+      return response;
+    } catch (error: any) {
+      const message =
+        error?.data?.message ?? error?.error ?? 'Impossible de lancer le paiement pour le moment.';
+      showDialog({
+        variant: 'danger',
+        title: 'Paiement impossible',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
+  };
+
+  const confirmDropoffWithPaymentMode = async (
+    booking: Booking,
+    paymentMode: TripPaymentMode,
+  ) => {
+    try {
+      let bookingForDropoff = booking;
+      if (paymentMode !== booking.paymentMode) {
+        bookingForDropoff = await updateBookingPaymentMode({
+          bookingId: booking.id,
+          paymentMode,
+        }).unwrap();
+      }
+
+      const paymentAmount = getBookingPaymentAmount(bookingForDropoff);
+      if (
+        paymentMode === 'electronic' &&
+        paymentAmount > 0 &&
+        bookingForDropoff.paymentStatus !== 'succeeded'
+      ) {
+        const paymentResponse = await startElectronicPaymentForBooking(bookingForDropoff);
+        if (!paymentResponse) {
+          return;
+        }
+        if (paymentResponse.payment.status !== 'succeeded') {
+          showDialog({
+            variant: 'info',
+            title: 'Paiement a terminer',
+            message:
+              'Validez le paiement FlexPay sur votre telephone. Vous pourrez confirmer la depose des que le paiement est confirme.',
+          });
+          return;
+        }
+      }
+
+      await confirmDropoffByPassenger({ id: booking.id, paymentMode }).unwrap();
       void trackEvent('booking_dropoff_confirmed', {
-        booking_id: bookingId,
+        booking_id: booking.id,
         source_screen: 'bookings',
+        payment_mode: paymentMode,
       });
       showDialog({
         variant: 'success',
@@ -230,6 +354,33 @@ export default function BookingsScreen() {
         message: Array.isArray(message) ? message.join('\n') : message,
       });
     }
+  };
+
+  const handleConfirmDropoff = (booking: Booking) => {
+    const paymentAmount = getBookingPaymentAmount(booking);
+    if (paymentAmount <= 0) {
+      void confirmDropoffWithPaymentMode(booking, booking.paymentMode ?? 'cash');
+      return;
+    }
+
+    showDialog({
+      variant: 'info',
+      title: 'Mode de paiement',
+      message:
+        'Choisissez comment vous voulez regler ce trajet avant de confirmer la depose.',
+      actions: [
+        ...TRIP_PAYMENT_MODE_OPTIONS.map((option) => ({
+          label:
+            option.id === booking.paymentMode
+              ? `${option.label} (actuel)`
+              : option.label,
+          variant: option.id === booking.paymentMode ? 'primary' as const : 'secondary' as const,
+          autoClose: false,
+          onPress: () => confirmDropoffWithPaymentMode(booking, option.id),
+        })),
+        { label: 'Annuler', variant: 'ghost' as const },
+      ],
+    });
   };
 
   const renderBookingCard = (bookingId: string, booking: typeof displayBookings[number], index: number) => {
@@ -360,10 +511,10 @@ export default function BookingsScreen() {
           {activeTab === 'active' && !isExpired && booking.status === 'accepted' && booking.droppedOff && !booking.droppedOffConfirmedByPassenger && (
             <TouchableOpacity
               style={[styles.linkButton, styles.confirmButton]}
-              onPress={() => handleConfirmDropoff(booking.id)}
-              disabled={isConfirmingDropoff}
+              onPress={() => handleConfirmDropoff(booking)}
+              disabled={isConfirmingDropoff || isUpdatingPaymentMode || isInitiatingPayment}
             >
-              {isConfirmingDropoff ? (
+              {isConfirmingDropoff || isUpdatingPaymentMode || isInitiatingPayment ? (
                 <ActivityIndicator size="small" color={Colors.white} />
               ) : (
                 <>

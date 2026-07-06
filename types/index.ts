@@ -5,7 +5,7 @@ export type RecurringTripStatus = 'active' | 'paused';
 export type BookingStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'completed' | 'expired';
 export type PaymentMethod = 'orange_money' | 'm_pesa' | 'airtel_money' | 'cash';
 export type SubscriptionPaymentMethod = 'mobile_money' | 'card';
-export type TripPaymentMode = 'electronic' | 'cash';
+export type TripPaymentMode = 'electronic' | 'cash' | 'points';
 export type SubscriptionPaymentStatus =
   | 'pending'
   | 'initiated'
@@ -282,6 +282,89 @@ export interface BookingPayment {
 export interface BookingPaymentResponse {
   booking: Booking;
   payment: BookingPayment;
+}
+
+export interface WalletAccount {
+  id: string;
+  userId: string;
+  type: 'points';
+  balance: number | string;
+  currency: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type WalletLedgerEntryType = 'top_up' | 'loyalty_reward' | 'booking_payment' | 'booking_refund';
+
+export interface WalletLedgerEntry {
+  id: string;
+  accountId: string;
+  userId: string;
+  accountType: 'points';
+  type: WalletLedgerEntryType;
+  amount: number | string;
+  balanceAfter: number | string;
+  currency: string;
+  relatedEntityType?: string | null;
+  relatedEntityId?: string | null;
+  paymentTransactionId?: string | null;
+  description?: string | null;
+  createdAt: string;
+}
+
+export interface WalletSummary {
+  account: WalletAccount;
+  recentEntries: WalletLedgerEntry[];
+}
+
+export interface WalletPaymentResponse {
+  account: WalletAccount;
+  payment: SubscriptionPayment;
+}
+
+export type DriverEarningStatus = 'available' | 'paid' | 'cancelled';
+export type DriverPayoutStatus = 'pending' | 'initiated' | 'succeeded' | 'failed' | 'cancelled';
+
+export interface DriverEarning {
+  id: string;
+  bookingId: string;
+  tripId: string;
+  driverId: string;
+  passengerId: string;
+  paymentMode: TripPaymentMode;
+  grossAmount: number | string;
+  commissionRate: number | string;
+  commissionAmount: number | string;
+  netAmount: number | string;
+  currency: string;
+  status: DriverEarningStatus;
+  availableAt?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DriverPayout {
+  id: string;
+  driverId: string;
+  amount: number | string;
+  currency: string;
+  phone: string;
+  status: DriverPayoutStatus;
+  paymentTransactionId?: string | null;
+  requestedAt?: string | null;
+  processedAt?: string | null;
+  failureReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DriverSettlementSummary {
+  availableBalance: number;
+  pendingPayoutBalance: number;
+  paidBalance: number;
+  currency: string;
+  commissionRate: number;
 }
 
 export interface BasicUserInfo {

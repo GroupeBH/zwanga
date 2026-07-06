@@ -16,6 +16,7 @@ import {
   useGetMyBookingsQuery,
   useGetTripBookingsQuery,
   useInitiateBookingPaymentMutation,
+  useUpdateBookingPaymentModeMutation,
 } from '@/store/api/bookingApi';
 import { useGeocodeMutation } from '@/store/api/googleMapsApi';
 import { useCreateConversationMutation } from '@/store/api/messageApi';
@@ -25,7 +26,7 @@ import { useGetKycStatusQuery, useUploadKycMutation } from '@/store/api/userApi'
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
-import type { BookingStatus, GeoPoint, TripPaymentMode } from '@/types';
+import type { Booking, BookingStatus, GeoPoint, TripPaymentMode } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
 import {
   buildManualGeocodeQuery,
@@ -130,6 +131,12 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
     label: 'Paiement electronique',
     description: 'Paiement securise via FlexPay',
     icon: 'card-outline',
+  },
+  {
+    id: 'points',
+    label: 'Points Zwanga',
+    description: 'Utilisez votre solde de points',
+    icon: 'wallet-outline',
   },
   {
     id: 'cash',
@@ -754,6 +761,8 @@ export default function TripDetailsScreen() {
   const [createBooking, { isLoading: isBooking }] = useCreateBookingMutation();
   const [initiateBookingPayment, { isLoading: isInitiatingBookingPayment }] =
     useInitiateBookingPaymentMutation();
+  const [updateBookingPaymentMode, { isLoading: isUpdatingBookingPaymentMode }] =
+    useUpdateBookingPaymentModeMutation();
   const [cancelBookingMutation, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
   const [confirmPickupByPassenger, { isLoading: isConfirmingPickup }] = useConfirmPickupByPassengerMutation();
   const [confirmDropoffByPassenger, { isLoading: isConfirmingDropoff }] = useConfirmDropoffByPassengerMutation();
@@ -1303,15 +1312,7 @@ export default function TripDetailsScreen() {
     }
   };
 
-  const handlePayActiveBooking = async () => {
-    if (
-      !activeBooking ||
-      activeBooking.paymentMode !== 'electronic' ||
-      isInitiatingBookingPayment
-    ) {
-      return;
-    }
-
+  const startElectronicPaymentForBooking = async (booking: Booking) => {
     const phone = formatTripPaymentPhone(user?.phone);
     if (!phone || !DRC_PAYMENT_PHONE_REGEX.test(phone)) {
       showDialog({
@@ -1325,7 +1326,7 @@ export default function TripDetailsScreen() {
 
     try {
       const response = await initiateBookingPayment({
-        bookingId: activeBooking.id,
+        bookingId: booking.id,
         method: 'mobile_money',
         phone,
       }).unwrap();
@@ -1346,6 +1347,7 @@ export default function TripDetailsScreen() {
           'Confirmez la demande FlexPay sur votre telephone.',
       });
       refreshBookingLists();
+      return response;
     } catch (error: any) {
       const message =
         error?.data?.message ??
@@ -1357,6 +1359,18 @@ export default function TripDetailsScreen() {
         message: Array.isArray(message) ? message.join('\n') : message,
       });
     }
+  };
+
+  const handlePayActiveBooking = async () => {
+    if (
+      !activeBooking ||
+      activeBooking.paymentMode !== 'electronic' ||
+      isInitiatingBookingPayment
+    ) {
+      return;
+    }
+
+    await startElectronicPaymentForBooking(activeBooking);
   };
 
   const adjustBookingSeats = (delta: number) => {
@@ -1629,16 +1643,57 @@ export default function TripDetailsScreen() {
     }
   };
 
-  const handleConfirmDropoff = async () => {
+  const getBookingPaymentAmount = (booking: Booking) => {
+    const storedAmount = Number(booking.paymentAmount ?? 0);
+    if (Number.isFinite(storedAmount) && storedAmount > 0) return storedAmount;
+    const tripPrice = Number(trip?.price ?? 0);
+    return tripPrice > 0 ? booking.numberOfSeats * tripPrice : 0;
+  };
+
+  const confirmDropoffWithPaymentMode = async (paymentMode: TripPaymentMode) => {
     if (!activeBooking) {
       return;
     }
+
     try {
-      await confirmDropoffByPassenger(activeBooking.id).unwrap();
+      let bookingForDropoff = activeBooking;
+      if (paymentMode !== activeBooking.paymentMode) {
+        bookingForDropoff = await updateBookingPaymentMode({
+          bookingId: activeBooking.id,
+          paymentMode,
+        }).unwrap();
+      }
+
+      const paymentAmount = getBookingPaymentAmount(bookingForDropoff);
+      if (
+        paymentMode === 'electronic' &&
+        paymentAmount > 0 &&
+        bookingForDropoff.paymentStatus !== 'succeeded'
+      ) {
+        const paymentResponse = await startElectronicPaymentForBooking(bookingForDropoff);
+        if (!paymentResponse) {
+          return;
+        }
+        if (paymentResponse.payment.status !== 'succeeded') {
+          showDialog({
+            variant: 'info',
+            title: 'Paiement a terminer',
+            message:
+              'Validez le paiement FlexPay sur votre telephone. Vous pourrez confirmer la depose des que le paiement est confirme.',
+          });
+          return;
+        }
+      }
+
+      await confirmDropoffByPassenger({
+        id: activeBooking.id,
+        paymentMode,
+      }).unwrap();
       void trackEvent('booking_dropoff_confirmed', {
         booking_id: activeBooking.id,
         trip_id: activeBooking.tripId,
         source_screen: 'trip_details',
+        payment_mode: paymentMode,
       });
       showDialog({
         variant: 'success',
@@ -1657,6 +1712,37 @@ export default function TripDetailsScreen() {
         message: Array.isArray(message) ? message.join('\n') : message,
       });
     }
+  };
+
+  const handleConfirmDropoff = () => {
+    if (!activeBooking) {
+      return;
+    }
+
+    const paymentAmount = getBookingPaymentAmount(activeBooking);
+    if (paymentAmount <= 0) {
+      void confirmDropoffWithPaymentMode(activeBooking.paymentMode ?? 'cash');
+      return;
+    }
+
+    showDialog({
+      variant: 'info',
+      title: 'Mode de paiement',
+      message:
+        'Choisissez comment vous voulez regler ce trajet avant de confirmer la depose.',
+      actions: [
+        ...TRIP_PAYMENT_MODE_OPTIONS.map((option) => ({
+          label:
+            option.id === activeBooking.paymentMode
+              ? `${option.label} (actuel)`
+              : option.label,
+          variant: option.id === activeBooking.paymentMode ? 'primary' as const : 'secondary' as const,
+          autoClose: false,
+          onPress: () => confirmDropoffWithPaymentMode(option.id),
+        })),
+        { label: 'Annuler', variant: 'ghost' as const },
+      ],
+    });
   };
 
   const closeKycWizard = () => {
@@ -2870,9 +2956,15 @@ export default function TripDetailsScreen() {
                           <TouchableOpacity
                             style={[styles.bookingActionButton, styles.bookingActionConfirm]}
                             onPress={handleConfirmDropoff}
-                            disabled={isConfirmingDropoff}
+                            disabled={
+                              isConfirmingDropoff ||
+                              isUpdatingBookingPaymentMode ||
+                              isInitiatingBookingPayment
+                            }
                           >
-                            {isConfirmingDropoff ? <ActivityIndicator size="small" color={Colors.white} /> : (
+                            {isConfirmingDropoff ||
+                            isUpdatingBookingPaymentMode ||
+                            isInitiatingBookingPayment ? <ActivityIndicator size="small" color={Colors.white} /> : (
                               <>
                                 <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
                                 <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Confirmer dépose</Text>

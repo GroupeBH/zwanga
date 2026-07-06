@@ -202,6 +202,21 @@ export const bookingApi = baseApi.injectEndpoints({
         bookingListTag,
       ],
     }),
+    updateBookingPaymentMode: builder.mutation<
+      Booking,
+      { bookingId: string; paymentMode: TripPaymentMode }
+    >({
+      query: ({ bookingId, paymentMode }) => ({
+        url: `/bookings/${bookingId}/payment-mode`,
+        method: 'PUT',
+        body: { paymentMode },
+      }),
+      transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
+      invalidatesTags: (result, _error, { bookingId }) => [
+        { type: 'Booking', id: result?.id ?? bookingId },
+        bookingListTag,
+      ],
+    }),
     checkBookingPaymentStatus: builder.query<BookingPaymentResponse, string>({
       query: (orderNumber) => `/bookings/payments/${orderNumber}/status`,
       providesTags: (result) =>
@@ -369,12 +384,19 @@ export const bookingApi = baseApi.injectEndpoints({
     }),
 
     // Confirmer la dépose du passager (par le passager)
-    confirmDropoffByPassenger: builder.mutation<Booking, string>({
-      query: (id: string) => ({
-        url: `/bookings/${id}/confirm-dropoff-passenger`,
-        method: 'PUT',
-        body: {},
-      }),
+    confirmDropoffByPassenger: builder.mutation<
+      Booking,
+      string | { id: string; paymentMode?: TripPaymentMode }
+    >({
+      query: (arg: string | { id: string; paymentMode?: TripPaymentMode }) => {
+        const id = typeof arg === 'string' ? arg : arg.id;
+        const paymentMode = typeof arg === 'string' ? undefined : arg.paymentMode;
+        return {
+          url: `/bookings/${id}/confirm-dropoff-passenger`,
+          method: 'PUT',
+          body: paymentMode ? { paymentMode } : {},
+        };
+      },
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
       invalidatesTags: (result) =>
         result
@@ -396,6 +418,7 @@ export const {
   useGetTripBookingsQuery,
   useInitiateBookingPaymentMutation,
   useLazyCheckBookingPaymentStatusQuery,
+  useUpdateBookingPaymentModeMutation,
   useGetBookingByIdQuery,
   useUpdateBookingStatusMutation,
   useCancelBookingMutation,

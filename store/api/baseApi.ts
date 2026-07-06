@@ -123,6 +123,8 @@ export const baseApi = createApi({
     'Subscription',
     'SubscriptionPlans',
     'DocumentFundingRequest',
+    'Wallet',
+    'DriverSettlement',
   ],
   endpoints: () => ({}),
 });

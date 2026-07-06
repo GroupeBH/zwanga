@@ -106,6 +106,12 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
     icon: 'card-outline',
   },
   {
+    id: 'points',
+    label: 'Points Zwanga',
+    description: 'Utilisez votre solde de points',
+    icon: 'wallet-outline',
+  },
+  {
     id: 'cash',
     label: "Paiement a l'arrivee",
     description: 'Reglez directement aupres du conducteur',

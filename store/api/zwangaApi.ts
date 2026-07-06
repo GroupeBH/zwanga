@@ -27,6 +27,8 @@ import './tripRequestApi';
 import './safetyApi';
 import './googleMapsApi';
 import './supportApi';
+import './walletApi';
+import './driverSettlementsApi';
 
 // Import de la base API
 export { baseApi as zwangaApi };
@@ -186,3 +188,18 @@ export {
   useCloseSupportTicketMutation,
   useReopenSupportTicketMutation,
 } from './supportApi';
+
+export {
+  useGetMyWalletQuery,
+  useGetWalletLedgerQuery,
+  useInitiateWalletTopUpMutation,
+  useLazyCheckWalletTopUpStatusQuery,
+} from './walletApi';
+
+export {
+  useGetMyDriverSettlementQuery,
+  useGetMyDriverEarningsQuery,
+  useGetMyDriverPayoutsQuery,
+  useRequestDriverPayoutMutation,
+  useLazyCheckDriverPayoutStatusQuery,
+} from './driverSettlementsApi';
