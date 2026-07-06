@@ -12,7 +12,7 @@ import {
   useRecommendTripRequestPriceMutation,
 } from '@/store/api/tripRequestApi';
 import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
-import type { FavoriteLocation } from '@/types';
+import type { FavoriteLocation, TripPaymentMode } from '@/types';
 import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
 import {
   buildManualGeocodeQuery,
@@ -92,6 +92,25 @@ const POPULAR_PLACES = [
   { name: 'Bandal Tshibangu', commune: 'Bandalungwa' },
   { name: 'Mont-Ngafula', commune: 'Mont-Ngafula' },
   { name: 'Kasa-Vubu', commune: 'Kasa-Vubu' },
+];
+const TRIP_PAYMENT_MODE_OPTIONS: {
+  id: TripPaymentMode;
+  label: string;
+  description: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}[] = [
+  {
+    id: 'electronic',
+    label: 'Paiement electronique',
+    description: 'Paiement securise via FlexPay',
+    icon: 'card-outline',
+  },
+  {
+    id: 'cash',
+    label: "Paiement a l'arrivee",
+    description: 'Reglez directement aupres du conducteur',
+    icon: 'cash-outline',
+  },
 ];
 
 function roundToStep(date: Date, step: number) {
@@ -301,6 +320,8 @@ export default function RequestTripScreen() {
   const [numberOfSeats, setNumberOfSeats] = useState(MIN_REQUEST_SEATS);
   const [maxPricePerSeat, setMaxPricePerSeat] = useState('');
   const [hasEditedBudget, setHasEditedBudget] = useState(false);
+  const [requestPaymentMode, setRequestPaymentMode] =
+    useState<TripPaymentMode>('electronic');
   const [description, setDescription] = useState('');
   const [preferBudgetOffers, setPreferBudgetOffers] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -544,10 +565,21 @@ export default function RequestTripScreen() {
 
     syncPresetWindow();
     const interval = setInterval(syncPresetWindow, TIME_PRESET_SYNC_INTERVAL_MS);
+    let previousAppState = AppState.currentState;
+    let backgroundedAt: number | null = null;
     const appStateSubscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') {
+      if (nextState !== 'active') {
+        if (previousAppState === 'active') {
+          backgroundedAt = Date.now();
+        }
+      } else if (
+        previousAppState !== 'active' &&
+        backgroundedAt !== null &&
+        Date.now() - backgroundedAt >= 2_000
+      ) {
         syncPresetWindow();
       }
+      previousAppState = nextState;
     });
 
     return () => {
@@ -987,11 +1019,13 @@ export default function RequestTripScreen() {
         departureDateMax: departureWindow.max.toISOString(),
         numberOfSeats,
         ...(parsedBudget !== undefined ? { maxPricePerSeat: parsedBudget } : {}),
+        paymentMode: requestPaymentMode,
         description: requestNotes || undefined,
       }).unwrap();
       void trackEvent('trip_request_created', {
         seats: numberOfSeats,
         max_price_per_seat: parsedBudget ?? null,
+        payment_mode: requestPaymentMode,
         has_description: Boolean(description.trim()),
         flexibility_minutes: departureWindow.flex,
       });
@@ -1459,6 +1493,39 @@ export default function RequestTripScreen() {
                   </View>
                 </View>
 
+                <View style={styles.offerPaymentBlock}>
+                  <Text style={styles.offerSectionLabel}>Mode de paiement</Text>
+                  {TRIP_PAYMENT_MODE_OPTIONS.map((option) => {
+                    const selected = requestPaymentMode === option.id;
+                    return (
+                      <TouchableOpacity
+                        key={option.id}
+                        style={[
+                          styles.offerPaymentOption,
+                          selected && styles.offerPaymentOptionSelected,
+                        ]}
+                        onPress={() => setRequestPaymentMode(option.id)}
+                        activeOpacity={0.84}
+                      >
+                        <Ionicons
+                          name={option.icon}
+                          size={19}
+                          color={selected ? Colors.primary : Colors.gray[500]}
+                        />
+                        <View style={styles.offerPaymentCopy}>
+                          <Text style={styles.offerPaymentTitle}>{option.label}</Text>
+                          <Text style={styles.offerPaymentText}>{option.description}</Text>
+                        </View>
+                        <Ionicons
+                          name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={20}
+                          color={selected ? Colors.primary : Colors.gray[300]}
+                        />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
                 <View style={styles.offerTimeBlock}>
                   <Text style={styles.offerSectionLabel}>Départ</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.offerPresetScroll}>
@@ -1708,6 +1775,12 @@ const styles = StyleSheet.create({
   offerOptionsRow: { minHeight: 52, borderRadius: BorderRadius.lg, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[100], flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.md },
   offerOptionCopy: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   offerOptionText: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  offerPaymentBlock: { gap: Spacing.sm },
+  offerPaymentOption: { minHeight: 58, borderRadius: BorderRadius.md, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[100], flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
+  offerPaymentOptionSelected: { borderColor: Colors.primary, backgroundColor: Colors.primary + '08' },
+  offerPaymentCopy: { flex: 1, minWidth: 0 },
+  offerPaymentTitle: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  offerPaymentText: { marginTop: 2, fontSize: 12, color: Colors.gray[500] },
   offerTimeBlock: { gap: Spacing.sm },
   offerSectionLabel: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   offerPresetScroll: { gap: Spacing.sm, paddingRight: Spacing.lg },

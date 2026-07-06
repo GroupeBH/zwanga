@@ -15,6 +15,7 @@ import {
   useCreateBookingMutation,
   useGetMyBookingsQuery,
   useGetTripBookingsQuery,
+  useInitiateBookingPaymentMutation,
 } from '@/store/api/bookingApi';
 import { useCreateConversationMutation } from '@/store/api/messageApi';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
@@ -23,7 +24,7 @@ import { useGetKycStatusQuery, useUploadKycMutation } from '@/store/api/userApi'
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
-import type { BookingStatus, GeoPoint } from '@/types';
+import type { BookingStatus, GeoPoint, TripPaymentMode } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
 import { openWhatsApp } from '@/utils/phoneHelpers';
 import { getRouteInfo, type RouteInfo } from '@/utils/routeApi';
@@ -41,6 +42,7 @@ import {
   Image,
   type ImageRequireSource,
   InteractionManager,
+  Linking,
   Modal,
   Platform,
   RefreshControl,
@@ -111,6 +113,36 @@ const DEFAULT_MAP_REGION = {
   longitude: 15.322,
   latitudeDelta: 0.12,
   longitudeDelta: 0.12,
+};
+const TRIP_PAYMENT_MODE_OPTIONS: {
+  id: TripPaymentMode;
+  label: string;
+  description: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}[] = [
+  {
+    id: 'electronic',
+    label: 'Paiement electronique',
+    description: 'Paiement securise via FlexPay',
+    icon: 'card-outline',
+  },
+  {
+    id: 'cash',
+    label: "Paiement a l'arrivee",
+    description: 'Reglez directement aupres du conducteur',
+    icon: 'cash-outline',
+  },
+];
+const getTripPaymentModeLabel = (mode?: TripPaymentMode | null) =>
+  TRIP_PAYMENT_MODE_OPTIONS.find((option) => option.id === mode)?.label ??
+  "Paiement a l'arrivee";
+const DRC_PAYMENT_PHONE_REGEX = /^\+243\d{9}$/;
+const formatTripPaymentPhone = (value?: string | null) => {
+  const digits = (value ?? '').replace(/\D/g, '');
+  if (!digits) return undefined;
+  if (digits.startsWith('243')) return `+${digits}`;
+  if (digits.startsWith('0')) return `+243${digits.slice(1)}`;
+  return `+243${digits}`;
 };
 
 const isValidMapCoordinate = (coordinate?: { latitude: number; longitude: number } | null) =>
@@ -658,6 +690,8 @@ export default function TripDetailsScreen() {
       : null;
 
   const [createBooking, { isLoading: isBooking }] = useCreateBookingMutation();
+  const [initiateBookingPayment, { isLoading: isInitiatingBookingPayment }] =
+    useInitiateBookingPaymentMutation();
   const [cancelBookingMutation, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
   const [confirmPickupByPassenger, { isLoading: isConfirmingPickup }] = useConfirmPickupByPassengerMutation();
   const [confirmDropoffByPassenger, { isLoading: isConfirmingDropoff }] = useConfirmDropoffByPassengerMutation();
@@ -665,6 +699,8 @@ export default function TripDetailsScreen() {
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
   const [bookingStep, setBookingStep] = useState<1 | 2 | 3>(1); // 1: places, 2: points, 3: preview
   const [bookingSeats, setBookingSeats] = useState('1');
+  const [bookingPaymentMode, setBookingPaymentMode] =
+    useState<TripPaymentMode>('electronic');
   const [bookingModalError, setBookingModalError] = useState('');
   const [passengerOrigin, setPassengerOrigin] = useState<MapLocationSelection | null>(null);
   const [showOriginPicker, setShowOriginPicker] = useState(false);
@@ -990,6 +1026,7 @@ export default function TripDetailsScreen() {
   const openBookingModal = () => {
     const autoOrigin = defaultPassengerOriginSelection;
     setBookingSeats('1');
+    setBookingPaymentMode('electronic');
     setBookingModalError('');
     setPassengerOrigin(autoOrigin);
     setPassengerDestination(defaultPassengerDestinationSelection);
@@ -1182,6 +1219,62 @@ export default function TripDetailsScreen() {
     }
   };
 
+  const handlePayActiveBooking = async () => {
+    if (
+      !activeBooking ||
+      activeBooking.paymentMode !== 'electronic' ||
+      isInitiatingBookingPayment
+    ) {
+      return;
+    }
+
+    const phone = formatTripPaymentPhone(user?.phone);
+    if (!phone || !DRC_PAYMENT_PHONE_REGEX.test(phone)) {
+      showDialog({
+        variant: 'warning',
+        title: 'Numero Mobile Money requis',
+        message:
+          'Ajoutez un numero congolais valide dans votre profil avant de lancer le paiement FlexPay.',
+      });
+      return;
+    }
+
+    try {
+      const response = await initiateBookingPayment({
+        bookingId: activeBooking.id,
+        method: 'mobile_money',
+        phone,
+      }).unwrap();
+
+      if (response.payment.paymentUrl) {
+        await Linking.openURL(response.payment.paymentUrl);
+      }
+
+      showDialog({
+        variant:
+          response.payment.status === 'succeeded' ? 'success' : 'info',
+        title:
+          response.payment.status === 'succeeded'
+            ? 'Paiement confirme'
+            : 'Paiement lance',
+        message:
+          response.payment.message ??
+          'Confirmez la demande FlexPay sur votre telephone.',
+      });
+      refreshBookingLists();
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        'Impossible de lancer le paiement pour le moment.';
+      showDialog({
+        variant: 'danger',
+        title: 'Paiement impossible',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
+  };
+
   const adjustBookingSeats = (delta: number) => {
     setBookingSeats((prev) => {
       const current = parseInt(prev, 10);
@@ -1296,6 +1389,7 @@ export default function TripDetailsScreen() {
         passengerDestinationCoordinates: hasCustomPassengerDestination
           ? getLocationCoordinatesObject(passengerDestination)
           : undefined,
+        paymentMode: estimatedTotal > 0 ? bookingPaymentMode : undefined,
       }).unwrap();
       void trackEvent('booking_created', {
         trip_id: trip.id,
@@ -1303,6 +1397,7 @@ export default function TripDetailsScreen() {
         seats: seatsValue,
         has_custom_destination: hasCustomPassengerDestination,
         has_custom_origin: Boolean(passengerOrigin),
+        payment_mode: estimatedTotal > 0 ? bookingPaymentMode : null,
       });
       setBookingModalVisible(false);
       setBookingModalError('');
@@ -1547,6 +1642,21 @@ export default function TripDetailsScreen() {
     }
     return trip.price === 0 ? 0 : seatsValue * trip.price;
   }, [bookingSeats, trip?.price]);
+  const activeBookingPaymentAmount = useMemo(() => {
+    if (!activeBooking) return 0;
+    const storedAmount = Number(activeBooking.paymentAmount ?? 0);
+    if (Number.isFinite(storedAmount) && storedAmount > 0) return storedAmount;
+    const tripPrice = Number(trip?.price ?? 0);
+    return tripPrice > 0 ? activeBooking.numberOfSeats * tripPrice : 0;
+  }, [activeBooking, trip?.price]);
+  const canPayActiveBooking = Boolean(
+    activeBooking &&
+      activeBooking.status === 'accepted' &&
+      activeBooking.paymentMode === 'electronic' &&
+      activeBookingPaymentAmount > 0 &&
+      activeBooking.paymentStatus !== 'succeeded' &&
+      activeBooking.paymentStatus !== 'not_required',
+  );
 
   const statusConfig = {
     upcoming: { color: Colors.secondary, bgColor: 'rgba(247, 184, 1, 0.1)', label: 'À venir' },
@@ -2567,6 +2677,25 @@ export default function TripDetailsScreen() {
                       )}
 
                       <View style={styles.bookingActionsRow}>
+                        {canPayActiveBooking && (
+                          <TouchableOpacity
+                            style={[styles.bookingActionButton, styles.bookingActionPayment]}
+                            onPress={handlePayActiveBooking}
+                            disabled={isInitiatingBookingPayment}
+                          >
+                            {isInitiatingBookingPayment ? (
+                              <ActivityIndicator size="small" color={Colors.white} />
+                            ) : (
+                              <>
+                                <Ionicons name="card-outline" size={18} color={Colors.white} />
+                                <Text style={[styles.bookingActionText, styles.bookingActionPaymentText]}>
+                                  Payer {activeBookingPaymentAmount} FC
+                                </Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                        )}
+
                         {activeBooking.status === 'accepted' && activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger && (
                           <TouchableOpacity
                             style={[styles.bookingActionButton, styles.bookingActionConfirm]}
@@ -2844,6 +2973,41 @@ export default function TripDetailsScreen() {
                     {estimatedTotal === 0 ? 'Gratuit' : `${estimatedTotal} FC`}
                   </Text>
                 </Text>
+
+                {estimatedTotal > 0 ? (
+                  <View style={styles.bookingPaymentSection}>
+                    <Text style={styles.bookingPaymentTitle}>Mode de paiement</Text>
+                    {TRIP_PAYMENT_MODE_OPTIONS.map((option) => {
+                      const selected = bookingPaymentMode === option.id;
+                      return (
+                        <TouchableOpacity
+                          key={option.id}
+                          style={[
+                            styles.bookingPaymentOption,
+                            selected && styles.bookingPaymentOptionSelected,
+                          ]}
+                          onPress={() => setBookingPaymentMode(option.id)}
+                          disabled={isBooking}
+                        >
+                          <Ionicons
+                            name={option.icon}
+                            size={20}
+                            color={selected ? Colors.primary : Colors.gray[500]}
+                          />
+                          <View style={styles.bookingPaymentCopy}>
+                            <Text style={styles.bookingPaymentOptionTitle}>{option.label}</Text>
+                            <Text style={styles.bookingPaymentOptionText}>{option.description}</Text>
+                          </View>
+                          <Ionicons
+                            name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                            size={20}
+                            color={selected ? Colors.primary : Colors.gray[300]}
+                          />
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : null}
               </>
             )}
 
@@ -2960,6 +3124,14 @@ export default function TripDetailsScreen() {
                       {estimatedTotal === 0 ? 'Gratuit' : `${estimatedTotal} FC`}
                     </Text>
                   </View>
+                  {estimatedTotal > 0 ? (
+                    <View style={styles.bookingSummaryRow}>
+                      <Ionicons name="card-outline" size={16} color={Colors.primary} />
+                      <Text style={styles.bookingSummaryText}>
+                        {getTripPaymentModeLabel(bookingPaymentMode)}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               </>
             )}
@@ -4927,6 +5099,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: FontWeights.bold,
   },
+  bookingActionPayment: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary,
+  },
+  bookingActionPaymentText: {
+    color: Colors.white,
+  },
   bookingActionNavigation: {
     borderColor: Colors.primary,
     backgroundColor: Colors.primary,
@@ -5299,6 +5478,43 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     color: Colors.primary,
     fontSize: 18,
+  },
+  bookingPaymentSection: {
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  bookingPaymentTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[700],
+  },
+  bookingPaymentOption: {
+    minHeight: 62,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.md,
+  },
+  bookingPaymentOptionSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '08',
+  },
+  bookingPaymentCopy: {
+    flex: 1,
+  },
+  bookingPaymentOptionTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  bookingPaymentOptionText: {
+    marginTop: 2,
+    fontSize: 12,
+    color: Colors.gray[500],
   },
   bookingModalError: {
     color: Colors.danger,

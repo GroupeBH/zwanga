@@ -54,6 +54,13 @@ const DEFAULT_REGION: Region = {
   longitudeDelta: 0.1,
 };
 
+const DEFAULT_LOCATION_SELECTION: MapLocationSelection = {
+  title: 'Kinshasa',
+  address: 'Kinshasa, RDC',
+  latitude: DEFAULT_REGION.latitude,
+  longitude: DEFAULT_REGION.longitude,
+};
+
 const RDC_BOUNDS = { minLatitude: -13.5, maxLatitude: 5.4, minLongitude: 12, maxLongitude: 31.3 };
 
 function isFiniteCoordinate(latitude: number, longitude: number) {
@@ -82,6 +89,19 @@ function normalizePossibleSwappedCoordinate(latitude: number, longitude: number)
     return { latitude: longitude, longitude: latitude };
   }
   return { latitude, longitude };
+}
+
+function getValidRdcCoordinate(latitude: number, longitude: number) {
+  const normalizedCoordinate = normalizePossibleSwappedCoordinate(latitude, longitude);
+
+  if (
+    !isFiniteCoordinate(normalizedCoordinate.latitude, normalizedCoordinate.longitude) ||
+    !isInRdcBounds(normalizedCoordinate.latitude, normalizedCoordinate.longitude)
+  ) {
+    return null;
+  }
+
+  return normalizedCoordinate;
 }
 
 function formatAddressFromGeocode(
@@ -136,7 +156,7 @@ export default function LocationPickerModal({
   initialLocation,
   routeCoordinates,
   restrictToRoute = false,
-  autoLocateOnOpen = true,
+  autoLocateOnOpen = false,
   initialSearchQuery = '',
 }: LocationPickerModalProps) {
   const mapRef = useRef<MapView>(null);
@@ -244,8 +264,19 @@ export default function LocationPickerModal({
     setGoogleMapsSuggestions([]);
   };
 
+  const resetToDefaultLocation = () => {
+    setRegion(DEFAULT_REGION);
+    setSelectedLocation(DEFAULT_LOCATION_SELECTION);
+    lastMarkerUpdateRef.current = {
+      latitude: DEFAULT_REGION.latitude,
+      longitude: DEFAULT_REGION.longitude,
+    };
+    mapRef.current?.animateToRegion(DEFAULT_REGION, 0);
+  };
+
   useEffect(() => {
     if (!visible) {
+      resetToDefaultLocation();
       return;
     }
 
@@ -261,6 +292,7 @@ export default function LocationPickerModal({
         setSelectedLocation(initialLocation);
         animateToCoordinate(initialLocation.latitude, initialLocation.longitude);
       } else {
+        resetToDefaultLocation();
         // Si pas d'initialLocation, récupérer la position actuelle
         if (autoLocateOnOpen) {
           await requestUserLocation();
@@ -375,7 +407,20 @@ export default function LocationPickerModal({
         accuracy: Location.Accuracy.Balanced,
       });
 
-      const snapped = snapPointToRoute(position.coords.latitude, position.coords.longitude);
+      const currentCoordinate = getValidRdcCoordinate(position.coords.latitude, position.coords.longitude);
+
+      if (!currentCoordinate) {
+        console.warn('[LocationPickerModal] Position utilisateur hors RDC ignoree:', {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+        if (animate) {
+          resetToDefaultLocation();
+        }
+        return null;
+      }
+
+      const snapped = snapPointToRoute(currentCoordinate.latitude, currentCoordinate.longitude);
 
       if (animate) {
         animateToCoordinate(snapped.latitude, snapped.longitude);

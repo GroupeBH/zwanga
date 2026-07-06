@@ -11,11 +11,16 @@ import {
 import { TravelMode, useGetDirectionsMutation } from '@/store/api/googleMapsApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import type { Booking } from '@/types';
+import {
+  areTripMapCoordinatesSame,
+  getTripLocationCoordinate,
+  normalizeTripMapCoordinate,
+} from '@/utils/tripCoordinates';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Speech from 'expo-speech';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
@@ -104,6 +109,24 @@ export default function NavigationScreen() {
   const [confirmDropoff, { isLoading: isConfirmingDropoff }] = useConfirmDropoffMutation();
   const [getDirections] = useGetDirectionsMutation();
   const isTripOngoing = trip?.status === 'ongoing';
+  const tripDepartureCoordinate = useMemo(
+    () =>
+      getTripLocationCoordinate({
+        lat: trip?.departure.lat,
+        lng: trip?.departure.lng,
+        hasCoordinates: trip?.departure.hasCoordinates,
+      }),
+    [trip?.departure.hasCoordinates, trip?.departure.lat, trip?.departure.lng],
+  );
+  const tripArrivalCoordinate = useMemo(
+    () =>
+      getTripLocationCoordinate({
+        lat: trip?.arrival.lat,
+        lng: trip?.arrival.lng,
+        hasCoordinates: trip?.arrival.hasCoordinates,
+      }),
+    [trip?.arrival.hasCoordinates, trip?.arrival.lat, trip?.arrival.lng],
+  );
 
   const mapRef = useRef<MapView>(null);
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
@@ -135,8 +158,8 @@ export default function NavigationScreen() {
   const [destinationTracksViewChanges, setDestinationTracksViewChanges] = useState(true);
   const driverPosition = useRef(
     new AnimatedRegion({
-      latitude: trip?.departure?.lat ?? 0,
-      longitude: trip?.departure?.lng ?? 0,
+      latitude: tripDepartureCoordinate?.latitude ?? 0,
+      longitude: tripDepartureCoordinate?.longitude ?? 0,
       latitudeDelta: 0,
       longitudeDelta: 0,
     })
@@ -321,8 +344,8 @@ export default function NavigationScreen() {
     if (!bookings || !trip) return;
 
     // Vérifier que les coordonnées du trip sont valides
-    const hasDeparture = trip.departure?.lat && trip.departure?.lng;
-    const hasArrival = trip.arrival?.lat && trip.arrival?.lng;
+    const hasDeparture = Boolean(tripDepartureCoordinate);
+    const hasArrival = Boolean(tripArrivalCoordinate);
     
     if (!hasDeparture || !hasArrival) {
       console.log('Coordonnées du trajet invalides');
@@ -335,7 +358,10 @@ export default function NavigationScreen() {
     acceptedBookings.forEach((booking) => {
       try {
         // Point de récupération du passager (toujours le départ du trip)
-        const pickupLocation = { lat: trip.departure.lat, lng: trip.departure.lng };
+        const pickupLocation = {
+          lat: tripDepartureCoordinate!.latitude,
+          lng: tripDepartureCoordinate!.longitude,
+        };
 
         waypointsList.push({
           id: `pickup-${booking.id}`,
@@ -352,12 +378,20 @@ export default function NavigationScreen() {
         });
 
         // Point de dépose du passager (destination personnalisée ou arrivée du trip)
-        let dropoffLocation = { lat: trip.arrival.lat, lng: trip.arrival.lng };
+        let dropoffLocation = {
+          lat: tripArrivalCoordinate!.latitude,
+          lng: tripArrivalCoordinate!.longitude,
+        };
         
-        if (booking.passengerDestinationCoordinates?.latitude && booking.passengerDestinationCoordinates?.longitude) {
+        const passengerDestinationCoordinate = normalizeTripMapCoordinate(
+          booking.passengerDestinationCoordinates?.latitude,
+          booking.passengerDestinationCoordinates?.longitude,
+        );
+
+        if (passengerDestinationCoordinate) {
           dropoffLocation = { 
-            lat: booking.passengerDestinationCoordinates.latitude, 
-            lng: booking.passengerDestinationCoordinates.longitude 
+            lat: passengerDestinationCoordinate.latitude,
+            lng: passengerDestinationCoordinate.longitude,
           };
         }
 
@@ -388,7 +422,7 @@ export default function NavigationScreen() {
       currentWaypointIndexRef.current = nextIncompleteIndex;
       setCurrentWaypointIndex(nextIncompleteIndex);
     }
-  }, [bookings, trip]);
+  }, [bookings, trip, tripArrivalCoordinate, tripDepartureCoordinate]);
 
   // Demander les permissions de localisation
   useEffect(() => {
@@ -735,7 +769,7 @@ export default function NavigationScreen() {
   }, [currentLocation, trip, waypoints.length]);
 
   const fetchRoute = async () => {
-    if (!currentLocation || !trip || !isMountedRef.current) return;
+    if (!currentLocation || !trip || !tripArrivalCoordinate || !isMountedRef.current) return;
 
     setIsLoadingRoute(true);
     try {
@@ -753,8 +787,8 @@ export default function NavigationScreen() {
           lng: currentLocation.coords.longitude,
         },
         destination: {
-          lat: trip.arrival.lat,
-          lng: trip.arrival.lng,
+          lat: tripArrivalCoordinate.latitude,
+          lng: tripArrivalCoordinate.longitude,
         },
         waypoints: waypointsForApi.length > 0 ? waypointsForApi : undefined,
         mode: TravelMode.DRIVING,
@@ -829,7 +863,10 @@ export default function NavigationScreen() {
         });
         
         // Ajouter la destination finale
-        fallbackPoints.push({ latitude: trip.arrival.lat, longitude: trip.arrival.lng });
+        fallbackPoints.push({
+          latitude: tripArrivalCoordinate.latitude,
+          longitude: tripArrivalCoordinate.longitude,
+        });
         
         setRouteCoordinates(fallbackPoints);
         setTotalDistance('--');
@@ -1212,8 +1249,11 @@ export default function NavigationScreen() {
   };
 
   // Vérifier que le trip est chargé et a des coordonnées valides
-  const hasValidTripCoordinates = trip?.departure?.lat !== 0 && trip?.departure?.lng !== 0 &&
-                                   trip?.arrival?.lat !== 0 && trip?.arrival?.lng !== 0;
+  const hasValidTripCoordinates = Boolean(
+    tripDepartureCoordinate &&
+      tripArrivalCoordinate &&
+      !areTripMapCoordinatesSame(tripDepartureCoordinate, tripArrivalCoordinate),
+  );
 
   if (isLoading || bookingsLoading || !trip) {
     return (
@@ -1268,8 +1308,8 @@ export default function NavigationScreen() {
         toolbarEnabled={false}
         moveOnMarkerPress={false}
         initialRegion={{
-          latitude: currentLocation?.coords?.latitude ?? trip?.departure?.lat ?? -4.4419,
-          longitude: currentLocation?.coords?.longitude ?? trip?.departure?.lng ?? 15.2663,
+          latitude: currentLocation?.coords?.latitude ?? tripDepartureCoordinate?.latitude ?? -4.4419,
+          longitude: currentLocation?.coords?.longitude ?? tripDepartureCoordinate?.longitude ?? 15.2663,
           latitudeDelta: 0.02,
           longitudeDelta: 0.02,
         }}
@@ -1326,11 +1366,11 @@ export default function NavigationScreen() {
         )}
 
         {/* Destination finale - Marqueur arrivée */}
-        {trip?.arrival?.lat && trip?.arrival?.lng && (
+        {tripArrivalCoordinate && (
           <Marker
             coordinate={{
-              latitude: trip.arrival.lat,
-              longitude: trip.arrival.lng,
+              latitude: tripArrivalCoordinate.latitude,
+              longitude: tripArrivalCoordinate.longitude,
             }}
             anchor={{ x: 0.5, y: 1 }}
             title={trip.arrival.name || 'Arrivée'}

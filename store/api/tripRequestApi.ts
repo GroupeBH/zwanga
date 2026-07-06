@@ -1,4 +1,12 @@
-import type { DriverOffer, DriverOfferStatus, DriverOfferWithTripRequest, Trip, TripRequest, TripRequestStatus } from '@/types';
+import type {
+  DriverOffer,
+  DriverOfferStatus,
+  DriverOfferWithTripRequest,
+  Trip,
+  TripPaymentMode,
+  TripRequest,
+  TripRequestStatus,
+} from '@/types';
 import { baseApi } from './baseApi';
 import type { ServerTrip } from './tripApi';
 import { mapServerTripToClient } from './tripApi';
@@ -23,6 +31,7 @@ type ServerTripRequest = {
   departureDateMax: string;
   numberOfSeats: number;
   maxPricePerSeat: number | null;
+  paymentMode?: TripPaymentMode | null;
   description: string | null;
   status: string;
   selectedDriver: {
@@ -128,6 +137,7 @@ type ServerDriverOfferWithTripRequest = {
     departureDateMax: string;
     numberOfSeats: number;
     maxPricePerSeat: number | string | null;
+    paymentMode?: TripPaymentMode | null;
     status: string;
     passenger: {
       id: string;
@@ -191,6 +201,7 @@ const mapServerTripRequestToClient = (request: ServerTripRequest): TripRequest =
     departureDateMax: request.departureDateMax,
     numberOfSeats: request.numberOfSeats,
     maxPricePerSeat: request.maxPricePerSeat ?? undefined,
+    paymentMode: request.paymentMode ?? undefined,
     description: request.description ?? undefined,
     status: mapStatus(request.status),
     selectedDriverId: request.selectedDriver?.id ?? undefined,
@@ -322,6 +333,7 @@ const mapServerDriverOfferWithTripRequestToClient = (offer: ServerDriverOfferWit
       maxPricePerSeat: typeof offer.tripRequest.maxPricePerSeat === 'string' 
         ? parseFloat(offer.tripRequest.maxPricePerSeat) 
         : offer.tripRequest.maxPricePerSeat,
+      paymentMode: offer.tripRequest.paymentMode ?? undefined,
       status: mapTripRequestStatus(offer.tripRequest.status),
       passenger: {
         id: offer.tripRequest.passenger.id,
@@ -345,6 +357,7 @@ type CreateTripRequestPayload = {
   departureDateMax: string; // ISO string date
   numberOfSeats: number;
   maxPricePerSeat?: number;
+  paymentMode?: TripPaymentMode;
   description?: string;
 };
 

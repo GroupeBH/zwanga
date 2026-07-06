@@ -160,16 +160,43 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
     }
 
     let cancelled = false;
+    let startInFlight = false;
+    let backgroundStopTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const clearBackgroundStop = () => {
+      if (backgroundStopTimeout) {
+        clearTimeout(backgroundStopTimeout);
+        backgroundStopTimeout = null;
+      }
+    };
+
     const syncWatcherWithAppState = (state = AppState.currentState) => {
       if (state === 'active') {
-        void requestPermission().then(() => {
-          if (cancelled || AppState.currentState !== 'active') {
-            stopWatching();
-          }
-        });
-      } else {
-        stopWatching();
+        clearBackgroundStop();
+        if (watcherRef.current || startInFlight) {
+          return;
+        }
+
+        startInFlight = true;
+        void requestPermission()
+          .then(() => {
+            if (cancelled || AppState.currentState !== 'active') {
+              stopWatching();
+            }
+          })
+          .finally(() => {
+            startInFlight = false;
+          });
+        return;
       }
+
+      clearBackgroundStop();
+      backgroundStopTimeout = setTimeout(() => {
+        backgroundStopTimeout = null;
+        if (!cancelled && AppState.currentState !== 'active') {
+          stopWatching();
+        }
+      }, 2_000);
     };
 
     syncWatcherWithAppState();
@@ -178,6 +205,7 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
     return () => {
       cancelled = true;
       subscription.remove();
+      clearBackgroundStop();
       stopWatching();
     };
   }, [options.autoRequest, requestPermission, stopWatching]);

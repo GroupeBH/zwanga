@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Trip } from '@/types';
 import { getRouteInfo } from '@/utils/routeApi';
+import { getTripLocationCoordinate } from '@/utils/tripCoordinates';
 
 /**
  * Hook pour calculer l'heure d'arrivée d'un trajet basée sur l'heure de départ + durée du trajet
@@ -14,6 +15,8 @@ export function useTripArrivalTime(trip: Trip | null | undefined): Date | null {
   const departureLongitude = trip?.departure?.lng;
   const arrivalLatitude = trip?.arrival?.lat;
   const arrivalLongitude = trip?.arrival?.lng;
+  const departureHasCoordinates = trip?.departure?.hasCoordinates;
+  const arrivalHasCoordinates = trip?.arrival?.hasCoordinates;
 
   useEffect(() => {
     if (!tripId || !departureTime) {
@@ -21,29 +24,21 @@ export function useTripArrivalTime(trip: Trip | null | undefined): Date | null {
       return;
     }
 
-    if (
-      typeof departureLatitude !== 'number' ||
-      typeof departureLongitude !== 'number' ||
-      typeof arrivalLatitude !== 'number' ||
-      typeof arrivalLongitude !== 'number' ||
-      !Number.isFinite(departureLatitude) ||
-      !Number.isFinite(departureLongitude) ||
-      !Number.isFinite(arrivalLatitude) ||
-      !Number.isFinite(arrivalLongitude)
-    ) {
+    const departureCoordinate = getTripLocationCoordinate({
+      lat: departureLatitude,
+      lng: departureLongitude,
+      hasCoordinates: departureHasCoordinates,
+    });
+    const arrivalCoordinate = getTripLocationCoordinate({
+      lat: arrivalLatitude,
+      lng: arrivalLongitude,
+      hasCoordinates: arrivalHasCoordinates,
+    });
+
+    if (!departureCoordinate || !arrivalCoordinate) {
       setCalculatedArrivalTime(null);
       return;
     }
-
-    const departureCoordinate = {
-      latitude: departureLatitude,
-      longitude: departureLongitude,
-    };
-
-    const arrivalCoordinate = {
-      latitude: arrivalLatitude,
-      longitude: arrivalLongitude,
-    };
 
     let isMounted = true;
 
@@ -72,8 +67,10 @@ export function useTripArrivalTime(trip: Trip | null | undefined): Date | null {
     departureTime,
     departureLatitude,
     departureLongitude,
+    departureHasCoordinates,
     arrivalLatitude,
     arrivalLongitude,
+    arrivalHasCoordinates,
   ]);
 
   return calculatedArrivalTime;

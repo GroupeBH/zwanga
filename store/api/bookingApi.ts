@@ -1,4 +1,12 @@
-import type { Booking, BookingStatus, WhatsAppNotificationData } from '../../types';
+import type {
+  Booking,
+  BookingPaymentResponse,
+  BookingStatus,
+  SubscriptionPaymentMethod,
+  TripPaymentMode,
+  TripPaymentStatus,
+  WhatsAppNotificationData,
+} from '../../types';
 import { baseApi } from './baseApi';
 import type { ServerTrip } from './tripApi';
 import { mapServerTripToClient } from './tripApi';
@@ -18,6 +26,13 @@ type ServerBooking = {
   passengerId: string;
   numberOfSeats: number;
   status: BookingStatus;
+  paymentMode?: TripPaymentMode | null;
+  paymentStatus?: TripPaymentStatus | null;
+  paymentAmount?: number | string | null;
+  paymentCurrency?: string | null;
+  paymentReference?: string | null;
+  paymentTransactionId?: string | null;
+  paidAt?: string | null;
   rejectionReason?: string | null;
   acceptedAt?: string | null;
   cancelledAt?: string | null;
@@ -74,6 +89,13 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
   passengerPhone: booking.passenger?.phone ?? undefined,
   numberOfSeats: booking.numberOfSeats,
   status: booking.status ?? 'pending',
+  paymentMode: booking.paymentMode ?? undefined,
+  paymentStatus: booking.paymentStatus ?? undefined,
+  paymentAmount: booking.paymentAmount ?? undefined,
+  paymentCurrency: booking.paymentCurrency ?? undefined,
+  paymentReference: booking.paymentReference ?? undefined,
+  paymentTransactionId: booking.paymentTransactionId ?? undefined,
+  paidAt: booking.paidAt ?? undefined,
   rejectionReason: booking.rejectionReason ?? undefined,
   acceptedAt: booking.acceptedAt ?? undefined,
   cancelledAt: booking.cancelledAt ?? undefined,
@@ -121,6 +143,7 @@ export const bookingApi = baseApi.injectEndpoints({
         passengerDestination?: string;
         passengerDestinationReference?: string;
         passengerDestinationCoordinates?: { latitude: number; longitude: number };
+        paymentMode?: TripPaymentMode;
       }
     >({
       query: (body) => ({
@@ -157,6 +180,34 @@ export const bookingApi = baseApi.injectEndpoints({
               bookingListTag,
             ]
           : [{ type: 'Trip', id: arg }, bookingListTag],
+    }),
+    initiateBookingPayment: builder.mutation<
+      BookingPaymentResponse,
+      {
+        bookingId: string;
+        method: SubscriptionPaymentMethod;
+        phone?: string;
+        approveUrl?: string;
+        cancelUrl?: string;
+        declineUrl?: string;
+      }
+    >({
+      query: ({ bookingId, ...body }) => ({
+        url: `/bookings/${bookingId}/pay`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: (_result, _error, { bookingId }) => [
+        { type: 'Booking', id: bookingId },
+        bookingListTag,
+      ],
+    }),
+    checkBookingPaymentStatus: builder.query<BookingPaymentResponse, string>({
+      query: (orderNumber) => `/bookings/payments/${orderNumber}/status`,
+      providesTags: (result) =>
+        result?.booking?.id
+          ? [{ type: 'Booking', id: result.booking.id }, bookingListTag]
+          : [bookingListTag],
     }),
     getBookingById: builder.query<Booking, string>({
       query: (id: string) => `/bookings/${id}`,
@@ -343,6 +394,8 @@ export const {
   useCreateBookingMutation,
   useGetMyBookingsQuery,
   useGetTripBookingsQuery,
+  useInitiateBookingPaymentMutation,
+  useLazyCheckBookingPaymentStatusQuery,
   useGetBookingByIdQuery,
   useUpdateBookingStatusMutation,
   useCancelBookingMutation,
@@ -355,4 +408,3 @@ export const {
   useConfirmDropoffMutation,
   useConfirmDropoffByPassengerMutation,
 } = bookingApi;
-

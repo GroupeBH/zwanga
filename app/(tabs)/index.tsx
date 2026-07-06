@@ -19,6 +19,10 @@ import type { Trip } from '@/types';
 import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
 import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
 import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requestNavigation';
+import {
+  getGeoPointCoordinate as getSafeGeoPointCoordinate,
+  getTripLocationCoordinate,
+} from '@/utils/tripCoordinates';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
@@ -145,36 +149,11 @@ function placeName(place?: Trip['departure']) {
 }
 
 function getLocationCoordinate(location?: Trip['departure']): MapCoordinate | null {
-  const latitude = Number(location?.lat);
-  const longitude = Number(location?.lng);
-
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return null;
-  }
-
-  if (latitude === 0 && longitude === 0) {
-    return null;
-  }
-
-  return { latitude, longitude };
+  return getTripLocationCoordinate(location);
 }
 
 function getGeoPointCoordinate(point?: Trip['currentLocation']): MapCoordinate | null {
-  if (!point?.coordinates) {
-    return null;
-  }
-
-  const [longitude, latitude] = point.coordinates;
-
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return null;
-  }
-
-  if (latitude === 0 && longitude === 0) {
-    return null;
-  }
-
-  return { latitude, longitude };
+  return getSafeGeoPointCoordinate(point);
 }
 
 function getTripMapCoordinate(trip: Trip): MapCoordinate | null {
@@ -183,6 +162,16 @@ function getTripMapCoordinate(trip: Trip): MapCoordinate | null {
   }
 
   return getLocationCoordinate(trip.departure);
+}
+
+function hasUpcomingDeparture(trip: Pick<Trip, 'departureTime'>) {
+  const departureTs = new Date(trip.departureTime).getTime();
+
+  if (!Number.isFinite(departureTs)) {
+    return false;
+  }
+
+  return departureTs >= Date.now();
 }
 
 function roundCoordinate(value: number) {
@@ -559,6 +548,7 @@ export default function HomeScreen() {
   const [tripsSheetOpen, setTripsSheetOpen] = useState(true);
   const [isCenteringOnUser, setIsCenteringOnUser] = useState(false);
   const [mapFocusedOnUser, setMapFocusedOnUser] = useState(false);
+  const [isOpeningTripDetail, setIsOpeningTripDetail] = useState(false);
   const [userLocationMarker, setUserLocationMarker] = useState<UserLocationMarkerState | null>(null);
   const { getCurrentLocation, lastKnownLocation } = useUserLocation({
     autoRequest: isFocused,
@@ -679,7 +669,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (remoteTrips) {
-      dispatch(setTrips(remoteTrips.slice(0, 50)));
+      dispatch(setTrips(remoteTrips.filter(hasUpcomingDeparture).slice(0, 50)));
     }
   }, [remoteTrips, dispatch]);
 
@@ -794,6 +784,10 @@ export default function HomeScreen() {
 
     return [...baseTrips]
       .filter((trip) => {
+        if (!hasUpcomingDeparture(trip)) {
+          return false;
+        }
+
         if (!currentUser?.id) {
           return true;
         }
@@ -886,15 +880,20 @@ export default function HomeScreen() {
   const tripCardWidth = Math.min(width - 56, 342);
   const availableTripsLabel = `${latestTrips.length} trajet${latestTrips.length > 1 ? 's' : ''}`;
   const showInitialHomeLoader = tripsLoading && !remoteTrips && storedTrips.length === 0;
+  const shouldRenderHomeMap = isFocused && !isOpeningTripDetail;
   const openTripDetail = (tripId: string) => {
     if (openingTripRef.current) return;
 
     openingTripRef.current = true;
+    setIsOpeningTripDetail(true);
     router.push(`/trip/${tripId}`);
   };
 
   useEffect(() => {
-    if (isFocused) openingTripRef.current = false;
+    if (isFocused) {
+      openingTripRef.current = false;
+      setIsOpeningTripDetail(false);
+    }
   }, [isFocused]);
 
   const selectTripOnMap = (tripId: string) => {
@@ -999,7 +998,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={[]}>
-      {isFocused ? (
+      {shouldRenderHomeMap ? (
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}

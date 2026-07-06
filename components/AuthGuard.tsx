@@ -17,7 +17,14 @@ import { performLogout, setTokens } from '@/store/slices/authSlice';
 import { isTokenExpired } from '@/utils/jwt';
 import { useRouter, useSegments } from 'expo-router';
 import { useEffect, useRef } from 'react';
-import { ActivityIndicator, AppState, InteractionManager, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  AppState,
+  InteractionManager,
+  StyleSheet,
+  View,
+} from 'react-native';
+import type { AppStateStatus } from 'react-native';
 
 /**
  * Route guard:
@@ -45,6 +52,15 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const lastAuthTime = useRef<number | null>(null);
   const isRedirectingAfterLogout = useRef(false);
   const lastFcmSyncAccessToken = useRef<string | null>(null);
+  const latestAuthState = useRef({ isAuthenticated, accessToken, refreshToken });
+  const lastAppState = useRef<AppStateStatus>(AppState.currentState);
+  const appBackgroundedAt = useRef<number | null>(null);
+  const isForegroundRefreshInFlight = useRef(false);
+  const lastForegroundRefreshAt = useRef(0);
+
+  useEffect(() => {
+    latestAuthState.current = { isAuthenticated, accessToken, refreshToken };
+  }, [isAuthenticated, accessToken, refreshToken]);
 
   // Validate SecureStore tokens before hydrating Redux (ex: hot reload).
   useEffect(() => {
@@ -89,7 +105,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   // Proactive refresh on foreground. Startup refresh is handled by initializeAuth().
   useEffect(() => {
-    if (isLoading || !isAuthenticated || !refreshToken) return;
+    if (isLoading) return;
+
+    const MIN_FOREGROUND_REFRESH_INTERVAL_MS = 60_000;
+    const MIN_BACKGROUND_DURATION_MS = 2_000;
 
     const justAuthenticated = () => {
       const timeSinceAuth = lastAuthTime.current
@@ -99,41 +118,96 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     };
 
     const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'active') {
-        if (justAuthenticated()) {
-          if (__DEV__) {
-            console.log(
-              '[AuthGuard] Recent login/signup detected - skip foreground refresh'
-            );
-          }
-          return;
-        }
+      const previousAppState = lastAppState.current;
+      lastAppState.current = nextAppState;
 
-        if (__DEV__) {
-          console.log('[AuthGuard] App foregrounded - proactive token check...');
+      if (nextAppState !== 'active') {
+        if (previousAppState === 'active') {
+          appBackgroundedAt.current = Date.now();
         }
-        proactiveTokenRefresh().then((valid) => {
-          if (!valid) {
+        return;
+      }
+
+      if (previousAppState === 'active') {
+        return;
+      }
+
+      const backgroundDuration = appBackgroundedAt.current
+        ? Date.now() - appBackgroundedAt.current
+        : 0;
+      appBackgroundedAt.current = null;
+
+      // Android can emit brief inactive/active transitions around maps,
+      // keyboards and native overlays without the app truly backgrounding.
+      if (backgroundDuration < MIN_BACKGROUND_DURATION_MS) {
+        return;
+      }
+
+      const {
+        isAuthenticated: hasSession,
+        accessToken: currentAccessToken,
+        refreshToken: currentRefreshToken,
+      } = latestAuthState.current;
+
+      if (!hasSession || !currentRefreshToken) {
+        return;
+      }
+
+      if (justAuthenticated()) {
+        if (__DEV__) {
+          console.log(
+            '[AuthGuard] Recent login/signup detected - skip foreground refresh'
+          );
+        }
+        return;
+      }
+
+      const now = Date.now();
+      const hasExpiredAccessToken = currentAccessToken
+        ? isTokenExpired(currentAccessToken)
+        : false;
+      if (
+        isForegroundRefreshInFlight.current ||
+        (!hasExpiredAccessToken &&
+          now - lastForegroundRefreshAt.current < MIN_FOREGROUND_REFRESH_INTERVAL_MS)
+      ) {
+        return;
+      }
+
+      isForegroundRefreshInFlight.current = true;
+      lastForegroundRefreshAt.current = now;
+
+      if (__DEV__) {
+        console.log('[AuthGuard] App foregrounded - proactive token check...');
+      }
+      proactiveTokenRefresh()
+        .then((valid) => {
+          if (!valid && latestAuthState.current.isAuthenticated) {
             if (__DEV__) {
               console.log('[AuthGuard] Invalid session after foreground - local logout');
             }
             dispatch({ type: 'auth/logout' });
           }
+        })
+        .finally(() => {
+          isForegroundRefreshInFlight.current = false;
         });
-      }
     });
 
     return () => subscription.remove();
-  }, [isLoading, isAuthenticated, refreshToken, dispatch]);
+  }, [isLoading, dispatch]);
 
   // Detect successful auth to avoid false-positive logout races.
+  const wasAuthenticated = useRef(false);
   useEffect(() => {
-    if (isAuthenticated && accessToken && refreshToken) {
+    const hasTokenSession = Boolean(isAuthenticated && accessToken && refreshToken);
+    if (hasTokenSession && !wasAuthenticated.current) {
       lastAuthTime.current = Date.now();
       if (__DEV__) {
         console.log('[AuthGuard] Successful authentication detected');
       }
     }
+    wasAuthenticated.current = hasTokenSession;
   }, [isAuthenticated, accessToken, refreshToken]);
 
   // Token sanity and route enforcement.
