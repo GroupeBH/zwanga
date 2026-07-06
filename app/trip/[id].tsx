@@ -2116,7 +2116,15 @@ export default function TripDetailsScreen() {
         {canRenderTripMap && mapModalVisible && (
           <Modal visible={mapModalVisible} animationType="fade" transparent onRequestClose={() => setMapModalVisible(false)}>
             <View style={styles.mapModalOverlay}>
-              <View style={styles.mapModalContent}>
+              <View
+                style={[
+                  styles.mapModalContent,
+                  {
+                    marginTop: Math.max(insets.top, 20),
+                    marginBottom: Math.max(insets.bottom, 20),
+                  },
+                ]}
+              >
                 <MapView
                   provider={PROVIDER_GOOGLE}
                   style={styles.fullscreenMap}
@@ -2209,7 +2217,14 @@ export default function TripDetailsScreen() {
                   ))}
                 </MapView>
 
-                <TouchableOpacity style={styles.closeMapButton} onPress={() => setMapModalVisible(false)}>
+                <TouchableOpacity
+                  style={styles.closeMapButton}
+                  onPress={() => setMapModalVisible(false)}
+                  activeOpacity={0.82}
+                  accessibilityRole="button"
+                  accessibilityLabel="Fermer la carte"
+                  hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
+                >
                   <Ionicons name="close" size={24} color={Colors.white} />
                 </TouchableOpacity>
               </View>
@@ -4509,10 +4524,10 @@ const styles = StyleSheet.create({
   },
   mapModalContent: {
     flex: 1,
-    marginVertical: 40,
     marginHorizontal: 16,
     borderRadius: 32,
     overflow: 'hidden',
+    backgroundColor: Colors.white,
   },
   fullscreenMap: {
     width: '100%',
@@ -4525,10 +4540,17 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 4,
+    zIndex: 100,
+    elevation: 20,
+    borderWidth: 2,
+    borderColor: Colors.white,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.24,
+    shadowRadius: 8,
   },
   trackingBanner: {
     marginHorizontal: Spacing.lg,
