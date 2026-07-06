@@ -11,11 +11,16 @@ import {
   useGetTripBookingsQuery,
   useRejectBookingMutation,
 } from '@/store/api/bookingApi';
+import { useGeocodeMutation } from '@/store/api/googleMapsApi';
 import { useGetTripByIdQuery, usePauseTripMutation, useStartTripMutation, useUpdateTripMutation } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
+import {
+  buildManualGeocodeQuery,
+  mapGeocodeResponseToSelection,
+} from '@/utils/manualAddressGeocode';
 import { openWhatsApp } from '@/utils/phoneHelpers';
 import { calculateDistance } from '@/utils/routeHelpers';
 import { getGeoPointCoordinate, getTripLocationCoordinate } from '@/utils/tripCoordinates';
@@ -140,6 +145,7 @@ export default function ManageTripScreen() {
   const [cancelBooking, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
   const [updateTripStatus, { isLoading: isUpdatingTripStatus }] = useUpdateTripMutation();
   const [updateTripRoute, { isLoading: isUpdatingRoute }] = useUpdateTripMutation();
+  const [geocodeManualAddress] = useGeocodeMutation();
   const [startTrip, { isLoading: isStartingTrip }] = useStartTripMutation();
   const [pauseTrip, { isLoading: isPausingTrip }] = usePauseTripMutation();
   const [confirmPickup, { isLoading: isConfirmingPickup }] = useConfirmPickupMutation();
@@ -163,6 +169,8 @@ export default function ManageTripScreen() {
   const [editDepartureAddress, setEditDepartureAddress] = useState('');
   const [editArrivalAddress, setEditArrivalAddress] = useState('');
   const [editRouteError, setEditRouteError] = useState('');
+  const [isResolvingRoute, setIsResolvingRoute] = useState(false);
+  const isSavingRoute = isUpdatingRoute || isResolvingRoute;
 
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
@@ -194,13 +202,38 @@ export default function ManageTripScreen() {
   };
 
   const closeEditRouteModal = () => {
-    if (isUpdatingRoute) return;
+    if (isSavingRoute) return;
     setEditRouteModalVisible(false);
     setEditRouteError('');
   };
 
+  const resolveManualRouteCoordinates = useCallback(
+    async (address: string, label: string): Promise<[number, number] | null> => {
+      const trimmedAddress = address.trim();
+      if (!trimmedAddress) {
+        return null;
+      }
+
+      try {
+        const response = await geocodeManualAddress({
+          address: buildManualGeocodeQuery(trimmedAddress),
+          region: 'cd',
+        }).unwrap();
+        const selection = mapGeocodeResponseToSelection(trimmedAddress, response);
+        if (!selection) {
+          return null;
+        }
+        return [selection.longitude, selection.latitude];
+      } catch (error) {
+        console.warn(`Manual ${label} geocode failed`, error);
+        return null;
+      }
+    },
+    [geocodeManualAddress],
+  );
+
   const handleSaveRouteAddresses = async () => {
-    if (!trip) return;
+    if (!trip || isSavingRoute) return;
 
     const nextDeparture = editDepartureAddress.trim();
     const nextArrival = editArrivalAddress.trim();
@@ -217,7 +250,12 @@ export default function ManageTripScreen() {
 
     const currentDeparture = (trip.departure.address || '').trim();
     const currentArrival = (trip.arrival.address || '').trim();
-    const updates: { departureLocation?: string; arrivalLocation?: string } = {};
+    const updates: {
+      departureLocation?: string;
+      arrivalLocation?: string;
+      departureCoordinates?: [number, number];
+      arrivalCoordinates?: [number, number];
+    } = {};
 
     if (nextDeparture !== currentDeparture) {
       updates.departureLocation = nextDeparture;
@@ -229,6 +267,32 @@ export default function ManageTripScreen() {
     if (!updates.departureLocation && !updates.arrivalLocation) {
       setEditRouteModalVisible(false);
       return;
+    }
+
+    setIsResolvingRoute(true);
+
+    if (updates.departureLocation) {
+      const coordinates = await resolveManualRouteCoordinates(nextDeparture, 'departure');
+      if (!coordinates) {
+        setIsResolvingRoute(false);
+        setEditRouteError(
+          'Impossible de localiser cette adresse de depart. Verifiez le texte puis reessayez.',
+        );
+        return;
+      }
+      updates.departureCoordinates = coordinates;
+    }
+
+    if (updates.arrivalLocation) {
+      const coordinates = await resolveManualRouteCoordinates(nextArrival, 'arrival');
+      if (!coordinates) {
+        setIsResolvingRoute(false);
+        setEditRouteError(
+          'Impossible de localiser cette adresse d arrivee. Verifiez le texte puis reessayez.',
+        );
+        return;
+      }
+      updates.arrivalCoordinates = coordinates;
     }
 
     try {
@@ -247,6 +311,8 @@ export default function ManageTripScreen() {
       const message =
         error?.data?.message ?? error?.error ?? 'Impossible de mettre a jour les adresses du trajet.';
       setEditRouteError(Array.isArray(message) ? message.join('\n') : message);
+    } finally {
+      setIsResolvingRoute(false);
     }
   };
 
@@ -1161,7 +1227,7 @@ export default function ManageTripScreen() {
                 setEditDepartureAddress(text);
                 if (editRouteError) setEditRouteError('');
               }}
-              editable={!isUpdatingRoute}
+              editable={!isSavingRoute}
             />
 
             <Text style={styles.editRouteLabel}>Adresse d arrivee</Text>
@@ -1174,7 +1240,7 @@ export default function ManageTripScreen() {
                 setEditArrivalAddress(text);
                 if (editRouteError) setEditRouteError('');
               }}
-              editable={!isUpdatingRoute}
+              editable={!isSavingRoute}
             />
 
             {editRouteError ? <Text style={styles.bookingModalError}>{editRouteError}</Text> : null}
@@ -1183,16 +1249,16 @@ export default function ManageTripScreen() {
               <TouchableOpacity
                 style={[styles.bookingModalButton, styles.bookingModalButtonSecondary]}
                 onPress={closeEditRouteModal}
-                disabled={isUpdatingRoute}
+                disabled={isSavingRoute}
               >
                 <Text style={styles.bookingModalButtonSecondaryText}>Annuler</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.bookingModalButton, styles.bookingModalButtonPrimary]}
                 onPress={handleSaveRouteAddresses}
-                disabled={isUpdatingRoute}
+                disabled={isSavingRoute}
               >
-                {isUpdatingRoute ? (
+                {isSavingRoute ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
                   <Text style={styles.bookingModalButtonPrimaryText}>Enregistrer</Text>
