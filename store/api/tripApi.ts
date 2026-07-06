@@ -7,6 +7,7 @@ import type {
   Vehicle,
   VehicleType,
 } from '../../types';
+import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 
@@ -109,9 +110,15 @@ const fallbackCoordinate = (coords?: CoordinatesTuple): { lat: number; lng: numb
     return null;
   }
   const [lng, lat] = coords;
+  const coordinate = normalizeTripMapCoordinate(lat, lng);
+
+  if (!coordinate) {
+    return null;
+  }
+
   return {
-    lat: Number(lat) || 0,
-    lng: Number(lng) || 0,
+    lat: coordinate.latitude,
+    lng: coordinate.longitude,
   };
 };
 

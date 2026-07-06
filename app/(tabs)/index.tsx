@@ -19,6 +19,10 @@ import type { Trip } from '@/types';
 import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
 import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
 import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requestNavigation';
+import {
+  getGeoPointCoordinate as getSafeGeoPointCoordinate,
+  getTripLocationCoordinate,
+} from '@/utils/tripCoordinates';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
@@ -145,36 +149,11 @@ function placeName(place?: Trip['departure']) {
 }
 
 function getLocationCoordinate(location?: Trip['departure']): MapCoordinate | null {
-  const latitude = Number(location?.lat);
-  const longitude = Number(location?.lng);
-
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return null;
-  }
-
-  if (latitude === 0 && longitude === 0) {
-    return null;
-  }
-
-  return { latitude, longitude };
+  return getTripLocationCoordinate(location);
 }
 
 function getGeoPointCoordinate(point?: Trip['currentLocation']): MapCoordinate | null {
-  if (!point?.coordinates) {
-    return null;
-  }
-
-  const [longitude, latitude] = point.coordinates;
-
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return null;
-  }
-
-  if (latitude === 0 && longitude === 0) {
-    return null;
-  }
-
-  return { latitude, longitude };
+  return getSafeGeoPointCoordinate(point);
 }
 
 function getTripMapCoordinate(trip: Trip): MapCoordinate | null {
@@ -183,6 +162,16 @@ function getTripMapCoordinate(trip: Trip): MapCoordinate | null {
   }
 
   return getLocationCoordinate(trip.departure);
+}
+
+function hasUpcomingDeparture(trip: Pick<Trip, 'departureTime'>) {
+  const departureTs = new Date(trip.departureTime).getTime();
+
+  if (!Number.isFinite(departureTs)) {
+    return false;
+  }
+
+  return departureTs >= Date.now();
 }
 
 function roundCoordinate(value: number) {
@@ -681,21 +670,25 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (remoteTrips) {
-      dispatch(setTrips(remoteTrips.slice(0, 50)));
+      dispatch(setTrips(remoteTrips.filter(hasUpcomingDeparture).slice(0, 50)));
     }
   }, [remoteTrips, dispatch]);
 
-  const bookedTripIds = useMemo(() => {
+  const activeBookings = useMemo(() => {
     if (!myBookings || !currentUser?.id) {
-      return new Set<string>();
+      return [];
     }
 
-    return new Set(
-      myBookings
-        .filter((booking) => (booking.status === 'pending' || booking.status === 'accepted') && booking.tripId)
-        .map((booking) => booking.tripId),
+    return myBookings.filter(
+      (booking) =>
+        (booking.status === 'pending' || booking.status === 'accepted') && booking.tripId,
     );
   }, [myBookings, currentUser?.id]);
+
+  const bookedTripIds = useMemo(
+    () => new Set(activeBookings.map((booking) => booking.tripId)),
+    [activeBookings],
+  );
 
   const completedBookingTripIds = useMemo(() => {
     if (!myBookings || !currentUser?.id) {
@@ -788,7 +781,15 @@ export default function HomeScreen() {
   }, [activeTripRequest, activeTripRequestPendingOffers]);
 
   const latestTrips = useMemo(() => {
-    const baseTrips = remoteTrips ?? storedTrips ?? [];
+    const tripsById = new Map<string, Trip>();
+    (remoteTrips ?? storedTrips ?? []).forEach((trip) => tripsById.set(trip.id, trip));
+    activeBookings.forEach((booking) => {
+      if (booking.trip && !tripsById.has(booking.trip.id)) {
+        tripsById.set(booking.trip.id, booking.trip);
+      }
+    });
+
+    const baseTrips = Array.from(tripsById.values());
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayStartTs = todayStart.getTime();
@@ -796,6 +797,10 @@ export default function HomeScreen() {
 
     return [...baseTrips]
       .filter((trip) => {
+        if (!hasUpcomingDeparture(trip)) {
+          return false;
+        }
+
         if (!currentUser?.id) {
           return true;
         }
@@ -807,6 +812,13 @@ export default function HomeScreen() {
         return !completedBookingTripIds.has(trip.id);
       })
       .sort((a, b) => {
+        const aIsBooked = bookedTripIds.has(a.id);
+        const bIsBooked = bookedTripIds.has(b.id);
+
+        if (aIsBooked !== bIsBooked) {
+          return aIsBooked ? -1 : 1;
+        }
+
         const departureA = new Date(a.departureTime).getTime();
         const departureB = new Date(b.departureTime).getTime();
         const safeDepartureA = Number.isFinite(departureA) ? departureA : Number.MAX_SAFE_INTEGER;
@@ -825,7 +837,14 @@ export default function HomeScreen() {
         return a.id.localeCompare(b.id);
       })
       .slice(0, RECENT_TRIPS_LIMIT);
-  }, [remoteTrips, storedTrips, currentUser?.id, completedBookingTripIds]);
+  }, [
+    remoteTrips,
+    storedTrips,
+    activeBookings,
+    bookedTripIds,
+    currentUser?.id,
+    completedBookingTripIds,
+  ]);
 
   const tripsWithMapCoordinates = useMemo(
     () => latestTrips.filter((trip) => Boolean(getTripMapCoordinate(trip))),
@@ -888,6 +907,7 @@ export default function HomeScreen() {
   const tripCardWidth = Math.min(width - 56, 342);
   const availableTripsLabel = `${latestTrips.length} trajet${latestTrips.length > 1 ? 's' : ''}`;
   const showInitialHomeLoader = tripsLoading && !remoteTrips && storedTrips.length === 0;
+  const shouldRenderHomeMap = isFocused;
   const openTripDetail = (tripId: string) => {
     if (openingTripRef.current) return;
 
@@ -1009,7 +1029,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={[]}>
-      {isFocused && !openingTripId ? (
+      {shouldRenderHomeMap && !openingTripId ? (
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}

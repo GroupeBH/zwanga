@@ -18,6 +18,7 @@ import type { Booking, BookingStatus } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
 import { openWhatsApp } from '@/utils/phoneHelpers';
 import { calculateDistance } from '@/utils/routeHelpers';
+import { getGeoPointCoordinate, getTripLocationCoordinate } from '@/utils/tripCoordinates';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -251,11 +252,13 @@ export default function ManageTripScreen() {
 
   // Calculate arrival coordinate for canCompleteTrip
   const arrivalCoordinate = useMemo(
-    () => trip ? {
-      latitude: trip.arrival.lat,
-      longitude: trip.arrival.lng,
-    } : null,
-    [trip?.arrival.lat, trip?.arrival.lng],
+    () =>
+      getTripLocationCoordinate({
+        lat: trip?.arrival.lat,
+        lng: trip?.arrival.lng,
+        hasCoordinates: trip?.arrival.hasCoordinates,
+      }),
+    [trip?.arrival.hasCoordinates, trip?.arrival.lat, trip?.arrival.lng],
   );
 
   const showFeedback = (type: 'success' | 'error', message: string | string[]) => {
@@ -443,8 +446,7 @@ export default function ManageTripScreen() {
       return;
     }
 
-    const { arrival } = trip;
-    if (!arrival || !arrival.lat || !arrival.lng) {
+    if (!getTripLocationCoordinate(trip.arrival)) {
       showDialog({
         title: 'Erreur',
         message: 'Les coordonnées de destination sont indisponibles.',
@@ -563,17 +565,15 @@ export default function ManageTripScreen() {
     );
   }, [bookings]);
 
+  const tripStatus = trip?.status;
+  const tripCurrentLocation = trip?.currentLocation;
+
   // Vérifier si le conducteur est arrivé à destination (distance < 100m)
   const isAtDestination = useMemo(() => {
-    if (!trip || !arrivalCoordinate || trip.status !== 'ongoing') return false;
+    if (!arrivalCoordinate || tripStatus !== 'ongoing') return false;
     
     // Obtenir la position actuelle du conducteur
-    const currentCoordinate = trip.currentLocation?.coordinates
-      ? {
-          latitude: trip.currentLocation.coordinates[1],
-          longitude: trip.currentLocation.coordinates[0],
-        }
-      : null;
+    const currentCoordinate = getGeoPointCoordinate(tripCurrentLocation);
 
     if (!currentCoordinate) return false;
 
@@ -582,7 +582,7 @@ export default function ManageTripScreen() {
     // Convertir en mètres et vérifier si < 100m
     const distanceMeters = distanceKm * 1000;
     return distanceMeters < 100; // 100 mètres de tolérance
-  }, [trip?.currentLocation, trip?.status, arrivalCoordinate]);
+  }, [arrivalCoordinate, tripCurrentLocation, tripStatus]);
 
   // Le bouton "Terminer le trajet" doit apparaître si :
   // - Le trajet est en cours

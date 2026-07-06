@@ -5,7 +5,15 @@ export type RecurringTripStatus = 'active' | 'paused';
 export type BookingStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'completed' | 'expired';
 export type PaymentMethod = 'orange_money' | 'm_pesa' | 'airtel_money' | 'cash';
 export type SubscriptionPaymentMethod = 'mobile_money' | 'card';
+export type TripPaymentMode = 'electronic' | 'cash';
 export type SubscriptionPaymentStatus =
+  | 'pending'
+  | 'initiated'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled';
+export type TripPaymentStatus =
+  | 'not_required'
   | 'pending'
   | 'initiated'
   | 'succeeded'
@@ -224,6 +232,13 @@ export interface Booking {
   passengerPhone?: string;
   numberOfSeats: number;
   status: BookingStatus;
+  paymentMode?: TripPaymentMode | null;
+  paymentStatus?: TripPaymentStatus | null;
+  paymentAmount?: number | string | null;
+  paymentCurrency?: string | null;
+  paymentReference?: string | null;
+  paymentTransactionId?: string | null;
+  paidAt?: string | null;
   rejectionReason?: string;
   acceptedAt?: string;
   cancelledAt?: string;
@@ -249,6 +264,24 @@ export interface Booking {
   droppedOffConfirmedByPassenger?: boolean;
   droppedOffConfirmedAt?: string | null;
   safetyEmergencyContactIds?: string[];
+}
+
+export interface BookingPayment {
+  transactionId: string | null;
+  method: SubscriptionPaymentMethod | null;
+  reference: string | null;
+  orderNumber: string | null;
+  status: Exclude<TripPaymentStatus, 'not_required'> | null;
+  statusCode: string | null;
+  message: string | null;
+  paymentUrl: string | null;
+  amount: number;
+  currency: string;
+}
+
+export interface BookingPaymentResponse {
+  booking: Booking;
+  payment: BookingPayment;
 }
 
 export interface BasicUserInfo {
@@ -345,6 +378,7 @@ export interface TripRequest {
   departureDateMax: string; // ISO string date - Date/heure de départ maximum acceptée
   numberOfSeats: number;
   maxPricePerSeat?: number | null; // Prix maximum par place accepté (optionnel)
+  paymentMode?: TripPaymentMode | null;
   description?: string | null;
   status: TripRequestStatus;
   selectedDriverId?: string | null; // Driver sélectionné par le passager
@@ -408,6 +442,7 @@ export interface DriverOfferWithTripRequest extends DriverOffer {
     departureDateMax: string; // ISO string date
     numberOfSeats: number;
     maxPricePerSeat: number | null;
+    paymentMode?: TripPaymentMode | null;
     status: TripRequestStatus;
     passenger: {
       id: string;
@@ -783,5 +818,4 @@ export interface NotificationsResponse {
 export interface MarkNotificationsResponse {
   updated: number;
 }
-
 

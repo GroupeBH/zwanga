@@ -1141,8 +1141,20 @@ export default function PublishScreen() {
       ? 'departure'
       : 'arrival';
     const isDeparture = missingType === 'departure';
+    const hasSuggestedPoint = isDeparture ? hasDepartureGpsSuggestion : hasArrivalGpsSuggestion;
+
+    const openMissingPointPicker = () => {
+      setManualAddressTarget(null);
+      openLocationPicker(missingType, isDeparture ? departureAddress : arrivalAddress);
+    };
 
     setAddressSectionStep(missingType);
+
+    if (hasSuggestedPoint) {
+      openMissingPointPicker();
+      return;
+    }
+
     showDialog({
       variant: 'warning',
       title: 'Point GPS requis',
@@ -1154,10 +1166,7 @@ export default function PublishScreen() {
         {
           label: 'Ouvrir la carte',
           variant: 'primary',
-          onPress: () => {
-            setManualAddressTarget(null);
-            openLocationPicker(missingType, isDeparture ? departureAddress : arrivalAddress);
-          },
+          onPress: openMissingPointPicker,
         },
       ],
     });
@@ -1417,7 +1426,7 @@ export default function PublishScreen() {
 
   const footerPrimaryDisabled =
     step === 'route'
-      ? !hasDepartureAddress || !hasArrivalAddress || isManualAddressGeocoding
+      ? !hasDepartureAddress || !hasArrivalAddress
       : step === 'confirm'
         ? isSubmittingTrip ||
           !isPublishIdentityVerified ||
@@ -1430,9 +1439,9 @@ export default function PublishScreen() {
     if (step === 'route') {
       if (!hasDepartureAddress) return 'Indiquez le départ';
       if (!hasArrivalAddress) return "Indiquez l'arrivée";
-      if (isManualAddressGeocoding) return 'Recherche GPS...';
       if (!hasDepartureCoordinates) return 'Confirmez le départ';
       if (!hasArrivalCoordinates) return "Confirmez l'arrivée";
+      if (isManualAddressGeocoding) return 'Recherche GPS...';
       return 'Continuer';
     }
     if (step === 'confirm') {

@@ -16,8 +16,12 @@ import { clearTokens, getTokens, storeTokens } from './tokenStorage';
 let isRefreshing = false;
 let refreshPromise: Promise<string | null> | null = null;
 let isForceLoggingOut = false;
+let lastProactiveRefreshAttemptAt = 0;
+let lastProactiveRefreshAttemptToken: string | null = null;
 
 const AUTH_REFRESH_ERROR_STATUSES = new Set([400, 401, 403]);
+const ACCESS_TOKEN_REFRESH_WINDOW_MINUTES = 2;
+const PROACTIVE_REFRESH_COOLDOWN_MS = 60_000;
 
 const getNormalizedBaseUrl = () => {
   if (!API_BASE_URL) return '';
@@ -260,16 +264,32 @@ export async function proactiveTokenRefresh(): Promise<boolean> {
       return false;
     }
 
-    const ACCESS_TOKEN_REFRESH_WINDOW_MINUTES = 10;
     if (
       isTokenExpired(accessToken) ||
       isTokenExpiringSoon(accessToken, ACCESS_TOKEN_REFRESH_WINDOW_MINUTES)
     ) {
+      const now = Date.now();
+      const isSameTokenRetry = lastProactiveRefreshAttemptToken === accessToken;
+      const isInCooldown =
+        now - lastProactiveRefreshAttemptAt < PROACTIVE_REFRESH_COOLDOWN_MS;
+
+      if (isSameTokenRetry && isInCooldown && !isTokenExpired(accessToken)) {
+        console.log(
+          '[proactiveTokenRefresh] Refresh already attempted recently, keep current session'
+        );
+        return true;
+      }
+
+      lastProactiveRefreshAttemptAt = now;
+      lastProactiveRefreshAttemptToken = accessToken;
+
       console.log(
         '[proactiveTokenRefresh] Access token expired/expiring soon, refreshing...'
       );
       const newAccessToken = await refreshAccessToken(refreshToken);
       if (newAccessToken) {
+        lastProactiveRefreshAttemptAt = 0;
+        lastProactiveRefreshAttemptToken = null;
         return true;
       }
 

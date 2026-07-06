@@ -13,6 +13,7 @@ import {
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import type { Trip } from '@/types';
 import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
+import { getTripLocationCoordinate } from '@/utils/tripCoordinates';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -398,28 +399,29 @@ export default function TripsScreen() {
   const closeIosPicker = () => setIosPickerMode(null);
 
   const openEditModal = (trip: Trip) => {
-    const departureLat = Number(trip.departure?.lat);
-    const departureLng = Number(trip.departure?.lng);
-    const arrivalLat = Number(trip.arrival?.lat);
-    const arrivalLng = Number(trip.arrival?.lng);
+    const departureCoordinate = getTripLocationCoordinate(trip.departure);
+    const arrivalCoordinate = getTripLocationCoordinate(trip.arrival);
 
     const departureSelection =
-      Number.isFinite(departureLat) && Number.isFinite(departureLng)
+      departureCoordinate
         ? {
             title: trip.departure?.name || 'Depart',
             address:
-              trip.departure?.address || `${departureLat.toFixed(5)}, ${departureLng.toFixed(5)}`,
-            latitude: departureLat,
-            longitude: departureLng,
+              trip.departure?.address ||
+              `${departureCoordinate.latitude.toFixed(5)}, ${departureCoordinate.longitude.toFixed(5)}`,
+            latitude: departureCoordinate.latitude,
+            longitude: departureCoordinate.longitude,
           }
         : null;
     const arrivalSelection =
-      Number.isFinite(arrivalLat) && Number.isFinite(arrivalLng)
+      arrivalCoordinate
         ? {
             title: trip.arrival?.name || 'Arrivee',
-            address: trip.arrival?.address || `${arrivalLat.toFixed(5)}, ${arrivalLng.toFixed(5)}`,
-            latitude: arrivalLat,
-            longitude: arrivalLng,
+            address:
+              trip.arrival?.address ||
+              `${arrivalCoordinate.latitude.toFixed(5)}, ${arrivalCoordinate.longitude.toFixed(5)}`,
+            latitude: arrivalCoordinate.latitude,
+            longitude: arrivalCoordinate.longitude,
           }
         : null;
 

@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   FlatList,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -53,6 +54,14 @@ const DEFAULT_REGION: Region = {
   latitudeDelta: 0.1,
   longitudeDelta: 0.1,
 };
+const LOCATION_PICKER_MAP_PROVIDER = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
+
+const DEFAULT_LOCATION_SELECTION: MapLocationSelection = {
+  title: 'Kinshasa',
+  address: 'Kinshasa, RDC',
+  latitude: DEFAULT_REGION.latitude,
+  longitude: DEFAULT_REGION.longitude,
+};
 
 const RDC_BOUNDS = { minLatitude: -13.5, maxLatitude: 5.4, minLongitude: 12, maxLongitude: 31.3 };
 
@@ -82,6 +91,19 @@ function normalizePossibleSwappedCoordinate(latitude: number, longitude: number)
     return { latitude: longitude, longitude: latitude };
   }
   return { latitude, longitude };
+}
+
+function getValidRdcCoordinate(latitude: number, longitude: number) {
+  const normalizedCoordinate = normalizePossibleSwappedCoordinate(latitude, longitude);
+
+  if (
+    !isFiniteCoordinate(normalizedCoordinate.latitude, normalizedCoordinate.longitude) ||
+    !isInRdcBounds(normalizedCoordinate.latitude, normalizedCoordinate.longitude)
+  ) {
+    return null;
+  }
+
+  return normalizedCoordinate;
 }
 
 function formatAddressFromGeocode(
@@ -136,7 +158,7 @@ export default function LocationPickerModal({
   initialLocation,
   routeCoordinates,
   restrictToRoute = false,
-  autoLocateOnOpen = true,
+  autoLocateOnOpen = false,
   initialSearchQuery = '',
 }: LocationPickerModalProps) {
   const mapRef = useRef<MapView>(null);
@@ -163,6 +185,10 @@ export default function LocationPickerModal({
   const geocodeSequenceRef = useRef(0);
   const programmaticTargetRef = useRef<{ latitude: number; longitude: number } | null>(null);
   const programmaticUnlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastValidCoordinateRef = useRef({
+    latitude: DEFAULT_REGION.latitude,
+    longitude: DEFAULT_REGION.longitude,
+  });
 
   // Animation for the center pin
   const pinTranslateY = useSharedValue(0);
@@ -244,8 +270,23 @@ export default function LocationPickerModal({
     setGoogleMapsSuggestions([]);
   };
 
+  const resetToDefaultLocation = () => {
+    setRegion(DEFAULT_REGION);
+    setSelectedLocation(DEFAULT_LOCATION_SELECTION);
+    lastMarkerUpdateRef.current = {
+      latitude: DEFAULT_REGION.latitude,
+      longitude: DEFAULT_REGION.longitude,
+    };
+    lastValidCoordinateRef.current = {
+      latitude: DEFAULT_REGION.latitude,
+      longitude: DEFAULT_REGION.longitude,
+    };
+    mapRef.current?.animateToRegion(DEFAULT_REGION, 0);
+  };
+
   useEffect(() => {
     if (!visible) {
+      resetToDefaultLocation();
       return;
     }
 
@@ -261,6 +302,7 @@ export default function LocationPickerModal({
         setSelectedLocation(initialLocation);
         animateToCoordinate(initialLocation.latitude, initialLocation.longitude);
       } else {
+        resetToDefaultLocation();
         // Si pas d'initialLocation, récupérer la position actuelle
         if (autoLocateOnOpen) {
           await requestUserLocation();
@@ -292,9 +334,30 @@ export default function LocationPickerModal({
 
   const animateToCoordinate = (latitude: number, longitude: number, skipMarkerUpdate = false, triggerGeocodeAfter = false) => {
     try {
-      const normalizedCoordinate = normalizePossibleSwappedCoordinate(latitude, longitude);
-      latitude = normalizedCoordinate.latitude;
-      longitude = normalizedCoordinate.longitude;
+      const validCoordinate = getValidRdcCoordinate(Number(latitude), Number(longitude));
+      if (!validCoordinate) {
+        const fallback = lastValidCoordinateRef.current;
+        console.warn('[LocationPickerModal] Mouvement hors RDC refusé:', { latitude, longitude });
+        setRegion({ ...fallback, latitudeDelta: 0.01, longitudeDelta: 0.01 });
+        setSelectedLocation((current) => {
+          const currentCoordinate = current
+            ? getValidRdcCoordinate(Number(current.latitude), Number(current.longitude))
+            : null;
+          if (current && currentCoordinate) return current;
+          return {
+            title: 'Point valide précédent',
+            address: `${fallback.latitude.toFixed(5)}, ${fallback.longitude.toFixed(5)}`,
+            ...fallback,
+          };
+        });
+        mapRef.current?.animateToRegion(
+          { ...fallback, latitudeDelta: 0.01, longitudeDelta: 0.01 },
+          180,
+        );
+        return;
+      }
+      latitude = validCoordinate.latitude;
+      longitude = validCoordinate.longitude;
       geocodeSequenceRef.current += 1;
 
       // Valider les coordonnées avant d'animer
@@ -315,6 +378,7 @@ export default function LocationPickerModal({
       isUserInteractionRef.current = false;
       isUpdatingMarkerRef.current = true;
       lastMarkerUpdateRef.current = { latitude, longitude };
+      lastValidCoordinateRef.current = { latitude, longitude };
       programmaticTargetRef.current = { latitude, longitude };
       if (programmaticUnlockTimerRef.current) {
         clearTimeout(programmaticUnlockTimerRef.current);
@@ -375,7 +439,20 @@ export default function LocationPickerModal({
         accuracy: Location.Accuracy.Balanced,
       });
 
-      const snapped = snapPointToRoute(position.coords.latitude, position.coords.longitude);
+      const currentCoordinate = getValidRdcCoordinate(position.coords.latitude, position.coords.longitude);
+
+      if (!currentCoordinate) {
+        console.warn('[LocationPickerModal] Position utilisateur hors RDC ignoree:', {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+        if (animate) {
+          resetToDefaultLocation();
+        }
+        return null;
+      }
+
+      const snapped = snapPointToRoute(currentCoordinate.latitude, currentCoordinate.longitude);
 
       if (animate) {
         animateToCoordinate(snapped.latitude, snapped.longitude);
@@ -436,16 +513,21 @@ export default function LocationPickerModal({
       return;
     }
 
+    const validCoordinate = getValidRdcCoordinate(region.latitude, region.longitude);
+    if (!validCoordinate) {
+      return;
+    }
+
     // Si on n'est pas déjà en déplacement, "soulever" le marqueur
     if (!isPanning && !isUpdatingMarkerRef.current) {
       liftPin();
       setIsPanning(true);
     }
 
-    setRegion(region);
+    setRegion({ ...region, ...validCoordinate });
 
     // Mettre à jour la position du marqueur immédiatement (visuellement)
-    const { latitude, longitude } = region;
+    const { latitude, longitude } = validCoordinate;
 
     // On met à jour selectedLocation sans déclencher de reverse geocode ici
     setSelectedLocation((prev) => {
@@ -462,26 +544,15 @@ export default function LocationPickerModal({
 
     const { latitude, longitude } = event.nativeEvent.coordinate;
 
-    // Valider les coordonnées
-    if (
-      typeof latitude !== 'number' ||
-      typeof longitude !== 'number' ||
-      isNaN(latitude) ||
-      isNaN(longitude) ||
-      !isFinite(latitude) ||
-      !isFinite(longitude) ||
-      latitude < -90 ||
-      latitude > 90 ||
-      longitude < -180 ||
-      longitude > 180
-    ) {
+    const validCoordinate = getValidRdcCoordinate(latitude, longitude);
+    if (!validCoordinate) {
       return;
     }
 
     // Snap to route if required
-    let finalCoords = { latitude, longitude };
+    let finalCoords = validCoordinate;
     if (restrictToRoute || routeCoordinates) {
-      finalCoords = snapPointToRoute(latitude, longitude);
+      finalCoords = snapPointToRoute(validCoordinate.latitude, validCoordinate.longitude);
     }
 
     // Animer vers le point cliqué et faire le geocoding
@@ -525,10 +596,18 @@ export default function LocationPickerModal({
       return;
     }
 
+    const validCoordinate = getValidRdcCoordinate(region.latitude, region.longitude);
+    if (!validCoordinate) {
+      const fallback = lastValidCoordinateRef.current;
+      animateToCoordinate(fallback.latitude, fallback.longitude, false, true);
+      return;
+    }
+
     setIsPanning(false);
     dropPin();
 
-    const { latitude, longitude } = region;
+    const { latitude, longitude } = validCoordinate;
+    lastValidCoordinateRef.current = { latitude, longitude };
 
     // Vérifier si les coordonnées ont significativement changé pour éviter les boucles
     const lastUpdate = lastMarkerUpdateRef.current;
@@ -555,6 +634,7 @@ export default function LocationPickerModal({
     }
 
     // Déclencher le reverse geocoding
+    lastMarkerUpdateRef.current = { latitude, longitude };
     updateLocationFromCoordinates(finalCoords);
   };
 
@@ -1294,7 +1374,7 @@ export default function LocationPickerModal({
         <View style={styles.mapContainer}>
           <MapView
             ref={mapRef}
-            provider={PROVIDER_GOOGLE}
+            provider={LOCATION_PICKER_MAP_PROVIDER}
             style={styles.map}
             initialRegion={region}
             onRegionChange={handleCameraChanged}

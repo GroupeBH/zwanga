@@ -3,7 +3,60 @@ import { useUpdateUserMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch } from '@/store/hooks';
 import { updateUser } from '@/store/slices/authSlice';
 import * as ImagePicker from 'expo-image-picker';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { AppState, Platform } from 'react-native';
+
+let pendingResultRecoveryInFlight = false;
+const claimedProfileImageUris = new Map<string, number>();
+const DUPLICATE_IMAGE_CLAIM_WINDOW_MS = 30_000;
+
+function claimProfileImageUri(uri: string) {
+  const now = Date.now();
+  claimedProfileImageUris.forEach((claimedAt, claimedUri) => {
+    if (now - claimedAt >= DUPLICATE_IMAGE_CLAIM_WINDOW_MS) {
+      claimedProfileImageUris.delete(claimedUri);
+    }
+  });
+
+  const claimedAt = claimedProfileImageUris.get(uri);
+  if (claimedAt && now - claimedAt < DUPLICATE_IMAGE_CLAIM_WINDOW_MS) {
+    return false;
+  }
+
+  claimedProfileImageUris.set(uri, now);
+  return true;
+}
+
+function releaseProfileImageUri(uri: string) {
+  claimedProfileImageUris.delete(uri);
+}
+
+async function claimPendingProfileImageUri() {
+  if (Platform.OS !== 'android' || pendingResultRecoveryInFlight) {
+    return null;
+  }
+
+  pendingResultRecoveryInFlight = true;
+  try {
+    const result = await ImagePicker.getPendingResultAsync();
+    if (!result) {
+      return null;
+    }
+
+    if ('code' in result) {
+      console.error('[ProfilePhoto] Pending image picker error:', result.message);
+      return null;
+    }
+
+    if (result.canceled) {
+      return null;
+    }
+
+    return result.assets[0]?.uri ?? null;
+  } finally {
+    pendingResultRecoveryInFlight = false;
+  }
+}
 
 /**
  * Hook pour gérer la photo de profil
@@ -15,10 +68,13 @@ export function useProfilePhoto() {
   const [isUploading, setIsUploading] = useState(false);
   const { showDialog } = useDialog();
 
-  const requestPermissions = async () => {
-    // Demander la permission caméra
-    const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
-    if (cameraStatus !== 'granted') {
+  const requestPermissions = async (source: 'camera' | 'gallery') => {
+    if (source === 'camera') {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status === 'granted') {
+        return true;
+      }
+
       showDialog({
         variant: 'warning',
         title: 'Permission requise',
@@ -27,9 +83,8 @@ export function useProfilePhoto() {
       return false;
     }
 
-    // Demander la permission galerie
-    const { status: mediaStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (mediaStatus !== 'granted') {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
       showDialog({
         variant: 'warning',
         title: 'Permission requise',
@@ -42,7 +97,7 @@ export function useProfilePhoto() {
   };
 
   const pickImage = async (source: 'camera' | 'gallery') => {
-    const hasPermission = await requestPermissions();
+    const hasPermission = await requestPermissions(source);
     if (!hasPermission) return null;
 
     try {
@@ -117,7 +172,7 @@ export function useProfilePhoto() {
     });
   };
 
-  const updateProfilePhoto = async (imageUri: string) => {
+  const updateProfilePhoto = useCallback(async (imageUri: string) => {
     try {
       setIsUploading(true);
       const extensionMatch = imageUri.split('.').pop()?.split('?')[0]?.toLowerCase();
@@ -164,7 +219,35 @@ export function useProfilePhoto() {
     } finally {
       setIsUploading(false);
     }
-  };
+  }, [dispatch, showDialog, updateUserMutation]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const recoverPendingPhoto = async () => {
+      const imageUri = await claimPendingProfileImageUri();
+      if (cancelled || !imageUri || !claimProfileImageUri(imageUri)) {
+        return;
+      }
+
+      const updated = await updateProfilePhoto(imageUri);
+      if (!updated) {
+        releaseProfileImageUri(imageUri);
+      }
+    };
+
+    void recoverPendingPhoto();
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void recoverPendingPhoto();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.remove();
+    };
+  }, [updateProfilePhoto]);
 
   const changeProfilePhoto = async (): Promise<boolean> => {
     const imageUri = await showImagePicker();
@@ -173,7 +256,15 @@ export function useProfilePhoto() {
       return false;
     }
 
-    return await updateProfilePhoto(imageUri);
+    if (!claimProfileImageUri(imageUri)) {
+      return false;
+    }
+
+    const updated = await updateProfilePhoto(imageUri);
+    if (!updated) {
+      releaseProfileImageUri(imageUri);
+    }
+    return updated;
   };
 
   return {
