@@ -540,6 +540,7 @@ export default function HomeScreen() {
   const tripMarkerRefs = useRef<Record<string, MapMarker | null>>({});
   const userLocationMarkerRef = useRef<MapMarker | null>(null);
   const openingTripRef = useRef(false);
+  const openingTripTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const storedTrips = useAppSelector(selectAvailableTrips);
@@ -548,8 +549,8 @@ export default function HomeScreen() {
   const [tripsSheetOpen, setTripsSheetOpen] = useState(true);
   const [isCenteringOnUser, setIsCenteringOnUser] = useState(false);
   const [mapFocusedOnUser, setMapFocusedOnUser] = useState(false);
-  const [isOpeningTripDetail, setIsOpeningTripDetail] = useState(false);
   const [userLocationMarker, setUserLocationMarker] = useState<UserLocationMarkerState | null>(null);
+  const [openingTripId, setOpeningTripId] = useState<string | null>(null);
   const { getCurrentLocation, lastKnownLocation } = useUserLocation({
     autoRequest: isFocused,
     trackingProfile: 'nearby',
@@ -673,17 +674,21 @@ export default function HomeScreen() {
     }
   }, [remoteTrips, dispatch]);
 
-  const bookedTripIds = useMemo(() => {
+  const activeBookings = useMemo(() => {
     if (!myBookings || !currentUser?.id) {
-      return new Set<string>();
+      return [];
     }
 
-    return new Set(
-      myBookings
-        .filter((booking) => (booking.status === 'pending' || booking.status === 'accepted') && booking.tripId)
-        .map((booking) => booking.tripId),
+    return myBookings.filter(
+      (booking) =>
+        (booking.status === 'pending' || booking.status === 'accepted') && booking.tripId,
     );
   }, [myBookings, currentUser?.id]);
+
+  const bookedTripIds = useMemo(
+    () => new Set(activeBookings.map((booking) => booking.tripId)),
+    [activeBookings],
+  );
 
   const completedBookingTripIds = useMemo(() => {
     if (!myBookings || !currentUser?.id) {
@@ -776,7 +781,15 @@ export default function HomeScreen() {
   }, [activeTripRequest, activeTripRequestPendingOffers]);
 
   const latestTrips = useMemo(() => {
-    const baseTrips = remoteTrips ?? storedTrips ?? [];
+    const tripsById = new Map<string, Trip>();
+    (remoteTrips ?? storedTrips ?? []).forEach((trip) => tripsById.set(trip.id, trip));
+    activeBookings.forEach((booking) => {
+      if (booking.trip && !tripsById.has(booking.trip.id)) {
+        tripsById.set(booking.trip.id, booking.trip);
+      }
+    });
+
+    const baseTrips = Array.from(tripsById.values());
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayStartTs = todayStart.getTime();
@@ -799,6 +812,13 @@ export default function HomeScreen() {
         return !completedBookingTripIds.has(trip.id);
       })
       .sort((a, b) => {
+        const aIsBooked = bookedTripIds.has(a.id);
+        const bIsBooked = bookedTripIds.has(b.id);
+
+        if (aIsBooked !== bIsBooked) {
+          return aIsBooked ? -1 : 1;
+        }
+
         const departureA = new Date(a.departureTime).getTime();
         const departureB = new Date(b.departureTime).getTime();
         const safeDepartureA = Number.isFinite(departureA) ? departureA : Number.MAX_SAFE_INTEGER;
@@ -817,7 +837,14 @@ export default function HomeScreen() {
         return a.id.localeCompare(b.id);
       })
       .slice(0, RECENT_TRIPS_LIMIT);
-  }, [remoteTrips, storedTrips, currentUser?.id, completedBookingTripIds]);
+  }, [
+    remoteTrips,
+    storedTrips,
+    activeBookings,
+    bookedTripIds,
+    currentUser?.id,
+    completedBookingTripIds,
+  ]);
 
   const tripsWithMapCoordinates = useMemo(
     () => latestTrips.filter((trip) => Boolean(getTripMapCoordinate(trip))),
@@ -880,21 +907,25 @@ export default function HomeScreen() {
   const tripCardWidth = Math.min(width - 56, 342);
   const availableTripsLabel = `${latestTrips.length} trajet${latestTrips.length > 1 ? 's' : ''}`;
   const showInitialHomeLoader = tripsLoading && !remoteTrips && storedTrips.length === 0;
-  const shouldRenderHomeMap = isFocused && !isOpeningTripDetail;
+  const shouldRenderHomeMap = isFocused;
   const openTripDetail = (tripId: string) => {
     if (openingTripRef.current) return;
 
     openingTripRef.current = true;
-    setIsOpeningTripDetail(true);
-    router.push(`/trip/${tripId}`);
+    setOpeningTripId(tripId);
+    openingTripTimerRef.current = setTimeout(() => {
+      router.replace(`/trip/${tripId}`);
+      openingTripTimerRef.current = null;
+    }, Platform.OS === 'ios' ? 140 : 40);
   };
 
   useEffect(() => {
-    if (isFocused) {
-      openingTripRef.current = false;
-      setIsOpeningTripDetail(false);
-    }
-  }, [isFocused]);
+    if (isFocused && !openingTripId) openingTripRef.current = false;
+  }, [isFocused, openingTripId]);
+
+  useEffect(() => () => {
+    if (openingTripTimerRef.current) clearTimeout(openingTripTimerRef.current);
+  }, []);
 
   const selectTripOnMap = (tripId: string) => {
     setMapFocusedOnUser(false);
@@ -979,7 +1010,7 @@ export default function HomeScreen() {
 
   const handleTripMarkerPress = (tripId: string, isSelected: boolean) => {
     if (!USE_ANDROID_TRIP_MARKER_IMAGE) {
-      selectTripOnMap(tripId);
+      openTripDetail(tripId);
       return;
     }
 
@@ -998,7 +1029,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={[]}>
-      {shouldRenderHomeMap ? (
+      {shouldRenderHomeMap && !openingTripId ? (
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
@@ -1031,7 +1062,7 @@ export default function HomeScreen() {
                   delete tripMarkerRefs.current[trip.id];
                 }
               }}
-              key={`${trip.id}:${trip.vehicleType || 'car'}:${isSelected ? 'selected' : 'default'}`}
+              key={`${trip.id}:${trip.vehicleType || 'car'}`}
               identifier={trip.id}
               coordinate={coordinate}
               anchor={TRIP_MARKER_ANCHOR}
