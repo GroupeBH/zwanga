@@ -1,5 +1,4 @@
 import { Linking, Platform, Share } from 'react-native';
-import Constants from 'expo-constants';
 
 /**
  * Génère un lien de partage pour un trajet
@@ -10,8 +9,6 @@ export function generateTripShareLink(tripId: string): string {
   // Deep link pour l'app mobile
   const deepLink = `zwanga://trip/${tripId}?track=true`;
   
-  // URL web de fallback (si vous avez une page web pour le suivi)
-  const webUrl = `https://zwanga-app.com/trip/${tripId}?track=true`;
   
   // Pour l'instant, on utilise le deep link
   // Si l'app n'est pas installée, le système proposera d'ouvrir dans le navigateur
@@ -92,8 +89,6 @@ export async function shareTripViaWhatsApp(
 ): Promise<void> {
   try {
     const message = generateTripShareMessage(tripId, departureName, arrivalName);
-    const link = generateTripShareLink(tripId);
-    
     let url: string;
     if (phoneNumber) {
       // Format WhatsApp avec numéro de téléphone
@@ -116,6 +111,31 @@ export async function shareTripViaWhatsApp(
     // Fallback vers le partage standard
     await shareTrip(tripId, departureName, arrivalName);
   }
+}
+
+/**
+ * Partage un lien public de suivi via WhatsApp.
+ */
+export async function shareTrackingLinkViaWhatsApp(input: {
+  message: string;
+  fallbackTitle?: string;
+}): Promise<void> {
+  const url = `whatsapp://send?text=${encodeURIComponent(input.message)}`;
+
+  try {
+    const canOpen = await Linking.canOpenURL(url);
+    if (canOpen) {
+      await Linking.openURL(url);
+      return;
+    }
+  } catch (error: any) {
+    console.warn('WhatsApp indisponible:', error?.message ?? error);
+  }
+
+  await Share.share({
+    title: input.fallbackTitle ?? 'Partager le suivi',
+    message: input.message,
+  });
 }
 
 /**
@@ -148,4 +168,29 @@ export async function shareTripViaSMS(
     await shareTrip(tripId, departureName, arrivalName);
   }
 }
+/**
+ * Ouvre le client email avec un lien public de suivi de trajet.
+ */
+export async function shareTripViaEmail(input: {
+  mailtoUrl?: string;
+  subject: string;
+  body: string;
+  fallbackUrl?: string;
+}): Promise<void> {
+  const mailtoUrl = input.mailtoUrl || `mailto:?subject=${encodeURIComponent(input.subject)}&body=${encodeURIComponent(input.body)}`;
 
+  try {
+    const canOpen = await Linking.canOpenURL(mailtoUrl);
+    if (canOpen) {
+      await Linking.openURL(mailtoUrl);
+      return;
+    }
+  } catch (error: any) {
+    console.warn('Client email indisponible:', error?.message ?? error);
+  }
+
+  await Share.share({
+    title: input.subject,
+    message: input.fallbackUrl ? `${input.body}\n\n${input.fallbackUrl}` : input.body,
+  });
+}

@@ -1,4 +1,7 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import {
+  ELECTRONIC_PAYMENTS_ENABLED,
+} from '@/constants/paymentFeatures';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { trackEvent } from '@/services/analytics';
 import { trackingSocket, type DriverLocationPayload } from '@/services/trackingSocket';
@@ -6,15 +9,21 @@ import {
   useConfirmDropoffByPassengerMutation,
   useConfirmPickupByPassengerMutation,
   useGetBookingByIdQuery,
+  useInitiateBookingPaymentMutation,
+  useUpdateBookingPaymentModeMutation,
 } from '@/store/api/bookingApi';
 import { useGetDirectionsMutation } from '@/store/api/googleMapsApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
+import { useAppSelector } from '@/store/hooks';
+import { selectUser } from '@/store/selectors';
+import type { Booking, TripPaymentMode } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
+  Linking,
   Platform,
   StatusBar,
   StyleSheet,
@@ -81,11 +90,43 @@ function decodePolyline(encoded: string): Array<{ latitude: number; longitude: n
   return points;
 }
 
+const TRIP_PAYMENT_MODE_OPTIONS: {
+  id: TripPaymentMode;
+  label: string;
+}[] = [
+  ...(ELECTRONIC_PAYMENTS_ENABLED
+    ? [
+        {
+          id: 'electronic' as const,
+          label: 'Paiement electronique',
+        },
+      ]
+    : []),
+  {
+    id: 'cash',
+    label: "Paiement a l'arrivee",
+  },
+];
+
+const DRC_PAYMENT_PHONE_REGEX = /^\+243\d{9}$/;
+const formatTripPaymentPhone = (value?: string | null) => {
+  const digits = (value ?? '').replace(/\D/g, '');
+  if (!digits) return undefined;
+  if (digits.startsWith('243')) return `+${digits}`;
+  if (digits.startsWith('0')) return `+243${digits.slice(1)}`;
+  return `+243${digits}`;
+};
+const getAvailableTripPaymentMode = (mode?: TripPaymentMode | null): TripPaymentMode =>
+  TRIP_PAYMENT_MODE_OPTIONS.some((option) => option.id === mode)
+    ? (mode as TripPaymentMode)
+    : 'cash';
+
 export default function PassengerNavigationScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const { showDialog } = useDialog();
   const insets = useSafeAreaInsets();
+  const user = useAppSelector(selectUser);
   const bookingId = typeof id === 'string' ? id : '';
 
   // Recuperer la reservation et le trajet
@@ -103,6 +144,10 @@ export default function PassengerNavigationScreen() {
   // Mutations pour confirmer pickup/dropoff
   const [confirmPickup, { isLoading: isConfirmingPickup }] = useConfirmPickupByPassengerMutation();
   const [confirmDropoff, { isLoading: isConfirmingDropoff }] = useConfirmDropoffByPassengerMutation();
+  const [updateBookingPaymentMode, { isLoading: isUpdatingPaymentMode }] =
+    useUpdateBookingPaymentModeMutation();
+  const [initiateBookingPayment, { isLoading: isInitiatingPayment }] =
+    useInitiateBookingPaymentMutation();
 
   const mapRef = useRef<MapView>(null);
   const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -476,49 +521,155 @@ export default function PassengerNavigationScreen() {
     });
   };
 
+  const getBookingPaymentAmount = (currentBooking: Booking) => {
+    const storedAmount = Number(currentBooking.paymentAmount ?? 0);
+    if (Number.isFinite(storedAmount) && storedAmount > 0) return storedAmount;
+    const tripPrice = Number(trip?.price ?? currentBooking.trip?.price ?? 0);
+    return tripPrice > 0 ? currentBooking.numberOfSeats * tripPrice : 0;
+  };
+
+  const startElectronicPaymentForBooking = async (currentBooking: Booking) => {
+    if (!ELECTRONIC_PAYMENTS_ENABLED) {
+      return;
+    }
+
+    const phone = formatTripPaymentPhone(user?.phone);
+    if (!phone || !DRC_PAYMENT_PHONE_REGEX.test(phone)) {
+      showDialog({
+        variant: 'warning',
+        title: 'Numero Mobile Money requis',
+        message:
+          'Ajoutez un numero congolais valide dans votre profil avant de lancer le paiement FlexPay.',
+      });
+      return;
+    }
+
+    try {
+      const response = await initiateBookingPayment({
+        bookingId: currentBooking.id,
+        method: 'mobile_money',
+        phone,
+      }).unwrap();
+
+      if (response.payment.paymentUrl) {
+        await Linking.openURL(response.payment.paymentUrl);
+      }
+
+      showDialog({
+        variant: response.payment.status === 'succeeded' ? 'success' : 'info',
+        title: response.payment.status === 'succeeded' ? 'Paiement confirme' : 'Paiement lance',
+        message:
+          response.payment.message ??
+          'Confirmez la demande FlexPay sur votre telephone.',
+      });
+      refetchBooking();
+      return response;
+    } catch (error: any) {
+      const message =
+        error?.data?.message ?? error?.error ?? 'Impossible de lancer le paiement pour le moment.';
+      showDialog({
+        variant: 'danger',
+        title: 'Paiement impossible',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
+  };
+
+  const confirmDropoffWithPaymentMode = async (paymentMode: TripPaymentMode) => {
+    if (!booking) return;
+
+    try {
+      let bookingForDropoff = booking;
+      if (paymentMode !== booking.paymentMode) {
+        bookingForDropoff = await updateBookingPaymentMode({
+          bookingId: booking.id,
+          paymentMode,
+        }).unwrap();
+      }
+
+      const paymentAmount = getBookingPaymentAmount(bookingForDropoff);
+      if (
+        paymentMode === 'electronic' &&
+        paymentAmount > 0 &&
+        bookingForDropoff.paymentStatus !== 'succeeded'
+      ) {
+        const paymentResponse = await startElectronicPaymentForBooking(bookingForDropoff);
+        if (!paymentResponse) {
+          return;
+        }
+        if (paymentResponse.payment.status !== 'succeeded') {
+          showDialog({
+            variant: 'info',
+            title: 'Paiement a terminer',
+            message:
+              'Validez le paiement FlexPay sur votre telephone. Vous pourrez confirmer la depose des que le paiement est confirme.',
+          });
+          return;
+        }
+      }
+
+      await confirmDropoff({
+        id: booking.id,
+        paymentMode,
+      }).unwrap();
+      void trackEvent('booking_dropoff_confirmed', {
+        booking_id: booking.id,
+        trip_id: booking.tripId,
+        source_screen: 'booking_navigation',
+        payment_mode: paymentMode,
+      });
+      showDialog({
+        variant: 'success',
+        title: 'Trajet termine',
+        message: 'Merci d\'avoir voyage avec nous !',
+        actions: [
+          {
+            label: 'Evaluer le conducteur',
+            variant: 'primary',
+            onPress: () => router.push(`/rate/${tripId}`),
+          },
+        ],
+      });
+      refetchBooking();
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        'Impossible de confirmer la depose.';
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
+  };
+
   // Confirmer la depose
   const handleConfirmDropoff = async () => {
     if (!booking) return;
 
+    const paymentAmount = getBookingPaymentAmount(booking);
+    if (paymentAmount <= 0) {
+      void confirmDropoffWithPaymentMode(getAvailableTripPaymentMode(booking.paymentMode));
+      return;
+    }
+
     showDialog({
       variant: 'info',
-      title: 'Confirmer la depose',
-      message: 'Confirmez-vous que vous etes bien arrive a destination ?',
+      title: 'Mode de paiement',
+      message:
+        'Choisissez comment vous voulez regler ce trajet avant de confirmer la depose.',
       actions: [
-        { label: 'Annuler', variant: 'ghost' },
-        {
-          label: 'Confirmer',
-          variant: 'primary',
-          onPress: async () => {
-            try {
-              await confirmDropoff(booking.id).unwrap();
-              void trackEvent('booking_dropoff_confirmed', {
-                booking_id: booking.id,
-                trip_id: booking.tripId,
-                source_screen: 'booking_navigation',
-              });
-              showDialog({
-                variant: 'success',
-                title: 'Trajet termine',
-                message: 'Merci d\'avoir voyage avec nous !',
-                actions: [
-                  {
-                    label: 'Evaluer le conducteur',
-                    variant: 'primary',
-                    onPress: () => router.push(`/rate/${tripId}`),
-                  },
-                ],
-              });
-              refetchBooking();
-            } catch (error: any) {
-              showDialog({
-                variant: 'danger',
-                title: 'Erreur',
-                message: error?.data?.message || 'Impossible de confirmer la depose.',
-              });
-            }
-          },
-        },
+        ...TRIP_PAYMENT_MODE_OPTIONS.map((option) => ({
+          label:
+            option.id === booking.paymentMode
+              ? `${option.label} (actuel)`
+              : option.label,
+          variant: option.id === booking.paymentMode ? 'primary' as const : 'secondary' as const,
+          autoClose: false,
+          onPress: () => confirmDropoffWithPaymentMode(option.id),
+        })),
+        { label: 'Annuler', variant: 'ghost' as const },
       ],
     });
   };
@@ -795,9 +946,9 @@ export default function PassengerNavigationScreen() {
               <TouchableOpacity
                 style={[styles.actionButton, styles.dropoffButton]}
                 onPress={handleConfirmDropoff}
-                disabled={isConfirmingDropoff}
+                disabled={isConfirmingDropoff || isUpdatingPaymentMode || isInitiatingPayment}
               >
-                {isConfirmingDropoff ? (
+                {isConfirmingDropoff || isUpdatingPaymentMode || isInitiatingPayment ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
                   <>

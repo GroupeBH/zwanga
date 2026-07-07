@@ -3,6 +3,9 @@ import LocationPickerModal, { type MapLocationSelection } from '@/components/Loc
 import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { useDialog } from '@/components/ui/DialogProvider';
+import {
+  ELECTRONIC_PAYMENTS_ENABLED,
+} from '@/constants/paymentFeatures';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useUserLocation } from '@/hooks/useUserLocation';
@@ -16,25 +19,38 @@ import {
   useGetMyBookingsQuery,
   useGetTripBookingsQuery,
   useInitiateBookingPaymentMutation,
+  useUpdateBookingPaymentModeMutation,
 } from '@/store/api/bookingApi';
 import { useGeocodeMutation } from '@/store/api/googleMapsApi';
 import { useCreateConversationMutation } from '@/store/api/messageApi';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
+import { useCreateTripShareLinkMutation } from '@/store/api/trackingApi';
 import { useGetTripByIdQuery, useUpdateTripMutation } from '@/store/api/tripApi';
 import { useGetKycStatusQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
-import type { BookingStatus, GeoPoint, TripPaymentMode } from '@/types';
+import type { Booking, BookingStatus, GeoPoint, TripPaymentMode } from '@/types';
 import { formatTime } from '@/utils/dateHelpers';
 import {
   buildManualGeocodeQuery,
   mapGeocodeResponseToSelection,
 } from '@/utils/manualAddressGeocode';
 import { openWhatsApp } from '@/utils/phoneHelpers';
+import Animated, {
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from '@/utils/reanimated';
 import { getRouteInfo, type RouteInfo } from '@/utils/routeApi';
 import { isPointOnRoute, splitRouteByProgress } from '@/utils/routeHelpers';
-import { shareTrip, shareTripViaWhatsApp } from '@/utils/shareHelpers';
+import {
+  shareTrackingLinkViaWhatsApp,
+  shareTrip,
+  shareTripViaEmail,
+} from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerAndroid, type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useIsFocused } from '@react-navigation/native';
@@ -42,11 +58,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
+  InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
-  Image,
-  type ImageRequireSource,
-  InteractionManager,
   Linking,
   Modal,
   Platform,
@@ -57,16 +72,10 @@ import {
   TextInput,
   TouchableOpacity,
   useWindowDimensions,
-  View
+  View,
+  type ImageRequireSource
 } from 'react-native';
 import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import Animated, {
-  FadeInDown,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from '@/utils/reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const pointToLatLng = (point?: GeoPoint | null) => {
@@ -125,12 +134,16 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
   description: string;
   icon: keyof typeof Ionicons.glyphMap;
 }[] = [
-  {
-    id: 'electronic',
-    label: 'Paiement electronique',
-    description: 'Paiement securise via FlexPay',
-    icon: 'card-outline',
-  },
+  ...(ELECTRONIC_PAYMENTS_ENABLED
+    ? [
+        {
+          id: 'electronic' as const,
+          label: 'Paiement electronique',
+          description: 'Paiement securise via FlexPay',
+          icon: 'card-outline' as const,
+        },
+      ]
+    : []),
   {
     id: 'cash',
     label: "Paiement a l'arrivee",
@@ -141,6 +154,10 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
 const getTripPaymentModeLabel = (mode?: TripPaymentMode | null) =>
   TRIP_PAYMENT_MODE_OPTIONS.find((option) => option.id === mode)?.label ??
   "Paiement a l'arrivee";
+const getAvailableTripPaymentMode = (mode?: TripPaymentMode | null): TripPaymentMode =>
+  TRIP_PAYMENT_MODE_OPTIONS.some((option) => option.id === mode)
+    ? (mode as TripPaymentMode)
+    : 'cash';
 const DRC_PAYMENT_PHONE_REGEX = /^\+243\d{9}$/;
 const formatTripPaymentPhone = (value?: string | null) => {
   const digits = (value ?? '').replace(/\D/g, '');
@@ -586,7 +603,7 @@ export default function TripDetailsScreen() {
       showDialog({
         variant: 'warning',
         title: 'Adresses requises',
-        message: 'Indiquez un depart et une arrivee avant d enregistrer.',
+        message: "Indiquez un depart et une arrivee avant d'enregistrer.",
       });
       return;
     }
@@ -595,7 +612,7 @@ export default function TripDetailsScreen() {
       showDialog({
         variant: 'warning',
         title: 'Trajet invalide',
-        message: 'Le depart et l arrivee doivent etre differents.',
+        message: "Le depart et l'arrivée doivent être differents.",
       });
       return;
     }
@@ -628,7 +645,7 @@ export default function TripDetailsScreen() {
           showDialog({
             variant: 'warning',
             title: 'Arrivee introuvable',
-            message: 'Impossible de localiser cette adresse d arrivee. Verifiez le texte ou choisissez le point sur la carte.',
+            message: "Impossible de localiser cette adresse d'arrivée. Verifiez le texte ou choisissez le point sur la carte.",
           });
           return;
         }
@@ -694,12 +711,12 @@ export default function TripDetailsScreen() {
         id: trip.id,
         updates,
       }).unwrap();
-      showDialog({ variant: 'success', title: 'Succes', message: 'Le trajet a ete mis a jour.' });
+      showDialog({ variant: 'success', title: 'Succes', message: 'Le trajet a été mis à jour.' });
       closeEditModal();
       refetchTrip();
     } catch (error: any) {
       const message =
-        error?.data?.message ?? error?.error ?? 'Impossible de mettre a jour ce trajet pour le moment.';
+        error?.data?.message ?? error?.error ?? 'Impossible de mettre à jour ce trajet pour le moment.';
       showDialog({ variant: 'danger', title: 'Erreur', message });
     }
   };
@@ -754,15 +771,18 @@ export default function TripDetailsScreen() {
   const [createBooking, { isLoading: isBooking }] = useCreateBookingMutation();
   const [initiateBookingPayment, { isLoading: isInitiatingBookingPayment }] =
     useInitiateBookingPaymentMutation();
+  const [updateBookingPaymentMode, { isLoading: isUpdatingBookingPaymentMode }] =
+    useUpdateBookingPaymentModeMutation();
   const [cancelBookingMutation, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
   const [confirmPickupByPassenger, { isLoading: isConfirmingPickup }] = useConfirmPickupByPassengerMutation();
   const [confirmDropoffByPassenger, { isLoading: isConfirmingDropoff }] = useConfirmDropoffByPassengerMutation();
   const [createConversation, { isLoading: isCreatingConversation }] = useCreateConversationMutation();
+  const [createTripShareLink, { isLoading: isCreatingTripShareLink }] = useCreateTripShareLinkMutation();
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
   const [bookingStep, setBookingStep] = useState<1 | 2 | 3>(1); // 1: places, 2: points, 3: preview
   const [bookingSeats, setBookingSeats] = useState('1');
   const [bookingPaymentMode, setBookingPaymentMode] =
-    useState<TripPaymentMode>('electronic');
+    useState<TripPaymentMode>('cash');
   const [bookingModalError, setBookingModalError] = useState('');
   const [passengerOrigin, setPassengerOrigin] = useState<MapLocationSelection | null>(null);
   const [passengerOriginManualAddress, setPassengerOriginManualAddress] = useState('');
@@ -1052,15 +1072,15 @@ export default function TripDetailsScreen() {
   const showDriverVehicleReminder = isTripDriver && (trip?.status === 'upcoming' || trip?.status === 'ongoing');
   const showPassengerSecurityAccess = !isTripDriver;
   const passengerSecurityQuickHint = !activeBooking
-    ? 'Ajoutez d abord vos contacts dans Profil > Parametres > Securite, puis choisissez qui notifier pour ce trajet.'
+    ? "Ajoutez d'abord vos contacts dans Profil > Parametres > Securite, puis choisissez qui notifier pour ce trajet."
     : activeBooking.status === 'pending'
-      ? 'Reservation en attente: preparez vos contacts d urgence puis selectionnez ceux a notifier des que disponible.'
+      ? "Reservation en attente: preparez vos contacts d'urgence puis selectionnez ceux à notifier dès que disponible."
       : activeBooking.status === 'accepted'
-        ? 'Avant de monter, ouvrez la securite du trajet pour choisir les proches a notifier.'
-        : 'Ouvrez la securite du trajet pour ajuster qui est notifie.';
+        ? 'Avant de monter, ouvrez la securité du trajet pour choisir les proches à notifier.'
+        : 'Ouvrez la securite du trajet pour ajuster qui est notifié.';
   const passengerSecurityButtonLabel = canAccessTripSecurity
     ? 'Ouvrir la securite du trajet'
-    : 'Connectez-vous pour la securite';
+    : 'Connectez-vous pour la securité';
   const defaultPassengerOriginSelection = useMemo<MapLocationSelection | null>(() => {
     const latitude = Number(lastKnownLocation?.coords?.latitude);
     const longitude = Number(lastKnownLocation?.coords?.longitude);
@@ -1106,7 +1126,7 @@ export default function TripDetailsScreen() {
   const openBookingModal = () => {
     const autoOrigin = defaultPassengerOriginSelection;
     setBookingSeats('1');
-    setBookingPaymentMode('electronic');
+    setBookingPaymentMode('cash');
     setBookingModalError('');
     setPassengerOrigin(autoOrigin);
     setPassengerOriginManualAddress('');
@@ -1124,8 +1144,8 @@ export default function TripDetailsScreen() {
     if (!canAccessTripSecurity) {
       showDialog({
         variant: 'info',
-        title: 'Securite indisponible',
-        message: 'Connectez-vous pour gerer vos proches et le suivi securite.',
+        title: 'Securité indisponible',
+        message: 'Connectez-vous pour gerer vos proches et le suivi securité.',
       });
       return;
     }
@@ -1160,7 +1180,7 @@ export default function TripDetailsScreen() {
       showDialog({
         variant: 'info',
         title: 'Connexion requise',
-        message: 'Connectez-vous pour gerer vos contacts d urgence.',
+        message: "Connectez-vous pour gerer vos contacts d'urgence.",
       });
       return;
     }
@@ -1303,12 +1323,8 @@ export default function TripDetailsScreen() {
     }
   };
 
-  const handlePayActiveBooking = async () => {
-    if (
-      !activeBooking ||
-      activeBooking.paymentMode !== 'electronic' ||
-      isInitiatingBookingPayment
-    ) {
+  const startElectronicPaymentForBooking = async (booking: Booking) => {
+    if (!ELECTRONIC_PAYMENTS_ENABLED) {
       return;
     }
 
@@ -1325,7 +1341,7 @@ export default function TripDetailsScreen() {
 
     try {
       const response = await initiateBookingPayment({
-        bookingId: activeBooking.id,
+        bookingId: booking.id,
         method: 'mobile_money',
         phone,
       }).unwrap();
@@ -1346,6 +1362,7 @@ export default function TripDetailsScreen() {
           'Confirmez la demande FlexPay sur votre telephone.',
       });
       refreshBookingLists();
+      return response;
     } catch (error: any) {
       const message =
         error?.data?.message ??
@@ -1357,6 +1374,19 @@ export default function TripDetailsScreen() {
         message: Array.isArray(message) ? message.join('\n') : message,
       });
     }
+  };
+
+  const handlePayActiveBooking = async () => {
+    if (
+      !activeBooking ||
+      !ELECTRONIC_PAYMENTS_ENABLED ||
+      activeBooking.paymentMode !== 'electronic' ||
+      isInitiatingBookingPayment
+    ) {
+      return;
+    }
+
+    await startElectronicPaymentForBooking(activeBooking);
   };
 
   const adjustBookingSeats = (delta: number) => {
@@ -1401,7 +1431,7 @@ export default function TripDetailsScreen() {
     }
     const seatsValue = parseInt(bookingSeats, 10);
     if (Number.isNaN(seatsValue) || seatsValue <= 0) {
-      setBookingModalError('Veuillez indiquer un nombre de places valide.');
+      setBookingModalError('Veuillez indiquer un nombre de places valides.');
       return;
     }
     // Vérifier si le nombre de places dépasse les places disponibles
@@ -1447,7 +1477,7 @@ export default function TripDetailsScreen() {
       if (!selection) {
         setIsValidatingDestination(false);
         setBookingModalError(
-          'Impossible de localiser ce point d arrivee. Verifiez le texte ou choisissez-le sur la carte.',
+          "Impossible de localiser ce point d'arrivee. Verifiez le texte ou choisissez-le sur la carte.",
         );
         return;
       }
@@ -1629,16 +1659,57 @@ export default function TripDetailsScreen() {
     }
   };
 
-  const handleConfirmDropoff = async () => {
+  const getBookingPaymentAmount = (booking: Booking) => {
+    const storedAmount = Number(booking.paymentAmount ?? 0);
+    if (Number.isFinite(storedAmount) && storedAmount > 0) return storedAmount;
+    const tripPrice = Number(trip?.price ?? 0);
+    return tripPrice > 0 ? booking.numberOfSeats * tripPrice : 0;
+  };
+
+  const confirmDropoffWithPaymentMode = async (paymentMode: TripPaymentMode) => {
     if (!activeBooking) {
       return;
     }
+
     try {
-      await confirmDropoffByPassenger(activeBooking.id).unwrap();
+      let bookingForDropoff = activeBooking;
+      if (paymentMode !== activeBooking.paymentMode) {
+        bookingForDropoff = await updateBookingPaymentMode({
+          bookingId: activeBooking.id,
+          paymentMode,
+        }).unwrap();
+      }
+
+      const paymentAmount = getBookingPaymentAmount(bookingForDropoff);
+      if (
+        paymentMode === 'electronic' &&
+        paymentAmount > 0 &&
+        bookingForDropoff.paymentStatus !== 'succeeded'
+      ) {
+        const paymentResponse = await startElectronicPaymentForBooking(bookingForDropoff);
+        if (!paymentResponse) {
+          return;
+        }
+        if (paymentResponse.payment.status !== 'succeeded') {
+          showDialog({
+            variant: 'info',
+            title: 'Paiement a terminer',
+            message:
+              'Validez le paiement FlexPay sur votre telephone. Vous pourrez confirmer la depose des que le paiement est confirme.',
+          });
+          return;
+        }
+      }
+
+      await confirmDropoffByPassenger({
+        id: activeBooking.id,
+        paymentMode,
+      }).unwrap();
       void trackEvent('booking_dropoff_confirmed', {
         booking_id: activeBooking.id,
         trip_id: activeBooking.tripId,
         source_screen: 'trip_details',
+        payment_mode: paymentMode,
       });
       showDialog({
         variant: 'success',
@@ -1657,6 +1728,37 @@ export default function TripDetailsScreen() {
         message: Array.isArray(message) ? message.join('\n') : message,
       });
     }
+  };
+
+  const handleConfirmDropoff = () => {
+    if (!activeBooking) {
+      return;
+    }
+
+    const paymentAmount = getBookingPaymentAmount(activeBooking);
+    if (paymentAmount <= 0) {
+      void confirmDropoffWithPaymentMode(getAvailableTripPaymentMode(activeBooking.paymentMode));
+      return;
+    }
+
+    showDialog({
+      variant: 'info',
+      title: 'Mode de paiement',
+      message:
+        'Choisissez comment vous voulez regler ce trajet avant de confirmer la depose.',
+      actions: [
+        ...TRIP_PAYMENT_MODE_OPTIONS.map((option) => ({
+          label:
+            option.id === activeBooking.paymentMode
+              ? `${option.label} (actuel)`
+              : option.label,
+          variant: option.id === activeBooking.paymentMode ? 'primary' as const : 'secondary' as const,
+          autoClose: false,
+          onPress: () => confirmDropoffWithPaymentMode(option.id),
+        })),
+        { label: 'Annuler', variant: 'ghost' as const },
+      ],
+    });
   };
 
   const closeKycWizard = () => {
@@ -1788,7 +1890,8 @@ export default function TripDetailsScreen() {
     return tripPrice > 0 ? activeBooking.numberOfSeats * tripPrice : 0;
   }, [activeBooking, trip?.price]);
   const canPayActiveBooking = Boolean(
-    activeBooking &&
+      activeBooking &&
+      ELECTRONIC_PAYMENTS_ENABLED &&
       activeBooking.status === 'accepted' &&
       activeBooking.paymentMode === 'electronic' &&
       activeBookingPaymentAmount > 0 &&
@@ -2870,9 +2973,15 @@ export default function TripDetailsScreen() {
                           <TouchableOpacity
                             style={[styles.bookingActionButton, styles.bookingActionConfirm]}
                             onPress={handleConfirmDropoff}
-                            disabled={isConfirmingDropoff}
+                            disabled={
+                              isConfirmingDropoff ||
+                              isUpdatingBookingPaymentMode ||
+                              isInitiatingBookingPayment
+                            }
                           >
-                            {isConfirmingDropoff ? <ActivityIndicator size="small" color={Colors.white} /> : (
+                            {isConfirmingDropoff ||
+                            isUpdatingBookingPaymentMode ||
+                            isInitiatingBookingPayment ? <ActivityIndicator size="small" color={Colors.white} /> : (
                               <>
                                 <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
                                 <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Confirmer dépose</Text>
@@ -3657,22 +3766,99 @@ export default function TripDetailsScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.contactModalButton, styles.contactModalButtonWhatsApp]}
+                style={[
+                  styles.contactModalButton,
+                  styles.contactModalButtonEmail,
+                  isCreatingTripShareLink && styles.contactModalButtonDisabled,
+                ]}
+                disabled={isCreatingTripShareLink}
                 onPress={async () => {
-                  setShareModalVisible(false);
-                  if (!trip?.id) return;
-                  try {
-                    await shareTripViaWhatsApp(
-                      trip.id,
-                      undefined,
-                      trip?.departure.name,
-                      trip?.arrival.name
-                    );
-                  } catch (error: any) {
+                  if (!trip?.id) {
                     showDialog({
                       variant: 'danger',
                       title: 'Erreur',
-                      message: error?.message || 'Impossible de partager via WhatsApp',
+                      message: 'Impossible de partager le trajet: identifiant manquant',
+                    });
+                    return;
+                  }
+                  try {
+                    const response = await createTripShareLink({
+                      tripId: trip.id,
+                      bookingId: activeBooking?.id,
+                      message: 'Voici le lien pour suivre mon trajet Zwanga en temps reel.',
+                    }).unwrap();
+                    setShareModalVisible(false);
+                    await shareTripViaEmail({
+                      mailtoUrl: response.email.mailtoUrl,
+                      subject: response.email.subject,
+                      body: response.email.body,
+                      fallbackUrl: response.publicUrl,
+                    });
+                  } catch (error: any) {
+                    const backendMessage = error?.data?.message;
+                    const message = Array.isArray(backendMessage)
+                      ? backendMessage.join('\n')
+                      : backendMessage || error?.message || 'Impossible de creer le lien de suivi';
+                    showDialog({
+                      variant: 'danger',
+                      title: 'Erreur',
+                      message,
+                    });
+                  }
+                }}
+              >
+                <View style={styles.contactModalButtonIcon}>
+                  <Ionicons name="mail-outline" size={24} color="#2563EB" />
+                </View>
+                <View style={styles.contactModalButtonContent}>
+                  <Text style={styles.contactModalButtonTitle}>Email</Text>
+                  <Text style={styles.contactModalButtonSubtitle}>Envoyer un lien web de suivi en direct</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.contactModalButton,
+                  styles.contactModalButtonWhatsApp,
+                  isCreatingTripShareLink && styles.contactModalButtonDisabled,
+                ]}
+                disabled={isCreatingTripShareLink}
+                onPress={async () => {
+                  if (!trip?.id) {
+                    showDialog({
+                      variant: 'danger',
+                      title: 'Erreur',
+                      message: 'Impossible de partager le trajet: identifiant manquant',
+                    });
+                    return;
+                  }
+                  try {
+                    const response = await createTripShareLink({
+                      tripId: trip.id,
+                      bookingId: activeBooking?.id,
+                      message: 'Voici le lien pour suivre mon trajet Zwanga en temps reel.',
+                    }).unwrap();
+                    const route =
+                      trip.departure.name && trip.arrival.name
+                        ? `${trip.departure.name} -> ${trip.arrival.name}`
+                        : 'mon trajet';
+                    setShareModalVisible(false);
+                    await shareTrackingLinkViaWhatsApp({
+                      fallbackTitle: 'Partager le suivi Zwanga',
+                      message: [
+                        `Suivez ${route} en temps reel sur Zwanga :`,
+                        response.publicUrl,
+                      ].join('\n'),
+                    });
+                  } catch (error: any) {
+                    const backendMessage = error?.data?.message;
+                    const message = Array.isArray(backendMessage)
+                      ? backendMessage.join('\n')
+                      : backendMessage || error?.message || 'Impossible de partager via WhatsApp';
+                    showDialog({
+                      variant: 'danger',
+                      title: 'Erreur',
+                      message,
                     });
                   }
                 }}
@@ -6100,6 +6286,13 @@ const styles = StyleSheet.create({
   contactModalButtonWhatsApp: {
     borderColor: '#25D366' + '20',
     backgroundColor: '#25D366' + '05',
+  },
+  contactModalButtonEmail: {
+    borderColor: '#2563EB' + '20',
+    backgroundColor: '#2563EB' + '05',
+  },
+  contactModalButtonDisabled: {
+    opacity: 0.6,
   },
   contactModalButtonIcon: {
     width: 48,
