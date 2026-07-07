@@ -29,6 +29,7 @@ import './googleMapsApi';
 import './supportApi';
 import './walletApi';
 import './driverSettlementsApi';
+import './trackingApi';
 
 // Import de la base API
 export { baseApi as zwangaApi };
@@ -203,3 +204,6 @@ export {
   useRequestDriverPayoutMutation,
   useLazyCheckDriverPayoutStatusQuery,
 } from './driverSettlementsApi';
+export {
+  useCreateTripShareLinkMutation,
+} from './trackingApi';

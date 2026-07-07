@@ -2,6 +2,9 @@ import { type AddressInputMode } from '@/components/AddressEntryModeSelector';
 import { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
+import {
+  ELECTRONIC_PAYMENTS_ENABLED,
+} from '@/constants/paymentFeatures';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackEvent } from '@/services/analytics';
@@ -99,22 +102,20 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
   description: string;
   icon: keyof typeof Ionicons.glyphMap;
 }[] = [
-  {
-    id: 'electronic',
-    label: 'Paiement electronique',
-    description: 'Paiement securise via FlexPay',
-    icon: 'card-outline',
-  },
-  {
-    id: 'points',
-    label: 'Points Zwanga',
-    description: 'Utilisez votre solde de points',
-    icon: 'wallet-outline',
-  },
+  ...(ELECTRONIC_PAYMENTS_ENABLED
+    ? [
+        {
+          id: 'electronic' as const,
+          label: 'Paiement electronique',
+          description: 'Paiement securise via FlexPay',
+          icon: 'card-outline' as const,
+        },
+      ]
+    : []),
   {
     id: 'cash',
-    label: "Paiement a l'arrivee",
-    description: 'Reglez directement aupres du conducteur',
+    label: "Paiement à l'arrivée",
+    description: 'Reglez directement auprès du conducteur',
     icon: 'cash-outline',
   },
 ];
@@ -327,7 +328,7 @@ export default function RequestTripScreen() {
   const [maxPricePerSeat, setMaxPricePerSeat] = useState('');
   const [hasEditedBudget, setHasEditedBudget] = useState(false);
   const [requestPaymentMode, setRequestPaymentMode] =
-    useState<TripPaymentMode>('electronic');
+    useState<TripPaymentMode>('cash');
   const [description, setDescription] = useState('');
   const [preferBudgetOffers, setPreferBudgetOffers] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);

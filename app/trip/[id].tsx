@@ -3,6 +3,9 @@ import LocationPickerModal, { type MapLocationSelection } from '@/components/Loc
 import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { useDialog } from '@/components/ui/DialogProvider';
+import {
+  ELECTRONIC_PAYMENTS_ENABLED,
+} from '@/constants/paymentFeatures';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useUserLocation } from '@/hooks/useUserLocation';
@@ -21,6 +24,7 @@ import {
 import { useGeocodeMutation } from '@/store/api/googleMapsApi';
 import { useCreateConversationMutation } from '@/store/api/messageApi';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
+import { useCreateTripShareLinkMutation } from '@/store/api/trackingApi';
 import { useGetTripByIdQuery, useUpdateTripMutation } from '@/store/api/tripApi';
 import { useGetKycStatusQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
@@ -35,7 +39,7 @@ import {
 import { openWhatsApp } from '@/utils/phoneHelpers';
 import { getRouteInfo, type RouteInfo } from '@/utils/routeApi';
 import { isPointOnRoute, splitRouteByProgress } from '@/utils/routeHelpers';
-import { shareTrip, shareTripViaWhatsApp } from '@/utils/shareHelpers';
+import { shareTrip, shareTripViaEmail, shareTripViaWhatsApp } from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerAndroid, type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useIsFocused } from '@react-navigation/native';
@@ -126,18 +130,16 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
   description: string;
   icon: keyof typeof Ionicons.glyphMap;
 }[] = [
-  {
-    id: 'electronic',
-    label: 'Paiement electronique',
-    description: 'Paiement securise via FlexPay',
-    icon: 'card-outline',
-  },
-  {
-    id: 'points',
-    label: 'Points Zwanga',
-    description: 'Utilisez votre solde de points',
-    icon: 'wallet-outline',
-  },
+  ...(ELECTRONIC_PAYMENTS_ENABLED
+    ? [
+        {
+          id: 'electronic' as const,
+          label: 'Paiement electronique',
+          description: 'Paiement securise via FlexPay',
+          icon: 'card-outline' as const,
+        },
+      ]
+    : []),
   {
     id: 'cash',
     label: "Paiement a l'arrivee",
@@ -148,6 +150,10 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
 const getTripPaymentModeLabel = (mode?: TripPaymentMode | null) =>
   TRIP_PAYMENT_MODE_OPTIONS.find((option) => option.id === mode)?.label ??
   "Paiement a l'arrivee";
+const getAvailableTripPaymentMode = (mode?: TripPaymentMode | null): TripPaymentMode =>
+  TRIP_PAYMENT_MODE_OPTIONS.some((option) => option.id === mode)
+    ? (mode as TripPaymentMode)
+    : 'cash';
 const DRC_PAYMENT_PHONE_REGEX = /^\+243\d{9}$/;
 const formatTripPaymentPhone = (value?: string | null) => {
   const digits = (value ?? '').replace(/\D/g, '');
@@ -767,11 +773,12 @@ export default function TripDetailsScreen() {
   const [confirmPickupByPassenger, { isLoading: isConfirmingPickup }] = useConfirmPickupByPassengerMutation();
   const [confirmDropoffByPassenger, { isLoading: isConfirmingDropoff }] = useConfirmDropoffByPassengerMutation();
   const [createConversation, { isLoading: isCreatingConversation }] = useCreateConversationMutation();
+  const [createTripShareLink, { isLoading: isCreatingTripShareLink }] = useCreateTripShareLinkMutation();
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
   const [bookingStep, setBookingStep] = useState<1 | 2 | 3>(1); // 1: places, 2: points, 3: preview
   const [bookingSeats, setBookingSeats] = useState('1');
   const [bookingPaymentMode, setBookingPaymentMode] =
-    useState<TripPaymentMode>('electronic');
+    useState<TripPaymentMode>('cash');
   const [bookingModalError, setBookingModalError] = useState('');
   const [passengerOrigin, setPassengerOrigin] = useState<MapLocationSelection | null>(null);
   const [passengerOriginManualAddress, setPassengerOriginManualAddress] = useState('');
@@ -1115,7 +1122,7 @@ export default function TripDetailsScreen() {
   const openBookingModal = () => {
     const autoOrigin = defaultPassengerOriginSelection;
     setBookingSeats('1');
-    setBookingPaymentMode('electronic');
+    setBookingPaymentMode('cash');
     setBookingModalError('');
     setPassengerOrigin(autoOrigin);
     setPassengerOriginManualAddress('');
@@ -1313,6 +1320,10 @@ export default function TripDetailsScreen() {
   };
 
   const startElectronicPaymentForBooking = async (booking: Booking) => {
+    if (!ELECTRONIC_PAYMENTS_ENABLED) {
+      return;
+    }
+
     const phone = formatTripPaymentPhone(user?.phone);
     if (!phone || !DRC_PAYMENT_PHONE_REGEX.test(phone)) {
       showDialog({
@@ -1364,6 +1375,7 @@ export default function TripDetailsScreen() {
   const handlePayActiveBooking = async () => {
     if (
       !activeBooking ||
+      !ELECTRONIC_PAYMENTS_ENABLED ||
       activeBooking.paymentMode !== 'electronic' ||
       isInitiatingBookingPayment
     ) {
@@ -1721,7 +1733,7 @@ export default function TripDetailsScreen() {
 
     const paymentAmount = getBookingPaymentAmount(activeBooking);
     if (paymentAmount <= 0) {
-      void confirmDropoffWithPaymentMode(activeBooking.paymentMode ?? 'cash');
+      void confirmDropoffWithPaymentMode(getAvailableTripPaymentMode(activeBooking.paymentMode));
       return;
     }
 
@@ -1874,7 +1886,8 @@ export default function TripDetailsScreen() {
     return tripPrice > 0 ? activeBooking.numberOfSeats * tripPrice : 0;
   }, [activeBooking, trip?.price]);
   const canPayActiveBooking = Boolean(
-    activeBooking &&
+      activeBooking &&
+      ELECTRONIC_PAYMENTS_ENABLED &&
       activeBooking.status === 'accepted' &&
       activeBooking.paymentMode === 'electronic' &&
       activeBookingPaymentAmount > 0 &&
@@ -3748,6 +3761,57 @@ export default function TripDetailsScreen() {
                 <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
               </TouchableOpacity>
 
+              <TouchableOpacity
+                style={[
+                  styles.contactModalButton,
+                  styles.contactModalButtonEmail,
+                  isCreatingTripShareLink && styles.contactModalButtonDisabled,
+                ]}
+                disabled={isCreatingTripShareLink}
+                onPress={async () => {
+                  if (!trip?.id) {
+                    showDialog({
+                      variant: 'danger',
+                      title: 'Erreur',
+                      message: 'Impossible de partager le trajet: identifiant manquant',
+                    });
+                    return;
+                  }
+                  try {
+                    const response = await createTripShareLink({
+                      tripId: trip.id,
+                      bookingId: activeBooking?.id,
+                      message: 'Voici le lien pour suivre mon trajet Zwanga en temps reel.',
+                    }).unwrap();
+                    setShareModalVisible(false);
+                    await shareTripViaEmail({
+                      mailtoUrl: response.email.mailtoUrl,
+                      subject: response.email.subject,
+                      body: response.email.body,
+                      fallbackUrl: response.publicUrl,
+                    });
+                  } catch (error: any) {
+                    const backendMessage = error?.data?.message;
+                    const message = Array.isArray(backendMessage)
+                      ? backendMessage.join('\n')
+                      : backendMessage || error?.message || 'Impossible de creer le lien de suivi';
+                    showDialog({
+                      variant: 'danger',
+                      title: 'Erreur',
+                      message,
+                    });
+                  }
+                }}
+              >
+                <View style={styles.contactModalButtonIcon}>
+                  <Ionicons name="mail-outline" size={24} color="#2563EB" />
+                </View>
+                <View style={styles.contactModalButtonContent}>
+                  <Text style={styles.contactModalButtonTitle}>Email</Text>
+                  <Text style={styles.contactModalButtonSubtitle}>Envoyer un lien web de suivi en direct</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+              </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.contactModalButton, styles.contactModalButtonWhatsApp]}
                 onPress={async () => {
@@ -6192,6 +6256,13 @@ const styles = StyleSheet.create({
   contactModalButtonWhatsApp: {
     borderColor: '#25D366' + '20',
     backgroundColor: '#25D366' + '05',
+  },
+  contactModalButtonEmail: {
+    borderColor: '#2563EB' + '20',
+    backgroundColor: '#2563EB' + '05',
+  },
+  contactModalButtonDisabled: {
+    opacity: 0.6,
   },
   contactModalButtonIcon: {
     width: 48,

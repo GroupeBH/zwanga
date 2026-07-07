@@ -1,4 +1,7 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import {
+  ELECTRONIC_PAYMENTS_ENABLED,
+} from '@/constants/paymentFeatures';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { trackEvent } from '@/services/analytics';
 import { trackingSocket, type DriverLocationPayload } from '@/services/trackingSocket';
@@ -91,14 +94,14 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
   id: TripPaymentMode;
   label: string;
 }[] = [
-  {
-    id: 'electronic',
-    label: 'Paiement electronique',
-  },
-  {
-    id: 'points',
-    label: 'Points Zwanga',
-  },
+  ...(ELECTRONIC_PAYMENTS_ENABLED
+    ? [
+        {
+          id: 'electronic' as const,
+          label: 'Paiement electronique',
+        },
+      ]
+    : []),
   {
     id: 'cash',
     label: "Paiement a l'arrivee",
@@ -113,6 +116,10 @@ const formatTripPaymentPhone = (value?: string | null) => {
   if (digits.startsWith('0')) return `+243${digits.slice(1)}`;
   return `+243${digits}`;
 };
+const getAvailableTripPaymentMode = (mode?: TripPaymentMode | null): TripPaymentMode =>
+  TRIP_PAYMENT_MODE_OPTIONS.some((option) => option.id === mode)
+    ? (mode as TripPaymentMode)
+    : 'cash';
 
 export default function PassengerNavigationScreen() {
   const { id } = useLocalSearchParams();
@@ -522,6 +529,10 @@ export default function PassengerNavigationScreen() {
   };
 
   const startElectronicPaymentForBooking = async (currentBooking: Booking) => {
+    if (!ELECTRONIC_PAYMENTS_ENABLED) {
+      return;
+    }
+
     const phone = formatTripPaymentPhone(user?.phone);
     if (!phone || !DRC_PAYMENT_PHONE_REGEX.test(phone)) {
       showDialog({
@@ -639,7 +650,7 @@ export default function PassengerNavigationScreen() {
 
     const paymentAmount = getBookingPaymentAmount(booking);
     if (paymentAmount <= 0) {
-      void confirmDropoffWithPaymentMode(booking.paymentMode ?? 'cash');
+      void confirmDropoffWithPaymentMode(getAvailableTripPaymentMode(booking.paymentMode));
       return;
     }
 

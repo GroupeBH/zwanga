@@ -2,6 +2,7 @@ import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardMod
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { VehicleFormModal } from '@/components/VehicleFormModal';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { ELECTRONIC_PAYMENTS_ENABLED } from '@/constants/paymentFeatures';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
@@ -878,6 +879,16 @@ export default function ProfileScreen() {
       return;
     }
 
+    if (!ELECTRONIC_PAYMENTS_ENABLED) {
+      showDialog({
+        variant: 'info',
+        title: 'Paiement indisponible',
+        message:
+          'Cette fonctionnalite est temporairement desactivee pendant les tests.',
+      });
+      return;
+    }
+
     stopSubscriptionPaymentAutoCheck();
     if (!isSubscriptionCardPayment && !subscriptionPhone.trim()) {
       setSubscriptionPhone(DRC_MOBILE_MONEY_PREFIX);
@@ -904,6 +915,16 @@ export default function ProfileScreen() {
   };
 
   const handleContinueSubscriptionPayment = () => {
+    if (!ELECTRONIC_PAYMENTS_ENABLED) {
+      showDialog({
+        variant: 'info',
+        title: 'Paiement indisponible',
+        message:
+          'Cette fonctionnalite est temporairement desactivee pendant les tests.',
+      });
+      return;
+    }
+
     Keyboard.dismiss();
 
     if (!isSubscriptionCardPayment && !subscriptionPhone.trim()) {
@@ -918,6 +939,16 @@ export default function ProfileScreen() {
   };
 
   const handleSubmitSubscriptionPayment = async () => {
+    if (!ELECTRONIC_PAYMENTS_ENABLED) {
+      showDialog({
+        variant: 'info',
+        title: 'Paiement indisponible',
+        message:
+          'Cette fonctionnalite est temporairement desactivee pendant les tests.',
+      });
+      return;
+    }
+
     const phone = formatCongolesePaymentPhone(subscriptionPhone);
     const paymentMethod = isSubscriptionCardPayment ? 'card' : 'mobile_money';
 
@@ -1024,7 +1055,7 @@ export default function ProfileScreen() {
     }
 
     openedSubscriptionParamRef.current = true;
-    if (isDriver) {
+    if (isDriver && ELECTRONIC_PAYMENTS_ENABLED) {
       setSubscriptionPaymentOrderNumber(null);
       setSubscriptionPaymentMessage(null);
       setSubscriptionModalVisible(true);
@@ -1037,6 +1068,10 @@ export default function ProfileScreen() {
     }
 
     handledPaymentStatusRef.current = paymentStatus;
+    if (!ELECTRONIC_PAYMENTS_ENABLED) {
+      return;
+    }
+
     setSubscriptionModalVisible(true);
 
     const normalizedStatus = String(paymentStatus).toLowerCase();
@@ -1701,7 +1736,11 @@ export default function ProfileScreen() {
                     <ActivityIndicator color={Colors.primary} />
                   ) : (
                     <>
-                      <Text style={styles.proSecondaryButtonText}>{"Payer dans l'app"}</Text>
+                      <Text style={styles.proSecondaryButtonText}>
+                        {ELECTRONIC_PAYMENTS_ENABLED
+                          ? "Payer dans l'app"
+                          : 'Paiement suspendu'}
+                      </Text>
                       <Text style={styles.proSecondaryPrice}>{proPriceLabel}</Text>
                     </>
                   )}

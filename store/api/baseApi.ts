@@ -125,6 +125,7 @@ export const baseApi = createApi({
     'DocumentFundingRequest',
     'Wallet',
     'DriverSettlement',
+    'TripShareLink',
   ],
   endpoints: () => ({}),
 });

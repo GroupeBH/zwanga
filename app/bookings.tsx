@@ -3,6 +3,9 @@ import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } f
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { trackEvent } from '@/services/analytics';
 import {
+  ELECTRONIC_PAYMENTS_ENABLED,
+} from '@/constants/paymentFeatures';
+import {
   useCancelBookingMutation,
   useConfirmDropoffByPassengerMutation,
   useConfirmPickupByPassengerMutation,
@@ -76,16 +79,15 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
   label: string;
   description: string;
 }[] = [
-  {
-    id: 'electronic',
-    label: 'Paiement electronique',
-    description: 'FlexPay Mobile Money',
-  },
-  {
-    id: 'points',
-    label: 'Points Zwanga',
-    description: 'Utiliser votre solde de points',
-  },
+  ...(ELECTRONIC_PAYMENTS_ENABLED
+    ? [
+        {
+          id: 'electronic' as const,
+          label: 'Paiement electronique',
+          description: 'FlexPay Mobile Money',
+        },
+      ]
+    : []),
   {
     id: 'cash',
     label: "Paiement a l'arrivee",
@@ -101,6 +103,10 @@ const formatTripPaymentPhone = (value?: string | null) => {
   if (digits.startsWith('0')) return `+243${digits.slice(1)}`;
   return `+243${digits}`;
 };
+const getAvailableTripPaymentMode = (mode?: TripPaymentMode | null): TripPaymentMode =>
+  TRIP_PAYMENT_MODE_OPTIONS.some((option) => option.id === mode)
+    ? (mode as TripPaymentMode)
+    : 'cash';
 
 export default function BookingsScreen() {
   const router = useRouter();
@@ -255,6 +261,10 @@ export default function BookingsScreen() {
   };
 
   const startElectronicPaymentForBooking = async (booking: Booking) => {
+    if (!ELECTRONIC_PAYMENTS_ENABLED) {
+      return;
+    }
+
     const phone = formatTripPaymentPhone(user?.phone);
     if (!phone || !DRC_PAYMENT_PHONE_REGEX.test(phone)) {
       showDialog({
@@ -359,7 +369,7 @@ export default function BookingsScreen() {
   const handleConfirmDropoff = (booking: Booking) => {
     const paymentAmount = getBookingPaymentAmount(booking);
     if (paymentAmount <= 0) {
-      void confirmDropoffWithPaymentMode(booking, booking.paymentMode ?? 'cash');
+      void confirmDropoffWithPaymentMode(booking, getAvailableTripPaymentMode(booking.paymentMode));
       return;
     }
 
