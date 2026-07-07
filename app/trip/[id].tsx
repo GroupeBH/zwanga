@@ -37,9 +37,20 @@ import {
   mapGeocodeResponseToSelection,
 } from '@/utils/manualAddressGeocode';
 import { openWhatsApp } from '@/utils/phoneHelpers';
+import Animated, {
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from '@/utils/reanimated';
 import { getRouteInfo, type RouteInfo } from '@/utils/routeApi';
 import { isPointOnRoute, splitRouteByProgress } from '@/utils/routeHelpers';
-import { shareTrip, shareTripViaEmail, shareTripViaWhatsApp } from '@/utils/shareHelpers';
+import {
+  shareTrackingLinkViaWhatsApp,
+  shareTrip,
+  shareTripViaEmail,
+} from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerAndroid, type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useIsFocused } from '@react-navigation/native';
@@ -47,11 +58,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
+  InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
-  Image,
-  type ImageRequireSource,
-  InteractionManager,
   Linking,
   Modal,
   Platform,
@@ -62,16 +72,10 @@ import {
   TextInput,
   TouchableOpacity,
   useWindowDimensions,
-  View
+  View,
+  type ImageRequireSource
 } from 'react-native';
 import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import Animated, {
-  FadeInDown,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from '@/utils/reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const pointToLatLng = (point?: GeoPoint | null) => {
@@ -599,7 +603,7 @@ export default function TripDetailsScreen() {
       showDialog({
         variant: 'warning',
         title: 'Adresses requises',
-        message: 'Indiquez un depart et une arrivee avant d enregistrer.',
+        message: "Indiquez un depart et une arrivee avant d'enregistrer.",
       });
       return;
     }
@@ -608,7 +612,7 @@ export default function TripDetailsScreen() {
       showDialog({
         variant: 'warning',
         title: 'Trajet invalide',
-        message: 'Le depart et l arrivee doivent etre differents.',
+        message: "Le depart et l'arrivée doivent être differents.",
       });
       return;
     }
@@ -641,7 +645,7 @@ export default function TripDetailsScreen() {
           showDialog({
             variant: 'warning',
             title: 'Arrivee introuvable',
-            message: 'Impossible de localiser cette adresse d arrivee. Verifiez le texte ou choisissez le point sur la carte.',
+            message: "Impossible de localiser cette adresse d'arrivée. Verifiez le texte ou choisissez le point sur la carte.",
           });
           return;
         }
@@ -707,12 +711,12 @@ export default function TripDetailsScreen() {
         id: trip.id,
         updates,
       }).unwrap();
-      showDialog({ variant: 'success', title: 'Succes', message: 'Le trajet a ete mis a jour.' });
+      showDialog({ variant: 'success', title: 'Succes', message: 'Le trajet a été mis à jour.' });
       closeEditModal();
       refetchTrip();
     } catch (error: any) {
       const message =
-        error?.data?.message ?? error?.error ?? 'Impossible de mettre a jour ce trajet pour le moment.';
+        error?.data?.message ?? error?.error ?? 'Impossible de mettre à jour ce trajet pour le moment.';
       showDialog({ variant: 'danger', title: 'Erreur', message });
     }
   };
@@ -1068,15 +1072,15 @@ export default function TripDetailsScreen() {
   const showDriverVehicleReminder = isTripDriver && (trip?.status === 'upcoming' || trip?.status === 'ongoing');
   const showPassengerSecurityAccess = !isTripDriver;
   const passengerSecurityQuickHint = !activeBooking
-    ? 'Ajoutez d abord vos contacts dans Profil > Parametres > Securite, puis choisissez qui notifier pour ce trajet.'
+    ? "Ajoutez d'abord vos contacts dans Profil > Parametres > Securite, puis choisissez qui notifier pour ce trajet."
     : activeBooking.status === 'pending'
-      ? 'Reservation en attente: preparez vos contacts d urgence puis selectionnez ceux a notifier des que disponible.'
+      ? "Reservation en attente: preparez vos contacts d'urgence puis selectionnez ceux à notifier dès que disponible."
       : activeBooking.status === 'accepted'
-        ? 'Avant de monter, ouvrez la securite du trajet pour choisir les proches a notifier.'
-        : 'Ouvrez la securite du trajet pour ajuster qui est notifie.';
+        ? 'Avant de monter, ouvrez la securité du trajet pour choisir les proches à notifier.'
+        : 'Ouvrez la securite du trajet pour ajuster qui est notifié.';
   const passengerSecurityButtonLabel = canAccessTripSecurity
     ? 'Ouvrir la securite du trajet'
-    : 'Connectez-vous pour la securite';
+    : 'Connectez-vous pour la securité';
   const defaultPassengerOriginSelection = useMemo<MapLocationSelection | null>(() => {
     const latitude = Number(lastKnownLocation?.coords?.latitude);
     const longitude = Number(lastKnownLocation?.coords?.longitude);
@@ -1140,8 +1144,8 @@ export default function TripDetailsScreen() {
     if (!canAccessTripSecurity) {
       showDialog({
         variant: 'info',
-        title: 'Securite indisponible',
-        message: 'Connectez-vous pour gerer vos proches et le suivi securite.',
+        title: 'Securité indisponible',
+        message: 'Connectez-vous pour gerer vos proches et le suivi securité.',
       });
       return;
     }
@@ -1176,7 +1180,7 @@ export default function TripDetailsScreen() {
       showDialog({
         variant: 'info',
         title: 'Connexion requise',
-        message: 'Connectez-vous pour gerer vos contacts d urgence.',
+        message: "Connectez-vous pour gerer vos contacts d'urgence.",
       });
       return;
     }
@@ -1427,7 +1431,7 @@ export default function TripDetailsScreen() {
     }
     const seatsValue = parseInt(bookingSeats, 10);
     if (Number.isNaN(seatsValue) || seatsValue <= 0) {
-      setBookingModalError('Veuillez indiquer un nombre de places valide.');
+      setBookingModalError('Veuillez indiquer un nombre de places valides.');
       return;
     }
     // Vérifier si le nombre de places dépasse les places disponibles
@@ -1473,7 +1477,7 @@ export default function TripDetailsScreen() {
       if (!selection) {
         setIsValidatingDestination(false);
         setBookingModalError(
-          'Impossible de localiser ce point d arrivee. Verifiez le texte ou choisissez-le sur la carte.',
+          "Impossible de localiser ce point d'arrivee. Verifiez le texte ou choisissez-le sur la carte.",
         );
         return;
       }
@@ -3813,22 +3817,48 @@ export default function TripDetailsScreen() {
                 <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.contactModalButton, styles.contactModalButtonWhatsApp]}
+                style={[
+                  styles.contactModalButton,
+                  styles.contactModalButtonWhatsApp,
+                  isCreatingTripShareLink && styles.contactModalButtonDisabled,
+                ]}
+                disabled={isCreatingTripShareLink}
                 onPress={async () => {
-                  setShareModalVisible(false);
-                  if (!trip?.id) return;
-                  try {
-                    await shareTripViaWhatsApp(
-                      trip.id,
-                      undefined,
-                      trip?.departure.name,
-                      trip?.arrival.name
-                    );
-                  } catch (error: any) {
+                  if (!trip?.id) {
                     showDialog({
                       variant: 'danger',
                       title: 'Erreur',
-                      message: error?.message || 'Impossible de partager via WhatsApp',
+                      message: 'Impossible de partager le trajet: identifiant manquant',
+                    });
+                    return;
+                  }
+                  try {
+                    const response = await createTripShareLink({
+                      tripId: trip.id,
+                      bookingId: activeBooking?.id,
+                      message: 'Voici le lien pour suivre mon trajet Zwanga en temps reel.',
+                    }).unwrap();
+                    const route =
+                      trip.departure.name && trip.arrival.name
+                        ? `${trip.departure.name} -> ${trip.arrival.name}`
+                        : 'mon trajet';
+                    setShareModalVisible(false);
+                    await shareTrackingLinkViaWhatsApp({
+                      fallbackTitle: 'Partager le suivi Zwanga',
+                      message: [
+                        `Suivez ${route} en temps reel sur Zwanga :`,
+                        response.publicUrl,
+                      ].join('\n'),
+                    });
+                  } catch (error: any) {
+                    const backendMessage = error?.data?.message;
+                    const message = Array.isArray(backendMessage)
+                      ? backendMessage.join('\n')
+                      : backendMessage || error?.message || 'Impossible de partager via WhatsApp';
+                    showDialog({
+                      variant: 'danger',
+                      title: 'Erreur',
+                      message,
                     });
                   }
                 }}

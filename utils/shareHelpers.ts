@@ -114,6 +114,31 @@ export async function shareTripViaWhatsApp(
 }
 
 /**
+ * Partage un lien public de suivi via WhatsApp.
+ */
+export async function shareTrackingLinkViaWhatsApp(input: {
+  message: string;
+  fallbackTitle?: string;
+}): Promise<void> {
+  const url = `whatsapp://send?text=${encodeURIComponent(input.message)}`;
+
+  try {
+    const canOpen = await Linking.canOpenURL(url);
+    if (canOpen) {
+      await Linking.openURL(url);
+      return;
+    }
+  } catch (error: any) {
+    console.warn('WhatsApp indisponible:', error?.message ?? error);
+  }
+
+  await Share.share({
+    title: input.fallbackTitle ?? 'Partager le suivi',
+    message: input.message,
+  });
+}
+
+/**
  * Partage un trajet via SMS
  * @param tripId ID du trajet
  * @param phoneNumber Numéro de téléphone
