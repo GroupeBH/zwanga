@@ -16,10 +16,11 @@ import {
 import { useGetMyDriverOffersQuery, useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useSendPhoneVerificationOtpMutation, useUpdatePinMutation, useUpdatePinWithOtpMutation, useUpdateUserMutation, useUploadKycMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useDeleteVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
+import { useGetMyWalletQuery, useGetWalletLedgerQuery } from '@/store/api/walletApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { performLogout } from '@/store/slices/authSlice';
-import type { SubscriptionPaymentResponse, SubscriptionPlan, Vehicle } from '@/types';
+import type { SubscriptionPaymentResponse, SubscriptionPlan, Vehicle, WalletLedgerEntry } from '@/types';
 import { createBecomeDriverAction, getApiErrorMessage, isDriverRequiredError } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -161,6 +162,44 @@ const getCardPaymentResultFromUrl = (url?: string | null): SubscriptionCardPayme
   return null;
 };
 
+const formatLoyaltyPoints = (value?: number | string | null) => {
+  const numericValue = Number(value ?? 0);
+  if (!Number.isFinite(numericValue)) return '0 pts';
+  return `${Math.max(0, Math.trunc(numericValue)).toLocaleString('fr-FR')} pts`;
+};
+
+const formatLedgerPointsAmount = (value?: number | string | null) => {
+  const numericValue = Number(value ?? 0);
+  if (!Number.isFinite(numericValue) || numericValue === 0) return '0 pts';
+  const sign = numericValue > 0 ? '+' : '-';
+  return `${sign}${Math.abs(Math.trunc(numericValue)).toLocaleString('fr-FR')} pts`;
+};
+
+const getWalletLedgerEntryLabel = (entry: WalletLedgerEntry) => {
+  if (entry.description) return entry.description;
+  if (entry.type === 'loyalty_reward') return 'Bonus fidelite';
+  if (entry.type === 'booking_payment') return 'Paiement de trajet';
+  if (entry.type === 'booking_refund') return 'Remboursement';
+  if (entry.type === 'top_up') return 'Recharge de points';
+  return 'Operation points';
+};
+
+const getWalletLedgerEntryIcon = (entry: WalletLedgerEntry): keyof typeof Ionicons.glyphMap => {
+  if (entry.type === 'booking_payment') return 'car-outline';
+  if (entry.type === 'booking_refund') return 'arrow-undo-outline';
+  if (entry.type === 'top_up') return 'add-circle-outline';
+  return 'gift-outline';
+};
+
+const getWalletLedgerEntryColor = (entry: WalletLedgerEntry) =>
+  Number(entry.amount ?? 0) < 0 ? Colors.danger : Colors.success;
+
+const formatWalletLedgerDate = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+};
+
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function ProfileScreen() {
@@ -195,6 +234,7 @@ export default function ProfileScreen() {
   const [newPinConfirm, setNewPinConfirm] = useState('');
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [openingDocumentsPack, setOpeningDocumentsPack] = useState(false);
+  const [walletModalVisible, setWalletModalVisible] = useState(false);
   const [subscriptionModalVisible, setSubscriptionModalVisible] = useState(false);
   const [selectedSubscriptionPaymentChannel, setSelectedSubscriptionPaymentChannel] =
     useState<SubscriptionPaymentChannel>('mpesa');
@@ -228,6 +268,16 @@ export default function ProfileScreen() {
     isLoading: vehiclesLoading,
     refetch: refetchVehicles,
   } = useGetVehiclesQuery();
+  const {
+    data: walletSummary,
+    isFetching: walletFetching,
+    refetch: refetchWallet,
+  } = useGetMyWalletQuery();
+  const {
+    data: walletLedger = [],
+    isFetching: walletLedgerFetching,
+    refetch: refetchWalletLedger,
+  } = useGetWalletLedgerQuery();
   const [createVehicle, { isLoading: creatingVehicle }] = useCreateVehicleMutation();
   const [deleteVehicle, { isLoading: deletingVehicle }] = useDeleteVehicleMutation();
   const [uploadKyc, { isLoading: uploadingKyc }] = useUploadKycMutation();
@@ -276,6 +326,12 @@ export default function ProfileScreen() {
     skip: !userId,
   });
   const reviewCount = reviews?.length ?? 0;
+  const walletBusy = walletFetching || walletLedgerFetching;
+  const walletRecentEntries = useMemo(
+    () => (walletLedger.length > 0 ? walletLedger : walletSummary?.recentEntries ?? []).slice(0, 5),
+    [walletLedger, walletSummary?.recentEntries],
+  );
+  const walletBalanceLabel = formatLoyaltyPoints(walletSummary?.account?.balance);
   const reviewAverage = useMemo(() => {
     if (avgRatingData?.averageRating !== undefined) {
       return avgRatingData.averageRating;
@@ -421,6 +477,8 @@ export default function ProfileScreen() {
         Promise.resolve(refetchProfile()),
         Promise.resolve(refetchVehicles()),
         Promise.resolve(refetchKycStatus()),
+        Promise.resolve(refetchWallet()),
+        Promise.resolve(refetchWalletLedger()),
       ];
       if (isDriver) {
         refreshTasks.push(Promise.resolve(refetchPremiumOverview()));
@@ -1583,6 +1641,38 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
           </TouchableOpacity>
 
+          <Animated.View entering={FadeInDown.delay(160)}>
+            <TouchableOpacity
+              style={styles.loyaltyOverviewCard}
+              onPress={() => setWalletModalVisible(true)}
+              activeOpacity={0.88}
+            >
+              <View style={styles.loyaltyOverviewHeader}>
+                <View style={styles.loyaltyOverviewIcon}>
+                  <Ionicons name="gift-outline" size={24} color={Colors.white} />
+                </View>
+                <View style={styles.loyaltyOverviewCopy}>
+                  <Text style={styles.loyaltyOverviewTitle}>Points Zwanga</Text>
+                  <Text style={styles.loyaltyOverviewSubtitle} numberOfLines={2}>
+                    Suivez votre solde et utilisez vos points comme mode de paiement.
+                  </Text>
+                </View>
+                {walletBusy ? (
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                ) : (
+                  <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                )}
+              </View>
+              <View style={styles.loyaltyBalanceRow}>
+                <Text style={styles.loyaltyBalanceValue}>{walletBalanceLabel}</Text>
+                <View style={styles.loyaltyBalancePill}>
+                  <Ionicons name="card-outline" size={13} color={Colors.primary} />
+                  <Text style={styles.loyaltyBalancePillText}>Disponible pour payer</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          </Animated.View>
+
 
           {/* Section "Devenir conducteur" pour les passagers */}
           {!isDriver && (
@@ -2574,6 +2664,104 @@ export default function ProfileScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
+      <Modal
+        visible={walletModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setWalletModalVisible(false)}
+      >
+        <View style={styles.walletModalBackdrop}>
+          <View style={styles.walletModalCard}>
+            <View style={styles.walletModalHeader}>
+              <View>
+                <Text style={styles.walletModalEyebrow}>Fidelite</Text>
+                <Text style={styles.walletModalTitle}>Points Zwanga</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.walletModalCloseButton}
+                onPress={() => setWalletModalVisible(false)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="close" size={18} color={Colors.gray[700]} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.walletBalanceCard}>
+              <View style={styles.walletBalanceIcon}>
+                <Ionicons name="gift" size={24} color={Colors.white} />
+              </View>
+              <View style={styles.walletBalanceCopy}>
+                <Text style={styles.walletBalanceLabel}>Solde disponible</Text>
+                <Text style={styles.walletBalanceAmount}>{walletBalanceLabel}</Text>
+                <Text style={styles.walletBalanceHint}>
+                  {"Choisissez Points Zwanga lors d'une reservation ou d'une depose."}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.walletModalActions}>
+              <TouchableOpacity
+                style={[styles.walletRefreshButton, walletBusy && styles.subscriptionButtonDisabled]}
+                onPress={() => {
+                  void refetchWallet();
+                  void refetchWalletLedger();
+                }}
+                disabled={walletBusy}
+                activeOpacity={0.85}
+              >
+                {walletBusy ? (
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                ) : (
+                  <>
+                    <Ionicons name="refresh-outline" size={16} color={Colors.primary} />
+                    <Text style={styles.walletRefreshButtonText}>Rafraichir</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.walletLedgerTitle}>Dernieres operations</Text>
+            <ScrollView
+              style={styles.walletLedgerList}
+              contentContainerStyle={styles.walletLedgerListContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {walletRecentEntries.length > 0 ? (
+                walletRecentEntries.map((entry) => {
+                  const entryColor = getWalletLedgerEntryColor(entry);
+                  return (
+                    <View key={entry.id} style={styles.walletLedgerItem}>
+                      <View style={[styles.walletLedgerIcon, { backgroundColor: entryColor + '18' }]}>
+                        <Ionicons name={getWalletLedgerEntryIcon(entry)} size={17} color={entryColor} />
+                      </View>
+                      <View style={styles.walletLedgerCopy}>
+                        <Text style={styles.walletLedgerLabel} numberOfLines={1}>
+                          {getWalletLedgerEntryLabel(entry)}
+                        </Text>
+                        <Text style={styles.walletLedgerMeta}>
+                          {formatWalletLedgerDate(entry.createdAt)}
+                        </Text>
+                      </View>
+                      <Text style={[styles.walletLedgerAmount, { color: entryColor }]}>
+                        {formatLedgerPointsAmount(entry.amount)}
+                      </Text>
+                    </View>
+                  );
+                })
+              ) : (
+                <View style={styles.walletLedgerEmpty}>
+                  <Ionicons name="receipt-outline" size={24} color={Colors.gray[400]} />
+                  <Text style={styles.walletLedgerEmptyTitle}>Aucune operation</Text>
+                  <Text style={styles.walletLedgerEmptyText}>
+                    Vos gains, paiements et remboursements en points apparaitront ici.
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       <TutorialOverlay
         visible={profileGuideVisible}
         title="Votre espace Zwanga"
@@ -2770,6 +2958,70 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.xs,
     color: Colors.gray[500],
     marginTop: 2,
+  },
+  loyaltyOverviewCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.secondary + '35',
+    ...CommonStyles.shadowSm,
+  },
+  loyaltyOverviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  loyaltyOverviewIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.secondary,
+  },
+  loyaltyOverviewCopy: {
+    flex: 1,
+  },
+  loyaltyOverviewTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  loyaltyOverviewSubtitle: {
+    marginTop: 2,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    lineHeight: 17,
+  },
+  loyaltyBalanceRow: {
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[100],
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  loyaltyBalanceValue: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+  },
+  loyaltyBalancePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '12',
+  },
+  loyaltyBalancePillText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.medium,
+    color: Colors.primary,
   },
   section: {
     paddingHorizontal: Spacing.xl,
@@ -3881,6 +4133,181 @@ const styles = StyleSheet.create({
   },
   subscriptionButtonDisabled: {
     opacity: 0.6,
+  },
+  walletModalBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(15,23,42,0.58)',
+  },
+  walletModalCard: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.xl,
+    maxHeight: '82%',
+    ...CommonStyles.shadowLg,
+  },
+  walletModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+  },
+  walletModalEyebrow: {
+    fontSize: FontSizes.xs,
+    color: Colors.secondary,
+    fontWeight: FontWeights.bold,
+    textTransform: 'uppercase',
+  },
+  walletModalTitle: {
+    marginTop: 2,
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  walletModalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+  },
+  walletBalanceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.secondary + '30',
+    backgroundColor: Colors.secondary + '0F',
+    padding: Spacing.md,
+  },
+  walletBalanceIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: BorderRadius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.secondary,
+  },
+  walletBalanceCopy: {
+    flex: 1,
+  },
+  walletBalanceLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+    fontWeight: FontWeights.semibold,
+  },
+  walletBalanceAmount: {
+    marginTop: 2,
+    fontSize: FontSizes.xxl,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+  },
+  walletBalanceHint: {
+    marginTop: 4,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+    lineHeight: 17,
+  },
+  walletModalActions: {
+    marginTop: Spacing.md,
+    alignItems: 'flex-start',
+  },
+  walletRefreshButton: {
+    minHeight: 40,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.primary + '24',
+    backgroundColor: Colors.primary + '08',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+  },
+  walletRefreshButtonText: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  walletLedgerTitle: {
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.sm,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  walletLedgerList: {
+    maxHeight: 260,
+  },
+  walletLedgerListContent: {
+    gap: Spacing.sm,
+    paddingBottom: Spacing.md,
+  },
+  walletLedgerItem: {
+    minHeight: 58,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    backgroundColor: Colors.gray[50],
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  walletLedgerIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  walletLedgerCopy: {
+    flex: 1,
+  },
+  walletLedgerLabel: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
+  walletLedgerMeta: {
+    marginTop: 2,
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+  },
+  walletLedgerAmount: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  walletLedgerEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    backgroundColor: Colors.gray[50],
+  },
+  walletLedgerEmptyTitle: {
+    marginTop: Spacing.sm,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+  },
+  walletLedgerEmptyText: {
+    marginTop: 4,
+    textAlign: 'center',
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+    lineHeight: 17,
   },
   paymentActionContainer: {
     gap: Spacing.md,

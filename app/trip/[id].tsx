@@ -150,6 +150,12 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
     description: 'Reglez directement aupres du conducteur',
     icon: 'cash-outline',
   },
+  {
+    id: 'points',
+    label: 'Points Zwanga',
+    description: 'Utilisez votre solde de fidelite',
+    icon: 'gift-outline',
+  },
 ];
 const getTripPaymentModeLabel = (mode?: TripPaymentMode | null) =>
   TRIP_PAYMENT_MODE_OPTIONS.find((option) => option.id === mode)?.label ??
@@ -782,7 +788,7 @@ export default function TripDetailsScreen() {
   const [bookingStep, setBookingStep] = useState<1 | 2 | 3>(1); // 1: places, 2: points, 3: preview
   const [bookingSeats, setBookingSeats] = useState('1');
   const [bookingPaymentMode, setBookingPaymentMode] =
-    useState<TripPaymentMode>('cash');
+    useState<TripPaymentMode>('electronic');
   const [bookingModalError, setBookingModalError] = useState('');
   const [passengerOrigin, setPassengerOrigin] = useState<MapLocationSelection | null>(null);
   const [passengerOriginManualAddress, setPassengerOriginManualAddress] = useState('');
@@ -1126,7 +1132,7 @@ export default function TripDetailsScreen() {
   const openBookingModal = () => {
     const autoOrigin = defaultPassengerOriginSelection;
     setBookingSeats('1');
-    setBookingPaymentMode('cash');
+    setBookingPaymentMode('electronic');
     setBookingModalError('');
     setPassengerOrigin(autoOrigin);
     setPassengerOriginManualAddress('');

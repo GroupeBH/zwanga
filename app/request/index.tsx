@@ -118,6 +118,12 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
     description: 'Reglez directement auprès du conducteur',
     icon: 'cash-outline',
   },
+  {
+    id: 'points',
+    label: 'Points Zwanga',
+    description: 'Utilisez votre solde de fidelite',
+    icon: 'gift-outline',
+  },
 ];
 
 function roundToStep(date: Date, step: number) {
@@ -328,7 +334,7 @@ export default function RequestTripScreen() {
   const [maxPricePerSeat, setMaxPricePerSeat] = useState('');
   const [hasEditedBudget, setHasEditedBudget] = useState(false);
   const [requestPaymentMode, setRequestPaymentMode] =
-    useState<TripPaymentMode>('cash');
+    useState<TripPaymentMode>('electronic');
   const [description, setDescription] = useState('');
   const [preferBudgetOffers, setPreferBudgetOffers] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);

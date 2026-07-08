@@ -9,7 +9,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "version": "eas version"
+    "version": "eas version",
+    "postinstall": "node scripts/patch-react-native-drawing-order.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

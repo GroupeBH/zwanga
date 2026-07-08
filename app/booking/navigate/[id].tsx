@@ -106,6 +106,10 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
     id: 'cash',
     label: "Paiement a l'arrivee",
   },
+  {
+    id: 'points',
+    label: 'Points Zwanga',
+  },
 ];
 
 const DRC_PAYMENT_PHONE_REGEX = /^\+243\d{9}$/;

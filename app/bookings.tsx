@@ -93,6 +93,11 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
     label: "Paiement a l'arrivee",
     description: 'Regler directement aupres du conducteur',
   },
+  {
+    id: 'points',
+    label: 'Points Zwanga',
+    description: 'Utiliser votre solde de fidelite',
+  },
 ];
 
 const DRC_PAYMENT_PHONE_REGEX = /^\+243\d{9}$/;
