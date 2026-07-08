@@ -17,7 +17,7 @@ import { selectAvailableTrips, selectLocationRadius } from '@/store/selectors';
 import { setTrips } from '@/store/slices/tripsSlice';
 import type { Trip } from '@/types';
 import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
-import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
+import { formatDateTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requestNavigation';
 import {
   getGeoPointCoordinate as getSafeGeoPointCoordinate,
@@ -164,7 +164,11 @@ function getTripMapCoordinate(trip: Trip): MapCoordinate | null {
   return getLocationCoordinate(trip.departure);
 }
 
-function hasUpcomingDeparture(trip: Pick<Trip, 'departureTime'>) {
+function hasUpcomingDeparture(trip: Pick<Trip, 'departureTime' | 'status'>) {
+  if (trip.status === 'ongoing') {
+    return true;
+  }
+
   const departureTs = new Date(trip.departureTime).getTime();
 
   if (!Number.isFinite(departureTs)) {
@@ -198,9 +202,9 @@ function TripPreviewCard({
   const calculatedArrivalTime = useTripArrivalTime(trip);
   const parsedRating = Number(trip.driverRating);
   const hasDriverRating = Number.isFinite(parsedRating) && parsedRating > 0;
-  const arrivalTime = calculatedArrivalTime
-    ? formatTime(calculatedArrivalTime.toISOString())
-    : formatTime(trip.arrivalTime);
+  const arrivalDateTime = calculatedArrivalTime
+    ? formatDateTime(calculatedArrivalTime.toISOString())
+    : formatDateTime(trip.arrivalTime);
   const tripVehicleType = trip.vehicleType || 'car';
   const driverName = trip.driverName || 'Conducteur Zwanga';
   const seatsLabel = `${trip.availableSeats} place${trip.availableSeats > 1 ? 's' : ''}`;
@@ -257,13 +261,13 @@ function TripPreviewCard({
         </View>
         <View style={styles.tripPreviewRouteCopy}>
           <View>
-            <Text style={styles.tripPreviewRouteLabel}>DÉPART - {formatTime(trip.departureTime)}</Text>
+            <Text style={styles.tripPreviewRouteLabel}>DÉPART - {formatDateTime(trip.departureTime)}</Text>
             <Text style={styles.tripPreviewRouteText} numberOfLines={1}>
               {placeName(trip.departure)}
             </Text>
           </View>
           <View>
-            <Text style={styles.tripPreviewRouteLabel}>ARRIVÉE - {arrivalTime}</Text>
+            <Text style={styles.tripPreviewRouteLabel}>ARRIVÉE ESTIMÉE - {arrivalDateTime}</Text>
             <Text style={styles.tripPreviewRouteText} numberOfLines={1}>
               {placeName(trip.arrival)}
             </Text>
@@ -1068,7 +1072,7 @@ export default function HomeScreen() {
               anchor={TRIP_MARKER_ANCHOR}
               image={androidTripMarkerImage}
               title={`${formatPrice(trip.price)} - ${trip.driverName || 'Conducteur Zwanga'}`}
-              description={`${formatTime(trip.departureTime)} · ${placeName(trip.departure)} vers ${placeName(trip.arrival)} · ${trip.availableSeats} place${trip.availableSeats > 1 ? 's' : ''}`}
+              description={`${formatDateTime(trip.departureTime)} · ${placeName(trip.departure)} vers ${placeName(trip.arrival)} · ${trip.availableSeats} place${trip.availableSeats > 1 ? 's' : ''}`}
               onPress={() => handleTripMarkerPress(trip.id, isSelected)}
               onCalloutPress={() => openTripDetail(trip.id)}
               tappable
@@ -1082,7 +1086,7 @@ export default function HomeScreen() {
                     <Text style={styles.tripMapCalloutTitle} numberOfLines={1}>
                       {formatPrice(trip.price)}
                     </Text>
-                    <Text style={styles.tripMapCalloutTime}>{formatTime(trip.departureTime)}</Text>
+                    <Text style={styles.tripMapCalloutTime}>{formatDateTime(trip.departureTime)}</Text>
                   </View>
                   <Text style={styles.tripMapCalloutRoute} numberOfLines={1}>
                     {placeName(trip.departure)} vers {placeName(trip.arrival)}
@@ -1227,7 +1231,7 @@ export default function HomeScreen() {
             style={styles.actionSearchButton}
             onPress={() => router.push('/search')}
           >
-            <Ionicons name="search" size={17} color={HOME_COLORS.navy} />
+            <Ionicons name="search" size={17} color={Colors.white} />
             <Text style={styles.actionSearchText} numberOfLines={1}>Chercher</Text>
           </TouchableOpacity>
         </View>
@@ -1950,16 +1954,16 @@ const styles = StyleSheet.create({
     width: 82,
     minHeight: 48,
     borderRadius: BorderRadius.lg,
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    backgroundColor: HOME_COLORS.success,
     borderWidth: 1,
-    borderColor: HOME_COLORS.softLine,
+    borderColor: HOME_COLORS.success,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
     ...CommonStyles.shadowSm,
   },
   actionSearchText: {
-    color: HOME_COLORS.navy,
+    color: Colors.white,
     fontSize: 11,
     fontWeight: FontWeights.bold,
   },

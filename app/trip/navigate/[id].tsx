@@ -377,7 +377,7 @@ export default function NavigationScreen() {
           completed: booking.pickedUp || false,
         });
 
-        // Point de dépose du passager (destination personnalisée ou arrivée du trip)
+        // Point d'arrivée du passager (destination personnalisée ou arrivée du trip)
         let dropoffLocation = {
           lat: tripArrivalCoordinate!.latitude,
           lng: tripArrivalCoordinate!.longitude,
@@ -693,7 +693,7 @@ export default function NavigationScreen() {
     const waypointType =
       waypoint.type === 'pickup'
         ? `point de récupération de ${passengerName}`
-        : `point de dépose de ${passengerName}`;
+        : `point d'arrivée de ${passengerName}`;
     const address = waypoint.address ? ` Adresse: ${waypoint.address}.` : '';
     return `Vous arrivez au ${waypointType}.${address}`;
   }, []);
@@ -1017,9 +1017,25 @@ export default function NavigationScreen() {
     };
   }, [waypoints]);
 
-  // Confirmer le waypoint (récupération ou dépose du passager)
+  const canConfirmWaypoint = useCallback((waypoint?: Waypoint | null) => {
+    if (!waypoint) return false;
+    return waypoint.type === 'pickup' || waypoint.booking.droppedOffConfirmedByPassenger === true;
+  }, []);
+
+  // Confirmer le waypoint (récupération ou arrivée du passager)
   const handleConfirmWaypoint = async () => {
     if (!activeWaypoint || !isMountedRef.current) return;
+
+    if (!canConfirmWaypoint(activeWaypoint)) {
+      showDialog({
+        title: 'Demande client requise',
+        message:
+          'Le passager doit d abord signaler son arrivee depuis son application avant votre confirmation.',
+        variant: 'warning',
+        icon: 'hourglass',
+      });
+      return;
+    }
     
     const bookingId = activeWaypoint.booking.id;
     
@@ -1039,7 +1055,7 @@ export default function NavigationScreen() {
           icon: 'person-add',
         });
       } else {
-        // Confirmer la dépose du passager
+        // Confirmer l'arrivée du passager
         await confirmDropoff(bookingId).unwrap();
         void trackEvent('driver_dropoff_confirmed', {
           booking_id: bookingId,
@@ -1047,8 +1063,8 @@ export default function NavigationScreen() {
           source_screen: 'trip_navigation',
         });
         showDialog({
-          title: 'Passager déposé ✅',
-          message: `${activeWaypoint.passenger.name} a été déposé avec succès.`,
+          title: 'Arrivée confirmée',
+          message: `${activeWaypoint.passenger.name} est bien arrivé(e).`,
           variant: 'success',
           icon: 'checkmark-circle',
         });
@@ -1078,7 +1094,7 @@ export default function NavigationScreen() {
       const confirmationSpeech =
         activeWaypoint.type === 'pickup'
           ? `${activeWaypoint.passenger.name} est récupéré. Recalcul de l'itinéraire vers la prochaine étape.`
-          : `${activeWaypoint.passenger.name} est déposé. Recalcul de l'itinéraire vers la prochaine étape.`;
+          : `L'arrivée de ${activeWaypoint.passenger.name} est confirmée. Recalcul de l'itinéraire vers la prochaine étape.`;
       void speakNavigationMessage(confirmationSpeech, { force: true });
       
       // Recalculer l'itinéraire après confirmation d'un waypoint
@@ -1361,7 +1377,7 @@ export default function NavigationScreen() {
               longitude: waypoints[currentWaypointIndex].location.lng,
             }}
             pinColor={waypoints[currentWaypointIndex].type === 'pickup' ? Colors.secondary : Colors.success}
-            title={`${waypoints[currentWaypointIndex].type === 'pickup' ? 'Récupérer' : 'Déposer'} ${waypoints[currentWaypointIndex].passenger.name}`}
+            title={`${waypoints[currentWaypointIndex].type === 'pickup' ? 'Récupérer' : 'Arrivée'} ${waypoints[currentWaypointIndex].passenger.name}`}
           />
         )}
 
@@ -1508,7 +1524,7 @@ export default function NavigationScreen() {
             >
               <View style={styles.nextWaypointInfo}>
                 <Text style={styles.nextWaypointType}>
-                  {waypoints[currentWaypointIndex].type === 'pickup' ? '📍 Récupérer' : '🏁 Déposer'}
+                  {waypoints[currentWaypointIndex].type === 'pickup' ? '📍 Récupérer' : '🏁 Arrivée'}
                 </Text>
                 <Text style={styles.nextWaypointName} numberOfLines={1}>
                   {waypoints[currentWaypointIndex].passenger.name}
@@ -1517,7 +1533,13 @@ export default function NavigationScreen() {
               <TouchableOpacity
                 style={[
                   styles.quickConfirmButton,
-                  { backgroundColor: waypoints[currentWaypointIndex].type === 'pickup' ? Colors.secondary : Colors.success }
+                  {
+                    backgroundColor: !canConfirmWaypoint(waypoints[currentWaypointIndex])
+                      ? Colors.gray[300]
+                      : waypoints[currentWaypointIndex].type === 'pickup'
+                        ? Colors.secondary
+                        : Colors.success,
+                  }
                 ]}
                 onPress={() => {
                   waypointModalVisibleRef.current = true;
@@ -1525,7 +1547,11 @@ export default function NavigationScreen() {
                   setWaypointModalVisible(true);
                 }}
               >
-                <Ionicons name="checkmark" size={20} color={Colors.white} />
+                <Ionicons
+                  name={canConfirmWaypoint(waypoints[currentWaypointIndex]) ? 'checkmark' : 'hourglass'}
+                  size={20}
+                  color={Colors.white}
+                />
               </TouchableOpacity>
             </TouchableOpacity>
           )}
@@ -1752,7 +1778,7 @@ export default function NavigationScreen() {
 
             {/* Titre */}
             <Text style={styles.waypointModalTitle}>
-              {activeWaypoint?.type === 'pickup' ? '📍 Point de récupération' : '🏁 Point de dépose'}
+              {activeWaypoint?.type === 'pickup' ? '📍 Point de récupération' : "🏁 Point d'arrivée"}
             </Text>
 
             {/* Nom du passager */}
@@ -1768,6 +1794,12 @@ export default function NavigationScreen() {
               </Text>
             </View>
 
+            {activeWaypoint?.type === 'dropoff' && !canConfirmWaypoint(activeWaypoint) && (
+              <Text style={styles.waypointModalWaitingText}>
+                En attente que le passager signale son arrivee.
+              </Text>
+            )}
+
             {/* Boutons d'action */}
             <View style={styles.waypointModalActions}>
               <TouchableOpacity
@@ -1781,11 +1813,17 @@ export default function NavigationScreen() {
               <TouchableOpacity
                 style={[
                   styles.waypointModalPrimaryButton,
-                  { backgroundColor: activeWaypoint?.type === 'pickup' ? Colors.secondary : Colors.success },
-                  (isConfirmingPickup || isConfirmingDropoff) && { opacity: 0.7 }
+                  {
+                    backgroundColor: !canConfirmWaypoint(activeWaypoint)
+                      ? Colors.gray[300]
+                      : activeWaypoint?.type === 'pickup'
+                        ? Colors.secondary
+                        : Colors.success,
+                  },
+                  (isConfirmingPickup || isConfirmingDropoff || !canConfirmWaypoint(activeWaypoint)) && { opacity: 0.7 }
                 ]}
                 onPress={handleConfirmWaypoint}
-                disabled={isConfirmingPickup || isConfirmingDropoff}
+                disabled={isConfirmingPickup || isConfirmingDropoff || !canConfirmWaypoint(activeWaypoint)}
               >
                 {(isConfirmingPickup || isConfirmingDropoff) ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
@@ -1793,7 +1831,11 @@ export default function NavigationScreen() {
                   <>
                     <Ionicons name="checkmark" size={20} color="#FFFFFF" />
                     <Text style={styles.waypointModalPrimaryButtonText}>
-                      {activeWaypoint?.type === 'pickup' ? 'Passager récupéré' : 'Passager déposé'}
+                      {!canConfirmWaypoint(activeWaypoint)
+                        ? 'En attente du client'
+                        : activeWaypoint?.type === 'pickup'
+                          ? 'Passager récupéré'
+                          : "Confirmer l'arrivée"}
                     </Text>
                   </>
                 )}
@@ -1894,7 +1936,7 @@ export default function NavigationScreen() {
                         {waypoint.passenger.name}
                       </Text>
                       <Text style={styles.waypointListType}>
-                        {waypoint.type === 'pickup' ? 'Récupération' : 'Dépose'}
+                        {waypoint.type === 'pickup' ? 'Récupération' : 'Arrivée'}
                       </Text>
                     </View>
 
@@ -1912,7 +1954,13 @@ export default function NavigationScreen() {
                         <TouchableOpacity
                           style={[
                             styles.waypointListAction,
-                            { backgroundColor: waypoint.type === 'pickup' ? Colors.secondary : Colors.success }
+                            {
+                              backgroundColor: !canConfirmWaypoint(waypoint)
+                                ? Colors.gray[300]
+                                : waypoint.type === 'pickup'
+                                  ? Colors.secondary
+                                  : Colors.success,
+                            }
                           ]}
                           onPress={(event) => {
                             event.stopPropagation();
@@ -1922,7 +1970,11 @@ export default function NavigationScreen() {
                             setWaypointModalVisible(true);
                           }}
                         >
-                          <Ionicons name="checkmark" size={16} color={Colors.white} />
+                          <Ionicons
+                            name={canConfirmWaypoint(waypoint) ? 'checkmark' : 'hourglass'}
+                            size={16}
+                            color={Colors.white}
+                          />
                         </TouchableOpacity>
                       </View>
                     )}
@@ -2731,6 +2783,15 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     color: Colors.gray[700],
     flex: 1,
+  },
+  waypointModalWaitingText: {
+    alignSelf: 'stretch',
+    marginTop: -Spacing.md,
+    marginBottom: Spacing.lg,
+    color: Colors.secondary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    textAlign: 'center',
   },
   waypointModalActions: {
     flexDirection: 'row',

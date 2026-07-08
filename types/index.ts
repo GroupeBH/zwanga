@@ -258,7 +258,7 @@ export interface Booking {
   pickedUpAt?: string | null;
   pickedUpConfirmedByPassenger?: boolean;
   pickedUpConfirmedAt?: string | null;
-  // Confirmation de dépose
+  // Signalement et confirmation de l'arrivée
   droppedOff?: boolean;
   droppedOffAt?: string | null;
   droppedOffConfirmedByPassenger?: boolean;
@@ -901,4 +901,3 @@ export interface NotificationsResponse {
 export interface MarkNotificationsResponse {
   updated: number;
 }
-

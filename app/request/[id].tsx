@@ -2328,7 +2328,7 @@ export default function TripRequestDetailsScreen() {
                             <View style={styles.formGroup}>
                               <Text style={styles.formLabel}>Repère d’arrivée</Text>
                               <Text style={styles.formHelperText}>
-                                Optionnel. Précisez le point de dépose si nécessaire.
+                                Optionnel. Précisez le point d&apos;arrivée si nécessaire.
                               </Text>
                               <TouchableOpacity
                                 style={styles.locationButton}

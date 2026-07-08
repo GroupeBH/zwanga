@@ -11,7 +11,7 @@ import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTrips } from '@/store/selectors';
 import type { Trip } from '@/types';
-import { formatTime } from '@/utils/dateHelpers';
+import { formatDateTime } from '@/utils/dateHelpers';
 import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -180,6 +180,8 @@ type SearchResultCardProps = {
 function SearchResultCard({ trip, onPress }: SearchResultCardProps) {
   const calculatedArrivalTime = useTripArrivalTime(trip);
   const arrivalIso = calculatedArrivalTime?.toISOString() ?? trip.arrivalTime;
+  const departureDateTime = formatDateTime(trip.departureTime);
+  const arrivalDateTime = formatDateTime(arrivalIso);
   const parsedRating = Number(trip.driverRating);
   const hasRating = Number.isFinite(parsedRating) && parsedRating > 0;
   const driverName = trip.driverName || 'Conducteur Zwanga';
@@ -231,7 +233,7 @@ function SearchResultCard({ trip, onPress }: SearchResultCardProps) {
       <View style={styles.tripTimingPanel}>
         <View style={[styles.timingAccent, { backgroundColor: routeAccent }]} />
         <View style={styles.departureTimeBlock}>
-          <Text style={styles.departureTime}>{formatTime(trip.departureTime)}</Text>
+          <Text style={styles.departureTime}>{departureDateTime}</Text>
           <Text style={[styles.departureLabel, { color: routeAccent }]}>DÉPART</Text>
         </View>
         <View style={styles.durationBlock}>
@@ -247,6 +249,9 @@ function SearchResultCard({ trip, onPress }: SearchResultCardProps) {
           </View>
           <Text style={styles.vehicleSubtext} numberOfLines={2}>
             {trip.description || `${vehicleLabel[trip.vehicleType || 'car']} • ${seatsLabel}`}
+          </Text>
+          <Text style={styles.arrivalEstimateText} numberOfLines={1}>
+            Arrivee estimee {arrivalDateTime}
           </Text>
         </View>
       </View>
@@ -1085,13 +1090,14 @@ const styles = StyleSheet.create({
     width: 4,
   },
   departureTimeBlock: {
-    width: 96,
+    width: 124,
     paddingLeft: Spacing.md,
   },
   departureTime: {
     color: Colors.gray[900],
-    fontSize: FontSizes.xxl,
+    fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
+    lineHeight: 18,
   },
   departureLabel: {
     marginTop: 5,
@@ -1099,7 +1105,7 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   durationBlock: {
-    width: 82,
+    width: 74,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,
@@ -1138,6 +1144,12 @@ const styles = StyleSheet.create({
     color: SEARCH_COLORS.body,
     fontSize: FontSizes.xs,
     lineHeight: 17,
+  },
+  arrivalEstimateText: {
+    marginTop: 5,
+    color: Colors.primary,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
   },
   routeSummary: {
     marginTop: Spacing.md,

@@ -602,7 +602,7 @@ export default function PassengerNavigationScreen() {
             variant: 'info',
             title: 'Paiement a terminer',
             message:
-              'Validez le paiement FlexPay sur votre telephone. Vous pourrez confirmer la depose des que le paiement est confirme.',
+              'Validez le paiement FlexPay sur votre telephone. Vous pourrez signaler votre arrivee des que le paiement est confirme.',
           });
           return;
         }
@@ -612,7 +612,7 @@ export default function PassengerNavigationScreen() {
         id: booking.id,
         paymentMode,
       }).unwrap();
-      void trackEvent('booking_dropoff_confirmed', {
+      void trackEvent('booking_dropoff_requested', {
         booking_id: booking.id,
         trip_id: booking.tripId,
         source_screen: 'booking_navigation',
@@ -620,22 +620,16 @@ export default function PassengerNavigationScreen() {
       });
       showDialog({
         variant: 'success',
-        title: 'Trajet termine',
-        message: 'Merci d\'avoir voyage avec nous !',
-        actions: [
-          {
-            label: 'Evaluer le conducteur',
-            variant: 'primary',
-            onPress: () => router.push(`/rate/${tripId}`),
-          },
-        ],
+        title: 'Demande envoyee',
+        message:
+          'Votre arrivee a ete signalee au conducteur. Il doit la confirmer pour terminer le trajet.',
       });
       refetchBooking();
     } catch (error: any) {
       const message =
         error?.data?.message ??
         error?.error ??
-        'Impossible de confirmer la depose.';
+        'Impossible de signaler votre arrivee.';
       showDialog({
         variant: 'danger',
         title: 'Erreur',
@@ -644,7 +638,7 @@ export default function PassengerNavigationScreen() {
     }
   };
 
-  // Confirmer la depose
+  // Signaler l'arrivee du passager
   const handleConfirmDropoff = async () => {
     if (!booking) return;
 
@@ -658,7 +652,7 @@ export default function PassengerNavigationScreen() {
       variant: 'info',
       title: 'Mode de paiement',
       message:
-        'Choisissez comment vous voulez regler ce trajet avant de confirmer la depose.',
+        'Choisissez comment vous voulez regler ce trajet avant de signaler votre arrivee.',
       actions: [
         ...TRIP_PAYMENT_MODE_OPTIONS.map((option) => ({
           label:
@@ -679,6 +673,8 @@ export default function PassengerNavigationScreen() {
     if (!booking || !trip) return 'loading';
     if (trip.status !== 'ongoing') return 'not_started';
     if (booking.droppedOff) return 'completed';
+    if (booking.droppedOffConfirmedByPassenger) return 'awaiting_dropoff_confirmation';
+    if (booking.pickedUp && !booking.pickedUpConfirmedByPassenger) return 'pickup_confirmation_needed';
     if (booking.pickedUp) return 'in_transit';
     return 'waiting_pickup';
   }, [booking, trip]);
@@ -749,7 +745,7 @@ export default function PassengerNavigationScreen() {
           </Marker>
         )}
 
-        {/* Point de depose */}
+        {/* Point d'arrivee */}
         {dropoffCoordinate && (
           <Marker coordinate={dropoffCoordinate} tracksViewChanges={false}>
             <View style={styles.dropoffMarker}>
@@ -837,7 +833,9 @@ export default function PassengerNavigationScreen() {
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>
             {tripStatus === 'waiting_pickup' ? 'En attente de recuperation' : 
+             tripStatus === 'pickup_confirmation_needed' ? 'Confirmer recuperation' :
              tripStatus === 'in_transit' ? 'En route' :
+             tripStatus === 'awaiting_dropoff_confirmation' ? 'Arrivee signalee' :
              tripStatus === 'completed' ? 'Arrive' : 'Suivi du trajet'}
           </Text>
           {isSocketConnected && (
@@ -925,7 +923,7 @@ export default function PassengerNavigationScreen() {
         {/* Boutons d'action */}
         {trip.status === 'ongoing' && (
           <View style={styles.actionButtons}>
-            {!booking.pickedUp && (
+            {booking.pickedUp && !booking.pickedUpConfirmedByPassenger && (
               <TouchableOpacity
                 style={[styles.actionButton, styles.pickupButton]}
                 onPress={handleConfirmPickup}
@@ -942,7 +940,7 @@ export default function PassengerNavigationScreen() {
               </TouchableOpacity>
             )}
 
-            {booking.pickedUp && !booking.droppedOff && (
+            {booking.pickedUp && booking.pickedUpConfirmedByPassenger && !booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
               <TouchableOpacity
                 style={[styles.actionButton, styles.dropoffButton]}
                 onPress={handleConfirmDropoff}
@@ -953,10 +951,17 @@ export default function PassengerNavigationScreen() {
                 ) : (
                   <>
                     <Ionicons name="flag" size={20} color={Colors.white} />
-                    <Text style={styles.actionButtonText}>Je suis arrive(e)</Text>
+                    <Text style={styles.actionButtonText}>Signaler mon arrivee</Text>
                   </>
                 )}
               </TouchableOpacity>
+            )}
+
+            {booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
+              <View style={styles.completedBadge}>
+                <Ionicons name="hourglass" size={24} color={Colors.secondary} />
+                <Text style={styles.completedText}>En attente du conducteur</Text>
+              </View>
             )}
 
             {booking.droppedOff && (
@@ -1343,4 +1348,3 @@ const styles = StyleSheet.create({
     borderColor: Colors.white,
   },
 });
-

@@ -1,6 +1,6 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import type { Trip } from '@/types';
-import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
+import { formatDateTime } from '@/utils/dateHelpers';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -29,9 +29,9 @@ export function TripCard({ trip, onPress, showReserveButton = false, showDetails
     }
   };
 
-  const arrivalTimeDisplay = calculatedArrivalTime 
-    ? formatTime(calculatedArrivalTime.toISOString())
-    : formatTime(trip.arrivalTime);
+  const arrivalDateTimeDisplay = calculatedArrivalTime
+    ? formatDateTime(calculatedArrivalTime.toISOString())
+    : formatDateTime(trip.arrivalTime);
 
   return (
     <View style={[styles.tripCard, isFeatured && styles.tripCardFeatured]}>
@@ -74,12 +74,8 @@ export function TripCard({ trip, onPress, showReserveButton = false, showDetails
           <Ionicons name="location" size={16} color={Colors.success} />
           <Text style={styles.routeText}>{trip.departure.name}</Text>
           <View style={styles.timeContainer}>
-            <Text style={styles.routeDateLabel}>
-              {formatDateWithRelativeLabel(trip.departureTime, false)}
-            </Text>
-            <Text style={styles.routeTime}>
-              {formatTime(trip.departureTime)}
-            </Text>
+            <Text style={styles.routeDateLabel}>Depart</Text>
+            <Text style={styles.routeTime}>{formatDateTime(trip.departureTime)}</Text>
           </View>
         </View>
 
@@ -87,14 +83,8 @@ export function TripCard({ trip, onPress, showReserveButton = false, showDetails
           <Ionicons name="navigate" size={16} color={Colors.primary} />
           <Text style={styles.routeText}>{trip.arrival.name}</Text>
           <View style={styles.timeContainer}>
-            {calculatedArrivalTime && (
-              <Text style={styles.routeDateLabel}>
-                {formatDateWithRelativeLabel(calculatedArrivalTime.toISOString(), false)}
-              </Text>
-            )}
-            <Text style={styles.routeTime}>
-              {arrivalTimeDisplay}
-            </Text>
+            <Text style={styles.routeDateLabel}>Arrivee estimee</Text>
+            <Text style={styles.routeTime}>{arrivalDateTimeDisplay}</Text>
           </View>
         </View>
       </View>

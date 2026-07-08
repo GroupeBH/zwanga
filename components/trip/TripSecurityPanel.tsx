@@ -243,7 +243,7 @@ function TripSecurityPanel({
           variant: 'success',
           title: 'Configuration enregistrée',
           message:
-            'Le backend notifiera automatiquement ces contacts à la récupération et à la dépose.',
+            "Le backend notifiera automatiquement ces contacts à la récupération et à l'arrivée.",
         });
       }
 
@@ -362,7 +362,7 @@ function TripSecurityPanel({
             <Text style={[styles.modalSubtitle, compact && styles.modalSubtitleCompact]}>
               {role === 'driver'
                 ? 'Ces contacts seront utilisés automatiquement au démarrage et à la fin de ce trajet.'
-                : 'Ces contacts seront utilisés automatiquement à la récupération et à la dépose de ce passager.'}
+                : "Ces contacts seront utilisés automatiquement à la récupération et à l'arrivée de ce passager."}
             </Text>
 
             {isLoadingContacts ? (

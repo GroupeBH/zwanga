@@ -363,7 +363,7 @@ export const bookingApi = baseApi.injectEndpoints({
           : [bookingListTag, tripListTag, myTripsListTag],
     }),
 
-    // Confirmer la dépose du passager (par le driver)
+    // Confirmer l'arrivée signalée par le passager (par le driver)
     confirmDropoff: builder.mutation<Booking, string>({
       query: (id: string) => ({
         url: `/bookings/${id}/confirm-dropoff`,
@@ -383,7 +383,7 @@ export const bookingApi = baseApi.injectEndpoints({
           : [bookingListTag, tripListTag, myTripsListTag],
     }),
 
-    // Confirmer la dépose du passager (par le passager)
+    // Signaler l'arrivée du passager (par le passager)
     confirmDropoffByPassenger: builder.mutation<
       Booking,
       string | { id: string; paymentMode?: TripPaymentMode }
