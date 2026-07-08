@@ -16,15 +16,15 @@ import {
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus, TripPaymentMode } from '@/types';
-import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
+import { formatDateTime } from '@/utils/dateHelpers';
 import { openWhatsApp } from '@/utils/phoneHelpers';
+import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
-  Linking,
   Modal,
   RefreshControl,
   ScrollView,
@@ -147,7 +147,7 @@ export default function BookingsScreen() {
           if (booking.trip?.departureTime) {
             const departureDate = new Date(booking.trip.departureTime);
             // Si la date de départ est passée, la réservation est expirée
-            if (departureDate < now) {
+            if (booking.trip.status !== 'ongoing' && departureDate < now) {
               return false;
             }
           }
@@ -174,7 +174,7 @@ export default function BookingsScreen() {
           if (booking.trip?.departureTime) {
             const departureDate = new Date(booking.trip.departureTime);
             // Si la date de départ est passée, la réservation est expirée et va dans l'historique
-            if (departureDate < now) {
+            if (booking.trip.status !== 'ongoing' && departureDate < now) {
               return true;
             }
           }
@@ -283,9 +283,7 @@ export default function BookingsScreen() {
         phone,
       }).unwrap();
 
-      if (response.payment.paymentUrl) {
-        await Linking.openURL(response.payment.paymentUrl);
-      }
+      await openExternalUrlSafely(response.payment.paymentUrl, { logLabel: 'BookingsPayment' });
 
       showDialog({
         variant: response.payment.status === 'succeeded' ? 'success' : 'info',
@@ -335,29 +333,30 @@ export default function BookingsScreen() {
             variant: 'info',
             title: 'Paiement a terminer',
             message:
-              'Validez le paiement FlexPay sur votre telephone. Vous pourrez confirmer la depose des que le paiement est confirme.',
+              'Validez le paiement FlexPay sur votre telephone. Vous pourrez signaler votre arrivee des que le paiement est confirme.',
           });
           return;
         }
       }
 
       await confirmDropoffByPassenger({ id: booking.id, paymentMode }).unwrap();
-      void trackEvent('booking_dropoff_confirmed', {
+      void trackEvent('booking_dropoff_requested', {
         booking_id: booking.id,
         source_screen: 'bookings',
         payment_mode: paymentMode,
       });
       showDialog({
         variant: 'success',
-        title: 'Confirmation réussie',
-        message: 'Vous avez confirmé votre dépose. La réservation est maintenant complétée.',
+        title: 'Demande envoyée',
+        message:
+          'Votre arrivée a été signalée au conducteur. Il doit la confirmer pour terminer la réservation.',
       });
       refetch();
     } catch (error: any) {
       const message =
         error?.data?.message ??
         error?.error ??
-        'Impossible de confirmer la dépose pour le moment.';
+        'Impossible de signaler votre arrivée pour le moment.';
       showDialog({
         variant: 'danger',
         title: 'Erreur',
@@ -377,7 +376,7 @@ export default function BookingsScreen() {
       variant: 'info',
       title: 'Mode de paiement',
       message:
-        'Choisissez comment vous voulez regler ce trajet avant de confirmer la depose.',
+        'Choisissez comment vous voulez regler ce trajet avant de signaler votre arrivee.',
       actions: [
         ...TRIP_PAYMENT_MODE_OPTIONS.map((option) => ({
           label:
@@ -398,7 +397,10 @@ export default function BookingsScreen() {
       const trip = booking.trip;
       
       // Vérifier si la réservation est expirée (trajet avec date de départ passée)
-      const isExpired = trip?.departureTime && new Date(trip.departureTime) < new Date();
+      const isExpired =
+        trip?.status !== 'ongoing' &&
+        trip?.departureTime &&
+        new Date(trip.departureTime) < new Date();
       
       // Utiliser le statut "expiré" si applicable, sinon utiliser le statut normal
       const statusConfig = isExpired && (booking.status === 'pending' || booking.status === 'accepted')
@@ -414,9 +416,9 @@ export default function BookingsScreen() {
           };
       const calculatedArrivalTime = useTripArrivalTime(trip || null);
       const arrivalTimeDisplay = calculatedArrivalTime && trip
-        ? formatTime(calculatedArrivalTime.toISOString())
+        ? formatDateTime(calculatedArrivalTime.toISOString())
         : trip?.arrivalTime
-        ? formatTime(trip.arrivalTime)
+        ? formatDateTime(trip.arrivalTime)
         : '';
 
       return (
@@ -439,10 +441,10 @@ export default function BookingsScreen() {
               )}
               <View style={styles.bookingHeaderTextContainer}>
                 <Text style={styles.bookingTitle} numberOfLines={1} ellipsizeMode="tail">
-                  {trip?.departure.name ?? 'Trajet'} → {trip?.arrival.name ?? ''}
+                  {trip?.departure?.name ?? 'Trajet'} → {trip?.arrival?.name ?? ''}
                 </Text>
                 <Text style={styles.bookingSubtitle} numberOfLines={1} ellipsizeMode="tail">
-                  {trip ? `${formatDateWithRelativeLabel(trip.departureTime)} → ${arrivalTimeDisplay}` : ''}
+                  {trip ? `${formatDateTime(trip.departureTime)} -> arrivee estimee ${arrivalTimeDisplay}` : ''}
                 </Text>
               </View>
             </View>
@@ -478,11 +480,11 @@ export default function BookingsScreen() {
                 </Text>
               </View>
             )}
-            {booking.droppedOff && !booking.droppedOffConfirmedByPassenger && (
+            {booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
               <View style={styles.confirmationBanner}>
                 <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
                 <Text style={styles.confirmationBannerText}>
-                  Le conducteur a confirmé votre dépose. Veuillez confirmer également.
+                  Votre arrivée a été signalée. En attente de confirmation du conducteur.
                 </Text>
               </View>
             )}
@@ -517,8 +519,8 @@ export default function BookingsScreen() {
             </TouchableOpacity>
           )}
 
-          {/* Bouton "Confirmer la dépose" - Quand le driver a confirmé mais pas le passager */}
-          {activeTab === 'active' && !isExpired && booking.status === 'accepted' && booking.droppedOff && !booking.droppedOffConfirmedByPassenger && (
+          {/* Le passager signale son arrivée, puis le chauffeur la confirme. */}
+          {activeTab === 'active' && !isExpired && booking.status === 'accepted' && booking.pickedUp && booking.pickedUpConfirmedByPassenger && !booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
             <TouchableOpacity
               style={[styles.linkButton, styles.confirmButton]}
               onPress={() => handleConfirmDropoff(booking)}
@@ -529,13 +531,13 @@ export default function BookingsScreen() {
               ) : (
                 <>
                   <Ionicons name="checkmark-circle" size={16} color={Colors.white} />
-                  <Text style={[styles.linkButtonText, styles.confirmButtonText]}>Confirmer dépose</Text>
+                  <Text style={[styles.linkButtonText, styles.confirmButtonText]}>Signaler mon arrivée</Text>
                 </>
               )}
             </TouchableOpacity>
           )}
 
-          {/* Bouton "Noter le conducteur" - Après confirmation de dépose (actif et historique) */}
+          {/* Bouton "Noter le conducteur" - Après confirmation de l'arrivée (actif et historique) */}
           {booking.status === 'completed' && booking.droppedOffConfirmedByPassenger && trip?.id && (
             <TouchableOpacity
               style={[styles.linkButton, styles.rateButton]}
@@ -560,7 +562,7 @@ export default function BookingsScreen() {
           {/* Bouton WhatsApp - Seulement pour les réservations actives acceptées et non expirées */}
           {activeTab === 'active' && !isExpired && booking.status === 'accepted' && trip?.driver?.phone && 
            !(booking.pickedUp && !booking.pickedUpConfirmedByPassenger) &&
-           !(booking.droppedOff && !booking.droppedOffConfirmedByPassenger) && (
+           !(booking.droppedOffConfirmedByPassenger && !booking.droppedOff) && (
             <TouchableOpacity
               style={[styles.linkButton, styles.callButton]}
               onPress={() => {
@@ -577,7 +579,7 @@ export default function BookingsScreen() {
           {/* Bouton "Annuler" - Seulement pour les réservations actives et non expirées */}
           {activeTab === 'active' && !isExpired && (booking.status === 'pending' || booking.status === 'accepted') && 
            !(booking.pickedUp && !booking.pickedUpConfirmedByPassenger) &&
-           !(booking.droppedOff && !booking.droppedOffConfirmedByPassenger) && (
+           !(booking.droppedOffConfirmedByPassenger && !booking.droppedOff) && (
             <TouchableOpacity
               style={[styles.linkButton, styles.dangerButton]}
               onPress={() => handleCancel(booking.id)}
@@ -1146,4 +1148,3 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
   },
 });
-

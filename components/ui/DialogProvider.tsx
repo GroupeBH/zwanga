@@ -14,8 +14,8 @@ type DialogVariant = 'info' | 'success' | 'warning' | 'danger';
 
 interface DialogAction {
   label: string;
-  onPress?: () => void;
-  variant?: 'primary' | 'secondary' | 'ghost';
+  onPress?: () => unknown;
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'destructive';
   autoClose?: boolean;
 }
 
@@ -114,6 +114,21 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       if (action.autoClose !== false) {
         setDialog((currentDialog) => (currentDialog === activeDialog ? null : currentDialog));
       }
+    } catch (error) {
+      console.error(`[DialogProvider] Action failed: ${action.label}`, error);
+      setDialog((currentDialog) =>
+        currentDialog === activeDialog
+          ? {
+              visible: true,
+              variant: 'danger',
+              icon: VARIANT_CONFIG.danger.icon,
+              dismissible: true,
+              title: 'Action impossible',
+              message: 'Une erreur inattendue est survenue. Veuillez réessayer.',
+              actions: [{ label: 'Fermer', variant: 'primary' }],
+            }
+          : currentDialog,
+      );
     } finally {
       setRunningActionLabel(null);
     }
@@ -143,6 +158,8 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                     action.variant === 'primary' && styles.actionPrimary,
                     action.variant === 'secondary' && styles.actionSecondary,
                     action.variant === 'ghost' && styles.actionGhost,
+                    (action.variant === 'danger' || action.variant === 'destructive') &&
+                      styles.actionDanger,
                     runningActionLabel && action.label !== runningActionLabel && styles.actionDisabled,
                   ]}
                 >
@@ -151,6 +168,8 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                       styles.actionText,
                       action.variant === 'primary' && styles.actionTextPrimary,
                       action.variant === 'ghost' && styles.actionTextGhost,
+                      (action.variant === 'danger' || action.variant === 'destructive') &&
+                        styles.actionTextDanger,
                     ]}
                   >
                     {action.label}
@@ -236,6 +255,10 @@ const styles = StyleSheet.create({
   actionGhost: {
     borderColor: 'transparent',
   },
+  actionDanger: {
+    borderColor: Colors.danger + '30',
+    backgroundColor: Colors.danger + '08',
+  },
   actionDisabled: {
     opacity: 0.5,
   },
@@ -248,5 +271,8 @@ const styles = StyleSheet.create({
   },
   actionTextGhost: {
     color: Colors.gray[600],
+  },
+  actionTextDanger: {
+    color: Colors.danger,
   },
 });

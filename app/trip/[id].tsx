@@ -31,7 +31,7 @@ import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus, GeoPoint, TripPaymentMode } from '@/types';
-import { formatTime } from '@/utils/dateHelpers';
+import { formatDateTime } from '@/utils/dateHelpers';
 import {
   buildManualGeocodeQuery,
   mapGeocodeResponseToSelection,
@@ -51,6 +51,7 @@ import {
   shareTrip,
   shareTripViaEmail,
 } from '@/utils/shareHelpers';
+import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerAndroid, type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useIsFocused } from '@react-navigation/native';
@@ -62,7 +63,6 @@ import {
   InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   Platform,
   RefreshControl,
@@ -1346,9 +1346,7 @@ export default function TripDetailsScreen() {
         phone,
       }).unwrap();
 
-      if (response.payment.paymentUrl) {
-        await Linking.openURL(response.payment.paymentUrl);
-      }
+      await openExternalUrlSafely(response.payment.paymentUrl, { logLabel: 'TripBookingPayment' });
 
       showDialog({
         variant:
@@ -1695,7 +1693,7 @@ export default function TripDetailsScreen() {
             variant: 'info',
             title: 'Paiement a terminer',
             message:
-              'Validez le paiement FlexPay sur votre telephone. Vous pourrez confirmer la depose des que le paiement est confirme.',
+              'Validez le paiement FlexPay sur votre telephone. Vous pourrez signaler votre arrivee des que le paiement est confirme.',
           });
           return;
         }
@@ -1705,7 +1703,7 @@ export default function TripDetailsScreen() {
         id: activeBooking.id,
         paymentMode,
       }).unwrap();
-      void trackEvent('booking_dropoff_confirmed', {
+      void trackEvent('booking_dropoff_requested', {
         booking_id: activeBooking.id,
         trip_id: activeBooking.tripId,
         source_screen: 'trip_details',
@@ -1713,15 +1711,16 @@ export default function TripDetailsScreen() {
       });
       showDialog({
         variant: 'success',
-        title: 'Confirmation réussie',
-        message: 'Vous avez confirmé votre dépose. La réservation est maintenant complétée.',
+        title: 'Demande envoyée',
+        message:
+          'Votre arrivée a été signalée au conducteur. Il doit la confirmer pour terminer la réservation.',
       });
       refreshBookingLists();
     } catch (error: any) {
       const message =
         error?.data?.message ??
         error?.error ??
-        'Impossible de confirmer la dépose pour le moment.';
+        'Impossible de signaler votre arrivée pour le moment.';
       showDialog({
         variant: 'danger',
         title: 'Erreur',
@@ -1745,7 +1744,7 @@ export default function TripDetailsScreen() {
       variant: 'info',
       title: 'Mode de paiement',
       message:
-        'Choisissez comment vous voulez regler ce trajet avant de confirmer la depose.',
+        'Choisissez comment vous voulez regler ce trajet avant de signaler votre arrivee.',
       actions: [
         ...TRIP_PAYMENT_MODE_OPTIONS.map((option) => ({
           label:
@@ -2128,11 +2127,11 @@ export default function TripDetailsScreen() {
   const tripArrivalName = trip?.arrival?.name || trip?.arrival?.address || 'Arrivee';
   const tripDepartureAddress = trip?.departure?.address || tripDepartureName;
   const tripArrivalAddress = trip?.arrival?.address || tripArrivalName;
-  const tripDepartureTimeLabel = trip?.departureTime ? formatTime(trip.departureTime) : '--:--';
+  const tripDepartureTimeLabel = trip?.departureTime ? formatDateTime(trip.departureTime) : '--:--';
   const tripArrivalTimeLabel = calculatedArrivalTime
-    ? formatTime(calculatedArrivalTime.toISOString())
+    ? formatDateTime(calculatedArrivalTime.toISOString())
     : trip?.arrivalTime
-      ? formatTime(trip.arrivalTime)
+      ? formatDateTime(trip.arrivalTime)
       : '--:--';
   const tripPriceLabel = trip?.price === 0 ? 'Gratuit' : `${trip?.price ?? 0} FC`;
   const tripSeatsLabel =
@@ -2387,7 +2386,7 @@ export default function TripDetailsScreen() {
                     image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.departure : undefined}
                     pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.success}
                     title="Depart"
-                    description={trip?.departure.address}
+                    description={trip?.departure?.address}
                     tracksViewChanges={false}
                   >
                     {USE_CUSTOM_MAP_MARKERS ? (
@@ -2398,7 +2397,7 @@ export default function TripDetailsScreen() {
                     <Callout>
                       <View>
                         <Text style={{ fontWeight: 'bold' }}>Départ</Text>
-                        <Text>{trip?.departure.address}</Text>
+                        <Text>{trip?.departure?.address}</Text>
                       </View>
                     </Callout>
                       </>
@@ -2508,7 +2507,7 @@ export default function TripDetailsScreen() {
                   <Ionicons name="flag-outline" size={16} color={Colors.success} />
                 </View>
                 <View>
-                  <Text style={styles.tripQuickFactLabel}>Arrivee</Text>
+                  <Text style={styles.tripQuickFactLabel}>Arrivee estimee</Text>
                   <Text style={styles.tripQuickFactValue}>{tripArrivalTimeLabel}</Text>
                 </View>
               </View>
@@ -2542,7 +2541,7 @@ export default function TripDetailsScreen() {
                   <View style={[styles.tripInlineProgressFill, { width: `${progress}%` }]} />
                 </View>
                 <Text style={styles.tripInlineProgressEta}>
-                  Arrivee estimee: {estimatedArrivalTime ? formatTime(estimatedArrivalTime.toISOString()) : tripArrivalTimeLabel}
+                  Arrivee estimee: {estimatedArrivalTime ? formatDateTime(estimatedArrivalTime.toISOString()) : tripArrivalTimeLabel}
                 </Text>
               </View>
             )}
@@ -2564,7 +2563,7 @@ export default function TripDetailsScreen() {
                 </View>
                 <View style={styles.tripCompactStop}>
                   <View style={styles.tripCompactStopTop}>
-                    <Text style={[styles.tripCompactStopLabel, styles.tripCompactArrivalLabel]}>Arrivee</Text>
+                    <Text style={[styles.tripCompactStopLabel, styles.tripCompactArrivalLabel]}>Arrivee estimee</Text>
                     <Text style={styles.tripCompactStopTime}>{tripArrivalTimeLabel}</Text>
                   </View>
                   <Text style={styles.tripCompactStopName} numberOfLines={1}>{tripArrivalName}</Text>
@@ -2841,10 +2840,13 @@ export default function TripDetailsScreen() {
       </ScrollView>
 
       {/* Sticky Footer for Actions */}
-      <View style={[styles.stickyFooter, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
+      <View style={[styles.stickyFooter, { paddingBottom: Math.max(insets.bottom, 10) + 10 }]}>
         {(() => {
           // Vérifier si le trajet est expiré (date de départ passée)
-          const isExpired = trip?.departureTime && new Date(trip?.departureTime) < new Date();
+          const isExpired =
+            trip?.status !== 'ongoing' &&
+            trip?.departureTime &&
+            new Date(trip?.departureTime) < new Date();
           // Vérifier si le trajet peut être réservé (pas complété, pas annulé, pas expiré)
           const canBook = trip?.status !== 'completed' &&
             trip?.status !== 'cancelled' &&
@@ -2892,11 +2894,16 @@ export default function TripDetailsScreen() {
                   ) : (
                     <View style={styles.bookingCard}>
                       <View style={styles.bookingCardHeader}>
-                        <View>
-                          <Text style={styles.bookingCardTitle}>Ma réservation</Text>
-                          <Text style={styles.bookingCardSubtitle}>
-                            {activeBooking.numberOfSeats} place{activeBooking.numberOfSeats > 1 ? 's' : ''}{' • '}{trip.price === 0 ? 'Gratuit' : `${trip.price} FC`}
-                          </Text>
+                        <View style={styles.bookingHeaderIdentity}>
+                          <View style={styles.bookingHeaderIcon}>
+                            <Ionicons name="ticket-outline" size={20} color={Colors.primary} />
+                          </View>
+                          <View style={styles.bookingHeaderCopy}>
+                            <Text style={styles.bookingCardTitle}>Ma réservation</Text>
+                            <Text style={styles.bookingCardSubtitle}>
+                              {activeBooking.numberOfSeats} place{activeBooking.numberOfSeats > 1 ? 's' : ''}{' • '}{trip.price === 0 ? 'Gratuit' : `${trip.price} FC`}
+                            </Text>
+                          </View>
                         </View>
                         <View
                           style={[
@@ -2904,6 +2911,12 @@ export default function TripDetailsScreen() {
                             { backgroundColor: activeBookingStatus.background },
                           ]}
                         >
+                          <View
+                            style={[
+                              styles.bookingStatusDot,
+                              { backgroundColor: activeBookingStatus.color },
+                            ]}
+                          />
                           <Text style={[styles.bookingStatusText, { color: activeBookingStatus.color }]}>
                             {activeBookingStatus.label}
                           </Text>
@@ -2921,21 +2934,22 @@ export default function TripDetailsScreen() {
                               </Text>
                             </View>
                           )}
-                          {activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger && (
+                          {activeBooking.droppedOffConfirmedByPassenger && !activeBooking.droppedOff && (
                             <View style={styles.confirmationBanner}>
                               <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
                               <Text style={styles.confirmationBannerText}>
-                                Confirmation de dépose requise
+                                Arrivée signalée. En attente de confirmation du conducteur.
                               </Text>
                             </View>
                           )}
                         </>
                       )}
 
-                      <View style={styles.bookingActionsRow}>
+                      <View style={styles.bookingActionsStack}>
                         {canPayActiveBooking && (
                           <TouchableOpacity
-                            style={[styles.bookingActionButton, styles.bookingActionPayment]}
+                            activeOpacity={0.86}
+                            style={[styles.bookingActionButton, styles.bookingActionPrimary, styles.bookingActionPayment]}
                             onPress={handlePayActiveBooking}
                             disabled={isInitiatingBookingPayment}
                           >
@@ -2954,7 +2968,8 @@ export default function TripDetailsScreen() {
 
                         {activeBooking.status === 'accepted' && activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger && (
                           <TouchableOpacity
-                            style={[styles.bookingActionButton, styles.bookingActionConfirm]}
+                            activeOpacity={0.86}
+                            style={[styles.bookingActionButton, styles.bookingActionPrimary, styles.bookingActionConfirm]}
                             onPress={handleConfirmPickup}
                             disabled={isConfirmingPickup}
                           >
@@ -2969,9 +2984,10 @@ export default function TripDetailsScreen() {
                           </TouchableOpacity>
                         )}
 
-                        {activeBooking.status === 'accepted' && activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger && (
+                        {activeBooking.status === 'accepted' && activeBooking.pickedUp && activeBooking.pickedUpConfirmedByPassenger && !activeBooking.droppedOffConfirmedByPassenger && !activeBooking.droppedOff && (
                           <TouchableOpacity
-                            style={[styles.bookingActionButton, styles.bookingActionConfirm]}
+                            activeOpacity={0.86}
+                            style={[styles.bookingActionButton, styles.bookingActionPrimary, styles.bookingActionConfirm]}
                             onPress={handleConfirmDropoff}
                             disabled={
                               isConfirmingDropoff ||
@@ -2983,53 +2999,58 @@ export default function TripDetailsScreen() {
                             isUpdatingBookingPaymentMode ||
                             isInitiatingBookingPayment ? <ActivityIndicator size="small" color={Colors.white} /> : (
                               <>
-                                <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
-                                <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Confirmer dépose</Text>
+                                <Ionicons name="flag-outline" size={19} color={Colors.white} />
+                                <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Signaler mon arrivée</Text>
                               </>
                             )}
                           </TouchableOpacity>
                         )}
 
-                        {/* Bouton Navigation - visible quand le trajet est en cours */}
-                        {activeBooking.status === 'accepted' && trip.status === 'ongoing' &&
-                          !(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
-                          !(activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger) && (
-                            <TouchableOpacity
-                              style={[styles.bookingActionButton, styles.bookingActionNavigation]}
-                              onPress={() => router.push(`/booking/navigate/${activeBooking.id}`)}
-                            >
-                              <Ionicons name="navigate" size={18} color={Colors.white} />
-                              <Text style={[styles.bookingActionText, styles.bookingActionNavigationText]}>Suivre</Text>
-                            </TouchableOpacity>
-                          )}
+                        <View style={styles.bookingSecondaryActionsRow}>
+                          {/* Bouton Navigation - visible quand le trajet est en cours */}
+                          {activeBooking.status === 'accepted' && trip.status === 'ongoing' &&
+                            !(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
+                            !(activeBooking.droppedOffConfirmedByPassenger && !activeBooking.droppedOff) && (
+                              <TouchableOpacity
+                                activeOpacity={0.82}
+                                style={[styles.bookingActionButton, styles.bookingActionSecondary, styles.bookingActionNavigation]}
+                                onPress={() => router.push(`/booking/navigate/${activeBooking.id}`)}
+                              >
+                                <Ionicons name="navigate" size={18} color={Colors.white} />
+                                <Text style={[styles.bookingActionText, styles.bookingActionNavigationText]}>Suivre</Text>
+                              </TouchableOpacity>
+                            )}
 
-                        {activeBooking.status === 'accepted' && driverPhone &&
-                          !(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
-                          !(activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger) && (
-                            <TouchableOpacity
-                              style={[styles.bookingActionButton, styles.bookingActionCall]}
-                              onPress={() => setContactModalVisible(true)}
-                            >
-                              <Ionicons name="logo-whatsapp" size={18} color={'#25D366'} />
-                              <Text style={[styles.bookingActionText, styles.bookingActionCallText]}>WhatsApp</Text>
-                            </TouchableOpacity>
-                          )}
+                          {activeBooking.status === 'accepted' && driverPhone &&
+                            !(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
+                            !(activeBooking.droppedOffConfirmedByPassenger && !activeBooking.droppedOff) && (
+                              <TouchableOpacity
+                                activeOpacity={0.82}
+                                style={[styles.bookingActionButton, styles.bookingActionSecondary, styles.bookingActionCall]}
+                                onPress={() => setContactModalVisible(true)}
+                              >
+                                <Ionicons name="logo-whatsapp" size={18} color="#25D366" />
+                                <Text style={[styles.bookingActionText, styles.bookingActionCallText]}>WhatsApp</Text>
+                              </TouchableOpacity>
+                            )}
 
-                        {!(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
-                          !(activeBooking.droppedOff && !activeBooking.droppedOffConfirmedByPassenger) && (
-                            <TouchableOpacity
-                              style={[styles.bookingActionButton, styles.bookingActionDanger]}
-                              onPress={confirmCancelBooking}
-                              disabled={isCancellingBooking}
-                            >
-                              {isCancellingBooking ? <ActivityIndicator size="small" color={Colors.danger} /> : (
-                                <>
-                                  <Ionicons name="close-circle" size={18} color={Colors.danger} />
-                                  <Text style={[styles.bookingActionText, styles.bookingActionDangerText]}>Annuler</Text>
-                                </>
-                              )}
-                            </TouchableOpacity>
-                          )}
+                          {!(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
+                            !(activeBooking.droppedOffConfirmedByPassenger && !activeBooking.droppedOff) && (
+                              <TouchableOpacity
+                                activeOpacity={0.82}
+                                style={[styles.bookingActionButton, styles.bookingActionSecondary, styles.bookingActionDanger]}
+                                onPress={confirmCancelBooking}
+                                disabled={isCancellingBooking}
+                              >
+                                {isCancellingBooking ? <ActivityIndicator size="small" color={Colors.danger} /> : (
+                                  <>
+                                    <Ionicons name="close-circle-outline" size={18} color={Colors.danger} />
+                                    <Text style={[styles.bookingActionText, styles.bookingActionDangerText]}>Annuler</Text>
+                                  </>
+                                )}
+                              </TouchableOpacity>
+                            )}
+                        </View>
                       </View>
                       {!isTripDriver && (
                         <TouchableOpacity
@@ -3055,10 +3076,7 @@ export default function TripDetailsScreen() {
                                 !canAccessTripSecurity && styles.bookingSecurityQuickTitleDisabled,
                               ]}
                             >
-                              Securite du trajet
-                            </Text>
-                            <Text style={styles.bookingSecurityQuickSubtitle}>
-                              Choisir proches, activer suivi, envoyer alerte
+                              Sécurité du trajet
                             </Text>
                           </View>
                           <Ionicons
@@ -3743,8 +3761,8 @@ export default function TripDetailsScreen() {
                   try {
                     await shareTrip(
                       trip.id,
-                      trip?.departure.name,
-                      trip?.arrival.name
+                      trip?.departure?.name,
+                      trip?.arrival?.name
                     );
                   } catch (error: any) {
                     showDialog({
@@ -3798,7 +3816,7 @@ export default function TripDetailsScreen() {
                     const backendMessage = error?.data?.message;
                     const message = Array.isArray(backendMessage)
                       ? backendMessage.join('\n')
-                      : backendMessage || error?.message || 'Impossible de creer le lien de suivi';
+                      : backendMessage || error?.message || 'Impossible de créer le lien de suivi';
                     showDialog({
                       variant: 'danger',
                       title: 'Erreur',
@@ -3836,7 +3854,7 @@ export default function TripDetailsScreen() {
                     const response = await createTripShareLink({
                       tripId: trip.id,
                       bookingId: activeBooking?.id,
-                      message: 'Voici le lien pour suivre mon trajet Zwanga en temps reel.',
+                      message: 'Voici le lien pour suivre mon trajet Zwanga en temps réel.',
                     }).unwrap();
                     const route =
                       trip.departure.name && trip.arrival.name
@@ -5418,10 +5436,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: Spacing.sm,
     marginBottom: Spacing.md,
   },
+  bookingHeaderIdentity: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  bookingHeaderIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary + '10',
+    borderWidth: 1,
+    borderColor: Colors.primary + '20',
+    marginRight: Spacing.sm,
+  },
+  bookingHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
   bookingCardTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
@@ -5431,9 +5471,17 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   bookingStatusBadge: {
-    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 10,
+    borderRadius: BorderRadius.full,
+  },
+  bookingStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   bookingStatusText: {
     fontSize: 11,
@@ -5463,22 +5511,39 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
-  bookingActionsRow: {
+  bookingActionsStack: {
+    gap: Spacing.sm,
+  },
+  bookingSecondaryActionsRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
   },
   bookingActionButton: {
-    flex: 1,
     height: 48,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 14,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.gray[200],
   },
+  bookingActionPrimary: {
+    width: '100%',
+    height: 50,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  bookingActionSecondary: {
+    flex: 1,
+    height: 46,
+  },
   bookingActionText: {
-    marginLeft: 8,
+    marginLeft: 6,
     fontSize: 13,
     fontWeight: FontWeights.bold,
   },
@@ -5490,8 +5555,13 @@ const styles = StyleSheet.create({
     color: Colors.white,
   },
   bookingActionNavigation: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primary,
+    borderColor: Colors.info,
+    backgroundColor: Colors.info,
+    shadowColor: Colors.info,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 2,
   },
   bookingActionNavigationText: {
     color: Colors.white,
@@ -5516,8 +5586,9 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary + '35',
     borderRadius: 14,
     backgroundColor: Colors.primary + '08',
+    minHeight: 42,
     paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.sm,
+    paddingVertical: 5,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -5526,9 +5597,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[100],
   },
   bookingSecurityQuickIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -5547,11 +5618,6 @@ const styles = StyleSheet.create({
   bookingSecurityQuickTitleDisabled: {
     color: Colors.gray[500],
   },
-  bookingSecurityQuickSubtitle: {
-    marginTop: 2,
-    fontSize: 11,
-    color: Colors.gray[600],
-  },
   confirmationBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -5568,8 +5634,8 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   bookingActionConfirm: {
-    backgroundColor: Colors.secondary,
-    borderColor: Colors.secondary,
+    backgroundColor: Colors.success,
+    borderColor: Colors.success,
   },
   bookingActionConfirmText: {
     color: Colors.white,

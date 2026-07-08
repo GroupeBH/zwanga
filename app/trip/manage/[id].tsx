@@ -16,7 +16,7 @@ import { useGetTripByIdQuery, usePauseTripMutation, useStartTripMutation, useUpd
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus } from '@/types';
-import { formatTime } from '@/utils/dateHelpers';
+import { formatDateTime } from '@/utils/dateHelpers';
 import {
   buildManualGeocodeQuery,
   mapGeocodeResponseToSelection,
@@ -320,11 +320,11 @@ export default function ManageTripScreen() {
   const arrivalCoordinate = useMemo(
     () =>
       getTripLocationCoordinate({
-        lat: trip?.arrival.lat,
-        lng: trip?.arrival.lng,
-        hasCoordinates: trip?.arrival.hasCoordinates,
+        lat: trip?.arrival?.lat,
+        lng: trip?.arrival?.lng,
+        hasCoordinates: trip?.arrival?.hasCoordinates,
       }),
-    [trip?.arrival.hasCoordinates, trip?.arrival.lat, trip?.arrival.lng],
+    [trip?.arrival?.hasCoordinates, trip?.arrival?.lat, trip?.arrival?.lng],
   );
 
   const showFeedback = (type: 'success' | 'error', message: string | string[]) => {
@@ -550,11 +550,11 @@ export default function ManageTripScreen() {
         trip_id: trip?.id ?? '',
         source_screen: 'trip_manage',
       });
-      showFeedback('success', 'Dépose du passager confirmée.');
+      showFeedback('success', 'Arrivée du passager confirmée.');
       refreshAll();
     } catch (error: any) {
       const message =
-        error?.data?.message ?? error?.error ?? 'Impossible de confirmer la dépose.';
+        error?.data?.message ?? error?.error ?? "Impossible de confirmer l'arrivée.";
       showFeedback('error', message);
     }
   };
@@ -621,7 +621,7 @@ export default function ManageTripScreen() {
     });
   };
 
-  // Vérifier si tous les passagers sont déposés
+  // Vérifier si l'arrivée de tous les passagers est confirmée
   const allPassengersDroppedOff = useMemo(() => {
     if (!bookings || bookings.length === 0) return true;
     const acceptedBookings = bookings.filter((booking) => booking.status === 'accepted');
@@ -652,7 +652,7 @@ export default function ManageTripScreen() {
 
   // Le bouton "Terminer le trajet" doit apparaître si :
   // - Le trajet est en cours
-  // - Tous les passagers sont déposés
+  // - L'arrivée de tous les passagers est confirmée
   // - Le conducteur est arrivé à destination
   const canCompleteTrip = trip?.status === 'ongoing' && allPassengersDroppedOff && isAtDestination;
 
@@ -796,7 +796,9 @@ export default function ManageTripScreen() {
           <View style={styles.summaryHeader}>
             <View style={styles.timeContainer}>
               <Ionicons name="time-outline" size={20} color={Colors.gray[600]} />
-              <Text style={styles.timeText}>{formatTime(trip.departureTime)}</Text>
+              <Text style={styles.timeText} numberOfLines={2}>
+                Depart {formatDateTime(trip.departureTime)}
+              </Text>
             </View>
             <View style={[styles.statusBadge, { backgroundColor: statusColor(trip.status).color + '20' }]}>
               <Text style={[styles.statusBadgeText, { color: statusColor(trip.status).color }]}>
@@ -1033,13 +1035,19 @@ export default function ManageTripScreen() {
                       </TouchableOpacity>
                     )}
 
-                    {trip.status === 'ongoing' && booking.pickedUp && !booking.droppedOff && (
+                    {trip.status === 'ongoing' && booking.pickedUp && booking.pickedUpConfirmedByPassenger && booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
                       <TouchableOpacity
                         style={[styles.actionButton, { backgroundColor: Colors.success }]}
                         onPress={() => handleConfirmDropoff(booking.id)}
                       >
-                        <Text style={styles.actionText}>Déposer</Text>
+                        <Text style={styles.actionText}>Confirmer l&apos;arrivée</Text>
                       </TouchableOpacity>
+                    )}
+
+                    {trip.status === 'ongoing' && booking.pickedUp && booking.pickedUpConfirmedByPassenger && !booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
+                      <View style={[styles.actionButton, styles.waitingDropoffButton]}>
+                        <Text style={[styles.actionText, styles.waitingDropoffText]}>Attente client</Text>
+                      </View>
                     )}
                   </View>
                 )}
@@ -1521,11 +1529,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flex: 1,
+    minWidth: 0,
+    marginRight: Spacing.sm,
   },
   timeText: {
-    fontSize: FontSizes.base,
+    flexShrink: 1,
+    fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
+    lineHeight: 18,
   },
   statusBadge: {
     paddingHorizontal: Spacing.sm,
@@ -1800,10 +1813,16 @@ const styles = StyleSheet.create({
   cancelBookingButton: {
     backgroundColor: Colors.danger + '10',
   },
+  waitingDropoffButton: {
+    backgroundColor: Colors.secondary + '14',
+  },
   actionText: {
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
     color: Colors.white,
+  },
+  waitingDropoffText: {
+    color: Colors.secondary,
   },
   stickyFooter: {
     position: 'absolute',

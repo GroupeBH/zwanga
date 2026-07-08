@@ -200,7 +200,7 @@ export const googleMapsApi = baseApi.injectEndpoints({
     getLandmarks: builder.query<LandmarkPlace[], LandmarkPlacesRequest | void>({
       query: (params) => ({
         url: '/google-maps/places/landmarks',
-        params,
+        params: params ?? {},
       }),
     }),
 

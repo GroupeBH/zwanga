@@ -1,4 +1,5 @@
-import { Linking, Platform, Share } from 'react-native';
+import { Platform, Share } from 'react-native';
+import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 
 /**
  * Génère un lien de partage pour un trajet
@@ -99,9 +100,8 @@ export async function shareTripViaWhatsApp(
       url = `whatsapp://send?text=${encodeURIComponent(message)}`;
     }
 
-    const canOpen = await Linking.canOpenURL(url);
-    if (canOpen) {
-      await Linking.openURL(url);
+    if (await openExternalUrlSafely(url, { logLabel: 'ShareWhatsApp' })) {
+      return;
     } else {
       // Fallback vers le partage standard si WhatsApp n'est pas installé
       await shareTrip(tripId, departureName, arrivalName);
@@ -123,9 +123,7 @@ export async function shareTrackingLinkViaWhatsApp(input: {
   const url = `whatsapp://send?text=${encodeURIComponent(input.message)}`;
 
   try {
-    const canOpen = await Linking.canOpenURL(url);
-    if (canOpen) {
-      await Linking.openURL(url);
+    if (await openExternalUrlSafely(url, { logLabel: 'TrackingWhatsApp' })) {
       return;
     }
   } catch (error: any) {
@@ -155,9 +153,8 @@ export async function shareTripViaSMS(
     const message = generateTripShareMessage(tripId, departureName, arrivalName);
     const smsUrl = `sms:${phoneNumber}${Platform.OS === 'ios' ? '&' : '?'}body=${encodeURIComponent(message)}`;
     
-    const canOpen = await Linking.canOpenURL(smsUrl);
-    if (canOpen) {
-      await Linking.openURL(smsUrl);
+    if (await openExternalUrlSafely(smsUrl, { logLabel: 'ShareSms' })) {
+      return;
     } else {
       // Fallback vers le partage standard
       await shareTrip(tripId, departureName, arrivalName);
@@ -180,9 +177,7 @@ export async function shareTripViaEmail(input: {
   const mailtoUrl = input.mailtoUrl || `mailto:?subject=${encodeURIComponent(input.subject)}&body=${encodeURIComponent(input.body)}`;
 
   try {
-    const canOpen = await Linking.canOpenURL(mailtoUrl);
-    if (canOpen) {
-      await Linking.openURL(mailtoUrl);
+    if (await openExternalUrlSafely(mailtoUrl, { logLabel: 'ShareEmail' })) {
       return;
     }
   } catch (error: any) {

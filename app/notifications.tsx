@@ -9,7 +9,12 @@ import {
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import type { Notification } from '@/types';
 import { formatDateTime, formatRelativeTime } from '@/utils/dateHelpers';
-import { handleNotificationNavigation } from '@/utils/notificationNavigation';
+import {
+  extractTripRequestId,
+  getTripUrl,
+  handleNotificationNavigation,
+  isDriverNotification,
+} from '@/utils/notificationNavigation';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -422,9 +427,9 @@ export default function NotificationsScreen() {
                                 type === 'booking_pending') &&
                               tripId
                             ) {
-                              router.push(getTripUrl(tripId, data, type) as any);
+                              router.push(getTripUrl(tripId, data, currentUser, type) as any);
                             } else if ((type === 'trip' || type === 'trip_update') && tripId) {
-                              router.push(getTripUrl(tripId, data, type) as any);
+                              router.push(getTripUrl(tripId, data, currentUser, type) as any);
                             } else if (isDriverNotification(type) && tripId) {
                               router.push(`/trip/manage/${tripId}`);
                             }
@@ -433,7 +438,7 @@ export default function NotificationsScreen() {
                             else if (requestId) {
                               router.push(getTripRequestDetailHref(requestId));
                             } else if (tripId) {
-                              router.push(getTripUrl(tripId, data, type) as any);
+                              router.push(getTripUrl(tripId, data, currentUser, type) as any);
                             } else if (conversationId) {
                               router.push({
                                 pathname: '/chat/[id]',

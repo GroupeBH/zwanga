@@ -78,8 +78,8 @@ export async function exampleCheckTokenExpiration() {
 }
 
 // Exemple 4: Utiliser dans un composant React
-export function useTokenInfo() {
-  const token = getAccessToken();
+export async function getTokenInfo() {
+  const token = await getAccessToken();
   
   if (!token) {
     return {

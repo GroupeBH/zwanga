@@ -12,7 +12,7 @@ import {
 } from '@/store/api/tripApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import type { Trip } from '@/types';
-import { formatDateWithRelativeLabel, formatTime } from '@/utils/dateHelpers';
+import { formatDateTime } from '@/utils/dateHelpers';
 import { getTripLocationCoordinate } from '@/utils/tripCoordinates';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
@@ -64,18 +64,14 @@ const getLocationCoordinatesTuple = (
 
 function ArrivalTimeBlock({ trip }: { trip: Trip }) {
   const calculatedArrivalTime = useTripArrivalTime(trip);
-  const arrivalTimeDisplay = calculatedArrivalTime
-    ? formatTime(calculatedArrivalTime.toISOString())
-    : formatTime(trip.arrivalTime);
+  const arrivalDateTimeDisplay = calculatedArrivalTime
+    ? formatDateTime(calculatedArrivalTime.toISOString())
+    : formatDateTime(trip.arrivalTime);
 
   return (
     <View style={styles.timeContainer}>
-      {calculatedArrivalTime ? (
-        <Text style={styles.routeDateLabel}>
-          {formatDateWithRelativeLabel(calculatedArrivalTime.toISOString(), false)}
-        </Text>
-      ) : null}
-      <Text style={styles.routeTime}>{arrivalTimeDisplay}</Text>
+      <Text style={styles.routeDateLabel}>Arrivee estimee</Text>
+      <Text style={styles.routeTime}>{arrivalDateTimeDisplay}</Text>
     </View>
   );
 }
@@ -186,7 +182,11 @@ export default function TripsScreen() {
         }
 
         // Si le trajet est 'upcoming' ou 'ongoing', vérifier si la date de départ est passée
-        if (trip.status === 'upcoming' || trip.status === 'ongoing') {
+        if (trip.status === 'ongoing') {
+          return true;
+        }
+
+        if (trip.status === 'upcoming') {
           if (trip.departureTime) {
             const departureDate = new Date(trip.departureTime);
             // Si la date de départ est passée, le trajet est expiré
@@ -224,7 +224,7 @@ export default function TripsScreen() {
         }
 
         // Les trajets 'upcoming' ou 'ongoing' dont la date de départ est passée sont expirés
-        if (trip.status === 'upcoming' || trip.status === 'ongoing') {
+        if (trip.status === 'upcoming') {
           if (trip.departureTime) {
             const departureDate = new Date(trip.departureTime);
             // Si la date de départ est passée, le trajet est expiré et va dans l'historique
@@ -263,6 +263,9 @@ export default function TripsScreen() {
       if (booking.status === 'completed' || booking.status === 'rejected' || booking.status === 'cancelled') {
         return false;
       }
+      if (booking.trip?.status === 'ongoing') {
+        return true;
+      }
       if (booking.trip?.departureTime) {
         const departureDate = new Date(booking.trip.departureTime);
         return departureDate >= now;
@@ -284,6 +287,9 @@ export default function TripsScreen() {
     return (myBookings ?? []).filter((booking) => {
       if (booking.status === 'completed' || booking.status === 'rejected' || booking.status === 'cancelled') {
         return true;
+      }
+      if (booking.trip?.status === 'ongoing') {
+        return false;
       }
       if (booking.trip?.departureTime) {
         const departureDate = new Date(booking.trip.departureTime);
@@ -700,12 +706,12 @@ export default function TripsScreen() {
       return false;
     }
 
-    // Vérifier si la date de départ est passée
-    if (trip.departureTime) {
+    // Verifier si la date de depart est passee pour les trajets non demarres.
+    if (trip.status !== 'ongoing' && trip.departureTime) {
       const departureDate = new Date(trip.departureTime);
       const now = new Date();
       if (departureDate < now) {
-        return false; // Trajet expiré, ne peut plus être modifié
+        return false;
       }
     }
 
@@ -713,9 +719,10 @@ export default function TripsScreen() {
   };
 
   const getStatusConfig = (trip: Trip) => {
-    // Vérifier si le trajet est expiré (date de départ passée)
-    const isExpired = trip.departureTime && new Date(trip.departureTime) < new Date();
-    // Si le trajet est expiré mais n'a pas le status 'completed', afficher "Expiré"
+    const isExpired =
+      trip.status !== 'ongoing' &&
+      trip.departureTime &&
+      new Date(trip.departureTime) < new Date();
     if (isExpired && trip.status !== 'completed') {
       return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: 'Expiré' };
     }
@@ -976,12 +983,8 @@ export default function TripsScreen() {
                       <Ionicons name="location" size={16} color={Colors.success} />
                       <Text style={styles.routeText}>{trip.departure.name}</Text>
                       <View style={styles.timeContainer}>
-                        <Text style={styles.routeDateLabel}>
-                          {formatDateWithRelativeLabel(trip.departureTime, false)}
-                        </Text>
-                        <Text style={styles.routeTime}>
-                          {formatTime(trip.departureTime)}
-                        </Text>
+                        <Text style={styles.routeDateLabel}>Depart</Text>
+                        <Text style={styles.routeTime}>{formatDateTime(trip.departureTime)}</Text>
                       </View>
                     </View>
                     <View style={styles.routeDivider} />
@@ -1114,10 +1117,8 @@ export default function TripsScreen() {
                           <Ionicons name="location" size={16} color={Colors.success} />
                           <Text style={styles.routeText}>{trip.departure.name}</Text>
                           <View style={styles.timeContainer}>
-                            <Text style={styles.routeDateLabel}>
-                              {formatDateWithRelativeLabel(trip.departureTime, false)}
-                            </Text>
-                            <Text style={styles.routeTime}>{formatTime(trip.departureTime)}</Text>
+                            <Text style={styles.routeDateLabel}>Depart</Text>
+                            <Text style={styles.routeTime}>{formatDateTime(trip.departureTime)}</Text>
                           </View>
                         </View>
                         <View style={styles.routeDivider} />

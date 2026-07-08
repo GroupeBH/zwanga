@@ -193,7 +193,7 @@ export default function ChatScreen() {
   };
 
   const counterpart = useMemo(() => {
-    return conversation?.participants.find((participant) => participant.userId !== user?.id)?.user;
+    return conversation?.participants?.find((participant) => participant.userId !== user?.id)?.user;
   }, [conversation?.participants, user?.id]);
 
   const headerTitle =

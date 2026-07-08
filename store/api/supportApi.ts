@@ -50,7 +50,7 @@ export const supportApi = baseApi.injectEndpoints({
     getSupportFaq: builder.query<SupportFaqListResponse, ListSupportFaqParams | void>({
       query: (params) => ({
         url: '/support/faq',
-        params,
+        params: params ?? {},
       }),
       providesTags: (result) =>
         result?.data
@@ -69,7 +69,7 @@ export const supportApi = baseApi.injectEndpoints({
     getMySupportTickets: builder.query<SupportTicketListResponse, ListSupportTicketsParams | void>({
       query: (params) => ({
         url: '/support/tickets',
-        params,
+        params: params ?? {},
       }),
       providesTags: (result) =>
         result?.data

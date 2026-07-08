@@ -437,8 +437,8 @@ export default function RequestTripScreen() {
         setAddressSectionStep('arrival');
         return true;
       };
-      const knownLatitude = Number(lastKnownLocation?.coords.latitude);
-      const knownLongitude = Number(lastKnownLocation?.coords.longitude);
+      const knownLatitude = Number(lastKnownLocation?.coords?.latitude);
+      const knownLongitude = Number(lastKnownLocation?.coords?.longitude);
       const knownTimestamp = Number(lastKnownLocation?.timestamp);
       const knownCoordinate =
         Number.isFinite(knownLatitude) &&

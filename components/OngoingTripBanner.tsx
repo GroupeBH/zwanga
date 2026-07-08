@@ -8,7 +8,7 @@ import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
 import { useGetMyTripsQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
-import { formatTime } from '@/utils/dateHelpers';
+import { formatDateTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { usePathname, useRouter } from 'expo-router';
@@ -54,26 +54,12 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
     refetchOnMountOrArgChange: true, // Refetch seulement au montage ou si les args changent
   });
 
-  // Fonction helper pour vérifier si un trajet est expiré
-  const isTripExpired = (trip: { departureTime?: string | null }): boolean => {
-    if (!trip.departureTime) return false;
-    const departureDate = new Date(trip.departureTime);
-    const now = new Date();
-    return departureDate < now;
-  };
-
   // Trouver un trajet en cours
   const ongoingTrip = useMemo(() => {
     if (!user) return null;
 
     // Chercher un trajet en cours comme conducteur
-    const driverOngoingTrip = myTrips?.find((trip) => {
-      // Exclure les trajets expirés
-      if (isTripExpired(trip)) {
-        return false;
-      }
-      return trip.status === 'ongoing';
-    });
+    const driverOngoingTrip = myTrips?.find((trip) => trip.status === 'ongoing');
     if (driverOngoingTrip) {
       return {
         trip: driverOngoingTrip,
@@ -93,11 +79,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
         if (booking.trip?.status !== 'ongoing') {
           return false;
         }
-        if (booking.droppedOffConfirmedByPassenger === true) {
-          return false;
-        }
-        // Exclure les trajets expirés
-        if (booking.trip && isTripExpired(booking.trip)) {
+        if (booking.droppedOff === true) {
           return false;
         }
         return true;
@@ -118,7 +100,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
 
   // Démarrer/arrêter le suivi de notification permanente
   useEffect(() => {
-    const currentTripId = ongoingTrip?.trip.id ?? null;
+    const currentTripId = ongoingTrip?.trip?.id ?? null;
     
     // Si le trajet a changé
     if (currentTripId !== previousTripIdRef.current) {
@@ -128,11 +110,11 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
       }
       
       // Démarrer le nouveau suivi si un trajet est en cours
-      if (ongoingTrip) {
+      if (ongoingTrip?.trip) {
         startOngoingTripTracking({
           tripId: ongoingTrip.trip.id,
-          departure: ongoingTrip.trip.departure.name,
-          arrival: ongoingTrip.trip.arrival.name,
+          departure: ongoingTrip.trip.departure?.name ?? ongoingTrip.trip.departure?.address ?? 'Depart',
+          arrival: ongoingTrip.trip.arrival?.name ?? ongoingTrip.trip.arrival?.address ?? 'Arrivee',
           role: ongoingTrip.role,
           departureTime: ongoingTrip.trip.departureTime,
         });
@@ -152,21 +134,22 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
 
   // Ne pas afficher sur certaines pages
   const shouldHide = useMemo(() => {
-    if (!ongoingTrip) return true;
+    const ongoingTripId = ongoingTrip?.trip?.id;
+    if (!ongoingTripId) return true;
 
     if (pathname?.startsWith('/auth') || pathname?.startsWith('/splash') || pathname?.startsWith('/onboarding')) {
       return true;
     }
 
-    if (pathname?.includes(`/trip/${ongoingTrip.trip.id}`)) {
+    if (pathname?.includes(`/trip/${ongoingTripId}`)) {
       return true;
     }
 
-    if (pathname?.includes(`/trip/manage/${ongoingTrip.trip.id}`)) {
+    if (pathname?.includes(`/trip/manage/${ongoingTripId}`)) {
       return true;
     }
 
-    if (pathname?.includes(`/trip/navigate/${ongoingTrip.trip.id}`)) {
+    if (pathname?.includes(`/trip/navigate/${ongoingTripId}`)) {
       return true;
     }
 
@@ -285,7 +268,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
                 <View style={styles.timeRow}>
                   <Ionicons name="time-outline" size={14} color={Colors.gray[500]} style={styles.routeIcon} />
                   <Text style={styles.timeText}>
-                    Départ à {formatTime(trip.departureTime)}
+                    Depart {formatDateTime(trip.departureTime)}
                   </Text>
                 </View>
               )}
