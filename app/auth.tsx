@@ -606,8 +606,6 @@ export default function AuthScreen() {
     setGooglePhone('');
     setSocialProvider(null);
     setAppleNonce(null);
-    setAppleAuthorizationCode(null);
-    setAppleUser(null);
   };
 
   const handleVerifyGoogleOtpAndContinue = async () => {
@@ -870,18 +868,30 @@ export default function AuthScreen() {
             label: 'Caméra',
             variant: 'primary',
             onPress: async () => {
-              const { status: camStatus } = await ImagePicker.requestCameraPermissionsAsync();
-              if (camStatus !== 'granted') return;
-              const result = await ImagePicker.launchCameraAsync({ mediaTypes: 'images', allowsEditing: true, aspect: [1, 1], quality: 0.65, base64: false, exif: false });
-              if (!result.canceled && result.assets[0]) setProfilePicture(result.assets[0].uri);
+              try {
+                const { status: camStatus } = await ImagePicker.requestCameraPermissionsAsync();
+                if (camStatus !== 'granted') return;
+                const result = await ImagePicker.launchCameraAsync({ mediaTypes: 'images', allowsEditing: true, aspect: [1, 1], quality: 0.65, base64: false, exif: false });
+                const imageUri = result.assets?.[0]?.uri;
+                if (!result.canceled && imageUri) setProfilePicture(imageUri);
+              } catch (error) {
+                console.warn('[Auth] Profile camera failed:', error);
+                showDialog({ variant: 'danger', title: 'Photo impossible', message: "Impossible d'ouvrir la camera pour le moment." });
+              }
             }
           },
           {
             label: 'Galerie',
             variant: 'secondary',
             onPress: async () => {
-              const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', allowsEditing: true, aspect: [1, 1], quality: 0.65, base64: false, exif: false });
-              if (!result.canceled && result.assets[0]) setProfilePicture(result.assets[0].uri);
+              try {
+                const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', allowsEditing: true, aspect: [1, 1], quality: 0.65, base64: false, exif: false });
+                const imageUri = result.assets?.[0]?.uri;
+                if (!result.canceled && imageUri) setProfilePicture(imageUri);
+              } catch (error) {
+                console.warn('[Auth] Profile gallery failed:', error);
+                showDialog({ variant: 'danger', title: 'Photo impossible', message: "Impossible d'ouvrir la galerie pour le moment." });
+              }
             }
           },
           { label: 'Annuler', variant: 'ghost' },

@@ -7,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { configureFontScaling } from '@/utils/configureFontScaling';
 
 import { AnalyticsTracker } from '@/components/AnalyticsTracker';
+import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { ReduxProvider } from '@/components/ReduxProvider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 // Importer les handlers de fond pour qu'ils soient enregistres au demarrage
@@ -64,15 +65,17 @@ export default function RootLayout() {
   );
 
   return (
-    <SafeAreaProvider>
-      {isAndroid ? (
-        <LayoutAnimationConfig skipEntering skipExiting>
-          {appTree}
-        </LayoutAnimationConfig>
-      ) : (
-        appTree
-      )}
-    </SafeAreaProvider>
+    <AppErrorBoundary>
+      <SafeAreaProvider>
+        {isAndroid ? (
+          <LayoutAnimationConfig skipEntering skipExiting>
+            {appTree}
+          </LayoutAnimationConfig>
+        ) : (
+          appTree
+        )}
+      </SafeAreaProvider>
+    </AppErrorBoundary>
   );
 }
 

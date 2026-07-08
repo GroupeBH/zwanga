@@ -25,18 +25,28 @@ export function IdentityVerification({ onComplete, onSkip, canSkip = true }: Ide
   const { showDialog } = useDialog();
 
   const requestPermissions = async () => {
-    if (!cameraPermission?.granted) {
-      const { granted } = await requestCameraPermission();
-      if (!granted) {
-        showDialog({
-          variant: 'warning',
-          title: 'Permission requise',
-          message: 'L\'accès à la caméra est nécessaire pour scanner votre identité.',
-        });
-        return false;
+    try {
+      if (!cameraPermission?.granted) {
+        const { granted } = await requestCameraPermission();
+        if (!granted) {
+          showDialog({
+            variant: 'warning',
+            title: 'Permission requise',
+            message: 'L\'accès à la caméra est nécessaire pour scanner votre identité.',
+          });
+          return false;
+        }
       }
+      return true;
+    } catch (error) {
+      console.warn('[IdentityVerification] Camera permission failed:', error);
+      showDialog({
+        variant: 'danger',
+        title: 'Caméra indisponible',
+        message: 'Impossible d\'ouvrir la caméra pour le moment.',
+      });
+      return false;
     }
-    return true;
   };
 
   const handleScanIdCard = async () => {
@@ -54,8 +64,9 @@ export function IdentityVerification({ onComplete, onSkip, canSkip = true }: Ide
           exif: false,
         });
 
-        if (!result.canceled && result.assets[0]) {
-          setIdCardImage(result.assets[0].uri);
+        const imageUri = result.assets?.[0]?.uri;
+        if (!result.canceled && imageUri) {
+          setIdCardImage(imageUri);
           setIsProcessing(true);
           setTimeout(() => {
             setIsProcessing(false);
@@ -92,8 +103,9 @@ export function IdentityVerification({ onComplete, onSkip, canSkip = true }: Ide
           exif: false,
         });
 
-        if (!result.canceled && result.assets[0]) {
-          setIdCardImage(result.assets[0].uri);
+        const imageUri = result.assets?.[0]?.uri;
+        if (!result.canceled && imageUri) {
+          setIdCardImage(imageUri);
           setIsProcessing(true);
           setTimeout(() => {
             setIsProcessing(false);
@@ -135,8 +147,9 @@ export function IdentityVerification({ onComplete, onSkip, canSkip = true }: Ide
         exif: false,
       });
 
-      if (!result.canceled && result.assets[0]) {
-        setFaceImage(result.assets[0].uri);
+      const imageUri = result.assets?.[0]?.uri;
+      if (!result.canceled && imageUri) {
+        setFaceImage(imageUri);
         setIsProcessing(true);
         
         // Simuler le traitement de reconnaissance faciale
@@ -145,10 +158,10 @@ export function IdentityVerification({ onComplete, onSkip, canSkip = true }: Ide
           setStep('completed');
           
           // Appeler onComplete avec les images
-          if (idCardImage && result.assets[0].uri) {
+          if (idCardImage && imageUri) {
             onComplete({
               idCardImage,
-              faceImage: result.assets[0].uri,
+              faceImage: imageUri,
             });
           }
         }, 2000);

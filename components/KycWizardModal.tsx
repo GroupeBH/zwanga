@@ -108,6 +108,14 @@ export function KycWizardModal({
   initialValues,
 }: KycWizardModalProps) {
   const [permission, requestPermission] = useCameraPermissions();
+
+  const requestCameraPermissionSafely = useCallback(async () => {
+    try {
+      await requestPermission();
+    } catch (error) {
+      console.warn('[KycWizard] Camera permission failed:', error);
+    }
+  }, [requestPermission]);
   const cameraRef = useRef<CameraView | null>(null);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [captures, setCaptures] = useState<Record<KycCaptureKey, string | null>>({
@@ -365,7 +373,7 @@ export function KycWizardModal({
           <Text style={styles.permissionSubtitle}>
             Autorisez l’accès à la caméra pour scanner vos documents en toute sécurité.
           </Text>
-          <TouchableOpacity style={styles.permissionButton} onPress={() => requestPermission()}>
+          <TouchableOpacity style={styles.permissionButton} onPress={requestCameraPermissionSafely}>
             <Text style={styles.permissionButtonText}>Autoriser la caméra</Text>
           </TouchableOpacity>
         </View>
@@ -380,7 +388,7 @@ export function KycWizardModal({
           <Text style={styles.permissionSubtitle}>
             Rendez-vous dans les réglages pour donner l’accès à la caméra.
           </Text>
-          <TouchableOpacity style={styles.permissionButton} onPress={() => requestPermission()}>
+          <TouchableOpacity style={styles.permissionButton} onPress={requestCameraPermissionSafely}>
             <Text style={styles.permissionButtonText}>Réessayer</Text>
           </TouchableOpacity>
         </View>

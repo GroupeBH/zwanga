@@ -28,8 +28,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       vehicleInfo: 'Toyota Corolla blanche',
       departure: { name: 'Gombe', address: 'Ave de la Justice', lat: -4.3276, lng: 15.3222 },
       arrival: { name: 'Lemba', address: 'Campus Unikin', lat: -4.4040, lng: 15.2821 },
-      departureTime: new Date(Date.now() + 2 * 60 * 60 * 1000),
-      arrivalTime: new Date(Date.now() + 2.5 * 60 * 60 * 1000),
+      departureTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      arrivalTime: new Date(Date.now() + 2.5 * 60 * 60 * 1000).toISOString(),
       price: 2000,
       availableSeats: 2,
       totalSeats: 4,
@@ -44,8 +44,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       vehicleInfo: 'Honda rouge',
       departure: { name: 'Kintambo', address: 'Marché Kintambo', lat: -4.3333, lng: 15.2986 },
       arrival: { name: 'Ngaliema', address: 'Rond-point Ngaliema', lat: -4.3821, lng: 15.2663 },
-      departureTime: new Date(Date.now() + 1 * 60 * 60 * 1000),
-      arrivalTime: new Date(Date.now() + 1.25 * 60 * 60 * 1000),
+      departureTime: new Date(Date.now() + 1 * 60 * 60 * 1000).toISOString(),
+      arrivalTime: new Date(Date.now() + 1.25 * 60 * 60 * 1000).toISOString(),
       price: 1000,
       availableSeats: 1,
       totalSeats: 1,
@@ -53,24 +53,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     },
   ]);
 
-  const [conversations, setConversations] = useState<Conversation[]>([
-    {
-      id: '1',
-      userId: '123',
-      userName: 'Jean Mukendi',
-      lastMessage: 'Rendez-vous au rond-point ?',
-      timestamp: new Date(Date.now() - 10 * 60 * 1000),
-      unreadCount: 2,
-    },
-    {
-      id: '2',
-      userId: '456',
-      userName: 'Marie Kabongo',
-      lastMessage: "J'arrive dans 5 minutes",
-      timestamp: new Date(Date.now() - 30 * 60 * 1000),
-      unreadCount: 1,
-    },
-  ]);
+  const [conversations] = useState<Conversation[]>([]);
 
   const login = (userData: User) => {
     setUser(userData);

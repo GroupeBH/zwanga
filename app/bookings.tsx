@@ -18,13 +18,13 @@ import { selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus, TripPaymentMode } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
 import { openWhatsApp } from '@/utils/phoneHelpers';
+import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
-  Linking,
   Modal,
   RefreshControl,
   ScrollView,
@@ -283,9 +283,7 @@ export default function BookingsScreen() {
         phone,
       }).unwrap();
 
-      if (response.payment.paymentUrl) {
-        await Linking.openURL(response.payment.paymentUrl);
-      }
+      await openExternalUrlSafely(response.payment.paymentUrl, { logLabel: 'BookingsPayment' });
 
       showDialog({
         variant: response.payment.status === 'succeeded' ? 'success' : 'info',
@@ -443,7 +441,7 @@ export default function BookingsScreen() {
               )}
               <View style={styles.bookingHeaderTextContainer}>
                 <Text style={styles.bookingTitle} numberOfLines={1} ellipsizeMode="tail">
-                  {trip?.departure.name ?? 'Trajet'} → {trip?.arrival.name ?? ''}
+                  {trip?.departure?.name ?? 'Trajet'} → {trip?.arrival?.name ?? ''}
                 </Text>
                 <Text style={styles.bookingSubtitle} numberOfLines={1} ellipsizeMode="tail">
                   {trip ? `${formatDateTime(trip.departureTime)} -> arrivee estimee ${arrivalTimeDisplay}` : ''}

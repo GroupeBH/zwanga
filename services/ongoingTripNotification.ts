@@ -24,16 +24,16 @@ interface OngoingTripInfo {
 // Module Notifee (chargé dynamiquement)
 type NotifeeModule = typeof import('@notifee/react-native');
 type NotifeeDefault = NotifeeModule['default'];
-type AndroidImportance = NotifeeModule['AndroidImportance'];
-type AndroidCategory = NotifeeModule['AndroidCategory'];
-type AndroidVisibility = NotifeeModule['AndroidVisibility'];
-type AndroidStyle = NotifeeModule['AndroidStyle'];
+type AndroidImportanceEnumType = NotifeeModule['AndroidImportance'];
+type AndroidCategoryEnumType = NotifeeModule['AndroidCategory'];
+type AndroidVisibilityEnumType = NotifeeModule['AndroidVisibility'];
+type AndroidStyleEnumType = NotifeeModule['AndroidStyle'];
 
 let notifee: NotifeeDefault | null = null;
-let AndroidImportanceEnum: typeof AndroidImportance | null = null;
-let AndroidCategoryEnum: typeof AndroidCategory | null = null;
-let AndroidVisibilityEnum: typeof AndroidVisibility | null = null;
-let AndroidStyleEnum: typeof AndroidStyle | null = null;
+let AndroidImportanceEnum: AndroidImportanceEnumType | null = null;
+let AndroidCategoryEnum: AndroidCategoryEnumType | null = null;
+let AndroidVisibilityEnum: AndroidVisibilityEnumType | null = null;
+let AndroidStyleEnum: AndroidStyleEnumType | null = null;
 let canUseForegroundService = false;
 let hasTriedLoadingNotifee = false;
 // Safety switch: keep ongoing notification without Android foreground service

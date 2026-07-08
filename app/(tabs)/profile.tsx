@@ -663,8 +663,19 @@ export default function ProfileScreen() {
   const openExternalUrl = async (url: string) => {
     try {
       await WebBrowser.openBrowserAsync(url);
-    } catch {
-      await Linking.openURL(url);
+    } catch (browserError) {
+      try {
+        const supported = await Linking.canOpenURL(url);
+        if (supported) {
+          await Linking.openURL(url);
+          return;
+        }
+      } catch (linkingError) {
+        console.warn('[Profile] External URL fallback failed:', linkingError);
+      }
+
+      console.warn('[Profile] External URL open failed:', browserError);
+      throw new Error('Impossible d ouvrir le lien externe.');
     }
   };
 

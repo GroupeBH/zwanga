@@ -112,7 +112,7 @@ export {
 export {
   // Notifications
   useGetNotificationsQuery,
-  useMarkNotificationAsReadMutation
+  useMarkNotificationsAsReadMutation,
 } from './notificationApi';
 
 export {
@@ -123,11 +123,9 @@ export {
   useGetTripRequestByIdQuery,
   useCancelTripRequestMutation,
   useCreateDriverOfferMutation,
-  useGetTripRequestOffersQuery,
   useGetMyDriverOffersQuery,
   useAcceptDriverOfferMutation,
   useRejectDriverOfferMutation,
-  useCancelDriverOfferMutation,
 } from './tripRequestApi';
 
 export {

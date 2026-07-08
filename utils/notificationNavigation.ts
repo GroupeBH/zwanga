@@ -138,6 +138,7 @@ export const handleNotificationNavigation = (
 
     // Attendre que l'app soit prête avant de naviguer (réduit à 100ms pour une réponse plus rapide)
     setTimeout(() => {
+      try {
       // Gérer les notifications de trajets
       if (type === 'trip' || type === 'trip_update') {
         if (tripId) {
@@ -288,7 +289,18 @@ export const handleNotificationNavigation = (
       }
 
       // Par défaut, ouvrir l'app sur l'écran principal
-      router.push('/(tabs)');
+        router.push('/(tabs)');
+      } catch (error) {
+        console.warn('[notificationNavigation] Navigation différée impossible:', error);
+        try {
+          router.replace('/(tabs)');
+        } catch (fallbackError) {
+          console.warn(
+            '[notificationNavigation] Navigation de secours impossible:',
+            fallbackError,
+          );
+        }
+      }
     }, 100);
   } catch (error) {
     console.warn('[notificationNavigation] Erreur lors de la navigation depuis la notification:', error);

@@ -320,11 +320,11 @@ export default function ManageTripScreen() {
   const arrivalCoordinate = useMemo(
     () =>
       getTripLocationCoordinate({
-        lat: trip?.arrival.lat,
-        lng: trip?.arrival.lng,
-        hasCoordinates: trip?.arrival.hasCoordinates,
+        lat: trip?.arrival?.lat,
+        lng: trip?.arrival?.lng,
+        hasCoordinates: trip?.arrival?.hasCoordinates,
       }),
-    [trip?.arrival.hasCoordinates, trip?.arrival.lat, trip?.arrival.lng],
+    [trip?.arrival?.hasCoordinates, trip?.arrival?.lat, trip?.arrival?.lng],
   );
 
   const showFeedback = (type: 'success' | 'error', message: string | string[]) => {

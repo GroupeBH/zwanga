@@ -100,7 +100,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
 
   // Démarrer/arrêter le suivi de notification permanente
   useEffect(() => {
-    const currentTripId = ongoingTrip?.trip.id ?? null;
+    const currentTripId = ongoingTrip?.trip?.id ?? null;
     
     // Si le trajet a changé
     if (currentTripId !== previousTripIdRef.current) {
@@ -110,11 +110,11 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
       }
       
       // Démarrer le nouveau suivi si un trajet est en cours
-      if (ongoingTrip) {
+      if (ongoingTrip?.trip) {
         startOngoingTripTracking({
           tripId: ongoingTrip.trip.id,
-          departure: ongoingTrip.trip.departure.name,
-          arrival: ongoingTrip.trip.arrival.name,
+          departure: ongoingTrip.trip.departure?.name ?? ongoingTrip.trip.departure?.address ?? 'Depart',
+          arrival: ongoingTrip.trip.arrival?.name ?? ongoingTrip.trip.arrival?.address ?? 'Arrivee',
           role: ongoingTrip.role,
           departureTime: ongoingTrip.trip.departureTime,
         });
@@ -134,21 +134,22 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
 
   // Ne pas afficher sur certaines pages
   const shouldHide = useMemo(() => {
-    if (!ongoingTrip) return true;
+    const ongoingTripId = ongoingTrip?.trip?.id;
+    if (!ongoingTripId) return true;
 
     if (pathname?.startsWith('/auth') || pathname?.startsWith('/splash') || pathname?.startsWith('/onboarding')) {
       return true;
     }
 
-    if (pathname?.includes(`/trip/${ongoingTrip.trip.id}`)) {
+    if (pathname?.includes(`/trip/${ongoingTripId}`)) {
       return true;
     }
 
-    if (pathname?.includes(`/trip/manage/${ongoingTrip.trip.id}`)) {
+    if (pathname?.includes(`/trip/manage/${ongoingTripId}`)) {
       return true;
     }
 
-    if (pathname?.includes(`/trip/navigate/${ongoingTrip.trip.id}`)) {
+    if (pathname?.includes(`/trip/navigate/${ongoingTripId}`)) {
       return true;
     }
 

@@ -32,7 +32,8 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
+  type ImageRequireSource,
 } from 'react-native';
 import MapView, { AnimatedRegion, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -67,6 +68,15 @@ interface Waypoint {
 const SPEECH_LANGUAGE = 'fr-FR';
 const SPEECH_RATE = 0.95;
 const SPEECH_MIN_INTERVAL_MS = 2500;
+const USE_ANDROID_NAVIGATION_MARKER_IMAGES = Platform.OS === 'android';
+const ANDROID_DRIVER_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
+const ANDROID_PIN_MARKER_ANCHOR = { x: 0.5, y: 0.88 };
+const androidNavigationMarkerImages: Record<'driver' | 'pickup' | 'dropoff' | 'destination', ImageRequireSource> = {
+  driver: require('@/assets/images/map-markers/trip-marker-car.png'),
+  pickup: require('@/assets/images/map-markers/trip-detail-marker-passenger.png'),
+  dropoff: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
+  destination: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
+};
 
 const cleanHtmlInstructions = (html: string): string => {
   return html
@@ -112,20 +122,20 @@ export default function NavigationScreen() {
   const tripDepartureCoordinate = useMemo(
     () =>
       getTripLocationCoordinate({
-        lat: trip?.departure.lat,
-        lng: trip?.departure.lng,
-        hasCoordinates: trip?.departure.hasCoordinates,
+        lat: trip?.departure?.lat,
+        lng: trip?.departure?.lng,
+        hasCoordinates: trip?.departure?.hasCoordinates,
       }),
-    [trip?.departure.hasCoordinates, trip?.departure.lat, trip?.departure.lng],
+    [trip?.departure?.hasCoordinates, trip?.departure?.lat, trip?.departure?.lng],
   );
   const tripArrivalCoordinate = useMemo(
     () =>
       getTripLocationCoordinate({
-        lat: trip?.arrival.lat,
-        lng: trip?.arrival.lng,
-        hasCoordinates: trip?.arrival.hasCoordinates,
+        lat: trip?.arrival?.lat,
+        lng: trip?.arrival?.lng,
+        hasCoordinates: trip?.arrival?.hasCoordinates,
       }),
-    [trip?.arrival.hasCoordinates, trip?.arrival.lat, trip?.arrival.lng],
+    [trip?.arrival?.hasCoordinates, trip?.arrival?.lat, trip?.arrival?.lng],
   );
 
   const mapRef = useRef<MapView>(null);
@@ -1343,26 +1353,32 @@ export default function NavigationScreen() {
         {currentLocation?.coords?.latitude && currentLocation?.coords?.longitude && (
           <Marker.Animated
             coordinate={driverPosition as unknown as { latitude: number; longitude: number }}
-            anchor={{ x: 0.5, y: 0.5 }}
+            anchor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? ANDROID_DRIVER_MARKER_ANCHOR : { x: 0.5, y: 0.5 }}
             title="Ma position"
             flat
             rotation={heading}
-            tracksViewChanges={driverTracksViewChanges}
+            image={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? androidNavigationMarkerImages.driver : undefined}
+            tracksViewChanges={!USE_ANDROID_NAVIGATION_MARKER_IMAGES && driverTracksViewChanges}
           >
-            <View
-              style={styles.driverMarker}
-              onLayout={() => {
-                if (isMountedRef.current && driverTracksViewChanges) {
-                  setDriverTracksViewChanges(false);
-                }
-              }}
-            >
-              <View style={styles.driverMarkerInner}>
-                <View style={styles.driverMarkerCar}>
-                  <Ionicons name="car" size={20} color={Colors.white} />
+            {!USE_ANDROID_NAVIGATION_MARKER_IMAGES ? (
+              <View
+                collapsable={false}
+                style={styles.driverMarkerFrame}
+                onLayout={() => {
+                  if (isMountedRef.current && driverTracksViewChanges) {
+                    setDriverTracksViewChanges(false);
+                  }
+                }}
+              >
+                <View style={styles.driverMarker}>
+                  <View style={styles.driverMarkerInner}>
+                    <View style={styles.driverMarkerCar}>
+                      <Ionicons name="car" size={20} color={Colors.white} />
+                    </View>
+                  </View>
                 </View>
               </View>
-            </View>
+            ) : null}
           </Marker.Animated>
         )}
 
@@ -1376,9 +1392,42 @@ export default function NavigationScreen() {
               latitude: waypoints[currentWaypointIndex].location.lat,
               longitude: waypoints[currentWaypointIndex].location.lng,
             }}
-            pinColor={waypoints[currentWaypointIndex].type === 'pickup' ? Colors.secondary : Colors.success}
+            anchor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? ANDROID_PIN_MARKER_ANCHOR : { x: 0.5, y: 0.5 }}
+            image={
+              USE_ANDROID_NAVIGATION_MARKER_IMAGES
+                ? androidNavigationMarkerImages[
+                    waypoints[currentWaypointIndex].type === 'pickup' ? 'pickup' : 'dropoff'
+                  ]
+                : undefined
+            }
+            pinColor={
+              USE_ANDROID_NAVIGATION_MARKER_IMAGES
+                ? undefined
+                : waypoints[currentWaypointIndex].type === 'pickup'
+                  ? Colors.secondary
+                  : Colors.success
+            }
             title={`${waypoints[currentWaypointIndex].type === 'pickup' ? 'Récupérer' : 'Arrivée'} ${waypoints[currentWaypointIndex].passenger.name}`}
-          />
+            tracksViewChanges={false}
+          >
+            {!USE_ANDROID_NAVIGATION_MARKER_IMAGES ? (
+              <View
+                collapsable={false}
+                style={[
+                  styles.waypointMarkerContainer,
+                  waypoints[currentWaypointIndex].type === 'pickup'
+                    ? styles.pickupMarker
+                    : styles.dropoffMarker,
+                ]}
+              >
+                <Ionicons
+                  name={waypoints[currentWaypointIndex].type === 'pickup' ? 'person-add' : 'flag'}
+                  size={20}
+                  color={Colors.white}
+                />
+              </View>
+            ) : null}
+          </Marker>
         )}
 
         {/* Destination finale - Marqueur arrivée */}
@@ -1388,23 +1437,27 @@ export default function NavigationScreen() {
               latitude: tripArrivalCoordinate.latitude,
               longitude: tripArrivalCoordinate.longitude,
             }}
-            anchor={{ x: 0.5, y: 1 }}
+            anchor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? ANDROID_PIN_MARKER_ANCHOR : { x: 0.5, y: 1 }}
             title={trip.arrival.name || 'Arrivée'}
-            tracksViewChanges={destinationTracksViewChanges}
+            image={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? androidNavigationMarkerImages.destination : undefined}
+            tracksViewChanges={!USE_ANDROID_NAVIGATION_MARKER_IMAGES && destinationTracksViewChanges}
           >
-            <View
-              style={styles.destinationMarkerContainer}
-              onLayout={() => {
-                if (isMountedRef.current && destinationTracksViewChanges) {
-                  setDestinationTracksViewChanges(false);
-                }
-              }}
-            >
-              <View style={styles.destinationMarkerBody}>
-                <Ionicons name="flag" size={22} color={Colors.white} />
+            {!USE_ANDROID_NAVIGATION_MARKER_IMAGES ? (
+              <View
+                collapsable={false}
+                style={styles.destinationMarkerContainer}
+                onLayout={() => {
+                  if (isMountedRef.current && destinationTracksViewChanges) {
+                    setDestinationTracksViewChanges(false);
+                  }
+                }}
+              >
+                <View style={styles.destinationMarkerBody}>
+                  <Ionicons name="flag" size={22} color={Colors.white} />
+                </View>
+                <View style={styles.destinationMarkerTip} />
               </View>
-              <View style={styles.destinationMarkerTip} />
-            </View>
+            ) : null}
           </Marker>
         )}
       </MapView>
@@ -1783,7 +1836,7 @@ export default function NavigationScreen() {
 
             {/* Nom du passager */}
             <Text style={styles.waypointModalPassenger}>
-              {activeWaypoint?.passenger.name}
+              {activeWaypoint?.passenger?.name}
             </Text>
 
             {/* Adresse */}
@@ -2415,13 +2468,21 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     color: Colors.white,
   },
+  driverMarkerFrame: {
+    width: 64,
+    height: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'visible',
+  },
   driverMarker: {
-    width: 48,
-    height: 48,
+    width: 50,
+    height: 50,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.white,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'visible',
     shadowColor: Colors.black,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
@@ -2443,12 +2504,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   destinationMarkerContainer: {
-    width: 60,
-    height: 60,
+    width: 72,
+    height: 72,
     alignItems: 'center',
     justifyContent: 'flex-start',
     backgroundColor: 'transparent',
-    paddingTop: 2,
+    paddingTop: 6,
+    overflow: 'visible',
   },
   destinationMarkerBody: {
     width: 44,
@@ -2477,11 +2539,19 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.success,
   },
   waypointMarkerContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 2,
+    borderColor: Colors.white,
+    overflow: 'visible',
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.24,
+    shadowRadius: 4,
+    elevation: 4,
   },
   pickupMarker: {
     backgroundColor: Colors.secondary,

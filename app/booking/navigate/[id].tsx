@@ -17,13 +17,13 @@ import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type { Booking, TripPaymentMode } from '@/types';
+import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
-  Linking,
   Platform,
   StatusBar,
   StyleSheet,
@@ -551,9 +551,7 @@ export default function PassengerNavigationScreen() {
         phone,
       }).unwrap();
 
-      if (response.payment.paymentUrl) {
-        await Linking.openURL(response.payment.paymentUrl);
-      }
+      await openExternalUrlSafely(response.payment.paymentUrl, { logLabel: 'BookingNavigatePayment' });
 
       showDialog({
         variant: response.payment.status === 'succeeded' ? 'success' : 'info',

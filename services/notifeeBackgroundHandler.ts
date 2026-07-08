@@ -10,10 +10,29 @@ import { ONGOING_TRIP_NOTIFICATION_ID } from './ongoingTripNotification';
 // Types Notifee
 type NotifeeModule = typeof import('@notifee/react-native');
 type NotifeeDefault = NotifeeModule['default'];
-type EventType = NotifeeModule['EventType'];
+type NotifeeEventTypeEnum = NotifeeModule['EventType'];
 
 let notifee: NotifeeDefault | null = null;
-let EventTypeEnum: typeof EventType | null = null;
+let EventTypeEnum: NotifeeEventTypeEnum | null = null;
+
+async function openAppDeepLink(deepLink: string): Promise<void> {
+  try {
+    await Linking.openURL(deepLink);
+    return;
+  } catch (error) {
+    console.warn('[NotifeeBackgroundHandler] Deep link failed:', deepLink, error);
+  }
+
+  if (deepLink === 'zwanga://') {
+    return;
+  }
+
+  try {
+    await Linking.openURL('zwanga://');
+  } catch (fallbackError) {
+    console.warn('[NotifeeBackgroundHandler] App fallback link failed:', fallbackError);
+  }
+}
 
 // Charger Notifee dynamiquement
 try {
@@ -63,14 +82,8 @@ if (notifee && EventTypeEnum) {
 
         console.log('[NotifeeBackgroundHandler] Navigation via deep link:', deepLink);
 
-        // Ouvrir l'app avec le deep link
-        try {
-          await Linking.openURL(deepLink);
-        } catch (error) {
-          console.error('[NotifeeBackgroundHandler] Erreur ouverture deep link:', error);
-          // Fallback: ouvrir l'app simplement
-          await Linking.openURL('zwanga://');
-        }
+        // Ouvrir l'app avec le deep link sans propager une erreur native.
+        await openAppDeepLink(deepLink);
         return;
       }
 
@@ -100,12 +113,7 @@ if (notifee && EventTypeEnum) {
 
       console.log('[NotifeeBackgroundHandler] Navigation via deep link:', deepLink);
 
-      try {
-        await Linking.openURL(deepLink);
-      } catch (error) {
-        console.error('[NotifeeBackgroundHandler] Erreur ouverture deep link:', error);
-        await Linking.openURL('zwanga://');
-      }
+      await openAppDeepLink(deepLink);
     }
 
     // Gérer les dismissals (optionnel)

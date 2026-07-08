@@ -52,7 +52,10 @@ async function claimPendingProfileImageUri() {
       return null;
     }
 
-    return result.assets[0]?.uri ?? null;
+    return result.assets?.[0]?.uri ?? null;
+  } catch (error) {
+    console.warn('[ProfilePhoto] Pending image recovery failed:', error);
+    return null;
   } finally {
     pendingResultRecoveryInFlight = false;
   }
@@ -69,31 +72,41 @@ export function useProfilePhoto() {
   const { showDialog } = useDialog();
 
   const requestPermissions = async (source: 'camera' | 'gallery') => {
-    if (source === 'camera') {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status === 'granted') {
-        return true;
+    try {
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status === 'granted') {
+          return true;
+        }
+
+        showDialog({
+          variant: 'warning',
+          title: 'Permission requise',
+          message: 'L\'accès à la caméra est nécessaire pour prendre une photo de profil.',
+        });
+        return false;
       }
 
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        showDialog({
+          variant: 'warning',
+          title: 'Permission requise',
+          message: 'L\'accès à la galerie est nécessaire pour sélectionner une photo.',
+        });
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.warn(`[ProfilePhoto] ${source} permission request failed:`, error);
       showDialog({
-        variant: 'warning',
-        title: 'Permission requise',
-        message: 'L\'accès à la caméra est nécessaire pour prendre une photo de profil.',
+        variant: 'danger',
+        title: 'Accès impossible',
+        message: 'Impossible d\'ouvrir les autorisations du téléphone pour le moment.',
       });
       return false;
     }
-
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      showDialog({
-        variant: 'warning',
-        title: 'Permission requise',
-        message: 'L\'accès à la galerie est nécessaire pour sélectionner une photo.',
-      });
-      return false;
-    }
-
-    return true;
   };
 
   const pickImage = async (source: 'camera' | 'gallery') => {
@@ -123,8 +136,9 @@ export function useProfilePhoto() {
         });
       }
 
-      if (!result.canceled && result.assets[0]) {
-        return result.assets[0].uri;
+      const imageUri = result.assets?.[0]?.uri;
+      if (!result.canceled && imageUri) {
+        return imageUri;
       }
 
       return null;

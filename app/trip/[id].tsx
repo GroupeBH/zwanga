@@ -51,6 +51,7 @@ import {
   shareTrip,
   shareTripViaEmail,
 } from '@/utils/shareHelpers';
+import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerAndroid, type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useIsFocused } from '@react-navigation/native';
@@ -62,7 +63,6 @@ import {
   InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   Platform,
   RefreshControl,
@@ -1346,9 +1346,7 @@ export default function TripDetailsScreen() {
         phone,
       }).unwrap();
 
-      if (response.payment.paymentUrl) {
-        await Linking.openURL(response.payment.paymentUrl);
-      }
+      await openExternalUrlSafely(response.payment.paymentUrl, { logLabel: 'TripBookingPayment' });
 
       showDialog({
         variant:
@@ -2388,7 +2386,7 @@ export default function TripDetailsScreen() {
                     image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.departure : undefined}
                     pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.success}
                     title="Depart"
-                    description={trip?.departure.address}
+                    description={trip?.departure?.address}
                     tracksViewChanges={false}
                   >
                     {USE_CUSTOM_MAP_MARKERS ? (
@@ -2399,7 +2397,7 @@ export default function TripDetailsScreen() {
                     <Callout>
                       <View>
                         <Text style={{ fontWeight: 'bold' }}>Départ</Text>
-                        <Text>{trip?.departure.address}</Text>
+                        <Text>{trip?.departure?.address}</Text>
                       </View>
                     </Callout>
                       </>
@@ -3018,7 +3016,7 @@ export default function TripDetailsScreen() {
                                 style={[styles.bookingActionButton, styles.bookingActionSecondary, styles.bookingActionNavigation]}
                                 onPress={() => router.push(`/booking/navigate/${activeBooking.id}`)}
                               >
-                                <Ionicons name="navigate" size={18} color={Colors.primary} />
+                                <Ionicons name="navigate" size={18} color={Colors.white} />
                                 <Text style={[styles.bookingActionText, styles.bookingActionNavigationText]}>Suivre</Text>
                               </TouchableOpacity>
                             )}
@@ -3763,8 +3761,8 @@ export default function TripDetailsScreen() {
                   try {
                     await shareTrip(
                       trip.id,
-                      trip?.departure.name,
-                      trip?.arrival.name
+                      trip?.departure?.name,
+                      trip?.arrival?.name
                     );
                   } catch (error: any) {
                     showDialog({
@@ -5557,11 +5555,16 @@ const styles = StyleSheet.create({
     color: Colors.white,
   },
   bookingActionNavigation: {
-    borderColor: Colors.primary + '30',
-    backgroundColor: Colors.primary + '08',
+    borderColor: Colors.info,
+    backgroundColor: Colors.info,
+    shadowColor: Colors.info,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 2,
   },
   bookingActionNavigationText: {
-    color: Colors.primary,
+    color: Colors.white,
   },
   bookingActionCall: {
     borderColor: Colors.success + '30',
