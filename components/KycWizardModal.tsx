@@ -15,11 +15,10 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 
-export type KycCaptureKey = 'front' | 'back' | 'selfie';
+export type KycCaptureKey = 'front' | 'selfie';
 
 export interface KycCaptureResult {
   front: string;
-  back: string;
   selfie: string;
 }
 
@@ -38,11 +37,6 @@ const DOCUMENT_STEPS: { key: KycCaptureKey; title: string; description: string }
     description: 'Cadrez le recto de votre pièce d’identité dans le gabarit lumineux.',
   },
   {
-    key: 'back',
-    title: 'Scanner le verso',
-    description: 'Retournez la pièce puis laissez l’appareil détecter automatiquement.',
-  },
-  {
     key: 'selfie',
     title: 'Selfie de vérification',
     description: 'Regardez la caméra et centrez votre visage dans le cercle.',
@@ -54,6 +48,7 @@ const STABILITY_DURATION_MS = 1500;
 const KYC_CAPTURE_MAX_EDGE = 1600;
 const KYC_CAPTURE_MIN_EDGE = 720;
 const KYC_CAPTURE_QUALITY = 0.6;
+const MANUAL_CAPTURE_DELAY_MS = 5000;
 
 const parsePictureSize = (size: string) => {
   const match = /^(\d+)x(\d+)$/.exec(size);
@@ -120,7 +115,6 @@ export function KycWizardModal({
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [captures, setCaptures] = useState<Record<KycCaptureKey, string | null>>({
     front: initialValues?.front ?? null,
-    back: initialValues?.back ?? null,
     selfie: initialValues?.selfie ?? null,
   });
   const [isDeviceStable, setIsDeviceStable] = useState(false);
@@ -130,6 +124,7 @@ export function KycWizardModal({
   const [androidPictureSize, setAndroidPictureSize] = useState<string | undefined>();
   const isCapturingRef = useRef(false);
   const stabilityTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const manualFallbackTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastMeasurementRef = useRef<AccelerometerMeasurement | null>(null);
 
   const steps = useMemo(
@@ -150,14 +145,13 @@ export function KycWizardModal({
   const currentCaptureKey = !isReviewStep ? (currentStep.key as KycCaptureKey) : null;
   const currentCaptureValue = currentCaptureKey ? captures[currentCaptureKey] : null;
   const canContinue = isReviewStep
-    ? Boolean(captures.front && captures.back && captures.selfie)
+    ? Boolean(captures.front && captures.selfie)
     : Boolean(currentCaptureValue);
 
   useEffect(() => {
     if (visible) {
       setCaptures({
         front: initialValues?.front ?? null,
-        back: initialValues?.back ?? null,
         selfie: initialValues?.selfie ?? null,
       });
       setCurrentStepIndex(0);
@@ -167,6 +161,7 @@ export function KycWizardModal({
       setAndroidPictureSize(undefined);
       isCapturingRef.current = false;
     } else {
+      cleanupManualFallbackTimer();
       cleanupStabilityTracking();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -222,6 +217,7 @@ export function KycWizardModal({
 
   useEffect(() => {
     if (!needsCamera || currentCaptureValue) {
+      cleanupManualFallbackTimer();
       setCaptureCountdown(null);
       setManualCaptureAvailable(false);
       return;
@@ -237,10 +233,48 @@ export function KycWizardModal({
   }, [captureCountdown, currentCaptureValue, isDeviceStable, needsCamera]);
 
   useEffect(() => {
+    cleanupManualFallbackTimer();
+
+    if (
+      !visible ||
+      !needsCamera ||
+      currentCaptureValue ||
+      !permission?.granted ||
+      captureCountdown !== null
+    ) {
+      return;
+    }
+
+    manualFallbackTimerRef.current = setTimeout(() => {
+      if (!isCapturingRef.current) {
+        setManualCaptureAvailable(true);
+      }
+    }, MANUAL_CAPTURE_DELAY_MS);
+
+    return cleanupManualFallbackTimer;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    captureCountdown,
+    currentCaptureKey,
+    currentCaptureValue,
+    needsCamera,
+    permission?.granted,
+    visible,
+  ]);
+
+  useEffect(() => {
     setAndroidPictureSize(undefined);
   }, [currentCaptureKey]);
 
+  const cleanupManualFallbackTimer = () => {
+    if (manualFallbackTimerRef.current) {
+      clearTimeout(manualFallbackTimerRef.current);
+      manualFallbackTimerRef.current = null;
+    }
+  };
+
   const cleanupStabilityTracking = () => {
+    cleanupManualFallbackTimer();
     if (stabilityTimerRef.current) {
       clearTimeout(stabilityTimerRef.current);
       stabilityTimerRef.current = null;
@@ -327,7 +361,6 @@ export function KycWizardModal({
     if (isReviewStep) {
       onComplete({
         front: captures.front!,
-        back: captures.back!,
         selfie: captures.selfie!,
       });
       return;
@@ -467,7 +500,7 @@ export function KycWizardModal({
                 ) : (
                   <>
                     <Ionicons name="camera" size={18} color={Colors.white} />
-                    <Text style={styles.manualCaptureButtonText}>Scanner manuellement</Text>
+                    <Text style={styles.manualCaptureButtonText}>Scanner maintenant</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -483,7 +516,7 @@ export function KycWizardModal({
     }
     return (
       <View style={styles.reviewGrid}>
-        {(['front', 'back', 'selfie'] as KycCaptureKey[]).map((key) => (
+        {(['front', 'selfie'] as KycCaptureKey[]).map((key) => (
           <View key={key} style={styles.reviewItem}>
             <Image
               source={{ uri: captures[key]! }}
@@ -494,7 +527,7 @@ export function KycWizardModal({
             <View style={styles.reviewLabelRow}>
               <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
               <Text style={styles.reviewLabel}>
-                {key === 'front' ? 'Recto' : key === 'back' ? 'Verso' : 'Selfie'}
+                {key === 'front' ? 'Recto' : 'Selfie'}
               </Text>
             </View>
             <TouchableOpacity style={styles.reviewRetake} onPress={() => handleRetake(key)}>

@@ -177,7 +177,6 @@ export default function PublishScreen() {
   const [kycModalVisible, setKycModalVisible] = useState(false);
   const [kycWizardVisible, setKycWizardVisible] = useState(false);
   const [kycFrontImage, setKycFrontImage] = useState<string | null>(null);
-  const [kycBackImage, setKycBackImage] = useState<string | null>(null);
   const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
   const [kycSubmitting, setKycSubmitting] = useState(false);
   const [kycApprovedInForm, setKycApprovedInForm] = useState(false);
@@ -213,7 +212,7 @@ export default function PublishScreen() {
 
   const buildKycFormData = (files?: Partial<KycCaptureResult>) => {
     const formData = new FormData();
-    const appendFile = (field: 'cniFront' | 'cniBack' | 'selfie', uri: string | null | undefined) => {
+    const appendFile = (field: 'cniFront' | 'selfie', uri: string | null | undefined) => {
       if (!uri) return;
       const extensionMatch = uri.split('.').pop()?.split('?')[0]?.toLowerCase();
       const extension = extensionMatch && extensionMatch.length <= 5 ? extensionMatch : 'jpg';
@@ -233,7 +232,6 @@ export default function PublishScreen() {
     };
 
     appendFile('cniFront', files?.front ?? kycFrontImage);
-    appendFile('cniBack', files?.back ?? kycBackImage);
     appendFile('selfie', files?.selfie ?? kycSelfieImage);
 
     return formData;
@@ -241,20 +239,19 @@ export default function PublishScreen() {
 
   const handleSubmitKyc = async (documents?: Partial<KycCaptureResult>) => {
     const front = documents?.front ?? kycFrontImage;
-    const back = documents?.back ?? kycBackImage;
     const selfie = documents?.selfie ?? kycSelfieImage;
 
-    if (!front || !back || !selfie) {
+    if (!front || !selfie) {
       showDialog({
         variant: 'warning',
         title: 'Documents requis',
-        message: 'Merci de fournir les deux faces de votre pièce ainsi qu\'un selfie.',
+        message: 'Merci de fournir le recto de votre pièce ainsi qu\'un selfie.',
       });
       return;
     }
     try {
       setKycSubmitting(true);
-      const formData = buildKycFormData({ front, back, selfie });
+      const formData = buildKycFormData({ front, selfie });
       const result = await uploadKyc(formData).unwrap();
       setKycModalVisible(false);
 
@@ -316,7 +313,6 @@ export default function PublishScreen() {
 
   const handleKycWizardComplete = async (payload: KycCaptureResult) => {
     setKycFrontImage(payload.front);
-    setKycBackImage(payload.back);
     setKycSelfieImage(payload.selfie);
     await handleSubmitKyc(payload);
     setKycWizardVisible(false);
@@ -325,7 +321,7 @@ export default function PublishScreen() {
   const isKycBusy = kycSubmitting || uploadingKyc;
 
   const kycChecklist = [
-    { icon: 'id-card', title: "Pièce d'identité", subtitle: 'Recto-verso bien lisible' },
+    { icon: 'id-card', title: "Pièce d'identité", subtitle: 'Recto bien lisible' },
     { icon: 'camera', title: 'Selfie sécurisé', subtitle: 'Prenez une photo nette de votre visage' },
     { icon: 'time', title: 'Validation express', subtitle: 'Moins de 24h en moyenne' },
   ] as const;
@@ -2729,7 +2725,6 @@ export default function PublishScreen() {
         isSubmitting={isKycBusy}
         initialValues={{
           front: kycFrontImage,
-          back: kycBackImage,
           selfie: kycSelfieImage,
         }}
         onComplete={handleKycWizardComplete}

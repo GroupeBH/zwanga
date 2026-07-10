@@ -30,6 +30,7 @@ import './supportApi';
 import './walletApi';
 import './driverSettlementsApi';
 import './trackingApi';
+import './paymentApi';
 
 // Import de la base API
 export { baseApi as zwangaApi };
@@ -205,3 +206,8 @@ export {
 export {
   useCreateTripShareLinkMutation,
 } from './trackingApi';
+
+export {
+  useGetPaymentHistoryQuery,
+  useLazyGetPaymentDetailsQuery,
+} from './paymentApi';

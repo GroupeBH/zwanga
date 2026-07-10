@@ -126,6 +126,36 @@ export interface SubscriptionPaymentResponse {
   payment: SubscriptionPayment;
 }
 
+export type PaymentPurpose =
+  | 'generic'
+  | 'subscription_pro'
+  | 'trip_booking'
+  | 'wallet_top_up'
+  | 'driver_payout';
+
+export interface PaymentHistoryItem {
+  id: string;
+  purpose: PaymentPurpose | string;
+  relatedEntityType: string | null;
+  relatedEntityId: string | null;
+  provider: 'flexpay' | string;
+  method: SubscriptionPaymentMethod;
+  status: SubscriptionPaymentStatus;
+  reference: string;
+  orderNumber: string | null;
+  providerReference: string | null;
+  statusCode: string | null;
+  message: string | null;
+  amount: number | string;
+  currency: string;
+  description: string | null;
+  phone: string | null;
+  paymentUrl: string | null;
+  paidAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SubscribeToProPayload {
   paymentMethod: SubscriptionPaymentMethod;
   phone?: string;
@@ -415,7 +445,7 @@ export interface KycDocument {
   id: string;
   userId: string;
   cniFrontUrl: string;
-  cniBackUrl: string;
+  cniBackUrl?: string | null;
   selfieUrl: string;
   status: KycStatus;
   rejectionReason?: string | null;

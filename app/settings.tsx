@@ -114,6 +114,7 @@ export default function SettingsScreen() {
       route: null,
       onPress: changeProfilePhoto,
     },
+    { icon: 'receipt-outline', label: 'Historique paiements', route: '/payment-history' },
     { icon: 'lock-closed-outline', label: 'Sécurité', route: '/security' },
   ];
 
