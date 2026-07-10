@@ -80,7 +80,6 @@ export interface AuthFormRefs {
 // KYC files type (from KycWizardModal)
 export interface KycFiles {
   front: string;
-  back: string;
   selfie: string;
 }
 

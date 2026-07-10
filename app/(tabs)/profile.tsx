@@ -2,7 +2,6 @@ import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardMod
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { VehicleFormModal } from '@/components/VehicleFormModal';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { ELECTRONIC_PAYMENTS_ENABLED } from '@/constants/paymentFeatures';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
@@ -183,7 +182,6 @@ export default function ProfileScreen() {
   const [kycModalVisible, setKycModalVisible] = useState(false);
   const [reviewsModalVisible, setReviewsModalVisible] = useState(false);
   const [kycFrontImage, setKycFrontImage] = useState<string | null>(null);
-  const [kycBackImage, setKycBackImage] = useState<string | null>(null);
   const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
   const [kycSubmitting, setKycSubmitting] = useState(false);
   const [pinModalVisible, setPinModalVisible] = useState(false);
@@ -467,7 +465,6 @@ export default function ProfileScreen() {
 
   const resetKycForm = () => {
     setKycFrontImage(null);
-    setKycBackImage(null);
     setKycSelfieImage(null);
   };
 
@@ -890,16 +887,6 @@ export default function ProfileScreen() {
       return;
     }
 
-    if (!ELECTRONIC_PAYMENTS_ENABLED) {
-      showDialog({
-        variant: 'info',
-        title: 'Paiement indisponible',
-        message:
-          'Cette fonctionnalite est temporairement desactivee pendant les tests.',
-      });
-      return;
-    }
-
     stopSubscriptionPaymentAutoCheck();
     if (!isSubscriptionCardPayment && !subscriptionPhone.trim()) {
       setSubscriptionPhone(DRC_MOBILE_MONEY_PREFIX);
@@ -926,16 +913,6 @@ export default function ProfileScreen() {
   };
 
   const handleContinueSubscriptionPayment = () => {
-    if (!ELECTRONIC_PAYMENTS_ENABLED) {
-      showDialog({
-        variant: 'info',
-        title: 'Paiement indisponible',
-        message:
-          'Cette fonctionnalite est temporairement desactivee pendant les tests.',
-      });
-      return;
-    }
-
     Keyboard.dismiss();
 
     if (!isSubscriptionCardPayment && !subscriptionPhone.trim()) {
@@ -950,16 +927,6 @@ export default function ProfileScreen() {
   };
 
   const handleSubmitSubscriptionPayment = async () => {
-    if (!ELECTRONIC_PAYMENTS_ENABLED) {
-      showDialog({
-        variant: 'info',
-        title: 'Paiement indisponible',
-        message:
-          'Cette fonctionnalite est temporairement desactivee pendant les tests.',
-      });
-      return;
-    }
-
     const phone = formatCongolesePaymentPhone(subscriptionPhone);
     const paymentMethod = isSubscriptionCardPayment ? 'card' : 'mobile_money';
 
@@ -1066,7 +1033,7 @@ export default function ProfileScreen() {
     }
 
     openedSubscriptionParamRef.current = true;
-    if (isDriver && ELECTRONIC_PAYMENTS_ENABLED) {
+    if (isDriver) {
       setSubscriptionPaymentOrderNumber(null);
       setSubscriptionPaymentMessage(null);
       setSubscriptionModalVisible(true);
@@ -1079,10 +1046,6 @@ export default function ProfileScreen() {
     }
 
     handledPaymentStatusRef.current = paymentStatus;
-    if (!ELECTRONIC_PAYMENTS_ENABLED) {
-      return;
-    }
-
     setSubscriptionModalVisible(true);
 
     const normalizedStatus = String(paymentStatus).toLowerCase();
@@ -1113,7 +1076,7 @@ export default function ProfileScreen() {
 
   const buildKycFormData = (files?: Partial<KycCaptureResult>) => {
     const formData = new FormData();
-    const appendFile = (field: 'cniFront' | 'cniBack' | 'selfie', uri: string | null | undefined) => {
+    const appendFile = (field: 'cniFront' | 'selfie', uri: string | null | undefined) => {
       if (!uri) return;
       const extensionMatch = uri.split('.').pop()?.split('?')[0]?.toLowerCase();
       const extension = extensionMatch && extensionMatch.length <= 5 ? extensionMatch : 'jpg';
@@ -1133,7 +1096,6 @@ export default function ProfileScreen() {
     };
 
     appendFile('cniFront', files?.front ?? kycFrontImage);
-    appendFile('cniBack', files?.back ?? kycBackImage);
     appendFile('selfie', files?.selfie ?? kycSelfieImage);
 
     return formData;
@@ -1141,20 +1103,19 @@ export default function ProfileScreen() {
 
   const handleSubmitKyc = async (documents?: Partial<KycCaptureResult>) => {
     const front = documents?.front ?? kycFrontImage;
-    const back = documents?.back ?? kycBackImage;
     const selfie = documents?.selfie ?? kycSelfieImage;
 
-    if (!front || !back || !selfie) {
+    if (!front || !selfie) {
       showDialog({
         variant: 'warning',
         title: 'Documents requis',
-        message: 'Merci de fournir les deux faces de votre pièce ainsi qu\'un selfie.',
+        message: 'Merci de fournir le recto de votre pièce ainsi qu\'un selfie.',
       });
       return;
     }
     try {
       setKycSubmitting(true);
-      const formData = buildKycFormData({ front, back, selfie });
+      const formData = buildKycFormData({ front, selfie });
       const result = await uploadKyc(formData).unwrap();
       setKycModalVisible(false);
       
@@ -1211,7 +1172,6 @@ export default function ProfileScreen() {
 
   const handleKycWizardComplete = async (payload: KycCaptureResult) => {
     setKycFrontImage(payload.front);
-    setKycBackImage(payload.back);
     setKycSelfieImage(payload.selfie);
     await handleSubmitKyc(payload);
   };
@@ -1748,9 +1708,7 @@ export default function ProfileScreen() {
                   ) : (
                     <>
                       <Text style={styles.proSecondaryButtonText}>
-                        {ELECTRONIC_PAYMENTS_ENABLED
-                          ? "Payer dans l'app"
-                          : 'Paiement suspendu'}
+                        {"Payer dans l'app"}
                       </Text>
                       <Text style={styles.proSecondaryPrice}>{proPriceLabel}</Text>
                     </>
@@ -2085,7 +2043,6 @@ export default function ProfileScreen() {
         isSubmitting={isKycBusy}
         initialValues={{
           front: kycFrontImage,
-          back: kycBackImage,
           selfie: kycSelfieImage,
         }}
         onComplete={handleKycWizardComplete}

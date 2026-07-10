@@ -951,7 +951,6 @@ export default function AuthScreen() {
       formData.append(field, { uri, type: 'image/jpeg', name: `${field}-${Date.now()}.${ext}` } as any);
     };
     appendFile('cniFront', files.front);
-    appendFile('cniBack', files.back);
     appendFile('selfie', files.selfie);
     return formData;
   };

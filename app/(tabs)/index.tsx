@@ -10,12 +10,15 @@ import {
   useGetTripsByCoordinatesQuery,
   useGetTripsQuery,
 } from '@/store/api/tripApi';
-import { useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
+import {
+  useGetAvailableTripRequestsQuery,
+  useGetMyTripRequestsQuery,
+} from '@/store/api/tripRequestApi';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectAvailableTrips, selectLocationRadius } from '@/store/selectors';
 import { setTrips } from '@/store/slices/tripsSlice';
-import type { Trip } from '@/types';
+import type { Trip, TripRequest } from '@/types';
 import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
 import { formatDateTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requestNavigation';
@@ -83,6 +86,17 @@ const vehicleIcon: Record<Trip['vehicleType'], keyof typeof Ionicons.glyphMap> =
   tricycle: 'bus-outline',
 };
 
+const tripRequestStatusMeta: Record<
+  TripRequest['status'],
+  { label: string; color: string; bg: string; icon: keyof typeof Ionicons.glyphMap }
+> = {
+  pending: { label: 'Nouvelle demande', color: Colors.warning, bg: Colors.warning + '16', icon: 'radio-outline' },
+  offers_received: { label: 'Offres en cours', color: Colors.info, bg: Colors.info + '16', icon: 'sparkles-outline' },
+  driver_selected: { label: 'Attribuée', color: Colors.success, bg: Colors.success + '16', icon: 'checkmark-circle-outline' },
+  cancelled: { label: 'Annulée', color: Colors.danger, bg: Colors.danger + '16', icon: 'close-circle-outline' },
+  expired: { label: 'Expirée', color: Colors.gray[500], bg: Colors.gray[200], icon: 'time-outline' },
+};
+
 const androidTripMarkerImages: Record<Trip['vehicleType'], ImageRequireSource> = {
   car: require('@/assets/images/map-markers/trip-marker-car.png'),
   moto: require('@/assets/images/map-markers/trip-marker-moto.png'),
@@ -110,10 +124,18 @@ type TripPreviewCardProps = {
   trip: Trip;
 };
 
+type TripRequestPreviewCardProps = {
+  cardWidth: number;
+  onOpen: () => void;
+  request: TripRequest;
+};
+
 type TripMapMarkerProps = {
   isSelected: boolean;
   trip: Trip;
 };
+
+type HomeSheetMode = 'trips' | 'requests';
 
 type UserLocationMarkerState = {
   address: string;
@@ -144,8 +166,12 @@ function getInitials(name?: string | null) {
     .join('');
 }
 
-function placeName(place?: Trip['departure']) {
+function placeName(place?: Trip['departure'] | TripRequest['departure']) {
   return place?.name || place?.address || 'Adresse à préciser';
+}
+
+function getTripRequestStatusMeta(status: TripRequest['status']) {
+  return tripRequestStatusMeta[status] ?? tripRequestStatusMeta.pending;
 }
 
 function getLocationCoordinate(location?: Trip['departure']): MapCoordinate | null {
@@ -291,6 +317,108 @@ function TripPreviewCard({
           )}
         </View>
         <View style={styles.tripPreviewOpenButton}>
+          <Ionicons name="chevron-forward" size={22} color={Colors.white} />
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function TripRequestPreviewCard({
+  cardWidth,
+  onOpen,
+  request,
+}: TripRequestPreviewCardProps) {
+  const passengerName = request.passengerName || 'Passager Zwanga';
+  const statusMeta = getTripRequestStatusMeta(request.status);
+  const pendingOffersCount = request.offers?.filter((offer) => offer.status === 'pending').length ?? 0;
+  const maxPrice = Number(request.maxPricePerSeat ?? 0);
+  const hasMaxPrice = Number.isFinite(maxPrice) && maxPrice > 0;
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      accessibilityRole="button"
+      accessibilityLabel={`Voir la demande de ${placeName(request.departure)} à ${placeName(request.arrival)}`}
+      onPress={onOpen}
+      style={[styles.requestPreviewCard, { width: cardWidth }]}
+    >
+      <View style={styles.requestPreviewTopRow}>
+        <View style={styles.requestPassengerInline}>
+          {request.passengerAvatar ? (
+            <Image source={{ uri: request.passengerAvatar }} style={styles.requestPreviewAvatar} resizeMode="cover" />
+          ) : (
+            <View style={[styles.requestPreviewAvatar, styles.requestPreviewAvatarFallback]}>
+              <Text style={styles.requestPreviewAvatarText}>{getInitials(passengerName)}</Text>
+            </View>
+          )}
+          <View style={styles.requestPreviewPassengerCopy}>
+            <Text style={styles.requestPreviewPassengerName} numberOfLines={1}>
+              {passengerName}
+            </Text>
+            <Text style={styles.requestPreviewDate} numberOfLines={1}>
+              {formatDateWithRelativeLabel(request.createdAt, false)}
+            </Text>
+          </View>
+        </View>
+        <View style={[styles.requestPreviewStatusBadge, { backgroundColor: statusMeta.bg }]}>
+          <Ionicons name={statusMeta.icon} size={13} color={statusMeta.color} />
+          <Text style={[styles.requestPreviewStatusText, { color: statusMeta.color }]} numberOfLines={1}>
+            {statusMeta.label}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.requestPreviewRoute}>
+        <View style={styles.requestPreviewRail}>
+          <View style={[styles.requestPreviewRouteDot, styles.requestPreviewStartDot]} />
+          <View style={styles.requestPreviewRouteLine} />
+          <View style={[styles.requestPreviewRouteDot, styles.requestPreviewEndDot]} />
+        </View>
+        <View style={styles.requestPreviewRouteCopy}>
+          <View>
+            <Text style={styles.requestPreviewRouteLabel}>
+              DEPART - {formatDateWithRelativeLabel(request.departureDateMin, true)}
+            </Text>
+            <Text style={styles.requestPreviewRouteText} numberOfLines={1}>
+              {placeName(request.departure)}
+            </Text>
+          </View>
+          <View>
+            <Text style={styles.requestPreviewRouteLabel}>
+              DESTINATION - limite {formatDateWithRelativeLabel(request.departureDateMax, true)}
+            </Text>
+            <Text style={styles.requestPreviewRouteText} numberOfLines={1}>
+              {placeName(request.arrival)}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.requestPreviewFooter}>
+        <View style={styles.requestPreviewChips}>
+          <View style={styles.requestPreviewChip}>
+            <Ionicons name="people-outline" size={13} color={HOME_COLORS.navy} />
+            <Text style={styles.requestPreviewChipText} numberOfLines={1}>
+              {request.numberOfSeats} place{request.numberOfSeats > 1 ? 's' : ''}
+            </Text>
+          </View>
+          {hasMaxPrice && (
+            <View style={styles.requestPreviewBudgetChip}>
+              <Text style={styles.requestPreviewBudgetText} numberOfLines={1}>
+                Max {formatPrice(maxPrice)}
+              </Text>
+            </View>
+          )}
+          {pendingOffersCount > 0 && (
+            <View style={styles.requestPreviewOffersChip}>
+              <Text style={styles.requestPreviewOffersText} numberOfLines={1}>
+                {pendingOffersCount} offre{pendingOffersCount > 1 ? 's' : ''}
+              </Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.requestPreviewOpenButton}>
           <Ionicons name="chevron-forward" size={22} color={Colors.white} />
         </View>
       </View>
@@ -551,6 +679,7 @@ export default function HomeScreen() {
   const locationRadiusKm = useAppSelector(selectLocationRadius);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [tripsSheetOpen, setTripsSheetOpen] = useState(true);
+  const [homeSheetMode, setHomeSheetMode] = useState<HomeSheetMode>('trips');
   const [isCenteringOnUser, setIsCenteringOnUser] = useState(false);
   const [mapFocusedOnUser, setMapFocusedOnUser] = useState(false);
   const [userLocationMarker, setUserLocationMarker] = useState<UserLocationMarkerState | null>(null);
@@ -560,6 +689,10 @@ export default function HomeScreen() {
     trackingProfile: 'nearby',
   });
   const { data: currentUser } = useGetCurrentUserQuery();
+  const isDriver = useMemo(() => {
+    const role = currentUser?.role;
+    return role === 'driver' || role === 'both' || Boolean(currentUser?.isDriver);
+  }, [currentUser?.isDriver, currentUser?.role]);
 
   const nearbyTripsPayload = useMemo<TripSearchByPointsPayload | null>(() => {
     const latitude = lastKnownLocation?.coords?.latitude;
@@ -671,6 +804,24 @@ export default function HomeScreen() {
     refetchOnFocus: isFocused,
     refetchOnReconnect: isFocused,
   });
+  const {
+    data: availableTripRequests = [],
+    isLoading: availableTripRequestsLoading,
+    isError: availableTripRequestsError,
+    refetch: refetchAvailableTripRequests,
+  } = useGetAvailableTripRequestsQuery(undefined, {
+    skip: !isDriver,
+    pollingInterval: isFocused && homeSheetMode === 'requests' ? 30000 : 0,
+    skipPollingIfUnfocused: true,
+    refetchOnFocus: isFocused,
+    refetchOnReconnect: isFocused,
+  });
+
+  useEffect(() => {
+    if (!isDriver && homeSheetMode === 'requests') {
+      setHomeSheetMode('trips');
+    }
+  }, [homeSheetMode, isDriver]);
 
   useEffect(() => {
     if (remoteTrips) {
@@ -783,6 +934,35 @@ export default function HomeScreen() {
 
     return { label: 'Recherche en cours', icon: 'radio-outline' as const };
   }, [activeTripRequest, activeTripRequestPendingOffers]);
+
+  const availableDriverRequests = useMemo(() => {
+    if (!isDriver || !currentUser?.id) {
+      return [];
+    }
+
+    const getDepartureTime = (departureDate?: string | null) => {
+      if (!departureDate) {
+        return Number.MAX_SAFE_INTEGER;
+      }
+
+      const timestamp = new Date(departureDate).getTime();
+      return Number.isFinite(timestamp) ? timestamp : Number.MAX_SAFE_INTEGER;
+    };
+
+    return [...availableTripRequests]
+      .filter((request) => request.passengerId !== currentUser.id && !request.tripId)
+      .sort((a, b) => {
+        const departureDelta = getDepartureTime(a.departureDateMin) - getDepartureTime(b.departureDateMin);
+        if (departureDelta !== 0) {
+          return departureDelta;
+        }
+
+        const updatedA = new Date(a.updatedAt || a.createdAt).getTime();
+        const updatedB = new Date(b.updatedAt || b.createdAt).getTime();
+        return updatedB - updatedA;
+      })
+      .slice(0, RECENT_TRIPS_LIMIT);
+  }, [availableTripRequests, currentUser?.id, isDriver]);
 
   const latestTrips = useMemo(() => {
     const tripsById = new Map<string, Trip>();
@@ -904,14 +1084,44 @@ export default function HomeScreen() {
   const isCompactScreen = width <= 360;
   const tabBarMetrics = getTabBarMetrics(insets.bottom);
   const sheetBottomOffset = Platform.OS === 'ios' ? Math.max(tabBarMetrics.height - 2, 0) : 0;
-  const openSheetHeight = Math.min(Math.max(height * 0.34, isCompactScreen ? 296 : 318), 348);
+  const openSheetHeight = isDriver
+    ? Math.min(Math.max(height * 0.38, isCompactScreen ? 328 : 354), 388)
+    : Math.min(Math.max(height * 0.34, isCompactScreen ? 296 : 318), 348);
   const retractedSheetHeight = 78;
   const sheetHeight = tripsSheetOpen ? openSheetHeight : retractedSheetHeight;
   const locationButtonBottom = sheetBottomOffset + sheetHeight + Spacing.md;
   const tripCardWidth = Math.min(width - 56, 342);
   const availableTripsLabel = `${latestTrips.length} trajet${latestTrips.length > 1 ? 's' : ''}`;
+  const availableRequestsLabel = `${availableDriverRequests.length} demande${availableDriverRequests.length > 1 ? 's' : ''}`;
+  const isRequestsSheetMode = homeSheetMode === 'requests' && isDriver;
+  const sheetTitle = isRequestsSheetMode ? 'Demandes de trajet' : 'Trajets publiés';
+  const sheetSubtitle = isRequestsSheetMode
+    ? availableDriverRequests.length > 0
+      ? `${availableRequestsLabel} à traiter`
+      : 'Aucune demande pour le moment'
+    : latestTrips.length > 0
+      ? `${availableTripsLabel} à parcourir`
+      : 'Aucune offre pour le moment';
+  const sheetLoading = isRequestsSheetMode ? availableTripRequestsLoading : tripsLoading;
+  const sheetError = isRequestsSheetMode ? availableTripRequestsError : tripsError;
+  const sheetEmpty = isRequestsSheetMode ? availableDriverRequests.length === 0 : latestTrips.length === 0;
   const showInitialHomeLoader = tripsLoading && !remoteTrips && storedTrips.length === 0;
   const shouldRenderHomeMap = isFocused;
+  const refetchSheetContent = () => {
+    if (isRequestsSheetMode) {
+      return refetchAvailableTripRequests();
+    }
+
+    return refetchTrips();
+  };
+  const openSheetIndex = () => {
+    if (isRequestsSheetMode) {
+      router.push('/requests');
+      return;
+    }
+
+    router.push('/search');
+  };
   const openTripDetail = (tripId: string) => {
     if (openingTripRef.current) return;
 
@@ -1268,14 +1478,14 @@ export default function HomeScreen() {
             onPress={() => setTripsSheetOpen((current) => !current)}
           >
             <Text style={styles.sheetTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
-              Trajets autour de vous
+              {sheetTitle}
             </Text>
             <Text style={styles.sheetSubtitle} numberOfLines={1}>
-              {latestTrips.length > 0 ? `${availableTripsLabel} à parcourir` : 'Aucune offre pour le moment'}
+              {sheetSubtitle}
             </Text>
           </TouchableOpacity>
           <View style={styles.sheetHeaderActions}>
-            <TouchableOpacity activeOpacity={0.75} onPress={() => router.push('/search')}>
+            <TouchableOpacity activeOpacity={0.75} onPress={openSheetIndex}>
               <Text style={styles.seeAllText} numberOfLines={1}>Voir tout</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -1294,33 +1504,112 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {tripsSheetOpen && tripsLoading && (
+        {tripsSheetOpen && isDriver && (
+          <View style={styles.sheetModeSwitch}>
+            <TouchableOpacity
+              activeOpacity={0.82}
+              accessibilityRole="button"
+              accessibilityState={{ selected: !isRequestsSheetMode }}
+              style={[styles.sheetModeOption, !isRequestsSheetMode && styles.sheetModeOptionActive]}
+              onPress={() => setHomeSheetMode('trips')}
+            >
+              <Ionicons
+                name="car-outline"
+                size={15}
+                color={!isRequestsSheetMode ? Colors.white : HOME_COLORS.navy}
+              />
+              <Text
+                style={[styles.sheetModeText, !isRequestsSheetMode && styles.sheetModeTextActive]}
+                numberOfLines={1}
+              >
+                Trajets
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.82}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isRequestsSheetMode }}
+              style={[styles.sheetModeOption, isRequestsSheetMode && styles.sheetModeOptionActive]}
+              onPress={() => setHomeSheetMode('requests')}
+            >
+              <Ionicons
+                name="document-text-outline"
+                size={15}
+                color={isRequestsSheetMode ? Colors.white : HOME_COLORS.navy}
+              />
+              <Text
+                style={[styles.sheetModeText, isRequestsSheetMode && styles.sheetModeTextActive]}
+                numberOfLines={1}
+              >
+                Demandes
+              </Text>
+              {availableDriverRequests.length > 0 && (
+                <View style={[styles.sheetModeCountBadge, isRequestsSheetMode && styles.sheetModeCountBadgeActive]}>
+                  <Text style={[styles.sheetModeCountText, isRequestsSheetMode && styles.sheetModeCountTextActive]}>
+                    {availableDriverRequests.length > 9 ? '9+' : availableDriverRequests.length}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {tripsSheetOpen && sheetLoading && (
           <HomeSheetLoadingState />
         )}
 
-        {tripsSheetOpen && tripsError && !tripsLoading && (
+        {tripsSheetOpen && sheetError && !sheetLoading && (
           <View style={styles.sheetState}>
             <Ionicons name="alert-circle-outline" size={24} color={Colors.danger} />
-            <Text style={styles.sheetStateText}>Impossible de charger les trajets.</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={refetchTrips}>
+            <Text style={styles.sheetStateText}>
+              Impossible de charger les {isRequestsSheetMode ? 'demandes' : 'trajets'}.
+            </Text>
+            <TouchableOpacity style={styles.retryButton} onPress={refetchSheetContent}>
               <Text style={styles.retryButtonText}>Réessayer</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {tripsSheetOpen && !tripsLoading && !tripsError && latestTrips.length === 0 && (
+        {tripsSheetOpen && !sheetLoading && !sheetError && sheetEmpty && (
           <View style={styles.emptyCard}>
             <View style={styles.emptyIcon}>
-              <Ionicons name="car-outline" size={24} color={HOME_COLORS.navy} />
+              <Ionicons
+                name={isRequestsSheetMode ? 'document-text-outline' : 'car-outline'}
+                size={24}
+                color={HOME_COLORS.navy}
+              />
             </View>
             <View style={styles.emptyTextBlock}>
-              <Text style={styles.emptyTitle}>Aucun trajet disponible</Text>
-              <Text style={styles.emptyText}>Publiez le vôtre ou revenez plus tard.</Text>
+              <Text style={styles.emptyTitle}>
+                {isRequestsSheetMode ? 'Aucune demande disponible' : 'Aucun trajet disponible'}
+              </Text>
+              <Text style={styles.emptyText}>
+                {isRequestsSheetMode
+                  ? 'Revenez plus tard pour accepter une demande passager.'
+                  : 'Publiez le vôtre ou revenez plus tard.'}
+              </Text>
             </View>
           </View>
         )}
 
-        {tripsSheetOpen && !tripsLoading && !tripsError && latestTrips.length > 0 && (
+        {tripsSheetOpen && !sheetLoading && !sheetError && isRequestsSheetMode && availableDriverRequests.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tripsHorizontalContent}
+          >
+            {availableDriverRequests.map((request) => (
+              <TripRequestPreviewCard
+                key={request.id}
+                cardWidth={tripCardWidth}
+                request={request}
+                onOpen={() => router.push(getTripRequestDetailHref(request.id))}
+              />
+            ))}
+          </ScrollView>
+        )}
+
+        {tripsSheetOpen && !sheetLoading && !sheetError && !isRequestsSheetMode && latestTrips.length > 0 && (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -2065,6 +2354,62 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
   },
+  sheetModeSwitch: {
+    minHeight: 40,
+    marginHorizontal: Spacing.xl,
+    marginBottom: Spacing.sm,
+    padding: 4,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[100],
+    borderWidth: 1,
+    borderColor: HOME_COLORS.softLine,
+    flexDirection: 'row',
+    gap: 4,
+  },
+  sheetModeOption: {
+    flex: 1,
+    minHeight: 32,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  sheetModeOptionActive: {
+    backgroundColor: HOME_COLORS.navy,
+  },
+  sheetModeText: {
+    color: HOME_COLORS.navy,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  sheetModeTextActive: {
+    color: Colors.white,
+  },
+  sheetModeCountBadge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: HOME_COLORS.softLine,
+  },
+  sheetModeCountBadgeActive: {
+    borderColor: 'rgba(255,255,255,0.42)',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  sheetModeCountText: {
+    color: HOME_COLORS.navy,
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+  },
+  sheetModeCountTextActive: {
+    color: Colors.white,
+  },
   sheetToggle: {
     width: 34,
     height: 34,
@@ -2258,6 +2603,177 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.primary,
+  },
+  requestPreviewCard: {
+    height: 208,
+    borderRadius: BorderRadius.xl,
+    backgroundColor: '#FBFEFF',
+    borderWidth: 1,
+    borderColor: HOME_COLORS.softLine,
+    padding: Spacing.md,
+    ...CommonStyles.shadowSm,
+  },
+  requestPreviewTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  requestPassengerInline: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  requestPreviewAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    marginRight: Spacing.sm,
+    backgroundColor: Colors.gray[100],
+  },
+  requestPreviewAvatarFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: HOME_COLORS.navySoft,
+  },
+  requestPreviewAvatarText: {
+    color: HOME_COLORS.navy,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  requestPreviewPassengerCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  requestPreviewPassengerName: {
+    color: HOME_COLORS.ink,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+  },
+  requestPreviewDate: {
+    marginTop: 2,
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+  },
+  requestPreviewStatusBadge: {
+    maxWidth: 132,
+    minHeight: 30,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  requestPreviewStatusText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  requestPreviewRoute: {
+    flexDirection: 'row',
+    marginTop: Spacing.md,
+  },
+  requestPreviewRail: {
+    width: 18,
+    alignItems: 'center',
+    paddingVertical: 3,
+    marginRight: Spacing.md,
+  },
+  requestPreviewRouteDot: {
+    width: 15,
+    height: 15,
+    borderRadius: 8,
+    borderWidth: 4,
+    backgroundColor: Colors.white,
+  },
+  requestPreviewStartDot: {
+    borderColor: HOME_COLORS.success,
+  },
+  requestPreviewEndDot: {
+    borderColor: Colors.primary,
+  },
+  requestPreviewRouteLine: {
+    flex: 1,
+    minHeight: 22,
+    borderLeftWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: HOME_COLORS.body,
+    marginVertical: 3,
+  },
+  requestPreviewRouteCopy: {
+    flex: 1,
+    gap: Spacing.sm,
+  },
+  requestPreviewRouteLabel: {
+    color: HOME_COLORS.body,
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+  },
+  requestPreviewRouteText: {
+    marginTop: 2,
+    color: HOME_COLORS.text,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+  },
+  requestPreviewFooter: {
+    marginTop: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  requestPreviewChips: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  requestPreviewChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.full,
+    backgroundColor: HOME_COLORS.navySoft,
+  },
+  requestPreviewChipText: {
+    color: HOME_COLORS.navy,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  requestPreviewBudgetChip: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '14',
+  },
+  requestPreviewBudgetText: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  requestPreviewOffersChip: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.full,
+    backgroundColor: '#DDF8EA',
+  },
+  requestPreviewOffersText: {
+    color: HOME_COLORS.success,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  requestPreviewOpenButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: HOME_COLORS.navy,
   },
   sheetLoadingState: {
     marginHorizontal: Spacing.xl,

@@ -818,7 +818,6 @@ export default function TripDetailsScreen() {
   const securityModalTransitionRef = useRef(false);
   const securityModalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [kycFrontImage, setKycFrontImage] = useState<string | null>(null);
-  const [kycBackImage, setKycBackImage] = useState<string | null>(null);
   const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
   const [kycSubmitting, setKycSubmitting] = useState(false);
   const { refetch: refetchKycStatus } = useGetKycStatusQuery();
@@ -1769,7 +1768,7 @@ export default function TripDetailsScreen() {
 
   const buildKycFormData = (files?: Partial<KycCaptureResult>) => {
     const formData = new FormData();
-    const appendFile = (field: 'cniFront' | 'cniBack' | 'selfie', uri: string | null | undefined) => {
+    const appendFile = (field: 'cniFront' | 'selfie', uri: string | null | undefined) => {
       if (!uri) return;
       const extensionMatch = uri.split('.').pop()?.split('?')[0]?.toLowerCase();
       const extension = extensionMatch && extensionMatch.length <= 5 ? extensionMatch : 'jpg';
@@ -1789,7 +1788,6 @@ export default function TripDetailsScreen() {
     };
 
     appendFile('cniFront', files?.front ?? kycFrontImage);
-    appendFile('cniBack', files?.back ?? kycBackImage);
     appendFile('selfie', files?.selfie ?? kycSelfieImage);
 
     return formData;
@@ -1797,20 +1795,19 @@ export default function TripDetailsScreen() {
 
   const handleSubmitKyc = async (documents?: Partial<KycCaptureResult>) => {
     const front = documents?.front ?? kycFrontImage;
-    const back = documents?.back ?? kycBackImage;
     const selfie = documents?.selfie ?? kycSelfieImage;
 
-    if (!front || !back || !selfie) {
+    if (!front || !selfie) {
       showDialog({
         variant: 'warning',
         title: 'Documents requis',
-        message: 'Merci de fournir les deux faces de votre pièce ainsi qu\'un selfie.',
+        message: 'Merci de fournir le recto de votre pièce ainsi qu\'un selfie.',
       });
       return;
     }
     try {
       setKycSubmitting(true);
-      const formData = buildKycFormData({ front, back, selfie });
+      const formData = buildKycFormData({ front, selfie });
       const result = await uploadKyc(formData).unwrap();
       setKycWizardVisible(false);
 
@@ -1867,7 +1864,6 @@ export default function TripDetailsScreen() {
 
   const handleKycWizardComplete = async (payload: KycCaptureResult) => {
     setKycFrontImage(payload.front);
-    setKycBackImage(payload.back);
     setKycSelfieImage(payload.selfie);
     await handleSubmitKyc(payload);
   };
@@ -3628,7 +3624,6 @@ export default function TripDetailsScreen() {
         isSubmitting={isKycBusy}
         initialValues={{
           front: kycFrontImage,
-          back: kycBackImage,
           selfie: kycSelfieImage,
         }}
         onComplete={handleKycWizardComplete}

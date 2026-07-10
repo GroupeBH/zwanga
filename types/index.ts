@@ -415,7 +415,7 @@ export interface KycDocument {
   id: string;
   userId: string;
   cniFrontUrl: string;
-  cniBackUrl: string;
+  cniBackUrl?: string | null;
   selfieUrl: string;
   status: KycStatus;
   rejectionReason?: string | null;

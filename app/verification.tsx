@@ -36,7 +36,6 @@ export default function VerificationScreen() {
             } as any);
         };
         appendFile('cniFront', files.front);
-        appendFile('cniBack', files.back);
         appendFile('selfie', files.selfie);
         return formData;
     };
