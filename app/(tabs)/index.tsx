@@ -50,6 +50,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 const RECENT_TRIPS_LIMIT = 10;
 const HOME_MIN_AVAILABLE_SEATS = 1;
 const USE_ANDROID_TRIP_MARKER_IMAGE = Platform.OS === 'android';
+const HOME_MAP_PROVIDER = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
 const TRIP_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
 const USER_LOCATION_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
 
@@ -1073,10 +1074,10 @@ export default function HomeScreen() {
   }, [selectedTrip, tripsWithMapCoordinates]);
 
   useEffect(() => {
-    if (isFocused && !mapFocusedOnUser) {
+    if (isFocused && !mapFocusedOnUser && !openingTripId) {
       mapRef.current?.animateToRegion(mapRegion, 420);
     }
-  }, [isFocused, mapFocusedOnUser, mapRegion]);
+  }, [isFocused, mapFocusedOnUser, mapRegion, openingTripId]);
 
   const firstName = currentUser?.firstName || currentUser?.name?.split(' ')[0] || 'Kinshasa';
   const avatarUri = currentUser?.profilePicture || currentUser?.avatar;
@@ -1106,7 +1107,7 @@ export default function HomeScreen() {
   const sheetError = isRequestsSheetMode ? availableTripRequestsError : tripsError;
   const sheetEmpty = isRequestsSheetMode ? availableDriverRequests.length === 0 : latestTrips.length === 0;
   const showInitialHomeLoader = tripsLoading && !remoteTrips && storedTrips.length === 0;
-  const shouldRenderHomeMap = isFocused;
+  const shouldRenderHomeMap = isFocused && !openingTripId;
   const refetchSheetContent = () => {
     if (isRequestsSheetMode) {
       return refetchAvailableTripRequests();
@@ -1130,7 +1131,7 @@ export default function HomeScreen() {
     openingTripTimerRef.current = setTimeout(() => {
       router.replace(`/trip/${tripId}`);
       openingTripTimerRef.current = null;
-    }, Platform.OS === 'ios' ? 140 : 40);
+    }, Platform.OS === 'ios' ? 260 : 40);
   };
 
   useEffect(() => {
@@ -1217,6 +1218,7 @@ export default function HomeScreen() {
   const showTripMarkerCallout = (tripId: string) => {
     [90, 520].forEach((delay) => {
       setTimeout(() => {
+        if (openingTripRef.current) return;
         tripMarkerRefs.current[tripId]?.showCallout();
       }, delay);
     });
@@ -1243,10 +1245,10 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={[]}>
-      {shouldRenderHomeMap && !openingTripId ? (
+      {shouldRenderHomeMap ? (
       <MapView
         ref={mapRef}
-        provider={PROVIDER_GOOGLE}
+        provider={HOME_MAP_PROVIDER}
         style={styles.map}
         initialRegion={mapRegion}
         showsCompass={false}
