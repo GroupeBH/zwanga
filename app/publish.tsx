@@ -64,6 +64,7 @@ const DEFAULT_PUBLISH_REGION: Region = {
   latitudeDelta: 0.08,
   longitudeDelta: 0.08,
 };
+const PUBLISH_MAP_PROVIDER = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
 
 function getLocationText(selection: MapLocationSelection | null, manualAddress: string) {
   return (manualAddress.trim() || selection?.title || selection?.address || '').trim();
@@ -1360,8 +1361,10 @@ export default function PublishScreen() {
         });
       }
 
-      // Keep the confirmation screen mounted behind the success modal. Resetting
-      // its MapView while opening a native Modal can freeze Android devices.
+      // Keep the confirmation screen mounted behind the success feedback. On iOS,
+      // opening a native Modal above a stack screen that already contains a
+      // MapView can crash during the publication transition, so the feedback is
+      // rendered as an in-screen overlay instead of a React Native Modal.
       setPublicationSuccess({ recurring: isRecurringTrip });
     } catch (error: any) {
       const message =
@@ -1462,8 +1465,8 @@ export default function PublishScreen() {
     const wasRecurring = publicationSuccess?.recurring ?? false;
     setPublicationSuccess(null);
 
-    // Let React Native finish dismissing the native modal before changing the
-    // navigation stack or remounting the publication MapView.
+    // Let React Native finish removing the success overlay before changing the
+    // navigation stack or remounting maps on the destination screen.
     setTimeout(() => {
       if (action === 'another') {
         resetForm();
@@ -1476,8 +1479,8 @@ export default function PublishScreen() {
         return;
       }
 
-      router.back();
-    }, 300);
+      router.replace('/(tabs)');
+    }, Platform.OS === 'ios' ? 180 : 80);
   };
 
   return (
@@ -2308,40 +2311,44 @@ export default function PublishScreen() {
             </View>
 
             <View style={[styles.publishMapPreview, styles.confirmMapPreview]}>
-              <MapView
-                style={styles.publishMapPreviewMap}
-                provider={PROVIDER_GOOGLE}
-                region={routePreviewRegion}
-                scrollEnabled={false}
-                zoomEnabled={false}
-                rotateEnabled={false}
-                pitchEnabled={false}
-                toolbarEnabled={false}
-              >
-                {departureLocation ? (
-                  <Marker
-                    coordinate={{
-                      latitude: departureLocation.latitude,
-                      longitude: departureLocation.longitude,
-                    }}
-                    pinColor={Colors.success}
-                    title="Départ"
-                  />
-                ) : null}
-                {arrivalLocation ? (
-                  <Marker
-                    coordinate={{
-                      latitude: arrivalLocation.latitude,
-                      longitude: arrivalLocation.longitude,
-                    }}
-                    pinColor={Colors.primary}
-                    title="Destination"
-                  />
-                ) : null}
-                {routeCoordinates.length > 1 ? (
-                  <Polyline coordinates={routeCoordinates} strokeColor={Colors.primary} strokeWidth={5} />
-                ) : null}
-              </MapView>
+              {publicationSuccess === null ? (
+                <MapView
+                  style={styles.publishMapPreviewMap}
+                  provider={PUBLISH_MAP_PROVIDER}
+                  region={routePreviewRegion}
+                  scrollEnabled={false}
+                  zoomEnabled={false}
+                  rotateEnabled={false}
+                  pitchEnabled={false}
+                  toolbarEnabled={false}
+                >
+                  {departureLocation ? (
+                    <Marker
+                      coordinate={{
+                        latitude: departureLocation.latitude,
+                        longitude: departureLocation.longitude,
+                      }}
+                      pinColor={Colors.success}
+                      title="Départ"
+                    />
+                  ) : null}
+                  {arrivalLocation ? (
+                    <Marker
+                      coordinate={{
+                        latitude: arrivalLocation.latitude,
+                        longitude: arrivalLocation.longitude,
+                      }}
+                      pinColor={Colors.primary}
+                      title="Destination"
+                    />
+                  ) : null}
+                  {routeCoordinates.length > 1 ? (
+                    <Polyline coordinates={routeCoordinates} strokeColor={Colors.primary} strokeWidth={5} />
+                  ) : null}
+                </MapView>
+              ) : (
+                <View style={styles.publishMapPreviewMap} />
+              )}
               <View pointerEvents="none" style={styles.publishMapPreviewShade} />
               {departureLocation && arrivalLocation ? (
                 <View pointerEvents="none" style={styles.routeStatusBadge}>
@@ -2557,12 +2564,7 @@ export default function PublishScreen() {
         onSelect={handleLocationSelected}
       />
 
-      <Modal
-        transparent
-        animationType="fade"
-        visible={publicationSuccess !== null}
-        onRequestClose={() => finishPublicationSuccess('home')}
-      >
+      {publicationSuccess !== null && (
         <View style={styles.publicationSuccessOverlay}>
           <View style={styles.publicationSuccessCard}>
             <View style={styles.publicationSuccessIcon}>
@@ -2598,7 +2600,7 @@ export default function PublishScreen() {
             </View>
           </View>
         </View>
-      </Modal>
+      )}
 
       <Modal
         visible={Platform.OS === 'ios' && iosPickerMode !== null}
@@ -3161,7 +3163,13 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   publicationSuccessOverlay: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 1000,
+    elevation: 1000,
     justifyContent: 'center',
     padding: Spacing.xl,
     backgroundColor: 'rgba(15, 23, 42, 0.68)',

@@ -112,6 +112,7 @@ const arrayToLatLng = (coordinates?: [number, number] | null) => {
 
 const USE_CUSTOM_MAP_MARKERS = Platform.OS !== 'android';
 const USE_ANDROID_MAP_MARKER_IMAGES = Platform.OS === 'android';
+const TRIP_DETAIL_MAP_PROVIDER = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
 const TRIP_DETAIL_MAP_MIN_DELTA = 0.006;
 const TRIP_DETAIL_MAP_MAX_DELTA = 0.014;
 const TRIP_DETAIL_MAP_PADDING = 1.02;
@@ -845,7 +846,7 @@ export default function TripDetailsScreen() {
       // navigation animation. Mounting both maps together can terminate iOS.
       timeoutId = setTimeout(() => {
         if (!cancelled) setIsDetailMapReady(true);
-      }, 120);
+      }, Platform.OS === 'ios' ? 420 : 120);
     });
 
     return () => {
@@ -2252,7 +2253,7 @@ export default function TripDetailsScreen() {
         )}
 
         {/* Carte interactive - masquée quand le trajet est en cours */}
-        {canRenderTripMap && (
+        {canRenderTripMap && !mapModalVisible && (
           <TouchableOpacity
             style={styles.mapContainer}
             onPress={() => setMapModalVisible(true)}
@@ -2260,7 +2261,7 @@ export default function TripDetailsScreen() {
           >
             <View style={[styles.mapPreview, { height: Math.min(214, Math.max(172, viewportHeight * 0.27)) }]}>
               <MapView
-                provider={PROVIDER_GOOGLE}
+                provider={TRIP_DETAIL_MAP_PROVIDER}
                 style={styles.mapView}
                 scrollEnabled={false}
                 zoomEnabled={false}
@@ -2362,7 +2363,7 @@ export default function TripDetailsScreen() {
                 ]}
               >
                 <MapView
-                  provider={PROVIDER_GOOGLE}
+                  provider={TRIP_DETAIL_MAP_PROVIDER}
                   style={styles.fullscreenMap}
                   mapType="standard"
                   initialRegion={mapRegion}

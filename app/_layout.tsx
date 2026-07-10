@@ -34,7 +34,8 @@ export default function RootLayout() {
           <Stack
             screenOptions={{
               headerShown: false,
-              ...(isAndroid ? ({ animation: 'none', freezeOnBlur: false } as const) : {}),
+              freezeOnBlur: false,
+              ...(isAndroid ? ({ animation: 'none' } as const) : {}),
             }}
           >
             <Stack.Screen name="splash" options={{ headerShown: false }} />
@@ -43,7 +44,7 @@ export default function RootLayout() {
             <Stack.Screen name="background-location-disclosure" options={{ headerShown: false }} />
             <Stack.Screen name="auth" options={{ headerShown: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="publish" options={{ headerShown: false, presentation: modalPresentation }} />
+            <Stack.Screen name="publish" options={{ headerShown: false, presentation: 'card' }} />
             <Stack.Screen name="recurring-trips" options={{ headerShown: false }} />
             <Stack.Screen name="request-create" options={{ headerShown: false, presentation: 'card' }} />
             <Stack.Screen name="request/index" options={{ headerShown: false, presentation: 'card' }} />
