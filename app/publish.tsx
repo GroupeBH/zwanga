@@ -144,12 +144,32 @@ function isDailyPublicationLimitError(error: any) {
   const rawMessage = error?.data?.message ?? error?.error ?? error?.message ?? '';
   const message = Array.isArray(rawMessage) ? rawMessage.join(' ') : String(rawMessage);
   const normalized = message.toLowerCase();
+  const mentionsPublication =
+    normalized.includes('trajet') ||
+    normalized.includes('publication') ||
+    normalized.includes('publier');
+  const mentionsSubscription =
+    normalized.includes('abonnement') ||
+    normalized.includes('forfait') ||
+    normalized.includes('quota') ||
+    normalized.includes('premium');
+
   return (
     normalized.includes('5 trajets') ||
     normalized.includes('cinq trajets') ||
+    normalized.includes('forfait gratuit') ||
+    normalized.includes('quota gratuit') ||
+    normalized.includes('trajets inclus') ||
+    normalized.includes('trajets par jour') ||
     (normalized.includes('limite') && normalized.includes('jour')) ||
-    (normalized.includes('daily') && normalized.includes('limit'))
+    (normalized.includes('daily') && normalized.includes('limit')) ||
+    (mentionsSubscription && mentionsPublication)
   );
+}
+
+function isUserDriver(user?: { role?: unknown; isDriver?: boolean | null } | null) {
+  const role = String(user?.role ?? '').toLowerCase();
+  return role === 'driver' || role === 'both' || role === 'conducteur' || role === 'chauffeur' || Boolean(user?.isDriver);
 }
 
 export default function PublishScreen() {
@@ -327,12 +347,14 @@ export default function PublishScreen() {
   ] as const;
 
   // Driver and Vehicle Management
-  const { data: profileSummary, refetch: refetchProfile } = useGetProfileSummaryQuery();
+  const {
+    data: profileSummary,
+    refetch: refetchProfile,
+    isLoading: isLoadingProfile,
+    isFetching: isFetchingProfile,
+  } = useGetProfileSummaryQuery();
   const user = profileSummary?.user;
-  const isDriver = useMemo(() => {
-    const role = user?.role;
-    return role === 'driver' || role === 'both' || Boolean(user?.isDriver);
-  }, [user?.isDriver, user?.role]);
+  const isDriver = useMemo(() => isUserDriver(user), [user]);
   const [showDriverRequiredModal, setShowDriverRequiredModal] = useState(false);
 
   const {
@@ -1289,8 +1311,14 @@ export default function PublishScreen() {
     }
 
     if (!isDriver && !createdVehicle) {
-      setShowDriverRequiredModal(true);
-      return;
+      const refreshedProfile =
+        isLoadingProfile || isFetchingProfile || !user ? await refetchProfile() : null;
+      const refreshedUser = refreshedProfile?.data?.user;
+
+      if (!isUserDriver(refreshedUser ?? user)) {
+        setShowDriverRequiredModal(true);
+        return;
+      }
     }
 
     if (!selectedVehicleId) {

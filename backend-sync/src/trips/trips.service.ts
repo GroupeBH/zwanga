@@ -1888,7 +1888,7 @@ export class TripsService {
   /**
    * Cron job to mark expired trips and their bookings as expired
    * - PENDING trips expire 2 hours after scheduled departure
-   * - ACTIVE trips expire only after 12 hours without interaction since trip start
+   * - ACTIVE trips are auto-completed once they have been running for 12 hours
    * Runs every hour.
    */
   @Cron(CronExpression.EVERY_HOUR)
@@ -1914,19 +1914,12 @@ export class TripsService {
     });
 
     // 2) ACTIVE trips that have been started for at least 12h
-    const activeTripsCandidates = await this.tripRepository.find({
+    const activeTripsToExpire = await this.tripRepository.find({
       where: {
         status: TripStatus.ACTIVE,
         startedAt: LessThan(twelveHoursAgo),
       },
       relations: ['driver', 'bookings', 'bookings.passenger', 'vehicle'],
-    });
-
-    // Expire only if there has been no interaction for 12h after start.
-    // We rely on trip.updatedAt, which is refreshed on trip/booking interactions.
-    const activeTripsToExpire = activeTripsCandidates.filter((trip) => {
-      const lastInteractionAt = trip.updatedAt ?? trip.startedAt ?? trip.departureDate;
-      return lastInteractionAt < twelveHoursAgo;
     });
 
     const tripsToExpire = [...pendingTripsToExpire, ...activeTripsToExpire];
@@ -1938,7 +1931,7 @@ export class TripsService {
 
     this.logger.log(
       `Found ${tripsToExpire.length} trips to auto-complete as expired ` +
-        `(pending: ${pendingTripsToExpire.length}, active_inactive_12h: ${activeTripsToExpire.length})`,
+        `(pending: ${pendingTripsToExpire.length}, active_over_12h: ${activeTripsToExpire.length})`,
     );
 
     for (const trip of tripsToExpire) {
