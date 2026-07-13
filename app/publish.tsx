@@ -1413,7 +1413,7 @@ export default function PublishScreen() {
               {
                 label: "Activer l'abonnement",
                 variant: 'primary',
-                onPress: () => router.push({ pathname: '/profile', params: { openSubscription: '1' } }),
+                onPress: () => router.push({ pathname: '/subscriptions/payment' } as any),
               },
             ]
           : isDriverError
