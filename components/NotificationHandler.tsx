@@ -73,12 +73,13 @@ export function NotificationHandler() {
         if (route.startsWith('subscriptions/payment')) {
           const parts = route.split('?');
           const params = parseQueryParams(parts[1] || '');
-          router.push({
-            pathname: '/profile',
-            params: {
-              openSubscription: '1',
-              paymentStatus: params.status || 'returned',
-            },
+          InteractionManager.runAfterInteractions(() => {
+            router.replace({
+              pathname: '/subscriptions/payment',
+              params: {
+                paymentStatus: params.status || 'returned',
+              },
+            } as any);
           });
         } else if (route.startsWith('trip/manage/')) {
           const tripId = route.replace('trip/manage/', '').split('?')[0];

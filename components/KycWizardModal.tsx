@@ -1,6 +1,7 @@
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
 import { Accelerometer, type AccelerometerMeasurement } from 'expo-sensors';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -49,6 +50,9 @@ const KYC_CAPTURE_MAX_EDGE = 1600;
 const KYC_CAPTURE_MIN_EDGE = 720;
 const KYC_CAPTURE_QUALITY = 0.6;
 const MANUAL_CAPTURE_DELAY_MS = 5000;
+const ANDROID_CAMERA_RELEASE_DELAY_MS = 300;
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const parsePictureSize = (size: string) => {
   const match = /^(\d+)x(\d+)$/.exec(size);
@@ -121,6 +125,8 @@ export function KycWizardModal({
   const [captureCountdown, setCaptureCountdown] = useState<number | null>(null);
   const [manualCaptureAvailable, setManualCaptureAvailable] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isCameraReady, setIsCameraReady] = useState(false);
+  const [isNativeCameraOpening, setIsNativeCameraOpening] = useState(false);
   const [androidPictureSize, setAndroidPictureSize] = useState<string | undefined>();
   const isCapturingRef = useRef(false);
   const stabilityTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -158,6 +164,8 @@ export function KycWizardModal({
       setCaptureCountdown(null);
       setIsDeviceStable(false);
       setManualCaptureAvailable(false);
+      setIsCameraReady(false);
+      setIsNativeCameraOpening(false);
       setAndroidPictureSize(undefined);
       isCapturingRef.current = false;
     } else {
@@ -264,6 +272,8 @@ export function KycWizardModal({
 
   useEffect(() => {
     setAndroidPictureSize(undefined);
+    setIsCameraReady(false);
+    setIsNativeCameraOpening(false);
   }, [currentCaptureKey]);
 
   const cleanupManualFallbackTimer = () => {
@@ -285,6 +295,8 @@ export function KycWizardModal({
   };
 
   const handleCameraReady = useCallback(async () => {
+    setIsCameraReady(true);
+
     if (Platform.OS !== 'android') {
       return;
     }
@@ -296,6 +308,59 @@ export function KycWizardModal({
       console.warn('Unable to select a compact KYC picture size:', error);
     }
   }, []);
+
+  const captureWithNativeCamera = useCallback(async () => {
+    if (!currentCaptureKey || isCapturingRef.current) {
+      return;
+    }
+
+    isCapturingRef.current = true;
+    setIsCapturing(true);
+    setManualCaptureAvailable(false);
+    setIsNativeCameraOpening(true);
+    setIsCameraReady(false);
+    cleanupManualFallbackTimer();
+    cleanupStabilityTracking();
+
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        setManualCaptureAvailable(true);
+        return;
+      }
+
+      await wait(ANDROID_CAMERA_RELEASE_DELAY_MS);
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: 'images',
+        allowsEditing: true,
+        aspect: currentCaptureKey === 'selfie' ? [1, 1] : [3, 2],
+        quality: KYC_CAPTURE_QUALITY,
+        base64: false,
+        exif: false,
+      });
+      const imageUri = result.assets?.[0]?.uri;
+
+      if (!result.canceled && imageUri) {
+        setCaptures((prev) => ({
+          ...prev,
+          [currentCaptureKey]: imageUri,
+        }));
+        return;
+      }
+
+      setManualCaptureAvailable(true);
+    } catch (error) {
+      console.warn('[KycWizard] Native camera capture failed:', error);
+      setManualCaptureAvailable(true);
+    } finally {
+      isCapturingRef.current = false;
+      setIsCapturing(false);
+      setIsNativeCameraOpening(false);
+      setIsDeviceStable(false);
+      setCaptureCountdown(null);
+    }
+  }, [currentCaptureKey]);
 
   const captureCurrentFrame = useCallback(async (showManualFallback = false) => {
     if (!cameraRef.current || isCapturingRef.current || !currentCaptureKey) {
@@ -340,8 +405,13 @@ export function KycWizardModal({
   }, [captureCurrentFrame]);
 
   const handleManualCapture = useCallback(async () => {
+    if (Platform.OS === 'android') {
+      await captureWithNativeCamera();
+      return;
+    }
+
     await captureCurrentFrame(true);
-  }, [captureCurrentFrame]);
+  }, [captureCurrentFrame, captureWithNativeCamera]);
 
   useEffect(() => {
     if (captureCountdown === null) {
@@ -450,17 +520,30 @@ export function KycWizardModal({
 
     return (
       <View style={styles.cameraWrapper}>
-        <CameraView
-          ref={(ref) => {
-            cameraRef.current = ref;
-          }}
-          style={styles.camera}
-          facing={currentCaptureKey === 'selfie' ? 'front' : 'back'}
-          autofocus="on"
-          onCameraReady={handleCameraReady}
-          pictureSize={Platform.OS === 'android' ? androidPictureSize : undefined}
-        />
+        {isNativeCameraOpening ? (
+          <View style={styles.cameraFallback}>
+            <ActivityIndicator color={Colors.white} />
+            <Text style={styles.cameraFallbackText}>Ouverture de la camÃ©ra du tÃ©lÃ©phone...</Text>
+          </View>
+        ) : (
+          <CameraView
+            ref={(ref) => {
+              cameraRef.current = ref;
+            }}
+            style={styles.camera}
+            facing={currentCaptureKey === 'selfie' ? 'front' : 'back'}
+            autofocus="on"
+            onCameraReady={handleCameraReady}
+            pictureSize={Platform.OS === 'android' ? androidPictureSize : undefined}
+          />
+        )}
         <View pointerEvents="box-none" style={styles.cameraOverlay}>
+            {!isCameraReady && !isNativeCameraOpening && (
+              <View pointerEvents="none" style={styles.cameraPreparing}>
+                <ActivityIndicator color={Colors.white} />
+                <Text style={styles.cameraPreparingText}>PrÃ©paration de la camÃ©ra...</Text>
+              </View>
+            )}
             <View
               pointerEvents="none"
               style={[
@@ -468,7 +551,7 @@ export function KycWizardModal({
                 currentCaptureKey === 'selfie' && styles.captureFrameRound,
               ]}
             />
-            {!manualCaptureAvailable && (
+            {!manualCaptureAvailable && !isNativeCameraOpening && (
               <View pointerEvents="none" style={styles.overlayInstruction}>
                 <Ionicons
                   name={currentCaptureKey === 'selfie' ? 'happy' : 'scan'}
@@ -489,7 +572,7 @@ export function KycWizardModal({
                 </Text>
               </View>
             )}
-            {manualCaptureAvailable && captureCountdown === null && (
+            {manualCaptureAvailable && captureCountdown === null && !isNativeCameraOpening && (
               <TouchableOpacity
                 style={styles.manualCaptureButton}
                 onPress={handleManualCapture}
@@ -669,6 +752,19 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 3 / 4,
   },
+  cameraFallback: {
+    width: '100%',
+    aspectRatio: 3 / 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.gray[900],
+  },
+  cameraFallbackText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
+  },
   cameraOverlay: {
     position: 'absolute',
     top: 0,
@@ -678,6 +774,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  cameraPreparing: {
+    position: 'absolute',
+    top: Spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  cameraPreparingText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
   },
   captureFrame: {
     width: '80%',

@@ -22,6 +22,7 @@ import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -29,7 +30,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
+import { Swipeable } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const notificationTypeConfig: Record<
@@ -62,8 +63,6 @@ export default function NotificationsScreen() {
   const router = useRouter();
   const { showDialog } = useDialog();
   const { data: currentUser } = useGetCurrentUserQuery();
-// !
-//   console.log("currentUser at notifications screen", currentUser);
   const {
     data: notificationsData,
     isLoading,
@@ -71,7 +70,6 @@ export default function NotificationsScreen() {
     refetch,
   } = useGetNotificationsQuery();
 
-  console.log("notificationsData at notifications screen", notificationsData?.notifications?.[0]?.data);
   const [markNotificationsAsRead] = useMarkNotificationsAsReadMutation();
   const [markAllAsRead] = useMarkAllNotificationsAsReadMutation();
   const [disableNotifications] = useDisableNotificationsMutation();
@@ -80,6 +78,7 @@ export default function NotificationsScreen() {
 
   const notifications = notificationsData?.notifications ?? [];
   const unreadCount = notificationsData?.unreadCount ?? 0;
+  const useSwipeActions = Platform.OS !== 'ios';
 
   const handleSelectNotification = async (notification: Notification) => {
     // Marquer comme lu et désactiver (faire disparaître) la notification
@@ -237,6 +236,46 @@ export default function NotificationsScreen() {
     const config = notificationTypeConfig[notificationType] ?? notificationTypeConfig.default;
     const isUnread = !notification.isRead;
 
+    const cardContent = (
+      <TouchableOpacity
+        style={[styles.notificationCard, isUnread && styles.notificationCardUnread]}
+        onPress={() => handleSelectNotification(notification)}
+        activeOpacity={0.85}
+      >
+        <View style={[styles.notificationIcon, { backgroundColor: config.background }]}>
+          <Ionicons name={config.icon} size={20} color={config.color} />
+        </View>
+        <View style={styles.notificationContent}>
+          <View style={styles.notificationHeader}>
+            <Text style={styles.notificationTitle}>{notification.title}</Text>
+            <Text style={styles.notificationTime}>{formatRelativeTime(notification.createdAt)}</Text>
+          </View>
+          <Text style={styles.notificationMessage} numberOfLines={2}>
+            {notification.body}
+          </Text>
+        </View>
+        {isUnread && <View style={styles.unreadDot} />}
+        {!useSwipeActions && (
+          <TouchableOpacity
+            accessibilityLabel="Supprimer la notification"
+            activeOpacity={0.8}
+            hitSlop={8}
+            onPress={(event) => {
+              event.stopPropagation();
+              handleDeleteNotification(notification.id);
+            }}
+            style={styles.inlineDeleteButton}
+          >
+            <Ionicons name="trash-outline" size={18} color={Colors.danger} />
+          </TouchableOpacity>
+        )}
+      </TouchableOpacity>
+    );
+
+    if (!useSwipeActions) {
+      return <View key={notification.id}>{cardContent}</View>;
+    }
+
     return (
       <Swipeable
         key={notification.id}
@@ -261,32 +300,13 @@ export default function NotificationsScreen() {
         overshootRight={false}
         overshootLeft={false}
       >
-        <TouchableOpacity
-          style={[styles.notificationCard, isUnread && styles.notificationCardUnread]}
-          onPress={() => handleSelectNotification(notification)}
-          activeOpacity={0.85}
-        >
-          <View style={[styles.notificationIcon, { backgroundColor: config.background }]}>
-            <Ionicons name={config.icon} size={20} color={config.color} />
-          </View>
-          <View style={styles.notificationContent}>
-            <View style={styles.notificationHeader}>
-              <Text style={styles.notificationTitle}>{notification.title}</Text>
-              <Text style={styles.notificationTime}>{formatRelativeTime(notification.createdAt)}</Text>
-            </View>
-            <Text style={styles.notificationMessage} numberOfLines={2}>
-              {notification.body}
-            </Text>
-          </View>
-          {isUnread && <View style={styles.unreadDot} />}
-        </TouchableOpacity>
+        {cardContent}
       </Swipeable>
     );
   };
 
   return (
-    <GestureHandlerRootView style={styles.container}>
-      <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={22} color={Colors.gray[900]} />
@@ -476,8 +496,7 @@ export default function NotificationsScreen() {
           </View>
         </View>
       </Modal>
-      </SafeAreaView>
-    </GestureHandlerRootView>
+    </SafeAreaView>
   );
 }
 
@@ -609,6 +628,15 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.primary,
     marginLeft: Spacing.sm,
+  },
+  inlineDeleteButton: {
+    width: 34,
+    height: 34,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: Spacing.sm,
+    backgroundColor: Colors.danger + '10',
   },
   loaderContainer: {
     alignItems: 'center',

@@ -1413,7 +1413,7 @@ export default function PublishScreen() {
               {
                 label: "Activer l'abonnement",
                 variant: 'primary',
-                onPress: () => router.push({ pathname: '/profile', params: { openSubscription: '1' } }),
+                onPress: () => router.push({ pathname: '/subscriptions/payment' } as any),
               },
             ]
           : isDriverError
@@ -2739,7 +2739,10 @@ export default function PublishScreen() {
                 style={[styles.driverModalButton, styles.driverModalButtonPrimary]}
                 onPress={() => {
                   setShowDriverRequiredModal(false);
-                  router.push('/profile');
+                  router.push({
+                    pathname: '/profile',
+                    params: { openDriverOnboarding: '1' },
+                  } as any);
                 }}
               >
                 <Text style={styles.driverModalButtonPrimaryText}>Devenir conducteur</Text>
