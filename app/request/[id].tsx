@@ -80,6 +80,12 @@ export default function TripRequestDetailsScreen() {
   const goHome = useCallback(() => {
     router.replace('/(tabs)');
   }, [router]);
+  const openDriverOnboarding = useCallback(() => {
+    router.push({
+      pathname: '/profile',
+      params: { openDriverOnboarding: '1' },
+    } as any);
+  }, [router]);
   const params = useLocalSearchParams<{ id: string }>();
   const { showDialog } = useDialog();
   const insets = useSafeAreaInsets();
@@ -1702,7 +1708,7 @@ export default function TripRequestDetailsScreen() {
                 </Text>
               </TouchableOpacity>
             ) : !isDriverRole ? (
-              <TouchableOpacity style={styles.ownerHeroPrimaryButton} onPress={() => router.push('/publish')}>
+              <TouchableOpacity style={styles.ownerHeroPrimaryButton} onPress={openDriverOnboarding}>
                 <Ionicons name="car-outline" size={18} color={Colors.white} />
                 <Text style={styles.ownerHeroPrimaryButtonText}>Devenir conducteur</Text>
               </TouchableOpacity>
@@ -2156,7 +2162,7 @@ export default function TripRequestDetailsScreen() {
                 </Text>
                 <TouchableOpacity
                   style={styles.becomeDriverButton}
-                  onPress={() => router.push('/publish')}
+                  onPress={openDriverOnboarding}
                 >
                   <Ionicons name="car" size={18} color={Colors.white} />
                   <Text style={styles.becomeDriverButtonText}>Devenir conducteur</Text>

@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { LayoutAnimationConfig } from '@/utils/reanimated';
 import { Platform, StyleSheet, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { configureFontScaling } from '@/utils/configureFontScaling';
 
@@ -53,6 +54,7 @@ export default function RootLayout() {
             <Stack.Screen name="search" options={{ headerShown: false, presentation: modalPresentation }} />
             <Stack.Screen name="payment-history" options={{ headerShown: false }} />
             <Stack.Screen name="subscriptions/payment" options={{ headerShown: false }} />
+            <Stack.Screen name="notifications" options={{ headerShown: false }} />
             <Stack.Screen name="settings" options={{ headerShown: false }} />
             <Stack.Screen name="support" options={{ headerShown: false }} />
             <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
@@ -68,17 +70,19 @@ export default function RootLayout() {
   );
 
   return (
-    <AppErrorBoundary>
-      <SafeAreaProvider>
-        {isAndroid ? (
-          <LayoutAnimationConfig skipEntering skipExiting>
-            {appTree}
-          </LayoutAnimationConfig>
-        ) : (
-          appTree
-        )}
-      </SafeAreaProvider>
-    </AppErrorBoundary>
+    <GestureHandlerRootView style={styles.appRoot}>
+      <AppErrorBoundary>
+        <SafeAreaProvider>
+          {isAndroid ? (
+            <LayoutAnimationConfig skipEntering skipExiting>
+              {appTree}
+            </LayoutAnimationConfig>
+          ) : (
+            appTree
+          )}
+        </SafeAreaProvider>
+      </AppErrorBoundary>
+    </GestureHandlerRootView>
   );
 }
 

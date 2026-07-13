@@ -327,7 +327,8 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { openSubscription, paymentStatus } = useLocalSearchParams<{
+  const { openDriverOnboarding, openSubscription, paymentStatus } = useLocalSearchParams<{
+    openDriverOnboarding?: string;
     openSubscription?: string;
     paymentStatus?: string;
   }>();
@@ -369,6 +370,7 @@ export default function ProfileScreen() {
   const [subscriptionPaymentAutoCheckAttempt, setSubscriptionPaymentAutoCheckAttempt] = useState(0);
   const [isSubscriptionPaymentAutoChecking, setIsSubscriptionPaymentAutoChecking] = useState(false);
   const [isRestoringSubscriptionPayment, setIsRestoringSubscriptionPayment] = useState(false);
+  const openedDriverOnboardingParamRef = useRef(false);
   const openedSubscriptionParamRef = useRef(false);
   const handledPaymentStatusRef = useRef<string | null>(null);
   const prefilledSubscriptionPhoneRef = useRef(false);
@@ -447,6 +449,7 @@ export default function ProfileScreen() {
   const isKycRejected = kycStatus?.status === 'rejected';
   const isKycBusy = kycSubmitting || uploadingKyc;
   const isKycActionDisabled = isKycBusy || isKycApproved;
+  const needsDriverOnboarding = !isDriver || vehicleList.length === 0 || !isKycApproved;
 
   // console.log("kycstatus:", kycStatus)
   const userId = currentUser?.id ?? '';
@@ -1660,7 +1663,7 @@ export default function ProfileScreen() {
   ]);
 
   const handleSubscribePro = async () => {
-    if (!isDriver) {
+    if (needsDriverOnboarding) {
       handleStartDriverOnboarding();
       return;
     }
@@ -2034,6 +2037,30 @@ export default function ProfileScreen() {
       );
     }
   }, [currentUser, isDriver, openSubscription, paymentStatus, router]);
+
+  useEffect(() => {
+    if (
+      openedDriverOnboardingParamRef.current ||
+      !openDriverOnboarding ||
+      !currentUser ||
+      vehiclesLoading ||
+      kycLoading
+    ) {
+      return;
+    }
+
+    openedDriverOnboardingParamRef.current = true;
+    if (needsDriverOnboarding) {
+      handleStartDriverOnboarding();
+    }
+  }, [
+    currentUser,
+    handleStartDriverOnboarding,
+    kycLoading,
+    needsDriverOnboarding,
+    openDriverOnboarding,
+    vehiclesLoading,
+  ]);
 
   useEffect(() => {
     const paymentStatusKey = paymentStatus ? `screen:${String(paymentStatus)}` : null;
@@ -2530,7 +2557,7 @@ export default function ProfileScreen() {
 
 
           {/* Section "Devenir conducteur" pour les passagers */}
-          {!isDriver && (
+          {needsDriverOnboarding && (
             <Animated.View entering={FadeInDown.delay(200)}>
               <TouchableOpacity
                 style={styles.becomeDriverCard}
@@ -2617,9 +2644,9 @@ export default function ProfileScreen() {
                     )}
                   </View>
                   <Text style={styles.proSubtitle} numberOfLines={2}>
-                    {isDriver
+                    {!needsDriverOnboarding
                       ? '5 trajets par jour inclus, abonnement pour publier sans blocage.'
-                      : 'Réservé aux conducteurs qui publient des trajets.'}
+                      : 'Completez votre profil conducteur avant de publier des trajets.'}
                   </Text>
                 </View>
               </View>
@@ -2635,7 +2662,7 @@ export default function ProfileScreen() {
                 </View>
               </View>
 
-              {isDriver && premiumOverview?.documentFundingEnabled && (
+              {!needsDriverOnboarding && premiumOverview?.documentFundingEnabled && (
                 <Text style={styles.proFundingText} numberOfLines={2}>
                   {"Financement documents jusqu'à "}
                   {formatSubscriptionAmount(
@@ -2646,7 +2673,7 @@ export default function ProfileScreen() {
                 </Text>
               )}
 
-              {!isDriver ? (
+              {needsDriverOnboarding ? (
                 <TouchableOpacity
                   style={styles.proPrimaryButton}
                   onPress={handleStartDriverOnboarding}
@@ -2692,7 +2719,7 @@ export default function ProfileScreen() {
             </View>
           </Animated.View>
 
-          {isDriver && (
+          {!needsDriverOnboarding && (
             <Animated.View entering={FadeInDown.delay(300)}>
               <View style={styles.documentPackCard}>
                 <View style={styles.documentPackHeader}>

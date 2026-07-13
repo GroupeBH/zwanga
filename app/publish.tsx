@@ -2739,7 +2739,10 @@ export default function PublishScreen() {
                 style={[styles.driverModalButton, styles.driverModalButtonPrimary]}
                 onPress={() => {
                   setShowDriverRequiredModal(false);
-                  router.push('/profile');
+                  router.push({
+                    pathname: '/profile',
+                    params: { openDriverOnboarding: '1' },
+                  } as any);
                 }}
               >
                 <Text style={styles.driverModalButtonPrimaryText}>Devenir conducteur</Text>

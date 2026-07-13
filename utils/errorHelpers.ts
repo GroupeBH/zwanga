@@ -72,7 +72,11 @@ export function createBecomeDriverAction(router: any) {
   return {
     label: 'Devenir conducteur',
     variant: 'primary' as const,
-    onPress: () => router.push('/profile'),
+    onPress: () =>
+      router.push({
+        pathname: '/profile',
+        params: { openDriverOnboarding: '1' },
+      } as any),
   };
 }
 
