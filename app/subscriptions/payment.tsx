@@ -446,7 +446,7 @@ export default function SubscriptionPaymentScreen() {
             title: 'Operateur',
             description:
               autoCheckAttempt > 0
-                ? `Verification automatique ${autoCheckAttempt}/${AUTO_CHECK_MAX_ATTEMPTS}.`
+                ? `Vérification automatique ${autoCheckAttempt}/${AUTO_CHECK_MAX_ATTEMPTS}.`
                 : "Nous attendons le retour de l'operateur.",
             icon: 'radio-outline' as keyof typeof Ionicons.glyphMap,
           },
@@ -505,7 +505,7 @@ export default function SubscriptionPaymentScreen() {
       return {
         icon: 'checkmark-circle-outline' as keyof typeof Ionicons.glyphMap,
         title: 'Abonnement actif',
-        text: 'Votre compte conducteur Pro est active.',
+        text: 'Votre compte conducteur Pro est activé.',
         activity: false,
         color: Colors.success,
       };
@@ -830,7 +830,7 @@ export default function SubscriptionPaymentScreen() {
           if (outcome === 'pending' || outcome === 'error') startAutoCheck(nextOrderNumber, pendingMessage);
           return;
         }
-        setMessage('Le paiement carte a été ferme avant le retour FlexPay.');
+        setMessage('Le paiement carte a été fermé avant le retour FlexPay.');
         return;
       }
 
@@ -846,7 +846,7 @@ export default function SubscriptionPaymentScreen() {
       }
 
       if (!nextOrderNumber) {
-        
+
         setMessage('Retour carte recu, mais la reference FlexPay est manquante.');
         return;
       }
@@ -854,7 +854,7 @@ export default function SubscriptionPaymentScreen() {
       const pendingMessage =
         paymentResult === 'success'
           ? 'Paiement carte valide cote FlexPay, activation en cours.'
-          : 'Retour carte recu. Verification du statut avant toute nouvelle tentative.';
+          : 'Retour carte reçu. Vérification du statut avant toute nouvelle tentative.';
       const outcome = await checkPaymentByOrderNumber(nextOrderNumber, {
         checkingStage: 'zwanga_activation',
         pendingStage: 'zwanga_activation',
@@ -1159,19 +1159,19 @@ export default function SubscriptionPaymentScreen() {
           setStage('failed');
           setMessage(
             normalizedStatus === 'cancel'
-              ? 'Paiement carte annule.'
-              : 'Paiement carte refuse. Verifiez votre carte ou essayez un autre moyen.',
+              ? 'Paiement carte annulé.'
+              : 'Paiement carte refusé. Verifiez votre carte ou essayez un autre moyen.',
           );
         } else {
-          setMessage('Retour carte recu. Actualisez le statut avant de relancer un paiement.');
+          setMessage('Retour carte reçu. Actualisez le statut avant de rélancer un paiement.');
         }
         return;
       }
 
       const pendingMessage =
         normalizedStatus === 'success'
-          ? 'Retour carte recu. Verification FlexPay avant activation.'
-          : 'Retour carte recu. Verification du statut avant toute nouvelle tentative.';
+          ? 'Retour carte reçu. Vérification FlexPay avant activation.'
+          : 'Retour carte reçu. Vérification du statut avant toute nouvelle tentative.';
       const outcome = await checkPaymentByOrderNumber(nextOrderNumber, {
         checkingStage: 'zwanga_activation',
         pendingStage: 'zwanga_activation',
@@ -1196,11 +1196,11 @@ export default function SubscriptionPaymentScreen() {
       void checkPaymentByOrderNumber(orderNumber, {
         checkingStage: nextStage,
         pendingStage: nextStage,
-        pendingMessage: 'Retour dans l app detecte. Nous actualisons cette reference.',
+        pendingMessage: "Retour dans l'app detecté. Nous actualisons cette référence.",
         suppressErrorDialog: true,
       }).then((outcome) => {
         if (mountedRef.current && (outcome === 'pending' || outcome === 'error') && !isAutoChecking) {
-          startAutoCheck(orderNumber, 'Retour dans l app detecte. Nous reprenons le suivi.');
+          startAutoCheck(orderNumber, "Retour dans l'app detecté. Nous reprenons le suivi.");
         }
       });
     });
@@ -1227,7 +1227,7 @@ export default function SubscriptionPaymentScreen() {
           </TouchableOpacity>
           <View style={styles.headerTextBlock}>
             <Text style={styles.headerTitle}>Paiement Pro</Text>
-            <Text style={styles.headerSubtitle}>Suivi FlexPay en temps reel</Text>
+            <Text style={styles.headerSubtitle}>Suivi FlexPay en temps réel</Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity
@@ -1274,7 +1274,7 @@ export default function SubscriptionPaymentScreen() {
               numberOfLines={isTightHeight ? 1 : 2}
               style={[styles.planText, isCompactHeight && styles.planTextCompact]}
             >
-              Publiez au-dela des 5 trajets inclus chaque jour des que le paiement est confirme.
+              Publiez au-delà des 5 trajets inclus chaque jour dès que le paiement est confirmé.
             </Text>
           </LinearGradient>
 
@@ -1349,7 +1349,7 @@ export default function SubscriptionPaymentScreen() {
             <View style={[styles.cardNotice, isCompactHeight && styles.cardNoticeCompact]}>
               <Ionicons name="card-outline" size={20} color={Colors.primary} />
               <Text numberOfLines={isCompactHeight ? 1 : 2} style={styles.cardNoticeText}>
-                Le paiement carte s ouvrira dans une page securisee FlexPay.
+                Le paiement carte s{"'"}ouvrira dans une page securisee FlexPay.
               </Text>
             </View>
           )}
@@ -1431,7 +1431,7 @@ export default function SubscriptionPaymentScreen() {
                 <Text numberOfLines={isTightHeight ? 1 : 2} style={styles.statusText}>
                   {statusPanel.text}
                 </Text>
-                {orderNumber ? <Text style={styles.referenceText}>Reference {orderNumber}</Text> : null}
+                {orderNumber ? <Text style={styles.referenceText}>Référence {orderNumber}</Text> : null}
               </View>
             </View>
           ) : null}
