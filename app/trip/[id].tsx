@@ -22,15 +22,15 @@ import {
   useUpdateBookingPaymentModeMutation,
 } from '@/store/api/bookingApi';
 import { useGeocodeMutation } from '@/store/api/googleMapsApi';
-import { useCreateConversationMutation } from '@/store/api/messageApi';
+import { useCreateConversationMutation, useLazyListConversationsQuery } from '@/store/api/messageApi';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
 import { useCreateTripShareLinkMutation } from '@/store/api/trackingApi';
 import { useGetTripByIdQuery, useUpdateTripMutation } from '@/store/api/tripApi';
 import { useGetKycStatusQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { useAppSelector } from '@/store/hooks';
-import { selectTripById, selectUser } from '@/store/selectors';
-import type { Booking, BookingStatus, GeoPoint, TripPaymentMode } from '@/types';
+import { selectConversations, selectTripById, selectUser } from '@/store/selectors';
+import type { Booking, BookingStatus, Conversation, GeoPoint, TripPaymentMode } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
 import {
   buildManualGeocodeQuery,
@@ -168,6 +168,36 @@ const formatTripPaymentPhone = (value?: string | null) => {
   return `+243${digits}`;
 };
 
+const getConversationSortTime = (conversation: Conversation) => {
+  const rawValue = conversation.lastMessageAt ?? conversation.updatedAt ?? conversation.createdAt;
+  const timestamp = rawValue ? new Date(rawValue).getTime() : 0;
+  return Number.isFinite(timestamp) ? timestamp : 0;
+};
+
+const findDirectConversationWithUser = (
+  conversations: Conversation[] | undefined,
+  currentUserId: string,
+  otherUserId: string,
+) => {
+  const matches = (conversations ?? [])
+    .filter((conversation) => {
+      const participantIds = new Set(
+        conversation.participants
+          ?.map((participant) => participant.userId)
+          .filter(Boolean),
+      );
+
+      return (
+        participantIds.size === 2 &&
+        participantIds.has(currentUserId) &&
+        participantIds.has(otherUserId)
+      );
+    })
+    .sort((a, b) => getConversationSortTime(b) - getConversationSortTime(a));
+
+  return matches.find((conversation) => !conversation.bookingId) ?? matches[0] ?? null;
+};
+
 const isValidMapCoordinate = (coordinate?: { latitude: number; longitude: number } | null) =>
   Boolean(
     coordinate &&
@@ -274,6 +304,7 @@ export default function TripDetailsScreen() {
   const trip = tripFromApi || tripFromStore;
 
   const user = useAppSelector(selectUser);
+  const conversations = useAppSelector(selectConversations);
   const { showDialog } = useDialog();
   const driverPhone = trip?.driver?.phone ?? null;
   // console.log('driverPhone', driverPhone);
@@ -778,6 +809,8 @@ export default function TripDetailsScreen() {
   const [confirmPickupByPassenger, { isLoading: isConfirmingPickup }] = useConfirmPickupByPassengerMutation();
   const [confirmDropoffByPassenger, { isLoading: isConfirmingDropoff }] = useConfirmDropoffByPassengerMutation();
   const [createConversation, { isLoading: isCreatingConversation }] = useCreateConversationMutation();
+  const [loadConversations, { isFetching: isLookingUpConversation }] = useLazyListConversationsQuery();
+  const isOpeningConversation = isCreatingConversation || isLookingUpConversation;
   const [createTripShareLink, { isLoading: isCreatingTripShareLink }] = useCreateTripShareLinkMutation();
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
   const [bookingStep, setBookingStep] = useState<1 | 2 | 3>(1); // 1: places, 2: points, 3: preview
@@ -1072,15 +1105,15 @@ export default function TripDetailsScreen() {
   const showDriverVehicleReminder = isTripDriver && (trip?.status === 'upcoming' || trip?.status === 'ongoing');
   const showPassengerSecurityAccess = !isTripDriver;
   const passengerSecurityQuickHint = !activeBooking
-    ? "Ajoutez d'abord vos contacts dans Profil > Parametres > Securite, puis choisissez qui notifier pour ce trajet."
+    ? "Choisissez les proches a prevenir une fois votre reservation creee."
     : activeBooking.status === 'pending'
-      ? "Reservation en attente: preparez vos contacts d'urgence puis selectionnez ceux à notifier dès que disponible."
+      ? "Votre reservation est en attente. Vous pourrez choisir vos proches apres acceptation."
       : activeBooking.status === 'accepted'
-        ? 'Avant de monter, ouvrez la securité du trajet pour choisir les proches à notifier.'
-        : 'Ouvrez la securite du trajet pour ajuster qui est notifié.';
+        ? 'Avant de monter, choisissez les proches a prevenir pendant le trajet.'
+        : 'Vous pouvez ajuster les proches a prevenir.';
   const passengerSecurityButtonLabel = canAccessTripSecurity
-    ? 'Ouvrir la securite du trajet'
-    : 'Connectez-vous pour la securité';
+    ? 'Choisir mes proches'
+    : 'Connectez-vous';
   const defaultPassengerOriginSelection = useMemo<MapLocationSelection | null>(() => {
     const latitude = Number(lastKnownLocation?.coords?.latitude);
     const longitude = Number(lastKnownLocation?.coords?.longitude);
@@ -1286,22 +1319,24 @@ export default function TripDetailsScreen() {
     }
 
     try {
-      const payload: {
-        participantIds: string[];
-        bookingId?: string;
-      } = {
-        participantIds: [trip.driverId],
-      };
+      const localConversation = findDirectConversationWithUser(conversations, user.id, trip.driverId);
+      const remoteConversations = localConversation
+        ? undefined
+        : (await loadConversations({ page: 1, limit: 100 }).unwrap()).data;
+      const existingConversation =
+        localConversation ??
+        findDirectConversationWithUser(remoteConversations, user.id, trip.driverId);
+      const conversation =
+        existingConversation ??
+        (await createConversation({
+          participantIds: [trip.driverId],
+        }).unwrap());
 
-      if (activeBooking?.id) {
-        payload.bookingId = activeBooking.id;
-      }
-
-      const conversation = await createConversation(payload).unwrap();
       void trackEvent('conversation_opened', {
         source_screen: 'trip_details',
         trip_id: trip.id,
         has_booking: Boolean(activeBooking?.id),
+        reused_existing_conversation: Boolean(existingConversation),
       });
       router.push({
         pathname: '/chat/[id]',
@@ -2626,10 +2661,10 @@ export default function TripDetailsScreen() {
               <TouchableOpacity
                 style={styles.tripInlineActionButton}
                 onPress={handleContactDriver}
-                disabled={isCreatingConversation}
+                disabled={isOpeningConversation}
                 activeOpacity={0.86}
               >
-                {isCreatingConversation ? (
+                {isOpeningConversation ? (
                   <ActivityIndicator size="small" color={Colors.primary} />
                 ) : (
                   <>
@@ -2687,9 +2722,9 @@ export default function TripDetailsScreen() {
                   <Ionicons name="shield-checkmark-outline" size={20} color={Colors.primary} />
                 </View>
                 <View style={styles.passengerSecurityHeaderCopy}>
-                  <Text style={styles.passengerSecurityTitle}>SECURITE PASSAGER</Text>
+                  <Text style={styles.passengerSecurityTitle}>PROCHES A PREVENIR</Text>
                   <Text style={styles.passengerSecuritySubtitle}>
-                    Proches, suivi live et alerte en un seul endroit.
+                    Simple et modifiable avant le départ.
                   </Text>
                 </View>
               </View>
@@ -3150,7 +3185,10 @@ export default function TripDetailsScreen() {
             ]}
           >
             <View style={styles.securityModalHeader}>
-              <Text style={styles.securityModalTitle}>Securite du trajet</Text>
+              <View style={styles.securityModalHeaderCopy}>
+                <Text style={styles.securityModalTitle}>Prevenir mes proches</Text>
+                <Text style={styles.securityModalSubtitle}>Choisissez qui recoit les alertes du trajet.</Text>
+              </View>
               <TouchableOpacity
                 style={styles.securityModalCloseButton}
                 onPress={closeTripSecurityModal}
@@ -5693,20 +5731,30 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
-    height: '86%',
+    height: '72%',
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.md,
   },
   securityModalHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: Spacing.sm,
+  },
+  securityModalHeaderCopy: {
+    flex: 1,
+    paddingRight: Spacing.sm,
   },
   securityModalTitle: {
     fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
+  },
+  securityModalSubtitle: {
+    marginTop: 2,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    lineHeight: 19,
   },
   securityModalCloseButton: {
     width: 36,

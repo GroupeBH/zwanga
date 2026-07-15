@@ -130,13 +130,13 @@ function TripSecurityPanel({
 
   const passengerBlockingReason = useMemo(() => {
     if (role !== 'passenger') return null;
-    if (!bookingId) return 'La sélection sera disponible après création de réservation.';
-    if (!booking) return 'Chargement de votre réservation...';
+    if (!bookingId) return 'Reservez le trajet pour choisir les proches a prevenir.';
+    if (!booking) return 'Chargement de votre reservation...';
     if (booking.status === 'pending') {
-      return 'La sélection sera active dès que la réservation est acceptée.';
+      return 'Vous pourrez choisir vos proches des que le conducteur accepte.';
     }
     if (booking.status !== 'accepted') {
-      return `La réservation est ${booking.status}. La configuration n'est plus modifiable.`;
+      return "Cette reservation n'est plus modifiable.";
     }
     return null;
   }, [role, bookingId, booking]);
@@ -201,8 +201,8 @@ function TripSecurityPanel({
     if (selectedContactIds.length === 0) {
       showDialog({
         variant: 'warning',
-          title: 'Sélection requise',
-          message: 'Choisissez au moins un contact à notifier.',
+          title: 'Choisissez un proche',
+          message: 'Selectionnez au moins une personne a prevenir.',
       });
       return;
     }
@@ -218,17 +218,15 @@ function TripSecurityPanel({
         setSavedDriverSelectionOverride(selectedContactIds);
         showDialog({
           variant: 'success',
-          title: 'Configuration enregistrée',
-          message:
-            'Le backend notifiera automatiquement ces contacts au démarrage, à la récupération, puis à la fin.',
+          title: 'Proches enregistres',
+          message: 'Ils seront prevenus automatiquement pendant ce trajet.',
         });
       } else {
         if (!bookingId || !booking || booking.status !== 'accepted') {
           showDialog({
             variant: 'info',
-            title: 'Réservation non prête',
-            message:
-              'Cette sélection sera possible quand la réservation sera acceptée.',
+            title: 'Reservation pas encore prete',
+            message: 'Vous pourrez choisir vos proches apres acceptation.',
           });
           return;
         }
@@ -241,9 +239,8 @@ function TripSecurityPanel({
         await refetchBooking();
         showDialog({
           variant: 'success',
-          title: 'Configuration enregistrée',
-          message:
-            "Le backend notifiera automatiquement ces contacts à la récupération et à l'arrivée.",
+          title: 'Proches enregistres',
+          message: 'Ils seront prevenus automatiquement pendant ce trajet.',
         });
       }
 
@@ -260,8 +257,8 @@ function TripSecurityPanel({
   const isContextLoading = role === 'passenger' ? isLoadingBooking : false;
   const currentSelectionLabel =
     savedSelectionContacts.length === 0
-      ? 'Aucun contact sélectionné pour ce trajet.'
-      : `${savedSelectionContacts.length} contact(s) sélectionné(s) pour ce trajet.`;
+      ? 'Aucun proche choisi'
+      : `${savedSelectionContacts.length} proche${savedSelectionContacts.length > 1 ? 's' : ''} choisi${savedSelectionContacts.length > 1 ? 's' : ''}`;
 
   const savedPreview = savedSelectionContacts.map((contact) => contact.name).slice(0, 3).join(', ');
   const isPrimaryDisabled =
@@ -269,26 +266,31 @@ function TripSecurityPanel({
     (role === 'passenger' && !isPassengerReadyForSelection) ||
     tripStatus === 'cancelled' ||
     tripStatus === 'completed';
+  const showPrimaryChooserButton = !(compact && selectorVisible);
 
   return (
     <View style={[styles.card, compact && styles.cardCompact]}>
-      <View style={styles.headerRow}>
-        <View style={styles.headerIconWrap}>
-          <Ionicons name="shield-checkmark-outline" size={18} color={Colors.primary} />
+      {compact ? (
+        <Text style={styles.compactIntro}>
+          Choisissez les personnes a prevenir pendant ce trajet.
+        </Text>
+      ) : (
+        <View style={styles.headerRow}>
+          <View style={styles.headerIconWrap}>
+            <Ionicons name="shield-checkmark-outline" size={18} color={Colors.primary} />
+          </View>
+          <View style={styles.headerCopy}>
+            <Text style={styles.title}>Proches a prevenir</Text>
+            <Text style={styles.subtitle}>
+              {role === 'driver'
+                ? 'Choisissez les proches a prevenir pour ce trajet conducteur.'
+                : 'Choisissez les proches a prevenir pour cette reservation passager.'}
+            </Text>
+          </View>
         </View>
-        <View style={styles.headerCopy}>
-          <Text style={styles.title}>Sécurité trajet</Text>
-          <Text style={styles.subtitle}>
-            {compact
-              ? 'Choisissez rapidement les proches à notifier pour ce trajet.'
-              : role === 'driver'
-              ? 'Choisissez les proches à notifier pour ce trajet conducteur, même pendant la course.'
-              : 'Choisissez les proches à notifier pour cette réservation passager.'}
-          </Text>
-        </View>
-      </View>
+      )}
 
-      <PoliceContactPanel compact={compact} presentation="strip" />
+      {!compact ? <PoliceContactPanel compact={compact} presentation="strip" /> : null}
 
       {!compact ? (
         <View style={styles.flowCard}>
@@ -301,12 +303,12 @@ function TripSecurityPanel({
         </View>
       ) : null}
 
-      <View style={styles.selectionCard}>
+      <View style={[styles.selectionCard, compact && styles.selectionCardCompact]}>
         <Text style={styles.selectionLabel}>{currentSelectionLabel}</Text>
         {savedPreview ? <Text style={styles.selectionPreview}>{savedPreview}</Text> : null}
         {role === 'driver' && tripStatus === 'ongoing' ? (
           <Text style={styles.liveEditHint}>
-            Vous pouvez modifier cette sélection à tout moment pendant le trajet.
+            Modifiable pendant le trajet.
           </Text>
         ) : null}
       </View>
@@ -318,51 +320,59 @@ function TripSecurityPanel({
         </View>
       ) : null}
 
-      <View style={[styles.actionsRow, compact && styles.actionsRowCompact]}>
-        <TouchableOpacity
-          style={[styles.primaryButton, isPrimaryDisabled && styles.buttonDisabled]}
-          onPress={handlePrimaryAction}
-          disabled={isPrimaryDisabled}
-          activeOpacity={0.85}
-        >
-          {isContextLoading ? (
-            <ActivityIndicator size="small" color={Colors.white} />
-          ) : (
-            <>
-              <Ionicons name={selectorVisible ? 'chevron-up' : 'people'} size={16} color={Colors.white} />
-              <Text style={styles.primaryButtonText}>
-                {selectorVisible ? 'Masquer la sélection' : 'Choisir qui notifier'}
-              </Text>
-            </>
-          )}
-        </TouchableOpacity>
+      {showPrimaryChooserButton || !compact ? (
+        <View style={[styles.actionsRow, compact && styles.actionsRowCompact]}>
+          {showPrimaryChooserButton ? (
+            <TouchableOpacity
+              style={[styles.primaryButton, isPrimaryDisabled && styles.buttonDisabled]}
+              onPress={handlePrimaryAction}
+              disabled={isPrimaryDisabled}
+              activeOpacity={0.85}
+            >
+              {isContextLoading ? (
+                <ActivityIndicator size="small" color={Colors.white} />
+              ) : (
+                <>
+                  <Ionicons name={selectorVisible ? 'chevron-up' : 'people'} size={16} color={Colors.white} />
+                  <Text style={styles.primaryButtonText}>
+                    {selectorVisible ? 'Masquer la liste' : 'Choisir les proches'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          ) : null}
 
-        {!compact ? (
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => router.push('/security')}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="settings-outline" size={16} color={Colors.primary} />
-            <Text style={styles.secondaryButtonText}>Gérer mes contacts d&apos;urgence</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
+          {!compact ? (
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={() => router.push('/security')}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="settings-outline" size={16} color={Colors.primary} />
+              <Text style={styles.secondaryButtonText}>Gérer mes contacts d&apos;urgence</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
 
       {selectorVisible ? (
         <View style={[styles.inlineSelectorCard, compact && styles.inlineSelectorCardCompact]}>
           <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, compact && styles.modalTitleCompact]}>
-                Choisir les contacts à notifier
-              </Text>
+            <Text style={[styles.modalTitle, compact && styles.modalTitleCompact]}>
+              Choisir les proches
+            </Text>
+            {!compact ? (
               <TouchableOpacity onPress={() => setSelectorVisible(false)}>
                 <Ionicons name="close" size={22} color={Colors.gray[700]} />
               </TouchableOpacity>
-            </View>
+            ) : null}
+          </View>
             <Text style={[styles.modalSubtitle, compact && styles.modalSubtitleCompact]}>
-              {role === 'driver'
-                ? 'Ces contacts seront utilisés automatiquement au démarrage et à la fin de ce trajet.'
-                : "Ces contacts seront utilisés automatiquement à la récupération et à l'arrivée de ce passager."}
+              {compact
+                ? 'Cochez au moins une personne, puis enregistrez.'
+                : role === 'driver'
+                  ? 'Ces contacts seront prevenus automatiquement au debut et a la fin du trajet.'
+                  : "Ces contacts seront prevenus automatiquement pendant ce trajet."}
             </Text>
 
             {isLoadingContacts ? (
@@ -375,7 +385,7 @@ function TripSecurityPanel({
                 <Ionicons name="people-outline" size={34} color={Colors.gray[400]} />
                 <Text style={styles.emptyTitle}>Aucun contact actif</Text>
                 <Text style={styles.emptyText}>
-                  Ajoutez d&apos;abord des contacts d&apos;urgence dans Profil {'>'} Paramètres {'>'} Sécurité.
+                  Ajoutez d&apos;abord des contacts d&apos;urgence depuis votre profil.
                 </Text>
                 <TouchableOpacity
                   style={styles.emptyButton}
@@ -384,20 +394,22 @@ function TripSecurityPanel({
                     router.push('/security');
                   }}
                 >
-                  <Text style={styles.emptyButtonText}>Ouvrir Sécurité</Text>
+                  <Text style={styles.emptyButtonText}>Ajouter un contact</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <>
-                <View style={styles.toolsRow}>
-                  <TouchableOpacity style={styles.toolButton} onPress={selectAll}>
-                    <Text style={styles.toolButtonText}>Tout sélectionner</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.toolButton} onPress={clearAll}>
-                    <Text style={styles.toolButtonText}>Vider tout</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.selectedCount}>{selectedContactIds.length} choisis</Text>
-                </View>
+                {!compact ? (
+                  <View style={styles.toolsRow}>
+                    <TouchableOpacity style={styles.toolButton} onPress={selectAll}>
+                      <Text style={styles.toolButtonText}>Tout sélectionner</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.toolButton} onPress={clearAll}>
+                      <Text style={styles.toolButtonText}>Vider tout</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.selectedCount}>{selectedContactIds.length} choisis</Text>
+                  </View>
+                ) : null}
 
                 <ScrollView style={[styles.list, compact && styles.listCompact]} showsVerticalScrollIndicator={false}>
                   {activeContacts.map((contact) => {
@@ -468,6 +480,12 @@ function TripSecurityPanel({
             </View>
         </View>
       ) : null}
+
+      {compact ? (
+        <View style={styles.compactPoliceBlock}>
+          <PoliceContactPanel compact={compact} presentation="strip" />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -481,7 +499,16 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
   },
   cardCompact: {
-    padding: Spacing.sm,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderRadius: 0,
+    padding: 0,
+  },
+  compactIntro: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    lineHeight: 19,
+    marginBottom: Spacing.sm,
   },
   headerRow: {
     flexDirection: 'row',
@@ -538,6 +565,10 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     backgroundColor: Colors.gray[50],
     padding: Spacing.sm,
+  },
+  selectionCardCompact: {
+    backgroundColor: Colors.white,
+    borderColor: Colors.gray[200],
   },
   selectionLabel: {
     fontSize: FontSizes.sm,
@@ -625,9 +656,9 @@ const styles = StyleSheet.create({
     maxHeight: 520,
   },
   inlineSelectorCardCompact: {
-    marginTop: Spacing.xs,
-    padding: Spacing.xs,
-    maxHeight: 330,
+    marginTop: Spacing.sm,
+    padding: Spacing.sm,
+    maxHeight: 420,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -727,7 +758,7 @@ const styles = StyleSheet.create({
     maxHeight: 300,
   },
   listCompact: {
-    maxHeight: 120,
+    maxHeight: 220,
   },
   contactRow: {
     borderWidth: 1,
@@ -797,6 +828,9 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
+  },
+  compactPoliceBlock: {
+    marginTop: Spacing.sm,
   },
 });
 

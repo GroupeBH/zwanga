@@ -67,8 +67,8 @@ const CARD_PAYMENT_RETURN_PATH = 'subscriptions/payment';
 const RECENT_PENDING_PAYMENT_MAX_AGE_MS = 30 * 60 * 1000;
 const AUTO_CHECK_INITIAL_DELAY_MS = 3500;
 const AUTO_CHECK_INTERVAL_MS = 8000;
-const AUTO_CHECK_TIMEOUT_MS = 180000;
-const AUTO_CHECK_MAX_ATTEMPTS = 15;
+const AUTO_CHECK_TIMEOUT_MS = 90000;
+const AUTO_CHECK_MAX_ATTEMPTS = 8;
 const DRC_MOBILE_MONEY_PREFIX = '+243';
 const DRC_MOBILE_MONEY_REGEX = /^\+243\d{9}$/;
 
@@ -173,7 +173,7 @@ const getPaymentFailureMessage = (message?: string | null) => {
     normalizedMessage.includes('annul') ||
     normalizedMessage.includes('cancel')
   ) {
-    return 'Paiement annule. Aucun montant confirme; vous pouvez reessayer.';
+    return 'Paiement annulé. Aucun montant confirmé; vous pouvez réessayer.';
   }
 
   if (
@@ -207,7 +207,7 @@ const getPaymentFailureMessage = (message?: string | null) => {
     return 'Paiement non abouti. Aucun montant confirme; vous pouvez relancer une nouvelle tentative.';
   }
 
-  return message || 'Le paiement a echoue. Vous pouvez reessayer ou choisir un autre moyen.';
+  return message || 'Le paiement a échoué. Vous pouvez réessayer ou choisir un autre moyen.';
 };
 
 const isPaymentComplete = (response?: SubscriptionPaymentResponse | null) =>
@@ -356,11 +356,8 @@ export default function SubscriptionPaymentScreen() {
   );
 
   const { data: subscriptionPlans = [] } = useGetSubscriptionPlansQuery();
-  const {
-    data: premiumOverview,
-    isFetching: premiumOverviewFetching,
-    refetch: refetchPremiumOverview,
-  } = useGetPremiumOverviewQuery(undefined, { skip: !isDriver });
+  const { data: premiumOverview, refetch: refetchPremiumOverview } =
+    useGetPremiumOverviewQuery(undefined, { skip: !isDriver });
   const {
     data: paymentHistory,
     refetch: refetchPaymentHistory,
@@ -407,12 +404,15 @@ export default function SubscriptionPaymentScreen() {
 
   const progressSteps = useMemo(() => {
     const activeStage = stage === 'idle' && orderNumber ? 'operator_confirmation' : stage;
+    const paymentStarted = activeStage !== 'idle' || Boolean(orderNumber);
     const baseSteps = isCardPayment
       ? [
           {
             key: 'preparing',
             title: 'Référence',
-            description: 'Zwanga garde une référence unique pour éviter un double paiement.',
+            description: paymentStarted
+              ? "Zwanga crée une référence. Aucun débit carte n'est lancé ici."
+              : "Aucune demande de paiement n'est envoyée avant votre appui sur le bouton.",
             icon: 'lock-closed-outline' as keyof typeof Ionicons.glyphMap,
           },
           {
@@ -432,7 +432,9 @@ export default function SubscriptionPaymentScreen() {
           {
             key: 'preparing',
             title: 'Référence',
-            description: 'Zwanga garde une référence unique pour éviter un double paiement.',
+            description: paymentStarted
+              ? 'Zwanga crée une référence. La demande Mobile Money part ensuite sur votre téléphone.'
+              : "Aucune demande de paiement n'est envoyée avant votre appui sur le bouton.",
             icon: 'lock-closed-outline' as keyof typeof Ionicons.glyphMap,
           },
           {
@@ -459,7 +461,9 @@ export default function SubscriptionPaymentScreen() {
         ];
 
     const currentStepKey =
-      activeStage === 'preparing'
+      !paymentStarted
+        ? null
+        : activeStage === 'preparing'
         ? 'preparing'
         : activeStage === 'card_redirect'
           ? 'card'
@@ -476,13 +480,15 @@ export default function SubscriptionPaymentScreen() {
                   : 'preparing';
 
     const currentIndex = Math.max(
-      0,
-      baseSteps.findIndex((step) => step.key === currentStepKey),
+      -1,
+      currentStepKey ? baseSteps.findIndex((step) => step.key === currentStepKey) : -1,
     );
 
     return baseSteps.map((step, index) => {
       let stepStatus: PaymentProgressStatus = 'waiting';
-      if (activeStage === 'success' || index < currentIndex) {
+      if (!paymentStarted) {
+        stepStatus = 'waiting';
+      } else if (activeStage === 'success' || index < currentIndex) {
         stepStatus = 'done';
       } else if (activeStage === 'failed' && index === currentIndex) {
         stepStatus = 'error';
@@ -496,9 +502,11 @@ export default function SubscriptionPaymentScreen() {
     });
   }, [autoCheckAttempt, isCardPayment, orderNumber, stage]);
   const highlightedProgressStep =
-    progressSteps.find(
-      (step) => step.status === 'current' || step.status === 'paused' || step.status === 'error',
-    ) ?? progressSteps[progressSteps.length - 1];
+    stage === 'idle' && !orderNumber
+      ? progressSteps[0]
+      : progressSteps.find(
+        (step) => step.status === 'current' || step.status === 'paused' || step.status === 'error',
+      ) ?? progressSteps[progressSteps.length - 1];
 
   const statusPanel = useMemo(() => {
     if (stage === 'success') {
@@ -524,9 +532,11 @@ export default function SubscriptionPaymentScreen() {
     if (isSubscribing || stage === 'preparing') {
       return {
         icon: 'lock-closed-outline' as keyof typeof Ionicons.glyphMap,
-        title: 'Preparation du paiement',
-        text: message || "Creation d'une reference FlexPay securisée.",
-        activity: true,
+        title: 'Référence en préparation',
+        text:
+          message ||
+          "Aucun débit n'est lancé ici. Zwanga crée seulement une référence sécurisée.",
+        activity: false,
         color: Colors.primary,
       };
     }
@@ -559,7 +569,7 @@ export default function SubscriptionPaymentScreen() {
       return {
         icon: 'information-circle-outline' as keyof typeof Ionicons.glyphMap,
         title: 'Paiement en cours',
-        text: message || 'Une référence existe dejà pour ce paiement.',
+        text: message || 'Une référence existe déjà pour ce paiement.',
         activity: false,
         color: Colors.primary,
       };
@@ -569,8 +579,6 @@ export default function SubscriptionPaymentScreen() {
   }, [autoCheckAttempt, isAutoChecking, isChecking, isSubscribing, message, orderNumber, stage]);
 
   const isBusy = isSubscribing || isChecking;
-  const selectedOption =
-    PAYMENT_OPTIONS.find((option) => option.id === selectedChannel) ?? PAYMENT_OPTIONS[0];
   const primaryButtonLabel =
     isPremiumActive || stage === 'success'
       ? 'Abonnement actif'
@@ -656,7 +664,7 @@ export default function SubscriptionPaymentScreen() {
     setPaymentUrl(storedPayment.paymentUrl ?? null);
     setPaymentMethod(storedPayment.paymentMethod);
     setStage(storedPayment.paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation');
-    setMessage(storedPayment.message || 'Paiement retrouvé. Nous reprenons le suivi.');
+    setMessage(storedPayment.message || "Référence retrouvée. Aucune nouvelle demande n'est envoyée.");
   }, []);
 
   const finishPayment = useCallback(
@@ -744,7 +752,7 @@ export default function SubscriptionPaymentScreen() {
       setStage(paymentMethod === 'card' ? 'zwanga_activation' : 'phone_confirmation');
       setMessage(
         initialMessage ||
-          'Demande envoyée à FlexPay. Confirmez sur votre telephone; nous suivons le paiement.',
+          'Demande envoyée au téléphone. Confirmez avec votre PIN; Zwanga vérifiera ensuite.',
       );
 
       void (async () => {
@@ -769,7 +777,7 @@ export default function SubscriptionPaymentScreen() {
             pendingMessage:
               attempt === 1
                 ? 'Vérification en cours. Si la demande est sur votre téléphone, confirmez avec votre PIN.'
-                : 'Paiement toujours en traitement. Nous continuons les actualisations automatiques.',
+                : 'Toujours en attente côté opérateur. Une validation USSD peut prendre quelques instants.',
             suppressErrorDialog: true,
           });
 
@@ -786,7 +794,7 @@ export default function SubscriptionPaymentScreen() {
           setIsAutoChecking(false);
           setStage('waiting_long');
           setMessage(
-            'Le paiement est encore en traitement. Ne payez pas une deuxième fois; la référence reste gardée.',
+            'Nous avons arrêté le chargement automatique. Si vous avez confirmé le code USSD, appuyez sur Actualiser. Sinon vous pouvez relancer une nouvelle tentative.',
           );
         }
       })();
@@ -840,7 +848,7 @@ export default function SubscriptionPaymentScreen() {
         setMessage(
           paymentResult === 'cancel'
             ? 'Paiement carte annulé.'
-            : 'Paiement carte refusé. Verifiez votre carte ou essayez un autre moyen.',
+            : 'Paiement carte refusé. Vérifiez votre carte ou essayez un autre moyen.',
         );
         return;
       }
@@ -928,7 +936,7 @@ export default function SubscriptionPaymentScreen() {
 
     if (isPremiumActive) {
       setStage('success');
-      setMessage('Votre abonnement est deja actif.');
+      setMessage('Votre abonnement est déjà actif.');
       return;
     }
 
@@ -939,6 +947,7 @@ export default function SubscriptionPaymentScreen() {
         return;
       }
 
+      const wasWaitingLong = stage === 'waiting_long';
       stopAutoCheck();
       const nextStage = paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation';
       const outcome = await checkPaymentByOrderNumber(orderNumber, {
@@ -948,7 +957,14 @@ export default function SubscriptionPaymentScreen() {
         suppressErrorDialog: true,
       });
       if (outcome === 'pending' || outcome === 'error') {
-        startAutoCheck(orderNumber, 'Nous continuons le suivi automatique de cette reference.');
+        if (wasWaitingLong) {
+          setStage('waiting_long');
+          setMessage(
+            "Le paiement n'est pas encore confirmé. Si vous avez validé l'USSD, réessayez Actualiser dans un instant; sinon abandonnez cette tentative.",
+          );
+          return;
+        }
+        startAutoCheck(orderNumber, 'Nous continuons le suivi automatique de cette référence.');
       }
       return;
     }
@@ -960,8 +976,8 @@ export default function SubscriptionPaymentScreen() {
       setPhone(DRC_MOBILE_MONEY_PREFIX);
       showDialog({
         variant: 'warning',
-        title: 'Numero requis',
-        message: 'Entrez le numero Mobile Money qui recevra la demande de paiement.',
+        title: 'Numéro requis',
+        message: 'Entrez le numéro Mobile Money qui recevra la demande de paiement.',
       });
       return;
     }
@@ -980,7 +996,7 @@ export default function SubscriptionPaymentScreen() {
       setStage('preparing');
       setAutoCheckAttempt(0);
       setPaymentMethod(method);
-      setMessage('Preparation du paiement avec FlexPay.');
+      setMessage("Création d'une référence. Aucun débit n'est lancé avant votre validation.");
       if (method === 'mobile_money') setPhone(formattedPhone);
 
       const cardRedirectUrls = method === 'card' ? createCardPaymentRedirectUrls() : null;
@@ -1038,7 +1054,7 @@ export default function SubscriptionPaymentScreen() {
       if (method === 'mobile_money' && response.payment.orderNumber) {
         const pendingMessage =
           response.payment.message ||
-          'Demande envoyee sur votre telephone. Confirmez avec votre PIN Mobile Money.';
+          'Demande envoyée sur votre téléphone. Confirmez avec votre PIN Mobile Money.';
         setStage('phone_confirmation');
         setMessage(pendingMessage);
         startAutoCheck(response.payment.orderNumber, pendingMessage);
@@ -1046,11 +1062,11 @@ export default function SubscriptionPaymentScreen() {
       }
 
       setStage(response.payment.orderNumber ? 'operator_confirmation' : 'preparing');
-      setMessage(response.payment.message || 'Demande de paiement creee.');
+      setMessage(response.payment.message || 'Demande de paiement créée.');
     } catch (error: any) {
       if (isNetworkOrTimeoutError(error)) {
         const pendingMessage =
-          'Le lancement prend plus de temps que prevu. Ne relancez pas le paiement; nous cherchons la reference.';
+          'Le lancement prend plus de temps que prévu. Ne relancez pas le paiement; nous cherchons la référence.';
         setStage('operator_confirmation');
         setMessage(pendingMessage);
         const restoredPayment = await restorePayment();
@@ -1083,6 +1099,7 @@ export default function SubscriptionPaymentScreen() {
     selectedChannel,
     showDialog,
     startAutoCheck,
+    stage,
     stopAutoCheck,
     subscribeToPro,
   ]);
@@ -1096,6 +1113,19 @@ export default function SubscriptionPaymentScreen() {
     setMessage(null);
     setAutoCheckAttempt(0);
   }, [clearStoredPayment, stopAutoCheck]);
+
+  const handleAbandonAndRetry = useCallback(() => {
+    showDialog({
+      variant: 'warning',
+      title: 'Relancer le paiement ?',
+      message:
+        "Si vous venez de confirmer l'USSD, appuyez plutôt sur Actualiser. Relancez seulement si vous n'avez pas validé la demande opérateur.",
+      actions: [
+        { label: 'Actualiser', variant: 'ghost', onPress: () => void handlePrimaryAction() },
+        { label: 'Relancer', variant: 'primary', onPress: () => void handleRetry() },
+      ],
+    });
+  }, [handlePrimaryAction, handleRetry, showDialog]);
 
   useEffect(() => {
     if (prefilledPhoneRef.current || !currentUser?.phone) return;
@@ -1123,11 +1153,14 @@ export default function SubscriptionPaymentScreen() {
       const outcome = await checkPaymentByOrderNumber(restoredPayment.orderNumber, {
         checkingStage: nextStage,
         pendingStage: nextStage,
-        pendingMessage: 'Paiement retrouve. Nous reprenons le suivi.',
+        pendingMessage: "Référence retrouvée. Aucune nouvelle demande n'est envoyée.",
         suppressErrorDialog: true,
       });
       if (!cancelled && (outcome === 'pending' || outcome === 'error')) {
-        startAutoCheck(restoredPayment.orderNumber, 'Paiement retrouve. Nous reprenons le suivi.');
+        startAutoCheck(
+          restoredPayment.orderNumber,
+          "Référence retrouvée. Aucune nouvelle demande n'est envoyée.",
+        );
       }
     })();
 
@@ -1191,7 +1224,15 @@ export default function SubscriptionPaymentScreen() {
   useEffect(() => {
     if (!isDriver) return undefined;
     const appStateSubscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState !== 'active' || !orderNumber) return;
+      if (
+        nextState !== 'active' ||
+        !orderNumber ||
+        stage === 'waiting_long' ||
+        stage === 'failed' ||
+        stage === 'success'
+      ) {
+        return;
+      }
       const nextStage = paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation';
       void checkPaymentByOrderNumber(orderNumber, {
         checkingStage: nextStage,
@@ -1208,7 +1249,7 @@ export default function SubscriptionPaymentScreen() {
     return () => {
       appStateSubscription.remove();
     };
-  }, [checkPaymentByOrderNumber, isAutoChecking, isDriver, orderNumber, paymentMethod, startAutoCheck]);
+  }, [checkPaymentByOrderNumber, isAutoChecking, isDriver, orderNumber, paymentMethod, stage, startAutoCheck]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -1319,7 +1360,7 @@ export default function SubscriptionPaymentScreen() {
 
           {!isCardPayment ? (
             <View style={[styles.section, isCompactHeight && styles.sectionCompact]}>
-              <Text style={styles.sectionLabel}>Numero Mobile Money</Text>
+              <Text style={styles.sectionLabel}>Numéro Mobile Money</Text>
               <View
                 style={[
                   styles.phoneInputWrapper,
@@ -1341,7 +1382,7 @@ export default function SubscriptionPaymentScreen() {
               </View>
               {!isTightHeight ? (
                 <Text numberOfLines={1} style={styles.inputHint}>
-                  FlexPay enverra une confirmation sur ce numero. Validez avec votre PIN.
+                  FlexPay enverra une confirmation sur ce numéro. Validez avec votre PIN.
                 </Text>
               ) : null}
             </View>
@@ -1349,7 +1390,7 @@ export default function SubscriptionPaymentScreen() {
             <View style={[styles.cardNotice, isCompactHeight && styles.cardNoticeCompact]}>
               <Ionicons name="card-outline" size={20} color={Colors.primary} />
               <Text numberOfLines={isCompactHeight ? 1 : 2} style={styles.cardNoticeText}>
-                Le paiement carte s{"'"}ouvrira dans une page securisee FlexPay.
+                Le paiement carte s{"'"}ouvrira dans une page securisée FlexPay.
               </Text>
             </View>
           )}
@@ -1445,6 +1486,15 @@ export default function SubscriptionPaymentScreen() {
               style={styles.secondaryButton}
             >
               <Text style={styles.secondaryButtonText}>Changer de moyen</Text>
+            </TouchableOpacity>
+          ) : null}
+          {stage === 'waiting_long' && orderNumber ? (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={handleAbandonAndRetry}
+              style={styles.secondaryButton}
+            >
+              <Text style={styles.secondaryButtonText}>Abandonner et réessayer</Text>
             </TouchableOpacity>
           ) : null}
           <TouchableOpacity
