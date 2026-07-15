@@ -1371,7 +1371,13 @@ export default function HomeScreen() {
 
       <View style={[styles.topOverlay, { top: insets.top + Spacing.sm }]}>
         <View style={styles.headerCard}>
-          <View style={styles.identityBlock}>
+          <TouchableOpacity
+            activeOpacity={0.82}
+            accessibilityRole="button"
+            accessibilityLabel="Ouvrir le profil"
+            style={styles.identityBlock}
+            onPress={() => router.push('/profile')}
+          >
             {avatarUri ? (
               <Image source={{ uri: avatarUri }} style={styles.userAvatar} resizeMode="cover" />
             ) : (
@@ -1390,7 +1396,7 @@ export default function HomeScreen() {
                 </Text>
               </View>
             </View>
-          </View>
+          </TouchableOpacity>
 
           <TouchableOpacity
             activeOpacity={0.75}
@@ -1408,7 +1414,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity activeOpacity={0.9} style={styles.searchCard} onPress={() => router.push('/search')}>
+        <TouchableOpacity activeOpacity={0.9} style={styles.searchCard} onPress={() => router.push('/publish')}>
           <View style={styles.searchIconSurface}>
             <Ionicons name="navigate-outline" size={22} color={Colors.white} />
           </View>

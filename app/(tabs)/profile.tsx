@@ -195,16 +195,35 @@ const normalizeSubscriptionPaymentMessage = (message?: string | null) =>
 const isDeclinedSubscriptionPaymentMessage = (message?: string | null) => {
   const normalizedMessage = normalizeSubscriptionPaymentMessage(message);
   return (
+    normalizedMessage.includes('annul') ||
+    normalizedMessage.includes('cancel') ||
     normalizedMessage.includes('declined') ||
+    normalizedMessage.includes('echec') ||
+    normalizedMessage.includes('echoue') ||
+    normalizedMessage.includes('failed') ||
+    normalizedMessage.includes('failure') ||
     normalizedMessage.includes('refuse') ||
     normalizedMessage.includes('rejet') ||
+    normalizedMessage.includes('non abouti') ||
+    normalizedMessage.includes('non aboutit') ||
+    normalizedMessage.includes('not completed') ||
+    normalizedMessage.includes('not complete') ||
+    normalizedMessage.includes('not successful') ||
     normalizedMessage.includes('solde insuffisant') ||
+    normalizedMessage.includes('unsuccessful') ||
     normalizedMessage.includes('insufficient')
   );
 };
 
 const getSubscriptionPaymentFailureMessage = (message?: string | null) => {
   const normalizedMessage = normalizeSubscriptionPaymentMessage(message);
+  if (
+    normalizedMessage.includes('annul') ||
+    normalizedMessage.includes('cancel')
+  ) {
+    return 'Paiement annule. Aucun montant confirme; vous pouvez reessayer.';
+  }
+
   if (
     normalizedMessage.includes('declined by the operator') ||
     normalizedMessage.includes('declined') ||
@@ -221,13 +240,44 @@ const getSubscriptionPaymentFailureMessage = (message?: string | null) => {
     return 'Paiement echoue: solde insuffisant.';
   }
 
+  if (
+    normalizedMessage.includes('non abouti') ||
+    normalizedMessage.includes('non aboutit') ||
+    normalizedMessage.includes('not completed') ||
+    normalizedMessage.includes('not complete') ||
+    normalizedMessage.includes('not successful') ||
+    normalizedMessage.includes('unsuccessful') ||
+    normalizedMessage.includes('echec') ||
+    normalizedMessage.includes('echoue') ||
+    normalizedMessage.includes('failed') ||
+    normalizedMessage.includes('failure')
+  ) {
+    return 'Paiement non abouti. Aucun montant confirme; vous pouvez relancer une nouvelle tentative.';
+  }
+
   return message || 'Le paiement a echoue. Vous pouvez reessayer ou choisir un autre moyen de paiement.';
 };
 
+const isTerminalFailedSubscriptionPaymentStatus = (status?: string | null) => {
+  const normalizedStatus = normalizeSubscriptionPaymentMessage(status);
+  return (
+    normalizedStatus === 'cancel' ||
+    normalizedStatus === 'cancelled' ||
+    normalizedStatus === 'canceled' ||
+    normalizedStatus === 'decline' ||
+    normalizedStatus === 'declined' ||
+    normalizedStatus === 'expired' ||
+    normalizedStatus === 'failed' ||
+    normalizedStatus === 'payment_failed' ||
+    normalizedStatus === 'rejected'
+  );
+};
+
 const isSubscriptionPaymentFailed = (response?: SubscriptionPaymentResponse | null) =>
-  response?.payment?.status === 'failed' ||
-  response?.subscription?.status === 'payment_failed' ||
-  isDeclinedSubscriptionPaymentMessage(response?.payment?.message);
+  isTerminalFailedSubscriptionPaymentStatus(response?.payment?.status) ||
+  isTerminalFailedSubscriptionPaymentStatus(response?.subscription?.status) ||
+  isDeclinedSubscriptionPaymentMessage(response?.payment?.message) ||
+  isDeclinedSubscriptionPaymentMessage(response?.payment?.statusCode);
 
 const getCardPaymentResultFromUrl = (url?: string | null): SubscriptionCardPaymentResult | null => {
   if (!url) return null;
@@ -291,6 +341,8 @@ const isRecentPendingSubscriptionPayment = (payment: PaymentHistoryItem) => {
     purpose === 'subscription_pro' &&
     Boolean(payment.orderNumber) &&
     (status === 'pending' || status === 'initiated') &&
+    !isDeclinedSubscriptionPaymentMessage(payment.message) &&
+    !isDeclinedSubscriptionPaymentMessage(payment.statusCode) &&
     Number.isFinite(createdAtMs) &&
     Date.now() - createdAtMs <= SUBSCRIPTION_RECENT_PENDING_PAYMENT_MAX_AGE_MS
   );
@@ -1788,6 +1840,18 @@ export default function ProfileScreen() {
           : {}),
       }).unwrap();
 
+      if (await finishSubscriptionPayment(response)) {
+        return;
+      }
+
+      if (isSubscriptionPaymentFailed(response)) {
+        await clearStoredSubscriptionPayment();
+        setSubscriptionPaymentOrderNumber(null);
+        setSubscriptionPaymentMessage(getSubscriptionPaymentFailureMessage(response.payment.message));
+        setSubscriptionPaymentStage('failed');
+        return;
+      }
+
       setSubscriptionPaymentOrderNumber(response.payment.orderNumber);
       if (response.payment.orderNumber) {
         await persistStoredSubscriptionPayment({
@@ -1797,10 +1861,6 @@ export default function ProfileScreen() {
           paymentMethod,
           paymentUrl: response.payment.paymentUrl,
         });
-      }
-
-      if (await finishSubscriptionPayment(response)) {
-        return;
       }
 
       if (response.payment.paymentUrl) {

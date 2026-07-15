@@ -147,16 +147,35 @@ const normalizePaymentMessage = (message?: string | null) =>
 const isDeclinedPaymentMessage = (message?: string | null) => {
   const normalizedMessage = normalizePaymentMessage(message);
   return (
+    normalizedMessage.includes('annul') ||
+    normalizedMessage.includes('cancel') ||
     normalizedMessage.includes('declined') ||
+    normalizedMessage.includes('echec') ||
+    normalizedMessage.includes('echoue') ||
+    normalizedMessage.includes('failed') ||
+    normalizedMessage.includes('failure') ||
     normalizedMessage.includes('refuse') ||
     normalizedMessage.includes('rejet') ||
+    normalizedMessage.includes('non abouti') ||
+    normalizedMessage.includes('non aboutit') ||
+    normalizedMessage.includes('not completed') ||
+    normalizedMessage.includes('not complete') ||
+    normalizedMessage.includes('not successful') ||
     normalizedMessage.includes('solde insuffisant') ||
+    normalizedMessage.includes('unsuccessful') ||
     normalizedMessage.includes('insufficient')
   );
 };
 
 const getPaymentFailureMessage = (message?: string | null) => {
   const normalizedMessage = normalizePaymentMessage(message);
+  if (
+    normalizedMessage.includes('annul') ||
+    normalizedMessage.includes('cancel')
+  ) {
+    return 'Paiement annule. Aucun montant confirme; vous pouvez reessayer.';
+  }
+
   if (
     normalizedMessage.includes('declined by the operator') ||
     normalizedMessage.includes('declined') ||
@@ -173,18 +192,47 @@ const getPaymentFailureMessage = (message?: string | null) => {
     return 'Paiement echoue: solde insuffisant.';
   }
 
+  if (
+    normalizedMessage.includes('non abouti') ||
+    normalizedMessage.includes('non aboutit') ||
+    normalizedMessage.includes('not completed') ||
+    normalizedMessage.includes('not complete') ||
+    normalizedMessage.includes('not successful') ||
+    normalizedMessage.includes('unsuccessful') ||
+    normalizedMessage.includes('echec') ||
+    normalizedMessage.includes('echoue') ||
+    normalizedMessage.includes('failed') ||
+    normalizedMessage.includes('failure')
+  ) {
+    return 'Paiement non abouti. Aucun montant confirme; vous pouvez relancer une nouvelle tentative.';
+  }
+
   return message || 'Le paiement a echoue. Vous pouvez reessayer ou choisir un autre moyen.';
 };
 
 const isPaymentComplete = (response?: SubscriptionPaymentResponse | null) =>
   response?.subscription?.status === 'active' || response?.payment?.status === 'succeeded';
 
+const isTerminalFailedStatus = (status?: string | null) => {
+  const normalizedStatus = normalizePaymentMessage(status);
+  return (
+    normalizedStatus === 'cancel' ||
+    normalizedStatus === 'cancelled' ||
+    normalizedStatus === 'canceled' ||
+    normalizedStatus === 'decline' ||
+    normalizedStatus === 'declined' ||
+    normalizedStatus === 'expired' ||
+    normalizedStatus === 'failed' ||
+    normalizedStatus === 'payment_failed' ||
+    normalizedStatus === 'rejected'
+  );
+};
+
 const isPaymentFailed = (response?: SubscriptionPaymentResponse | null) =>
-  response?.payment?.status === 'failed' ||
-  response?.subscription?.status === 'payment_failed' ||
-  response?.payment?.status === 'cancelled' ||
-  response?.subscription?.status === 'cancelled' ||
-  isDeclinedPaymentMessage(response?.payment?.message);
+  isTerminalFailedStatus(response?.payment?.status) ||
+  isTerminalFailedStatus(response?.subscription?.status) ||
+  isDeclinedPaymentMessage(response?.payment?.message) ||
+  isDeclinedPaymentMessage(response?.payment?.statusCode);
 
 const isNetworkOrTimeoutError = (error: any) =>
   error?.status === 'FETCH_ERROR' || error?.status === 'TIMEOUT_ERROR';
@@ -241,6 +289,8 @@ const isRecentPendingSubscriptionPayment = (payment: PaymentHistoryItem) => {
     purpose === 'subscription_pro' &&
     Boolean(payment.orderNumber) &&
     (status === 'pending' || status === 'initiated') &&
+    !isDeclinedPaymentMessage(payment.message) &&
+    !isDeclinedPaymentMessage(payment.statusCode) &&
     Number.isFinite(createdAtMs) &&
     Date.now() - createdAtMs <= RECENT_PENDING_PAYMENT_MAX_AGE_MS
   );
@@ -361,33 +411,33 @@ export default function SubscriptionPaymentScreen() {
       ? [
           {
             key: 'preparing',
-            title: 'Reference',
-            description: 'Zwanga garde une reference unique pour eviter un double paiement.',
+            title: 'Référence',
+            description: 'Zwanga garde une référence unique pour éviter un double paiement.',
             icon: 'lock-closed-outline' as keyof typeof Ionicons.glyphMap,
           },
           {
             key: 'card',
             title: 'Carte',
-            description: 'Finalisez le paiement dans la page securisee FlexPay.',
+            description: 'Finalisez le paiement dans la page securisée FlexPay.',
             icon: 'card-outline' as keyof typeof Ionicons.glyphMap,
           },
           {
             key: 'activation',
             title: 'Activation',
-            description: 'Nous activons l abonnement des que FlexPay confirme.',
+            description: "Nous activons l'abonnement dès que FlexPay confirme.",
             icon: 'shield-checkmark-outline' as keyof typeof Ionicons.glyphMap,
           },
         ]
       : [
           {
             key: 'preparing',
-            title: 'Reference',
-            description: 'Zwanga garde une reference unique pour eviter un double paiement.',
+            title: 'Référence',
+            description: 'Zwanga garde une référence unique pour éviter un double paiement.',
             icon: 'lock-closed-outline' as keyof typeof Ionicons.glyphMap,
           },
           {
             key: 'phone',
-            title: 'Telephone',
+            title: 'Téléphone',
             description: 'Validez la demande Mobile Money avec votre PIN.',
             icon: 'phone-portrait-outline' as keyof typeof Ionicons.glyphMap,
           },
@@ -397,13 +447,13 @@ export default function SubscriptionPaymentScreen() {
             description:
               autoCheckAttempt > 0
                 ? `Verification automatique ${autoCheckAttempt}/${AUTO_CHECK_MAX_ATTEMPTS}.`
-                : 'Nous attendons le retour de l operateur.',
+                : "Nous attendons le retour de l'operateur.",
             icon: 'radio-outline' as keyof typeof Ionicons.glyphMap,
           },
           {
             key: 'activation',
             title: 'Activation',
-            description: 'Nous activons l abonnement des que FlexPay confirme.',
+            description: "Nous activons l'abonnement dès que FlexPay confirme.",
             icon: 'shield-checkmark-outline' as keyof typeof Ionicons.glyphMap,
           },
         ];
@@ -464,8 +514,8 @@ export default function SubscriptionPaymentScreen() {
     if (stage === 'failed') {
       return {
         icon: 'close-circle-outline' as keyof typeof Ionicons.glyphMap,
-        title: 'Paiement non confirme',
-        text: message || 'Le paiement n a pas ete confirme.',
+        title: 'Paiement non confirmé',
+        text: message || "Le paiement n'a pas été confirmé.",
         activity: false,
         color: Colors.danger,
       };
@@ -475,7 +525,7 @@ export default function SubscriptionPaymentScreen() {
       return {
         icon: 'lock-closed-outline' as keyof typeof Ionicons.glyphMap,
         title: 'Preparation du paiement',
-        text: message || 'Creation d une reference FlexPay securisee.',
+        text: message || "Creation d'une reference FlexPay securisée.",
         activity: true,
         color: Colors.primary,
       };
@@ -487,7 +537,7 @@ export default function SubscriptionPaymentScreen() {
         title: 'Suivi du paiement',
         text:
           message ||
-          `Verification automatique ${autoCheckAttempt}/${AUTO_CHECK_MAX_ATTEMPTS}.`,
+          `Vérification automatique ${autoCheckAttempt}/${AUTO_CHECK_MAX_ATTEMPTS}.`,
         activity: true,
         color: Colors.primary,
       };
@@ -499,7 +549,7 @@ export default function SubscriptionPaymentScreen() {
         title: 'Toujours en traitement',
         text:
           message ||
-          'La reference reste gardee. Zwanga reprendra la verification au retour dans l app.',
+          "La référence reste gardée. Zwanga reprendra la vérification au retour dans l'app.",
         activity: false,
         color: Colors.warningDark,
       };
@@ -509,7 +559,7 @@ export default function SubscriptionPaymentScreen() {
       return {
         icon: 'information-circle-outline' as keyof typeof Ionicons.glyphMap,
         title: 'Paiement en cours',
-        text: message || 'Une reference existe deja pour ce paiement.',
+        text: message || 'Une référence existe dejà pour ce paiement.',
         activity: false,
         color: Colors.primary,
       };
@@ -606,7 +656,7 @@ export default function SubscriptionPaymentScreen() {
     setPaymentUrl(storedPayment.paymentUrl ?? null);
     setPaymentMethod(storedPayment.paymentMethod);
     setStage(storedPayment.paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation');
-    setMessage(storedPayment.message || 'Paiement retrouve. Nous reprenons le suivi.');
+    setMessage(storedPayment.message || 'Paiement retrouvé. Nous reprenons le suivi.');
   }, []);
 
   const finishPayment = useCallback(
@@ -668,14 +718,14 @@ export default function SubscriptionPaymentScreen() {
       } catch (error: any) {
         if (options?.suppressErrorDialog) {
           setStage(options.pendingStage ?? 'operator_confirmation');
-          setMessage('La verification prend plus de temps que prevu. La reference reste gardee.');
+          setMessage('La verification prend plus de temps que prévu. La reference reste gardée.');
           return 'error';
         }
 
         showDialog({
           variant: 'danger',
-          title: 'Verification impossible',
-          message: getApiErrorMessage(error, 'Impossible de verifier ce paiement pour le moment.'),
+          title: 'Vérification impossible',
+          message: getApiErrorMessage(error, 'Impossible de vérifier ce paiement pour le moment.'),
         });
         return 'error';
       }
@@ -694,7 +744,7 @@ export default function SubscriptionPaymentScreen() {
       setStage(paymentMethod === 'card' ? 'zwanga_activation' : 'phone_confirmation');
       setMessage(
         initialMessage ||
-          'Demande envoyee a FlexPay. Confirmez sur votre telephone; nous suivons le paiement.',
+          'Demande envoyée à FlexPay. Confirmez sur votre telephone; nous suivons le paiement.',
       );
 
       void (async () => {
@@ -718,7 +768,7 @@ export default function SubscriptionPaymentScreen() {
             pendingStage: nextStage,
             pendingMessage:
               attempt === 1
-                ? 'Verification en cours. Si la demande est sur votre telephone, confirmez avec votre PIN.'
+                ? 'Vérification en cours. Si la demande est sur votre téléphone, confirmez avec votre PIN.'
                 : 'Paiement toujours en traitement. Nous continuons les actualisations automatiques.',
             suppressErrorDialog: true,
           });
@@ -736,7 +786,7 @@ export default function SubscriptionPaymentScreen() {
           setIsAutoChecking(false);
           setStage('waiting_long');
           setMessage(
-            'Le paiement est encore en traitement. Ne payez pas une deuxieme fois; la reference reste gardee.',
+            'Le paiement est encore en traitement. Ne payez pas une deuxième fois; la référence reste gardée.',
           );
         }
       })();
@@ -759,7 +809,7 @@ export default function SubscriptionPaymentScreen() {
       }
 
       console.warn('[SubscriptionPayment] external URL open failed:', browserError);
-      throw new Error('Impossible d ouvrir le lien externe.');
+      throw new Error("Impossible d'ouvrir le lien externe.");
     }
   };
 
@@ -770,7 +820,7 @@ export default function SubscriptionPaymentScreen() {
 
       if (result.type !== 'success') {
         if (nextOrderNumber) {
-          const pendingMessage = 'Retour dans l app detecte. Nous verifions le statut carte.';
+          const pendingMessage = "Retour dans l'app detecté. Nous verifions le statut carte.";
           const outcome = await checkPaymentByOrderNumber(nextOrderNumber, {
             checkingStage: 'zwanga_activation',
             pendingStage: 'zwanga_activation',
@@ -780,7 +830,7 @@ export default function SubscriptionPaymentScreen() {
           if (outcome === 'pending' || outcome === 'error') startAutoCheck(nextOrderNumber, pendingMessage);
           return;
         }
-        setMessage('Le paiement carte a ete ferme avant le retour FlexPay.');
+        setMessage('Le paiement carte a été ferme avant le retour FlexPay.');
         return;
       }
 
@@ -789,13 +839,14 @@ export default function SubscriptionPaymentScreen() {
         setStage('failed');
         setMessage(
           paymentResult === 'cancel'
-            ? 'Paiement carte annule.'
-            : 'Paiement carte refuse. Verifiez votre carte ou essayez un autre moyen.',
+            ? 'Paiement carte annulé.'
+            : 'Paiement carte refusé. Verifiez votre carte ou essayez un autre moyen.',
         );
         return;
       }
 
       if (!nextOrderNumber) {
+        
         setMessage('Retour carte recu, mais la reference FlexPay est manquante.');
         return;
       }
@@ -945,6 +996,17 @@ export default function SubscriptionPaymentScreen() {
           : {}),
       }).unwrap();
 
+      if (await finishPayment(response)) return;
+
+      if (isPaymentFailed(response)) {
+        await clearStoredPayment();
+        setOrderNumber(null);
+        setPaymentUrl(null);
+        setStage('failed');
+        setMessage(getPaymentFailureMessage(response.payment.message));
+        return;
+      }
+
       if (response.payment.orderNumber) {
         setOrderNumber(response.payment.orderNumber);
         setPaymentUrl(response.payment.paymentUrl);
@@ -956,8 +1018,6 @@ export default function SubscriptionPaymentScreen() {
           paymentUrl: response.payment.paymentUrl,
         });
       }
-
-      if (await finishPayment(response)) return;
 
       if (response.payment.paymentUrl) {
         setPaymentUrl(response.payment.paymentUrl);
@@ -1009,6 +1069,7 @@ export default function SubscriptionPaymentScreen() {
     }
   }, [
     checkPaymentByOrderNumber,
+    clearStoredPayment,
     finishPayment,
     isDriver,
     isPremiumActive,
