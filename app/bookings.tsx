@@ -476,7 +476,7 @@ export default function BookingsScreen() {
               <View style={styles.confirmationBanner}>
                 <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
                 <Text style={styles.confirmationBannerText}>
-                  Le conducteur a confirmé votre prise en charge. Veuillez confirmer également.
+                  Prise en charge detectee. Synchronisation en cours.
                 </Text>
               </View>
             )}
@@ -484,7 +484,7 @@ export default function BookingsScreen() {
               <View style={styles.confirmationBanner}>
                 <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
                 <Text style={styles.confirmationBannerText}>
-                  Votre arrivée a été signalée. En attente de confirmation du conducteur.
+                  Arrivee detectee. Finalisation en cours.
                 </Text>
               </View>
             )}
@@ -501,40 +501,20 @@ export default function BookingsScreen() {
             <Text style={styles.linkButtonText}>Voir le trajet</Text>
           </TouchableOpacity>
 
-          {/* Bouton "Confirmer la prise en charge" - Quand le driver a confirmé mais pas le passager */}
+          {/* Statut de prise en charge automatique */}
           {activeTab === 'active' && !isExpired && booking.status === 'accepted' && booking.pickedUp && !booking.pickedUpConfirmedByPassenger && (
-            <TouchableOpacity
-              style={[styles.linkButton, styles.confirmButton]}
-              onPress={() => handleConfirmPickup(booking.id)}
-              disabled={isConfirmingPickup}
-            >
-              {isConfirmingPickup ? (
-                <ActivityIndicator size="small" color={Colors.white} />
-              ) : (
-                <>
-                  <Ionicons name="checkmark-circle" size={16} color={Colors.white} />
-                  <Text style={[styles.linkButtonText, styles.confirmButtonText]}>Confirmer prise en charge</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            <View style={[styles.linkButton, styles.confirmButton]}>
+              <Ionicons name="checkmark-circle" size={16} color={Colors.white} />
+              <Text style={[styles.linkButtonText, styles.confirmButtonText]}>A bord</Text>
+            </View>
           )}
 
-          {/* Le passager signale son arrivée, puis le chauffeur la confirme. */}
+          {/* Statut d'arrivee automatique */}
           {activeTab === 'active' && !isExpired && booking.status === 'accepted' && booking.pickedUp && booking.pickedUpConfirmedByPassenger && !booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
-            <TouchableOpacity
-              style={[styles.linkButton, styles.confirmButton]}
-              onPress={() => handleConfirmDropoff(booking)}
-              disabled={isConfirmingDropoff || isUpdatingPaymentMode || isInitiatingPayment}
-            >
-              {isConfirmingDropoff || isUpdatingPaymentMode || isInitiatingPayment ? (
-                <ActivityIndicator size="small" color={Colors.white} />
-              ) : (
-                <>
-                  <Ionicons name="checkmark-circle" size={16} color={Colors.white} />
-                  <Text style={[styles.linkButtonText, styles.confirmButtonText]}>Signaler mon arrivée</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            <View style={[styles.linkButton, styles.confirmButton]}>
+              <Ionicons name="flag" size={16} color={Colors.white} />
+              <Text style={[styles.linkButtonText, styles.confirmButtonText]}>Arrivee en cours</Text>
+            </View>
           )}
 
           {/* Bouton "Noter le conducteur" - Après confirmation de l'arrivée (actif et historique) */}

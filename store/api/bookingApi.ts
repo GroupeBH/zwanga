@@ -59,6 +59,21 @@ type ServerBooking = {
   safetyEmergencyContactIds?: string[] | null;
 };
 
+type UpdatePassengerLocationResponse = {
+  bookingId: string;
+  coordinates: [number, number];
+  updatedAt: string;
+  autoProgress?: {
+    tripId: string;
+    events: Array<{
+      type: 'pickup_confirmed' | 'dropoff_confirmed';
+      bookingId: string;
+      tripId: string;
+      passengerId: string;
+    }>;
+  };
+};
+
 const formatPassengerName = (passenger?: ServerUser | null) => {
   if (!passenger) {
     return undefined;
@@ -409,6 +424,34 @@ export const bookingApi = baseApi.injectEndpoints({
             ]
           : [bookingListTag, tripListTag, myTripsListTag],
     }),
+    updatePassengerLocation: builder.mutation<
+      UpdatePassengerLocationResponse,
+      { bookingId: string; latitude: number; longitude: number }
+    >({
+      query: ({ bookingId, latitude, longitude }) => ({
+        url: `/bookings/${bookingId}/passenger-location`,
+        method: 'PUT',
+        body: { latitude, longitude },
+      }),
+      invalidatesTags: (result, _error, { bookingId }) => [
+        { type: 'Booking', id: bookingId },
+        ...(result?.autoProgress?.events.length
+          ? [
+              bookingListTag,
+              tripListTag,
+              myTripsListTag,
+              ...result.autoProgress.events.map((event) => ({
+                type: 'Booking' as const,
+                id: event.bookingId,
+              })),
+              ...result.autoProgress.events.map((event) => ({
+                type: 'Trip' as const,
+                id: event.tripId,
+              })),
+            ]
+          : []),
+      ],
+    }),
   }),
 });
 
@@ -430,4 +473,5 @@ export const {
   useConfirmPickupByPassengerMutation,
   useConfirmDropoffMutation,
   useConfirmDropoffByPassengerMutation,
+  useUpdatePassengerLocationMutation,
 } = bookingApi;

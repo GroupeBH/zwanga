@@ -2962,7 +2962,7 @@ export default function TripDetailsScreen() {
                             <View style={styles.confirmationBanner}>
                               <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
                               <Text style={styles.confirmationBannerText}>
-                                Confirmation de prise en charge requise
+                                Prise en charge detectee
                               </Text>
                             </View>
                           )}
@@ -2970,7 +2970,7 @@ export default function TripDetailsScreen() {
                             <View style={styles.confirmationBanner}>
                               <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
                               <Text style={styles.confirmationBannerText}>
-                                Arrivée signalée. En attente de confirmation du conducteur.
+                                Arrivee detectee. Finalisation automatique en cours.
                               </Text>
                             </View>
                           )}
@@ -2980,7 +2980,6 @@ export default function TripDetailsScreen() {
                       <View style={styles.bookingActionsStack}>
                         {canPayActiveBooking && (
                           <TouchableOpacity
-                            activeOpacity={0.86}
                             style={[styles.bookingActionButton, styles.bookingActionPrimary, styles.bookingActionPayment]}
                             onPress={handlePayActiveBooking}
                             disabled={isInitiatingBookingPayment}
@@ -2999,34 +2998,23 @@ export default function TripDetailsScreen() {
                         )}
 
                         {activeBooking.status === 'accepted' && activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger && (
-                          <TouchableOpacity
-                            activeOpacity={0.86}
+                          <View
                             style={[styles.bookingActionButton, styles.bookingActionPrimary, styles.bookingActionConfirm]}
-                            onPress={handleConfirmPickup}
-                            disabled={isConfirmingPickup}
                           >
-                            {isConfirmingPickup ? <ActivityIndicator size="small" color={Colors.white} /> : (
-                              <>
-                                <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
-                                <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>
-                                  Confirmer prise en charge
-                                </Text>
-                              </>
-                            )}
-                          </TouchableOpacity>
+                            <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
+                            <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>
+                              A bord
+                            </Text>
+                          </View>
                         )}
 
                         {activeBooking.status === 'accepted' && activeBooking.pickedUp && activeBooking.pickedUpConfirmedByPassenger && !activeBooking.droppedOffConfirmedByPassenger && !activeBooking.droppedOff && (
-                          <TouchableOpacity
-                            activeOpacity={0.86}
+                          <View
                             style={[styles.bookingActionButton, styles.bookingActionPrimary, styles.bookingActionConfirm]}
-                            onPress={handleConfirmDropoff}
-                            disabled={
-                              isConfirmingDropoff ||
-                              isUpdatingBookingPaymentMode ||
-                              isInitiatingBookingPayment
-                            }
                           >
+                            <Ionicons name="flag" size={19} color={Colors.white} />
+                            <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Arrivee en cours</Text>
+                            {/*
                             {isConfirmingDropoff ||
                             isUpdatingBookingPaymentMode ||
                             isInitiatingBookingPayment ? <ActivityIndicator size="small" color={Colors.white} /> : (
@@ -3035,7 +3023,8 @@ export default function TripDetailsScreen() {
                                 <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Signaler mon arrivée</Text>
                               </>
                             )}
-                          </TouchableOpacity>
+                            */}
+                          </View>
                         )}
 
                         <View style={styles.bookingSecondaryActionsRow}>

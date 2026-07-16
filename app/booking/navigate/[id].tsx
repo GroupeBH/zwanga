@@ -1,24 +1,14 @@
 import { useDialog } from '@/components/ui/DialogProvider';
-import {
-  ELECTRONIC_PAYMENTS_ENABLED,
-} from '@/constants/paymentFeatures';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { trackEvent } from '@/services/analytics';
 import { trackingSocket, type DriverLocationPayload } from '@/services/trackingSocket';
 import {
-  useConfirmDropoffByPassengerMutation,
-  useConfirmPickupByPassengerMutation,
   useGetBookingByIdQuery,
-  useInitiateBookingPaymentMutation,
-  useUpdateBookingPaymentModeMutation,
+  useUpdatePassengerLocationMutation,
 } from '@/store/api/bookingApi';
 import { useGetDirectionsMutation } from '@/store/api/googleMapsApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
-import { useAppSelector } from '@/store/hooks';
-import { selectUser } from '@/store/selectors';
-import type { Booking, TripPaymentMode } from '@/types';
-import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -90,43 +80,11 @@ function decodePolyline(encoded: string): Array<{ latitude: number; longitude: n
   return points;
 }
 
-const TRIP_PAYMENT_MODE_OPTIONS: {
-  id: TripPaymentMode;
-  label: string;
-}[] = [
-  ...(ELECTRONIC_PAYMENTS_ENABLED
-    ? [
-        {
-          id: 'electronic' as const,
-          label: 'Paiement electronique',
-        },
-      ]
-    : []),
-  {
-    id: 'cash',
-    label: "Paiement a l'arrivee",
-  },
-];
-
-const DRC_PAYMENT_PHONE_REGEX = /^\+243\d{9}$/;
-const formatTripPaymentPhone = (value?: string | null) => {
-  const digits = (value ?? '').replace(/\D/g, '');
-  if (!digits) return undefined;
-  if (digits.startsWith('243')) return `+${digits}`;
-  if (digits.startsWith('0')) return `+243${digits.slice(1)}`;
-  return `+243${digits}`;
-};
-const getAvailableTripPaymentMode = (mode?: TripPaymentMode | null): TripPaymentMode =>
-  TRIP_PAYMENT_MODE_OPTIONS.some((option) => option.id === mode)
-    ? (mode as TripPaymentMode)
-    : 'cash';
-
 export default function PassengerNavigationScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const { showDialog } = useDialog();
   const insets = useSafeAreaInsets();
-  const user = useAppSelector(selectUser);
   const bookingId = typeof id === 'string' ? id : '';
 
   // Recuperer la reservation et le trajet
@@ -141,13 +99,7 @@ export default function PassengerNavigationScreen() {
   });
   const isTripOngoing = trip?.status === 'ongoing';
 
-  // Mutations pour confirmer pickup/dropoff
-  const [confirmPickup, { isLoading: isConfirmingPickup }] = useConfirmPickupByPassengerMutation();
-  const [confirmDropoff, { isLoading: isConfirmingDropoff }] = useConfirmDropoffByPassengerMutation();
-  const [updateBookingPaymentMode, { isLoading: isUpdatingPaymentMode }] =
-    useUpdateBookingPaymentModeMutation();
-  const [initiateBookingPayment, { isLoading: isInitiatingPayment }] =
-    useInitiateBookingPaymentMutation();
+  const [updatePassengerLocation] = useUpdatePassengerLocationMutation();
 
   const mapRef = useRef<MapView>(null);
   const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -162,6 +114,7 @@ export default function PassengerNavigationScreen() {
   const [isMapExpanded, setIsMapExpanded] = useState(false);
   const routeFetchedRef = useRef(false);
   const lastRouteFetchRef = useRef<number>(0);
+  const passengerLocationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const isMountedRef = useRef(true);
   const isExitingRef = useRef(false);
   const mapTopOffset = insets.top + 84;
@@ -176,6 +129,8 @@ export default function PassengerNavigationScreen() {
       setIsSocketConnected(false);
       setIsLoadingRoute(false);
       routeFetchedRef.current = false;
+      passengerLocationSubscriptionRef.current?.remove();
+      passengerLocationSubscriptionRef.current = null;
 
       if (tripId) {
         void trackingSocket.leaveTrip(tripId).catch((error) => {
@@ -207,6 +162,8 @@ export default function PassengerNavigationScreen() {
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
+      passengerLocationSubscriptionRef.current?.remove();
+      passengerLocationSubscriptionRef.current = null;
     };
   }, []);
 
@@ -388,6 +345,13 @@ export default function PassengerNavigationScreen() {
       }
     });
 
+    const unsubscribeAutoProgress = trackingSocket.subscribeToBookingAutoProgress((payload) => {
+      if (!isMountedRef.current || payload.tripId !== tripId) return;
+      if (payload.events.some((event) => event.bookingId === bookingId)) {
+        refetchBooking();
+      }
+    });
+
     // Ecouter les erreurs
     const unsubscribeError = trackingSocket.subscribeToErrors((message) => {
       if (!isMountedRef.current || isCancelled) return;
@@ -403,10 +367,109 @@ export default function PassengerNavigationScreen() {
       isCancelled = true;
       trackingSocket.leaveTrip(tripId);
       unsubscribeLocation();
+      unsubscribeAutoProgress();
       unsubscribeError();
       clearInterval(interval);
     };
-  }, [tripId, isTripOngoing]);
+  }, [bookingId, refetchBooking, tripId, isTripOngoing]);
+
+  useEffect(() => {
+    if (!booking?.id || booking.status !== 'accepted' || !isTripOngoing || booking.droppedOff) {
+      passengerLocationSubscriptionRef.current?.remove();
+      passengerLocationSubscriptionRef.current = null;
+      return;
+    }
+
+    let isCancelled = false;
+    let lastSentAt = 0;
+    const SEND_INTERVAL_MS = 8000;
+
+    const sendLocation = async (location: Location.LocationObject) => {
+      if (isCancelled || !isMountedRef.current) return;
+      const now = Date.now();
+      if (now - lastSentAt < SEND_INTERVAL_MS) return;
+      lastSentAt = now;
+
+      try {
+        const response = await updatePassengerLocation({
+          bookingId: booking.id,
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        }).unwrap();
+
+        if (response.autoProgress?.events?.length && isMountedRef.current) {
+          refetchBooking();
+        }
+      } catch (error) {
+        console.warn('[PassengerNavigation] Position passager non envoyee:', error);
+      }
+    };
+
+    const startPassengerLocationSharing = async () => {
+      try {
+        const permission = await Location.requestForegroundPermissionsAsync();
+        if (permission.status !== 'granted') {
+          showDialog({
+            variant: 'warning',
+            title: 'Localisation requise',
+            message:
+              'Activez la localisation pour permettre la confirmation automatique de la prise en charge et de l arrivee.',
+          });
+          return;
+        }
+
+        let initialLocation: Location.LocationObject | null = null;
+        try {
+          initialLocation = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+        } catch {
+          initialLocation = await Location.getLastKnownPositionAsync({});
+        }
+
+        if (initialLocation) {
+          await sendLocation(initialLocation);
+        }
+
+        if (isCancelled || !isMountedRef.current) return;
+        const subscription = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.Balanced,
+            timeInterval: SEND_INTERVAL_MS,
+            distanceInterval: 10,
+          },
+          (location) => {
+            void sendLocation(location);
+          },
+        );
+
+        if (isCancelled || !isMountedRef.current) {
+          subscription.remove();
+          return;
+        }
+
+        passengerLocationSubscriptionRef.current = subscription;
+      } catch (error) {
+        console.warn('[PassengerNavigation] Suivi GPS passager indisponible:', error);
+      }
+    };
+
+    void startPassengerLocationSharing();
+
+    return () => {
+      isCancelled = true;
+      passengerLocationSubscriptionRef.current?.remove();
+      passengerLocationSubscriptionRef.current = null;
+    };
+  }, [
+    booking?.droppedOff,
+    booking?.id,
+    booking?.status,
+    isTripOngoing,
+    refetchBooking,
+    showDialog,
+    updatePassengerLocation,
+  ]);
 
   // Calculer la region de la carte
   const mapRegion = useMemo(() => {
@@ -480,191 +543,6 @@ export default function PassengerNavigationScreen() {
       });
     }
   }, [driverLocation, pickupCoordinate, dropoffCoordinate, routeCoordinates, booking?.pickedUp, mapTopOffset, isMapExpanded]);
-
-  // Confirmer la recuperation
-  const handleConfirmPickup = async () => {
-    if (!booking) return;
-
-    showDialog({
-      variant: 'info',
-      title: 'Confirmer la recuperation',
-      message: 'Confirmez-vous que le conducteur vous a bien recupere ?',
-      actions: [
-        { label: 'Annuler', variant: 'ghost' },
-        {
-          label: 'Confirmer',
-          variant: 'primary',
-          onPress: async () => {
-            try {
-              await confirmPickup(booking.id).unwrap();
-              void trackEvent('booking_pickup_confirmed', {
-                booking_id: booking.id,
-                trip_id: booking.tripId,
-                source_screen: 'booking_navigation',
-              });
-              showDialog({
-                variant: 'success',
-                title: 'Recuperation confirmee',
-                message: 'Bon trajet !',
-              });
-              refetchBooking();
-            } catch (error: any) {
-              showDialog({
-                variant: 'danger',
-                title: 'Erreur',
-                message: error?.data?.message || 'Impossible de confirmer la recuperation.',
-              });
-            }
-          },
-        },
-      ],
-    });
-  };
-
-  const getBookingPaymentAmount = (currentBooking: Booking) => {
-    const storedAmount = Number(currentBooking.paymentAmount ?? 0);
-    if (Number.isFinite(storedAmount) && storedAmount > 0) return storedAmount;
-    const tripPrice = Number(trip?.price ?? currentBooking.trip?.price ?? 0);
-    return tripPrice > 0 ? currentBooking.numberOfSeats * tripPrice : 0;
-  };
-
-  const startElectronicPaymentForBooking = async (currentBooking: Booking) => {
-    if (!ELECTRONIC_PAYMENTS_ENABLED) {
-      return;
-    }
-
-    const phone = formatTripPaymentPhone(user?.phone);
-    if (!phone || !DRC_PAYMENT_PHONE_REGEX.test(phone)) {
-      showDialog({
-        variant: 'warning',
-        title: 'Numero Mobile Money requis',
-        message:
-          'Ajoutez un numero congolais valide dans votre profil avant de lancer le paiement FlexPay.',
-      });
-      return;
-    }
-
-    try {
-      const response = await initiateBookingPayment({
-        bookingId: currentBooking.id,
-        method: 'mobile_money',
-        phone,
-      }).unwrap();
-
-      await openExternalUrlSafely(response.payment.paymentUrl, { logLabel: 'BookingNavigatePayment' });
-
-      showDialog({
-        variant: response.payment.status === 'succeeded' ? 'success' : 'info',
-        title: response.payment.status === 'succeeded' ? 'Paiement confirme' : 'Paiement lance',
-        message:
-          response.payment.message ??
-          'Confirmez la demande FlexPay sur votre telephone.',
-      });
-      refetchBooking();
-      return response;
-    } catch (error: any) {
-      const message =
-        error?.data?.message ?? error?.error ?? 'Impossible de lancer le paiement pour le moment.';
-      showDialog({
-        variant: 'danger',
-        title: 'Paiement impossible',
-        message: Array.isArray(message) ? message.join('\n') : message,
-      });
-    }
-  };
-
-  const confirmDropoffWithPaymentMode = async (paymentMode: TripPaymentMode) => {
-    if (!booking) return;
-
-    try {
-      let bookingForDropoff = booking;
-      if (paymentMode !== booking.paymentMode) {
-        bookingForDropoff = await updateBookingPaymentMode({
-          bookingId: booking.id,
-          paymentMode,
-        }).unwrap();
-      }
-
-      const paymentAmount = getBookingPaymentAmount(bookingForDropoff);
-      if (
-        paymentMode === 'electronic' &&
-        paymentAmount > 0 &&
-        bookingForDropoff.paymentStatus !== 'succeeded'
-      ) {
-        const paymentResponse = await startElectronicPaymentForBooking(bookingForDropoff);
-        if (!paymentResponse) {
-          return;
-        }
-        if (paymentResponse.payment.status !== 'succeeded') {
-          showDialog({
-            variant: 'info',
-            title: 'Paiement a terminer',
-            message:
-              'Validez le paiement FlexPay sur votre telephone. Vous pourrez signaler votre arrivee des que le paiement est confirme.',
-          });
-          return;
-        }
-      }
-
-      await confirmDropoff({
-        id: booking.id,
-        paymentMode,
-      }).unwrap();
-      void trackEvent('booking_dropoff_requested', {
-        booking_id: booking.id,
-        trip_id: booking.tripId,
-        source_screen: 'booking_navigation',
-        payment_mode: paymentMode,
-      });
-      showDialog({
-        variant: 'success',
-        title: 'Demande envoyee',
-        message:
-          'Votre arrivee a ete signalee au conducteur. Il doit la confirmer pour terminer le trajet.',
-      });
-      refetchBooking();
-    } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        'Impossible de signaler votre arrivee.';
-      showDialog({
-        variant: 'danger',
-        title: 'Erreur',
-        message: Array.isArray(message) ? message.join('\n') : message,
-      });
-    }
-  };
-
-  // Signaler l'arrivee du passager
-  const handleConfirmDropoff = async () => {
-    if (!booking) return;
-
-    const paymentAmount = getBookingPaymentAmount(booking);
-    if (paymentAmount <= 0) {
-      void confirmDropoffWithPaymentMode(getAvailableTripPaymentMode(booking.paymentMode));
-      return;
-    }
-
-    showDialog({
-      variant: 'info',
-      title: 'Mode de paiement',
-      message:
-        'Choisissez comment vous voulez regler ce trajet avant de signaler votre arrivee.',
-      actions: [
-        ...TRIP_PAYMENT_MODE_OPTIONS.map((option) => ({
-          label:
-            option.id === booking.paymentMode
-              ? `${option.label} (actuel)`
-              : option.label,
-          variant: option.id === booking.paymentMode ? 'primary' as const : 'secondary' as const,
-          autoClose: false,
-          onPress: () => confirmDropoffWithPaymentMode(option.id),
-        })),
-        { label: 'Annuler', variant: 'ghost' as const },
-      ],
-    });
-  };
 
   // Etat du trajet pour le passager
   const tripStatus = useMemo(() => {
@@ -831,9 +709,9 @@ export default function PassengerNavigationScreen() {
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>
             {tripStatus === 'waiting_pickup' ? 'En attente de recuperation' : 
-             tripStatus === 'pickup_confirmation_needed' ? 'Confirmer recuperation' :
+             tripStatus === 'pickup_confirmation_needed' ? 'Recuperation detectee' :
              tripStatus === 'in_transit' ? 'En route' :
-             tripStatus === 'awaiting_dropoff_confirmation' ? 'Arrivee signalee' :
+             tripStatus === 'awaiting_dropoff_confirmation' ? 'Arrivee detectee' :
              tripStatus === 'completed' ? 'Arrive' : 'Suivi du trajet'}
           </Text>
           {isSocketConnected && (
@@ -918,47 +796,34 @@ export default function PassengerNavigationScreen() {
           )}
         </View>
 
-        {/* Boutons d'action */}
+        {/* Etat automatique du trajet */}
         {trip.status === 'ongoing' && (
           <View style={styles.actionButtons}>
+            {!booking.pickedUp && (
+              <View style={styles.completedBadge}>
+                <Ionicons name="locate" size={24} color={Colors.primary} />
+                <Text style={styles.completedText}>En attente de la prise en charge</Text>
+              </View>
+            )}
+
             {booking.pickedUp && !booking.pickedUpConfirmedByPassenger && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.pickupButton]}
-                onPress={handleConfirmPickup}
-                disabled={isConfirmingPickup}
-              >
-                {isConfirmingPickup ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <>
-                    <Ionicons name="checkmark-circle" size={20} color={Colors.white} />
-                    <Text style={styles.actionButtonText}>Je suis recupere(e)</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              <View style={styles.completedBadge}>
+                <Ionicons name="sync" size={24} color={Colors.secondary} />
+                <Text style={styles.completedText}>Confirmation de la prise en charge</Text>
+              </View>
             )}
 
             {booking.pickedUp && booking.pickedUpConfirmedByPassenger && !booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.dropoffButton]}
-                onPress={handleConfirmDropoff}
-                disabled={isConfirmingDropoff || isUpdatingPaymentMode || isInitiatingPayment}
-              >
-                {isConfirmingDropoff || isUpdatingPaymentMode || isInitiatingPayment ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <>
-                    <Ionicons name="flag" size={20} color={Colors.white} />
-                    <Text style={styles.actionButtonText}>Signaler mon arrivee</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              <View style={styles.completedBadge}>
+                <Ionicons name="navigate" size={24} color={Colors.primary} />
+                <Text style={styles.completedText}>Arrivee en cours au point de depose</Text>
+              </View>
             )}
 
             {booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
               <View style={styles.completedBadge}>
                 <Ionicons name="hourglass" size={24} color={Colors.secondary} />
-                <Text style={styles.completedText}>En attente du conducteur</Text>
+                <Text style={styles.completedText}>Finalisation de l arrivee</Text>
               </View>
             )}
 

@@ -646,9 +646,9 @@ export default function PublishScreen() {
           ]}
         >
           {isSearching
-            ? 'Recherche des coordonnees...'
+            ? 'Recherche des coordonnées...'
             : isFound
-              ? 'Coordonnees trouvees, verifiez sur la carte'
+              ? 'Coordonnées trouvées, vérifiez sur la carte'
               : 'Adresse introuvable'}
         </Text>
       </View>
@@ -666,7 +666,7 @@ export default function PublishScreen() {
 
     const isReady = isConfirmed;
     const message = isReady
-      ? `${label} GPS confirme`
+      ? `${label} confirme sur la carte`
       : hasGpsSuggestion
         ? `${label} trouve, verifiez le point sur la carte`
         : `${label} a confirmer sur la carte`;
@@ -1092,7 +1092,7 @@ export default function PublishScreen() {
       })
       .catch((error) => {
         if (!isCurrent) return;
-        console.warn('Impossible de calculer l itineraire de publication', error);
+        console.warn("Impossible de calculer l'itineraire de publication", error);
         setRouteCoordinates([]);
       })
       .finally(() => {
@@ -1176,7 +1176,7 @@ export default function PublishScreen() {
 
     showDialog({
       variant: 'warning',
-      title: 'Point GPS requis',
+      title: 'Point sur la carte requis',
       message: isDeparture
         ? 'Confirmez le point de depart sur la carte pour eviter une position approximative.'
         : 'Confirmez la destination sur la carte pour eviter une position approximative.',
@@ -1274,7 +1274,7 @@ export default function PublishScreen() {
       showDialog({
         variant: 'warning',
         title: 'Itinéraire incomplet',
-        message: 'Indiquez vos adresses de départ et d’arrivée, ou choisissez-les sur la carte.',
+        message: "Indiquez vos adresses de départ et d’arrivée, ou choisissez-les sur la carte.",
       });
       return;
     }
@@ -1468,7 +1468,7 @@ export default function PublishScreen() {
       if (!hasArrivalAddress) return "Indiquez l'arrivée";
       if (!hasDepartureCoordinates) return 'Confirmez le départ';
       if (!hasArrivalCoordinates) return "Confirmez l'arrivée";
-      if (isManualAddressGeocoding) return 'Recherche GPS...';
+      if (isManualAddressGeocoding) return 'Recherche du point...';
       return 'Continuer';
     }
     if (step === 'confirm') {
@@ -2103,7 +2103,7 @@ export default function PublishScreen() {
 
               {activeVehicles.length > 0 && selectedVehicleId && (
                 <Text style={styles.vehicleDefaultHint}>
-                  Un vehicule actif est deja selectionne par defaut.
+                  Un véhicule actif est dejà selectionné par défaut.
                 </Text>
               )}
               {vehicleCreationMessage ? (
@@ -2187,7 +2187,7 @@ export default function PublishScreen() {
                             </Text>
                           </View>
                           <Text style={styles.vehicleCardDetails} numberOfLines={1}>
-                            {vehicle.color || 'Couleur non precisee'}
+                            {vehicle.color || 'Couleur non precisée'}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -2461,7 +2461,7 @@ export default function PublishScreen() {
                       <View style={styles.confirmDetailRow}>
                         <View style={styles.confirmDetailLeft}>
                           <Ionicons name="repeat" size={18} color={Colors.gray[600]} />
-                          <Text style={styles.confirmDetailLabel}>Repetition</Text>
+                          <Text style={styles.confirmDetailLabel}>Répétition</Text>
                         </View>
                         <Text style={styles.confirmDetailValue}>
                           {recurringDaysSummary || 'A definir'}
@@ -2745,7 +2745,7 @@ export default function PublishScreen() {
                   } as any);
                 }}
               >
-                <Text style={styles.driverModalButtonPrimaryText}>Devenir conducteur</Text>
+                <Text style={styles.driverModalButtonPrimaryText}>Dévenir conducteur</Text>
               </TouchableOpacity>
             </View>
           </Animated.View>
@@ -2778,7 +2778,7 @@ export default function PublishScreen() {
               </View>
               <Text style={styles.kycModalTitle}>Vérification requise</Text>
               <Text style={styles.kycModalSubtitle}>
-                Publiez vos trajets en toute confiance en confirmant votre identité. Cela prend
+                Publiez vos trajets en toute confiance en confirmant votre identité. Celà prend
                 moins de 5 minutes et protège la communauté.
               </Text>
             </View>
