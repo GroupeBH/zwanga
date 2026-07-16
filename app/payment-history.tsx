@@ -5,9 +5,10 @@ import type { PaymentHistoryItem, SubscriptionPaymentStatus } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  InteractionManager,
   Modal,
   Platform,
   RefreshControl,
@@ -22,7 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 type PaymentFilter = 'all' | 'succeeded' | 'pending' | 'failed';
 
-const FILTERS: Array<{ id: PaymentFilter; label: string }> = [
+const FILTERS: { id: PaymentFilter; label: string }[] = [
   { id: 'all', label: 'Tous' },
   { id: 'succeeded', label: 'Validés' },
   { id: 'pending', label: 'En cours' },
@@ -114,6 +115,13 @@ const sanitizeFileSegment = (value: string) =>
   value.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40) || 'paiement';
 
 const formatValue = (value?: string | null) => value?.trim() || 'Non disponible';
+
+const waitForNativePresentation = () =>
+  new Promise<void>((resolve) => {
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(resolve, 120);
+    });
+  });
 
 const getPaymentDetailRows = (payment: PaymentHistoryItem) => {
   const meta = statusMeta[payment.status];
@@ -265,6 +273,7 @@ const buildPaymentPdfBase64 = (payment: PaymentHistoryItem) => {
 export default function PaymentHistoryScreen() {
   const router = useRouter();
   const { showDialog } = useDialog();
+  const isDownloadingRef = useRef(false);
   const [activeFilter, setActiveFilter] = useState<PaymentFilter>('all');
   const [selectedPayment, setSelectedPayment] = useState<PaymentHistoryItem | null>(null);
   const [loadingDetailsPaymentId, setLoadingDetailsPaymentId] = useState<string | null>(null);
@@ -310,12 +319,25 @@ export default function PaymentHistoryScreen() {
   };
 
   const handleDownloadPayment = async (payment: PaymentHistoryItem) => {
+    if (isDownloadingRef.current) {
+      return;
+    }
+
+    isDownloadingRef.current = true;
+
     try {
       setDownloadingPaymentId(payment.id);
       const details =
         selectedPayment?.id === payment.id
           ? selectedPayment
           : await getPaymentDetails(payment.id).unwrap();
+
+      const shouldCloseDetailBeforeShare = selectedPayment?.id === details.id;
+      if (shouldCloseDetailBeforeShare) {
+        setSelectedPayment(null);
+        await waitForNativePresentation();
+      }
+
       const pdfBase64 = buildPaymentPdfBase64(details);
       const directory = FileSystem.documentDirectory || FileSystem.cacheDirectory;
 
@@ -328,17 +350,25 @@ export default function PaymentHistoryScreen() {
       await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
         encoding: FileSystem.EncodingType?.Base64 || ('base64' as any),
       });
-      const sharedUri =
-        Platform.OS === 'android' && FileSystem.getContentUriAsync
-          ? await FileSystem.getContentUriAsync(fileUri)
-          : fileUri;
+      let sharedUri = fileUri;
+
+      if (Platform.OS === 'android' && FileSystem.getContentUriAsync) {
+        try {
+          sharedUri = await FileSystem.getContentUriAsync(fileUri);
+        } catch (error) {
+          console.warn('[PaymentHistory] Failed to create Android content URI:', error);
+        }
+      }
 
       await Share.share({
         title: `Détail paiement ${details.reference}`,
-        message: `Detail du paiement ${details.reference}`,
-        url: sharedUri,
+        message:
+          Platform.OS === 'android'
+            ? `Detail du paiement ${details.reference}\n${sharedUri}`
+            : `Detail du paiement ${details.reference}`,
+        url: Platform.OS === 'ios' ? sharedUri : undefined,
       });
-      if (selectedPayment?.id === details.id) {
+      if (!shouldCloseDetailBeforeShare && selectedPayment?.id === details.id) {
         setSelectedPayment(details);
       }
 
@@ -357,6 +387,7 @@ export default function PaymentHistoryScreen() {
           'Impossible de générer le détail du paiement pour le moment.',
       });
     } finally {
+      isDownloadingRef.current = false;
       setDownloadingPaymentId(null);
     }
   };
