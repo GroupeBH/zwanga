@@ -8,7 +8,18 @@ export interface DriverLocationPayload {
   updatedAt?: string | null;
 }
 
+export interface BookingAutoProgressPayload {
+  tripId: string;
+  events: Array<{
+    type: 'pickup_confirmed' | 'dropoff_confirmed';
+    bookingId: string;
+    tripId: string;
+    passengerId: string;
+  }>;
+}
+
 type LocationListener = (payload: DriverLocationPayload) => void;
+type BookingAutoProgressListener = (payload: BookingAutoProgressPayload) => void;
 type ErrorListener = (message: string) => void;
 
 function resolveSocketBaseUrl() {
@@ -22,6 +33,7 @@ class TrackingSocketClient {
   private socket: Socket | null = null;
   private connecting: Promise<Socket> | null = null;
   private locationListeners = new Set<LocationListener>();
+  private bookingAutoProgressListeners = new Set<BookingAutoProgressListener>();
   private errorListeners = new Set<ErrorListener>();
 
   private notifyLocationListeners(payload: DriverLocationPayload) {
@@ -40,6 +52,16 @@ class TrackingSocketClient {
         listener(message);
       } catch (error) {
         console.warn('[TrackingSocket] error listener error:', error);
+      }
+    });
+  }
+
+  private notifyBookingAutoProgressListeners(payload: BookingAutoProgressPayload) {
+    this.bookingAutoProgressListeners.forEach((listener) => {
+      try {
+        listener(payload);
+      } catch (error) {
+        console.warn('[TrackingSocket] booking auto-progress listener error:', error);
       }
     });
   }
@@ -73,6 +95,10 @@ class TrackingSocketClient {
         this.notifyLocationListeners(payload);
       });
 
+      socket.on('booking_auto_progress', (payload: BookingAutoProgressPayload) => {
+        this.notifyBookingAutoProgressListeners(payload);
+      });
+
       socket.on('error', (payload: { message?: string }) => {
         const message = payload?.message ?? 'Erreur de suivi';
         this.notifyErrorListeners(message);
@@ -94,6 +120,11 @@ class TrackingSocketClient {
   subscribeToDriverLocation(listener: LocationListener) {
     this.locationListeners.add(listener);
     return () => this.locationListeners.delete(listener);
+  }
+
+  subscribeToBookingAutoProgress(listener: BookingAutoProgressListener) {
+    this.bookingAutoProgressListeners.add(listener);
+    return () => this.bookingAutoProgressListeners.delete(listener);
   }
 
   subscribeToErrors(listener: ErrorListener) {

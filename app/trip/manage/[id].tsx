@@ -6,8 +6,6 @@ import { trackEvent } from '@/services/analytics';
 import {
   useAcceptBookingMutation,
   useCancelBookingMutation,
-  useConfirmDropoffMutation,
-  useConfirmPickupMutation,
   useGetTripBookingsQuery,
   useRejectBookingMutation,
 } from '@/store/api/bookingApi';
@@ -148,8 +146,6 @@ export default function ManageTripScreen() {
   const [geocodeManualAddress] = useGeocodeMutation();
   const [startTrip, { isLoading: isStartingTrip }] = useStartTripMutation();
   const [pauseTrip, { isLoading: isPausingTrip }] = usePauseTripMutation();
-  const [confirmPickup, { isLoading: isConfirmingPickup }] = useConfirmPickupMutation();
-  const [confirmDropoff, { isLoading: isConfirmingDropoff }] = useConfirmDropoffMutation();
 
   // console.log("this bookings", bookings);
 
@@ -526,6 +522,10 @@ export default function ManageTripScreen() {
   };
 
   const handleConfirmPickup = async (bookingId: string) => {
+    void bookingId;
+    showFeedback('success', 'La prise en charge sera confirmee automatiquement pendant la navigation.');
+    return;
+    /*
     try {
       await confirmPickup(bookingId).unwrap();
       void trackEvent('driver_pickup_confirmed', {
@@ -540,9 +540,14 @@ export default function ManageTripScreen() {
         error?.data?.message ?? error?.error ?? 'Impossible de confirmer la récupération.';
       showFeedback('error', message);
     }
+    */
   };
 
   const handleConfirmDropoff = async (bookingId: string) => {
+    void bookingId;
+    showFeedback('success', 'L arrivee sera confirmee automatiquement au point de depose.');
+    return;
+    /*
     try {
       await confirmDropoff(bookingId).unwrap();
       void trackEvent('driver_dropoff_confirmed', {
@@ -557,6 +562,7 @@ export default function ManageTripScreen() {
         error?.data?.message ?? error?.error ?? "Impossible de confirmer l'arrivée.";
       showFeedback('error', message);
     }
+    */
   };
 
   const handleCancelTrip = () => {
@@ -1010,8 +1016,6 @@ export default function ManageTripScreen() {
                         onPress={() => handleCancelBookingBeforePickup(booking)}
                         disabled={
                           isCancellingBooking ||
-                          isConfirmingPickup ||
-                          isConfirmingDropoff ||
                           processingBookingId === booking.id
                         }
                       >
@@ -1027,26 +1031,23 @@ export default function ManageTripScreen() {
                     )}
                     
                     {trip.status === 'ongoing' && !booking.pickedUp && (
-                      <TouchableOpacity
-                        style={[styles.actionButton, { backgroundColor: Colors.info }]}
-                        onPress={() => handleConfirmPickup(booking.id)}
-                      >
-                        <Text style={styles.actionText}>Récupérer</Text>
-                      </TouchableOpacity>
+                      <View style={[styles.bookingStatusBadge, styles.bookingStatusBadgeInfo]}>
+                        <View style={[styles.bookingStatusDot, { backgroundColor: Colors.info }]} />
+                        <Text style={[styles.bookingStatusText, { color: Colors.info }]}>A prendre en charge</Text>
+                      </View>
                     )}
 
                     {trip.status === 'ongoing' && booking.pickedUp && booking.pickedUpConfirmedByPassenger && booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
-                      <TouchableOpacity
-                        style={[styles.actionButton, { backgroundColor: Colors.success }]}
-                        onPress={() => handleConfirmDropoff(booking.id)}
-                      >
-                        <Text style={styles.actionText}>Confirmer l&apos;arrivée</Text>
-                      </TouchableOpacity>
+                      <View style={[styles.bookingStatusBadge, styles.bookingStatusBadgeSuccess]}>
+                        <View style={[styles.bookingStatusDot, { backgroundColor: Colors.success }]} />
+                        <Text style={[styles.bookingStatusText, { color: Colors.success }]}>Arrivee en cours</Text>
+                      </View>
                     )}
 
                     {trip.status === 'ongoing' && booking.pickedUp && booking.pickedUpConfirmedByPassenger && !booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
-                      <View style={[styles.actionButton, styles.waitingDropoffButton]}>
-                        <Text style={[styles.actionText, styles.waitingDropoffText]}>Attente client</Text>
+                      <View style={[styles.bookingStatusBadge, styles.bookingStatusBadgeSecondary]}>
+                        <View style={[styles.bookingStatusDot, { backgroundColor: Colors.secondary }]} />
+                        <Text style={[styles.bookingStatusText, { color: Colors.secondary }]}>Trajet en cours</Text>
                       </View>
                     )}
                   </View>
@@ -1813,16 +1814,42 @@ const styles = StyleSheet.create({
   cancelBookingButton: {
     backgroundColor: Colors.danger + '10',
   },
-  waitingDropoffButton: {
-    backgroundColor: Colors.secondary + '14',
+  bookingStatusBadge: {
+    minHeight: 34,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+  },
+  bookingStatusBadgeInfo: {
+    backgroundColor: Colors.info + '10',
+    borderColor: Colors.info + '24',
+  },
+  bookingStatusBadgeSuccess: {
+    backgroundColor: Colors.success + '10',
+    borderColor: Colors.success + '24',
+  },
+  bookingStatusBadgeSecondary: {
+    backgroundColor: Colors.secondary + '10',
+    borderColor: Colors.secondary + '24',
+  },
+  bookingStatusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  bookingStatusText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
   },
   actionText: {
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
     color: Colors.white,
-  },
-  waitingDropoffText: {
-    color: Colors.secondary,
   },
   stickyFooter: {
     position: 'absolute',
