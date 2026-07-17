@@ -1414,19 +1414,6 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity activeOpacity={0.9} style={styles.searchCard} onPress={() => router.push('/publish')}>
-          <View style={styles.searchIconSurface}>
-            <Ionicons name="navigate-outline" size={22} color={Colors.white} />
-          </View>
-          <View style={styles.searchCopy}>
-            <Text style={styles.searchTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.9}>
-              Où allez-vous ?
-            </Text>
-            <Text style={styles.searchSubtitle} numberOfLines={1}>Départ et destination</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={22} color={HOME_COLORS.navy} />
-        </TouchableOpacity>
-
         <View style={styles.actionDock}>
           <TouchableOpacity
             activeOpacity={0.88}
@@ -2176,42 +2163,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: FontWeights.bold,
     lineHeight: 12,
-  },
-  searchCard: {
-    minHeight: 66,
-    borderRadius: BorderRadius.xl,
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: HOME_COLORS.softLine,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    ...CommonStyles.shadowMd,
-  },
-  searchIconSurface: {
-    width: 44,
-    height: 44,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.md,
-  },
-  searchCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  searchTitle: {
-    color: HOME_COLORS.ink,
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-  },
-  searchSubtitle: {
-    marginTop: 2,
-    color: HOME_COLORS.body,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.medium,
   },
   actionDock: {
     flexDirection: 'row',
