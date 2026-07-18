@@ -1,7 +1,7 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { trackingSocket } from '@/services/trackingSocket';
+import { trackingSocket, type PassengerLocationPayload } from '@/services/trackingSocket';
 import {
   useGetTripBookingsQuery
 } from '@/store/api/bookingApi';
@@ -62,9 +62,23 @@ interface Waypoint {
   completed: boolean;
 }
 
+interface PassengerMapLocation {
+  bookingId: string;
+  coordinate: { latitude: number; longitude: number };
+  isLive: boolean;
+  passengerId: string;
+  passengerName: string;
+}
+
+type LivePassengerLocation = {
+  coordinate: { latitude: number; longitude: number };
+  updatedAt?: string | null;
+};
+
 const SPEECH_LANGUAGE = 'fr-FR';
 const SPEECH_RATE = 0.95;
 const SPEECH_MIN_INTERVAL_MS = 2500;
+const MAX_LIVE_PASSENGER_MARKERS = Platform.OS === 'ios' ? 10 : 16;
 const USE_ANDROID_NAVIGATION_MARKER_IMAGES = Platform.OS === 'android';
 const ANDROID_DRIVER_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
 const ANDROID_PIN_MARKER_ANCHOR = { x: 0.5, y: 0.88 };
@@ -111,9 +125,16 @@ export default function NavigationScreen() {
   const tripId = typeof id === 'string' ? id : '';
 
   const { data: trip, isLoading, isFetching: isTripFetching, refetch: refetchTrip } = useGetTripByIdQuery(tripId, { skip: !tripId });
-  const { data: bookings, isLoading: bookingsLoading, refetch: refetchBookings } = useGetTripBookingsQuery(tripId, { skip: !tripId });
-  const [getDirections] = useGetDirectionsMutation();
   const isTripOngoing = trip?.status === 'ongoing';
+  const { data: bookings, isLoading: bookingsLoading, refetch: refetchBookings } = useGetTripBookingsQuery(
+    tripId,
+    {
+      skip: !tripId,
+      pollingInterval: isTripOngoing ? 10000 : 0,
+      skipPollingIfUnfocused: true,
+    },
+  );
+  const [getDirections] = useGetDirectionsMutation();
   const tripDepartureCoordinate = useMemo(
     () =>
       getTripLocationCoordinate({
@@ -145,6 +166,7 @@ export default function NavigationScreen() {
   const [heading, setHeading] = useState<number>(0);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [isVoiceGuidanceEnabled, setIsVoiceGuidanceEnabled] = useState(true);
+  const [livePassengerLocations, setLivePassengerLocations] = useState<Record<string, LivePassengerLocation>>({});
   
   // Modal et panneau pour les waypoints
   const [waypointModalVisible, setWaypointModalVisible] = useState(false);
@@ -169,6 +191,38 @@ export default function NavigationScreen() {
       longitudeDelta: 0,
     })
   ).current;
+
+  const passengerMapLocations = useMemo<PassengerMapLocation[]>(() => {
+    const locations: PassengerMapLocation[] = [];
+
+    (bookings ?? [])
+      .filter((booking) => booking.status === 'accepted' && !booking.droppedOff)
+      .slice(0, MAX_LIVE_PASSENGER_MARKERS)
+      .forEach((booking) => {
+        const liveLocation = livePassengerLocations[booking.id];
+        const apiLocation = normalizeTripMapCoordinate(
+          booking.passengerLocationCoordinates?.latitude,
+          booking.passengerLocationCoordinates?.longitude,
+        );
+        const pickupLocation = normalizeTripMapCoordinate(
+          booking.passengerOriginCoordinates?.latitude,
+          booking.passengerOriginCoordinates?.longitude,
+        );
+        const coordinate = liveLocation?.coordinate ?? apiLocation ?? pickupLocation ?? tripDepartureCoordinate;
+
+        if (!coordinate) return;
+
+        locations.push({
+          bookingId: booking.id,
+          coordinate,
+          isLive: Boolean(liveLocation || apiLocation),
+          passengerId: booking.passengerId,
+          passengerName: booking.passengerName || 'Passager',
+        });
+      });
+
+    return locations;
+  }, [bookings, livePassengerLocations, tripDepartureCoordinate]);
   
   // Refs pour éviter les re-rendus excessifs
   const routeFetchedRef = useRef(false);
@@ -226,10 +280,6 @@ export default function NavigationScreen() {
     cleanupNavigationUi();
     currentLocationRef.current = null;
     mapRef.current = null;
-
-    if (tripId) {
-      trackingSocket.leaveTrip(tripId);
-    }
 
     if (exitNavigationTimeoutRef.current) {
       clearTimeout(exitNavigationTimeoutRef.current);
@@ -313,6 +363,7 @@ export default function NavigationScreen() {
     }
 
     let isCancelled = false;
+    setLivePassengerLocations({});
 
     // Rejoindre la room du trip pour le tracking temps reel
     trackingSocket
@@ -320,6 +371,7 @@ export default function NavigationScreen() {
       .then(() => {
         if (!isMountedRef.current || isCancelled) return;
         setIsSocketConnected(true);
+        void trackingSocket.requestPassengerLocations(tripId);
         console.log('[Navigation] Connecte au tracking temps reel');
       })
       .catch((error) => {
@@ -342,12 +394,41 @@ export default function NavigationScreen() {
       }
     });
 
+    const unsubscribePassengerLocation = trackingSocket.subscribeToPassengerLocation(
+      (payload: PassengerLocationPayload) => {
+        if (
+          !isMountedRef.current ||
+          isCancelled ||
+          payload.tripId !== tripId ||
+          !payload.bookingId ||
+          !payload.coordinates
+        ) {
+          return;
+        }
+
+        const coordinate = normalizeTripMapCoordinate(
+          payload.coordinates[1],
+          payload.coordinates[0],
+        );
+        if (!coordinate) return;
+
+        setLivePassengerLocations((current) => ({
+          ...current,
+          [payload.bookingId]: {
+            coordinate,
+            updatedAt: payload.updatedAt,
+          },
+        }));
+      },
+    );
+
     return () => {
       isCancelled = true;
       // Quitter la room et se deconnecter proprement
       trackingSocket.leaveTrip(tripId);
       unsubscribeError();
       unsubscribeAutoProgress();
+      unsubscribePassengerLocation();
       currentLocationRef.current = null;
 
       console.log('[Navigation] Deconnecte et memoire nettoyee');
@@ -995,6 +1076,38 @@ export default function NavigationScreen() {
     }
   };
 
+  const fitVehicleAndPassengers = useCallback(() => {
+    if (!mapRef.current) return;
+
+    const coordinates = passengerMapLocations.map((passenger) => passenger.coordinate);
+    const driverLocation = currentLocationRef.current ?? currentLocation;
+    if (driverLocation) {
+      coordinates.unshift({
+        latitude: driverLocation.coords.latitude,
+        longitude: driverLocation.coords.longitude,
+      });
+    }
+
+    if (coordinates.length === 1) {
+      mapRef.current.animateToRegion(
+        {
+          ...coordinates[0],
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        },
+        320,
+      );
+      return;
+    }
+
+    if (coordinates.length > 1) {
+      mapRef.current.fitToCoordinates(coordinates, {
+        edgePadding: { top: 190, right: 56, bottom: 190, left: 56 },
+        animated: true,
+      });
+    }
+  }, [currentLocation, passengerMapLocations]);
+
   // Calculs pour les stats passagers (mémorisés)
   const passengerStats = React.useMemo(() => {
     const pickups = waypoints.filter(wp => wp.type === 'pickup');
@@ -1278,6 +1391,25 @@ export default function NavigationScreen() {
             ) : null}
           </Marker.Animated>
         )}
+
+        {passengerMapLocations.map((passenger) => (
+          <Marker
+            key={`live-passenger-${passenger.bookingId}`}
+            coordinate={passenger.coordinate}
+            anchor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? ANDROID_PIN_MARKER_ANCHOR : { x: 0.5, y: 0.5 }}
+            image={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? androidNavigationMarkerImages.pickup : undefined}
+            title={passenger.passengerName}
+            description={passenger.isLive ? 'Position en direct' : 'Point de prise en charge'}
+            tracksViewChanges={false}
+            zIndex={20}
+          >
+            {!USE_ANDROID_NAVIGATION_MARKER_IMAGES ? (
+              <View collapsable={false} style={styles.passengerLocationMarker}>
+                <Ionicons name="person" size={18} color={Colors.white} />
+              </View>
+            ) : null}
+          </Marker>
+        ))}
 
         {/* Prochain waypoint uniquement (1 seul pour éviter les crashs) */}
         {waypoints.length > 0 && currentWaypointIndex < waypoints.length && 
@@ -1586,6 +1718,17 @@ export default function NavigationScreen() {
         </TouchableOpacity>
 
         {/* Bouton recalculer l'itinéraire */}
+        {passengerMapLocations.length > 0 && (
+          <TouchableOpacity
+            style={styles.floatingButton}
+            onPress={fitVehicleAndPassengers}
+            accessibilityRole="button"
+            accessibilityLabel="Voir le vehicule et les passagers"
+          >
+            <Ionicons name="people" size={22} color={Colors.primary} />
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           style={[styles.floatingButton, isLoadingRoute && styles.floatingButtonDisabled]}
           onPress={forceRecalculateRoute}
@@ -2472,6 +2615,21 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.24,
     shadowRadius: 4,
     elevation: 4,
+  },
+  passengerLocationMarker: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.secondary,
+    borderWidth: 3,
+    borderColor: Colors.white,
+    elevation: 4,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
   },
   pickupMarker: {
     backgroundColor: Colors.secondary,

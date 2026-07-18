@@ -3,10 +3,14 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { useUserLocation } from '@/hooks/useUserLocation';
-import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
+import { getCurrentTripInfo } from '@/services/ongoingTripNotification';
+import { trackingSocket, type PassengerLocationPayload } from '@/services/trackingSocket';
+import { useGetMyBookingsQuery, useGetTripBookingsQuery } from '@/store/api/bookingApi';
 import { useGetNotificationsQuery } from '@/store/api/notificationApi';
 import {
   type TripSearchByPointsPayload,
+  useGetMyTripsQuery,
+  useGetTripByIdQuery,
   useGetTripsByCoordinatesQuery,
   useGetTripsQuery,
 } from '@/store/api/tripApi';
@@ -25,6 +29,7 @@ import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requ
 import {
   getGeoPointCoordinate as getSafeGeoPointCoordinate,
   getTripLocationCoordinate,
+  normalizeTripMapCoordinate,
 } from '@/utils/tripCoordinates';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
@@ -49,10 +54,13 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 const RECENT_TRIPS_LIMIT = 10;
 const HOME_MIN_AVAILABLE_SEATS = 1;
+const MAX_LIVE_PASSENGER_MARKERS = Platform.OS === 'ios' ? 10 : 16;
+const HOME_MAP_ANIMATION_MIN_INTERVAL_MS = Platform.OS === 'ios' ? 1200 : 700;
 const USE_ANDROID_TRIP_MARKER_IMAGE = Platform.OS === 'android';
 const HOME_MAP_PROVIDER = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
 const TRIP_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
 const USER_LOCATION_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
+const PASSENGER_LOCATION_MARKER_ANCHOR = { x: 0.5, y: 0.88 };
 
 const KINSHASA_REGION: Region = {
   latitude: -4.325,
@@ -111,6 +119,7 @@ const selectedTripMarkerImages: Record<Trip['vehicleType'], ImageRequireSource> 
 };
 
 const userLocationMarkerImage: ImageRequireSource = require('@/assets/images/map-markers/user-location-marker.png');
+const passengerLocationMarkerImage: ImageRequireSource = require('@/assets/images/map-markers/trip-detail-marker-passenger.png');
 
 type MapCoordinate = {
   latitude: number;
@@ -142,6 +151,18 @@ type UserLocationMarkerState = {
   address: string;
   coordinate: MapCoordinate;
   title: string;
+};
+
+type DriverPassengerMarker = {
+  bookingId: string;
+  coordinate: MapCoordinate;
+  isLive: boolean;
+  passengerName: string;
+};
+
+type LivePassengerLocation = {
+  coordinate: MapCoordinate;
+  updatedAt?: string | null;
 };
 
 function formatPrice(price?: number | null) {
@@ -449,6 +470,14 @@ function UserLocationMapMarker() {
   );
 }
 
+function PassengerLocationMapMarker() {
+  return (
+    <View collapsable={false} style={styles.passengerLocationMarkerFrame}>
+      <Ionicons name="person" size={18} color={Colors.white} />
+    </View>
+  );
+}
+
 function HomeTripsLoadingScreen() {
   const pulse = useRef(new Animated.Value(0)).current;
   const vehicleProgress = useRef(new Animated.Value(0)).current;
@@ -670,6 +699,8 @@ export default function HomeScreen() {
   const isFocused = useIsFocused();
   const dispatch = useAppDispatch();
   const mapRef = useRef<MapView>(null);
+  const mapAnimationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastMapAnimationAtRef = useRef(0);
   const tripMarkerRefs = useRef<Record<string, MapMarker | null>>({});
   const userLocationMarkerRef = useRef<MapMarker | null>(null);
   const openingTripRef = useRef(false);
@@ -685,15 +716,123 @@ export default function HomeScreen() {
   const [mapFocusedOnUser, setMapFocusedOnUser] = useState(false);
   const [userLocationMarker, setUserLocationMarker] = useState<UserLocationMarkerState | null>(null);
   const [openingTripId, setOpeningTripId] = useState<string | null>(null);
+  const [liveDriverPassengerLocations, setLiveDriverPassengerLocations] = useState<
+    Record<string, LivePassengerLocation>
+  >({});
+  const trackedTripInfo = getCurrentTripInfo();
   const { getCurrentLocation, lastKnownLocation } = useUserLocation({
     autoRequest: isFocused,
-    trackingProfile: 'nearby',
+    trackingProfile: trackedTripInfo ? 'navigation' : 'nearby',
   });
   const { data: currentUser } = useGetCurrentUserQuery();
   const isDriver = useMemo(() => {
     const role = currentUser?.role;
     return role === 'driver' || role === 'both' || Boolean(currentUser?.isDriver);
   }, [currentUser?.isDriver, currentUser?.role]);
+
+  const { data: myDriverTrips = [] } = useGetMyTripsQuery(undefined, {
+    skip: !isDriver,
+    pollingInterval: isFocused ? 30000 : 0,
+    skipPollingIfUnfocused: true,
+    refetchOnFocus: isFocused,
+    refetchOnReconnect: isFocused,
+  });
+  const listedOngoingDriverTrip = useMemo(
+    () =>
+      myDriverTrips.find(
+        (trip) => trip.status === 'ongoing' && (!currentUser?.id || trip.driverId === currentUser.id),
+      ) ?? null,
+    [currentUser?.id, myDriverTrips],
+  );
+  const driverTripLookupId =
+    (trackedTripInfo?.role === 'driver' ? trackedTripInfo.tripId : null) ??
+    listedOngoingDriverTrip?.id ??
+    '';
+  const { data: refreshedDriverTrip } = useGetTripByIdQuery(driverTripLookupId, {
+    skip: !isDriver || !driverTripLookupId,
+    pollingInterval: isFocused ? 10000 : 0,
+    skipPollingIfUnfocused: true,
+    refetchOnFocus: isFocused,
+    refetchOnReconnect: isFocused,
+  });
+  const ongoingDriverTrip = useMemo(() => {
+    if (refreshedDriverTrip) {
+      return refreshedDriverTrip.status === 'ongoing' ? refreshedDriverTrip : null;
+    }
+
+    return listedOngoingDriverTrip;
+  }, [listedOngoingDriverTrip, refreshedDriverTrip]);
+  const {
+    data: ongoingDriverBookings = [],
+    refetch: refetchOngoingDriverBookings,
+  } = useGetTripBookingsQuery(ongoingDriverTrip?.id ?? '', {
+    skip: !ongoingDriverTrip?.id,
+    pollingInterval: isFocused && ongoingDriverTrip ? 10000 : 0,
+    skipPollingIfUnfocused: true,
+    refetchOnFocus: isFocused,
+    refetchOnReconnect: isFocused,
+  });
+
+  useEffect(() => {
+    const activeTripId = ongoingDriverTrip?.id;
+    if (!isFocused || !activeTripId) {
+      setLiveDriverPassengerLocations({});
+      return;
+    }
+
+    let isCancelled = false;
+    setLiveDriverPassengerLocations({});
+
+    void trackingSocket
+      .joinTrip(activeTripId)
+      .then(() => {
+        if (isCancelled) return;
+        void trackingSocket.requestPassengerLocations(activeTripId);
+      })
+      .catch((error) => {
+        console.warn('[Home] Connexion au suivi passagers indisponible:', error);
+      });
+
+    const unsubscribePassengerLocation = trackingSocket.subscribeToPassengerLocation(
+      (payload: PassengerLocationPayload) => {
+        if (
+          isCancelled ||
+          payload.tripId !== activeTripId ||
+          !payload.bookingId ||
+          !payload.coordinates
+        ) {
+          return;
+        }
+
+        const coordinate = normalizeTripMapCoordinate(
+          payload.coordinates[1],
+          payload.coordinates[0],
+        );
+        if (!coordinate) return;
+
+        setLiveDriverPassengerLocations((current) => ({
+          ...current,
+          [payload.bookingId]: {
+            coordinate,
+            updatedAt: payload.updatedAt,
+          },
+        }));
+      },
+    );
+
+    const unsubscribeAutoProgress = trackingSocket.subscribeToBookingAutoProgress((payload) => {
+      if (!isCancelled && payload.tripId === activeTripId) {
+        void refetchOngoingDriverBookings();
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+      void trackingSocket.leaveTrip(activeTripId);
+      unsubscribePassengerLocation();
+      unsubscribeAutoProgress();
+    };
+  }, [isFocused, ongoingDriverTrip?.id, refetchOngoingDriverBookings]);
 
   const nearbyTripsPayload = useMemo<TripSearchByPointsPayload | null>(() => {
     const latitude = lastKnownLocation?.coords?.latitude;
@@ -794,10 +933,15 @@ export default function HomeScreen() {
     return refetchGeneralTrips();
   };
 
-  const { data: notificationsData } = useGetNotificationsQuery(undefined, {
+  const { data: notificationsData } = useGetNotificationsQuery({ limit: 1 }, {
     refetchOnMountOrArgChange: true,
   });
-  const { data: myBookings } = useGetMyBookingsQuery();
+  const { data: myBookings } = useGetMyBookingsQuery(undefined, {
+    pollingInterval: isFocused ? 10000 : 0,
+    skipPollingIfUnfocused: true,
+    refetchOnFocus: isFocused,
+    refetchOnReconnect: isFocused,
+  });
   const { data: myTripRequests = [] } = useGetMyTripRequestsQuery(undefined, {
     skip: !currentUser?.id,
     pollingInterval: isFocused ? 30000 : 0,
@@ -840,6 +984,32 @@ export default function HomeScreen() {
         (booking.status === 'pending' || booking.status === 'accepted') && booking.tripId,
     );
   }, [myBookings, currentUser?.id]);
+
+  const activePassengerBooking = useMemo(
+    () =>
+      activeBookings.find(
+        (booking) =>
+          booking.status === 'accepted' &&
+          !booking.droppedOff &&
+          booking.trip?.status === 'ongoing',
+      ) ??
+      activeBookings.find(
+        (booking) => booking.status === 'accepted' && !booking.droppedOff,
+      ) ??
+      null,
+    [activeBookings],
+  );
+  const passengerTripLookupId =
+    (trackedTripInfo?.role === 'passenger' ? trackedTripInfo.tripId : null) ??
+    activePassengerBooking?.tripId ??
+    '';
+  const { data: refreshedPassengerTrip } = useGetTripByIdQuery(passengerTripLookupId, {
+    skip: !currentUser?.id || !passengerTripLookupId,
+    pollingInterval: isFocused ? 10000 : 0,
+    skipPollingIfUnfocused: true,
+    refetchOnFocus: isFocused,
+    refetchOnReconnect: isFocused,
+  });
 
   const bookedTripIds = useMemo(
     () => new Set(activeBookings.map((booking) => booking.tripId)),
@@ -1031,36 +1201,155 @@ export default function HomeScreen() {
     completedBookingTripIds,
   ]);
 
+  const ongoingBookedTrip = useMemo(() => {
+    const ongoingBookingTripIds = new Set(
+      activeBookings
+        .filter(
+          (booking) =>
+            booking.status === 'accepted' &&
+            booking.tripId &&
+            !booking.droppedOff &&
+            !booking.droppedOffConfirmedByPassenger,
+        )
+        .map((booking) => booking.tripId),
+    );
+
+    if (ongoingBookingTripIds.size === 0) {
+      return refreshedPassengerTrip?.status === 'ongoing' && trackedTripInfo?.role === 'passenger'
+        ? refreshedPassengerTrip
+        : null;
+    }
+
+    if (refreshedPassengerTrip) {
+      return refreshedPassengerTrip.status === 'ongoing' &&
+        ongoingBookingTripIds.has(refreshedPassengerTrip.id)
+        ? refreshedPassengerTrip
+        : null;
+    }
+
+    return latestTrips.find((trip) => trip.status === 'ongoing' && ongoingBookingTripIds.has(trip.id)) ?? null;
+  }, [activeBookings, latestTrips, refreshedPassengerTrip, trackedTripInfo?.role]);
+
+  const liveUserCoordinate = useMemo<MapCoordinate | null>(() => {
+    return normalizeTripMapCoordinate(
+      lastKnownLocation?.coords?.latitude,
+      lastKnownLocation?.coords?.longitude,
+    );
+  }, [lastKnownLocation?.coords?.latitude, lastKnownLocation?.coords?.longitude]);
+
+  const driverPassengerMarkers = useMemo<DriverPassengerMarker[]>(() => {
+    if (!ongoingDriverTrip) return [];
+
+    const fallbackPickup = getLocationCoordinate(ongoingDriverTrip.departure);
+    const markers: DriverPassengerMarker[] = [];
+
+    ongoingDriverBookings
+      .filter((booking) => booking.status === 'accepted' && !booking.droppedOff)
+      .slice(0, MAX_LIVE_PASSENGER_MARKERS)
+      .forEach((booking) => {
+        const liveLocation = liveDriverPassengerLocations[booking.id];
+        const apiLocation = normalizeTripMapCoordinate(
+          booking.passengerLocationCoordinates?.latitude,
+          booking.passengerLocationCoordinates?.longitude,
+        );
+        const pickupLatitude = Number(booking.passengerOriginCoordinates?.latitude);
+        const pickupLongitude = Number(booking.passengerOriginCoordinates?.longitude);
+        const pickupLocation =
+          Number.isFinite(pickupLatitude) && Number.isFinite(pickupLongitude)
+            ? { latitude: pickupLatitude, longitude: pickupLongitude }
+            : fallbackPickup;
+        const coordinate = liveLocation?.coordinate ?? apiLocation ?? pickupLocation;
+
+        if (!coordinate) return;
+
+        markers.push({
+          bookingId: booking.id,
+          coordinate,
+          isLive: Boolean(liveLocation || apiLocation),
+          passengerName: booking.passengerName || 'Passager',
+        });
+      });
+
+    return markers;
+  }, [liveDriverPassengerLocations, ongoingDriverBookings, ongoingDriverTrip]);
+
+  const activeHomeTrip = ongoingDriverTrip ?? ongoingBookedTrip;
+  const isRestoringTrackedTrip = Boolean(trackedTripInfo?.tripId && !activeHomeTrip);
+  const homeMapTrips = useMemo(
+    () => (activeHomeTrip ? [activeHomeTrip] : isRestoringTrackedTrip ? [] : latestTrips),
+    [activeHomeTrip, isRestoringTrackedTrip, latestTrips],
+  );
+  const isHomeSheetLockedRetracted = Boolean(activeHomeTrip || isRestoringTrackedTrip);
+
+  useEffect(() => {
+    if (!isHomeSheetLockedRetracted) {
+      return;
+    }
+
+    setTripsSheetOpen(false);
+    setHomeSheetMode('trips');
+  }, [isHomeSheetLockedRetracted]);
+
   const tripsWithMapCoordinates = useMemo(
-    () => latestTrips.filter((trip) => Boolean(getTripMapCoordinate(trip))),
-    [latestTrips],
+    () =>
+      homeMapTrips.filter((trip) =>
+        Boolean(
+          (trip.id === ongoingDriverTrip?.id ? liveUserCoordinate : null) ??
+            getTripMapCoordinate(trip),
+        ),
+      ),
+    [homeMapTrips, liveUserCoordinate, ongoingDriverTrip?.id],
   );
 
   useEffect(() => {
-    if (latestTrips.length === 0) {
+    if (homeMapTrips.length === 0) {
       setSelectedTripId(null);
       return;
     }
 
-    if (selectedTripId && latestTrips.some((trip) => trip.id === selectedTripId)) {
+    if (selectedTripId && homeMapTrips.some((trip) => trip.id === selectedTripId)) {
       return;
     }
 
-    setSelectedTripId(tripsWithMapCoordinates[0]?.id ?? latestTrips[0].id);
-  }, [latestTrips, selectedTripId, tripsWithMapCoordinates]);
+    setSelectedTripId(tripsWithMapCoordinates[0]?.id ?? homeMapTrips[0].id);
+  }, [homeMapTrips, selectedTripId, tripsWithMapCoordinates]);
 
   const selectedTrip = useMemo(
-    () => latestTrips.find((trip) => trip.id === selectedTripId) ?? latestTrips[0] ?? null,
-    [latestTrips, selectedTripId],
+    () => homeMapTrips.find((trip) => trip.id === selectedTripId) ?? homeMapTrips[0] ?? null,
+    [homeMapTrips, selectedTripId],
   );
 
   const mapRegion = useMemo<Region>(() => {
     const selectedDeparture = selectedTrip ? getLocationCoordinate(selectedTrip.departure) : null;
-    const selectedMapCoordinate = selectedTrip ? getTripMapCoordinate(selectedTrip) : null;
+    const selectedMapCoordinate = selectedTrip
+      ? (selectedTrip.id === ongoingDriverTrip?.id ? liveUserCoordinate : null) ??
+        getTripMapCoordinate(selectedTrip)
+      : null;
     const fallbackDeparture = tripsWithMapCoordinates[0]
-      ? getTripMapCoordinate(tripsWithMapCoordinates[0])
+      ? (tripsWithMapCoordinates[0].id === ongoingDriverTrip?.id ? liveUserCoordinate : null) ??
+        getTripMapCoordinate(tripsWithMapCoordinates[0])
       : null;
     const coordinate = selectedMapCoordinate ?? selectedDeparture ?? fallbackDeparture;
+
+    if (ongoingDriverTrip && selectedMapCoordinate && driverPassengerMarkers.length > 0) {
+      const coordinates = [
+        selectedMapCoordinate,
+        ...driverPassengerMarkers.map((passenger) => passenger.coordinate),
+      ];
+      const latitudes = coordinates.map((point) => point.latitude);
+      const longitudes = coordinates.map((point) => point.longitude);
+      const minLatitude = Math.min(...latitudes);
+      const maxLatitude = Math.max(...latitudes);
+      const minLongitude = Math.min(...longitudes);
+      const maxLongitude = Math.max(...longitudes);
+
+      return {
+        latitude: (minLatitude + maxLatitude) / 2,
+        longitude: (minLongitude + maxLongitude) / 2,
+        latitudeDelta: Math.max((maxLatitude - minLatitude) * 1.5, 0.035),
+        longitudeDelta: Math.max((maxLongitude - minLongitude) * 1.5, 0.035),
+      };
+    }
 
     if (!coordinate) {
       return KINSHASA_REGION;
@@ -1071,13 +1360,72 @@ export default function HomeScreen() {
       latitudeDelta: 0.065,
       longitudeDelta: 0.065,
     };
-  }, [selectedTrip, tripsWithMapCoordinates]);
+  }, [
+    driverPassengerMarkers,
+    liveUserCoordinate,
+    ongoingDriverTrip,
+    selectedTrip,
+    tripsWithMapCoordinates,
+  ]);
 
   useEffect(() => {
-    if (isFocused && !mapFocusedOnUser && !openingTripId) {
-      mapRef.current?.animateToRegion(mapRegion, 420);
+    if (!isFocused || mapFocusedOnUser || openingTripId) {
+      return;
     }
+
+    if (mapAnimationTimerRef.current) {
+      clearTimeout(mapAnimationTimerRef.current);
+      mapAnimationTimerRef.current = null;
+    }
+
+    const animateMap = () => {
+      mapAnimationTimerRef.current = null;
+      lastMapAnimationAtRef.current = Date.now();
+      mapRef.current?.animateToRegion(mapRegion, 420);
+    };
+    const elapsed = Date.now() - lastMapAnimationAtRef.current;
+    const delay = Math.max(HOME_MAP_ANIMATION_MIN_INTERVAL_MS - elapsed, 0);
+
+    if (delay === 0) {
+      animateMap();
+      return;
+    }
+
+    mapAnimationTimerRef.current = setTimeout(animateMap, delay);
+    return () => {
+      if (mapAnimationTimerRef.current) {
+        clearTimeout(mapAnimationTimerRef.current);
+        mapAnimationTimerRef.current = null;
+      }
+    };
   }, [isFocused, mapFocusedOnUser, mapRegion, openingTripId]);
+
+  useEffect(() => {
+    if (!isFocused || !liveUserCoordinate || ongoingDriverTrip) {
+      return;
+    }
+
+    setUserLocationMarker((current) => ({
+      coordinate: liveUserCoordinate,
+      title: current?.title || 'Ma position',
+      address: 'Position en temps réel',
+    }));
+  }, [isFocused, liveUserCoordinate, ongoingDriverTrip]);
+
+  useEffect(() => {
+    if (!isFocused || !mapFocusedOnUser || !liveUserCoordinate || openingTripId) {
+      return;
+    }
+
+    mapRef.current?.animateToRegion(
+      {
+        ...liveUserCoordinate,
+        latitudeDelta: 0.025,
+        longitudeDelta: 0.025,
+      },
+      420,
+    );
+  }, [isFocused, liveUserCoordinate, mapFocusedOnUser, openingTripId]);
 
   const firstName = currentUser?.firstName || currentUser?.name?.split(' ')[0] || 'Kinshasa';
   const avatarUri = currentUser?.profilePicture || currentUser?.avatar;
@@ -1089,20 +1437,31 @@ export default function HomeScreen() {
     ? Math.min(Math.max(height * 0.38, isCompactScreen ? 328 : 354), 388)
     : Math.min(Math.max(height * 0.34, isCompactScreen ? 296 : 318), 348);
   const retractedSheetHeight = 78;
-  const sheetHeight = tripsSheetOpen ? openSheetHeight : retractedSheetHeight;
+  const effectiveTripsSheetOpen = tripsSheetOpen && !isHomeSheetLockedRetracted;
+  const sheetHeight = effectiveTripsSheetOpen ? openSheetHeight : retractedSheetHeight;
   const locationButtonBottom = sheetBottomOffset + sheetHeight + Spacing.md;
   const tripCardWidth = Math.min(width - 56, 342);
   const availableTripsLabel = `${latestTrips.length} trajet${latestTrips.length > 1 ? 's' : ''}`;
   const availableRequestsLabel = `${availableDriverRequests.length} demande${availableDriverRequests.length > 1 ? 's' : ''}`;
   const isRequestsSheetMode = homeSheetMode === 'requests' && isDriver;
-  const sheetTitle = isRequestsSheetMode ? 'Demandes de trajet' : 'Trajets publiés';
-  const sheetSubtitle = isRequestsSheetMode
-    ? availableDriverRequests.length > 0
-      ? `${availableRequestsLabel} à traiter`
-      : 'Aucune demande pour le moment'
-    : latestTrips.length > 0
-      ? `${availableTripsLabel} à parcourir`
-      : 'Aucune offre pour le moment';
+  const sheetTitle = isHomeSheetLockedRetracted
+    ? ongoingDriverTrip || trackedTripInfo?.role === 'driver'
+      ? 'Trajet conducteur en cours'
+      : 'Trajet réservé en cours'
+    : isRequestsSheetMode
+      ? 'Demandes de trajet'
+      : 'Trajets publiés';
+  const sheetSubtitle = isHomeSheetLockedRetracted
+    ? ongoingDriverTrip || trackedTripInfo?.role === 'driver'
+      ? `${driverPassengerMarkers.length} passager${driverPassengerMarkers.length > 1 ? 's' : ''} et votre véhicule en direct`
+      : 'Votre position et le véhicule restent visibles'
+    : isRequestsSheetMode
+      ? availableDriverRequests.length > 0
+        ? `${availableRequestsLabel} à traiter`
+        : 'Aucune demande pour le moment'
+      : latestTrips.length > 0
+        ? `${availableTripsLabel} à parcourir`
+        : 'Aucune offre pour le moment';
   const sheetLoading = isRequestsSheetMode ? availableTripRequestsLoading : tripsLoading;
   const sheetError = isRequestsSheetMode ? availableTripRequestsError : tripsError;
   const sheetEmpty = isRequestsSheetMode ? availableDriverRequests.length === 0 : latestTrips.length === 0;
@@ -1122,6 +1481,13 @@ export default function HomeScreen() {
     }
 
     router.push('/search');
+  };
+  const toggleTripsSheet = () => {
+    if (isHomeSheetLockedRetracted) {
+      return;
+    }
+
+    setTripsSheetOpen((current) => !current);
   };
   const openTripDetail = (tripId: string) => {
     if (openingTripRef.current) return;
@@ -1252,13 +1618,19 @@ export default function HomeScreen() {
         style={styles.map}
         initialRegion={mapRegion}
         showsCompass={false}
-        showsUserLocation={!userLocationMarker && Boolean(lastKnownLocation?.coords)}
+        showsTraffic={false}
+        showsBuildings={false}
+        showsIndoors={false}
+        showsPointsOfInterest={false}
+        showsUserLocation={!ongoingDriverTrip && !userLocationMarker && Boolean(lastKnownLocation?.coords)}
         showsMyLocationButton={false}
         moveOnMarkerPress={!USE_ANDROID_TRIP_MARKER_IMAGE}
         toolbarEnabled={false}
       >
         {tripsWithMapCoordinates.map((trip) => {
-          const coordinate = getTripMapCoordinate(trip);
+          const isActiveDriverTrip = trip.id === ongoingDriverTrip?.id;
+          const coordinate =
+            (isActiveDriverTrip ? liveUserCoordinate : null) ?? getTripMapCoordinate(trip);
           const isSelected = trip.id === selectedTrip?.id;
 
           if (!coordinate) {
@@ -1283,8 +1655,8 @@ export default function HomeScreen() {
               coordinate={coordinate}
               anchor={TRIP_MARKER_ANCHOR}
               image={androidTripMarkerImage}
-              title={`${formatPrice(trip.price)} - ${trip.driverName || 'Conducteur Zwanga'}`}
-              description={`${formatDateTime(trip.departureTime)} · ${placeName(trip.departure)} vers ${placeName(trip.arrival)} · ${trip.availableSeats} place${trip.availableSeats > 1 ? 's' : ''}`}
+              title={isActiveDriverTrip ? 'Mon véhicule' : `${formatPrice(trip.price)} - ${trip.driverName || 'Conducteur Zwanga'}`}
+              description={isActiveDriverTrip ? 'Position en temps réel pendant le trajet' : `${formatDateTime(trip.departureTime)} · ${placeName(trip.departure)} vers ${placeName(trip.arrival)} · ${trip.availableSeats} place${trip.availableSeats > 1 ? 's' : ''}`}
               onPress={() => handleTripMarkerPress(trip.id, isSelected)}
               onCalloutPress={() => openTripDetail(trip.id)}
               tappable
@@ -1314,7 +1686,22 @@ export default function HomeScreen() {
             </Marker>
           );
         })}
-        {userLocationMarker && (
+        {ongoingDriverTrip && driverPassengerMarkers.map((passenger) => (
+          <Marker
+            key={`home-passenger-${passenger.bookingId}`}
+            identifier={`home-passenger-${passenger.bookingId}`}
+            coordinate={passenger.coordinate}
+            anchor={USE_ANDROID_TRIP_MARKER_IMAGE ? PASSENGER_LOCATION_MARKER_ANCHOR : USER_LOCATION_MARKER_ANCHOR}
+            image={USE_ANDROID_TRIP_MARKER_IMAGE ? passengerLocationMarkerImage : undefined}
+            title={passenger.passengerName}
+            description={passenger.isLive ? 'Position en temps réel' : 'Point de prise en charge'}
+            tracksViewChanges={false}
+            zIndex={20}
+          >
+            {!USE_ANDROID_TRIP_MARKER_IMAGE && <PassengerLocationMapMarker />}
+          </Marker>
+        ))}
+        {userLocationMarker && !ongoingDriverTrip && (
           <Marker
             ref={(marker) => {
               userLocationMarkerRef.current = marker;
@@ -1392,7 +1779,11 @@ export default function HomeScreen() {
               <View style={styles.statusRow}>
                 <View style={styles.statusDot} />
                 <Text style={styles.statusText} numberOfLines={1}>
-                  {availableTripsLabel} disponible{latestTrips.length > 1 ? 's' : ''}
+                  {ongoingDriverTrip || trackedTripInfo?.role === 'driver'
+                    ? 'Trajet conducteur en cours'
+                    : ongoingBookedTrip || trackedTripInfo?.role === 'passenger'
+                      ? 'Trajet réservé en cours'
+                      : `${availableTripsLabel} disponible${latestTrips.length > 1 ? 's' : ''}`}
                 </Text>
               </View>
             </View>
@@ -1468,9 +1859,10 @@ export default function HomeScreen() {
           <TouchableOpacity
             activeOpacity={0.78}
             accessibilityRole="button"
-            accessibilityLabel={tripsSheetOpen ? 'Rétracter la liste des trajets' : 'Afficher la liste des trajets'}
+            accessibilityLabel={effectiveTripsSheetOpen ? 'Rétracter la liste des trajets' : 'Afficher la liste des trajets'}
             style={styles.sheetHeaderCopy}
-            onPress={() => setTripsSheetOpen((current) => !current)}
+            onPress={toggleTripsSheet}
+            disabled={isHomeSheetLockedRetracted}
           >
             <Text style={styles.sheetTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
               {sheetTitle}
@@ -1486,12 +1878,13 @@ export default function HomeScreen() {
             <TouchableOpacity
               activeOpacity={0.75}
               accessibilityRole="button"
-              accessibilityLabel={tripsSheetOpen ? 'Rétracter la liste des trajets' : 'Afficher la liste des trajets'}
+              accessibilityLabel={effectiveTripsSheetOpen ? 'Rétracter la liste des trajets' : 'Afficher la liste des trajets'}
               style={styles.sheetToggle}
-              onPress={() => setTripsSheetOpen((current) => !current)}
+              onPress={toggleTripsSheet}
+              disabled={isHomeSheetLockedRetracted}
             >
               <Ionicons
-                name={tripsSheetOpen ? 'chevron-down' : 'chevron-up'}
+                name={effectiveTripsSheetOpen ? 'chevron-down' : 'chevron-up'}
                 size={18}
                 color={HOME_COLORS.ink}
               />
@@ -1499,7 +1892,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {tripsSheetOpen && isDriver && (
+        {effectiveTripsSheetOpen && isDriver && (
           <View style={styles.sheetModeSwitch}>
             <TouchableOpacity
               activeOpacity={0.82}
@@ -1549,11 +1942,11 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {tripsSheetOpen && sheetLoading && (
+        {effectiveTripsSheetOpen && sheetLoading && (
           <HomeSheetLoadingState />
         )}
 
-        {tripsSheetOpen && sheetError && !sheetLoading && (
+        {effectiveTripsSheetOpen && sheetError && !sheetLoading && (
           <View style={styles.sheetState}>
             <Ionicons name="alert-circle-outline" size={24} color={Colors.danger} />
             <Text style={styles.sheetStateText}>
@@ -1565,7 +1958,7 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {tripsSheetOpen && !sheetLoading && !sheetError && sheetEmpty && (
+        {effectiveTripsSheetOpen && !sheetLoading && !sheetError && sheetEmpty && (
           <View style={styles.emptyCard}>
             <View style={styles.emptyIcon}>
               <Ionicons
@@ -1587,7 +1980,7 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {tripsSheetOpen && !sheetLoading && !sheetError && isRequestsSheetMode && availableDriverRequests.length > 0 && (
+        {effectiveTripsSheetOpen && !sheetLoading && !sheetError && isRequestsSheetMode && availableDriverRequests.length > 0 && (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -1604,7 +1997,7 @@ export default function HomeScreen() {
           </ScrollView>
         )}
 
-        {tripsSheetOpen && !sheetLoading && !sheetError && !isRequestsSheetMode && latestTrips.length > 0 && (
+        {effectiveTripsSheetOpen && !sheetLoading && !sheetError && !isRequestsSheetMode && latestTrips.length > 0 && (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -1983,6 +2376,21 @@ const styles = StyleSheet.create({
   userLocationMarkerImage: {
     width: 58,
     height: 58,
+  },
+  passengerLocationMarkerFrame: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.secondary,
+    borderWidth: 3,
+    borderColor: Colors.white,
+    elevation: 4,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
   },
   tripMapCallout: {
     width: 226,

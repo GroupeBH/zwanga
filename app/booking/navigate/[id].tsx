@@ -7,6 +7,7 @@ import {
 } from '@/store/api/bookingApi';
 import { useGetDirectionsMutation } from '@/store/api/googleMapsApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
+import { getGeoPointCoordinate, normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -25,9 +26,11 @@ import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import Animated, { FadeInDown, FadeInUp } from '@/utils/reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+const MAX_PASSENGER_ROUTE_POINTS = Platform.OS === 'ios' ? 180 : 250;
+
 // Fonction pour decoder les polylines Google
-function decodePolyline(encoded: string): Array<{ latitude: number; longitude: number }> {
-  const points: Array<{ latitude: number; longitude: number }> = [];
+function decodePolyline(encoded: string): { latitude: number; longitude: number }[] {
+  const points: { latitude: number; longitude: number }[] = [];
   let index = 0;
   let lat = 0;
   let lng = 0;
@@ -58,16 +61,24 @@ function decodePolyline(encoded: string): Array<{ latitude: number; longitude: n
     const dlng = result & 1 ? ~(result >> 1) : result >> 1;
     lng += dlng;
 
-    points.push({
-      latitude: lat / 1e5,
-      longitude: lng / 1e5,
-    });
+    const latitude = lat / 1e5;
+    const longitude = lng / 1e5;
+    if (
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      Math.abs(latitude) > 90 ||
+      Math.abs(longitude) > 180
+    ) {
+      break;
+    }
+
+    points.push({ latitude, longitude });
   }
 
   // Limiter le nombre de points pour les performances
-  if (points.length > 300) {
-    const step = Math.ceil(points.length / 300);
-    const simplified: Array<{ latitude: number; longitude: number }> = [];
+  if (points.length > MAX_PASSENGER_ROUTE_POINTS) {
+    const step = Math.ceil(points.length / MAX_PASSENGER_ROUTE_POINTS);
+    const simplified: { latitude: number; longitude: number }[] = [];
     for (let i = 0; i < points.length; i += step) {
       simplified.push(points[i]);
     }
@@ -103,12 +114,13 @@ export default function PassengerNavigationScreen() {
 
   const mapRef = useRef<MapView>(null);
   const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [passengerLocation, setPassengerLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   
   // Route et directions
   const [getDirections] = useGetDirectionsMutation();
-  const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }>>([]);
+  const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[]>([]);
   const [routeInfo, setRouteInfo] = useState<{ distance: string; duration: string } | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
@@ -132,11 +144,6 @@ export default function PassengerNavigationScreen() {
       passengerLocationSubscriptionRef.current?.remove();
       passengerLocationSubscriptionRef.current = null;
 
-      if (tripId) {
-        void trackingSocket.leaveTrip(tripId).catch((error) => {
-          console.warn('[PassengerNavigation] leaveTrip cleanup failed:', error);
-        });
-      }
     } catch (error) {
       console.warn('[PassengerNavigation] cleanup before back failed:', error);
     }
@@ -157,7 +164,7 @@ export default function PassengerNavigationScreen() {
         }
       }, 800);
     }
-  }, [router, tripId]);
+  }, [router]);
 
   useEffect(() => {
     return () => {
@@ -211,6 +218,31 @@ export default function PassengerNavigationScreen() {
     }
     return null;
   }, [booking?.passengerDestinationCoordinates, trip?.arrival]);
+
+  const tripDriverLocation = useMemo(
+    () => getGeoPointCoordinate(trip?.currentLocation ?? null),
+    [trip?.currentLocation],
+  );
+
+  useEffect(() => {
+    if (!tripDriverLocation) {
+      return;
+    }
+
+    const apiUpdatedAt = trip?.lastLocationUpdateAt ? new Date(trip.lastLocationUpdateAt) : null;
+    const hasFreshApiLocation = Boolean(
+      apiUpdatedAt &&
+        !Number.isNaN(apiUpdatedAt.getTime()) &&
+        (!lastUpdate || apiUpdatedAt.getTime() > lastUpdate.getTime()),
+    );
+
+    if (!driverLocation || hasFreshApiLocation) {
+      setDriverLocation(tripDriverLocation);
+      if (apiUpdatedAt && !Number.isNaN(apiUpdatedAt.getTime())) {
+        setLastUpdate(apiUpdatedAt);
+      }
+    }
+  }, [driverLocation, lastUpdate, trip?.lastLocationUpdateAt, tripDriverLocation]);
 
   // Fonction pour recuperer la route
   const fetchRoute = useCallback(async () => {
@@ -337,10 +369,13 @@ export default function PassengerNavigationScreen() {
     const unsubscribeLocation = trackingSocket.subscribeToDriverLocation((payload: DriverLocationPayload) => {
       if (!isMountedRef.current) return;
       if (payload.tripId === tripId && payload.coordinates) {
-        setDriverLocation({
-          latitude: payload.coordinates[1],
-          longitude: payload.coordinates[0],
-        });
+        const coordinate = normalizeTripMapCoordinate(
+          payload.coordinates[1],
+          payload.coordinates[0],
+        );
+        if (!coordinate) return;
+
+        setDriverLocation(coordinate);
         setLastUpdate(new Date());
       }
     });
@@ -386,6 +421,11 @@ export default function PassengerNavigationScreen() {
 
     const sendLocation = async (location: Location.LocationObject) => {
       if (isCancelled || !isMountedRef.current) return;
+      setPassengerLocation({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      });
+
       const now = Date.now();
       if (now - lastSentAt < SEND_INTERVAL_MS) return;
       lastSentAt = now;
@@ -396,6 +436,12 @@ export default function PassengerNavigationScreen() {
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
         }).unwrap();
+
+        void trackingSocket
+          .updatePassengerLocation(tripId, booking.id, response.coordinates)
+          .catch((error) => {
+            console.warn('[PassengerNavigation] Relais temps reel indisponible:', error);
+          });
 
         if (response.autoProgress?.events?.length && isMountedRef.current) {
           refetchBooking();
@@ -468,13 +514,15 @@ export default function PassengerNavigationScreen() {
     isTripOngoing,
     refetchBooking,
     showDialog,
+    tripId,
     updatePassengerLocation,
   ]);
 
   // Calculer la region de la carte
   const mapRegion = useMemo(() => {
-    const points: Array<{ latitude: number; longitude: number }> = [];
+    const points: { latitude: number; longitude: number }[] = [];
     
+    if (passengerLocation) points.push(passengerLocation);
     if (driverLocation) points.push(driverLocation);
     if (pickupCoordinate) points.push(pickupCoordinate);
     if (dropoffCoordinate) points.push(dropoffCoordinate);
@@ -504,7 +552,7 @@ export default function PassengerNavigationScreen() {
       latitudeDelta: latDelta,
       longitudeDelta: lngDelta,
     };
-  }, [driverLocation, pickupCoordinate, dropoffCoordinate]);
+  }, [driverLocation, passengerLocation, pickupCoordinate, dropoffCoordinate]);
 
   // Centrer sur le conducteur
   const centerOnDriver = () => {
@@ -516,13 +564,25 @@ export default function PassengerNavigationScreen() {
       }, 500);
     }
   };
+
+  // Centrer sur le passager
+  const centerOnPassenger = () => {
+    if (passengerLocation && mapRef.current) {
+      mapRef.current.animateToRegion({
+        ...passengerLocation,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 500);
+    }
+  };
   
   // Centrer sur toute la route
   const fitToRoute = useCallback(() => {
     if (!mapRef.current) return;
     
-    const coordinates: Array<{ latitude: number; longitude: number }> = [];
+    const coordinates: { latitude: number; longitude: number }[] = [];
     
+    if (passengerLocation) coordinates.push(passengerLocation);
     if (driverLocation) coordinates.push(driverLocation);
     if (pickupCoordinate && !booking?.pickedUp) coordinates.push(pickupCoordinate);
     if (dropoffCoordinate) coordinates.push(dropoffCoordinate);
@@ -542,7 +602,16 @@ export default function PassengerNavigationScreen() {
         animated: true,
       });
     }
-  }, [driverLocation, pickupCoordinate, dropoffCoordinate, routeCoordinates, booking?.pickedUp, mapTopOffset, isMapExpanded]);
+  }, [
+    driverLocation,
+    passengerLocation,
+    pickupCoordinate,
+    dropoffCoordinate,
+    routeCoordinates,
+    booking?.pickedUp,
+    mapTopOffset,
+    isMapExpanded,
+  ]);
 
   // Etat du trajet pour le passager
   const tripStatus = useMemo(() => {
@@ -591,7 +660,7 @@ export default function PassengerNavigationScreen() {
         style={[styles.map, { top: mapTopOffset }]}
         initialRegion={mapRegion}
         mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
-        showsUserLocation={true}
+        showsUserLocation={!passengerLocation}
         showsMyLocationButton={false}
         showsCompass={false}
         showsTraffic={false}
@@ -599,11 +668,27 @@ export default function PassengerNavigationScreen() {
         showsIndoors={false}
         showsPointsOfInterest={false}
       >
+        {/* Position du passager */}
+        {passengerLocation && (
+          <Marker
+            coordinate={passengerLocation}
+            anchor={{ x: 0.5, y: 0.5 }}
+            title="Votre position"
+            tracksViewChanges={false}
+          >
+            <View style={styles.passengerMarker}>
+              <View style={styles.passengerMarkerInner} />
+            </View>
+          </Marker>
+        )}
+
         {/* Position du conducteur */}
         {driverLocation && (
           <Marker
             coordinate={driverLocation}
             anchor={{ x: 0.5, y: 0.5 }}
+            title="Conducteur"
+            description="Voiture qui vient vous chercher"
             tracksViewChanges={false}
           >
             <View style={styles.driverMarker}>
@@ -641,10 +726,10 @@ export default function PassengerNavigationScreen() {
           />
         )}
 
-        {/* Ligne vers le conducteur (si pas sur la route) */}
-        {driverLocation && pickupCoordinate && !booking.pickedUp && (
+        {/* Ligne entre la voiture et le passager avant la prise en charge */}
+        {driverLocation && !booking.pickedUp && (passengerLocation || pickupCoordinate) && (
           <Polyline
-            coordinates={[driverLocation, pickupCoordinate]}
+            coordinates={[driverLocation, passengerLocation ?? pickupCoordinate!]}
             strokeColor={Colors.info}
             strokeWidth={3}
             lineDashPattern={[8, 6]}
@@ -672,12 +757,21 @@ export default function PassengerNavigationScreen() {
         >
           <Ionicons name="map-outline" size={22} color={Colors.gray[700]} />
         </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.floatingButton} 
-          onPress={centerOnDriver}
+        <TouchableOpacity
+          style={[styles.floatingButton, !passengerLocation && styles.floatingButtonDisabled]}
+          onPress={centerOnPassenger}
+          disabled={!passengerLocation}
           activeOpacity={0.8}
         >
-          <Ionicons name="car-sport" size={22} color={Colors.info} />
+          <Ionicons name="locate" size={22} color={passengerLocation ? Colors.primary : Colors.gray[400]} />
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.floatingButton, !driverLocation && styles.floatingButtonDisabled]}
+          onPress={centerOnDriver}
+          disabled={!driverLocation}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="car-sport" size={22} color={driverLocation ? Colors.info : Colors.gray[400]} />
         </TouchableOpacity>
         <TouchableOpacity 
           style={[styles.floatingButton, isLoadingRoute && styles.floatingButtonLoading]} 
@@ -722,8 +816,12 @@ export default function PassengerNavigationScreen() {
           )}
         </View>
 
-        <TouchableOpacity style={styles.headerButton} onPress={centerOnDriver}>
-          <Ionicons name="locate" size={24} color={Colors.primary} />
+        <TouchableOpacity
+          style={[styles.headerButton, !passengerLocation && styles.headerButtonDisabled]}
+          onPress={centerOnPassenger}
+          disabled={!passengerLocation}
+        >
+          <Ionicons name="locate" size={24} color={passengerLocation ? Colors.primary : Colors.gray[400]} />
         </TouchableOpacity>
       </Animated.View>
 
@@ -914,6 +1012,9 @@ const styles = StyleSheet.create({
   floatingButtonLoading: {
     opacity: 0.7,
   },
+  floatingButtonDisabled: {
+    opacity: 0.55,
+  },
   floatingButtonActive: {
     borderWidth: 1,
     borderColor: Colors.primary + '33',
@@ -944,6 +1045,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  headerButtonDisabled: {
+    opacity: 0.6,
   },
   headerCenter: {
     flex: 1,
@@ -1189,6 +1293,24 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+  },
+  passengerMarker: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.primary + '25',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: Colors.white,
+  },
+  passengerMarkerInner: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: Colors.primary,
+    borderWidth: 2,
+    borderColor: Colors.white,
   },
   pickupMarker: {
     width: 32,

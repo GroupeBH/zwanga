@@ -15,8 +15,8 @@ import {
 } from '@/store/selectors';
 import { performLogout, setTokens } from '@/store/slices/authSlice';
 import { isTokenExpired } from '@/utils/jwt';
-import { useRouter, useSegments } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useRootNavigationState, useRouter, useSegments } from 'expo-router';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
   AppState,
@@ -34,6 +34,7 @@ import type { AppStateStatus } from 'react-native';
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const segments = useSegments();
+  const rootNavigationState = useRootNavigationState();
   const dispatch = useAppDispatch();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const isLoading = useAppSelector(selectIsLoading);
@@ -57,6 +58,29 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const appBackgroundedAt = useRef<number | null>(null);
   const isForegroundRefreshInFlight = useRef(false);
   const lastForegroundRefreshAt = useRef(0);
+  const pendingRedirectRef = useRef<'auth-entry' | '(tabs)' | null>(null);
+
+  const replaceRootRoute = useCallback(
+    (target: 'auth-entry' | '(tabs)') => {
+      if (
+        !rootNavigationState?.key ||
+        !rootNavigationState.routeNames?.includes(target) ||
+        currentSegment === target ||
+        pendingRedirectRef.current === target
+      ) {
+        return;
+      }
+
+      pendingRedirectRef.current = target;
+      router.replace(target === 'auth-entry' ? '/auth-entry' : '/(tabs)');
+      setTimeout(() => {
+        if (pendingRedirectRef.current === target) {
+          pendingRedirectRef.current = null;
+        }
+      }, 600);
+    },
+    [currentSegment, rootNavigationState?.key, rootNavigationState?.routeNames, router],
+  );
 
   useEffect(() => {
     latestAuthState.current = { isAuthenticated, accessToken, refreshToken };
@@ -245,7 +269,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         !isLoggingOut.current
       ) {
         if (!inAuthGroup && !isPublicRoute && !isRedirectingAfterLogout.current) {
-          router.replace('/auth-entry');
+          replaceRootRoute('auth-entry');
         }
         return;
       }
@@ -261,12 +285,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
               console.log('[AuthGuard] Logout done - redirecting to /auth-entry');
             }
             if (!inAuthGroup) {
-              router.replace('/auth-entry');
+              replaceRootRoute('auth-entry');
             }
           } catch (error) {
             console.error('[AuthGuard] Logout error:', error);
             if (!inAuthGroup) {
-              router.replace('/auth-entry');
+              replaceRootRoute('auth-entry');
             }
           } finally {
             isLoggingOut.current = false;
@@ -285,7 +309,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     isAuthenticated,
     isLoading,
     dispatch,
-    router,
+    replaceRootRoute,
     inAuthGroup,
     isPublicRoute,
   ]);
@@ -308,7 +332,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         if (__DEV__) {
           console.log('[AuthGuard] Authenticated on auth-entry - redirect /(tabs)');
         }
-        router.replace('/(tabs)');
+        replaceRootRoute('(tabs)');
         return;
       }
 
@@ -316,7 +340,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         if (__DEV__) {
           console.log('[AuthGuard] Authenticated on /auth - redirect /(tabs)');
         }
-        router.replace('/(tabs)');
+        replaceRootRoute('(tabs)');
         return;
       }
     }
@@ -325,7 +349,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       if (__DEV__) {
         console.log('[AuthGuard] Unauthenticated outside auth - redirect /auth-entry');
       }
-      router.replace('/auth-entry');
+      replaceRootRoute('auth-entry');
     }
   }, [
     isAuthenticated,
@@ -333,7 +357,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     segments,
     inAuthGroup,
     isPublicRoute,
-    router,
+    replaceRootRoute,
     accessToken,
     refreshToken,
   ]);

@@ -1,6 +1,7 @@
 import { getFloatingBannerBottomOffset } from '@/constants/navigation';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import {
+  getCurrentTripInfo,
   startOngoingTripTracking,
   stopOngoingTripTracking,
 } from '@/services/ongoingTripNotification';
@@ -39,7 +40,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
   const translateY = useSharedValue(100);
 
   // Récupérer les trajets de l'utilisateur (comme conducteur)
-  const { data: myTrips } = useGetMyTripsQuery(undefined, {
+  const { data: myTrips, isLoading: myTripsLoading } = useGetMyTripsQuery(undefined, {
     skip: !user,
     // Pas de polling : les trajets en cours changent rarement de statut
     // RTK Query invalide automatiquement le cache via les tags après startTrip, updateTrip, etc.
@@ -47,7 +48,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
   });
 
   // Récupérer les réservations de l'utilisateur (comme passager)
-  const { data: myBookings } = useGetMyBookingsQuery(undefined, {
+  const { data: myBookings, isLoading: myBookingsLoading } = useGetMyBookingsQuery(undefined, {
     skip: !user,
     // Pas de polling : les réservations changent rarement de statut
     // RTK Query invalide automatiquement le cache via les tags après acceptBooking, updateBookingStatus, etc.
@@ -96,11 +97,15 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
   }, [myTrips, myBookings, user]);
 
   // Ref pour suivre le trajet précédent
-  const previousTripIdRef = useRef<string | null>(null);
+  const previousTripIdRef = useRef<string | null>(getCurrentTripInfo()?.tripId ?? null);
 
   // Démarrer/arrêter le suivi de notification permanente
   useEffect(() => {
     const currentTripId = ongoingTrip?.trip?.id ?? null;
+
+    if (!ongoingTrip && (myTripsLoading || myBookingsLoading)) {
+      return;
+    }
     
     // Si le trajet a changé
     if (currentTripId !== previousTripIdRef.current) {
@@ -122,15 +127,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
       
       previousTripIdRef.current = currentTripId;
     }
-
-    // Cleanup au démontage
-    return () => {
-      if (previousTripIdRef.current) {
-        stopOngoingTripTracking();
-        previousTripIdRef.current = null;
-      }
-    };
-  }, [ongoingTrip]);
+  }, [myBookingsLoading, myTripsLoading, ongoingTrip]);
 
   // Ne pas afficher sur certaines pages
   const shouldHide = useMemo(() => {

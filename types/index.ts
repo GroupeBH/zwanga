@@ -283,6 +283,9 @@ export interface Booking {
   passengerDestination?: string | null;
   passengerDestinationReference?: string | null;
   passengerDestinationCoordinates?: { latitude: number; longitude: number } | null;
+  // Derniere position partagee pendant un trajet en cours
+  passengerLocationCoordinates?: { latitude: number; longitude: number } | null;
+  passengerLocationUpdatedAt?: string | null;
   // Confirmation de récupération
   pickedUp?: boolean;
   pickedUpAt?: string | null;

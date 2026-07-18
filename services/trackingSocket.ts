@@ -8,6 +8,14 @@ export interface DriverLocationPayload {
   updatedAt?: string | null;
 }
 
+export interface PassengerLocationPayload {
+  tripId: string;
+  bookingId: string;
+  passengerId?: string;
+  coordinates: [number, number] | null;
+  updatedAt?: string | null;
+}
+
 export interface BookingAutoProgressPayload {
   tripId: string;
   events: Array<{
@@ -19,6 +27,7 @@ export interface BookingAutoProgressPayload {
 }
 
 type LocationListener = (payload: DriverLocationPayload) => void;
+type PassengerLocationListener = (payload: PassengerLocationPayload) => void;
 type BookingAutoProgressListener = (payload: BookingAutoProgressPayload) => void;
 type ErrorListener = (message: string) => void;
 
@@ -32,7 +41,9 @@ function resolveSocketBaseUrl() {
 class TrackingSocketClient {
   private socket: Socket | null = null;
   private connecting: Promise<Socket> | null = null;
+  private tripJoinCounts = new Map<string, number>();
   private locationListeners = new Set<LocationListener>();
+  private passengerLocationListeners = new Set<PassengerLocationListener>();
   private bookingAutoProgressListeners = new Set<BookingAutoProgressListener>();
   private errorListeners = new Set<ErrorListener>();
 
@@ -56,6 +67,16 @@ class TrackingSocketClient {
     });
   }
 
+  private notifyPassengerLocationListeners(payload: PassengerLocationPayload) {
+    this.passengerLocationListeners.forEach((listener) => {
+      try {
+        listener(payload);
+      } catch (error) {
+        console.warn('[TrackingSocket] passenger location listener error:', error);
+      }
+    });
+  }
+
   private notifyBookingAutoProgressListeners(payload: BookingAutoProgressPayload) {
     this.bookingAutoProgressListeners.forEach((listener) => {
       try {
@@ -67,7 +88,10 @@ class TrackingSocketClient {
   }
 
   private async connect(): Promise<Socket> {
-    if (this.socket && this.socket.connected) {
+    if (this.socket) {
+      if (!this.socket.connected) {
+        this.socket.connect();
+      }
       return this.socket;
     }
 
@@ -75,16 +99,20 @@ class TrackingSocketClient {
       return this.connecting;
     }
 
-    this.connecting = (async () => {
+    const connection = (async () => {
       const token = await getValidAccessToken();
       const baseUrl = resolveSocketBaseUrl();
       const socket = io(`${baseUrl}/tracking`, {
         transports: ['websocket'],
         auth: { token },
       });
+      this.socket = socket;
 
       socket.on('connect', () => {
         console.log('[TrackingSocket] connecte');
+        this.tripJoinCounts.forEach((_count, tripId) => {
+          socket.emit('join_trip', { tripId });
+        });
       });
 
       socket.on('disconnect', () => {
@@ -94,6 +122,18 @@ class TrackingSocketClient {
       socket.on('driver_location', (payload: DriverLocationPayload) => {
         this.notifyLocationListeners(payload);
       });
+
+      socket.on('passenger_location', (payload: PassengerLocationPayload) => {
+        this.notifyPassengerLocationListeners(payload);
+      });
+
+      socket.on(
+        'passenger_locations',
+        (payload: { locations?: PassengerLocationPayload[] } | PassengerLocationPayload[]) => {
+          const locations = Array.isArray(payload) ? payload : payload?.locations ?? [];
+          locations.forEach((location) => this.notifyPassengerLocationListeners(location));
+        },
+      );
 
       socket.on('booking_auto_progress', (payload: BookingAutoProgressPayload) => {
         this.notifyBookingAutoProgressListeners(payload);
@@ -109,12 +149,17 @@ class TrackingSocketClient {
         this.notifyErrorListeners(message);
       });
 
-      this.socket = socket;
-      this.connecting = null;
       return socket;
     })();
 
-    return this.connecting;
+    this.connecting = connection;
+    try {
+      return await connection;
+    } finally {
+      if (this.connecting === connection) {
+        this.connecting = null;
+      }
+    }
   }
 
   subscribeToDriverLocation(listener: LocationListener) {
@@ -127,6 +172,11 @@ class TrackingSocketClient {
     return () => this.bookingAutoProgressListeners.delete(listener);
   }
 
+  subscribeToPassengerLocation(listener: PassengerLocationListener) {
+    this.passengerLocationListeners.add(listener);
+    return () => this.passengerLocationListeners.delete(listener);
+  }
+
   subscribeToErrors(listener: ErrorListener) {
     this.errorListeners.add(listener);
     return () => this.errorListeners.delete(listener);
@@ -134,13 +184,37 @@ class TrackingSocketClient {
 
   async joinTrip(tripId: string) {
     if (!tripId) return;
-    const socket = await this.connect();
-    socket.emit('join_trip', { tripId });
+    const currentCount = this.tripJoinCounts.get(tripId) ?? 0;
+    this.tripJoinCounts.set(tripId, currentCount + 1);
+
+    try {
+      const socket = await this.connect();
+      if (currentCount === 0 && (this.tripJoinCounts.get(tripId) ?? 0) > 0 && socket.connected) {
+        socket.emit('join_trip', { tripId });
+      }
+    } catch (error) {
+      const pendingCount = this.tripJoinCounts.get(tripId) ?? 0;
+      if (pendingCount <= 1) {
+        this.tripJoinCounts.delete(tripId);
+      } else {
+        this.tripJoinCounts.set(tripId, pendingCount - 1);
+      }
+      throw error;
+    }
   }
 
   async leaveTrip(tripId: string) {
-    if (!tripId || !this.socket) return;
-    this.socket.emit('leave_trip', { tripId });
+    if (!tripId) return;
+    const currentCount = this.tripJoinCounts.get(tripId) ?? 0;
+    if (currentCount > 1) {
+      this.tripJoinCounts.set(tripId, currentCount - 1);
+      return;
+    }
+
+    this.tripJoinCounts.delete(tripId);
+    if (this.socket) {
+      this.socket.emit('leave_trip', { tripId });
+    }
   }
 
   async updateDriverLocation(tripId: string, coordinates: [number, number]) {
@@ -153,6 +227,22 @@ class TrackingSocketClient {
     if (!tripId) return;
     const socket = await this.connect();
     socket.emit('get_driver_location', { tripId });
+  }
+
+  async updatePassengerLocation(
+    tripId: string,
+    bookingId: string,
+    coordinates: [number, number],
+  ) {
+    if (!tripId || !bookingId || !coordinates) return;
+    const socket = await this.connect();
+    socket.emit('passenger_location_update', { tripId, bookingId, coordinates });
+  }
+
+  async requestPassengerLocations(tripId: string) {
+    if (!tripId) return;
+    const socket = await this.connect();
+    socket.emit('get_passenger_locations', { tripId });
   }
 }
 
