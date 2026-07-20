@@ -5,7 +5,7 @@
 import { store } from '@/store';
 import { googleMapsApi, TravelMode } from '@/store/api/googleMapsApi';
 
-type LatLng = { latitude: number; longitude: number };
+export type LatLng = { latitude: number; longitude: number };
 
 export interface RouteInfo {
   coordinates: LatLng[];
@@ -417,6 +417,38 @@ export function findClosestPointOnRoute(
     segmentIndex: closestSegmentIndex,
     closestPoint,
     distance: minDistance,
+  };
+}
+
+export function getRouteAlignedPosition(
+  point: LatLng,
+  routeCoordinates: LatLng[],
+  maxDistanceKm = 0.08,
+): { coordinate: LatLng; heading: number; distance: number } | null {
+  const closest = findClosestPointOnRoute(point, routeCoordinates);
+  if (!closest || closest.distance > maxDistanceKm) {
+    return null;
+  }
+
+  const segmentStart = routeCoordinates[closest.segmentIndex];
+  const segmentEnd = routeCoordinates[closest.segmentIndex + 1];
+  if (!segmentStart || !segmentEnd) {
+    return null;
+  }
+
+  const startLatitude = (segmentStart.latitude * Math.PI) / 180;
+  const endLatitude = (segmentEnd.latitude * Math.PI) / 180;
+  const longitudeDelta = ((segmentEnd.longitude - segmentStart.longitude) * Math.PI) / 180;
+  const y = Math.sin(longitudeDelta) * Math.cos(endLatitude);
+  const x =
+    Math.cos(startLatitude) * Math.sin(endLatitude) -
+    Math.sin(startLatitude) * Math.cos(endLatitude) * Math.cos(longitudeDelta);
+  const heading = (Math.atan2(y, x) * 180) / Math.PI;
+
+  return {
+    coordinate: closest.closestPoint,
+    heading: (heading + 360) % 360,
+    distance: closest.distance,
   };
 }
 

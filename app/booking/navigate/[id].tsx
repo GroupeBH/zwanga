@@ -1,20 +1,28 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import {
+  VEHICLE_TRACKING_MARKER_ANCHOR,
+  VehicleTrackingMarker,
+} from '@/components/TrackingMapMarkers';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { trackingSocket, type DriverLocationPayload } from '@/services/trackingSocket';
 import {
+  useConfirmDropoffByPassengerMutation,
   useGetBookingByIdQuery,
   useUpdatePassengerLocationMutation,
 } from '@/store/api/bookingApi';
 import { useGetDirectionsMutation } from '@/store/api/googleMapsApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { getGeoPointCoordinate, normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
+import { calculateDistance, getRouteAlignedPosition } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import * as Speech from 'expo-speech';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
+  Modal,
   Platform,
   StatusBar,
   StyleSheet,
@@ -111,6 +119,8 @@ export default function PassengerNavigationScreen() {
   const isTripOngoing = trip?.status === 'ongoing';
 
   const [updatePassengerLocation] = useUpdatePassengerLocationMutation();
+  const [confirmDropoffByPassenger, { isLoading: isConfirmingArrival }] =
+    useConfirmDropoffByPassengerMutation();
 
   const mapRef = useRef<MapView>(null);
   const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -124,8 +134,11 @@ export default function PassengerNavigationScreen() {
   const [routeInfo, setRouteInfo] = useState<{ distance: string; duration: string } | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const [arrivalModalVisible, setArrivalModalVisible] = useState(false);
   const routeFetchedRef = useRef(false);
   const lastRouteFetchRef = useRef<number>(0);
+  const hasFitInitialMapRef = useRef(false);
+  const hasPresentedArrivalModalRef = useRef(false);
   const passengerLocationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const isMountedRef = useRef(true);
   const isExitingRef = useRef(false);
@@ -171,6 +184,7 @@ export default function PassengerNavigationScreen() {
       isMountedRef.current = false;
       passengerLocationSubscriptionRef.current?.remove();
       passengerLocationSubscriptionRef.current = null;
+      void Speech.stop();
     };
   }, []);
 
@@ -188,36 +202,51 @@ export default function PassengerNavigationScreen() {
   // Coordonnees importantes
   // Le point de recuperation peut etre personnalise par le passager
   const pickupCoordinate = useMemo(() => {
-    if (booking?.passengerOriginCoordinates) {
-      return {
-        latitude: booking.passengerOriginCoordinates.latitude,
-        longitude: booking.passengerOriginCoordinates.longitude,
-      };
-    }
-    if (trip?.departure) {
-      return {
-        latitude: trip.departure.lat,
-        longitude: trip.departure.lng,
-      };
-    }
-    return null;
-  }, [booking?.passengerOriginCoordinates, trip?.departure]);
+    return (
+      normalizeTripMapCoordinate(
+        booking?.passengerOriginCoordinates?.latitude,
+        booking?.passengerOriginCoordinates?.longitude,
+      ) ?? normalizeTripMapCoordinate(trip?.departure?.lat, trip?.departure?.lng)
+    );
+  }, [
+    booking?.passengerOriginCoordinates?.latitude,
+    booking?.passengerOriginCoordinates?.longitude,
+    trip?.departure?.lat,
+    trip?.departure?.lng,
+  ]);
 
   const dropoffCoordinate = useMemo(() => {
-    if (booking?.passengerDestinationCoordinates) {
-      return {
-        latitude: booking.passengerDestinationCoordinates.latitude,
-        longitude: booking.passengerDestinationCoordinates.longitude,
-      };
-    }
-    if (trip?.arrival) {
-      return {
-        latitude: trip.arrival.lat,
-        longitude: trip.arrival.lng,
-      };
-    }
-    return null;
-  }, [booking?.passengerDestinationCoordinates, trip?.arrival]);
+    return (
+      normalizeTripMapCoordinate(
+        booking?.passengerDestinationCoordinates?.latitude,
+        booking?.passengerDestinationCoordinates?.longitude,
+      ) ?? normalizeTripMapCoordinate(trip?.arrival?.lat, trip?.arrival?.lng)
+    );
+  }, [
+    booking?.passengerDestinationCoordinates?.latitude,
+    booking?.passengerDestinationCoordinates?.longitude,
+    trip?.arrival?.lat,
+    trip?.arrival?.lng,
+  ]);
+
+  const presentArrivalModal = useCallback(() => {
+    if (!isMountedRef.current || hasPresentedArrivalModalRef.current) return;
+
+    hasPresentedArrivalModalRef.current = true;
+    setArrivalModalVisible(true);
+    void Speech.stop().finally(() => {
+      if (!isMountedRef.current) return;
+      Speech.speak(
+        "Vous êtes arrivé à votre destination. Appuyez sur Terminer pour valider l'arrivée et noter le conducteur.",
+        { language: 'fr-FR', rate: 0.95 },
+      );
+    });
+  }, []);
+
+  useEffect(() => {
+    hasPresentedArrivalModalRef.current = false;
+    setArrivalModalVisible(false);
+  }, [bookingId]);
 
   const tripDriverLocation = useMemo(
     () => getGeoPointCoordinate(trip?.currentLocation ?? null),
@@ -246,7 +275,7 @@ export default function PassengerNavigationScreen() {
 
   // Fonction pour recuperer la route
   const fetchRoute = useCallback(async () => {
-    if (!trip?.departure || !trip?.arrival || !isMountedRef.current) return;
+    if (!pickupCoordinate || !dropoffCoordinate || !isMountedRef.current) return;
     
     // Eviter les appels trop frequents (minimum 30s entre les appels)
     const now = Date.now();
@@ -256,14 +285,8 @@ export default function PassengerNavigationScreen() {
     setIsLoadingRoute(true);
     
     try {
-      // Utiliser les coordonnees personnalisees du passager si disponibles
-      const origin = booking?.passengerOriginCoordinates 
-        ? { lat: booking.passengerOriginCoordinates.latitude, lng: booking.passengerOriginCoordinates.longitude }
-        : { lat: trip.departure.lat, lng: trip.departure.lng };
-        
-      const destination = booking?.passengerDestinationCoordinates
-        ? { lat: booking.passengerDestinationCoordinates.latitude, lng: booking.passengerDestinationCoordinates.longitude }
-        : { lat: trip.arrival.lat, lng: trip.arrival.lng };
+      const origin = { lat: pickupCoordinate.latitude, lng: pickupCoordinate.longitude };
+      const destination = { lat: dropoffCoordinate.latitude, lng: dropoffCoordinate.longitude };
       
       const response = await getDirections({
         origin,
@@ -312,15 +335,7 @@ export default function PassengerNavigationScreen() {
         // Fallback: utiliser une ligne droite entre pickup et dropoff
         console.warn('[PassengerNavigation] Pas de route trouvee, utilisation de ligne droite');
         
-        const origin = booking?.passengerOriginCoordinates 
-          ? { latitude: booking.passengerOriginCoordinates.latitude, longitude: booking.passengerOriginCoordinates.longitude }
-          : { latitude: trip.departure.lat, longitude: trip.departure.lng };
-          
-        const destination = booking?.passengerDestinationCoordinates
-          ? { latitude: booking.passengerDestinationCoordinates.latitude, longitude: booking.passengerDestinationCoordinates.longitude }
-          : { latitude: trip.arrival.lat, longitude: trip.arrival.lng };
-        
-        setRouteCoordinates([origin, destination]);
+        setRouteCoordinates([pickupCoordinate, dropoffCoordinate]);
         setRouteInfo(null); // Pas d'infos de distance/duree en fallback
         routeFetchedRef.current = true;
       } else {
@@ -331,7 +346,7 @@ export default function PassengerNavigationScreen() {
         setIsLoadingRoute(false);
       }
     }
-  }, [trip?.departure, trip?.arrival, booking?.passengerOriginCoordinates, booking?.passengerDestinationCoordinates, getDirections]);
+  }, [dropoffCoordinate, getDirections, pickupCoordinate]);
   
   // Recuperer la route au chargement
   useEffect(() => {
@@ -382,7 +397,11 @@ export default function PassengerNavigationScreen() {
 
     const unsubscribeAutoProgress = trackingSocket.subscribeToBookingAutoProgress((payload) => {
       if (!isMountedRef.current || payload.tripId !== tripId) return;
-      if (payload.events.some((event) => event.bookingId === bookingId)) {
+      const bookingEvents = payload.events.filter((event) => event.bookingId === bookingId);
+      if (bookingEvents.some((event) => event.type === 'dropoff_confirmed')) {
+        presentArrivalModal();
+      }
+      if (bookingEvents.length > 0) {
         refetchBooking();
       }
     });
@@ -406,7 +425,7 @@ export default function PassengerNavigationScreen() {
       unsubscribeError();
       clearInterval(interval);
     };
-  }, [bookingId, refetchBooking, tripId, isTripOngoing]);
+  }, [bookingId, isTripOngoing, presentArrivalModal, refetchBooking, tripId]);
 
   useEffect(() => {
     if (!booking?.id || booking.status !== 'accepted' || !isTripOngoing || booking.droppedOff) {
@@ -518,12 +537,51 @@ export default function PassengerNavigationScreen() {
     updatePassengerLocation,
   ]);
 
+  useEffect(() => {
+    if (
+      !passengerLocation ||
+      !dropoffCoordinate ||
+      !booking?.pickedUp ||
+      booking.droppedOff ||
+      !isTripOngoing
+    ) {
+      return;
+    }
+
+    if (calculateDistance(passengerLocation, dropoffCoordinate) <= 0.06) {
+      presentArrivalModal();
+    }
+  }, [
+    booking?.droppedOff,
+    booking?.pickedUp,
+    dropoffCoordinate,
+    isTripOngoing,
+    passengerLocation,
+    presentArrivalModal,
+  ]);
+
+  useEffect(() => {
+    if (booking?.droppedOffConfirmedByPassenger || booking?.droppedOff) {
+      presentArrivalModal();
+    }
+  }, [booking?.droppedOff, booking?.droppedOffConfirmedByPassenger, presentArrivalModal]);
+
+  const routeAlignedDriver = useMemo(
+    () =>
+      driverLocation
+        ? getRouteAlignedPosition(driverLocation, routeCoordinates, 0.1)
+        : null,
+    [driverLocation, routeCoordinates],
+  );
+  const displayedDriverLocation = routeAlignedDriver?.coordinate ?? driverLocation;
+  const displayedDriverHeading = routeAlignedDriver?.heading ?? 0;
+
   // Calculer la region de la carte
   const mapRegion = useMemo(() => {
     const points: { latitude: number; longitude: number }[] = [];
     
     if (passengerLocation) points.push(passengerLocation);
-    if (driverLocation) points.push(driverLocation);
+    if (displayedDriverLocation) points.push(displayedDriverLocation);
     if (pickupCoordinate) points.push(pickupCoordinate);
     if (dropoffCoordinate) points.push(dropoffCoordinate);
 
@@ -552,13 +610,13 @@ export default function PassengerNavigationScreen() {
       latitudeDelta: latDelta,
       longitudeDelta: lngDelta,
     };
-  }, [driverLocation, passengerLocation, pickupCoordinate, dropoffCoordinate]);
+  }, [displayedDriverLocation, passengerLocation, pickupCoordinate, dropoffCoordinate]);
 
   // Centrer sur le conducteur
   const centerOnDriver = () => {
-    if (driverLocation && mapRef.current) {
+    if (displayedDriverLocation && mapRef.current) {
       mapRef.current.animateToRegion({
-        ...driverLocation,
+        ...displayedDriverLocation,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
       }, 500);
@@ -583,7 +641,7 @@ export default function PassengerNavigationScreen() {
     const coordinates: { latitude: number; longitude: number }[] = [];
     
     if (passengerLocation) coordinates.push(passengerLocation);
-    if (driverLocation) coordinates.push(driverLocation);
+    if (displayedDriverLocation) coordinates.push(displayedDriverLocation);
     if (pickupCoordinate && !booking?.pickedUp) coordinates.push(pickupCoordinate);
     if (dropoffCoordinate) coordinates.push(dropoffCoordinate);
     if (routeCoordinates.length > 0) {
@@ -603,7 +661,7 @@ export default function PassengerNavigationScreen() {
       });
     }
   }, [
-    driverLocation,
+    displayedDriverLocation,
     passengerLocation,
     pickupCoordinate,
     dropoffCoordinate,
@@ -611,6 +669,53 @@ export default function PassengerNavigationScreen() {
     booking?.pickedUp,
     mapTopOffset,
     isMapExpanded,
+  ]);
+
+  const handleMapReady = useCallback(() => {
+    if (hasFitInitialMapRef.current) return;
+    hasFitInitialMapRef.current = true;
+
+    requestAnimationFrame(() => {
+      if (isMountedRef.current) {
+        fitToRoute();
+      }
+    });
+  }, [fitToRoute]);
+
+  const handleFinishArrival = useCallback(async () => {
+    if (!booking || isConfirmingArrival) return;
+
+    try {
+      if (!booking.droppedOffConfirmedByPassenger && !booking.droppedOff) {
+        const request = booking.paymentMode
+          ? { id: booking.id, paymentMode: booking.paymentMode }
+          : booking.id;
+        await confirmDropoffByPassenger(request).unwrap();
+      }
+
+      await refetchBooking();
+      setArrivalModalVisible(false);
+      void Speech.stop();
+      router.replace(`/rate/${tripId}`);
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        "Impossible de terminer le trajet pour le moment.";
+      showDialog({
+        variant: 'danger',
+        title: "Validation impossible",
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
+  }, [
+    booking,
+    confirmDropoffByPassenger,
+    isConfirmingArrival,
+    refetchBooking,
+    router,
+    showDialog,
+    tripId,
   ]);
 
   // Etat du trajet pour le passager
@@ -659,7 +764,8 @@ export default function PassengerNavigationScreen() {
         provider={PROVIDER_GOOGLE}
         style={[styles.map, { top: mapTopOffset }]}
         initialRegion={mapRegion}
-        mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
+        mapType="standard"
+        onMapReady={handleMapReady}
         showsUserLocation={!passengerLocation}
         showsMyLocationButton={false}
         showsCompass={false}
@@ -683,17 +789,17 @@ export default function PassengerNavigationScreen() {
         )}
 
         {/* Position du conducteur */}
-        {driverLocation && (
+        {displayedDriverLocation && (
           <Marker
-            coordinate={driverLocation}
-            anchor={{ x: 0.5, y: 0.5 }}
+            coordinate={displayedDriverLocation}
+            anchor={VEHICLE_TRACKING_MARKER_ANCHOR}
             title="Conducteur"
             description="Voiture qui vient vous chercher"
+            flat
+            rotation={displayedDriverHeading}
             tracksViewChanges={false}
           >
-            <View style={styles.driverMarker}>
-              <Ionicons name="car-sport" size={20} color={Colors.white} />
-            </View>
+            <VehicleTrackingMarker />
           </Marker>
         )}
 
@@ -727,9 +833,9 @@ export default function PassengerNavigationScreen() {
         )}
 
         {/* Ligne entre la voiture et le passager avant la prise en charge */}
-        {driverLocation && !booking.pickedUp && (passengerLocation || pickupCoordinate) && (
+        {displayedDriverLocation && !booking.pickedUp && (passengerLocation || pickupCoordinate) && (
           <Polyline
-            coordinates={[driverLocation, passengerLocation ?? pickupCoordinate!]}
+            coordinates={[displayedDriverLocation, passengerLocation ?? pickupCoordinate!]}
             strokeColor={Colors.info}
             strokeWidth={3}
             lineDashPattern={[8, 6]}
@@ -942,6 +1048,67 @@ export default function PassengerNavigationScreen() {
         )}
       </Animated.View>
       )}
+
+      <Modal
+        visible={arrivalModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setArrivalModalVisible(false)}
+      >
+        <View style={styles.arrivalModalOverlay}>
+          <View
+            style={[
+              styles.arrivalModalContent,
+              { paddingBottom: Math.max(insets.bottom, Spacing.lg) + Spacing.md },
+            ]}
+          >
+            <View style={styles.arrivalModalHandle} />
+            <View style={styles.arrivalModalIcon}>
+              <Ionicons name="flag" size={30} color={Colors.white} />
+            </View>
+            <Text style={styles.arrivalModalTitle}>Vous êtes arrivé</Text>
+            <Text style={styles.arrivalModalText}>
+              Validez votre arrivée à la destination choisie pendant la réservation.
+            </Text>
+            <View style={styles.arrivalModalAddressRow}>
+              <Ionicons name="location" size={18} color={Colors.primary} />
+              <Text style={styles.arrivalModalAddress} numberOfLines={2}>
+                {booking.passengerDestination || trip.arrival.address}
+              </Text>
+            </View>
+            <View style={styles.arrivalModalGpsStatus}>
+              <Ionicons name="locate" size={18} color={Colors.success} />
+              <Text style={styles.arrivalModalGpsStatusText}>Arrivée détectée par GPS</Text>
+            </View>
+            <Text style={styles.arrivalModalHint}>
+              Après validation, vous pourrez noter le conducteur.
+            </Text>
+            <View style={styles.arrivalModalActions}>
+              <TouchableOpacity
+                style={styles.arrivalModalLaterButton}
+                onPress={() => setArrivalModalVisible(false)}
+                disabled={isConfirmingArrival}
+              >
+                <Text style={styles.arrivalModalLaterButtonText}>Plus tard</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.arrivalModalFinishButton}
+                onPress={() => void handleFinishArrival()}
+                disabled={isConfirmingArrival}
+              >
+                {isConfirmingArrival ? (
+                  <ActivityIndicator size="small" color={Colors.white} />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={20} color={Colors.white} />
+                    <Text style={styles.arrivalModalFinishButtonText}>Terminer</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1331,5 +1498,117 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 2,
     borderColor: Colors.white,
+  },
+  arrivalModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+  },
+  arrivalModalContent: {
+    width: '100%',
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.sm,
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
+    alignItems: 'center',
+  },
+  arrivalModalHandle: {
+    width: 42,
+    height: 4,
+    borderRadius: 2,
+    marginBottom: Spacing.lg,
+    backgroundColor: Colors.gray[300],
+  },
+  arrivalModalIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+    backgroundColor: Colors.success,
+  },
+  arrivalModalTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+  },
+  arrivalModalText: {
+    marginTop: Spacing.xs,
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  arrivalModalAddressRow: {
+    width: '100%',
+    minHeight: 48,
+    marginTop: Spacing.lg,
+    paddingHorizontal: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.gray[100],
+  },
+  arrivalModalAddress: {
+    flex: 1,
+    color: Colors.gray[800],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
+  arrivalModalGpsStatus: {
+    marginTop: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  arrivalModalGpsStatusText: {
+    color: Colors.success,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  arrivalModalHint: {
+    marginTop: Spacing.md,
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+    textAlign: 'center',
+  },
+  arrivalModalActions: {
+    width: '100%',
+    marginTop: Spacing.lg,
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  arrivalModalLaterButton: {
+    flex: 1,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[300],
+    backgroundColor: Colors.white,
+  },
+  arrivalModalLaterButtonText: {
+    color: Colors.gray[700],
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+  },
+  arrivalModalFinishButton: {
+    flex: 1,
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.success,
+  },
+  arrivalModalFinishButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
   },
 });

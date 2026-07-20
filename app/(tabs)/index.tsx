@@ -1,5 +1,10 @@
 import { getTabBarMetrics } from '@/constants/navigation';
 import { useDialog } from '@/components/ui/DialogProvider';
+import {
+  PASSENGER_TRACKING_MARKER_ANCHOR,
+  PassengerTrackingMarker,
+  VehicleTrackingMarker,
+} from '@/components/TrackingMapMarkers';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { useUserLocation } from '@/hooks/useUserLocation';
@@ -60,7 +65,6 @@ const USE_ANDROID_TRIP_MARKER_IMAGE = Platform.OS === 'android';
 const HOME_MAP_PROVIDER = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
 const TRIP_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
 const USER_LOCATION_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
-const PASSENGER_LOCATION_MARKER_ANCHOR = { x: 0.5, y: 0.88 };
 
 const KINSHASA_REGION: Region = {
   latitude: -4.325,
@@ -119,7 +123,6 @@ const selectedTripMarkerImages: Record<Trip['vehicleType'], ImageRequireSource> 
 };
 
 const userLocationMarkerImage: ImageRequireSource = require('@/assets/images/map-markers/user-location-marker.png');
-const passengerLocationMarkerImage: ImageRequireSource = require('@/assets/images/map-markers/trip-detail-marker-passenger.png');
 
 type MapCoordinate = {
   latitude: number;
@@ -142,6 +145,7 @@ type TripRequestPreviewCardProps = {
 
 type TripMapMarkerProps = {
   isSelected: boolean;
+  onImageLoad?: () => void;
   trip: Trip;
 };
 
@@ -157,6 +161,7 @@ type DriverPassengerMarker = {
   bookingId: string;
   coordinate: MapCoordinate;
   isLive: boolean;
+  passengerId: string;
   passengerName: string;
 };
 
@@ -448,14 +453,28 @@ function TripRequestPreviewCard({
   );
 }
 
-function TripMapMarker({ isSelected, trip }: TripMapMarkerProps) {
+function TripMapMarker({ isSelected, onImageLoad, trip }: TripMapMarkerProps) {
   const markerImage = getTripMarkerImage(trip, isSelected);
 
   return (
-    <View collapsable={false} style={[styles.tripMapMarkerFrame, isSelected && styles.tripMapMarkerFrameSelected]}>
+    <View
+      collapsable={false}
+      style={[
+        styles.tripMapMarkerFrame,
+        isSelected && styles.tripMapMarkerFrameSelected,
+        USE_ANDROID_TRIP_MARKER_IMAGE && styles.tripMapMarkerFrameAndroid,
+        USE_ANDROID_TRIP_MARKER_IMAGE && isSelected && styles.tripMapMarkerFrameAndroidSelected,
+      ]}
+    >
       <Image
         source={markerImage}
-        style={[styles.tripMapMarkerImage, isSelected && styles.tripMapMarkerImageSelected]}
+        style={[
+          styles.tripMapMarkerImage,
+          isSelected && styles.tripMapMarkerImageSelected,
+          USE_ANDROID_TRIP_MARKER_IMAGE && styles.tripMapMarkerImageAndroid,
+          USE_ANDROID_TRIP_MARKER_IMAGE && isSelected && styles.tripMapMarkerImageAndroidSelected,
+        ]}
+        onLoadEnd={onImageLoad}
         resizeMode="contain"
       />
     </View>
@@ -464,16 +483,15 @@ function TripMapMarker({ isSelected, trip }: TripMapMarkerProps) {
 
 function UserLocationMapMarker() {
   return (
-    <View collapsable={false} style={styles.userLocationMarkerFrame}>
-      <Image source={userLocationMarkerImage} style={styles.userLocationMarkerImage} resizeMode="contain" />
-    </View>
-  );
-}
-
-function PassengerLocationMapMarker() {
-  return (
-    <View collapsable={false} style={styles.passengerLocationMarkerFrame}>
-      <Ionicons name="person" size={18} color={Colors.white} />
+    <View
+      collapsable={false}
+      style={[styles.userLocationMarkerFrame, USE_ANDROID_TRIP_MARKER_IMAGE && styles.userLocationMarkerFrameAndroid]}
+    >
+      <Image
+        source={userLocationMarkerImage}
+        style={[styles.userLocationMarkerImage, USE_ANDROID_TRIP_MARKER_IMAGE && styles.userLocationMarkerImageAndroid]}
+        resizeMode="contain"
+      />
     </View>
   );
 }
@@ -702,6 +720,7 @@ export default function HomeScreen() {
   const mapAnimationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastMapAnimationAtRef = useRef(0);
   const tripMarkerRefs = useRef<Record<string, MapMarker | null>>({});
+  const passengerMarkerRefs = useRef<Record<string, MapMarker | null>>({});
   const userLocationMarkerRef = useRef<MapMarker | null>(null);
   const openingTripRef = useRef(false);
   const openingTripTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -710,8 +729,15 @@ export default function HomeScreen() {
   const storedTrips = useAppSelector(selectAvailableTrips);
   const locationRadiusKm = useAppSelector(selectLocationRadius);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
-  const [tripsSheetOpen, setTripsSheetOpen] = useState(true);
+  const [tripsSheetOpen, setTripsSheetOpen] = useState(false);
+  const [loadedTripMarkerKeys, setLoadedTripMarkerKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [homeSheetMode, setHomeSheetMode] = useState<HomeSheetMode>('trips');
+
+  useEffect(() => {
+    setLoadedTripMarkerKeys(new Set());
+  }, [isFocused]);
   const [isCenteringOnUser, setIsCenteringOnUser] = useState(false);
   const [mapFocusedOnUser, setMapFocusedOnUser] = useState(false);
   const [userLocationMarker, setUserLocationMarker] = useState<UserLocationMarkerState | null>(null);
@@ -1252,12 +1278,11 @@ export default function HomeScreen() {
           booking.passengerLocationCoordinates?.latitude,
           booking.passengerLocationCoordinates?.longitude,
         );
-        const pickupLatitude = Number(booking.passengerOriginCoordinates?.latitude);
-        const pickupLongitude = Number(booking.passengerOriginCoordinates?.longitude);
         const pickupLocation =
-          Number.isFinite(pickupLatitude) && Number.isFinite(pickupLongitude)
-            ? { latitude: pickupLatitude, longitude: pickupLongitude }
-            : fallbackPickup;
+          normalizeTripMapCoordinate(
+            booking.passengerOriginCoordinates?.latitude,
+            booking.passengerOriginCoordinates?.longitude,
+          ) ?? fallbackPickup;
         const coordinate = liveLocation?.coordinate ?? apiLocation ?? pickupLocation;
 
         if (!coordinate) return;
@@ -1266,6 +1291,7 @@ export default function HomeScreen() {
           bookingId: booking.id,
           coordinate,
           isLive: Boolean(liveLocation || apiLocation),
+          passengerId: booking.passengerId,
           passengerName: booking.passengerName || 'Passager',
         });
       });
@@ -1632,14 +1658,11 @@ export default function HomeScreen() {
           const coordinate =
             (isActiveDriverTrip ? liveUserCoordinate : null) ?? getTripMapCoordinate(trip);
           const isSelected = trip.id === selectedTrip?.id;
+          const markerRenderKey = `${trip.id}:${trip.vehicleType || 'car'}:${isSelected ? 'selected' : 'default'}`;
 
           if (!coordinate) {
             return null;
           }
-
-          const androidTripMarkerImage = USE_ANDROID_TRIP_MARKER_IMAGE
-            ? getTripMarkerImage(trip, isSelected)
-            : undefined;
 
           return (
             <Marker
@@ -1650,20 +1673,37 @@ export default function HomeScreen() {
                   delete tripMarkerRefs.current[trip.id];
                 }
               }}
-              key={`${trip.id}:${trip.vehicleType || 'car'}`}
+              key={markerRenderKey}
               identifier={trip.id}
               coordinate={coordinate}
               anchor={TRIP_MARKER_ANCHOR}
-              image={androidTripMarkerImage}
               title={isActiveDriverTrip ? 'Mon véhicule' : `${formatPrice(trip.price)} - ${trip.driverName || 'Conducteur Zwanga'}`}
               description={isActiveDriverTrip ? 'Position en temps réel pendant le trajet' : `${formatDateTime(trip.departureTime)} · ${placeName(trip.departure)} vers ${placeName(trip.arrival)} · ${trip.availableSeats} place${trip.availableSeats > 1 ? 's' : ''}`}
               onPress={() => handleTripMarkerPress(trip.id, isSelected)}
               onCalloutPress={() => openTripDetail(trip.id)}
               tappable
-              tracksViewChanges={false}
+              tracksViewChanges={isActiveDriverTrip ? false : !loadedTripMarkerKeys.has(markerRenderKey)}
               zIndex={isSelected ? 10 : 1}
             >
-              {!USE_ANDROID_TRIP_MARKER_IMAGE && <TripMapMarker trip={trip} isSelected={isSelected} />}
+              {isActiveDriverTrip ? (
+                <VehicleTrackingMarker />
+              ) : (
+                <TripMapMarker
+                  trip={trip}
+                  isSelected={isSelected}
+                  onImageLoad={() => {
+                    requestAnimationFrame(() => {
+                      setLoadedTripMarkerKeys((current) => {
+                        if (current.has(markerRenderKey)) return current;
+
+                        const next = new Set(current);
+                        next.add(markerRenderKey);
+                        return next;
+                      });
+                    });
+                  }}
+                />
+              )}
               <Callout tooltip onPress={() => openTripDetail(trip.id)}>
                 <View style={styles.tripMapCallout}>
                   <View style={styles.tripMapCalloutTop}>
@@ -1688,17 +1728,33 @@ export default function HomeScreen() {
         })}
         {ongoingDriverTrip && driverPassengerMarkers.map((passenger) => (
           <Marker
+            ref={(marker) => {
+              if (marker) {
+                passengerMarkerRefs.current[passenger.bookingId] = marker;
+              } else {
+                delete passengerMarkerRefs.current[passenger.bookingId];
+              }
+            }}
             key={`home-passenger-${passenger.bookingId}`}
             identifier={`home-passenger-${passenger.bookingId}`}
             coordinate={passenger.coordinate}
-            anchor={USE_ANDROID_TRIP_MARKER_IMAGE ? PASSENGER_LOCATION_MARKER_ANCHOR : USER_LOCATION_MARKER_ANCHOR}
-            image={USE_ANDROID_TRIP_MARKER_IMAGE ? passengerLocationMarkerImage : undefined}
+            anchor={PASSENGER_TRACKING_MARKER_ANCHOR}
             title={passenger.passengerName}
             description={passenger.isLive ? 'Position en temps réel' : 'Point de prise en charge'}
+            onPress={() => router.push(`/passenger/${passenger.passengerId}`)}
+            tappable
             tracksViewChanges={false}
             zIndex={20}
           >
-            {!USE_ANDROID_TRIP_MARKER_IMAGE && <PassengerLocationMapMarker />}
+            <PassengerTrackingMarker
+              isLive={passenger.isLive}
+              name={passenger.passengerName}
+              onReady={() => {
+                requestAnimationFrame(() => {
+                  passengerMarkerRefs.current[passenger.bookingId]?.redraw();
+                });
+              }}
+            />
           </Marker>
         ))}
         {userLocationMarker && !ongoingDriverTrip && (
@@ -1709,14 +1765,13 @@ export default function HomeScreen() {
             identifier="home-user-location"
             coordinate={userLocationMarker.coordinate}
             anchor={USER_LOCATION_MARKER_ANCHOR}
-            image={USE_ANDROID_TRIP_MARKER_IMAGE ? userLocationMarkerImage : undefined}
             title={userLocationMarker.title}
             description={userLocationMarker.address}
             onPress={showUserLocationCallout}
             tracksViewChanges={false}
             zIndex={30}
           >
-            {!USE_ANDROID_TRIP_MARKER_IMAGE && <UserLocationMapMarker />}
+            <UserLocationMapMarker />
             <Callout tooltip>
               <View style={styles.userLocationCallout}>
                 <View style={styles.userLocationCalloutTop}>
@@ -2358,6 +2413,14 @@ const styles = StyleSheet.create({
     width: 70,
     height: 70,
   },
+  tripMapMarkerFrameAndroid: {
+    width: 58,
+    height: 58,
+  },
+  tripMapMarkerFrameAndroidSelected: {
+    width: 64,
+    height: 64,
+  },
   tripMapMarkerImage: {
     width: 56,
     height: 56,
@@ -2365,6 +2428,14 @@ const styles = StyleSheet.create({
   tripMapMarkerImageSelected: {
     width: 62,
     height: 62,
+  },
+  tripMapMarkerImageAndroid: {
+    width: 38,
+    height: 38,
+  },
+  tripMapMarkerImageAndroidSelected: {
+    width: 42,
+    height: 42,
   },
   userLocationMarkerFrame: {
     width: 64,
@@ -2376,6 +2447,14 @@ const styles = StyleSheet.create({
   userLocationMarkerImage: {
     width: 58,
     height: 58,
+  },
+  userLocationMarkerFrameAndroid: {
+    width: 46,
+    height: 46,
+  },
+  userLocationMarkerImageAndroid: {
+    width: 42,
+    height: 42,
   },
   passengerLocationMarkerFrame: {
     width: 42,
@@ -2391,6 +2470,37 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 3,
+  },
+  passengerProfileCallout: {
+    width: 210,
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  passengerProfileCalloutIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.secondary,
+  },
+  passengerProfileCalloutText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  passengerProfileCalloutName: {
+    color: HOME_COLORS.ink,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  passengerProfileCalloutAction: {
+    marginTop: 2,
+    color: Colors.primary,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
   },
   tripMapCallout: {
     width: 226,
