@@ -1,5 +1,5 @@
 import { useDialog } from '@/components/ui/DialogProvider';
-import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import {
   useDisableNotificationsMutation,
   useGetNotificationsQuery,
@@ -18,20 +18,23 @@ import {
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
+  type ListRenderItem,
   Modal,
   Platform,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+const NOTIFICATIONS_PAGE_SIZE = 40;
+const EMPTY_NOTIFICATIONS: Notification[] = [];
 
 const notificationTypeConfig: Record<
   string,
@@ -59,28 +62,94 @@ const notificationTypeConfig: Record<
   },
 };
 
+const notificationDataLabels: Record<string, string> = {
+  type: 'Type',
+  tripId: 'ID Trajet',
+  bookingId: 'ID Réservation',
+  conversationId: 'ID Conversation',
+  userId: 'ID Utilisateur',
+  message: 'Message',
+  status: 'Statut',
+};
+
+type NotificationListItemProps = {
+  notification: Notification;
+  onDelete: (notificationId: string) => void;
+  onPress: (notification: Notification) => void;
+};
+
+const NotificationListItem = React.memo(function NotificationListItem({
+  notification,
+  onDelete,
+  onPress,
+}: NotificationListItemProps) {
+  const notificationType = notification.data?.type || 'default';
+  const config = notificationTypeConfig[notificationType] ?? notificationTypeConfig.default;
+  const isUnread = !notification.isRead;
+
+  return (
+    <TouchableOpacity
+      style={[styles.notificationCard, isUnread && styles.notificationCardUnread]}
+      onPress={() => onPress(notification)}
+      activeOpacity={0.85}
+    >
+      <View style={[styles.notificationIcon, { backgroundColor: config.background }]}>
+        <Ionicons name={config.icon} size={20} color={config.color} />
+      </View>
+      <View style={styles.notificationContent}>
+        <View style={styles.notificationHeader}>
+          <Text style={styles.notificationTitle} numberOfLines={1}>
+            {notification.title}
+          </Text>
+          <Text style={styles.notificationTime} numberOfLines={1}>
+            {formatRelativeTime(notification.createdAt)}
+          </Text>
+        </View>
+        <Text style={styles.notificationMessage} numberOfLines={2}>
+          {notification.body}
+        </Text>
+      </View>
+      {isUnread && <View style={styles.unreadDot} />}
+      <TouchableOpacity
+        accessibilityLabel="Supprimer la notification"
+        activeOpacity={0.8}
+        hitSlop={8}
+        onPress={(event) => {
+          event.stopPropagation();
+          onDelete(notification.id);
+        }}
+        style={styles.inlineDeleteButton}
+      >
+        <Ionicons name="trash-outline" size={18} color={Colors.danger} />
+      </TouchableOpacity>
+    </TouchableOpacity>
+  );
+});
+
 export default function NotificationsScreen() {
   const router = useRouter();
   const { showDialog } = useDialog();
   const { data: currentUser } = useGetCurrentUserQuery();
+  const [notificationsLimit, setNotificationsLimit] = useState(NOTIFICATIONS_PAGE_SIZE);
+  const notificationsQueryParams = useMemo(() => ({ limit: notificationsLimit }), [notificationsLimit]);
   const {
     data: notificationsData,
     isLoading,
     isFetching,
     refetch,
-  } = useGetNotificationsQuery();
+  } = useGetNotificationsQuery(notificationsQueryParams);
 
   const [markNotificationsAsRead] = useMarkNotificationsAsReadMutation();
   const [markAllAsRead] = useMarkAllNotificationsAsReadMutation();
   const [disableNotifications] = useDisableNotificationsMutation();
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
-  const swipeableRefs = useRef<Map<string, Swipeable | null>>(new Map());
 
-  const notifications = notificationsData?.notifications ?? [];
+  const notifications = notificationsData?.notifications ?? EMPTY_NOTIFICATIONS;
   const unreadCount = notificationsData?.unreadCount ?? 0;
-  const useSwipeActions = Platform.OS !== 'ios';
+  const totalNotifications = notificationsData?.total ?? notifications.length;
+  const hasMoreNotifications = notifications.length < totalNotifications;
 
-  const handleSelectNotification = async (notification: Notification) => {
+  const handleSelectNotification = useCallback(async (notification: Notification) => {
     // Marquer comme lu et désactiver (faire disparaître) la notification
     try {
       // Marquer comme lu d'abord
@@ -105,21 +174,19 @@ export default function NotificationsScreen() {
       // En cas d'erreur, ouvrir le modal
       setSelectedNotification(notification);
     }
-  };
+  }, [currentUser, disableNotifications, markNotificationsAsRead, router]);
 
-  const handleMarkAllAsRead = async () => {
+  const handleMarkAllAsRead = useCallback(async () => {
     try {
       await markAllAsRead().unwrap();
     } catch (error) {
       console.warn('Impossible de marquer toutes les notifications comme lues:', error);
     }
-  };
+  }, [markAllAsRead]);
 
-  const handleDeleteNotification = async (notificationId: string) => {
+  const handleDeleteNotification = useCallback(async (notificationId: string) => {
     try {
       await disableNotifications({ notificationIds: [notificationId] }).unwrap();
-      // Fermer le swipeable après suppression
-      swipeableRefs.current.get(notificationId)?.close();
     } catch (error: any) {
       showDialog({
         variant: 'danger',
@@ -127,21 +194,29 @@ export default function NotificationsScreen() {
         message: error?.data?.message || 'Impossible de supprimer la notification',
       });
     }
-  };
+  }, [disableNotifications, showDialog]);
 
-  const handleDeleteAllNotifications = () => {
+  const handleDeleteAllNotifications = useCallback(() => {
     if (notifications.length === 0) {
       return;
     }
 
+    const deleteTitle = hasMoreNotifications
+      ? 'Supprimer les notifications affichées'
+      : 'Supprimer toutes les notifications';
+    const deleteLabel = hasMoreNotifications ? 'Supprimer affichées' : 'Supprimer tout';
+    const deleteMessage = hasMoreNotifications
+      ? `Supprimer les ${notifications.length} notifications affichées ? Les plus anciennes resteront accessibles en bas de liste.`
+      : `Êtes-vous sûr de vouloir supprimer toutes les ${notifications.length} notification${notifications.length > 1 ? 's' : ''} ? Cette action est irréversible.`;
+
     showDialog({
       variant: 'warning',
-      title: 'Supprimer toutes les notifications',
-      message: `Êtes-vous sûr de vouloir supprimer toutes les ${notifications.length} notification${notifications.length > 1 ? 's' : ''} ? Cette action est irréversible.`,
+      title: deleteTitle,
+      message: deleteMessage,
       actions: [
         { label: 'Annuler', variant: 'ghost' },
         {
-          label: 'Supprimer tout',
+          label: deleteLabel,
           variant: 'primary',
           onPress: async () => {
             try {
@@ -150,7 +225,9 @@ export default function NotificationsScreen() {
               showDialog({
                 variant: 'success',
                 title: 'Notifications supprimées',
-                message: 'Toutes les notifications ont été supprimées avec succès.',
+                message: hasMoreNotifications
+                  ? 'Les notifications affichées ont été supprimées avec succès.'
+                  : 'Toutes les notifications ont été supprimées avec succès.',
               });
             } catch (error: any) {
               showDialog({
@@ -163,58 +240,16 @@ export default function NotificationsScreen() {
         },
       ],
     });
-  };
-
-  const renderRightActions = (notification: Notification) => {
-    return (
-      <View style={styles.rightActionContainer}>
-        <TouchableOpacity
-          style={styles.deleteAction}
-          onPress={() => {
-            handleDeleteNotification(notification.id);
-          }}
-        >
-          <Ionicons name="trash-outline" size={20} color={Colors.white} />
-          <Text style={styles.deleteActionText}>Supprimer</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  };
-
-  const renderLeftActions = (notification: Notification) => {
-    return (
-      <View style={styles.leftActionContainer}>
-        <TouchableOpacity
-          style={styles.deleteAction}
-          onPress={() => {
-            handleDeleteNotification(notification.id);
-          }}
-        >
-          <Ionicons name="trash-outline" size={20} color={Colors.white} />
-          <Text style={styles.deleteActionText}>Supprimer</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  };
+  }, [disableNotifications, hasMoreNotifications, notifications, showDialog]);
 
   const renderNotificationData = (data: Record<string, any>) => {
     const dataEntries = Object.entries(data);
     
     // Mapper les clés communes à des labels lisibles
-    const keyLabels: Record<string, string> = {
-      type: 'Type',
-      tripId: 'ID Trajet',
-      bookingId: 'ID Réservation',
-      conversationId: 'ID Conversation',
-      userId: 'ID Utilisateur',
-      message: 'Message',
-      status: 'Statut',
-    };
-
     return (
       <View style={styles.dataList}>
         {dataEntries.map(([key, value]) => {
-          const label = keyLabels[key] || key.charAt(0).toUpperCase() + key.slice(1);
+          const label = notificationDataLabels[key] || key.charAt(0).toUpperCase() + key.slice(1);
           const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
           
           return (
@@ -230,80 +265,61 @@ export default function NotificationsScreen() {
     );
   };
 
-  const renderNotificationCard = (notification: Notification) => {
-    // Déterminer le type de notification depuis les données
-    const notificationType = notification.data?.type || 'default';
-    const config = notificationTypeConfig[notificationType] ?? notificationTypeConfig.default;
-    const isUnread = !notification.isRead;
+  const handleRefresh = useCallback(() => {
+    refetch();
+  }, [refetch]);
 
-    const cardContent = (
-      <TouchableOpacity
-        style={[styles.notificationCard, isUnread && styles.notificationCardUnread]}
-        onPress={() => handleSelectNotification(notification)}
-        activeOpacity={0.85}
-      >
-        <View style={[styles.notificationIcon, { backgroundColor: config.background }]}>
-          <Ionicons name={config.icon} size={20} color={config.color} />
-        </View>
-        <View style={styles.notificationContent}>
-          <View style={styles.notificationHeader}>
-            <Text style={styles.notificationTitle}>{notification.title}</Text>
-            <Text style={styles.notificationTime}>{formatRelativeTime(notification.createdAt)}</Text>
-          </View>
-          <Text style={styles.notificationMessage} numberOfLines={2}>
-            {notification.body}
-          </Text>
-        </View>
-        {isUnread && <View style={styles.unreadDot} />}
-        {!useSwipeActions && (
-          <TouchableOpacity
-            accessibilityLabel="Supprimer la notification"
-            activeOpacity={0.8}
-            hitSlop={8}
-            onPress={(event) => {
-              event.stopPropagation();
-              handleDeleteNotification(notification.id);
-            }}
-            style={styles.inlineDeleteButton}
-          >
-            <Ionicons name="trash-outline" size={18} color={Colors.danger} />
-          </TouchableOpacity>
-        )}
-      </TouchableOpacity>
-    );
+  const handleLoadMore = useCallback(() => {
+    if (isFetching || !hasMoreNotifications) {
+      return;
+    }
 
-    if (!useSwipeActions) {
-      return <View key={notification.id}>{cardContent}</View>;
+    setNotificationsLimit((currentLimit) => currentLimit + NOTIFICATIONS_PAGE_SIZE);
+  }, [hasMoreNotifications, isFetching]);
+
+  const keyExtractor = useCallback((notification: Notification) => notification.id, []);
+
+  const renderNotificationItem = useCallback<ListRenderItem<Notification>>(
+    ({ item }) => (
+      <NotificationListItem
+        notification={item}
+        onDelete={handleDeleteNotification}
+        onPress={handleSelectNotification}
+      />
+    ),
+    [handleDeleteNotification, handleSelectNotification],
+  );
+
+  const renderEmptyState = useCallback(
+    () => (
+      <View style={styles.emptyContainer}>
+        <View style={styles.emptyIcon}>
+          <Ionicons name="notifications-off-outline" size={40} color={Colors.gray[500]} />
+        </View>
+        <Text style={styles.emptyTitle}>Aucune notification</Text>
+        <Text style={styles.emptyDescription}>
+          Nous vous préviendrons dès qu’il y aura quelque chose de nouveau.
+        </Text>
+      </View>
+    ),
+    [],
+  );
+
+  const renderListFooter = useCallback(() => {
+    if (!hasMoreNotifications) {
+      return null;
     }
 
     return (
-      <Swipeable
-        key={notification.id}
-        ref={(ref) => {
-          if (ref) {
-            swipeableRefs.current.set(notification.id, ref);
-          } else {
-            swipeableRefs.current.delete(notification.id);
-          }
-        }}
-        renderRightActions={() => renderRightActions(notification)}
-        renderLeftActions={() => renderLeftActions(notification)}
-        onSwipeableWillOpen={() => {
-          // Fermer les autres swipeables ouverts
-          swipeableRefs.current.forEach((ref, id) => {
-            if (id !== notification.id && ref) {
-              ref.close();
-            }
-          });
-        }}
-        friction={2}
-        overshootRight={false}
-        overshootLeft={false}
-      >
-        {cardContent}
-      </Swipeable>
+      <View style={styles.listFooter}>
+        {isFetching ? (
+          <ActivityIndicator size="small" color={Colors.primary} />
+        ) : (
+          <Text style={styles.listFooterText}>Charger plus</Text>
+        )}
+      </View>
     );
-  };
+  }, [hasMoreNotifications, isFetching]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -328,7 +344,7 @@ export default function NotificationsScreen() {
               <Ionicons name="trash-outline" size={18} color={Colors.danger} />
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={styles.refreshButton} onPress={() => refetch()}>
+          <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh}>
             {isFetching ? (
               <ActivityIndicator size="small" color={Colors.primary} />
             ) : (
@@ -338,37 +354,40 @@ export default function NotificationsScreen() {
         </View>
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollViewContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={isFetching}
-            onRefresh={refetch}
-            colors={[Colors.primary]}
-            tintColor={Colors.primary}
-          />
-        }
-      >
-        {isLoading ? (
-          <View style={styles.loaderContainer}>
-            <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loaderText}>Chargement des notifications...</Text>
-          </View>
-        ) : notifications && notifications.length > 0 ? (
-          notifications.map((notification) => renderNotificationCard(notification))
-        ) : (
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIcon}>
-              <Ionicons name="notifications-off-outline" size={40} color={Colors.gray[500]} />
-            </View>
-            <Text style={styles.emptyTitle}>Aucune notification</Text>
-            <Text style={styles.emptyDescription}>
-              Nous vous préviendrons dès qu’il y aura quelque chose de nouveau.
-            </Text>
-          </View>
-        )}
-      </ScrollView>
+      {isLoading ? (
+        <View style={styles.loaderContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loaderText}>Chargement des notifications...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={notifications}
+          keyExtractor={keyExtractor}
+          renderItem={renderNotificationItem}
+          style={styles.list}
+          contentContainerStyle={[
+            styles.listContent,
+            notifications.length === 0 && styles.listContentEmpty,
+          ]}
+          refreshControl={
+            <RefreshControl
+              refreshing={isFetching}
+              onRefresh={handleRefresh}
+              colors={[Colors.primary]}
+              tintColor={Colors.primary}
+            />
+          }
+          ListEmptyComponent={renderEmptyState}
+          ListFooterComponent={renderListFooter}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          updateCellsBatchingPeriod={60}
+          windowSize={5}
+          removeClippedSubviews={Platform.OS === 'android'}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.35}
+        />
+      )}
 
       <Modal animationType="fade" transparent visible={selectedNotification !== null}>
         <View style={styles.modalOverlay}>
@@ -571,21 +590,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  scrollView: {
+  list: {
     flex: 1,
   },
-  scrollViewContent: {
+  listContent: {
     padding: Spacing.xl,
     paddingBottom: Spacing.xxl,
+  },
+  listContentEmpty: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  listFooter: {
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  listFooterText: {
+    color: Colors.gray[500],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.medium,
   },
   notificationCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.white,
     borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
     padding: Spacing.md,
     marginBottom: Spacing.md,
-    ...CommonStyles.shadowSm,
   },
   notificationCardUnread: {
     borderWidth: 1,
@@ -765,34 +799,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
-  },
-  rightActionContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginBottom: Spacing.md,
-  },
-  leftActionContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    marginBottom: Spacing.md,
-  },
-  deleteAction: {
-    backgroundColor: Colors.danger,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 100,
-    height: '100%',
-    borderRadius: BorderRadius.xl,
-    marginHorizontal: Spacing.xs,
-    flexDirection: 'row',
-    gap: Spacing.xs,
-  },
-  deleteActionText: {
-    color: Colors.white,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
   },
 });
 

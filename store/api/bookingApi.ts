@@ -48,6 +48,11 @@ type ServerBooking = {
   passengerDestinationReference?: string | null;
   passengerDestinationCoordinates?: { latitude: number; longitude: number } | null;
   passengerDestinationPoint?: { type: string; coordinates: [number, number] } | null;
+  passengerLocationCoordinates?: { latitude: number; longitude: number } | null;
+  passengerLocationPoint?: { type: string; coordinates: [number, number] } | null;
+  passengerCurrentLocation?: { type: string; coordinates: [number, number] } | null;
+  passengerLocationUpdatedAt?: string | null;
+  passengerLastLocationUpdateAt?: string | null;
   pickedUp?: boolean;
   pickedUpAt?: string | null;
   pickedUpConfirmedByPassenger?: boolean;
@@ -129,6 +134,12 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
     booking.passengerDestinationPoint,
     booking.passengerDestinationCoordinates,
   ),
+  passengerLocationCoordinates: mapBookingCoordinates(
+    booking.passengerCurrentLocation ?? booking.passengerLocationPoint,
+    booking.passengerLocationCoordinates,
+  ),
+  passengerLocationUpdatedAt:
+    booking.passengerLocationUpdatedAt ?? booking.passengerLastLocationUpdateAt ?? undefined,
   pickedUp: booking.pickedUp ?? false,
   pickedUpAt: booking.pickedUpAt ?? undefined,
   pickedUpConfirmedByPassenger: booking.pickedUpConfirmedByPassenger ?? false,

@@ -1,8 +1,15 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import {
+  PASSENGER_TRACKING_MARKER_ANCHOR,
+  PassengerTrackingMarker,
+  VEHICLE_TRACKING_MARKER_ANCHOR,
+  VehicleTrackingMarker,
+} from '@/components/TrackingMapMarkers';
 import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { trackingSocket } from '@/services/trackingSocket';
+import { trackingSocket, type PassengerLocationPayload } from '@/services/trackingSocket';
 import {
+  useConfirmDropoffMutation,
   useGetTripBookingsQuery
 } from '@/store/api/bookingApi';
 import { TravelMode, useGetDirectionsMutation } from '@/store/api/googleMapsApi';
@@ -13,6 +20,7 @@ import {
   getTripLocationCoordinate,
   normalizeTripMapCoordinate,
 } from '@/utils/tripCoordinates';
+import { getRouteAlignedPosition } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Speech from 'expo-speech';
@@ -22,6 +30,7 @@ import {
   ActivityIndicator,
   BackHandler,
   Dimensions,
+  Image,
   Modal,
   Platform,
   ScrollView,
@@ -32,7 +41,7 @@ import {
   View,
   type ImageRequireSource,
 } from 'react-native';
-import MapView, { AnimatedRegion, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { AnimatedRegion, Marker, Polyline, PROVIDER_GOOGLE, type MapMarker } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
@@ -62,14 +71,26 @@ interface Waypoint {
   completed: boolean;
 }
 
+interface PassengerMapLocation {
+  bookingId: string;
+  coordinate: { latitude: number; longitude: number };
+  isLive: boolean;
+  passengerId: string;
+  passengerName: string;
+}
+
+type LivePassengerLocation = {
+  coordinate: { latitude: number; longitude: number };
+  updatedAt?: string | null;
+};
+
 const SPEECH_LANGUAGE = 'fr-FR';
 const SPEECH_RATE = 0.95;
 const SPEECH_MIN_INTERVAL_MS = 2500;
+const MAX_LIVE_PASSENGER_MARKERS = Platform.OS === 'ios' ? 10 : 16;
 const USE_ANDROID_NAVIGATION_MARKER_IMAGES = Platform.OS === 'android';
-const ANDROID_DRIVER_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
 const ANDROID_PIN_MARKER_ANCHOR = { x: 0.5, y: 0.88 };
-const androidNavigationMarkerImages: Record<'driver' | 'pickup' | 'dropoff' | 'destination', ImageRequireSource> = {
-  driver: require('@/assets/images/map-markers/trip-marker-car.png'),
+const androidNavigationMarkerImages: Record<'pickup' | 'dropoff' | 'destination', ImageRequireSource> = {
   pickup: require('@/assets/images/map-markers/trip-detail-marker-passenger.png'),
   dropoff: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
   destination: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
@@ -111,9 +132,17 @@ export default function NavigationScreen() {
   const tripId = typeof id === 'string' ? id : '';
 
   const { data: trip, isLoading, isFetching: isTripFetching, refetch: refetchTrip } = useGetTripByIdQuery(tripId, { skip: !tripId });
-  const { data: bookings, isLoading: bookingsLoading, refetch: refetchBookings } = useGetTripBookingsQuery(tripId, { skip: !tripId });
-  const [getDirections] = useGetDirectionsMutation();
   const isTripOngoing = trip?.status === 'ongoing';
+  const { data: bookings, isLoading: bookingsLoading, refetch: refetchBookings } = useGetTripBookingsQuery(
+    tripId,
+    {
+      skip: !tripId,
+      pollingInterval: isTripOngoing ? 10000 : 0,
+      skipPollingIfUnfocused: true,
+    },
+  );
+  const [confirmDropoff, { isLoading: isConfirmingDropoff }] = useConfirmDropoffMutation();
+  const [getDirections] = useGetDirectionsMutation();
   const tripDepartureCoordinate = useMemo(
     () =>
       getTripLocationCoordinate({
@@ -134,6 +163,7 @@ export default function NavigationScreen() {
   );
 
   const mapRef = useRef<MapView>(null);
+  const passengerMarkerRefs = useRef<Record<string, MapMarker | null>>({});
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }>>([]);
   const [steps, setSteps] = useState<RouteStep[]>([]);
@@ -145,6 +175,7 @@ export default function NavigationScreen() {
   const [heading, setHeading] = useState<number>(0);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [isVoiceGuidanceEnabled, setIsVoiceGuidanceEnabled] = useState(true);
+  const [livePassengerLocations, setLivePassengerLocations] = useState<Record<string, LivePassengerLocation>>({});
   
   // Modal et panneau pour les waypoints
   const [waypointModalVisible, setWaypointModalVisible] = useState(false);
@@ -159,7 +190,6 @@ export default function NavigationScreen() {
   const backgroundDisclosureResolverRef = useRef<((accepted: boolean) => void) | null>(null);
   const isMountedRef = useRef(true);
   const isTripOngoingRef = useRef(false);
-  const [driverTracksViewChanges, setDriverTracksViewChanges] = useState(true);
   const [destinationTracksViewChanges, setDestinationTracksViewChanges] = useState(true);
   const driverPosition = useRef(
     new AnimatedRegion({
@@ -169,19 +199,52 @@ export default function NavigationScreen() {
       longitudeDelta: 0,
     })
   ).current;
+
+  const passengerMapLocations = useMemo<PassengerMapLocation[]>(() => {
+    const locations: PassengerMapLocation[] = [];
+
+    (bookings ?? [])
+      .filter((booking) => booking.status === 'accepted' && !booking.droppedOff)
+      .slice(0, MAX_LIVE_PASSENGER_MARKERS)
+      .forEach((booking) => {
+        const liveLocation = livePassengerLocations[booking.id];
+        const apiLocation = normalizeTripMapCoordinate(
+          booking.passengerLocationCoordinates?.latitude,
+          booking.passengerLocationCoordinates?.longitude,
+        );
+        const pickupLocation = normalizeTripMapCoordinate(
+          booking.passengerOriginCoordinates?.latitude,
+          booking.passengerOriginCoordinates?.longitude,
+        );
+        const coordinate = liveLocation?.coordinate ?? apiLocation ?? pickupLocation ?? tripDepartureCoordinate;
+
+        if (!coordinate) return;
+
+        locations.push({
+          bookingId: booking.id,
+          coordinate,
+          isLive: Boolean(liveLocation || apiLocation),
+          passengerId: booking.passengerId,
+          passengerName: booking.passengerName || 'Passager',
+        });
+      });
+
+    return locations;
+  }, [bookings, livePassengerLocations, tripDepartureCoordinate]);
   
   // Refs pour éviter les re-rendus excessifs
   const routeFetchedRef = useRef(false);
+  const routeCoordinatesRef = useRef<{ latitude: number; longitude: number }[]>([]);
   const lastRouteFetchTimeRef = useRef(0);
   const waypointsCountRef = useRef(0);
   const currentLocationRef = useRef<Location.LocationObject | null>(null);
   const hasEnabled3DRef = useRef(false);
-  const exitNavigationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isExitingRef = useRef(false);
   const isVoiceGuidanceEnabledRef = useRef(true);
   const lastSpeechAtRef = useRef(0);
   const spokenInstructionKeysRef = useRef<Set<string>>(new Set());
   const announcedWaypointIdsRef = useRef<Set<string>>(new Set());
+  const presentedWaypointIdsRef = useRef<Set<string>>(new Set());
   const stepsRef = useRef<RouteStep[]>([]);
   const currentStepIndexRef = useRef(0);
   const waypointsRef = useRef<Waypoint[]>([]);
@@ -193,6 +256,7 @@ export default function NavigationScreen() {
   waypointsRef.current = waypoints;
   currentWaypointIndexRef.current = currentWaypointIndex;
   waypointModalVisibleRef.current = waypointModalVisible;
+  routeCoordinatesRef.current = routeCoordinates;
 
   const cleanupNavigationUi = useCallback(() => {
     if (recalcRouteTimeoutRef.current) {
@@ -227,29 +291,24 @@ export default function NavigationScreen() {
     currentLocationRef.current = null;
     mapRef.current = null;
 
-    if (tripId) {
-      trackingSocket.leaveTrip(tripId);
-    }
-
-    if (exitNavigationTimeoutRef.current) {
-      clearTimeout(exitNavigationTimeoutRef.current);
-    }
-
-    exitNavigationTimeoutRef.current = setTimeout(() => {
-      if (!isMountedRef.current) {
-        return;
+    try {
+      if (router.canGoBack()) {
+        router.back();
+      } else if (tripId) {
+        router.replace(`/trip/${tripId}`);
+      } else {
+        router.replace('/(tabs)');
       }
-      router.back();
-    }, 80);
+    } catch (error) {
+      isExitingRef.current = false;
+      console.warn('[DriverNavigation] Impossible de quitter la navigation:', error);
+      router.replace('/(tabs)');
+    }
   }, [cleanupNavigationUi, router, tripId]);
 
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
-      if (exitNavigationTimeoutRef.current) {
-        clearTimeout(exitNavigationTimeoutRef.current);
-        exitNavigationTimeoutRef.current = null;
-      }
       if (recalcRouteTimeoutRef.current) {
         clearTimeout(recalcRouteTimeoutRef.current);
         recalcRouteTimeoutRef.current = null;
@@ -276,6 +335,7 @@ export default function NavigationScreen() {
   useEffect(() => {
     spokenInstructionKeysRef.current.clear();
     announcedWaypointIdsRef.current.clear();
+    presentedWaypointIdsRef.current.clear();
     lastSpeechAtRef.current = 0;
     void Speech.stop();
   }, [tripId]);
@@ -305,6 +365,22 @@ export default function NavigationScreen() {
       setBackgroundDisclosureVisible(true);
     });
 
+  const presentWaypointModal = useCallback((waypoint: Waypoint) => {
+    if (
+      !isMountedRef.current ||
+      waypoint.completed ||
+      waypointModalVisibleRef.current ||
+      presentedWaypointIdsRef.current.has(waypoint.id)
+    ) {
+      return;
+    }
+
+    presentedWaypointIdsRef.current.add(waypoint.id);
+    waypointModalVisibleRef.current = true;
+    setActiveWaypoint(waypoint);
+    setWaypointModalVisible(true);
+  }, []);
+
   // Connexion WebSocket pour le tracking temps reel
   useEffect(() => {
     if (!tripId || !isTripOngoing) {
@@ -313,6 +389,7 @@ export default function NavigationScreen() {
     }
 
     let isCancelled = false;
+    setLivePassengerLocations({});
 
     // Rejoindre la room du trip pour le tracking temps reel
     trackingSocket
@@ -320,6 +397,7 @@ export default function NavigationScreen() {
       .then(() => {
         if (!isMountedRef.current || isCancelled) return;
         setIsSocketConnected(true);
+        void trackingSocket.requestPassengerLocations(tripId);
         console.log('[Navigation] Connecte au tracking temps reel');
       })
       .catch((error) => {
@@ -337,10 +415,47 @@ export default function NavigationScreen() {
     const unsubscribeAutoProgress = trackingSocket.subscribeToBookingAutoProgress((payload) => {
       if (!isMountedRef.current || isCancelled || payload.tripId !== tripId) return;
       if (payload.events.length > 0) {
+        payload.events.forEach((event) => {
+          const waypointType = event.type === 'pickup_confirmed' ? 'pickup' : 'dropoff';
+          const waypoint = waypointsRef.current.find(
+            (item) => item.booking.id === event.bookingId && item.type === waypointType,
+          );
+          if (waypoint) {
+            presentWaypointModal(waypoint);
+          }
+        });
         refetchBookings();
         refetchTrip();
       }
     });
+
+    const unsubscribePassengerLocation = trackingSocket.subscribeToPassengerLocation(
+      (payload: PassengerLocationPayload) => {
+        if (
+          !isMountedRef.current ||
+          isCancelled ||
+          payload.tripId !== tripId ||
+          !payload.bookingId ||
+          !payload.coordinates
+        ) {
+          return;
+        }
+
+        const coordinate = normalizeTripMapCoordinate(
+          payload.coordinates[1],
+          payload.coordinates[0],
+        );
+        if (!coordinate) return;
+
+        setLivePassengerLocations((current) => ({
+          ...current,
+          [payload.bookingId]: {
+            coordinate,
+            updatedAt: payload.updatedAt,
+          },
+        }));
+      },
+    );
 
     return () => {
       isCancelled = true;
@@ -348,11 +463,12 @@ export default function NavigationScreen() {
       trackingSocket.leaveTrip(tripId);
       unsubscribeError();
       unsubscribeAutoProgress();
+      unsubscribePassengerLocation();
       currentLocationRef.current = null;
 
       console.log('[Navigation] Deconnecte et memoire nettoyee');
     };
-  }, [refetchBookings, refetchTrip, tripId, isTripOngoing]);
+  }, [isTripOngoing, presentWaypointModal, refetchBookings, refetchTrip, tripId]);
   // Créer les waypoints à partir des bookings acceptés
   useEffect(() => {
     if (!bookings || !trip) return;
@@ -371,17 +487,21 @@ export default function NavigationScreen() {
 
     acceptedBookings.forEach((booking) => {
       try {
-        // Point de récupération du passager (toujours le départ du trip)
+        // Utiliser le point de récupération choisi pendant la réservation.
+        const passengerPickupCoordinate = normalizeTripMapCoordinate(
+          booking.passengerOriginCoordinates?.latitude,
+          booking.passengerOriginCoordinates?.longitude,
+        );
         const pickupLocation = {
-          lat: tripDepartureCoordinate!.latitude,
-          lng: tripDepartureCoordinate!.longitude,
+          lat: passengerPickupCoordinate?.latitude ?? tripDepartureCoordinate!.latitude,
+          lng: passengerPickupCoordinate?.longitude ?? tripDepartureCoordinate!.longitude,
         };
 
         waypointsList.push({
           id: `pickup-${booking.id}`,
           type: 'pickup',
           location: pickupLocation,
-          address: trip.departure.address || '',
+          address: booking.passengerOrigin || trip.departure.address || '',
           passenger: {
             id: booking.passengerId,
             name: booking.passengerName || 'Passager',
@@ -517,6 +637,7 @@ export default function NavigationScreen() {
         if (!isMountedRef.current) return;
 
         if (location) {
+          currentLocationRef.current = location;
           setCurrentLocation(location);
           driverPosition.setValue({
             latitude: location.coords.latitude,
@@ -546,47 +667,63 @@ export default function NavigationScreen() {
         (newLocation) => {
           if (!isMountedRef.current) return;
           const now = Date.now();
-          
-          // Toujours stocker dans la ref pour les calculs internes
-          currentLocationRef.current = newLocation;
 
-          // Animer le marqueur conducteur (interpolation)
-          driverPosition.timing({
+          if (
+            currentLocationRef.current &&
+            typeof newLocation.coords.accuracy === 'number' &&
+            newLocation.coords.accuracy > 80
+          ) {
+            return;
+          }
+
+          currentLocationRef.current = newLocation;
+          const rawCoordinate = {
             latitude: newLocation.coords.latitude,
             longitude: newLocation.coords.longitude,
+          };
+          const routeAlignment = getRouteAlignedPosition(
+            rawCoordinate,
+            routeCoordinatesRef.current,
+          );
+          const displayedCoordinate = routeAlignment?.coordinate ?? rawCoordinate;
+
+          driverPosition.timing({
+            latitude: displayedCoordinate.latitude,
+            longitude: displayedCoordinate.longitude,
             duration: 4500,
             useNativeDriver: false,
             toValue: 0,
             latitudeDelta: 0,
             longitudeDelta: 0
           }).start();
-          
+
+          const gpsHeading =
+            newLocation.coords.heading !== null &&
+            newLocation.coords.heading !== -1 &&
+            (newLocation.coords.speed ?? 0) > 0.8
+              ? normalizeHeading(newLocation.coords.heading)
+              : null;
+          const alignedHeading = routeAlignment?.heading ?? gpsHeading;
+
+          if (alignedHeading !== null) {
+            setHeading((previousHeading) => {
+              const currentHeading = normalizeHeading(previousHeading);
+              let delta = alignedHeading - currentHeading;
+              if (delta > 180) delta -= 360;
+              if (delta < -180) delta += 360;
+
+              if (Math.abs(delta) < 3) {
+                return previousHeading;
+              }
+
+              return normalizeHeading(currentHeading + delta * 0.45);
+            });
+          }
+
           // Mettre à jour le state très rarement (pour éviter les re-rendus)
           if (now - lastStateUpdateTime > STATE_UPDATE_INTERVAL) {
             lastStateUpdateTime = now;
             setCurrentLocation(newLocation);
-
-            // Mettre à jour le cap (heading) seulement s'il a changé significativement
-            if (
-              newLocation.coords.heading !== null &&
-              newLocation.coords.heading !== -1 &&
-              (newLocation.coords.speed ?? 0) > 0.5
-            ) {
-              setHeading(prev => {
-                const nextHeading = normalizeHeading(newLocation.coords.heading!);
-                const currentHeading = normalizeHeading(prev);
-                let delta = nextHeading - currentHeading;
-                if (delta > 180) delta -= 360;
-                if (delta < -180) delta += 360;
-
-                if (Math.abs(delta) < 8) {
-                  return prev;
-                }
-
-                const smoothedHeading = normalizeHeading(currentHeading + delta * 0.35);
-                return smoothedHeading;
-              });
-            }
           }
 
           // Mettre à jour la position du conducteur via WebSocket (throttled)
@@ -704,13 +841,26 @@ export default function NavigationScreen() {
 
   const buildWaypointSpeech = useCallback((waypoint: Waypoint) => {
     const passengerName = waypoint.passenger.name || 'le passager';
-    const waypointType =
-      waypoint.type === 'pickup'
-        ? `point de récupération de ${passengerName}`
-        : `point d'arrivée de ${passengerName}`;
     const address = waypoint.address ? ` Adresse: ${waypoint.address}.` : '';
-    return `Vous arrivez au ${waypointType}.${address}`;
+    if (waypoint.type === 'pickup') {
+      return `Vous êtes arrivé au point de récupération. ${passengerName} doit être récupéré à cette position.${address}`;
+    }
+
+    return `Vous êtes arrivé à la destination de ${passengerName}. Validez son arrivée avec le bouton Terminer.${address}`;
   }, []);
+
+  useEffect(() => {
+    if (
+      !waypointModalVisible ||
+      !activeWaypoint ||
+      announcedWaypointIdsRef.current.has(activeWaypoint.id)
+    ) {
+      return;
+    }
+
+    announcedWaypointIdsRef.current.add(activeWaypoint.id);
+    void speakNavigationMessage(buildWaypointSpeech(activeWaypoint), { force: true });
+  }, [activeWaypoint, buildWaypointSpeech, speakNavigationMessage, waypointModalVisible]);
 
   const announceInstruction = useCallback((step: RouteStep, index: number, intro?: string) => {
     const instruction = cleanHtmlInstructions(step.html_instructions);
@@ -912,7 +1062,7 @@ export default function NavigationScreen() {
     const latestWaypointIndex = currentWaypointIndexRef.current;
     const latestStepIndex = currentStepIndexRef.current;
 
-    if (!isMountedRef.current || latestSteps.length === 0) return;
+    if (!isMountedRef.current) return;
 
     const currentCoords = {
       latitude: location.coords.latitude,
@@ -936,14 +1086,12 @@ export default function NavigationScreen() {
             void speakNavigationMessage(buildWaypointSpeech(nextWaypoint), { force: true });
           }
 
-          if (!waypointModalVisibleRef.current) {
-            waypointModalVisibleRef.current = true;
-            setActiveWaypoint(nextWaypoint);
-            setWaypointModalVisible(true);
-          }
+          presentWaypointModal(nextWaypoint);
         }
       }
     }
+
+    if (latestSteps.length === 0) return;
 
     // Trouver l'étape la plus proche
     for (let i = latestStepIndex; i < latestSteps.length; i++) {
@@ -995,6 +1143,38 @@ export default function NavigationScreen() {
     }
   };
 
+  const fitVehicleAndPassengers = useCallback(() => {
+    if (!mapRef.current) return;
+
+    const coordinates = passengerMapLocations.map((passenger) => passenger.coordinate);
+    const driverLocation = currentLocationRef.current ?? currentLocation;
+    if (driverLocation) {
+      coordinates.unshift({
+        latitude: driverLocation.coords.latitude,
+        longitude: driverLocation.coords.longitude,
+      });
+    }
+
+    if (coordinates.length === 1) {
+      mapRef.current.animateToRegion(
+        {
+          ...coordinates[0],
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        },
+        320,
+      );
+      return;
+    }
+
+    if (coordinates.length > 1) {
+      mapRef.current.fitToCoordinates(coordinates, {
+        edgePadding: { top: 190, right: 56, bottom: 190, left: 56 },
+        animated: true,
+      });
+    }
+  }, [currentLocation, passengerMapLocations]);
+
   // Calculs pour les stats passagers (mémorisés)
   const passengerStats = React.useMemo(() => {
     const pickups = waypoints.filter(wp => wp.type === 'pickup');
@@ -1036,6 +1216,32 @@ export default function NavigationScreen() {
     waypointModalVisibleRef.current = false;
     setWaypointModalVisible(false);
     setActiveWaypoint(null);
+  };
+
+  const handleFinishPassengerDropoff = async () => {
+    if (!activeWaypoint || activeWaypoint.type !== 'dropoff' || isConfirmingDropoff) return;
+
+    const latestBooking =
+      bookings?.find((booking) => booking.id === activeWaypoint.booking.id) ?? activeWaypoint.booking;
+
+    try {
+      if (!latestBooking.droppedOff) {
+        await confirmDropoff(latestBooking.id).unwrap();
+      }
+      await refetchBookings();
+      handleDismissWaypointModal();
+      router.replace(`/rate/${tripId}?passengerId=${activeWaypoint.passenger.id}`);
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        "La validation du passager est peut-être encore en cours. Réessayez dans un instant.";
+      showDialog({
+        variant: 'warning',
+        title: "Arrivée en attente",
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
   };
 
   const openReportForWaypoint = (waypoint: Waypoint) => {
@@ -1250,34 +1456,45 @@ export default function NavigationScreen() {
         {currentLocation?.coords?.latitude && currentLocation?.coords?.longitude && (
           <Marker.Animated
             coordinate={driverPosition as unknown as { latitude: number; longitude: number }}
-            anchor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? ANDROID_DRIVER_MARKER_ANCHOR : { x: 0.5, y: 0.5 }}
+            anchor={VEHICLE_TRACKING_MARKER_ANCHOR}
             title="Ma position"
             flat
             rotation={heading}
-            image={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? androidNavigationMarkerImages.driver : undefined}
-            tracksViewChanges={!USE_ANDROID_NAVIGATION_MARKER_IMAGES && driverTracksViewChanges}
+            tracksViewChanges={false}
           >
-            {!USE_ANDROID_NAVIGATION_MARKER_IMAGES ? (
-              <View
-                collapsable={false}
-                style={styles.driverMarkerFrame}
-                onLayout={() => {
-                  if (isMountedRef.current && driverTracksViewChanges) {
-                    setDriverTracksViewChanges(false);
-                  }
-                }}
-              >
-                <View style={styles.driverMarker}>
-                  <View style={styles.driverMarkerInner}>
-                    <View style={styles.driverMarkerCar}>
-                      <Ionicons name="car" size={20} color={Colors.white} />
-                    </View>
-                  </View>
-                </View>
-              </View>
-            ) : null}
+            <VehicleTrackingMarker />
           </Marker.Animated>
         )}
+
+        {passengerMapLocations.map((passenger) => (
+          <Marker
+            ref={(marker) => {
+              if (marker) {
+                passengerMarkerRefs.current[passenger.bookingId] = marker;
+              } else {
+                delete passengerMarkerRefs.current[passenger.bookingId];
+              }
+            }}
+            key={`live-passenger-${passenger.bookingId}`}
+            coordinate={passenger.coordinate}
+            anchor={PASSENGER_TRACKING_MARKER_ANCHOR}
+            title={passenger.passengerName}
+            description={passenger.isLive ? 'Position en direct' : 'Point de prise en charge'}
+            onPress={() => router.push(`/passenger/${passenger.passengerId}`)}
+            tracksViewChanges={false}
+            zIndex={20}
+          >
+            <PassengerTrackingMarker
+              isLive={passenger.isLive}
+              name={passenger.passengerName}
+              onReady={() => {
+                requestAnimationFrame(() => {
+                  passengerMarkerRefs.current[passenger.bookingId]?.redraw();
+                });
+              }}
+            />
+          </Marker>
+        ))}
 
         {/* Prochain waypoint uniquement (1 seul pour éviter les crashs) */}
         {waypoints.length > 0 && currentWaypointIndex < waypoints.length && 
@@ -1290,13 +1507,6 @@ export default function NavigationScreen() {
               longitude: waypoints[currentWaypointIndex].location.lng,
             }}
             anchor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? ANDROID_PIN_MARKER_ANCHOR : { x: 0.5, y: 0.5 }}
-            image={
-              USE_ANDROID_NAVIGATION_MARKER_IMAGES
-                ? androidNavigationMarkerImages[
-                    waypoints[currentWaypointIndex].type === 'pickup' ? 'pickup' : 'dropoff'
-                  ]
-                : undefined
-            }
             pinColor={
               USE_ANDROID_NAVIGATION_MARKER_IMAGES
                 ? undefined
@@ -1307,7 +1517,17 @@ export default function NavigationScreen() {
             title={`${waypoints[currentWaypointIndex].type === 'pickup' ? 'Lieu de prise en charge' : 'Point d arrivee'} ${waypoints[currentWaypointIndex].passenger.name}`}
             tracksViewChanges={false}
           >
-            {!USE_ANDROID_NAVIGATION_MARKER_IMAGES ? (
+            {USE_ANDROID_NAVIGATION_MARKER_IMAGES ? (
+              <Image
+                source={
+                  androidNavigationMarkerImages[
+                    waypoints[currentWaypointIndex].type === 'pickup' ? 'pickup' : 'dropoff'
+                  ]
+                }
+                style={styles.androidWaypointMarkerImage}
+                resizeMode="contain"
+              />
+            ) : (
               <View
                 collapsable={false}
                 style={[
@@ -1323,7 +1543,7 @@ export default function NavigationScreen() {
                   color={Colors.white}
                 />
               </View>
-            ) : null}
+            )}
           </Marker>
         )}
 
@@ -1336,10 +1556,15 @@ export default function NavigationScreen() {
             }}
             anchor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? ANDROID_PIN_MARKER_ANCHOR : { x: 0.5, y: 1 }}
             title={trip.arrival.name || 'Arrivée'}
-            image={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? androidNavigationMarkerImages.destination : undefined}
             tracksViewChanges={!USE_ANDROID_NAVIGATION_MARKER_IMAGES && destinationTracksViewChanges}
           >
-            {!USE_ANDROID_NAVIGATION_MARKER_IMAGES ? (
+            {USE_ANDROID_NAVIGATION_MARKER_IMAGES ? (
+              <Image
+                source={androidNavigationMarkerImages.destination}
+                style={styles.androidWaypointMarkerImage}
+                resizeMode="contain"
+              />
+            ) : (
               <View
                 collapsable={false}
                 style={styles.destinationMarkerContainer}
@@ -1354,7 +1579,7 @@ export default function NavigationScreen() {
                 </View>
                 <View style={styles.destinationMarkerTip} />
               </View>
-            ) : null}
+            )}
           </Marker>
         )}
       </MapView>
@@ -1407,10 +1632,14 @@ export default function NavigationScreen() {
       )}
 
       {/* Header avec infos */}
-      <View style={styles.header}>
+      <View style={styles.header} pointerEvents="box-none">
         <TouchableOpacity
           style={styles.backButton}
           onPress={handleExitNavigation}
+          hitSlop={12}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Quitter la navigation"
         >
           <Ionicons name="close" size={28} color={Colors.white} />
         </TouchableOpacity>
@@ -1586,6 +1815,17 @@ export default function NavigationScreen() {
         </TouchableOpacity>
 
         {/* Bouton recalculer l'itinéraire */}
+        {passengerMapLocations.length > 0 && (
+          <TouchableOpacity
+            style={styles.floatingButton}
+            onPress={fitVehicleAndPassengers}
+            accessibilityRole="button"
+            accessibilityLabel="Voir le vehicule et les passagers"
+          >
+            <Ionicons name="people" size={22} color={Colors.primary} />
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           style={[styles.floatingButton, isLoadingRoute && styles.floatingButtonDisabled]}
           onPress={forceRecalculateRoute}
@@ -1762,8 +2002,8 @@ export default function NavigationScreen() {
             {activeWaypoint && (
               <Text style={styles.waypointModalWaitingText}>
                 {activeWaypoint.type === 'pickup'
-                  ? 'Le depart sera confirme automatiquement quand vous repartez avec le passager.'
-                  : 'L arrivee sera confirmee automatiquement au point de depose.'}
+                  ? `${activeWaypoint.passenger.name || 'Le passager'} doit être récupéré à cette position.`
+                  : `Validez l'arrivée de ${activeWaypoint.passenger.name || 'ce passager'} avant de poursuivre.`}
               </Text>
             )}
 
@@ -1807,8 +2047,26 @@ export default function NavigationScreen() {
                 style={styles.waypointModalSecondaryButton}
                 onPress={handleDismissWaypointModal}
               >
-                <Text style={styles.waypointModalSecondaryButtonText}>Fermer</Text>
+                <Text style={styles.waypointModalSecondaryButtonText}>
+                  {activeWaypoint?.type === 'dropoff' ? 'Plus tard' : 'Compris'}
+                </Text>
               </TouchableOpacity>
+              {activeWaypoint?.type === 'dropoff' && (
+                <TouchableOpacity
+                  style={styles.waypointModalPrimaryButton}
+                  onPress={() => void handleFinishPassengerDropoff()}
+                  disabled={isConfirmingDropoff}
+                >
+                  {isConfirmingDropoff ? (
+                    <ActivityIndicator size="small" color={Colors.white} />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={20} color={Colors.white} />
+                      <Text style={styles.waypointModalPrimaryButtonText}>Terminer</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
 
             <TouchableOpacity
@@ -2028,6 +2286,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 41,
+    elevation: 41,
   },
   headerInfo: {
     flex: 1,
@@ -2473,6 +2733,56 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
+  androidWaypointMarkerImage: {
+    width: 32,
+    height: 36,
+  },
+  passengerLocationMarker: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.secondary,
+    borderWidth: 3,
+    borderColor: Colors.white,
+    elevation: 4,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+  },
+  passengerProfileCallout: {
+    width: 210,
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  passengerProfileCalloutIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.secondary,
+  },
+  passengerProfileCalloutText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  passengerProfileCalloutName: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  passengerProfileCalloutAction: {
+    marginTop: 2,
+    color: Colors.primary,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+  },
   pickupMarker: {
     backgroundColor: Colors.secondary,
   },
@@ -2842,6 +3152,21 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.base,
     fontWeight: FontWeights.semibold,
     color: Colors.gray[700],
+  },
+  waypointModalPrimaryButton: {
+    flex: 1,
+    height: 52,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.success,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  waypointModalPrimaryButtonText: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
   },
   waypointModalReportButton: {
     marginTop: Spacing.md,

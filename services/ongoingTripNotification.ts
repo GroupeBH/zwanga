@@ -13,7 +13,7 @@ export const ONGOING_TRIP_NOTIFICATION_ID = 'ongoing-trip-notification';
 export const ONGOING_TRIP_CHANNEL_ID = 'ongoing-trip-channel';
 
 // Types
-interface OngoingTripInfo {
+export interface OngoingTripInfo {
   tripId: string;
   departure: string;
   arrival: string;
