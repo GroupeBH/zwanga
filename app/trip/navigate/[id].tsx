@@ -2,6 +2,7 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import {
   PASSENGER_TRACKING_MARKER_ANCHOR,
   PassengerTrackingMarker,
+  type PassengerTrackingMarkerStatus,
   VEHICLE_TRACKING_MARKER_ANCHOR,
   VehicleTrackingMarker,
 } from '@/components/TrackingMapMarkers';
@@ -77,6 +78,7 @@ interface PassengerMapLocation {
   isLive: boolean;
   passengerId: string;
   passengerName: string;
+  status: PassengerTrackingMarkerStatus;
 }
 
 type LivePassengerLocation = {
@@ -190,6 +192,11 @@ export default function NavigationScreen() {
   const backgroundDisclosureResolverRef = useRef<((accepted: boolean) => void) | null>(null);
   const isMountedRef = useRef(true);
   const isTripOngoingRef = useRef(false);
+  const driverMarkerRef = useRef<MapMarker | null>(null);
+  const [driverMarkerTracksViewChanges, setDriverMarkerTracksViewChanges] = useState(true);
+  const [loadedPassengerMarkerKeys, setLoadedPassengerMarkerKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [destinationTracksViewChanges, setDestinationTracksViewChanges] = useState(true);
   const driverPosition = useRef(
     new AnimatedRegion({
@@ -204,7 +211,7 @@ export default function NavigationScreen() {
     const locations: PassengerMapLocation[] = [];
 
     (bookings ?? [])
-      .filter((booking) => booking.status === 'accepted' && !booking.droppedOff)
+      .filter((booking) => booking.status === 'accepted' || booking.status === 'completed')
       .slice(0, MAX_LIVE_PASSENGER_MARKERS)
       .forEach((booking) => {
         const liveLocation = livePassengerLocations[booking.id];
@@ -216,7 +223,21 @@ export default function NavigationScreen() {
           booking.passengerOriginCoordinates?.latitude,
           booking.passengerOriginCoordinates?.longitude,
         );
-        const coordinate = liveLocation?.coordinate ?? apiLocation ?? pickupLocation ?? tripDepartureCoordinate;
+        const dropoffLocation =
+          normalizeTripMapCoordinate(
+            booking.passengerDestinationCoordinates?.latitude,
+            booking.passengerDestinationCoordinates?.longitude,
+          ) ?? tripArrivalCoordinate;
+        const status: PassengerTrackingMarkerStatus =
+          booking.droppedOff || booking.droppedOffConfirmedByPassenger
+            ? 'arrived'
+            : booking.pickedUp
+              ? 'live'
+              : 'pickup';
+        const coordinate =
+          status === 'arrived'
+            ? dropoffLocation ?? liveLocation?.coordinate ?? apiLocation ?? pickupLocation ?? tripDepartureCoordinate
+            : liveLocation?.coordinate ?? apiLocation ?? pickupLocation ?? tripDepartureCoordinate;
 
         if (!coordinate) return;
 
@@ -226,11 +247,12 @@ export default function NavigationScreen() {
           isLive: Boolean(liveLocation || apiLocation),
           passengerId: booking.passengerId,
           passengerName: booking.passengerName || 'Passager',
+          status,
         });
       });
 
     return locations;
-  }, [bookings, livePassengerLocations, tripDepartureCoordinate]);
+  }, [bookings, livePassengerLocations, tripArrivalCoordinate, tripDepartureCoordinate]);
   
   // Refs pour éviter les re-rendus excessifs
   const routeFetchedRef = useRef(false);
@@ -337,6 +359,8 @@ export default function NavigationScreen() {
     announcedWaypointIdsRef.current.clear();
     presentedWaypointIdsRef.current.clear();
     lastSpeechAtRef.current = 0;
+    setDriverMarkerTracksViewChanges(true);
+    setLoadedPassengerMarkerKeys(new Set());
     void Speech.stop();
   }, [tripId]);
 
@@ -1455,47 +1479,89 @@ export default function NavigationScreen() {
         {/* Position actuelle du conducteur - Marqueur voiture */}
         {currentLocation?.coords?.latitude && currentLocation?.coords?.longitude && (
           <Marker.Animated
+            ref={driverMarkerRef}
             coordinate={driverPosition as unknown as { latitude: number; longitude: number }}
             anchor={VEHICLE_TRACKING_MARKER_ANCHOR}
             title="Ma position"
             flat
             rotation={heading}
-            tracksViewChanges={false}
+            tracksViewChanges={USE_ANDROID_NAVIGATION_MARKER_IMAGES && driverMarkerTracksViewChanges}
           >
-            <VehicleTrackingMarker />
+            <VehicleTrackingMarker
+              vehicleType={trip.vehicleType}
+              onReady={() => {
+                if (!USE_ANDROID_NAVIGATION_MARKER_IMAGES) return;
+
+                [80, 220].forEach((delay) => {
+                  setTimeout(() => {
+                    driverMarkerRef.current?.redraw();
+                  }, delay);
+                });
+                setTimeout(() => {
+                  if (isMountedRef.current) {
+                    setDriverMarkerTracksViewChanges(false);
+                  }
+                }, 360);
+              }}
+            />
           </Marker.Animated>
         )}
 
-        {passengerMapLocations.map((passenger) => (
-          <Marker
-            ref={(marker) => {
-              if (marker) {
-                passengerMarkerRefs.current[passenger.bookingId] = marker;
-              } else {
-                delete passengerMarkerRefs.current[passenger.bookingId];
-              }
-            }}
-            key={`live-passenger-${passenger.bookingId}`}
-            coordinate={passenger.coordinate}
-            anchor={PASSENGER_TRACKING_MARKER_ANCHOR}
-            title={passenger.passengerName}
-            description={passenger.isLive ? 'Position en direct' : 'Point de prise en charge'}
-            onPress={() => router.push(`/passenger/${passenger.passengerId}`)}
-            tracksViewChanges={false}
-            zIndex={20}
-          >
-            <PassengerTrackingMarker
-              isLive={passenger.isLive}
-              name={passenger.passengerName}
-              onReady={() => {
-                requestAnimationFrame(() => {
-                  passengerMarkerRefs.current[passenger.bookingId]?.redraw();
-                });
-              }}
-            />
-          </Marker>
-        ))}
+        {passengerMapLocations.map((passenger) => {
+          const passengerMarkerKey = `live-passenger-${passenger.bookingId}:${passenger.status}`;
+          const passengerDescription =
+            passenger.status === 'arrived'
+              ? 'Passager arrivé'
+              : passenger.status === 'pickup'
+                ? 'Point de prise en charge'
+                : passenger.isLive
+                  ? 'Position en direct'
+                  : 'Passager à bord';
 
+          return (
+            <Marker
+              ref={(marker) => {
+                if (marker) {
+                  passengerMarkerRefs.current[passenger.bookingId] = marker;
+                } else {
+                  delete passengerMarkerRefs.current[passenger.bookingId];
+                }
+              }}
+              key={passengerMarkerKey}
+              coordinate={passenger.coordinate}
+              anchor={PASSENGER_TRACKING_MARKER_ANCHOR}
+              title={passenger.passengerName}
+              description={passengerDescription}
+              onPress={() => router.push(`/passenger/${passenger.passengerId}`)}
+              tracksViewChanges={USE_ANDROID_NAVIGATION_MARKER_IMAGES && !loadedPassengerMarkerKeys.has(passengerMarkerKey)}
+              zIndex={20}
+            >
+              <PassengerTrackingMarker
+                status={passenger.status}
+                onReady={() => {
+                  if (!USE_ANDROID_NAVIGATION_MARKER_IMAGES) return;
+
+                  [80, 220].forEach((delay) => {
+                    setTimeout(() => {
+                      passengerMarkerRefs.current[passenger.bookingId]?.redraw();
+                    }, delay);
+                  });
+                  setTimeout(() => {
+                    if (!isMountedRef.current) return;
+
+                    setLoadedPassengerMarkerKeys((current) => {
+                      if (current.has(passengerMarkerKey)) return current;
+
+                      const next = new Set(current);
+                      next.add(passengerMarkerKey);
+                      return next;
+                    });
+                  }, 320);
+                }}
+              />
+            </Marker>
+          );
+        })}
         {/* Prochain waypoint uniquement (1 seul pour éviter les crashs) */}
         {waypoints.length > 0 && currentWaypointIndex < waypoints.length && 
          !waypoints[currentWaypointIndex].completed &&

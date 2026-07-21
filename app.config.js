@@ -66,7 +66,7 @@ module.exports = {
         NSContactsUsageDescription: "Zwanga utilise vos contacts pour faciliter l'invitation d'amis.",
         // NSUserTrackingUsageDescription: "Votre identifiant peut être utilisé pour fournir une meilleure expérience publicitaire.",
         ITSAppUsesNonExemptEncryption: false,
-        UIBackgroundModes: ['remote-notification', 'fetch'],
+        UIBackgroundModes: ['remote-notification', 'fetch', 'location'],
       },
     },
 

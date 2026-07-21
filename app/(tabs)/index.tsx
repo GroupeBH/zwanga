@@ -3,6 +3,8 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import {
   PASSENGER_TRACKING_MARKER_ANCHOR,
   PassengerTrackingMarker,
+  type PassengerTrackingMarkerStatus,
+  VEHICLE_TRACKING_MARKER_ANCHOR,
   VehicleTrackingMarker,
 } from '@/components/TrackingMapMarkers';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
@@ -27,7 +29,7 @@ import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectAvailableTrips, selectLocationRadius } from '@/store/selectors';
 import { setTrips } from '@/store/slices/tripsSlice';
-import type { Trip, TripRequest } from '@/types';
+import type { Booking, Trip, TripRequest } from '@/types';
 import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
 import { formatDateTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requestNavigation';
@@ -61,8 +63,9 @@ const RECENT_TRIPS_LIMIT = 10;
 const HOME_MIN_AVAILABLE_SEATS = 1;
 const MAX_LIVE_PASSENGER_MARKERS = Platform.OS === 'ios' ? 10 : 16;
 const HOME_MAP_ANIMATION_MIN_INTERVAL_MS = Platform.OS === 'ios' ? 1200 : 700;
-const USE_ANDROID_TRIP_MARKER_IMAGE = Platform.OS === 'android';
-const HOME_MAP_PROVIDER = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
+const DRIVER_UPCOMING_TRIP_HIGHLIGHT_WINDOW_MS = 3 * 60 * 60 * 1000;
+const IS_ANDROID = Platform.OS === 'android';
+const HOME_MAP_PROVIDER = IS_ANDROID ? PROVIDER_GOOGLE : undefined;
 const TRIP_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
 const USER_LOCATION_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
 
@@ -110,6 +113,7 @@ const tripRequestStatusMeta: Record<
   expired: { label: 'Expirée', color: Colors.gray[500], bg: Colors.gray[200], icon: 'time-outline' },
 };
 
+
 const androidTripMarkerImages: Record<Trip['vehicleType'], ImageRequireSource> = {
   car: require('@/assets/images/map-markers/trip-marker-car.png'),
   moto: require('@/assets/images/map-markers/trip-marker-moto.png'),
@@ -122,6 +126,17 @@ const selectedTripMarkerImages: Record<Trip['vehicleType'], ImageRequireSource> 
   tricycle: require('@/assets/images/map-markers/trip-marker-tricycle-selected.png'),
 };
 
+const bookingStatusMeta: Record<
+  Booking['status'],
+  { label: string; color: string; bg: string; icon: keyof typeof Ionicons.glyphMap }
+> = {
+  pending: { label: 'Nouvelle réservation', color: Colors.warning, bg: Colors.warning + '16', icon: 'ticket-outline' },
+  accepted: { label: 'Réservation acceptée', color: Colors.success, bg: Colors.success + '16', icon: 'checkmark-circle-outline' },
+  rejected: { label: 'Réservation refusée', color: Colors.danger, bg: Colors.danger + '16', icon: 'close-circle-outline' },
+  cancelled: { label: 'Réservation annulée', color: Colors.danger, bg: Colors.danger + '16', icon: 'close-circle-outline' },
+  completed: { label: 'Réservation terminée', color: Colors.success, bg: Colors.success + '16', icon: 'flag-outline' },
+  expired: { label: 'Réservation expirée', color: Colors.gray[500], bg: Colors.gray[200], icon: 'time-outline' },
+};
 const userLocationMarkerImage: ImageRequireSource = require('@/assets/images/map-markers/user-location-marker.png');
 
 type MapCoordinate = {
@@ -143,9 +158,9 @@ type TripRequestPreviewCardProps = {
   request: TripRequest;
 };
 
-type TripMapMarkerProps = {
+type TripVehicleMapMarkerProps = {
   isSelected: boolean;
-  onImageLoad?: () => void;
+  onReady?: () => void;
   trip: Trip;
 };
 
@@ -163,11 +178,17 @@ type DriverPassengerMarker = {
   isLive: boolean;
   passengerId: string;
   passengerName: string;
+  status: PassengerTrackingMarkerStatus;
 };
 
 type LivePassengerLocation = {
   coordinate: MapCoordinate;
   updatedAt?: string | null;
+};
+
+type FeaturedDriverReservation = {
+  booking: Booking;
+  trip: Trip;
 };
 
 function formatPrice(price?: number | null) {
@@ -199,6 +220,10 @@ function placeName(place?: Trip['departure'] | TripRequest['departure']) {
 
 function getTripRequestStatusMeta(status: TripRequest['status']) {
   return tripRequestStatusMeta[status] ?? tripRequestStatusMeta.pending;
+}
+
+function getBookingStatusMeta(status: Booking['status']) {
+  return bookingStatusMeta[status] ?? bookingStatusMeta.pending;
 }
 
 function getLocationCoordinate(location?: Trip['departure']): MapCoordinate | null {
@@ -235,6 +260,7 @@ function roundCoordinate(value: number) {
   return Number(value.toFixed(5));
 }
 
+
 function getTripMarkerImage(trip: Trip, isSelected: boolean) {
   const tripVehicleType = trip.vehicleType || 'car';
 
@@ -244,6 +270,7 @@ function getTripMarkerImage(trip: Trip, isSelected: boolean) {
 
   return androidTripMarkerImages[tripVehicleType];
 }
+
 
 function TripPreviewCard({
   cardWidth,
@@ -453,30 +480,17 @@ function TripRequestPreviewCard({
   );
 }
 
-function TripMapMarker({ isSelected, onImageLoad, trip }: TripMapMarkerProps) {
-  const markerImage = getTripMarkerImage(trip, isSelected);
-
+function TripVehicleMapMarker({ isSelected, onReady, trip }: TripVehicleMapMarkerProps) {
   return (
-    <View
-      collapsable={false}
-      style={[
-        styles.tripMapMarkerFrame,
-        isSelected && styles.tripMapMarkerFrameSelected,
-        USE_ANDROID_TRIP_MARKER_IMAGE && styles.tripMapMarkerFrameAndroid,
-        USE_ANDROID_TRIP_MARKER_IMAGE && isSelected && styles.tripMapMarkerFrameAndroidSelected,
-      ]}
-    >
-      <Image
-        source={markerImage}
-        style={[
-          styles.tripMapMarkerImage,
-          isSelected && styles.tripMapMarkerImageSelected,
-          USE_ANDROID_TRIP_MARKER_IMAGE && styles.tripMapMarkerImageAndroid,
-          USE_ANDROID_TRIP_MARKER_IMAGE && isSelected && styles.tripMapMarkerImageAndroidSelected,
-        ]}
-        onLoadEnd={onImageLoad}
-        resizeMode="contain"
-      />
+    <View collapsable={false} style={styles.tripVehicleMarkerFrame}>
+      <View collapsable={false} style={styles.tripVehicleMarkerImageShell}>
+        <Image
+          source={getTripMarkerImage(trip, isSelected)}
+          style={[styles.tripVehicleMarkerImage, isSelected && styles.tripVehicleMarkerImageSelected]}
+          resizeMode="contain"
+          onLoadEnd={onReady}
+        />
+      </View>
     </View>
   );
 }
@@ -485,11 +499,11 @@ function UserLocationMapMarker() {
   return (
     <View
       collapsable={false}
-      style={[styles.userLocationMarkerFrame, USE_ANDROID_TRIP_MARKER_IMAGE && styles.userLocationMarkerFrameAndroid]}
+      style={[styles.userLocationMarkerFrame, IS_ANDROID && styles.userLocationMarkerFrameAndroid]}
     >
       <Image
         source={userLocationMarkerImage}
-        style={[styles.userLocationMarkerImage, USE_ANDROID_TRIP_MARKER_IMAGE && styles.userLocationMarkerImageAndroid]}
+        style={[styles.userLocationMarkerImage, IS_ANDROID && styles.userLocationMarkerImageAndroid]}
         resizeMode="contain"
       />
     </View>
@@ -798,6 +812,60 @@ export default function HomeScreen() {
     refetchOnFocus: isFocused,
     refetchOnReconnect: isFocused,
   });
+
+  const driverReservationHighlightTrip = useMemo(() => {
+    if (!isDriver || !currentUser?.id || ongoingDriverTrip) {
+      return null;
+    }
+
+    const getDepartureTime = (trip: Trip) => {
+      const timestamp = new Date(trip.departureTime).getTime();
+      return Number.isFinite(timestamp) ? timestamp : Number.MAX_SAFE_INTEGER;
+    };
+
+    return [...myDriverTrips]
+      .filter(
+        (trip) =>
+          trip.driverId === currentUser.id &&
+          (trip.status === 'upcoming' || trip.status === 'ongoing') &&
+          hasUpcomingDeparture(trip),
+      )
+      .sort((a, b) => {
+        const pendingPassengerCountA =
+          a.passengers?.filter((passenger) => passenger.bookingStatus === 'pending').length ?? 0;
+        const pendingPassengerCountB =
+          b.passengers?.filter((passenger) => passenger.bookingStatus === 'pending').length ?? 0;
+        const passengerCountA = a.passengers?.length ?? 0;
+        const passengerCountB = b.passengers?.length ?? 0;
+        const hasPassengersA = passengerCountA > 0;
+        const hasPassengersB = passengerCountB > 0;
+
+        if (pendingPassengerCountA !== pendingPassengerCountB) {
+          return pendingPassengerCountB - pendingPassengerCountA;
+        }
+
+        if (hasPassengersA !== hasPassengersB) {
+          return hasPassengersA ? -1 : 1;
+        }
+
+        if (passengerCountA !== passengerCountB) {
+          return passengerCountB - passengerCountA;
+        }
+
+        return getDepartureTime(a) - getDepartureTime(b);
+      })[0] ?? null;
+  }, [currentUser?.id, isDriver, myDriverTrips, ongoingDriverTrip]);
+
+  const { data: driverReservationHighlightBookings = [] } = useGetTripBookingsQuery(
+    driverReservationHighlightTrip?.id ?? '',
+    {
+      skip: !isFocused || !driverReservationHighlightTrip?.id || Boolean(ongoingDriverTrip),
+      pollingInterval: isFocused && driverReservationHighlightTrip && !ongoingDriverTrip ? 20000 : 0,
+      skipPollingIfUnfocused: true,
+      refetchOnFocus: isFocused,
+      refetchOnReconnect: isFocused,
+    },
+  );
 
   useEffect(() => {
     const activeTripId = ongoingDriverTrip?.id;
@@ -1267,10 +1335,11 @@ export default function HomeScreen() {
     if (!ongoingDriverTrip) return [];
 
     const fallbackPickup = getLocationCoordinate(ongoingDriverTrip.departure);
+    const fallbackDropoff = getLocationCoordinate(ongoingDriverTrip.arrival);
     const markers: DriverPassengerMarker[] = [];
 
     ongoingDriverBookings
-      .filter((booking) => booking.status === 'accepted' && !booking.droppedOff)
+      .filter((booking) => booking.status === 'accepted' || booking.status === 'completed')
       .slice(0, MAX_LIVE_PASSENGER_MARKERS)
       .forEach((booking) => {
         const liveLocation = liveDriverPassengerLocations[booking.id];
@@ -1283,7 +1352,21 @@ export default function HomeScreen() {
             booking.passengerOriginCoordinates?.latitude,
             booking.passengerOriginCoordinates?.longitude,
           ) ?? fallbackPickup;
-        const coordinate = liveLocation?.coordinate ?? apiLocation ?? pickupLocation;
+        const dropoffLocation =
+          normalizeTripMapCoordinate(
+            booking.passengerDestinationCoordinates?.latitude,
+            booking.passengerDestinationCoordinates?.longitude,
+          ) ?? fallbackDropoff;
+        const status: PassengerTrackingMarkerStatus =
+          booking.droppedOff || booking.droppedOffConfirmedByPassenger
+            ? 'arrived'
+            : booking.pickedUp
+              ? 'live'
+              : 'pickup';
+        const coordinate =
+          status === 'arrived'
+            ? dropoffLocation ?? liveLocation?.coordinate ?? apiLocation ?? pickupLocation
+            : liveLocation?.coordinate ?? apiLocation ?? pickupLocation;
 
         if (!coordinate) return;
 
@@ -1293,6 +1376,7 @@ export default function HomeScreen() {
           isLive: Boolean(liveLocation || apiLocation),
           passengerId: booking.passengerId,
           passengerName: booking.passengerName || 'Passager',
+          status,
         });
       });
 
@@ -1300,6 +1384,53 @@ export default function HomeScreen() {
   }, [liveDriverPassengerLocations, ongoingDriverBookings, ongoingDriverTrip]);
 
   const activeHomeTrip = ongoingDriverTrip ?? ongoingBookedTrip;
+  const featuredDriverReservation = useMemo<FeaturedDriverReservation | null>(() => {
+    if (!isDriver || activeHomeTrip || !driverReservationHighlightTrip) {
+      return null;
+    }
+
+    const visibleBookings = [...driverReservationHighlightBookings]
+      .filter(
+        (booking) =>
+          booking.tripId === driverReservationHighlightTrip.id &&
+          booking.status === 'pending' &&
+          !booking.droppedOff,
+      )
+      .sort((a, b) => {
+        const updatedA = new Date(a.updatedAt || a.createdAt).getTime();
+        const updatedB = new Date(b.updatedAt || b.createdAt).getTime();
+        const safeUpdatedA = Number.isFinite(updatedA) ? updatedA : 0;
+        const safeUpdatedB = Number.isFinite(updatedB) ? updatedB : 0;
+        return safeUpdatedB - safeUpdatedA;
+      });
+
+    if (visibleBookings[0]) {
+      return { booking: visibleBookings[0], trip: driverReservationHighlightTrip };
+    }
+
+    return null;
+  }, [activeHomeTrip, driverReservationHighlightBookings, driverReservationHighlightTrip, isDriver]);
+
+  const featuredDriverUpcomingTrip = useMemo(() => {
+    if (!isDriver || !currentUser?.id || activeHomeTrip || featuredDriverReservation) {
+      return null;
+    }
+
+    const now = Date.now();
+    const highlightUntil = now + DRIVER_UPCOMING_TRIP_HIGHLIGHT_WINDOW_MS;
+
+    return [...myDriverTrips]
+      .filter((trip) => {
+        if (trip.driverId !== currentUser.id || trip.status !== 'upcoming' || !hasUpcomingDeparture(trip)) {
+          return false;
+        }
+
+        const departureTs = new Date(trip.departureTime).getTime();
+        return Number.isFinite(departureTs) && departureTs >= now && departureTs <= highlightUntil;
+      })
+      .sort((a, b) => new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime())[0] ?? null;
+  }, [activeHomeTrip, currentUser?.id, featuredDriverReservation, isDriver, myDriverTrips]);
+
   const isRestoringTrackedTrip = Boolean(trackedTripInfo?.tripId && !activeHomeTrip);
   const homeMapTrips = useMemo(
     () => (activeHomeTrip ? [activeHomeTrip] : isRestoringTrackedTrip ? [] : latestTrips),
@@ -1493,6 +1624,16 @@ export default function HomeScreen() {
   const sheetEmpty = isRequestsSheetMode ? availableDriverRequests.length === 0 : latestTrips.length === 0;
   const showInitialHomeLoader = tripsLoading && !remoteTrips && storedTrips.length === 0;
   const shouldRenderHomeMap = isFocused && !openingTripId;
+  const featuredDriverReservationStatus = featuredDriverReservation?.booking
+    ? getBookingStatusMeta(featuredDriverReservation.booking.status)
+    : null;
+  const featuredDriverReservationPassengerName =
+    featuredDriverReservation?.booking?.passengerName ?? 'Passager Zwanga';
+  const featuredDriverReservationSeatCount = featuredDriverReservation?.booking?.numberOfSeats ?? 1;
+  const featuredDriverReservationSeatsLabel = `${featuredDriverReservationSeatCount} place${featuredDriverReservationSeatCount > 1 ? 's' : ''}`;
+  const featuredDriverUpcomingTripSeatsLabel = featuredDriverUpcomingTrip
+    ? `${featuredDriverUpcomingTrip.availableSeats} place${featuredDriverUpcomingTrip.availableSeats > 1 ? 's' : ''} libre${featuredDriverUpcomingTrip.availableSeats > 1 ? 's' : ''}`
+    : '';
   const refetchSheetContent = () => {
     if (isRequestsSheetMode) {
       return refetchAvailableTripRequests();
@@ -1533,11 +1674,6 @@ export default function HomeScreen() {
   useEffect(() => () => {
     if (openingTripTimerRef.current) clearTimeout(openingTripTimerRef.current);
   }, []);
-
-  const selectTripOnMap = (tripId: string) => {
-    setMapFocusedOnUser(false);
-    setSelectedTripId(tripId);
-  };
 
   const showUserLocationCallout = () => {
     [140, 620].forEach((delay) => {
@@ -1607,30 +1743,6 @@ export default function HomeScreen() {
     }
   };
 
-  const showTripMarkerCallout = (tripId: string) => {
-    [90, 520].forEach((delay) => {
-      setTimeout(() => {
-        if (openingTripRef.current) return;
-        tripMarkerRefs.current[tripId]?.showCallout();
-      }, delay);
-    });
-  };
-
-  const handleTripMarkerPress = (tripId: string, isSelected: boolean) => {
-    if (!USE_ANDROID_TRIP_MARKER_IMAGE) {
-      openTripDetail(tripId);
-      return;
-    }
-
-    if (isSelected) {
-      openTripDetail(tripId);
-      return;
-    }
-
-    selectTripOnMap(tripId);
-    showTripMarkerCallout(tripId);
-  };
-
   if (showInitialHomeLoader) {
     return <HomeTripsLoadingScreen />;
   }
@@ -1650,7 +1762,7 @@ export default function HomeScreen() {
         showsPointsOfInterest={false}
         showsUserLocation={!ongoingDriverTrip && !userLocationMarker && Boolean(lastKnownLocation?.coords)}
         showsMyLocationButton={false}
-        moveOnMarkerPress={!USE_ANDROID_TRIP_MARKER_IMAGE}
+        moveOnMarkerPress={false}
         toolbarEnabled={false}
       >
         {tripsWithMapCoordinates.map((trip) => {
@@ -1658,7 +1770,7 @@ export default function HomeScreen() {
           const coordinate =
             (isActiveDriverTrip ? liveUserCoordinate : null) ?? getTripMapCoordinate(trip);
           const isSelected = trip.id === selectedTrip?.id;
-          const markerRenderKey = `${trip.id}:${trip.vehicleType || 'car'}:${isSelected ? 'selected' : 'default'}`;
+          const markerRenderKey = `${trip.id}:${trip.vehicleType || 'car'}:${isActiveDriverTrip ? 'tracking' : 'vehicle'}`;
 
           if (!coordinate) {
             return null;
@@ -1676,23 +1788,25 @@ export default function HomeScreen() {
               key={markerRenderKey}
               identifier={trip.id}
               coordinate={coordinate}
-              anchor={TRIP_MARKER_ANCHOR}
-              title={isActiveDriverTrip ? 'Mon véhicule' : `${formatPrice(trip.price)} - ${trip.driverName || 'Conducteur Zwanga'}`}
-              description={isActiveDriverTrip ? 'Position en temps réel pendant le trajet' : `${formatDateTime(trip.departureTime)} · ${placeName(trip.departure)} vers ${placeName(trip.arrival)} · ${trip.availableSeats} place${trip.availableSeats > 1 ? 's' : ''}`}
-              onPress={() => handleTripMarkerPress(trip.id, isSelected)}
-              onCalloutPress={() => openTripDetail(trip.id)}
+              anchor={isActiveDriverTrip ? VEHICLE_TRACKING_MARKER_ANCHOR : TRIP_MARKER_ANCHOR}
+              image={!isActiveDriverTrip && IS_ANDROID ? getTripMarkerImage(trip, isSelected) : undefined}
+              onPress={() => openTripDetail(trip.id)}
               tappable
-              tracksViewChanges={isActiveDriverTrip ? false : !loadedTripMarkerKeys.has(markerRenderKey)}
+              tracksViewChanges={IS_ANDROID && isActiveDriverTrip && !loadedTripMarkerKeys.has(markerRenderKey)}
               zIndex={isSelected ? 10 : 1}
             >
               {isActiveDriverTrip ? (
-                <VehicleTrackingMarker />
-              ) : (
-                <TripMapMarker
-                  trip={trip}
-                  isSelected={isSelected}
-                  onImageLoad={() => {
-                    requestAnimationFrame(() => {
+                <VehicleTrackingMarker
+                  vehicleType={trip.vehicleType}
+                  onReady={() => {
+                    if (!IS_ANDROID) return;
+
+                    [80, 220].forEach((delay) => {
+                      setTimeout(() => {
+                        tripMarkerRefs.current[trip.id]?.redraw();
+                      }, delay);
+                    });
+                    setTimeout(() => {
                       setLoadedTripMarkerKeys((current) => {
                         if (current.has(markerRenderKey)) return current;
 
@@ -1700,63 +1814,91 @@ export default function HomeScreen() {
                         next.add(markerRenderKey);
                         return next;
                       });
-                    });
+                    }, 360);
                   }}
                 />
-              )}
-              <Callout tooltip onPress={() => openTripDetail(trip.id)}>
-                <View style={styles.tripMapCallout}>
-                  <View style={styles.tripMapCalloutTop}>
-                    <Text style={styles.tripMapCalloutTitle} numberOfLines={1}>
-                      {formatPrice(trip.price)}
-                    </Text>
-                    <Text style={styles.tripMapCalloutTime}>{formatDateTime(trip.departureTime)}</Text>
-                  </View>
-                  <Text style={styles.tripMapCalloutRoute} numberOfLines={1}>
-                    {placeName(trip.departure)} vers {placeName(trip.arrival)}
-                  </Text>
-                  <View style={styles.tripMapCalloutFooter}>
-                    <Ionicons name="people-outline" size={13} color={HOME_COLORS.navy} />
-                    <Text style={styles.tripMapCalloutMeta}>
-                      {trip.availableSeats} place{trip.availableSeats > 1 ? 's' : ''} libre{trip.availableSeats > 1 ? 's' : ''}
-                    </Text>
-                  </View>
-                </View>
-              </Callout>
+              ) : !IS_ANDROID ? (
+                <TripVehicleMapMarker
+                  trip={trip}
+                  isSelected={isSelected}
+                  onReady={() => {
+                    if (!IS_ANDROID) return;
+
+                    [80, 220].forEach((delay) => {
+                      setTimeout(() => {
+                        tripMarkerRefs.current[trip.id]?.redraw();
+                      }, delay);
+                    });
+                    setTimeout(() => {
+                      setLoadedTripMarkerKeys((current) => {
+                        if (current.has(markerRenderKey)) return current;
+
+                        const next = new Set(current);
+                        next.add(markerRenderKey);
+                        return next;
+                      });
+                    }, 320);
+                  }}
+                />
+              ) : null}
             </Marker>
           );
         })}
-        {ongoingDriverTrip && driverPassengerMarkers.map((passenger) => (
-          <Marker
-            ref={(marker) => {
-              if (marker) {
-                passengerMarkerRefs.current[passenger.bookingId] = marker;
-              } else {
-                delete passengerMarkerRefs.current[passenger.bookingId];
-              }
-            }}
-            key={`home-passenger-${passenger.bookingId}`}
-            identifier={`home-passenger-${passenger.bookingId}`}
-            coordinate={passenger.coordinate}
-            anchor={PASSENGER_TRACKING_MARKER_ANCHOR}
-            title={passenger.passengerName}
-            description={passenger.isLive ? 'Position en temps réel' : 'Point de prise en charge'}
-            onPress={() => router.push(`/passenger/${passenger.passengerId}`)}
-            tappable
-            tracksViewChanges={false}
-            zIndex={20}
-          >
-            <PassengerTrackingMarker
-              isLive={passenger.isLive}
-              name={passenger.passengerName}
-              onReady={() => {
-                requestAnimationFrame(() => {
-                  passengerMarkerRefs.current[passenger.bookingId]?.redraw();
-                });
+        {ongoingDriverTrip && driverPassengerMarkers.map((passenger) => {
+          const passengerMarkerKey = `home-passenger-${passenger.bookingId}:${passenger.status}`;
+          const passengerDescription =
+            passenger.status === 'arrived'
+              ? 'Passager arrivé'
+              : passenger.status === 'pickup'
+                ? 'Point de prise en charge'
+                : passenger.isLive
+                  ? 'Position en temps réel'
+                  : 'Passager à bord';
+
+          return (
+            <Marker
+              ref={(marker) => {
+                if (marker) {
+                  passengerMarkerRefs.current[passenger.bookingId] = marker;
+                } else {
+                  delete passengerMarkerRefs.current[passenger.bookingId];
+                }
               }}
-            />
-          </Marker>
-        ))}
+              key={passengerMarkerKey}
+              identifier={`home-passenger-${passenger.bookingId}`}
+              coordinate={passenger.coordinate}
+              anchor={PASSENGER_TRACKING_MARKER_ANCHOR}
+              title={passenger.passengerName}
+              description={passengerDescription}
+              onPress={() => router.push(`/passenger/${passenger.passengerId}`)}
+              tappable
+              tracksViewChanges={IS_ANDROID && !loadedTripMarkerKeys.has(passengerMarkerKey)}
+              zIndex={20}
+            >
+              <PassengerTrackingMarker
+                status={passenger.status}
+                onReady={() => {
+                  if (!IS_ANDROID) return;
+
+                  [80, 220].forEach((delay) => {
+                    setTimeout(() => {
+                      passengerMarkerRefs.current[passenger.bookingId]?.redraw();
+                    }, delay);
+                  });
+                  setTimeout(() => {
+                    setLoadedTripMarkerKeys((current) => {
+                      if (current.has(passengerMarkerKey)) return current;
+
+                      const next = new Set(current);
+                      next.add(passengerMarkerKey);
+                      return next;
+                    });
+                  }, 320);
+                }}
+              />
+            </Marker>
+          );
+        })}
         {userLocationMarker && !ongoingDriverTrip && (
           <Marker
             ref={(marker) => {
@@ -1886,6 +2028,78 @@ export default function HomeScreen() {
             <Text style={styles.actionSearchText} numberOfLines={1}>Chercher</Text>
           </TouchableOpacity>
         </View>
+
+        {featuredDriverReservation && featuredDriverReservationStatus && (
+          <TouchableOpacity
+            activeOpacity={0.9}
+            accessibilityRole="button"
+            accessibilityLabel="Ouvrir la réservation reçue"
+            style={styles.driverReservationCard}
+            onPress={() => router.push(`/trip/manage/${featuredDriverReservation.trip.id}`)}
+          >
+            <View style={[styles.driverReservationIcon, { backgroundColor: featuredDriverReservationStatus.bg }]}>
+              <Ionicons
+                name={featuredDriverReservationStatus.icon}
+                size={17}
+                color={featuredDriverReservationStatus.color}
+              />
+            </View>
+            <View style={styles.driverReservationText}>
+              <Text
+                style={[styles.driverReservationLabel, { color: featuredDriverReservationStatus.color }]}
+                numberOfLines={1}
+              >
+                {featuredDriverReservationStatus.label}
+              </Text>
+              <Text style={styles.driverReservationPassenger} numberOfLines={1}>
+                {featuredDriverReservationPassengerName} · {featuredDriverReservationSeatsLabel}
+              </Text>
+              <Text style={styles.driverReservationRoute} numberOfLines={1}>
+                {placeName(featuredDriverReservation.trip.departure)} vers {placeName(featuredDriverReservation.trip.arrival)}
+              </Text>
+            </View>
+            <View style={styles.driverReservationAction}>
+              <Text style={styles.driverReservationTime} numberOfLines={1}>
+                {formatDateWithRelativeLabel(featuredDriverReservation.trip.departureTime, true)}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color={Colors.primary} />
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {featuredDriverUpcomingTrip && (
+          <TouchableOpacity
+            activeOpacity={0.9}
+            accessibilityRole="button"
+            accessibilityLabel="Ouvrir le trajet publié qui démarre bientôt"
+            style={[styles.driverReservationCard, styles.driverUpcomingTripCard]}
+            onPress={() => router.push(`/trip/manage/${featuredDriverUpcomingTrip.id}`)}
+          >
+            <View style={[styles.driverReservationIcon, styles.driverUpcomingTripIcon]}>
+              <Ionicons name="time-outline" size={17} color={HOME_COLORS.navy} />
+            </View>
+            <View style={styles.driverReservationText}>
+              <Text
+                style={[styles.driverReservationLabel, styles.driverUpcomingTripLabel]}
+                numberOfLines={1}
+              >
+                Trajet bientôt
+              </Text>
+              <Text style={styles.driverReservationPassenger} numberOfLines={1}>
+                {formatDateWithRelativeLabel(featuredDriverUpcomingTrip.departureTime, true)} · {featuredDriverUpcomingTripSeatsLabel}
+              </Text>
+              <Text style={styles.driverReservationRoute} numberOfLines={1}>
+                {placeName(featuredDriverUpcomingTrip.departure)} vers {placeName(featuredDriverUpcomingTrip.arrival)}
+              </Text>
+            </View>
+            <View style={styles.driverReservationAction}>
+              <Text style={styles.driverReservationTime} numberOfLines={1}>
+                {formatPrice(featuredDriverUpcomingTrip.price)}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color={Colors.primary} />
+            </View>
+          </TouchableOpacity>
+        )}
 
         {activeTripRequest && activeRequestStatus && (
           <TouchableOpacity
@@ -2402,40 +2616,29 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  tripMapMarkerFrame: {
-    width: 64,
-    height: 64,
+  tripVehicleMarkerFrame: {
+    width: IS_ANDROID ? 96 : 86,
+    height: IS_ANDROID ? 96 : 86,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'transparent',
     overflow: 'visible',
   },
-  tripMapMarkerFrameSelected: {
-    width: 70,
-    height: 70,
+  tripVehicleMarkerImageShell: {
+    width: IS_ANDROID ? 72 : 70,
+    height: IS_ANDROID ? 72 : 70,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    overflow: 'visible',
   },
-  tripMapMarkerFrameAndroid: {
-    width: 58,
-    height: 58,
+  tripVehicleMarkerImage: {
+    width: IS_ANDROID ? 56 : 58,
+    height: IS_ANDROID ? 56 : 58,
   },
-  tripMapMarkerFrameAndroidSelected: {
-    width: 64,
-    height: 64,
-  },
-  tripMapMarkerImage: {
-    width: 56,
-    height: 56,
-  },
-  tripMapMarkerImageSelected: {
-    width: 62,
-    height: 62,
-  },
-  tripMapMarkerImageAndroid: {
-    width: 38,
-    height: 38,
-  },
-  tripMapMarkerImageAndroidSelected: {
-    width: 42,
-    height: 42,
+  tripVehicleMarkerImageSelected: {
+    width: IS_ANDROID ? 62 : 64,
+    height: IS_ANDROID ? 62 : 64,
   },
   userLocationMarkerFrame: {
     width: 64,
@@ -2502,49 +2705,6 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.semibold,
   },
-  tripMapCallout: {
-    width: 226,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: HOME_COLORS.softLine,
-    ...CommonStyles.shadowMd,
-  },
-  tripMapCalloutTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.sm,
-  },
-  tripMapCalloutTitle: {
-    flex: 1,
-    color: Colors.primary,
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-  },
-  tripMapCalloutTime: {
-    color: HOME_COLORS.ink,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-  },
-  tripMapCalloutRoute: {
-    marginTop: 4,
-    color: HOME_COLORS.text,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-  },
-  tripMapCalloutFooter: {
-    marginTop: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  tripMapCalloutMeta: {
-    color: HOME_COLORS.navy,
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.semibold,
-  },
   userLocationCallout: {
     width: 236,
     borderRadius: BorderRadius.lg,
@@ -2585,6 +2745,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+    zIndex: 12,
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,
     gap: Spacing.sm,
@@ -2733,6 +2894,66 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: FontWeights.bold,
   },
+  driverReservationCard: {
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.warning + '33',
+    ...CommonStyles.shadowSm,
+  },
+  driverUpcomingTripCard: {
+    borderColor: HOME_COLORS.navy + '33',
+  },
+  driverReservationIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.sm,
+  },
+  driverUpcomingTripIcon: {
+    backgroundColor: HOME_COLORS.navySoft,
+  },
+  driverReservationText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  driverReservationLabel: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  driverUpcomingTripLabel: {
+    color: HOME_COLORS.navy,
+  },
+  driverReservationPassenger: {
+    marginTop: 2,
+    color: HOME_COLORS.ink,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  driverReservationRoute: {
+    marginTop: 2,
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.medium,
+  },
+  driverReservationAction: {
+    maxWidth: 86,
+    marginLeft: Spacing.sm,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  driverReservationTime: {
+    color: Colors.gray[600],
+    fontSize: 10,
+    fontWeight: FontWeights.semibold,
+    textAlign: 'right',
+  },
   activeRequestCard: {
     backgroundColor: 'rgba(255,255,255,0.96)',
     borderRadius: BorderRadius.lg,
@@ -2779,6 +3000,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
+    zIndex: 11,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     backgroundColor: Colors.white,

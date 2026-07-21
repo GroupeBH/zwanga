@@ -1,5 +1,6 @@
 import type {
   GeoPoint,
+  BookingStatus,
   RecurringTripStatus,
   RecurringTripTemplate,
   Trip,
@@ -157,20 +158,38 @@ const mapRecurringTripStatus = (status?: string): RecurringTripStatus => {
   return (status ?? '').toLowerCase() === 'paused' ? 'paused' : 'active';
 };
 
+const mapBookingStatus = (status?: string): BookingStatus | undefined => {
+  const normalizedStatus = (status ?? '').toLowerCase();
+
+  switch (normalizedStatus) {
+    case 'pending':
+    case 'accepted':
+    case 'rejected':
+    case 'cancelled':
+    case 'completed':
+    case 'expired':
+      return normalizedStatus as BookingStatus;
+    default:
+      return undefined;
+  }
+};
+
 const mapPassengers = (bookings?: ServerBooking[]): Trip['passengers'] => {
   if (!bookings?.length) {
     return [];
   }
 
   return bookings
-    .map((booking) => booking.passenger)
-    .filter((passenger): passenger is ServerUser => Boolean(passenger))
-    .map((passenger) => ({
-      id: passenger.id,
-      name: formatFullName(passenger),
-      avatar: passenger.profilePicture ?? undefined,
-      rating: resolveUserAverageRating(passenger),
-      phone: passenger.phone ?? '',
+    .filter((booking): booking is ServerBooking & { passenger: ServerUser } => Boolean(booking.passenger))
+    .map((booking) => ({
+      bookingId: booking.id,
+      bookingStatus: mapBookingStatus(booking.status),
+      id: booking.passenger.id,
+      name: formatFullName(booking.passenger),
+      avatar: booking.passenger?.profilePicture ?? undefined,
+      rating: resolveUserAverageRating(booking.passenger),
+      phone: booking.passenger?.phone ?? '',
+      seats: booking.seats ?? 1,
     }));
 };
 
