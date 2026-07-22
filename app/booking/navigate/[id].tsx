@@ -1,5 +1,8 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import {
+  getVehicleTrackingMarkerImage,
+  PASSENGER_TRACKING_MARKER_ANCHOR,
+  PassengerTrackingMarker,
   VEHICLE_TRACKING_MARKER_ANCHOR,
   VehicleTrackingMarker,
 } from '@/components/TrackingMapMarkers';
@@ -31,10 +34,12 @@ import {
   View,
 } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import type { MapMarker } from 'react-native-maps';
 import Animated, { FadeInDown, FadeInUp } from '@/utils/reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const MAX_PASSENGER_ROUTE_POINTS = Platform.OS === 'ios' ? 180 : 250;
+const IS_ANDROID = Platform.OS === 'android';
 
 // Fonction pour decoder les polylines Google
 function decodePolyline(encoded: string): { latitude: number; longitude: number }[] {
@@ -123,10 +128,15 @@ export default function PassengerNavigationScreen() {
     useConfirmDropoffByPassengerMutation();
 
   const mapRef = useRef<MapView>(null);
+  const driverMarkerRef = useRef<MapMarker | null>(null);
+  const passengerMarkerRef = useRef<MapMarker | null>(null);
+  const pickupMarkerRef = useRef<MapMarker | null>(null);
+  const dropoffMarkerRef = useRef<MapMarker | null>(null);
   const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [passengerLocation, setPassengerLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [loadedMarkerKeys, setLoadedMarkerKeys] = useState<ReadonlySet<string>>(() => new Set());
   
   // Route et directions
   const [getDirections] = useGetDirectionsMutation();
@@ -246,7 +256,32 @@ export default function PassengerNavigationScreen() {
   useEffect(() => {
     hasPresentedArrivalModalRef.current = false;
     setArrivalModalVisible(false);
+    setLoadedMarkerKeys(new Set());
   }, [bookingId]);
+
+  const handleTrackingMarkerReady = useCallback(
+    (markerKey: string, markerRef: React.MutableRefObject<MapMarker | null>) => {
+      if (!IS_ANDROID) return;
+
+      [80, 220].forEach((delay) => {
+        setTimeout(() => {
+          markerRef.current?.redraw();
+        }, delay);
+      });
+      setTimeout(() => {
+        if (!isMountedRef.current) return;
+
+        setLoadedMarkerKeys((current) => {
+          if (current.has(markerKey)) return current;
+
+          const next = new Set(current);
+          next.add(markerKey);
+          return next;
+        });
+      }, 320);
+    },
+    [],
+  );
 
   const tripDriverLocation = useMemo(
     () => getGeoPointCoordinate(trip?.currentLocation ?? null),
@@ -777,50 +812,79 @@ export default function PassengerNavigationScreen() {
         {/* Position du passager */}
         {passengerLocation && (
           <Marker
+            ref={passengerMarkerRef}
             coordinate={passengerLocation}
-            anchor={{ x: 0.5, y: 0.5 }}
+            anchor={PASSENGER_TRACKING_MARKER_ANCHOR}
             title="Votre position"
-            tracksViewChanges={false}
+            description={booking.pickedUp ? 'Vous êtes à bord' : 'Votre position actuelle'}
+            tracksViewChanges={IS_ANDROID && !loadedMarkerKeys.has('passenger-location')}
+            zIndex={25}
           >
-            <View style={styles.passengerMarker}>
-              <View style={styles.passengerMarkerInner} />
-            </View>
+            <PassengerTrackingMarker
+              status={booking.pickedUp ? 'live' : 'pickup'}
+              onReady={() => handleTrackingMarkerReady('passenger-location', passengerMarkerRef)}
+            />
           </Marker>
         )}
 
         {/* Position du conducteur */}
         {displayedDriverLocation && (
           <Marker
+            ref={driverMarkerRef}
             coordinate={displayedDriverLocation}
             anchor={VEHICLE_TRACKING_MARKER_ANCHOR}
             title="Conducteur"
             description="Voiture qui vient vous chercher"
+            image={IS_ANDROID ? getVehicleTrackingMarkerImage(trip.vehicleType) : undefined}
             flat
             rotation={displayedDriverHeading}
             tracksViewChanges={false}
+            zIndex={30}
           >
-            <VehicleTrackingMarker />
+            {!IS_ANDROID && (
+              <VehicleTrackingMarker
+                vehicleType={trip.vehicleType}
+                onReady={() => handleTrackingMarkerReady('driver-location', driverMarkerRef)}
+              />
+            )}
           </Marker>
         )}
 
         {/* Point de recuperation */}
         {pickupCoordinate && !booking.pickedUp && (
-          <Marker coordinate={pickupCoordinate} tracksViewChanges={false}>
-            <View style={styles.pickupMarker}>
-              <Ionicons name="person-add" size={16} color={Colors.white} />
-            </View>
+          <Marker
+            ref={pickupMarkerRef}
+            coordinate={pickupCoordinate}
+            anchor={PASSENGER_TRACKING_MARKER_ANCHOR}
+            title="Point de prise en charge"
+            description={booking.passengerOrigin || trip.departure.address}
+            tracksViewChanges={IS_ANDROID && !loadedMarkerKeys.has('pickup-location')}
+            zIndex={22}
+          >
+            <PassengerTrackingMarker
+              status="pickup"
+              onReady={() => handleTrackingMarkerReady('pickup-location', pickupMarkerRef)}
+            />
           </Marker>
         )}
 
         {/* Point d'arrivee */}
         {dropoffCoordinate && (
-          <Marker coordinate={dropoffCoordinate} tracksViewChanges={false}>
-            <View style={styles.dropoffMarker}>
-              <Ionicons name="flag" size={16} color={Colors.white} />
-            </View>
+          <Marker
+            ref={dropoffMarkerRef}
+            coordinate={dropoffCoordinate}
+            anchor={PASSENGER_TRACKING_MARKER_ANCHOR}
+            title="Destination"
+            description={booking.passengerDestination || trip.arrival.address}
+            tracksViewChanges={IS_ANDROID && !loadedMarkerKeys.has('dropoff-location')}
+            zIndex={21}
+          >
+            <PassengerTrackingMarker
+              status="arrived"
+              onReady={() => handleTrackingMarkerReady('dropoff-location', dropoffMarkerRef)}
+            />
           </Marker>
         )}
-
         {/* Route complete */}
         {routeCoordinates.length > 1 && (
           <Polyline

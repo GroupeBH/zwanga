@@ -251,6 +251,9 @@ export interface Passenger {
   avatar?: string;
   rating: number;
   phone: string;
+  bookingId?: string;
+  bookingStatus?: BookingStatus;
+  seats?: number;
 }
 
 export interface Booking {
