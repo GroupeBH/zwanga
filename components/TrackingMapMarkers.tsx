@@ -24,6 +24,10 @@ const vehicleTrackingMarkerImages: Record<VehicleType, ImageRequireSource> = {
   tricycle: require('@/assets/images/map-markers/trip-marker-tricycle.png'),
 };
 
+export function getVehicleTrackingMarkerImage(vehicleType?: VehicleType): ImageRequireSource {
+  return vehicleTrackingMarkerImages[vehicleType ?? 'car'] ?? vehicleTrackingMarkerImages.car;
+}
+
 const passengerMarkerMeta: Record<
   PassengerTrackingMarkerStatus,
   { color: string; icon: keyof typeof Ionicons.glyphMap; ring: string }
@@ -58,11 +62,17 @@ export const VehicleTrackingMarker = memo(function VehicleTrackingMarker({
   onReady,
   vehicleType = 'car',
 }: VehicleTrackingMarkerProps) {
-  const markerImage = vehicleTrackingMarkerImages[vehicleType] ?? vehicleTrackingMarkerImages.car;
+  const markerImage = getVehicleTrackingMarkerImage(vehicleType);
 
   return (
-    <View collapsable={false} style={styles.vehicleFrame} onLayout={onReady}>
-      <Image source={markerImage} style={styles.vehicleImage} resizeMode="contain" />
+    <View collapsable={false} style={styles.vehicleFrame}>
+      <Image
+        source={markerImage}
+        style={styles.vehicleImage}
+        resizeMode="contain"
+        fadeDuration={0}
+        onLoadEnd={onReady}
+      />
     </View>
   );
 });
@@ -107,14 +117,14 @@ const styles = StyleSheet.create({
     borderRightColor: 'transparent',
   },
   vehicleFrame: {
-    width: IS_ANDROID ? 72 : 76,
-    height: IS_ANDROID ? 72 : 76,
+    width: IS_ANDROID ? 96 : 76,
+    height: IS_ANDROID ? 96 : 76,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'visible',
   },
   vehicleImage: {
-    width: IS_ANDROID ? 48 : 58,
-    height: IS_ANDROID ? 48 : 58,
+    width: IS_ANDROID ? 56 : 58,
+    height: IS_ANDROID ? 56 : 58,
   },
 });

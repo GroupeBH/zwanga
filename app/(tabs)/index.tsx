@@ -1789,34 +1789,14 @@ export default function HomeScreen() {
               identifier={trip.id}
               coordinate={coordinate}
               anchor={isActiveDriverTrip ? VEHICLE_TRACKING_MARKER_ANCHOR : TRIP_MARKER_ANCHOR}
-              image={!isActiveDriverTrip && IS_ANDROID ? getTripMarkerImage(trip, isSelected) : undefined}
+              image={IS_ANDROID ? getTripMarkerImage(trip, isSelected) : undefined}
               onPress={() => openTripDetail(trip.id)}
               tappable
-              tracksViewChanges={IS_ANDROID && isActiveDriverTrip && !loadedTripMarkerKeys.has(markerRenderKey)}
+              tracksViewChanges={false}
               zIndex={isSelected ? 10 : 1}
             >
-              {isActiveDriverTrip ? (
-                <VehicleTrackingMarker
-                  vehicleType={trip.vehicleType}
-                  onReady={() => {
-                    if (!IS_ANDROID) return;
-
-                    [80, 220].forEach((delay) => {
-                      setTimeout(() => {
-                        tripMarkerRefs.current[trip.id]?.redraw();
-                      }, delay);
-                    });
-                    setTimeout(() => {
-                      setLoadedTripMarkerKeys((current) => {
-                        if (current.has(markerRenderKey)) return current;
-
-                        const next = new Set(current);
-                        next.add(markerRenderKey);
-                        return next;
-                      });
-                    }, 360);
-                  }}
-                />
+              {isActiveDriverTrip && !IS_ANDROID ? (
+                <VehicleTrackingMarker vehicleType={trip.vehicleType} />
               ) : !IS_ANDROID ? (
                 <TripVehicleMapMarker
                   trip={trip}

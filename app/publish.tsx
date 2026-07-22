@@ -12,7 +12,13 @@ import { useCreateRecurringTripMutation, useCreateTripMutation } from '@/store/a
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import type { Vehicle } from '@/types';
-import { createBecomeDriverAction, getApiErrorMessage, isDriverRequiredError } from '@/utils/errorHelpers';
+import {
+  createBecomeDriverAction,
+  createSubscribeToZwangaProAction,
+  getApiErrorMessage,
+  isDailyPublicationLimitError,
+  isDriverRequiredError,
+} from '@/utils/errorHelpers';
 import {
   buildManualGeocodeQuery,
   MANUAL_GEOCODE_DEBOUNCE_MS,
@@ -139,33 +145,6 @@ function buildRoutePreviewRegion(points: LatLng[]): Region {
     latitudeDelta: Math.max((maxLatitude - minLatitude) * 1.35, 0.035),
     longitudeDelta: Math.max((maxLongitude - minLongitude) * 1.35, 0.035),
   };
-}
-
-function isDailyPublicationLimitError(error: any) {
-  const rawMessage = error?.data?.message ?? error?.error ?? error?.message ?? '';
-  const message = Array.isArray(rawMessage) ? rawMessage.join(' ') : String(rawMessage);
-  const normalized = message.toLowerCase();
-  const mentionsPublication =
-    normalized.includes('trajet') ||
-    normalized.includes('publication') ||
-    normalized.includes('publier');
-  const mentionsSubscription =
-    normalized.includes('abonnement') ||
-    normalized.includes('forfait') ||
-    normalized.includes('quota') ||
-    normalized.includes('premium');
-
-  return (
-    normalized.includes('5 trajets') ||
-    normalized.includes('cinq trajets') ||
-    normalized.includes('forfait gratuit') ||
-    normalized.includes('quota gratuit') ||
-    normalized.includes('trajets inclus') ||
-    normalized.includes('trajets par jour') ||
-    (normalized.includes('limite') && normalized.includes('jour')) ||
-    (normalized.includes('daily') && normalized.includes('limit')) ||
-    (mentionsSubscription && mentionsPublication)
-  );
 }
 
 function isUserDriver(user?: { role?: unknown; isDriver?: boolean | null } | null) {
@@ -1410,11 +1389,7 @@ export default function PublishScreen() {
         actions: isQuotaError
           ? [
               { label: 'Plus tard', variant: 'ghost' },
-              {
-                label: "Activer l'abonnement",
-                variant: 'primary',
-                onPress: () => router.push({ pathname: '/subscriptions/payment' } as any),
-              },
+              createSubscribeToZwangaProAction(router),
             ]
           : isDriverError
           ? [

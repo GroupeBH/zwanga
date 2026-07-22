@@ -1,5 +1,6 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import {
+  getVehicleTrackingMarkerImage,
   PASSENGER_TRACKING_MARKER_ANCHOR,
   PassengerTrackingMarker,
   type PassengerTrackingMarkerStatus,
@@ -193,7 +194,6 @@ export default function NavigationScreen() {
   const isMountedRef = useRef(true);
   const isTripOngoingRef = useRef(false);
   const driverMarkerRef = useRef<MapMarker | null>(null);
-  const [driverMarkerTracksViewChanges, setDriverMarkerTracksViewChanges] = useState(true);
   const [loadedPassengerMarkerKeys, setLoadedPassengerMarkerKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -359,7 +359,6 @@ export default function NavigationScreen() {
     announcedWaypointIdsRef.current.clear();
     presentedWaypointIdsRef.current.clear();
     lastSpeechAtRef.current = 0;
-    setDriverMarkerTracksViewChanges(true);
     setLoadedPassengerMarkerKeys(new Set());
     void Speech.stop();
   }, [tripId]);
@@ -1483,27 +1482,18 @@ export default function NavigationScreen() {
             coordinate={driverPosition as unknown as { latitude: number; longitude: number }}
             anchor={VEHICLE_TRACKING_MARKER_ANCHOR}
             title="Ma position"
+            image={
+              USE_ANDROID_NAVIGATION_MARKER_IMAGES
+                ? getVehicleTrackingMarkerImage(trip.vehicleType)
+                : undefined
+            }
             flat
             rotation={heading}
-            tracksViewChanges={USE_ANDROID_NAVIGATION_MARKER_IMAGES && driverMarkerTracksViewChanges}
+            tracksViewChanges={false}
           >
-            <VehicleTrackingMarker
-              vehicleType={trip.vehicleType}
-              onReady={() => {
-                if (!USE_ANDROID_NAVIGATION_MARKER_IMAGES) return;
-
-                [80, 220].forEach((delay) => {
-                  setTimeout(() => {
-                    driverMarkerRef.current?.redraw();
-                  }, delay);
-                });
-                setTimeout(() => {
-                  if (isMountedRef.current) {
-                    setDriverMarkerTracksViewChanges(false);
-                  }
-                }, 360);
-              }}
-            />
+            {!USE_ANDROID_NAVIGATION_MARKER_IMAGES && (
+              <VehicleTrackingMarker vehicleType={trip.vehicleType} />
+            )}
           </Marker.Animated>
         )}
 

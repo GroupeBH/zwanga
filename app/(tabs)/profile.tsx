@@ -2769,7 +2769,7 @@ export default function ProfileScreen() {
                   ) : (
                     <>
                       <Text style={styles.proSecondaryButtonText}>
-                        Choisir le paiement
+                        {"S'abonner \u00e0 Zwanga Pro"}
                       </Text>
                       <Text style={styles.proSecondaryPrice}>{proPriceLabel}</Text>
                     </>

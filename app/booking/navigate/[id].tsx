@@ -1,5 +1,6 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import {
+  getVehicleTrackingMarkerImage,
   PASSENGER_TRACKING_MARKER_ANCHOR,
   PassengerTrackingMarker,
   VEHICLE_TRACKING_MARKER_ANCHOR,
@@ -834,15 +835,18 @@ export default function PassengerNavigationScreen() {
             anchor={VEHICLE_TRACKING_MARKER_ANCHOR}
             title="Conducteur"
             description="Voiture qui vient vous chercher"
+            image={IS_ANDROID ? getVehicleTrackingMarkerImage(trip.vehicleType) : undefined}
             flat
             rotation={displayedDriverHeading}
-            tracksViewChanges={IS_ANDROID && !loadedMarkerKeys.has('driver-location')}
+            tracksViewChanges={false}
             zIndex={30}
           >
-            <VehicleTrackingMarker
-              vehicleType={trip.vehicleType}
-              onReady={() => handleTrackingMarkerReady('driver-location', driverMarkerRef)}
-            />
+            {!IS_ANDROID && (
+              <VehicleTrackingMarker
+                vehicleType={trip.vehicleType}
+                onReady={() => handleTrackingMarkerReady('driver-location', driverMarkerRef)}
+              />
+            )}
           </Marker>
         )}
 

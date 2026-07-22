@@ -18,7 +18,12 @@ import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import type { Vehicle } from '@/types';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
-import { createBecomeDriverAction, isDriverRequiredError } from '@/utils/errorHelpers';
+import {
+  createBecomeDriverAction,
+  createSubscribeToZwangaProAction,
+  isDailyPublicationLimitError,
+  isDriverRequiredError,
+} from '@/utils/errorHelpers';
 import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import { getRouteCoordinates } from '@/utils/routeApi';
 import { Ionicons } from '@expo/vector-icons';
@@ -722,13 +727,19 @@ export default function TripRequestDetailsScreen() {
       });
     } catch (error: any) {
       const message = error?.data?.message || 'Impossible de créer la proposition.';
+      const isQuotaError = isDailyPublicationLimitError(error);
       const isDriverError = isDriverRequiredError(error);
       
       showDialog({
-        title: 'Erreur',
+        title: isQuotaError ? 'Abonnement conducteur requis' : 'Erreur',
         message,
-        variant: 'danger',
-        actions: isDriverError
+        variant: isQuotaError ? 'warning' : 'danger',
+        actions: isQuotaError
+          ? [
+              { label: 'Plus tard', variant: 'ghost' },
+              createSubscribeToZwangaProAction(router),
+            ]
+          : isDriverError
           ? [
               { label: 'Fermer', variant: 'ghost' },
               createBecomeDriverAction(router),
@@ -836,8 +847,16 @@ export default function TripRequestDetailsScreen() {
                 ],
               });
             } catch (error: any) {
+              const isQuotaError = isDailyPublicationLimitError(error);
+
               showDialog({
-                title: 'Erreur',
+                title: isQuotaError ? 'Abonnement conducteur requis' : 'Erreur',
+                actions: isQuotaError
+                  ? [
+                      { label: 'Plus tard', variant: 'ghost' },
+                      createSubscribeToZwangaProAction(router),
+                    ]
+                  : undefined,
                 message: error?.data?.message || 'Impossible de démarrer le trajet',
                 variant: 'danger',
               });
@@ -966,13 +985,19 @@ export default function TripRequestDetailsScreen() {
         error?.data?.message ??
         error?.error ??
         'Impossible d\u2019accepter cette demande pour le moment.';
+      const isQuotaError = isDailyPublicationLimitError(error);
       const isDriverError = isDriverRequiredError(error);
 
       showDialog({
-        title: 'Erreur',
+        title: isQuotaError ? 'Abonnement conducteur requis' : 'Erreur',
         message: resolvedMessage,
-        variant: 'danger',
-        actions: isDriverError
+        variant: isQuotaError ? 'warning' : 'danger',
+        actions: isQuotaError
+          ? [
+              { label: 'Plus tard', variant: 'ghost' },
+              createSubscribeToZwangaProAction(router),
+            ]
+          : isDriverError
           ? [
               { label: 'Fermer', variant: 'ghost' },
               createBecomeDriverAction(router),
