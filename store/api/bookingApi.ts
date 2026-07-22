@@ -71,10 +71,20 @@ type UpdatePassengerLocationResponse = {
   autoProgress?: {
     tripId: string;
     events: Array<{
-      type: 'pickup_confirmed' | 'dropoff_confirmed';
+      type:
+        | 'driver_near_pickup'
+        | 'driver_arrived_pickup'
+        | 'parties_nearby'
+        | 'passenger_ready_pickup'
+        | 'pickup_confirmed'
+        | 'dropoff_confirmed';
       bookingId: string;
       tripId: string;
       passengerId: string;
+      distanceMeters?: number;
+      detectedAt?: string;
+      expiresAt?: string;
+      pickupWaitSeconds?: number;
     }>;
   };
 };

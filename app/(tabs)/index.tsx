@@ -176,6 +176,7 @@ type DriverPassengerMarker = {
   bookingId: string;
   coordinate: MapCoordinate;
   isLive: boolean;
+  isVisible: boolean;
   passengerId: string;
   passengerName: string;
   status: PassengerTrackingMarkerStatus;
@@ -1340,8 +1341,12 @@ export default function HomeScreen() {
 
     ongoingDriverBookings
       .filter((booking) => booking.status === 'accepted' || booking.status === 'completed')
-      .slice(0, MAX_LIVE_PASSENGER_MARKERS)
       .forEach((booking) => {
+        const isPassengerDroppedOff = Boolean(
+          booking.status === 'completed' || booking.droppedOff || booking.droppedOffConfirmedByPassenger,
+        );
+        const isPassengerOnboard = Boolean(booking.pickedUp && !isPassengerDroppedOff);
+
         const liveLocation = liveDriverPassengerLocations[booking.id];
         const apiLocation = normalizeTripMapCoordinate(
           booking.passengerLocationCoordinates?.latitude,
@@ -1358,9 +1363,9 @@ export default function HomeScreen() {
             booking.passengerDestinationCoordinates?.longitude,
           ) ?? fallbackDropoff;
         const status: PassengerTrackingMarkerStatus =
-          booking.droppedOff || booking.droppedOffConfirmedByPassenger
+          isPassengerDroppedOff
             ? 'arrived'
-            : booking.pickedUp
+            : isPassengerOnboard
               ? 'live'
               : 'pickup';
         const coordinate =
@@ -1374,6 +1379,7 @@ export default function HomeScreen() {
           bookingId: booking.id,
           coordinate,
           isLive: Boolean(liveLocation || apiLocation),
+          isVisible: !isPassengerOnboard,
           passengerId: booking.passengerId,
           passengerName: booking.passengerName || 'Passager',
           status,
@@ -1382,6 +1388,11 @@ export default function HomeScreen() {
 
     return markers;
   }, [liveDriverPassengerLocations, ongoingDriverBookings, ongoingDriverTrip]);
+
+  const visibleDriverPassengerMarkers = useMemo(
+    () => driverPassengerMarkers.filter((passenger) => passenger.isVisible).slice(0, MAX_LIVE_PASSENGER_MARKERS),
+    [driverPassengerMarkers],
+  );
 
   const activeHomeTrip = ongoingDriverTrip ?? ongoingBookedTrip;
   const featuredDriverReservation = useMemo<FeaturedDriverReservation | null>(() => {
@@ -1488,10 +1499,10 @@ export default function HomeScreen() {
       : null;
     const coordinate = selectedMapCoordinate ?? selectedDeparture ?? fallbackDeparture;
 
-    if (ongoingDriverTrip && selectedMapCoordinate && driverPassengerMarkers.length > 0) {
+    if (ongoingDriverTrip && selectedMapCoordinate && visibleDriverPassengerMarkers.length > 0) {
       const coordinates = [
         selectedMapCoordinate,
-        ...driverPassengerMarkers.map((passenger) => passenger.coordinate),
+        ...visibleDriverPassengerMarkers.map((passenger) => passenger.coordinate),
       ];
       const latitudes = coordinates.map((point) => point.latitude);
       const longitudes = coordinates.map((point) => point.longitude);
@@ -1518,7 +1529,7 @@ export default function HomeScreen() {
       longitudeDelta: 0.065,
     };
   }, [
-    driverPassengerMarkers,
+    visibleDriverPassengerMarkers,
     liveUserCoordinate,
     ongoingDriverTrip,
     selectedTrip,
@@ -1824,7 +1835,7 @@ export default function HomeScreen() {
             </Marker>
           );
         })}
-        {ongoingDriverTrip && driverPassengerMarkers.map((passenger) => {
+        {ongoingDriverTrip && visibleDriverPassengerMarkers.map((passenger) => {
           const passengerMarkerKey = `home-passenger-${passenger.bookingId}:${passenger.status}`;
           const passengerDescription =
             passenger.status === 'arrived'

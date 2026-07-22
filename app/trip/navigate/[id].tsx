@@ -9,7 +9,11 @@ import {
 } from '@/components/TrackingMapMarkers';
 import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { trackingSocket, type PassengerLocationPayload } from '@/services/trackingSocket';
+import {
+  trackingSocket,
+  type BookingAutoProgressPayload,
+  type PassengerLocationPayload,
+} from '@/services/trackingSocket';
 import {
   useConfirmDropoffMutation,
   useGetTripBookingsQuery
@@ -82,6 +86,22 @@ interface PassengerMapLocation {
   status: PassengerTrackingMarkerStatus;
 }
 
+type PickupNoticeEventType =
+  | 'driver_arrived_pickup'
+  | 'parties_nearby'
+  | 'passenger_ready_pickup';
+
+type BookingAutoProgressEvent = BookingAutoProgressPayload['events'][number];
+
+interface PickupNotice {
+  type: PickupNoticeEventType;
+  waypoint: Waypoint;
+  distanceMeters?: number;
+  detectedAt?: string;
+  expiresAt?: string;
+  pickupWaitSeconds?: number;
+}
+
 type LivePassengerLocation = {
   coordinate: { latitude: number; longitude: number };
   updatedAt?: string | null;
@@ -93,6 +113,15 @@ const SPEECH_MIN_INTERVAL_MS = 2500;
 const MAX_LIVE_PASSENGER_MARKERS = Platform.OS === 'ios' ? 10 : 16;
 const USE_ANDROID_NAVIGATION_MARKER_IMAGES = Platform.OS === 'android';
 const ANDROID_PIN_MARKER_ANCHOR = { x: 0.5, y: 0.88 };
+const DRIVER_PICKUP_ARRIVAL_DISTANCE_KM = 0.05;
+const PASSENGER_READY_DISTANCE_KM = 0.005;
+const MOVING_TOGETHER_DISTANCE_KM = 0.025;
+const MOVING_TOGETHER_PICKUP_EXIT_DISTANCE_KM = 0.03;
+const PICKUP_NOTICE_PRIORITY: Record<PickupNoticeEventType, number> = {
+  driver_arrived_pickup: 1,
+  parties_nearby: 2,
+  passenger_ready_pickup: 3,
+};
 const androidNavigationMarkerImages: Record<'pickup' | 'dropoff' | 'destination', ImageRequireSource> = {
   pickup: require('@/assets/images/map-markers/trip-detail-marker-passenger.png'),
   dropoff: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
@@ -188,6 +217,9 @@ export default function NavigationScreen() {
   const [currentWaypointIndex, setCurrentWaypointIndex] = useState(0);
   const [backgroundDisclosureVisible, setBackgroundDisclosureVisible] = useState(false);
   const [securityModalVisible, setSecurityModalVisible] = useState(false);
+  const [pickupNotice, setPickupNotice] = useState<PickupNotice | null>(null);
+  const [pickupNoticeCountdown, setPickupNoticeCountdown] = useState<number | null>(null);
+  const pickupNoticeRef = useRef<PickupNotice | null>(null);
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const recalcRouteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backgroundDisclosureResolverRef = useRef<((accepted: boolean) => void) | null>(null);
@@ -267,6 +299,10 @@ export default function NavigationScreen() {
   const spokenInstructionKeysRef = useRef<Set<string>>(new Set());
   const announcedWaypointIdsRef = useRef<Set<string>>(new Set());
   const presentedWaypointIdsRef = useRef<Set<string>>(new Set());
+  const presentedPickupNoticeKeysRef = useRef<Set<string>>(new Set());
+  const highestPickupNoticePriorityRef = useRef<Map<string, number>>(new Map());
+  const presentedPassengerBoardedKeysRef = useRef<Set<string>>(new Set());
+  const presentedPassengerDestinationKeysRef = useRef<Set<string>>(new Set());
   const stepsRef = useRef<RouteStep[]>([]);
   const currentStepIndexRef = useRef(0);
   const waypointsRef = useRef<Waypoint[]>([]);
@@ -279,6 +315,7 @@ export default function NavigationScreen() {
   currentWaypointIndexRef.current = currentWaypointIndex;
   waypointModalVisibleRef.current = waypointModalVisible;
   routeCoordinatesRef.current = routeCoordinates;
+  pickupNoticeRef.current = pickupNotice;
 
   const cleanupNavigationUi = useCallback(() => {
     if (recalcRouteTimeoutRef.current) {
@@ -297,6 +334,8 @@ export default function NavigationScreen() {
 
     setBackgroundDisclosureVisible(false);
     setSecurityModalVisible(false);
+    setPickupNotice(null);
+    setPickupNoticeCountdown(null);
     waypointModalVisibleRef.current = false;
     setWaypointModalVisible(false);
     setPassengersPanelVisible(false);
@@ -360,6 +399,12 @@ export default function NavigationScreen() {
     presentedWaypointIdsRef.current.clear();
     lastSpeechAtRef.current = 0;
     setLoadedPassengerMarkerKeys(new Set());
+    setPickupNotice(null);
+    setPickupNoticeCountdown(null);
+    presentedPickupNoticeKeysRef.current.clear();
+    highestPickupNoticePriorityRef.current.clear();
+    presentedPassengerBoardedKeysRef.current.clear();
+    presentedPassengerDestinationKeysRef.current.clear();
     void Speech.stop();
   }, [tripId]);
 
@@ -404,6 +449,163 @@ export default function NavigationScreen() {
     setWaypointModalVisible(true);
   }, []);
 
+  const presentPickupNotice = useCallback(
+    (event: BookingAutoProgressEvent, waypoint: Waypoint) => {
+      if (
+        !isMountedRef.current ||
+        !['driver_arrived_pickup', 'parties_nearby', 'passenger_ready_pickup'].includes(event.type)
+      ) {
+        return;
+      }
+
+      const key = `${event.type}:${event.bookingId}`;
+      if (presentedPickupNoticeKeysRef.current.has(key)) {
+        return;
+      }
+
+      const nextType = event.type as PickupNoticeEventType;
+      const nextPriority = PICKUP_NOTICE_PRIORITY[nextType];
+      const highestPriorityForBooking =
+        highestPickupNoticePriorityRef.current.get(event.bookingId) ?? -1;
+      if (highestPriorityForBooking >= nextPriority) {
+        return;
+      }
+
+      const currentNotice = pickupNoticeRef.current;
+      if (
+        currentNotice?.waypoint.booking.id === event.bookingId &&
+        PICKUP_NOTICE_PRIORITY[currentNotice.type] >= nextPriority
+      ) {
+        return;
+      }
+
+      presentedPickupNoticeKeysRef.current.add(key);
+      const nextNotice: PickupNotice = {
+        type: nextType,
+        waypoint,
+        distanceMeters: event.distanceMeters,
+        detectedAt: event.detectedAt,
+        expiresAt: event.expiresAt,
+        pickupWaitSeconds: event.pickupWaitSeconds,
+      };
+      pickupNoticeRef.current = nextNotice;
+      highestPickupNoticePriorityRef.current.set(event.bookingId, nextPriority);
+      setPickupNotice(nextNotice);
+
+      const passengerName = waypoint.passenger.name || 'Le passager';
+      const speech =
+        event.type === 'passenger_ready_pickup'
+          ? `${passengerName} s'est signalé au point de récupération.`
+          : event.type === 'parties_nearby'
+            ? `${passengerName} est là et prêt à être embarqué.`
+            : `Vous êtes arrivé au point de récupération de ${passengerName}.`;
+
+      void Speech.stop().finally(() => {
+        if (!isMountedRef.current) return;
+        Speech.speak(speech, { language: 'fr-FR', rate: 0.95 });
+      });
+    },
+    [],
+  );
+
+  const getPassengerNameForBooking = useCallback(
+    (bookingId: string, waypoint?: Waypoint | null) =>
+      waypoint?.passenger.name ||
+      bookings?.find((booking) => booking.id === bookingId)?.passengerName ||
+      'Le passager',
+    [bookings],
+  );
+
+  const presentPassengerBoardedNotice = useCallback(
+    (event: BookingAutoProgressEvent, waypoint?: Waypoint | null) => {
+      if (!isMountedRef.current || event.type !== 'pickup_confirmed') {
+        return;
+      }
+
+      const key = `pickup_confirmed:${event.bookingId}`;
+      if (presentedPassengerBoardedKeysRef.current.has(key)) {
+        return;
+      }
+
+      presentedPassengerBoardedKeysRef.current.add(key);
+      const passengerName = getPassengerNameForBooking(event.bookingId, waypoint);
+      setPickupNotice((current) =>
+        current?.waypoint.booking.id === event.bookingId ? null : current,
+      );
+      setPickupNoticeCountdown(null);
+
+      showDialog({
+        variant: 'success',
+        icon: 'checkmark-circle',
+        title: 'Passager embarqu\u00e9',
+        message: `${passengerName} a \u00e9t\u00e9 embarqu\u00e9. Vous pouvez continuer vers sa destination.`,
+      });
+
+      void Speech.stop().finally(() => {
+        if (!isMountedRef.current) return;
+        Speech.speak(`${passengerName} a \u00e9t\u00e9 embarqu\u00e9.`, {
+          language: SPEECH_LANGUAGE,
+          rate: SPEECH_RATE,
+        });
+      });
+    },
+    [getPassengerNameForBooking, showDialog],
+  );
+
+  const presentPassengerDestinationNotice = useCallback(
+    (event: BookingAutoProgressEvent, waypoint?: Waypoint | null) => {
+      if (!isMountedRef.current || event.type !== 'dropoff_confirmed') {
+        return;
+      }
+
+      const key = `dropoff_confirmed:${event.bookingId}`;
+      if (presentedPassengerDestinationKeysRef.current.has(key)) {
+        return;
+      }
+
+      presentedPassengerDestinationKeysRef.current.add(key);
+      const passengerName = getPassengerNameForBooking(event.bookingId, waypoint);
+
+      showDialog({
+        variant: 'success',
+        icon: 'flag',
+        title: 'Destination atteinte',
+        message: `Nous sommes arriv\u00e9s au point de destination de ${passengerName}.`,
+      });
+
+      void Speech.stop().finally(() => {
+        if (!isMountedRef.current) return;
+        Speech.speak(`Nous sommes arriv\u00e9s au point de destination de ${passengerName}.`, {
+          language: SPEECH_LANGUAGE,
+          rate: SPEECH_RATE,
+        });
+      });
+    },
+    [getPassengerNameForBooking, showDialog],
+  );
+
+  useEffect(() => {
+    if (!pickupNotice?.expiresAt) {
+      setPickupNoticeCountdown(null);
+      return;
+    }
+
+    const expiresAt = new Date(pickupNotice.expiresAt).getTime();
+    if (!Number.isFinite(expiresAt)) {
+      setPickupNoticeCountdown(null);
+      return;
+    }
+
+    const updateCountdown = () => {
+      const remainingSeconds = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+      setPickupNoticeCountdown(remainingSeconds);
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [pickupNotice?.expiresAt]);
+
   // Connexion WebSocket pour le tracking temps reel
   useEffect(() => {
     if (!tripId || !isTripOngoing) {
@@ -439,12 +641,33 @@ export default function NavigationScreen() {
       if (!isMountedRef.current || isCancelled || payload.tripId !== tripId) return;
       if (payload.events.length > 0) {
         payload.events.forEach((event) => {
-          const waypointType = event.type === 'pickup_confirmed' ? 'pickup' : 'dropoff';
-          const waypoint = waypointsRef.current.find(
-            (item) => item.booking.id === event.bookingId && item.type === waypointType,
-          );
-          if (waypoint) {
-            presentWaypointModal(waypoint);
+          if (
+            event.type === 'driver_arrived_pickup' ||
+            event.type === 'parties_nearby' ||
+            event.type === 'passenger_ready_pickup'
+          ) {
+            const waypoint = waypointsRef.current.find(
+              (item) => item.booking.id === event.bookingId && item.type === 'pickup',
+            );
+            if (waypoint) {
+              presentPickupNotice(event, waypoint);
+            }
+            return;
+          }
+
+          if (event.type === 'pickup_confirmed') {
+            const waypoint = waypointsRef.current.find(
+              (item) => item.booking.id === event.bookingId && item.type === 'pickup',
+            );
+            presentPassengerBoardedNotice(event, waypoint ?? null);
+            return;
+          }
+
+          if (event.type === 'dropoff_confirmed') {
+            const waypoint = waypointsRef.current.find(
+              (item) => item.booking.id === event.bookingId && item.type === 'dropoff',
+            );
+            presentPassengerDestinationNotice(event, waypoint ?? null);
           }
         });
         refetchBookings();
@@ -491,7 +714,15 @@ export default function NavigationScreen() {
 
       console.log('[Navigation] Deconnecte et memoire nettoyee');
     };
-  }, [isTripOngoing, presentWaypointModal, refetchBookings, refetchTrip, tripId]);
+  }, [
+    isTripOngoing,
+    presentPassengerBoardedNotice,
+    presentPassengerDestinationNotice,
+    presentPickupNotice,
+    refetchBookings,
+    refetchTrip,
+    tripId,
+  ]);
   // Créer les waypoints à partir des bookings acceptés
   useEffect(() => {
     if (!bookings || !trip) return;
@@ -866,10 +1097,10 @@ export default function NavigationScreen() {
     const passengerName = waypoint.passenger.name || 'le passager';
     const address = waypoint.address ? ` Adresse: ${waypoint.address}.` : '';
     if (waypoint.type === 'pickup') {
-      return `Vous êtes arrivé au point de récupération. ${passengerName} doit être récupéré à cette position.${address}`;
+      return `Vous \u00eates arriv\u00e9 au point de r\u00e9cup\u00e9ration de ${passengerName}.${address}`;
     }
 
-    return `Vous êtes arrivé à la destination de ${passengerName}. Validez son arrivée avec le bouton Terminer.${address}`;
+    return `Nous sommes arriv\u00e9s au point de destination de ${passengerName}. Validez son arriv\u00e9e avec le bouton Terminer.${address}`;
   }, []);
 
   useEffect(() => {
@@ -1102,14 +1333,28 @@ export default function NavigationScreen() {
         };
         const distanceToWaypoint = calculateDistance(currentCoords, waypointCoords);
 
-        // Si on est à moins de 50 mètres du waypoint, notifier le conducteur
-        if (distanceToWaypoint < 0.05) {
+        // Si on est a moins de 50 metres du waypoint, notifier le conducteur.
+        if (distanceToWaypoint < DRIVER_PICKUP_ARRIVAL_DISTANCE_KM) {
           if (!announcedWaypointIdsRef.current.has(nextWaypoint.id)) {
             announcedWaypointIdsRef.current.add(nextWaypoint.id);
             void speakNavigationMessage(buildWaypointSpeech(nextWaypoint), { force: true });
           }
 
-          presentWaypointModal(nextWaypoint);
+          if (nextWaypoint.type === 'pickup') {
+            presentPickupNotice(
+              {
+                type: 'driver_arrived_pickup',
+                bookingId: nextWaypoint.booking.id,
+                tripId,
+                passengerId: nextWaypoint.passenger.id,
+                distanceMeters: Math.round(distanceToWaypoint * 1000),
+                detectedAt: new Date().toISOString(),
+              },
+              nextWaypoint,
+            );
+          } else {
+            presentWaypointModal(nextWaypoint);
+          }
         }
       }
     }
@@ -1140,7 +1385,7 @@ export default function NavigationScreen() {
   };
 
   // Calculer la distance entre deux points (en km)
-  const calculateDistance = (
+  const calculateDistance = useCallback((
     point1: { latitude: number; longitude: number },
     point2: { latitude: number; longitude: number }
   ): number => {
@@ -1155,7 +1400,112 @@ export default function NavigationScreen() {
         Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!isTripOngoing || !tripId) {
+      return;
+    }
+
+    const latestDriverLocation = currentLocationRef.current ?? currentLocation;
+    if (!latestDriverLocation) {
+      return;
+    }
+
+    const driverCoordinate = {
+      latitude: latestDriverLocation.coords.latitude,
+      longitude: latestDriverLocation.coords.longitude,
+    };
+    const detectedAt = new Date().toISOString();
+
+    waypoints.forEach((waypoint) => {
+      const booking = waypoint.booking;
+      const isPassengerAlreadyPickedUp =
+        waypoint.completed || booking.pickedUp || booking.pickedUpConfirmedByPassenger;
+
+      if (
+        waypoint.type !== 'pickup' ||
+        isPassengerAlreadyPickedUp ||
+        booking.droppedOff ||
+        booking.droppedOffConfirmedByPassenger
+      ) {
+        return;
+      }
+
+      const pickupCoordinate = {
+        latitude: waypoint.location.lat,
+        longitude: waypoint.location.lng,
+      };
+      const driverPickupDistanceKm = calculateDistance(driverCoordinate, pickupCoordinate);
+
+      if (driverPickupDistanceKm <= DRIVER_PICKUP_ARRIVAL_DISTANCE_KM) {
+        presentPickupNotice(
+          {
+            type: 'driver_arrived_pickup',
+            bookingId: booking.id,
+            tripId,
+            passengerId: waypoint.passenger.id,
+            distanceMeters: Math.round(driverPickupDistanceKm * 1000),
+            detectedAt,
+          },
+          waypoint,
+        );
+      }
+
+      const passengerLocation = livePassengerLocations[booking.id]?.coordinate;
+      if (!passengerLocation) {
+        return;
+      }
+
+      const driverPassengerDistanceKm = calculateDistance(driverCoordinate, passengerLocation);
+      const passengerPickupDistanceKm = calculateDistance(passengerLocation, pickupCoordinate);
+
+      if (
+        Math.min(driverPassengerDistanceKm, passengerPickupDistanceKm) <= PASSENGER_READY_DISTANCE_KM
+      ) {
+        presentPickupNotice(
+          {
+            type: 'parties_nearby',
+            bookingId: booking.id,
+            tripId,
+            passengerId: waypoint.passenger.id,
+            distanceMeters: Math.round(
+              Math.min(driverPassengerDistanceKm, passengerPickupDistanceKm) * 1000,
+            ),
+            detectedAt,
+          },
+          waypoint,
+        );
+      }
+
+      if (
+        driverPassengerDistanceKm <= MOVING_TOGETHER_DISTANCE_KM &&
+        driverPickupDistanceKm > MOVING_TOGETHER_PICKUP_EXIT_DISTANCE_KM &&
+        passengerPickupDistanceKm > MOVING_TOGETHER_PICKUP_EXIT_DISTANCE_KM
+      ) {
+        presentPassengerBoardedNotice(
+          {
+            type: 'pickup_confirmed',
+            bookingId: booking.id,
+            tripId,
+            passengerId: waypoint.passenger.id,
+            distanceMeters: Math.round(driverPassengerDistanceKm * 1000),
+            detectedAt,
+          },
+          waypoint,
+        );
+      }
+    });
+  }, [
+    calculateDistance,
+    currentLocation,
+    isTripOngoing,
+    livePassengerLocations,
+    presentPassengerBoardedNotice,
+    presentPickupNotice,
+    tripId,
+    waypoints,
+  ]);
 
   // Forcer le recalcul de l'itinéraire
   const forceRecalculateRoute = () => {
@@ -1285,6 +1635,22 @@ export default function NavigationScreen() {
     if (!activeWaypoint) return;
     openReportForWaypoint(activeWaypoint);
   };
+
+  const dismissPickupNotice = useCallback(() => {
+    pickupNoticeRef.current = null;
+    setPickupNotice(null);
+    setPickupNoticeCountdown(null);
+  }, []);
+
+  const handleSkipPickupAfterWait = useCallback(() => {
+    const passengerName = pickupNotice?.waypoint.passenger.name || 'le passager';
+    dismissPickupNotice();
+    showDialog({
+      variant: 'warning',
+      title: 'Vous pouvez poursuivre',
+      message: `${passengerName} ne s'est pas signalé dans le délai. Vous pouvez passer au point suivant et signaler le passager si nécessaire.`,
+    });
+  }, [dismissPickupNotice, pickupNotice?.waypoint.passenger.name, showDialog]);
 
   // Quitter la navigation
   const handleExitNavigation = useCallback(() => {
@@ -2013,6 +2379,102 @@ export default function NavigationScreen() {
         </View>
       </Modal>
 
+      <Modal
+        visible={Boolean(pickupNotice)}
+        transparent
+        animationType="slide"
+        onRequestClose={dismissPickupNotice}
+      >
+        <View style={styles.waypointModalOverlay}>
+          <View style={[styles.waypointModalContent, { paddingBottom: Math.max(insets.bottom, Spacing.xl) + Spacing.lg }]}>
+            <View style={styles.waypointModalHandle} />
+            <View
+              style={[
+                styles.waypointModalIcon,
+                {
+                  backgroundColor:
+                    pickupNotice?.type === 'passenger_ready_pickup'
+                      ? Colors.success
+                      : pickupNotice?.type === 'parties_nearby'
+                        ? Colors.primary
+                        : Colors.secondary,
+                },
+              ]}
+            >
+              <Ionicons
+                name={
+                  pickupNotice?.type === 'passenger_ready_pickup'
+                    ? 'hand-left'
+                    : pickupNotice?.type === 'parties_nearby'
+                      ? 'people'
+                      : 'time'
+                }
+                size={32}
+                color={Colors.white}
+              />
+            </View>
+            <Text style={styles.waypointModalTitle}>
+              {pickupNotice?.type === 'passenger_ready_pickup'
+                ? "Le passager s'est signalé"
+                : pickupNotice?.type === 'parties_nearby'
+                  ? 'Passager prêt à embarquer'
+                  : 'Arrivé au point de récupération'}
+            </Text>
+            <Text style={styles.waypointModalPassenger}>
+              {pickupNotice?.waypoint.passenger.name || 'Passager'}
+            </Text>
+            <View style={styles.waypointModalAddressContainer}>
+              <Ionicons name="location" size={18} color={Colors.gray[500]} />
+              <Text style={styles.waypointModalAddress}>
+                {pickupNotice?.waypoint.address}
+              </Text>
+            </View>
+            <Text style={styles.waypointModalWaitingText}>
+              {pickupNotice?.type === 'passenger_ready_pickup'
+                ? "Le passager indique qu'il est présent au point de récupération."
+                : pickupNotice?.type === 'parties_nearby'
+                  ? `${pickupNotice?.waypoint.passenger.name || 'Le passager'} est là et prêt à être embarqué.`
+                  : `Vous êtes arrivé au point de récupération de ${pickupNotice?.waypoint.passenger.name || 'ce passager'}. Le passager est notifié.`}
+            </Text>
+            {pickupNotice?.type === 'driver_arrived_pickup' && pickupNoticeCountdown !== null && (
+              <View style={styles.waypointGpsStatus}>
+                <Ionicons name="timer" size={18} color={Colors.secondary} />
+                <Text style={[styles.waypointGpsStatusText, { color: Colors.secondary }]}>
+                  {pickupNoticeCountdown > 0
+                    ? `Temps restant ${Math.floor(pickupNoticeCountdown / 60)
+                        .toString()
+                        .padStart(2, '0')}:${(pickupNoticeCountdown % 60)
+                        .toString()
+                        .padStart(2, '0')}`
+                    : 'Les 10 minutes sont écoulées'}
+                </Text>
+              </View>
+            )}
+            <View style={styles.waypointModalActions}>
+              <TouchableOpacity
+                style={styles.waypointModalSecondaryButton}
+                onPress={dismissPickupNotice}
+              >
+                <Text style={styles.waypointModalSecondaryButtonText}>Compris</Text>
+              </TouchableOpacity>
+              {pickupNotice?.type === 'driver_arrived_pickup' && (
+                <TouchableOpacity
+                  style={[
+                    styles.waypointModalPrimaryButton,
+                    pickupNoticeCountdown !== 0 && { opacity: 0.45 },
+                  ]}
+                  onPress={handleSkipPickupAfterWait}
+                  disabled={pickupNoticeCountdown !== 0}
+                >
+                  <Ionicons name="arrow-forward-circle" size={20} color={Colors.white} />
+                  <Text style={styles.waypointModalPrimaryButtonText}>Passer</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Modal de waypoint stylise */}
       <Modal
         visible={waypointModalVisible && Boolean(activeWaypoint)}
@@ -2058,8 +2520,8 @@ export default function NavigationScreen() {
             {activeWaypoint && (
               <Text style={styles.waypointModalWaitingText}>
                 {activeWaypoint.type === 'pickup'
-                  ? `${activeWaypoint.passenger.name || 'Le passager'} doit être récupéré à cette position.`
-                  : `Validez l'arrivée de ${activeWaypoint.passenger.name || 'ce passager'} avant de poursuivre.`}
+                  ? `Vous êtes arrivé au point de récupération de ${activeWaypoint.passenger.name || 'ce passager'}.`
+                  : `Nous sommes arrivés au point de destination de ${activeWaypoint.passenger.name || 'ce passager'}. Validez l'arrivée avant de poursuivre.`}
               </Text>
             )}
 
@@ -3241,4 +3703,3 @@ const styles = StyleSheet.create({
     color: Colors.white,
   },
 });
-

@@ -9,7 +9,7 @@ function resolveSocketBaseUrl() {
   if (!API_BASE_URL) {
     return '';
   }
-  return API_BASE_URL.replace(/\/api\/v1\/?$/, '');
+  return API_BASE_URL.replace(/\/(?:api\/)?v1\/?$/, '');
 }
 
 class ChatSocketClient {
