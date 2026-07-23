@@ -25,7 +25,7 @@ import {
   getTripLocationCoordinate,
   normalizeTripMapCoordinate,
 } from '@/utils/tripCoordinates';
-import { getRouteAlignedPosition } from '@/utils/routeHelpers';
+import { calculateDistance, getRouteAlignedPosition } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Speech from 'expo-speech';
@@ -84,6 +84,8 @@ interface PassengerMapLocation {
   passengerName: string;
   status: PassengerTrackingMarkerStatus;
 }
+
+type RouteSectionFocus = 'next' | 'remaining';
 
 type PickupNoticeEventType =
   | 'driver_arrived_pickup'
@@ -211,6 +213,7 @@ export default function NavigationScreen() {
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [isVoiceGuidanceEnabled, setIsVoiceGuidanceEnabled] = useState(true);
   const [livePassengerLocations, setLivePassengerLocations] = useState<Record<string, LivePassengerLocation>>({});
+  const [routeSectionFocus, setRouteSectionFocus] = useState<RouteSectionFocus>('next');
   
   // Modal et panneau pour les waypoints
   const [waypointModalVisible, setWaypointModalVisible] = useState(false);
@@ -248,9 +251,21 @@ export default function NavigationScreen() {
     const locations: PassengerMapLocation[] = [];
 
     (bookings ?? [])
-      .filter((booking) => booking.status === 'accepted' || booking.status === 'completed')
+      .filter((booking) => {
+        if (booking.status !== 'accepted' && booking.status !== 'completed') {
+          return false;
+        }
+
+        const isPassengerDroppedOff = Boolean(
+          booking.status === 'completed' || booking.droppedOff || booking.droppedOffConfirmedByPassenger,
+        );
+        return !(booking.pickedUp && !isPassengerDroppedOff);
+      })
       .slice(0, MAX_LIVE_PASSENGER_MARKERS)
       .forEach((booking) => {
+        const isPassengerDroppedOff = Boolean(
+          booking.status === 'completed' || booking.droppedOff || booking.droppedOffConfirmedByPassenger,
+        );
         const liveLocation = livePassengerLocations[booking.id];
         const apiLocation = normalizeTripMapCoordinate(
           booking.passengerLocationCoordinates?.latitude,
@@ -266,11 +281,9 @@ export default function NavigationScreen() {
             booking.passengerDestinationCoordinates?.longitude,
           ) ?? tripArrivalCoordinate;
         const status: PassengerTrackingMarkerStatus =
-          booking.droppedOff || booking.droppedOffConfirmedByPassenger
+          isPassengerDroppedOff
             ? 'arrived'
-            : booking.pickedUp
-              ? 'live'
-              : 'pickup';
+            : 'pickup';
         const coordinate =
           status === 'arrived'
             ? dropoffLocation ?? liveLocation?.coordinate ?? apiLocation ?? pickupLocation ?? tripDepartureCoordinate
@@ -1820,6 +1833,57 @@ export default function NavigationScreen() {
       !areTripMapCoordinatesSame(tripDepartureCoordinate, tripArrivalCoordinate),
   );
 
+  const currentNavigationWaypoint =
+    currentWaypointIndex < waypoints.length && !waypoints[currentWaypointIndex]?.completed
+      ? waypoints[currentWaypointIndex]
+      : null;
+
+  const routeSectionCoordinates = useMemo(() => {
+    if (routeCoordinates.length < 2 || !currentNavigationWaypoint) {
+      return {
+        nextCoordinates: routeCoordinates,
+        remainingCoordinates: [] as Array<{ latitude: number; longitude: number }>,
+      };
+    }
+
+    const waypointCoordinate = {
+      latitude: currentNavigationWaypoint.location.lat,
+      longitude: currentNavigationWaypoint.location.lng,
+    };
+
+    let closestIndex = 0;
+    let closestDistance = Number.POSITIVE_INFINITY;
+    routeCoordinates.forEach((coordinate, index) => {
+      const distance = calculateDistance(coordinate, waypointCoordinate);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = index;
+      }
+    });
+
+    const splitIndex = Math.max(1, Math.min(closestIndex, routeCoordinates.length - 1));
+
+    return {
+      nextCoordinates: routeCoordinates.slice(0, splitIndex + 1),
+      remainingCoordinates: routeCoordinates.slice(splitIndex),
+    };
+  }, [
+    currentNavigationWaypoint?.id,
+    currentNavigationWaypoint?.location.lat,
+    currentNavigationWaypoint?.location.lng,
+    routeCoordinates,
+  ]);
+
+  const canToggleRouteSections =
+    routeSectionCoordinates.nextCoordinates.length > 1 &&
+    routeSectionCoordinates.remainingCoordinates.length > 1;
+
+  useEffect(() => {
+    if (!canToggleRouteSections && routeSectionFocus === 'remaining') {
+      setRouteSectionFocus('next');
+    }
+  }, [canToggleRouteSections, routeSectionFocus]);
+
   if (isLoading || bookingsLoading || !trip) {
     return (
       <View style={styles.loadingContainer}>
@@ -1880,11 +1944,30 @@ export default function NavigationScreen() {
         }}
       >
         {/* Itinéraire (simplifié) */}
-        {routeCoordinates.length > 0 && (
+        {routeSectionCoordinates.nextCoordinates.length > 1 && (
           <Polyline
-            coordinates={routeCoordinates}
-            strokeWidth={4}
-            strokeColor={Colors.primary}
+            coordinates={routeSectionCoordinates.nextCoordinates}
+            strokeWidth={routeSectionFocus === 'next' ? 6 : 3}
+            strokeColor={routeSectionFocus === 'next' ? Colors.primaryDark : 'rgba(255, 107, 53, 0.26)'}
+            lineCap="round"
+            lineJoin="round"
+            tappable
+            onPress={() => setRouteSectionFocus('next')}
+            zIndex={routeSectionFocus === 'next' ? 12 : 2}
+          />
+        )}
+
+        {routeSectionCoordinates.remainingCoordinates.length > 1 && (
+          <Polyline
+            coordinates={routeSectionCoordinates.remainingCoordinates}
+            strokeWidth={routeSectionFocus === 'remaining' ? 6 : 3}
+            strokeColor={routeSectionFocus === 'remaining' ? Colors.infoDark : 'rgba(52, 152, 219, 0.24)'}
+            lineDashPattern={routeSectionFocus === 'remaining' ? undefined : [8, 6]}
+            lineCap="round"
+            lineJoin="round"
+            tappable
+            onPress={() => setRouteSectionFocus('remaining')}
+            zIndex={routeSectionFocus === 'remaining' ? 13 : 3}
           />
         )}
 
@@ -1919,7 +2002,7 @@ export default function NavigationScreen() {
                 ? 'Point de prise en charge'
                 : passenger.isLive
                   ? 'Position en direct'
-                  : 'Passager à bord';
+                  : 'Position du passager';
 
           return (
             <Marker
@@ -2052,6 +2135,55 @@ export default function NavigationScreen() {
           </Marker>
         )}
       </MapView>
+
+      {isTripOngoing && canToggleRouteSections && (
+        <View style={styles.routeSectionToggle}>
+          <TouchableOpacity
+            style={[
+              styles.routeSectionToggleButton,
+              routeSectionFocus === 'next' && styles.routeSectionToggleNextActive,
+            ]}
+            onPress={() => setRouteSectionFocus('next')}
+            activeOpacity={0.85}
+          >
+            <Ionicons
+              name="navigate-outline"
+              size={15}
+              color={routeSectionFocus === 'next' ? Colors.white : Colors.primaryDark}
+            />
+            <Text
+              style={[
+                styles.routeSectionToggleText,
+                routeSectionFocus === 'next' && styles.routeSectionToggleTextActive,
+              ]}
+            >
+              Prochain
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.routeSectionToggleButton,
+              routeSectionFocus === 'remaining' && styles.routeSectionToggleRemainingActive,
+            ]}
+            onPress={() => setRouteSectionFocus('remaining')}
+            activeOpacity={0.85}
+          >
+            <Ionicons
+              name="map-outline"
+              size={15}
+              color={routeSectionFocus === 'remaining' ? Colors.white : Colors.infoDark}
+            />
+            <Text
+              style={[
+                styles.routeSectionToggleText,
+                routeSectionFocus === 'remaining' && styles.routeSectionToggleTextActive,
+              ]}
+            >
+              Reste
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {!isTripOngoing && (
         <View style={styles.preStartOverlay}>
@@ -3098,6 +3230,49 @@ const styles = StyleSheet.create({
   loadingRouteText: {
     fontSize: FontSizes.base,
     color: Colors.gray[700],
+  },
+  routeSectionToggle: {
+    position: 'absolute',
+    left: Spacing.lg,
+    top: Platform.OS === 'ios' ? 114 : 84,
+    zIndex: 35,
+    elevation: 35,
+    flexDirection: 'row',
+    gap: 4,
+    padding: 4,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.14,
+    shadowRadius: 4,
+  },
+  routeSectionToggleButton: {
+    width: 92,
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    opacity: 0.68,
+  },
+  routeSectionToggleNextActive: {
+    backgroundColor: Colors.primaryDark,
+    opacity: 1,
+  },
+  routeSectionToggleRemainingActive: {
+    backgroundColor: Colors.infoDark,
+    opacity: 1,
+  },
+  routeSectionToggleText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[700],
+  },
+  routeSectionToggleTextActive: {
+    color: Colors.white,
   },
   floatingButtons: {
     position: 'absolute',

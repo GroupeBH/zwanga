@@ -1855,7 +1855,9 @@ export default function HomeScreen() {
       : 'Trajets publiés';
   const sheetSubtitle = isHomeSheetLockedRetracted
     ? ongoingDriverTrip || trackedTripInfo?.role === 'driver'
-      ? `${driverPassengerMarkers.length} passager${driverPassengerMarkers.length > 1 ? 's' : ''} et votre véhicule en direct`
+      ? visibleDriverPassengerMarkers.length > 0
+        ? `${visibleDriverPassengerMarkers.length} passager${visibleDriverPassengerMarkers.length > 1 ? 's' : ''} et votre véhicule en direct`
+        : 'Votre véhicule reste visible en direct'
       : 'Votre position et le véhicule restent visibles'
     : isRequestsSheetMode
       ? availableDriverRequests.length > 0
@@ -2078,7 +2080,7 @@ export default function HomeScreen() {
                 ? 'Point de prise en charge'
                 : passenger.isLive
                   ? 'Position en temps réel'
-                  : 'Passager à bord';
+                  : 'Position du passager';
 
           return (
             <Marker

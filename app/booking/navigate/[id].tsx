@@ -20,7 +20,7 @@ import {
 import { useGetDirectionsMutation } from '@/store/api/googleMapsApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { getGeoPointCoordinate, normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
-import { calculateDistance, getRouteAlignedPosition } from '@/utils/routeHelpers';
+import { calculateDistance, getRouteAlignedPosition, splitRouteByProgress } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Speech from 'expo-speech';
@@ -52,6 +52,12 @@ const MOVING_TOGETHER_PICKUP_EXIT_DISTANCE_KM = 0.03;
 type BookingAutoProgressEvent = BookingAutoProgressPayload['events'][number];
 type PassengerPickupNoticeType = 'driver_near_pickup' | 'driver_arrived_pickup' | 'parties_nearby';
 type RouteSegmentFocus = 'route' | 'pickup';
+type PassengerRouteInfo = {
+  distance: string;
+  distanceMeters: number;
+  duration: string;
+  durationSeconds: number;
+};
 const PASSENGER_PICKUP_NOTICE_PRIORITY: Record<PassengerPickupNoticeType, number> = {
   driver_near_pickup: 0,
   driver_arrived_pickup: 1,
@@ -129,6 +135,46 @@ function decodePolyline(encoded: string): { latitude: number; longitude: number 
   return points;
 }
 
+function formatDistanceMeters(distanceMeters: number) {
+  if (!Number.isFinite(distanceMeters)) {
+    return null;
+  }
+
+  const safeDistance = Math.max(0, Math.round(distanceMeters));
+  if (safeDistance >= 1000) {
+    return `${(safeDistance / 1000).toFixed(1)} km`;
+  }
+
+  return `${safeDistance} m`;
+}
+
+function formatDurationSeconds(durationSeconds: number) {
+  if (!Number.isFinite(durationSeconds)) {
+    return '-';
+  }
+
+  if (durationSeconds <= 0) {
+    return '0 min';
+  }
+
+  const hours = Math.floor(durationSeconds / 3600);
+  const minutes = Math.max(1, Math.ceil((durationSeconds % 3600) / 60));
+  return hours > 0 ? `${hours}h ${minutes}min` : `${minutes} min`;
+}
+
+function calculateRouteDistanceMeters(coordinates: { latitude: number; longitude: number }[]) {
+  if (coordinates.length < 2) {
+    return 0;
+  }
+
+  let distanceKm = 0;
+  for (let index = 1; index < coordinates.length; index += 1) {
+    distanceKm += calculateDistance(coordinates[index - 1], coordinates[index]);
+  }
+
+  return distanceKm * 1000;
+}
+
 export default function PassengerNavigationScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -164,7 +210,7 @@ export default function PassengerNavigationScreen() {
   // Route et directions
   const [getDirections] = useGetDirectionsMutation();
   const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[]>([]);
-  const [routeInfo, setRouteInfo] = useState<{ distance: string; duration: string } | null>(null);
+  const [routeInfo, setRouteInfo] = useState<PassengerRouteInfo | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
   const [activeRouteSegment, setActiveRouteSegment] = useState<RouteSegmentFocus>('route');
@@ -500,20 +546,12 @@ export default function PassengerNavigationScreen() {
           const totalDistance = route.legs.reduce((acc, leg) => acc + leg.distance, 0);
           const totalDuration = route.legs.reduce((acc, leg) => acc + leg.duration, 0);
           
-          // Formater la distance
-          const distanceKm = totalDistance / 1000;
-          const distanceStr = distanceKm >= 1 
-            ? `${distanceKm.toFixed(1)} km` 
-            : `${totalDistance} m`;
-          
-          // Formater la duree
-          const hours = Math.floor(totalDuration / 3600);
-          const minutes = Math.ceil((totalDuration % 3600) / 60);
-          const durationStr = hours > 0 
-            ? `${hours}h ${minutes}min` 
-            : `${minutes} min`;
-          
-          setRouteInfo({ distance: distanceStr, duration: durationStr });
+          setRouteInfo({
+            distance: formatDistanceMeters(totalDistance) ?? '-',
+            distanceMeters: totalDistance,
+            duration: formatDurationSeconds(totalDuration),
+            durationSeconds: totalDuration,
+          });
         }
         
         routeFetchedRef.current = true;
@@ -526,8 +564,14 @@ export default function PassengerNavigationScreen() {
         // Fallback: utiliser une ligne droite entre pickup et dropoff
         console.warn('[PassengerNavigation] Pas de route trouvee, utilisation de ligne droite');
         
+        const fallbackDistanceMeters = calculateDistance(pickupCoordinate, dropoffCoordinate) * 1000;
         setRouteCoordinates([pickupCoordinate, dropoffCoordinate]);
-        setRouteInfo(null); // Pas d'infos de distance/duree en fallback
+        setRouteInfo({
+          distance: formatDistanceMeters(fallbackDistanceMeters) ?? '-',
+          distanceMeters: fallbackDistanceMeters,
+          duration: '-',
+          durationSeconds: 0,
+        });
         routeFetchedRef.current = true;
       } else {
         console.warn('[PassengerNavigation] Erreur route:', error?.data?.message || error?.message || 'Erreur inconnue');
@@ -1068,6 +1112,80 @@ export default function PassengerNavigationScreen() {
     displayedDriverLocation && !booking?.pickedUp && (passengerLocation || pickupCoordinate),
   );
   const canToggleRouteSegments = routeCoordinates.length > 1 && hasPickupConnectorSegment;
+  const isPassengerOnboard = Boolean(
+    booking?.pickedUp && !booking.droppedOff && !booking.droppedOffConfirmedByPassenger,
+  );
+  const canCenterOnPassenger = Boolean(passengerLocation && !isPassengerOnboard);
+  const remainingDistanceMeters = useMemo(() => {
+    if (!dropoffCoordinate) {
+      return null;
+    }
+
+    if (booking?.droppedOff || booking?.droppedOffConfirmedByPassenger) {
+      return 0;
+    }
+
+    if (!isPassengerOnboard) {
+      return (
+        routeInfo?.distanceMeters ??
+        (pickupCoordinate ? calculateDistance(pickupCoordinate, dropoffCoordinate) * 1000 : null)
+      );
+    }
+
+    const currentTripPosition = displayedDriverLocation ?? passengerLocation;
+    if (!currentTripPosition) {
+      return routeInfo?.distanceMeters ?? null;
+    }
+
+    const directDistanceMeters = calculateDistance(currentTripPosition, dropoffCoordinate) * 1000;
+    const alignedPosition =
+      routeCoordinates.length > 1
+        ? getRouteAlignedPosition(currentTripPosition, routeCoordinates, 0.25)?.coordinate ?? null
+        : null;
+
+    if (!alignedPosition) {
+      return directDistanceMeters;
+    }
+
+    const { remainingCoordinates } = splitRouteByProgress(alignedPosition, routeCoordinates);
+    const remainingRouteDistanceMeters = calculateRouteDistanceMeters(remainingCoordinates);
+    return remainingRouteDistanceMeters > 0
+      ? remainingRouteDistanceMeters
+      : directDistanceMeters;
+  }, [
+    booking?.droppedOff,
+    booking?.droppedOffConfirmedByPassenger,
+    displayedDriverLocation,
+    dropoffCoordinate,
+    isPassengerOnboard,
+    passengerLocation,
+    pickupCoordinate,
+    routeCoordinates,
+    routeInfo?.distanceMeters,
+  ]);
+  const remainingDistanceLabel =
+    typeof remainingDistanceMeters === 'number'
+      ? formatDistanceMeters(remainingDistanceMeters)
+      : null;
+  const remainingDurationLabel = useMemo(() => {
+    if (
+      typeof remainingDistanceMeters !== 'number' ||
+      !routeInfo?.distanceMeters ||
+      !routeInfo.durationSeconds
+    ) {
+      return routeInfo?.duration ?? null;
+    }
+
+    const remainingRatio = Math.min(1, Math.max(0, remainingDistanceMeters / routeInfo.distanceMeters));
+    return formatDurationSeconds(routeInfo.durationSeconds * remainingRatio);
+  }, [
+    remainingDistanceMeters,
+    routeInfo?.distanceMeters,
+    routeInfo?.duration,
+    routeInfo?.durationSeconds,
+  ]);
+  const displayedRouteDistance = remainingDistanceLabel ?? routeInfo?.distance ?? null;
+  const displayedRouteDuration = remainingDurationLabel ?? routeInfo?.duration ?? null;
 
   useEffect(() => {
     if (!hasPickupConnectorSegment && activeRouteSegment === 'pickup') {
@@ -1112,7 +1230,7 @@ export default function PassengerNavigationScreen() {
         initialRegion={mapRegion}
         mapType="standard"
         onMapReady={handleMapReady}
-        showsUserLocation={!passengerLocation}
+        showsUserLocation={!isPassengerOnboard && !passengerLocation}
         showsMyLocationButton={false}
         showsCompass={false}
         showsTraffic={false}
@@ -1121,18 +1239,18 @@ export default function PassengerNavigationScreen() {
         showsPointsOfInterest={false}
       >
         {/* Position du passager */}
-        {passengerLocation && (
+        {passengerLocation && !isPassengerOnboard && (
           <Marker
             ref={passengerMarkerRef}
             coordinate={passengerLocation}
             anchor={PASSENGER_TRACKING_MARKER_ANCHOR}
             title="Votre position"
-            description={booking.pickedUp ? 'Vous êtes à bord' : 'Votre position actuelle'}
+            description="Votre position actuelle"
             tracksViewChanges={IS_ANDROID && !loadedMarkerKeys.has('passenger-location')}
             zIndex={25}
           >
             <PassengerTrackingMarker
-              status={booking.pickedUp ? 'live' : 'pickup'}
+              status="pickup"
               onReady={() => handleTrackingMarkerReady('passenger-location', passengerMarkerRef)}
             />
           </Marker>
@@ -1296,12 +1414,12 @@ export default function PassengerNavigationScreen() {
           <Ionicons name="map-outline" size={22} color={Colors.gray[700]} />
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.floatingButton, !passengerLocation && styles.floatingButtonDisabled]}
+          style={[styles.floatingButton, !canCenterOnPassenger && styles.floatingButtonDisabled]}
           onPress={centerOnPassenger}
-          disabled={!passengerLocation}
+          disabled={!canCenterOnPassenger}
           activeOpacity={0.8}
         >
-          <Ionicons name="locate" size={22} color={passengerLocation ? Colors.primary : Colors.gray[400]} />
+          <Ionicons name="locate" size={22} color={canCenterOnPassenger ? Colors.primary : Colors.gray[400]} />
         </TouchableOpacity>
         <TouchableOpacity 
           style={[styles.floatingButton, !driverLocation && styles.floatingButtonDisabled]}
@@ -1355,11 +1473,11 @@ export default function PassengerNavigationScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.headerButton, !passengerLocation && styles.headerButtonDisabled]}
+          style={[styles.headerButton, !canCenterOnPassenger && styles.headerButtonDisabled]}
           onPress={centerOnPassenger}
-          disabled={!passengerLocation}
+          disabled={!canCenterOnPassenger}
         >
-          <Ionicons name="locate" size={24} color={passengerLocation ? Colors.primary : Colors.gray[400]} />
+          <Ionicons name="locate" size={24} color={canCenterOnPassenger ? Colors.primary : Colors.gray[400]} />
         </TouchableOpacity>
       </Animated.View>
 
@@ -1388,17 +1506,17 @@ export default function PassengerNavigationScreen() {
           </View>
         </View>
 
-        {routeInfo && (
+        {(displayedRouteDistance || displayedRouteDuration) && (
           <View style={styles.routeStats}>
             <View style={styles.routeStat}>
               <Ionicons name="navigate-outline" size={18} color={Colors.primary} />
-              <Text style={styles.routeStatValue}>{routeInfo.distance}</Text>
-              <Text style={styles.routeStatLabel}>Distance</Text>
+              <Text style={styles.routeStatValue}>{displayedRouteDistance ?? '-'}</Text>
+              <Text style={styles.routeStatLabel}>Restant</Text>
             </View>
             <View style={styles.routeStatDivider} />
             <View style={styles.routeStat}>
               <Ionicons name="time-outline" size={18} color={Colors.secondary} />
-              <Text style={styles.routeStatValue}>{routeInfo.duration}</Text>
+              <Text style={styles.routeStatValue}>{displayedRouteDuration ?? '-'}</Text>
               <Text style={styles.routeStatLabel}>Projection</Text>
             </View>
             {isSocketConnected && (
@@ -1414,7 +1532,7 @@ export default function PassengerNavigationScreen() {
           </View>
         )}
 
-        {isLoadingRoute && !routeInfo && (
+        {isLoadingRoute && !displayedRouteDistance && (
           <View style={styles.routeLoadingRow}>
             <ActivityIndicator size="small" color={Colors.primary} />
             <Text style={styles.routeLoadingText}>Chargement de l&apos;itineraire...</Text>
