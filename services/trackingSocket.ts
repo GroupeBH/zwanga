@@ -25,10 +25,11 @@ export interface BookingAutoProgressPayload {
       | 'parties_nearby'
       | 'passenger_ready_pickup'
       | 'pickup_confirmed'
-      | 'dropoff_confirmed';
-    bookingId: string;
+      | 'dropoff_confirmed'
+      | 'driver_arrived_destination';
+    bookingId?: string;
     tripId: string;
-    passengerId: string;
+    passengerId?: string;
     distanceMeters?: number;
     detectedAt?: string;
     expiresAt?: string;
@@ -45,7 +46,7 @@ function resolveSocketBaseUrl() {
   if (!API_BASE_URL) {
     return '';
   }
-  return API_BASE_URL.replace(/\/(?:api\/)?v1\/?$/, '');
+  return API_BASE_URL.replace(/\/(?:api\/)?v1\/?$/, '');''
 }
 
 class TrackingSocketClient {

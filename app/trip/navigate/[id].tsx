@@ -15,7 +15,6 @@ import {
   type PassengerLocationPayload,
 } from '@/services/trackingSocket';
 import {
-  useConfirmDropoffMutation,
   useGetTripBookingsQuery
 } from '@/store/api/bookingApi';
 import { TravelMode, useGetDirectionsMutation } from '@/store/api/googleMapsApi';
@@ -102,6 +101,11 @@ interface PickupNotice {
   pickupWaitSeconds?: number;
 }
 
+interface TripEndNotice {
+  distanceMeters?: number;
+  detectedAt?: string;
+}
+
 type LivePassengerLocation = {
   coordinate: { latitude: number; longitude: number };
   updatedAt?: string | null;
@@ -173,7 +177,6 @@ export default function NavigationScreen() {
       skipPollingIfUnfocused: true,
     },
   );
-  const [confirmDropoff, { isLoading: isConfirmingDropoff }] = useConfirmDropoffMutation();
   const [getDirections] = useGetDirectionsMutation();
   const tripDepartureCoordinate = useMemo(
     () =>
@@ -219,7 +222,9 @@ export default function NavigationScreen() {
   const [securityModalVisible, setSecurityModalVisible] = useState(false);
   const [pickupNotice, setPickupNotice] = useState<PickupNotice | null>(null);
   const [pickupNoticeCountdown, setPickupNoticeCountdown] = useState<number | null>(null);
+  const [tripEndNotice, setTripEndNotice] = useState<TripEndNotice | null>(null);
   const pickupNoticeRef = useRef<PickupNotice | null>(null);
+  const tripEndNoticeRef = useRef<TripEndNotice | null>(null);
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const recalcRouteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backgroundDisclosureResolverRef = useRef<((accepted: boolean) => void) | null>(null);
@@ -303,6 +308,7 @@ export default function NavigationScreen() {
   const highestPickupNoticePriorityRef = useRef<Map<string, number>>(new Map());
   const presentedPassengerBoardedKeysRef = useRef<Set<string>>(new Set());
   const presentedPassengerDestinationKeysRef = useRef<Set<string>>(new Set());
+  const presentedTripDestinationKeysRef = useRef<Set<string>>(new Set());
   const stepsRef = useRef<RouteStep[]>([]);
   const currentStepIndexRef = useRef(0);
   const waypointsRef = useRef<Waypoint[]>([]);
@@ -316,6 +322,7 @@ export default function NavigationScreen() {
   waypointModalVisibleRef.current = waypointModalVisible;
   routeCoordinatesRef.current = routeCoordinates;
   pickupNoticeRef.current = pickupNotice;
+  tripEndNoticeRef.current = tripEndNotice;
 
   const cleanupNavigationUi = useCallback(() => {
     if (recalcRouteTimeoutRef.current) {
@@ -336,6 +343,8 @@ export default function NavigationScreen() {
     setSecurityModalVisible(false);
     setPickupNotice(null);
     setPickupNoticeCountdown(null);
+    tripEndNoticeRef.current = null;
+    setTripEndNotice(null);
     waypointModalVisibleRef.current = false;
     setWaypointModalVisible(false);
     setPassengersPanelVisible(false);
@@ -453,6 +462,7 @@ export default function NavigationScreen() {
     (event: BookingAutoProgressEvent, waypoint: Waypoint) => {
       if (
         !isMountedRef.current ||
+        !event.bookingId ||
         !['driver_arrived_pickup', 'parties_nearby', 'passenger_ready_pickup'].includes(event.type)
       ) {
         return;
@@ -518,7 +528,7 @@ export default function NavigationScreen() {
 
   const presentPassengerBoardedNotice = useCallback(
     (event: BookingAutoProgressEvent, waypoint?: Waypoint | null) => {
-      if (!isMountedRef.current || event.type !== 'pickup_confirmed') {
+      if (!isMountedRef.current || event.type !== 'pickup_confirmed' || !event.bookingId) {
         return;
       }
 
@@ -554,7 +564,7 @@ export default function NavigationScreen() {
 
   const presentPassengerDestinationNotice = useCallback(
     (event: BookingAutoProgressEvent, waypoint?: Waypoint | null) => {
-      if (!isMountedRef.current || event.type !== 'dropoff_confirmed') {
+      if (!isMountedRef.current || event.type !== 'dropoff_confirmed' || !event.bookingId) {
         return;
       }
 
@@ -582,6 +592,36 @@ export default function NavigationScreen() {
       });
     },
     [getPassengerNameForBooking, showDialog],
+  );
+
+  const presentTripDestinationNotice = useCallback(
+    (event: BookingAutoProgressEvent) => {
+      if (!isMountedRef.current || event.type !== 'driver_arrived_destination') {
+        return;
+      }
+
+      const key = `driver_arrived_destination:${event.tripId}`;
+      if (presentedTripDestinationKeysRef.current.has(key)) {
+        return;
+      }
+
+      presentedTripDestinationKeysRef.current.add(key);
+      const notice: TripEndNotice = {
+        distanceMeters: event.distanceMeters,
+        detectedAt: event.detectedAt,
+      };
+      tripEndNoticeRef.current = notice;
+      setTripEndNotice(notice);
+
+      void Speech.stop().finally(() => {
+        if (!isMountedRef.current) return;
+        Speech.speak('Vous avez atteint la destination finale. Le trajet est termine automatiquement.', {
+          language: SPEECH_LANGUAGE,
+          rate: SPEECH_RATE,
+        });
+      });
+    },
+    [],
   );
 
   useEffect(() => {
@@ -640,7 +680,20 @@ export default function NavigationScreen() {
     const unsubscribeAutoProgress = trackingSocket.subscribeToBookingAutoProgress((payload) => {
       if (!isMountedRef.current || isCancelled || payload.tripId !== tripId) return;
       if (payload.events.length > 0) {
+        const hasTripDestinationEvent = payload.events.some(
+          (event) => event.type === 'driver_arrived_destination',
+        );
+
         payload.events.forEach((event) => {
+          if (event.type === 'driver_arrived_destination') {
+            presentTripDestinationNotice(event);
+            return;
+          }
+
+          if (!event.bookingId) {
+            return;
+          }
+
           if (
             event.type === 'driver_arrived_pickup' ||
             event.type === 'parties_nearby' ||
@@ -664,6 +717,10 @@ export default function NavigationScreen() {
           }
 
           if (event.type === 'dropoff_confirmed') {
+            if (hasTripDestinationEvent) {
+              return;
+            }
+
             const waypoint = waypointsRef.current.find(
               (item) => item.booking.id === event.bookingId && item.type === 'dropoff',
             );
@@ -719,6 +776,7 @@ export default function NavigationScreen() {
     presentPassengerBoardedNotice,
     presentPassengerDestinationNotice,
     presentPickupNotice,
+    presentTripDestinationNotice,
     refetchBookings,
     refetchTrip,
     tripId,
@@ -1100,7 +1158,7 @@ export default function NavigationScreen() {
       return `Vous \u00eates arriv\u00e9 au point de r\u00e9cup\u00e9ration de ${passengerName}.${address}`;
     }
 
-    return `Nous sommes arriv\u00e9s au point de destination de ${passengerName}. Validez son arriv\u00e9e avec le bouton Terminer.${address}`;
+    return `Nous sommes arriv\u00e9s au point de destination de ${passengerName}. La d\u00e9pose se confirme automatiquement.${address}`;
   }, []);
 
   useEffect(() => {
@@ -1591,31 +1649,6 @@ export default function NavigationScreen() {
     setActiveWaypoint(null);
   };
 
-  const handleFinishPassengerDropoff = async () => {
-    if (!activeWaypoint || activeWaypoint.type !== 'dropoff' || isConfirmingDropoff) return;
-
-    const latestBooking =
-      bookings?.find((booking) => booking.id === activeWaypoint.booking.id) ?? activeWaypoint.booking;
-
-    try {
-      if (!latestBooking.droppedOff) {
-        await confirmDropoff(latestBooking.id).unwrap();
-      }
-      await refetchBookings();
-      handleDismissWaypointModal();
-      router.replace(`/rate/${tripId}?passengerId=${activeWaypoint.passenger.id}`);
-    } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        "La validation du passager est peut-être encore en cours. Réessayez dans un instant.";
-      showDialog({
-        variant: 'warning',
-        title: "Arrivée en attente",
-        message: Array.isArray(message) ? message.join('\n') : message,
-      });
-    }
-  };
 
   const openReportForWaypoint = (waypoint: Waypoint) => {
     if (!tripId) return;
@@ -1641,6 +1674,20 @@ export default function NavigationScreen() {
     setPickupNotice(null);
     setPickupNoticeCountdown(null);
   }, []);
+
+  const dismissTripEndNotice = useCallback(() => {
+    tripEndNoticeRef.current = null;
+    setTripEndNotice(null);
+  }, []);
+
+  const handleRatePassengersFromTripEnd = useCallback(() => {
+    if (!tripId) {
+      return;
+    }
+
+    dismissTripEndNotice();
+    router.replace(`/rate/${tripId}`);
+  }, [dismissTripEndNotice, router, tripId]);
 
   const handleSkipPickupAfterWait = useCallback(() => {
     const passengerName = pickupNotice?.waypoint.passenger.name || 'le passager';
@@ -2380,6 +2427,66 @@ export default function NavigationScreen() {
       </Modal>
 
       <Modal
+        visible={Boolean(tripEndNotice)}
+        transparent
+        animationType="slide"
+        onRequestClose={dismissTripEndNotice}
+      >
+        <View style={styles.waypointModalOverlay}>
+          <View style={[styles.waypointModalContent, { paddingBottom: Math.max(insets.bottom, Spacing.xl) + Spacing.lg }]}>
+            <View style={styles.waypointModalHandle} />
+            <View style={[styles.waypointModalIcon, { backgroundColor: Colors.success }]}>
+              <Ionicons name="flag" size={32} color={Colors.white} />
+            </View>
+            <Text style={styles.waypointModalTitle}>Trajet termine</Text>
+            <Text style={styles.waypointModalPassenger}>
+              {trip?.arrival?.name ?? 'Destination finale'}
+            </Text>
+            <View style={styles.waypointModalAddressContainer}>
+              <Ionicons name="location" size={18} color={Colors.gray[500]} />
+              <Text style={styles.waypointModalAddress}>
+                {trip?.arrival?.address ?? trip?.arrival?.name ?? 'Arrivee du trajet'}
+              </Text>
+            </View>
+            <Text style={styles.waypointModalWaitingText}>
+              Vous avez atteint la destination finale. Le trajet est termine automatiquement. Vous pouvez noter les passagers.
+            </Text>
+            <View
+              style={[
+                styles.waypointGpsStatus,
+                {
+                  backgroundColor: Colors.success + '15',
+                  borderColor: Colors.success,
+                },
+              ]}
+            >
+              <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
+              <Text style={[styles.waypointGpsStatusText, { color: Colors.success }]}>
+                {tripEndNotice?.distanceMeters !== undefined
+                  ? `Arrivee detectee a ${Math.max(1, Math.round(tripEndNotice.distanceMeters))} m`
+                  : 'Arrivee detectee'}
+              </Text>
+            </View>
+            <View style={styles.waypointModalActions}>
+              <TouchableOpacity
+                style={styles.waypointModalSecondaryButton}
+                onPress={dismissTripEndNotice}
+              >
+                <Text style={styles.waypointModalSecondaryButtonText}>Plus tard</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.waypointModalPrimaryButton}
+                onPress={() => void handleRatePassengersFromTripEnd()}
+              >
+                <Ionicons name="star" size={20} color={Colors.white} />
+                <Text style={styles.waypointModalPrimaryButtonText}>Noter</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={Boolean(pickupNotice)}
         transparent
         animationType="slide"
@@ -2521,7 +2628,7 @@ export default function NavigationScreen() {
               <Text style={styles.waypointModalWaitingText}>
                 {activeWaypoint.type === 'pickup'
                   ? `Vous êtes arrivé au point de récupération de ${activeWaypoint.passenger.name || 'ce passager'}.`
-                  : `Nous sommes arrivés au point de destination de ${activeWaypoint.passenger.name || 'ce passager'}. Validez l'arrivée avant de poursuivre.`}
+                  : `Nous sommes arrives au point de destination de ${activeWaypoint.passenger.name || 'ce passager'}. La depose se confirme automatiquement.`}
               </Text>
             )}
 
@@ -2566,25 +2673,9 @@ export default function NavigationScreen() {
                 onPress={handleDismissWaypointModal}
               >
                 <Text style={styles.waypointModalSecondaryButtonText}>
-                  {activeWaypoint?.type === 'dropoff' ? 'Plus tard' : 'Compris'}
+                  Compris
                 </Text>
               </TouchableOpacity>
-              {activeWaypoint?.type === 'dropoff' && (
-                <TouchableOpacity
-                  style={styles.waypointModalPrimaryButton}
-                  onPress={() => void handleFinishPassengerDropoff()}
-                  disabled={isConfirmingDropoff}
-                >
-                  {isConfirmingDropoff ? (
-                    <ActivityIndicator size="small" color={Colors.white} />
-                  ) : (
-                    <>
-                      <Ionicons name="checkmark-circle" size={20} color={Colors.white} />
-                      <Text style={styles.waypointModalPrimaryButtonText}>Terminer</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              )}
             </View>
 
             <TouchableOpacity

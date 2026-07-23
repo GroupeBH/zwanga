@@ -13,13 +13,10 @@ import { trackEvent } from '@/services/analytics';
 import { trackingSocket, type BookingAutoProgressPayload } from '@/services/trackingSocket';
 import {
   useCancelBookingMutation,
-  useConfirmDropoffByPassengerMutation,
-  useConfirmPickupByPassengerMutation,
   useCreateBookingMutation,
   useGetMyBookingsQuery,
   useGetTripBookingsQuery,
   useInitiateBookingPaymentMutation,
-  useUpdateBookingPaymentModeMutation,
 } from '@/store/api/bookingApi';
 import { useGeocodeMutation } from '@/store/api/googleMapsApi';
 import { useCreateConversationMutation, useLazyListConversationsQuery } from '@/store/api/messageApi';
@@ -155,10 +152,6 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
 const getTripPaymentModeLabel = (mode?: TripPaymentMode | null) =>
   TRIP_PAYMENT_MODE_OPTIONS.find((option) => option.id === mode)?.label ??
   "Paiement a l'arrivee";
-const getAvailableTripPaymentMode = (mode?: TripPaymentMode | null): TripPaymentMode =>
-  TRIP_PAYMENT_MODE_OPTIONS.some((option) => option.id === mode)
-    ? (mode as TripPaymentMode)
-    : 'cash';
 const DRC_PAYMENT_PHONE_REGEX = /^\+243\d{9}$/;
 type TripDetailAutoProgressEvent = BookingAutoProgressPayload['events'][number];
 const TRIP_DETAIL_AUTO_PROGRESS_PRIORITY: Record<TripDetailAutoProgressEvent['type'], number> = {
@@ -168,6 +161,7 @@ const TRIP_DETAIL_AUTO_PROGRESS_PRIORITY: Record<TripDetailAutoProgressEvent['ty
   passenger_ready_pickup: 3,
   pickup_confirmed: 4,
   dropoff_confirmed: 5,
+  driver_arrived_destination: 6,
 };
 const formatTripPaymentPhone = (value?: string | null) => {
   const digits = (value ?? '').replace(/\D/g, '');
@@ -823,11 +817,7 @@ export default function TripDetailsScreen() {
   const [createBooking, { isLoading: isBooking }] = useCreateBookingMutation();
   const [initiateBookingPayment, { isLoading: isInitiatingBookingPayment }] =
     useInitiateBookingPaymentMutation();
-  const [updateBookingPaymentMode, { isLoading: isUpdatingBookingPaymentMode }] =
-    useUpdateBookingPaymentModeMutation();
   const [cancelBookingMutation, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
-  const [confirmPickupByPassenger, { isLoading: isConfirmingPickup }] = useConfirmPickupByPassengerMutation();
-  const [confirmDropoffByPassenger, { isLoading: isConfirmingDropoff }] = useConfirmDropoffByPassengerMutation();
   const [createConversation, { isLoading: isCreatingConversation }] = useCreateConversationMutation();
   const [loadConversations, { isFetching: isLookingUpConversation }] = useLazyListConversationsQuery();
   const isOpeningConversation = isCreatingConversation || isLookingUpConversation;
@@ -1031,6 +1021,36 @@ export default function TripDetailsScreen() {
         return;
       }
 
+      if (event.type === 'driver_arrived_destination') {
+        if (!isTripDriver) {
+          return;
+        }
+
+        const key = `${trip.id}:${event.type}`;
+        if (presentedTripDetailAutoProgressKeysRef.current.has(key)) {
+          return;
+        }
+
+        const roundedDistance =
+          typeof event.distanceMeters === 'number' && Number.isFinite(event.distanceMeters)
+            ? Math.max(1, Math.round(event.distanceMeters))
+            : null;
+        const distanceText = roundedDistance ? ` Arrivee detectee a ${roundedDistance} m.` : '';
+
+        presentedTripDetailAutoProgressKeysRef.current.add(key);
+        showDialog({
+          variant: 'success',
+          icon: 'flag',
+          title: 'Trajet termine',
+          message: `Vous avez atteint la destination finale.${distanceText}`,
+        });
+        return;
+      }
+
+      if (!event.bookingId) {
+        return;
+      }
+
       const passengerBookingId = activeBooking?.id ?? bookingForTrip?.id ?? null;
       const isPassengerEvent = passengerBookingId === event.bookingId;
 
@@ -1066,7 +1086,7 @@ export default function TripDetailsScreen() {
       const distanceText = roundedDistance ? ` Il est \u00e0 environ ${roundedDistance} m.` : '';
 
       const dialogByType: Record<
-        TripDetailAutoProgressEvent['type'],
+        Exclude<TripDetailAutoProgressEvent['type'], 'driver_arrived_destination'>,
         {
           variant: 'info' | 'success' | 'warning' | 'danger';
           icon: keyof typeof Ionicons.glyphMap;
@@ -1894,139 +1914,6 @@ export default function TripDetailsScreen() {
       actions: [
         { label: 'Garder', variant: 'ghost' },
         { label: 'Oui, annuler', variant: 'primary', onPress: () => handleCancelBooking() },
-      ],
-    });
-  };
-
-  const handleConfirmPickup = async () => {
-    if (!activeBooking) {
-      return;
-    }
-    try {
-      await confirmPickupByPassenger(activeBooking.id).unwrap();
-      void trackEvent('booking_pickup_confirmed', {
-        booking_id: activeBooking.id,
-        trip_id: activeBooking.tripId,
-        source_screen: 'trip_details',
-      });
-      showDialog({
-        variant: 'success',
-        title: 'Confirmation réussie',
-        message: 'Vous avez confirmé votre prise en charge.',
-      });
-      refreshBookingLists();
-    } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        'Impossible de confirmer la prise en charge pour le moment.';
-      showDialog({
-        variant: 'danger',
-        title: 'Erreur',
-        message: Array.isArray(message) ? message.join('\n') : message,
-      });
-    }
-  };
-
-  const getBookingPaymentAmount = (booking: Booking) => {
-    const storedAmount = Number(booking.paymentAmount ?? 0);
-    if (Number.isFinite(storedAmount) && storedAmount > 0) return storedAmount;
-    const tripPrice = Number(trip?.price ?? 0);
-    return tripPrice > 0 ? booking.numberOfSeats * tripPrice : 0;
-  };
-
-  const confirmDropoffWithPaymentMode = async (paymentMode: TripPaymentMode) => {
-    if (!activeBooking) {
-      return;
-    }
-
-    try {
-      let bookingForDropoff = activeBooking;
-      if (paymentMode !== activeBooking.paymentMode) {
-        bookingForDropoff = await updateBookingPaymentMode({
-          bookingId: activeBooking.id,
-          paymentMode,
-        }).unwrap();
-      }
-
-      const paymentAmount = getBookingPaymentAmount(bookingForDropoff);
-      if (
-        paymentMode === 'electronic' &&
-        paymentAmount > 0 &&
-        bookingForDropoff.paymentStatus !== 'succeeded'
-      ) {
-        const paymentResponse = await startElectronicPaymentForBooking(bookingForDropoff);
-        if (!paymentResponse) {
-          return;
-        }
-        if (paymentResponse.payment.status !== 'succeeded') {
-          showDialog({
-            variant: 'info',
-            title: 'Paiement a terminer',
-            message:
-              'Validez le paiement FlexPay sur votre telephone. Vous pourrez signaler votre arrivee des que le paiement est confirme.',
-          });
-          return;
-        }
-      }
-
-      await confirmDropoffByPassenger({
-        id: activeBooking.id,
-        paymentMode,
-      }).unwrap();
-      void trackEvent('booking_dropoff_requested', {
-        booking_id: activeBooking.id,
-        trip_id: activeBooking.tripId,
-        source_screen: 'trip_details',
-        payment_mode: paymentMode,
-      });
-      showDialog({
-        variant: 'success',
-        title: 'Demande envoyée',
-        message:
-          'Votre arrivée a été signalée au conducteur. Il doit la confirmer pour terminer la réservation.',
-      });
-      refreshBookingLists();
-    } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        'Impossible de signaler votre arrivée pour le moment.';
-      showDialog({
-        variant: 'danger',
-        title: 'Erreur',
-        message: Array.isArray(message) ? message.join('\n') : message,
-      });
-    }
-  };
-
-  const handleConfirmDropoff = () => {
-    if (!activeBooking) {
-      return;
-    }
-
-    const paymentAmount = getBookingPaymentAmount(activeBooking);
-    if (paymentAmount <= 0) {
-      void confirmDropoffWithPaymentMode(getAvailableTripPaymentMode(activeBooking.paymentMode));
-      return;
-    }
-
-    showDialog({
-      variant: 'info',
-      title: 'Mode de paiement',
-      message:
-        'Choisissez comment vous voulez regler ce trajet avant de signaler votre arrivee.',
-      actions: [
-        ...TRIP_PAYMENT_MODE_OPTIONS.map((option) => ({
-          label:
-            option.id === activeBooking.paymentMode
-              ? `${option.label} (actuel)`
-              : option.label,
-          variant: option.id === activeBooking.paymentMode ? 'primary' as const : 'secondary' as const,
-          autoClose: false,
-          onPress: () => confirmDropoffWithPaymentMode(option.id),
-        })),
-        { label: 'Annuler', variant: 'ghost' as const },
       ],
     });
   };
@@ -3250,16 +3137,7 @@ export default function TripDetailsScreen() {
                           >
                             <Ionicons name="flag" size={19} color={Colors.white} />
                             <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Arrivee en cours</Text>
-                            {/*
-                            {isConfirmingDropoff ||
-                            isUpdatingBookingPaymentMode ||
-                            isInitiatingBookingPayment ? <ActivityIndicator size="small" color={Colors.white} /> : (
-                              <>
-                                <Ionicons name="flag-outline" size={19} color={Colors.white} />
-                                <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Signaler mon arrivée</Text>
-                              </>
-                            )}
-                            */}
+
                           </View>
                         )}
 

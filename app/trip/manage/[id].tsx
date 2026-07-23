@@ -2,7 +2,9 @@ import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackEvent } from '@/services/analytics';
+import { trackingSocket, type BookingAutoProgressPayload } from '@/services/trackingSocket';
 import {
   useAcceptBookingMutation,
   useCancelBookingMutation,
@@ -24,7 +26,7 @@ import { calculateDistance } from '@/utils/routeHelpers';
 import { getGeoPointCoordinate, getTripLocationCoordinate } from '@/utils/tripCoordinates';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -81,6 +83,18 @@ const BOOKING_STATUS_CONFIG: Record<
 const hasPassengerBoarded = (booking: Booking) =>
   Boolean(booking.pickedUp || booking.pickedUpConfirmedByPassenger);
 
+type ManageAutoProgressEvent = BookingAutoProgressPayload['events'][number];
+
+const MANAGE_AUTO_PROGRESS_PRIORITY: Record<ManageAutoProgressEvent['type'], number> = {
+  driver_near_pickup: 0,
+  driver_arrived_pickup: 1,
+  parties_nearby: 2,
+  passenger_ready_pickup: 3,
+  pickup_confirmed: 4,
+  dropoff_confirmed: 5,
+  driver_arrived_destination: 6,
+};
+
 export default function ManageTripScreen() {
   const router = useRouter();
   const goHome = useCallback(() => {
@@ -126,6 +140,10 @@ export default function ManageTripScreen() {
   }, [trip?.status]);
 
   const isOwner = useMemo(() => !!trip && !!user && trip.driverId === user.id, [trip, user]);
+  const { lastKnownLocation } = useUserLocation({
+    autoRequest: Boolean(isOwner && trip?.status === 'ongoing'),
+    trackingProfile: 'navigation',
+  });
   const {
     data: bookings,
     isLoading: bookingsLoading,
@@ -166,6 +184,13 @@ export default function ManageTripScreen() {
   const [editArrivalAddress, setEditArrivalAddress] = useState('');
   const [editRouteError, setEditRouteError] = useState('');
   const [isResolvingRoute, setIsResolvingRoute] = useState(false);
+  const presentedManageAutoProgressKeysRef = useRef<Set<string>>(new Set());
+  const highestManageAutoProgressPriorityRef = useRef<Map<string, number>>(new Map());
+  const lastManageDriverLocationSentAtRef = useRef(0);
+  const bookingsRef = useRef<Booking[] | undefined>(undefined);
+  const showDialogRef = useRef(showDialog);
+  const refetchTripRef = useRef<(() => unknown) | null>(null);
+  const refetchBookingsRef = useRef<(() => unknown) | null>(null);
   const isSavingRoute = isUpdatingRoute || isResolvingRoute;
 
   const refreshAll = useCallback(async () => {
@@ -178,6 +203,180 @@ export default function ManageTripScreen() {
       setRefreshing(false);
     }
   }, [refetchTrip, refetchBookings]);
+
+  useEffect(() => {
+    bookingsRef.current = bookings;
+  }, [bookings]);
+
+  useEffect(() => {
+    showDialogRef.current = showDialog;
+  }, [showDialog]);
+
+  useEffect(() => {
+    refetchTripRef.current = refetchTrip;
+  }, [refetchTrip]);
+
+  useEffect(() => {
+    refetchBookingsRef.current = refetchBookings;
+  }, [refetchBookings]);
+
+  useEffect(() => {
+    presentedManageAutoProgressKeysRef.current.clear();
+    highestManageAutoProgressPriorityRef.current.clear();
+    lastManageDriverLocationSentAtRef.current = 0;
+  }, [tripId]);
+
+  useEffect(() => {
+    if (!isOwner || trip?.status !== 'ongoing' || !tripId) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    void trackingSocket
+      .joinTrip(tripId)
+      .then(() => {
+        if (isCancelled) return;
+      })
+      .catch((error) => {
+        console.warn('[ManageTrip] Connexion tracking impossible:', error);
+      });
+
+    const unsubscribeAutoProgress = trackingSocket.subscribeToBookingAutoProgress((payload) => {
+      if (isCancelled || payload.tripId !== tripId || payload.events.length === 0) {
+        return;
+      }
+
+      payload.events
+        .filter((event) => event.type !== 'driver_near_pickup')
+        .sort(
+          (first, second) =>
+            MANAGE_AUTO_PROGRESS_PRIORITY[first.type] -
+            MANAGE_AUTO_PROGRESS_PRIORITY[second.type],
+        )
+        .forEach((event) => {
+          const key = `${tripId}:${event.type}:${event.bookingId ?? event.tripId}`;
+          if (presentedManageAutoProgressKeysRef.current.has(key)) {
+            return;
+          }
+
+          if (event.bookingId) {
+            const nextPriority = MANAGE_AUTO_PROGRESS_PRIORITY[event.type];
+            const highestPriorityForBooking =
+              highestManageAutoProgressPriorityRef.current.get(event.bookingId) ?? -1;
+            if (highestPriorityForBooking > nextPriority) {
+              return;
+            }
+            highestManageAutoProgressPriorityRef.current.set(event.bookingId, nextPriority);
+          }
+
+          const booking = bookingsRef.current?.find((item) => item.id === event.bookingId);
+          const passengerName = booking?.passengerName || 'le passager';
+          const roundedDistance =
+            typeof event.distanceMeters === 'number' && Number.isFinite(event.distanceMeters)
+              ? Math.max(1, Math.round(event.distanceMeters))
+              : null;
+          const distanceText = roundedDistance ? ` Distance detectee: ${roundedDistance} m.` : '';
+
+          const dialogByType: Record<
+            ManageAutoProgressEvent['type'],
+            {
+              variant: 'info' | 'success';
+              icon: keyof typeof Ionicons.glyphMap;
+              title: string;
+              message: string;
+            }
+          > = {
+            driver_near_pickup: {
+              variant: 'info',
+              icon: 'car-sport',
+              title: 'Conducteur proche',
+              message: `Vous approchez du point de recuperation de ${passengerName}.${distanceText}`,
+            },
+            driver_arrived_pickup: {
+              variant: 'info',
+              icon: 'location',
+              title: 'Point de recuperation atteint',
+              message: `Vous etes arrive au point de recuperation de ${passengerName}. Le passager est notifie.`,
+            },
+            parties_nearby: {
+              variant: 'success',
+              icon: 'people',
+              title: 'Passager pret a embarquer',
+              message: `${passengerName} est la et pret a etre embarque.`,
+            },
+            passenger_ready_pickup: {
+              variant: 'success',
+              icon: 'hand-left',
+              title: "Le passager s'est signale",
+              message: `${passengerName} indique qu'il est au point de recuperation.`,
+            },
+            pickup_confirmed: {
+              variant: 'success',
+              icon: 'checkmark-circle',
+              title: 'Passager embarque',
+              message: `${passengerName} a ete embarque. Vous pouvez continuer vers sa destination.`,
+            },
+            dropoff_confirmed: {
+              variant: 'success',
+              icon: 'flag',
+              title: 'Destination passager atteinte',
+              message: `Nous sommes arrives au point de destination de ${passengerName}.`,
+            },
+            driver_arrived_destination: {
+              variant: 'success',
+              icon: 'flag',
+              title: 'Trajet termine',
+              message: `Vous avez atteint la destination finale.${distanceText}`,
+            },
+          };
+
+          presentedManageAutoProgressKeysRef.current.add(key);
+          showDialogRef.current(dialogByType[event.type]);
+        });
+
+      void refetchTripRef.current?.();
+      void refetchBookingsRef.current?.();
+    });
+
+    return () => {
+      isCancelled = true;
+      void trackingSocket.leaveTrip(tripId);
+      unsubscribeAutoProgress();
+    };
+  }, [isOwner, trip?.status, tripId]);
+
+  useEffect(() => {
+    if (
+      !isOwner ||
+      trip?.status !== 'ongoing' ||
+      !tripId ||
+      !lastKnownLocation?.coords
+    ) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastManageDriverLocationSentAtRef.current < 4000) {
+      return;
+    }
+
+    lastManageDriverLocationSentAtRef.current = now;
+    void trackingSocket
+      .updateDriverLocation(tripId, [
+        lastKnownLocation.coords.longitude,
+        lastKnownLocation.coords.latitude,
+      ])
+      .catch((error) => {
+        console.warn('[ManageTrip] Position conducteur non envoyee:', error);
+      });
+  }, [
+    isOwner,
+    lastKnownLocation?.coords?.latitude,
+    lastKnownLocation?.coords?.longitude,
+    trip?.status,
+    tripId,
+  ]);
 
   const openTripSecurityModal = () => {
     setSecurityModalVisible(true);
@@ -521,50 +720,6 @@ export default function ManageTripScreen() {
     router.push(`/trip/navigate/${trip.id}`);
   };
 
-  const handleConfirmPickup = async (bookingId: string) => {
-    void bookingId;
-    showFeedback('success', 'La prise en charge sera confirmee automatiquement pendant la navigation.');
-    return;
-    /*
-    try {
-      await confirmPickup(bookingId).unwrap();
-      void trackEvent('driver_pickup_confirmed', {
-        booking_id: bookingId,
-        trip_id: trip?.id ?? '',
-        source_screen: 'trip_manage',
-      });
-      showFeedback('success', 'Récupération du passager confirmée.');
-      refreshAll();
-    } catch (error: any) {
-      const message =
-        error?.data?.message ?? error?.error ?? 'Impossible de confirmer la récupération.';
-      showFeedback('error', message);
-    }
-    */
-  };
-
-  const handleConfirmDropoff = async (bookingId: string) => {
-    void bookingId;
-    showFeedback('success', 'L arrivee sera confirmee automatiquement au point de depose.');
-    return;
-    /*
-    try {
-      await confirmDropoff(bookingId).unwrap();
-      void trackEvent('driver_dropoff_confirmed', {
-        booking_id: bookingId,
-        trip_id: trip?.id ?? '',
-        source_screen: 'trip_manage',
-      });
-      showFeedback('success', 'Arrivée du passager confirmée.');
-      refreshAll();
-    } catch (error: any) {
-      const message =
-        error?.data?.message ?? error?.error ?? "Impossible de confirmer l'arrivée.";
-      showFeedback('error', message);
-    }
-    */
-  };
-
   const handleCancelTrip = () => {
     if (!trip) return;
     showDialog({
@@ -588,37 +743,6 @@ export default function ManageTripScreen() {
             } catch (error: any) {
               const message =
                 error?.data?.message ?? error?.error ?? "Impossible d'annuler ce trajet.";
-              showFeedback('error', message);
-            }
-          },
-        },
-      ],
-    });
-  };
-
-  const handleCompleteTrip = () => {
-    if (!trip) return;
-    showDialog({
-      variant: 'info',
-      title: 'Terminer le trajet',
-      message: 'Voulez-vous terminer ce trajet ? Le trajet sera marqué comme complété.',
-      actions: [
-        { label: 'Annuler', variant: 'ghost' },
-        {
-          label: 'Terminer',
-          variant: 'primary',
-          onPress: async () => {
-            try {
-              await updateTripStatus({ id: trip.id, updates: { status: 'completed' } }).unwrap();
-              void trackEvent('trip_completed', {
-                trip_id: trip.id,
-                source_screen: 'trip_manage',
-              });
-              showFeedback('success', 'Le trajet a été terminé avec succès.');
-              refreshAll();
-            } catch (error: any) {
-              const message =
-                error?.data?.message ?? error?.error ?? 'Impossible de terminer ce trajet.';
               showFeedback('error', message);
             }
           },
@@ -656,7 +780,7 @@ export default function ManageTripScreen() {
     return distanceMeters < 100; // 100 mètres de tolérance
   }, [arrivalCoordinate, tripCurrentLocation, tripStatus]);
 
-  // Le bouton "Terminer le trajet" doit apparaître si :
+  // Le statut de finalisation automatique apparait si :
   // - Le trajet est en cours
   // - L'arrivée de tous les passagers est confirmée
   // - Le conducteur est arrivé à destination
@@ -861,38 +985,6 @@ export default function ManageTripScreen() {
 
         </View>
 
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={styles.sectionTitle}>Securite du trajet</Text>
-              <Text style={styles.sectionSubtitle}>
-                Choisissez clairement les proches a notifier pour ce trajet.
-              </Text>
-            </View>
-            <View style={styles.sectionIconBadge}>
-              <Ionicons name="shield-checkmark-outline" size={18} color={Colors.primary} />
-            </View>
-          </View>
-          <TouchableOpacity
-            style={styles.securityQuickButton}
-            onPress={openTripSecurityModal}
-            activeOpacity={0.9}
-          >
-            <Ionicons name="people" size={18} color={Colors.white} />
-            <Text style={styles.securityQuickButtonText}>Choisir qui notifier</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.securitySecondaryButton}
-            onPress={() => router.push('/security')}
-            activeOpacity={0.9}
-          >
-            <Ionicons name="settings-outline" size={16} color={Colors.primary} />
-            <Text style={styles.securitySecondaryButtonText}>
-              Ajouter ou gerer mes contacts d urgence
-            </Text>
-          </TouchableOpacity>
-        </View>
-
         {/* Liste des passagers */}
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
@@ -1063,6 +1155,38 @@ export default function ManageTripScreen() {
             </View>
           )}
         </View>
+
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View>
+              <Text style={styles.sectionTitle}>Securite du trajet</Text>
+              <Text style={styles.sectionSubtitle}>
+                Choisissez clairement les proches a notifier pour ce trajet.
+              </Text>
+            </View>
+            <View style={styles.sectionIconBadge}>
+              <Ionicons name="shield-checkmark-outline" size={18} color={Colors.primary} />
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.securityQuickButton}
+            onPress={openTripSecurityModal}
+            activeOpacity={0.9}
+          >
+            <Ionicons name="people" size={18} color={Colors.white} />
+            <Text style={styles.securityQuickButtonText}>Choisir qui notifier</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.securitySecondaryButton}
+            onPress={() => router.push('/security')}
+            activeOpacity={0.9}
+          >
+            <Ionicons name="settings-outline" size={16} color={Colors.primary} />
+            <Text style={styles.securitySecondaryButtonText}>
+              Ajouter ou gerer mes contacts d urgence
+            </Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       {/* Sticky Footer pour les actions du trajet */}
@@ -1110,21 +1234,10 @@ export default function ManageTripScreen() {
         )}
 
         {canCompleteTrip && (
-          <TouchableOpacity
-            style={[styles.primaryButton, styles.completeTripButton]}
-            onPress={handleCompleteTrip}
-            disabled={isUpdatingTripStatus}
-            activeOpacity={0.8}
-          >
-            {isUpdatingTripStatus ? (
-              <ActivityIndicator color={Colors.white} />
-            ) : (
-              <>
-                <Ionicons name="checkmark-done" size={20} color={Colors.white} />
-                <Text style={styles.primaryButtonText}>Terminer le trajet</Text>
-              </>
-            )}
-          </TouchableOpacity>
+          <View style={[styles.primaryButton, styles.completeTripButton]}>
+            <Ionicons name="checkmark-done" size={20} color={Colors.white} />
+            <Text style={styles.primaryButtonText}>Finalisation automatique</Text>
+          </View>
         )}
 
         {trip.status === 'ongoing' && !canCompleteTrip && (

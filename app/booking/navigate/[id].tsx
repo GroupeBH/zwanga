@@ -14,7 +14,6 @@ import {
 } from '@/services/trackingSocket';
 import { displayNotification } from '@/services/pushNotifications';
 import {
-  useConfirmDropoffByPassengerMutation,
   useGetBookingByIdQuery,
   useUpdatePassengerLocationMutation,
 } from '@/store/api/bookingApi';
@@ -52,6 +51,7 @@ const MOVING_TOGETHER_PICKUP_EXIT_DISTANCE_KM = 0.03;
 
 type BookingAutoProgressEvent = BookingAutoProgressPayload['events'][number];
 type PassengerPickupNoticeType = 'driver_near_pickup' | 'driver_arrived_pickup' | 'parties_nearby';
+type RouteSegmentFocus = 'route' | 'pickup';
 const PASSENGER_PICKUP_NOTICE_PRIORITY: Record<PassengerPickupNoticeType, number> = {
   driver_near_pickup: 0,
   driver_arrived_pickup: 1,
@@ -149,8 +149,6 @@ export default function PassengerNavigationScreen() {
   const isTripOngoing = trip?.status === 'ongoing';
 
   const [updatePassengerLocation] = useUpdatePassengerLocationMutation();
-  const [confirmDropoffByPassenger, { isLoading: isConfirmingArrival }] =
-    useConfirmDropoffByPassengerMutation();
 
   const mapRef = useRef<MapView>(null);
   const driverMarkerRef = useRef<MapMarker | null>(null);
@@ -169,6 +167,7 @@ export default function PassengerNavigationScreen() {
   const [routeInfo, setRouteInfo] = useState<{ distance: string; duration: string } | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const [activeRouteSegment, setActiveRouteSegment] = useState<RouteSegmentFocus>('route');
   const [arrivalModalVisible, setArrivalModalVisible] = useState(false);
   const [pickupNotice, setPickupNotice] = useState<PassengerPickupNotice | null>(null);
   const [pickupNoticeCountdown, setPickupNoticeCountdown] = useState<number | null>(null);
@@ -278,7 +277,7 @@ export default function PassengerNavigationScreen() {
     void Speech.stop().finally(() => {
       if (!isMountedRef.current) return;
       Speech.speak(
-        "Vous êtes arrivé à votre destination. Appuyez sur Terminer pour valider l'arrivée et noter le conducteur.",
+        "Vous etes arrive a votre destination. L'arrivee se confirme automatiquement.",
         { language: 'fr-FR', rate: 0.95 },
       );
     });
@@ -287,6 +286,7 @@ export default function PassengerNavigationScreen() {
   const presentPickupNotice = useCallback((event: BookingAutoProgressEvent) => {
     if (
       !isMountedRef.current ||
+      !event.bookingId ||
       !['driver_near_pickup', 'driver_arrived_pickup', 'parties_nearby'].includes(event.type)
     ) {
       return;
@@ -986,40 +986,16 @@ export default function PassengerNavigationScreen() {
   }, [fitToRoute]);
 
   const handleFinishArrival = useCallback(async () => {
-    if (!booking || isConfirmingArrival) return;
+    if (!booking) return;
 
-    try {
-      if (!booking.droppedOffConfirmedByPassenger && !booking.droppedOff) {
-        const request = booking.paymentMode
-          ? { id: booking.id, paymentMode: booking.paymentMode }
-          : booking.id;
-        await confirmDropoffByPassenger(request).unwrap();
-      }
+    await refetchBooking();
+    setArrivalModalVisible(false);
+    void Speech.stop();
 
-      await refetchBooking();
-      setArrivalModalVisible(false);
-      void Speech.stop();
+    if (booking.droppedOff || booking.droppedOffConfirmedByPassenger) {
       router.replace(`/rate/${tripId}`);
-    } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        "Impossible de terminer le trajet pour le moment.";
-      showDialog({
-        variant: 'danger',
-        title: "Validation impossible",
-        message: Array.isArray(message) ? message.join('\n') : message,
-      });
     }
-  }, [
-    booking,
-    confirmDropoffByPassenger,
-    isConfirmingArrival,
-    refetchBooking,
-    router,
-    showDialog,
-    tripId,
-  ]);
+  }, [booking, refetchBooking, router, tripId]);
 
   const handleSignalPickupReady = useCallback(async () => {
     if (!booking?.id) return;
@@ -1087,6 +1063,17 @@ export default function PassengerNavigationScreen() {
       : pickupNotice?.type === 'parties_nearby'
         ? 'Vous \u00eates au point de r\u00e9cup\u00e9ration. Signalez-vous au conducteur si vous \u00eates pr\u00eat.'
         : 'Le conducteur est arriv\u00e9 au point de r\u00e9cup\u00e9ration. Vous disposez de 10 minutes pour vous signaler.';
+
+  const hasPickupConnectorSegment = Boolean(
+    displayedDriverLocation && !booking?.pickedUp && (passengerLocation || pickupCoordinate),
+  );
+  const canToggleRouteSegments = routeCoordinates.length > 1 && hasPickupConnectorSegment;
+
+  useEffect(() => {
+    if (!hasPickupConnectorSegment && activeRouteSegment === 'pickup') {
+      setActiveRouteSegment('route');
+    }
+  }, [activeRouteSegment, hasPickupConnectorSegment]);
 
   // Loading
   if (bookingLoading || tripLoading) {
@@ -1213,10 +1200,13 @@ export default function PassengerNavigationScreen() {
         {routeCoordinates.length > 1 && (
           <Polyline
             coordinates={routeCoordinates}
-            strokeColor={Colors.primary}
-            strokeWidth={4}
+            strokeColor={activeRouteSegment === 'route' ? Colors.primaryDark : 'rgba(255, 107, 53, 0.28)'}
+            strokeWidth={activeRouteSegment === 'route' ? 6 : 3}
             lineCap="round"
             lineJoin="round"
+            tappable
+            onPress={() => setActiveRouteSegment('route')}
+            zIndex={activeRouteSegment === 'route' ? 12 : 2}
           />
         )}
 
@@ -1224,12 +1214,66 @@ export default function PassengerNavigationScreen() {
         {displayedDriverLocation && !booking.pickedUp && (passengerLocation || pickupCoordinate) && (
           <Polyline
             coordinates={[displayedDriverLocation, passengerLocation ?? pickupCoordinate!]}
-            strokeColor={Colors.info}
-            strokeWidth={3}
-            lineDashPattern={[8, 6]}
+            strokeColor={activeRouteSegment === 'pickup' ? Colors.infoDark : 'rgba(52, 152, 219, 0.28)'}
+            strokeWidth={activeRouteSegment === 'pickup' ? 6 : 3}
+            lineDashPattern={activeRouteSegment === 'pickup' ? undefined : [8, 6]}
+            lineCap="round"
+            lineJoin="round"
+            tappable
+            onPress={() => setActiveRouteSegment('pickup')}
+            zIndex={activeRouteSegment === 'pickup' ? 13 : 3}
           />
         )}
       </MapView>
+
+      {canToggleRouteSegments && (
+        <View style={[styles.segmentToggle, { top: insets.top + 330 }]}>
+          <TouchableOpacity
+            style={[
+              styles.segmentToggleButton,
+              activeRouteSegment === 'route' && styles.segmentToggleButtonActive,
+            ]}
+            onPress={() => setActiveRouteSegment('route')}
+            activeOpacity={0.85}
+          >
+            <Ionicons
+              name="git-branch-outline"
+              size={15}
+              color={activeRouteSegment === 'route' ? Colors.white : Colors.primaryDark}
+            />
+            <Text
+              style={[
+                styles.segmentToggleText,
+                activeRouteSegment === 'route' && styles.segmentToggleTextActive,
+              ]}
+            >
+              Trajet
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.segmentToggleButton,
+              activeRouteSegment === 'pickup' && styles.segmentToggleButtonPickupActive,
+            ]}
+            onPress={() => setActiveRouteSegment('pickup')}
+            activeOpacity={0.85}
+          >
+            <Ionicons
+              name="person-outline"
+              size={15}
+              color={activeRouteSegment === 'pickup' ? Colors.white : Colors.infoDark}
+            />
+            <Text
+              style={[
+                styles.segmentToggleText,
+                activeRouteSegment === 'pickup' && styles.segmentToggleTextActive,
+              ]}
+            >
+              Recup.
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Boutons flottants */}
       <View style={[styles.floatingButtons, { top: insets.top + 70 }]}>
@@ -1530,7 +1574,7 @@ export default function PassengerNavigationScreen() {
             </View>
             <Text style={styles.arrivalModalTitle}>Vous êtes arrivé</Text>
             <Text style={styles.arrivalModalText}>
-              Validez votre arrivée à la destination choisie pendant la réservation.
+              L'arrivee a destination se confirme automatiquement par GPS.
             </Text>
             <View style={styles.arrivalModalAddressRow}>
               <Ionicons name="location" size={18} color={Colors.primary} />
@@ -1543,29 +1587,29 @@ export default function PassengerNavigationScreen() {
               <Text style={styles.arrivalModalGpsStatusText}>Arrivée détectée par GPS</Text>
             </View>
             <Text style={styles.arrivalModalHint}>
-              Après validation, vous pourrez noter le conducteur.
+              {booking.droppedOff || booking.droppedOffConfirmedByPassenger
+                ? 'Vous pouvez noter le conducteur.'
+                : 'Synchronisation en cours. Vous pourrez noter le conducteur apres confirmation.'}
             </Text>
             <View style={styles.arrivalModalActions}>
               <TouchableOpacity
                 style={styles.arrivalModalLaterButton}
                 onPress={() => setArrivalModalVisible(false)}
-                disabled={isConfirmingArrival}
               >
                 <Text style={styles.arrivalModalLaterButtonText}>Plus tard</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.arrivalModalFinishButton}
                 onPress={() => void handleFinishArrival()}
-                disabled={isConfirmingArrival}
               >
-                {isConfirmingArrival ? (
-                  <ActivityIndicator size="small" color={Colors.white} />
-                ) : (
-                  <>
-                    <Ionicons name="checkmark-circle" size={20} color={Colors.white} />
-                    <Text style={styles.arrivalModalFinishButtonText}>Terminer</Text>
-                  </>
-                )}
+                <Ionicons
+                  name={booking.droppedOff || booking.droppedOffConfirmedByPassenger ? 'star' : 'checkmark-circle'}
+                  size={20}
+                  color={Colors.white}
+                />
+                <Text style={styles.arrivalModalFinishButtonText}>
+                  {booking.droppedOff || booking.droppedOffConfirmedByPassenger ? 'Noter' : 'Compris'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1648,6 +1692,47 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.primary + '33',
     backgroundColor: Colors.primary + '10',
+  },
+  segmentToggle: {
+    position: 'absolute',
+    right: Spacing.md,
+    zIndex: 11,
+    gap: 4,
+    padding: 4,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.14,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  segmentToggleButton: {
+    minWidth: 78,
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    opacity: 0.7,
+  },
+  segmentToggleButtonActive: {
+    backgroundColor: Colors.primaryDark,
+    opacity: 1,
+  },
+  segmentToggleButtonPickupActive: {
+    backgroundColor: Colors.infoDark,
+    opacity: 1,
+  },
+  segmentToggleText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[700],
+  },
+  segmentToggleTextActive: {
+    color: Colors.white,
   },
   header: {
     position: 'absolute',
