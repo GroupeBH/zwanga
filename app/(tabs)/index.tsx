@@ -11,7 +11,11 @@ import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } f
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { getCurrentTripInfo } from '@/services/ongoingTripNotification';
-import { trackingSocket, type PassengerLocationPayload } from '@/services/trackingSocket';
+import {
+  trackingSocket,
+  type BookingAutoProgressPayload,
+  type PassengerLocationPayload,
+} from '@/services/trackingSocket';
 import { useGetMyBookingsQuery, useGetTripBookingsQuery } from '@/store/api/bookingApi';
 import { useGetNotificationsQuery } from '@/store/api/notificationApi';
 import {
@@ -176,10 +180,27 @@ type DriverPassengerMarker = {
   bookingId: string;
   coordinate: MapCoordinate;
   isLive: boolean;
+  isVisible: boolean;
   passengerId: string;
   passengerName: string;
   status: PassengerTrackingMarkerStatus;
 };
+
+type HomeAutoProgressEvent = BookingAutoProgressPayload['events'][number];
+
+const HOME_AUTO_PROGRESS_PRIORITY: Record<HomeAutoProgressEvent['type'], number> = {
+  driver_near_pickup: 0,
+  driver_arrived_pickup: 1,
+  parties_nearby: 2,
+  passenger_ready_pickup: 3,
+  pickup_confirmed: 4,
+  dropoff_confirmed: 5,
+  driver_arrived_destination: 6,
+};
+
+const EMPTY_HOME_TRIPS: Trip[] = [];
+const EMPTY_HOME_BOOKINGS: Booking[] = [];
+const EMPTY_HOME_TRIP_REQUESTS: TripRequest[] = [];
 
 type LivePassengerLocation = {
   coordinate: MapCoordinate;
@@ -738,6 +759,15 @@ export default function HomeScreen() {
   const userLocationMarkerRef = useRef<MapMarker | null>(null);
   const openingTripRef = useRef(false);
   const openingTripTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const presentedHomeAutoProgressKeysRef = useRef<Set<string>>(new Set());
+  const highestHomeAutoProgressPriorityRef = useRef<Map<string, number>>(new Map());
+  const lastHomeDriverLocationSentAtRef = useRef(0);
+  const activeBookingsRef = useRef<Booking[]>(EMPTY_HOME_BOOKINGS);
+  const activePassengerBookingRef = useRef<Booking | null>(null);
+  const ongoingDriverBookingsRef = useRef<Booking[]>(EMPTY_HOME_BOOKINGS);
+  const showDialogRef = useRef(showDialog);
+  const refetchMyBookingsRef = useRef<(() => unknown) | null>(null);
+  const refetchOngoingDriverBookingsRef = useRef<(() => unknown) | null>(null);
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const storedTrips = useAppSelector(selectAvailableTrips);
@@ -760,17 +790,13 @@ export default function HomeScreen() {
     Record<string, LivePassengerLocation>
   >({});
   const trackedTripInfo = getCurrentTripInfo();
-  const { getCurrentLocation, lastKnownLocation } = useUserLocation({
-    autoRequest: isFocused,
-    trackingProfile: trackedTripInfo ? 'navigation' : 'nearby',
-  });
   const { data: currentUser } = useGetCurrentUserQuery();
   const isDriver = useMemo(() => {
     const role = currentUser?.role;
     return role === 'driver' || role === 'both' || Boolean(currentUser?.isDriver);
   }, [currentUser?.isDriver, currentUser?.role]);
 
-  const { data: myDriverTrips = [] } = useGetMyTripsQuery(undefined, {
+  const { data: myDriverTrips = EMPTY_HOME_TRIPS } = useGetMyTripsQuery(undefined, {
     skip: !isDriver,
     pollingInterval: isFocused ? 30000 : 0,
     skipPollingIfUnfocused: true,
@@ -803,7 +829,7 @@ export default function HomeScreen() {
     return listedOngoingDriverTrip;
   }, [listedOngoingDriverTrip, refreshedDriverTrip]);
   const {
-    data: ongoingDriverBookings = [],
+    data: ongoingDriverBookings = EMPTY_HOME_BOOKINGS,
     refetch: refetchOngoingDriverBookings,
   } = useGetTripBookingsQuery(ongoingDriverTrip?.id ?? '', {
     skip: !ongoingDriverTrip?.id,
@@ -811,6 +837,13 @@ export default function HomeScreen() {
     skipPollingIfUnfocused: true,
     refetchOnFocus: isFocused,
     refetchOnReconnect: isFocused,
+  });
+  const { getCurrentLocation, lastKnownLocation } = useUserLocation({
+    autoRequest: isFocused,
+    trackingProfile:
+      trackedTripInfo || ongoingDriverTrip
+        ? 'navigation'
+        : 'nearby',
   });
 
   const driverReservationHighlightTrip = useMemo(() => {
@@ -856,7 +889,7 @@ export default function HomeScreen() {
       })[0] ?? null;
   }, [currentUser?.id, isDriver, myDriverTrips, ongoingDriverTrip]);
 
-  const { data: driverReservationHighlightBookings = [] } = useGetTripBookingsQuery(
+  const { data: driverReservationHighlightBookings = EMPTY_HOME_BOOKINGS } = useGetTripBookingsQuery(
     driverReservationHighlightTrip?.id ?? '',
     {
       skip: !isFocused || !driverReservationHighlightTrip?.id || Boolean(ongoingDriverTrip),
@@ -866,67 +899,6 @@ export default function HomeScreen() {
       refetchOnReconnect: isFocused,
     },
   );
-
-  useEffect(() => {
-    const activeTripId = ongoingDriverTrip?.id;
-    if (!isFocused || !activeTripId) {
-      setLiveDriverPassengerLocations({});
-      return;
-    }
-
-    let isCancelled = false;
-    setLiveDriverPassengerLocations({});
-
-    void trackingSocket
-      .joinTrip(activeTripId)
-      .then(() => {
-        if (isCancelled) return;
-        void trackingSocket.requestPassengerLocations(activeTripId);
-      })
-      .catch((error) => {
-        console.warn('[Home] Connexion au suivi passagers indisponible:', error);
-      });
-
-    const unsubscribePassengerLocation = trackingSocket.subscribeToPassengerLocation(
-      (payload: PassengerLocationPayload) => {
-        if (
-          isCancelled ||
-          payload.tripId !== activeTripId ||
-          !payload.bookingId ||
-          !payload.coordinates
-        ) {
-          return;
-        }
-
-        const coordinate = normalizeTripMapCoordinate(
-          payload.coordinates[1],
-          payload.coordinates[0],
-        );
-        if (!coordinate) return;
-
-        setLiveDriverPassengerLocations((current) => ({
-          ...current,
-          [payload.bookingId]: {
-            coordinate,
-            updatedAt: payload.updatedAt,
-          },
-        }));
-      },
-    );
-
-    const unsubscribeAutoProgress = trackingSocket.subscribeToBookingAutoProgress((payload) => {
-      if (!isCancelled && payload.tripId === activeTripId) {
-        void refetchOngoingDriverBookings();
-      }
-    });
-
-    return () => {
-      isCancelled = true;
-      void trackingSocket.leaveTrip(activeTripId);
-      unsubscribePassengerLocation();
-      unsubscribeAutoProgress();
-    };
-  }, [isFocused, ongoingDriverTrip?.id, refetchOngoingDriverBookings]);
 
   const nearbyTripsPayload = useMemo<TripSearchByPointsPayload | null>(() => {
     const latitude = lastKnownLocation?.coords?.latitude;
@@ -1030,13 +1002,13 @@ export default function HomeScreen() {
   const { data: notificationsData } = useGetNotificationsQuery({ limit: 1 }, {
     refetchOnMountOrArgChange: true,
   });
-  const { data: myBookings } = useGetMyBookingsQuery(undefined, {
+  const { data: myBookings, refetch: refetchMyBookings } = useGetMyBookingsQuery(undefined, {
     pollingInterval: isFocused ? 10000 : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: isFocused,
     refetchOnReconnect: isFocused,
   });
-  const { data: myTripRequests = [] } = useGetMyTripRequestsQuery(undefined, {
+  const { data: myTripRequests = EMPTY_HOME_TRIP_REQUESTS } = useGetMyTripRequestsQuery(undefined, {
     skip: !currentUser?.id,
     pollingInterval: isFocused ? 30000 : 0,
     skipPollingIfUnfocused: true,
@@ -1044,7 +1016,7 @@ export default function HomeScreen() {
     refetchOnReconnect: isFocused,
   });
   const {
-    data: availableTripRequests = [],
+    data: availableTripRequests = EMPTY_HOME_TRIP_REQUESTS,
     isLoading: availableTripRequestsLoading,
     isError: availableTripRequestsError,
     refetch: refetchAvailableTripRequests,
@@ -1340,8 +1312,12 @@ export default function HomeScreen() {
 
     ongoingDriverBookings
       .filter((booking) => booking.status === 'accepted' || booking.status === 'completed')
-      .slice(0, MAX_LIVE_PASSENGER_MARKERS)
       .forEach((booking) => {
+        const isPassengerDroppedOff = Boolean(
+          booking.status === 'completed' || booking.droppedOff || booking.droppedOffConfirmedByPassenger,
+        );
+        const isPassengerOnboard = Boolean(booking.pickedUp && !isPassengerDroppedOff);
+
         const liveLocation = liveDriverPassengerLocations[booking.id];
         const apiLocation = normalizeTripMapCoordinate(
           booking.passengerLocationCoordinates?.latitude,
@@ -1358,9 +1334,9 @@ export default function HomeScreen() {
             booking.passengerDestinationCoordinates?.longitude,
           ) ?? fallbackDropoff;
         const status: PassengerTrackingMarkerStatus =
-          booking.droppedOff || booking.droppedOffConfirmedByPassenger
+          isPassengerDroppedOff
             ? 'arrived'
-            : booking.pickedUp
+            : isPassengerOnboard
               ? 'live'
               : 'pickup';
         const coordinate =
@@ -1374,6 +1350,7 @@ export default function HomeScreen() {
           bookingId: booking.id,
           coordinate,
           isLive: Boolean(liveLocation || apiLocation),
+          isVisible: !isPassengerOnboard,
           passengerId: booking.passengerId,
           passengerName: booking.passengerName || 'Passager',
           status,
@@ -1383,7 +1360,275 @@ export default function HomeScreen() {
     return markers;
   }, [liveDriverPassengerLocations, ongoingDriverBookings, ongoingDriverTrip]);
 
+  const visibleDriverPassengerMarkers = useMemo(
+    () => driverPassengerMarkers.filter((passenger) => passenger.isVisible).slice(0, MAX_LIVE_PASSENGER_MARKERS),
+    [driverPassengerMarkers],
+  );
+
+  useEffect(() => {
+    activeBookingsRef.current = activeBookings;
+  }, [activeBookings]);
+
+  useEffect(() => {
+    activePassengerBookingRef.current = activePassengerBooking;
+  }, [activePassengerBooking]);
+
+  useEffect(() => {
+    ongoingDriverBookingsRef.current = ongoingDriverBookings;
+  }, [ongoingDriverBookings]);
+
+  useEffect(() => {
+    showDialogRef.current = showDialog;
+  }, [showDialog]);
+
+  useEffect(() => {
+    refetchMyBookingsRef.current = refetchMyBookings;
+  }, [refetchMyBookings]);
+
+  useEffect(() => {
+    refetchOngoingDriverBookingsRef.current = refetchOngoingDriverBookings;
+  }, [refetchOngoingDriverBookings]);
+
   const activeHomeTrip = ongoingDriverTrip ?? ongoingBookedTrip;
+  const homeTrackingTripId = activeHomeTrip?.id ?? null;
+  const isHomeDriverTracking = Boolean(
+    ongoingDriverTrip?.id && homeTrackingTripId === ongoingDriverTrip.id,
+  );
+
+  useEffect(() => {
+    presentedHomeAutoProgressKeysRef.current.clear();
+    highestHomeAutoProgressPriorityRef.current.clear();
+    lastHomeDriverLocationSentAtRef.current = 0;
+  }, [homeTrackingTripId]);
+
+  useEffect(() => {
+    if (!isFocused || !homeTrackingTripId) {
+      setLiveDriverPassengerLocations({});
+      return;
+    }
+
+    let isCancelled = false;
+    setLiveDriverPassengerLocations({});
+
+    void trackingSocket
+      .joinTrip(homeTrackingTripId)
+      .then(() => {
+        if (isCancelled) return;
+        if (isHomeDriverTracking) {
+          void trackingSocket.requestPassengerLocations(homeTrackingTripId);
+        } else {
+          void trackingSocket.requestDriverLocation(homeTrackingTripId);
+        }
+      })
+      .catch((error) => {
+        console.warn('[Home] Connexion au suivi du trajet indisponible:', error);
+      });
+
+    const unsubscribePassengerLocation = trackingSocket.subscribeToPassengerLocation(
+      (payload: PassengerLocationPayload) => {
+        if (
+          isCancelled ||
+          !isHomeDriverTracking ||
+          payload.tripId !== homeTrackingTripId ||
+          !payload.bookingId ||
+          !payload.coordinates
+        ) {
+          return;
+        }
+
+        const coordinate = normalizeTripMapCoordinate(
+          payload.coordinates[1],
+          payload.coordinates[0],
+        );
+        if (!coordinate) return;
+
+        setLiveDriverPassengerLocations((current) => ({
+          ...current,
+          [payload.bookingId]: {
+            coordinate,
+            updatedAt: payload.updatedAt,
+          },
+        }));
+      },
+    );
+
+    const unsubscribeAutoProgress = trackingSocket.subscribeToBookingAutoProgress((payload) => {
+      if (isCancelled || payload.tripId !== homeTrackingTripId || payload.events.length === 0) {
+        return;
+      }
+
+      const passengerBookingId =
+        activePassengerBookingRef.current?.tripId === homeTrackingTripId
+          ? activePassengerBookingRef.current.id
+          : activeBookingsRef.current.find(
+              (booking) =>
+                booking.tripId === homeTrackingTripId &&
+                booking.status === 'accepted' &&
+                !booking.droppedOff &&
+                !booking.droppedOffConfirmedByPassenger,
+            )?.id ?? null;
+
+      payload.events
+        .filter((event) => {
+          if (event.type === 'driver_arrived_destination') {
+            return isHomeDriverTracking;
+          }
+          if (!event.bookingId) {
+            return false;
+          }
+          if (isHomeDriverTracking) {
+            return event.type !== 'driver_near_pickup';
+          }
+          return event.bookingId === passengerBookingId && event.type !== 'passenger_ready_pickup';
+        })
+        .sort(
+          (first, second) =>
+            HOME_AUTO_PROGRESS_PRIORITY[first.type] -
+            HOME_AUTO_PROGRESS_PRIORITY[second.type],
+        )
+        .forEach((event) => {
+          const key = `${homeTrackingTripId}:${event.type}:${event.bookingId ?? event.tripId}`;
+          if (presentedHomeAutoProgressKeysRef.current.has(key)) {
+            return;
+          }
+
+          if (event.bookingId) {
+            const nextPriority = HOME_AUTO_PROGRESS_PRIORITY[event.type];
+            const highestPriorityForBooking =
+              highestHomeAutoProgressPriorityRef.current.get(event.bookingId) ?? -1;
+            if (highestPriorityForBooking > nextPriority) {
+              return;
+            }
+            highestHomeAutoProgressPriorityRef.current.set(event.bookingId, nextPriority);
+          }
+
+          const booking =
+            ongoingDriverBookingsRef.current.find((item) => item.id === event.bookingId) ??
+            activeBookingsRef.current.find((item) => item.id === event.bookingId) ??
+            null;
+          const passengerName = booking?.passengerName || 'le passager';
+          const roundedDistance =
+            typeof event.distanceMeters === 'number' && Number.isFinite(event.distanceMeters)
+              ? Math.max(1, Math.round(event.distanceMeters))
+              : null;
+          const distanceText = roundedDistance ? ` Distance detectee: ${roundedDistance} m.` : '';
+
+          const dialogByType: Record<
+            HomeAutoProgressEvent['type'],
+            {
+              variant: 'info' | 'success';
+              icon: keyof typeof Ionicons.glyphMap;
+              title: string;
+              message: string;
+            }
+          > = {
+            driver_near_pickup: {
+              variant: 'info',
+              icon: 'car-sport',
+              title: 'Le conducteur sera bientot la',
+              message: `Le conducteur est proche du point de recuperation.${distanceText}`,
+            },
+            driver_arrived_pickup: {
+              variant: 'info',
+              icon: 'location',
+              title: isHomeDriverTracking ? 'Point de recuperation atteint' : 'Le conducteur est la',
+              message: isHomeDriverTracking
+                ? `Vous etes arrive au point de recuperation de ${passengerName}. Le passager est notifie.`
+                : 'Le conducteur est arrive au point de recuperation que vous avez indique.',
+            },
+            parties_nearby: {
+              variant: 'success',
+              icon: 'people',
+              title: isHomeDriverTracking ? 'Passager pret a embarquer' : 'Vous etes au point',
+              message: isHomeDriverTracking
+                ? `${passengerName} est la et pret a etre embarque.`
+                : 'Vous et le conducteur etes au point de recuperation.',
+            },
+            passenger_ready_pickup: {
+              variant: 'success',
+              icon: 'hand-left',
+              title: "Le passager s'est signale",
+              message: `${passengerName} indique qu'il est au point de recuperation.`,
+            },
+            pickup_confirmed: {
+              variant: 'success',
+              icon: 'checkmark-circle',
+              title: isHomeDriverTracking ? 'Passager embarque' : 'Prise en charge confirmee',
+              message: isHomeDriverTracking
+                ? `${passengerName} a ete embarque.`
+                : 'Votre prise en charge est confirmee.',
+            },
+            dropoff_confirmed: {
+              variant: 'success',
+              icon: 'flag',
+              title: isHomeDriverTracking ? 'Destination passager atteinte' : 'Arrivee confirmee',
+              message: isHomeDriverTracking
+                ? `Nous sommes arrives au point de destination de ${passengerName}.`
+                : 'Votre arrivee a destination est confirmee.',
+            },
+            driver_arrived_destination: {
+              variant: 'success',
+              icon: 'flag',
+              title: 'Trajet termine',
+              message: `Vous avez atteint la destination finale.${distanceText}`,
+            },
+          };
+
+          presentedHomeAutoProgressKeysRef.current.add(key);
+          showDialogRef.current(dialogByType[event.type]);
+        });
+
+      if (isHomeDriverTracking) {
+        void refetchOngoingDriverBookingsRef.current?.();
+      } else {
+        void refetchMyBookingsRef.current?.();
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+      void trackingSocket.leaveTrip(homeTrackingTripId);
+      unsubscribePassengerLocation();
+      unsubscribeAutoProgress();
+    };
+  }, [
+    homeTrackingTripId,
+    isFocused,
+    isHomeDriverTracking,
+  ]);
+
+  useEffect(() => {
+    if (
+      !isFocused ||
+      !isHomeDriverTracking ||
+      !homeTrackingTripId ||
+      !liveUserCoordinate
+    ) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastHomeDriverLocationSentAtRef.current < 4000) {
+      return;
+    }
+
+    lastHomeDriverLocationSentAtRef.current = now;
+    void trackingSocket
+      .updateDriverLocation(homeTrackingTripId, [
+        liveUserCoordinate.longitude,
+        liveUserCoordinate.latitude,
+      ])
+      .catch((error) => {
+        console.warn('[Home] Position conducteur non envoyee:', error);
+      });
+  }, [
+    homeTrackingTripId,
+    isFocused,
+    isHomeDriverTracking,
+    liveUserCoordinate?.latitude,
+    liveUserCoordinate?.longitude,
+  ]);
+
   const featuredDriverReservation = useMemo<FeaturedDriverReservation | null>(() => {
     if (!isDriver || activeHomeTrip || !driverReservationHighlightTrip) {
       return null;
@@ -1488,10 +1733,10 @@ export default function HomeScreen() {
       : null;
     const coordinate = selectedMapCoordinate ?? selectedDeparture ?? fallbackDeparture;
 
-    if (ongoingDriverTrip && selectedMapCoordinate && driverPassengerMarkers.length > 0) {
+    if (ongoingDriverTrip && selectedMapCoordinate && visibleDriverPassengerMarkers.length > 0) {
       const coordinates = [
         selectedMapCoordinate,
-        ...driverPassengerMarkers.map((passenger) => passenger.coordinate),
+        ...visibleDriverPassengerMarkers.map((passenger) => passenger.coordinate),
       ];
       const latitudes = coordinates.map((point) => point.latitude);
       const longitudes = coordinates.map((point) => point.longitude);
@@ -1518,7 +1763,7 @@ export default function HomeScreen() {
       longitudeDelta: 0.065,
     };
   }, [
-    driverPassengerMarkers,
+    visibleDriverPassengerMarkers,
     liveUserCoordinate,
     ongoingDriverTrip,
     selectedTrip,
@@ -1610,7 +1855,9 @@ export default function HomeScreen() {
       : 'Trajets publiés';
   const sheetSubtitle = isHomeSheetLockedRetracted
     ? ongoingDriverTrip || trackedTripInfo?.role === 'driver'
-      ? `${driverPassengerMarkers.length} passager${driverPassengerMarkers.length > 1 ? 's' : ''} et votre véhicule en direct`
+      ? visibleDriverPassengerMarkers.length > 0
+        ? `${visibleDriverPassengerMarkers.length} passager${visibleDriverPassengerMarkers.length > 1 ? 's' : ''} et votre véhicule en direct`
+        : 'Votre véhicule reste visible en direct'
       : 'Votre position et le véhicule restent visibles'
     : isRequestsSheetMode
       ? availableDriverRequests.length > 0
@@ -1824,7 +2071,7 @@ export default function HomeScreen() {
             </Marker>
           );
         })}
-        {ongoingDriverTrip && driverPassengerMarkers.map((passenger) => {
+        {ongoingDriverTrip && visibleDriverPassengerMarkers.map((passenger) => {
           const passengerMarkerKey = `home-passenger-${passenger.bookingId}:${passenger.status}`;
           const passengerDescription =
             passenger.status === 'arrived'
@@ -1833,7 +2080,7 @@ export default function HomeScreen() {
                 ? 'Point de prise en charge'
                 : passenger.isLive
                   ? 'Position en temps réel'
-                  : 'Passager à bord';
+                  : 'Position du passager';
 
           return (
             <Marker

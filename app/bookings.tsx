@@ -3,22 +3,12 @@ import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } f
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { trackEvent } from '@/services/analytics';
 import {
-  ELECTRONIC_PAYMENTS_ENABLED,
-} from '@/constants/paymentFeatures';
-import {
   useCancelBookingMutation,
-  useConfirmDropoffByPassengerMutation,
-  useConfirmPickupByPassengerMutation,
   useGetMyBookingsQuery,
-  useInitiateBookingPaymentMutation,
-  useUpdateBookingPaymentModeMutation,
 } from '@/store/api/bookingApi';
-import { useAppSelector } from '@/store/hooks';
-import { selectUser } from '@/store/selectors';
-import type { Booking, BookingStatus, TripPaymentMode } from '@/types';
+import type { BookingStatus } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
 import { openWhatsApp } from '@/utils/phoneHelpers';
-import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
@@ -74,44 +64,9 @@ const STATUS_CONFIG: Record<
   },
 };
 
-const TRIP_PAYMENT_MODE_OPTIONS: {
-  id: TripPaymentMode;
-  label: string;
-  description: string;
-}[] = [
-  ...(ELECTRONIC_PAYMENTS_ENABLED
-    ? [
-        {
-          id: 'electronic' as const,
-          label: 'Paiement electronique',
-          description: 'FlexPay Mobile Money',
-        },
-      ]
-    : []),
-  {
-    id: 'cash',
-    label: "Paiement a l'arrivee",
-    description: 'Regler directement aupres du conducteur',
-  },
-];
-
-const DRC_PAYMENT_PHONE_REGEX = /^\+243\d{9}$/;
-const formatTripPaymentPhone = (value?: string | null) => {
-  const digits = (value ?? '').replace(/\D/g, '');
-  if (!digits) return undefined;
-  if (digits.startsWith('243')) return `+${digits}`;
-  if (digits.startsWith('0')) return `+243${digits.slice(1)}`;
-  return `+243${digits}`;
-};
-const getAvailableTripPaymentMode = (mode?: TripPaymentMode | null): TripPaymentMode =>
-  TRIP_PAYMENT_MODE_OPTIONS.some((option) => option.id === mode)
-    ? (mode as TripPaymentMode)
-    : 'cash';
-
 export default function BookingsScreen() {
   const router = useRouter();
   const { showDialog } = useDialog();
-  const user = useAppSelector(selectUser);
   const [activeTab, setActiveTab] = useState<BookingTab>('active');
   const [contactModalVisible, setContactModalVisible] = useState(false);
   const [selectedDriverPhone, setSelectedDriverPhone] = useState<string | null>(null);
@@ -125,12 +80,6 @@ export default function BookingsScreen() {
     refetch,
   } = useGetMyBookingsQuery();
   const [cancelBooking, { isLoading: isCancelling }] = useCancelBookingMutation();
-  const [confirmPickupByPassenger, { isLoading: isConfirmingPickup }] = useConfirmPickupByPassengerMutation();
-  const [confirmDropoffByPassenger, { isLoading: isConfirmingDropoff }] = useConfirmDropoffByPassengerMutation();
-  const [updateBookingPaymentMode, { isLoading: isUpdatingPaymentMode }] =
-    useUpdateBookingPaymentModeMutation();
-  const [initiateBookingPayment, { isLoading: isInitiatingPayment }] =
-    useInitiateBookingPaymentMutation();
 
   const activeBookings = useMemo(
     () => {
@@ -223,171 +172,6 @@ export default function BookingsScreen() {
             }
           },
         },
-      ],
-    });
-  };
-
-  const handleConfirmPickup = async (bookingId: string) => {
-    try {
-      await confirmPickupByPassenger(bookingId).unwrap();
-      void trackEvent('booking_pickup_confirmed', {
-        booking_id: bookingId,
-        source_screen: 'bookings',
-      });
-      showDialog({
-        variant: 'success',
-        title: 'Confirmation réussie',
-        message: 'Vous avez confirmé votre prise en charge.',
-      });
-      refetch();
-    } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        'Impossible de confirmer la prise en charge pour le moment.';
-      showDialog({
-        variant: 'danger',
-        title: 'Erreur',
-        message: Array.isArray(message) ? message.join('\n') : message,
-      });
-    }
-  };
-
-  const getBookingPaymentAmount = (booking: Booking) => {
-    const storedAmount = Number(booking.paymentAmount ?? 0);
-    if (Number.isFinite(storedAmount) && storedAmount > 0) return storedAmount;
-    const tripPrice = Number(booking.trip?.price ?? 0);
-    return tripPrice > 0 ? booking.numberOfSeats * tripPrice : 0;
-  };
-
-  const startElectronicPaymentForBooking = async (booking: Booking) => {
-    if (!ELECTRONIC_PAYMENTS_ENABLED) {
-      return;
-    }
-
-    const phone = formatTripPaymentPhone(user?.phone);
-    if (!phone || !DRC_PAYMENT_PHONE_REGEX.test(phone)) {
-      showDialog({
-        variant: 'warning',
-        title: 'Numero Mobile Money requis',
-        message:
-          'Ajoutez un numero congolais valide dans votre profil avant de lancer le paiement FlexPay.',
-      });
-      return;
-    }
-
-    try {
-      const response = await initiateBookingPayment({
-        bookingId: booking.id,
-        method: 'mobile_money',
-        phone,
-      }).unwrap();
-
-      await openExternalUrlSafely(response.payment.paymentUrl, { logLabel: 'BookingsPayment' });
-
-      showDialog({
-        variant: response.payment.status === 'succeeded' ? 'success' : 'info',
-        title: response.payment.status === 'succeeded' ? 'Paiement confirme' : 'Paiement lance',
-        message:
-          response.payment.message ??
-          'Confirmez la demande FlexPay sur votre telephone.',
-      });
-      refetch();
-      return response;
-    } catch (error: any) {
-      const message =
-        error?.data?.message ?? error?.error ?? 'Impossible de lancer le paiement pour le moment.';
-      showDialog({
-        variant: 'danger',
-        title: 'Paiement impossible',
-        message: Array.isArray(message) ? message.join('\n') : message,
-      });
-    }
-  };
-
-  const confirmDropoffWithPaymentMode = async (
-    booking: Booking,
-    paymentMode: TripPaymentMode,
-  ) => {
-    try {
-      let bookingForDropoff = booking;
-      if (paymentMode !== booking.paymentMode) {
-        bookingForDropoff = await updateBookingPaymentMode({
-          bookingId: booking.id,
-          paymentMode,
-        }).unwrap();
-      }
-
-      const paymentAmount = getBookingPaymentAmount(bookingForDropoff);
-      if (
-        paymentMode === 'electronic' &&
-        paymentAmount > 0 &&
-        bookingForDropoff.paymentStatus !== 'succeeded'
-      ) {
-        const paymentResponse = await startElectronicPaymentForBooking(bookingForDropoff);
-        if (!paymentResponse) {
-          return;
-        }
-        if (paymentResponse.payment.status !== 'succeeded') {
-          showDialog({
-            variant: 'info',
-            title: 'Paiement a terminer',
-            message:
-              'Validez le paiement FlexPay sur votre telephone. Vous pourrez signaler votre arrivee des que le paiement est confirme.',
-          });
-          return;
-        }
-      }
-
-      await confirmDropoffByPassenger({ id: booking.id, paymentMode }).unwrap();
-      void trackEvent('booking_dropoff_requested', {
-        booking_id: booking.id,
-        source_screen: 'bookings',
-        payment_mode: paymentMode,
-      });
-      showDialog({
-        variant: 'success',
-        title: 'Demande envoyée',
-        message:
-          'Votre arrivée a été signalée au conducteur. Il doit la confirmer pour terminer la réservation.',
-      });
-      refetch();
-    } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        'Impossible de signaler votre arrivée pour le moment.';
-      showDialog({
-        variant: 'danger',
-        title: 'Erreur',
-        message: Array.isArray(message) ? message.join('\n') : message,
-      });
-    }
-  };
-
-  const handleConfirmDropoff = (booking: Booking) => {
-    const paymentAmount = getBookingPaymentAmount(booking);
-    if (paymentAmount <= 0) {
-      void confirmDropoffWithPaymentMode(booking, getAvailableTripPaymentMode(booking.paymentMode));
-      return;
-    }
-
-    showDialog({
-      variant: 'info',
-      title: 'Mode de paiement',
-      message:
-        'Choisissez comment vous voulez regler ce trajet avant de signaler votre arrivee.',
-      actions: [
-        ...TRIP_PAYMENT_MODE_OPTIONS.map((option) => ({
-          label:
-            option.id === booking.paymentMode
-              ? `${option.label} (actuel)`
-              : option.label,
-          variant: option.id === booking.paymentMode ? 'primary' as const : 'secondary' as const,
-          autoClose: false,
-          onPress: () => confirmDropoffWithPaymentMode(booking, option.id),
-        })),
-        { label: 'Annuler', variant: 'ghost' as const },
       ],
     });
   };

@@ -19,10 +19,21 @@ export interface PassengerLocationPayload {
 export interface BookingAutoProgressPayload {
   tripId: string;
   events: Array<{
-    type: 'pickup_confirmed' | 'dropoff_confirmed';
-    bookingId: string;
+    type:
+      | 'driver_near_pickup'
+      | 'driver_arrived_pickup'
+      | 'parties_nearby'
+      | 'passenger_ready_pickup'
+      | 'pickup_confirmed'
+      | 'dropoff_confirmed'
+      | 'driver_arrived_destination';
+    bookingId?: string;
     tripId: string;
-    passengerId: string;
+    passengerId?: string;
+    distanceMeters?: number;
+    detectedAt?: string;
+    expiresAt?: string;
+    pickupWaitSeconds?: number;
   }>;
 }
 
@@ -35,7 +46,7 @@ function resolveSocketBaseUrl() {
   if (!API_BASE_URL) {
     return '';
   }
-  return API_BASE_URL.replace(/\/api\/v1\/?$/, '');
+  return API_BASE_URL.replace(/\/(?:api\/)?v1\/?$/, '');''
 }
 
 class TrackingSocketClient {
@@ -243,6 +254,12 @@ class TrackingSocketClient {
     if (!tripId) return;
     const socket = await this.connect();
     socket.emit('get_passenger_locations', { tripId });
+  }
+
+  async signalPassengerReady(bookingId: string) {
+    if (!bookingId) return;
+    const socket = await this.connect();
+    socket.emit('passenger_pickup_signal', { bookingId });
   }
 }
 

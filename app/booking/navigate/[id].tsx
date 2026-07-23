@@ -7,16 +7,20 @@ import {
   VehicleTrackingMarker,
 } from '@/components/TrackingMapMarkers';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { trackingSocket, type DriverLocationPayload } from '@/services/trackingSocket';
 import {
-  useConfirmDropoffByPassengerMutation,
+  trackingSocket,
+  type BookingAutoProgressPayload,
+  type DriverLocationPayload,
+} from '@/services/trackingSocket';
+import { displayNotification } from '@/services/pushNotifications';
+import {
   useGetBookingByIdQuery,
   useUpdatePassengerLocationMutation,
 } from '@/store/api/bookingApi';
 import { useGetDirectionsMutation } from '@/store/api/googleMapsApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { getGeoPointCoordinate, normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
-import { calculateDistance, getRouteAlignedPosition } from '@/utils/routeHelpers';
+import { calculateDistance, getRouteAlignedPosition, splitRouteByProgress } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Speech from 'expo-speech';
@@ -40,6 +44,33 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const MAX_PASSENGER_ROUTE_POINTS = Platform.OS === 'ios' ? 180 : 250;
 const IS_ANDROID = Platform.OS === 'android';
+const DRIVER_NEAR_PICKUP_DISTANCE_KM = 0.2;
+const PASSENGER_READY_PICKUP_DISTANCE_KM = 0.005;
+const MOVING_TOGETHER_DISTANCE_KM = 0.025;
+const MOVING_TOGETHER_PICKUP_EXIT_DISTANCE_KM = 0.03;
+
+type BookingAutoProgressEvent = BookingAutoProgressPayload['events'][number];
+type PassengerPickupNoticeType = 'driver_near_pickup' | 'driver_arrived_pickup' | 'parties_nearby';
+type RouteSegmentFocus = 'route' | 'pickup';
+type PassengerRouteInfo = {
+  distance: string;
+  distanceMeters: number;
+  duration: string;
+  durationSeconds: number;
+};
+const PASSENGER_PICKUP_NOTICE_PRIORITY: Record<PassengerPickupNoticeType, number> = {
+  driver_near_pickup: 0,
+  driver_arrived_pickup: 1,
+  parties_nearby: 2,
+};
+
+interface PassengerPickupNotice {
+  type: PassengerPickupNoticeType;
+  distanceMeters?: number;
+  detectedAt?: string;
+  expiresAt?: string;
+  pickupWaitSeconds?: number;
+}
 
 // Fonction pour decoder les polylines Google
 function decodePolyline(encoded: string): { latitude: number; longitude: number }[] {
@@ -104,6 +135,46 @@ function decodePolyline(encoded: string): { latitude: number; longitude: number 
   return points;
 }
 
+function formatDistanceMeters(distanceMeters: number) {
+  if (!Number.isFinite(distanceMeters)) {
+    return null;
+  }
+
+  const safeDistance = Math.max(0, Math.round(distanceMeters));
+  if (safeDistance >= 1000) {
+    return `${(safeDistance / 1000).toFixed(1)} km`;
+  }
+
+  return `${safeDistance} m`;
+}
+
+function formatDurationSeconds(durationSeconds: number) {
+  if (!Number.isFinite(durationSeconds)) {
+    return '-';
+  }
+
+  if (durationSeconds <= 0) {
+    return '0 min';
+  }
+
+  const hours = Math.floor(durationSeconds / 3600);
+  const minutes = Math.max(1, Math.ceil((durationSeconds % 3600) / 60));
+  return hours > 0 ? `${hours}h ${minutes}min` : `${minutes} min`;
+}
+
+function calculateRouteDistanceMeters(coordinates: { latitude: number; longitude: number }[]) {
+  if (coordinates.length < 2) {
+    return 0;
+  }
+
+  let distanceKm = 0;
+  for (let index = 1; index < coordinates.length; index += 1) {
+    distanceKm += calculateDistance(coordinates[index - 1], coordinates[index]);
+  }
+
+  return distanceKm * 1000;
+}
+
 export default function PassengerNavigationScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -124,8 +195,6 @@ export default function PassengerNavigationScreen() {
   const isTripOngoing = trip?.status === 'ongoing';
 
   const [updatePassengerLocation] = useUpdatePassengerLocationMutation();
-  const [confirmDropoffByPassenger, { isLoading: isConfirmingArrival }] =
-    useConfirmDropoffByPassengerMutation();
 
   const mapRef = useRef<MapView>(null);
   const driverMarkerRef = useRef<MapMarker | null>(null);
@@ -141,14 +210,21 @@ export default function PassengerNavigationScreen() {
   // Route et directions
   const [getDirections] = useGetDirectionsMutation();
   const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[]>([]);
-  const [routeInfo, setRouteInfo] = useState<{ distance: string; duration: string } | null>(null);
+  const [routeInfo, setRouteInfo] = useState<PassengerRouteInfo | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const [activeRouteSegment, setActiveRouteSegment] = useState<RouteSegmentFocus>('route');
   const [arrivalModalVisible, setArrivalModalVisible] = useState(false);
+  const [pickupNotice, setPickupNotice] = useState<PassengerPickupNotice | null>(null);
+  const [pickupNoticeCountdown, setPickupNoticeCountdown] = useState<number | null>(null);
   const routeFetchedRef = useRef(false);
   const lastRouteFetchRef = useRef<number>(0);
   const hasFitInitialMapRef = useRef(false);
   const hasPresentedArrivalModalRef = useRef(false);
+  const presentedPickupNoticeKeysRef = useRef<Set<string>>(new Set());
+  const highestPickupNoticePriorityRef = useRef<Map<string, number>>(new Map());
+  const hasDisplayedDriverNearNotificationRef = useRef(false);
+  const hasPresentedBoardedNoticeRef = useRef(false);
   const passengerLocationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const isMountedRef = useRef(true);
   const isExitingRef = useRef(false);
@@ -247,17 +323,143 @@ export default function PassengerNavigationScreen() {
     void Speech.stop().finally(() => {
       if (!isMountedRef.current) return;
       Speech.speak(
-        "Vous êtes arrivé à votre destination. Appuyez sur Terminer pour valider l'arrivée et noter le conducteur.",
+        "Vous etes arrive a votre destination. L'arrivee se confirme automatiquement.",
         { language: 'fr-FR', rate: 0.95 },
       );
     });
   }, []);
 
+  const presentPickupNotice = useCallback((event: BookingAutoProgressEvent) => {
+    if (
+      !isMountedRef.current ||
+      !event.bookingId ||
+      !['driver_near_pickup', 'driver_arrived_pickup', 'parties_nearby'].includes(event.type)
+    ) {
+      return;
+    }
+
+    const key = `${event.type}:${event.bookingId}`;
+    if (presentedPickupNoticeKeysRef.current.has(key)) {
+      return;
+    }
+
+    const nextType = event.type as PassengerPickupNoticeType;
+    const nextPriority = PASSENGER_PICKUP_NOTICE_PRIORITY[nextType];
+    const highestPriorityForBooking =
+      highestPickupNoticePriorityRef.current.get(event.bookingId) ?? -1;
+    if (highestPriorityForBooking >= nextPriority) {
+      return;
+    }
+
+    presentedPickupNoticeKeysRef.current.add(key);
+    highestPickupNoticePriorityRef.current.set(event.bookingId, nextPriority);
+    if (event.type === 'driver_near_pickup' && !hasDisplayedDriverNearNotificationRef.current) {
+      hasDisplayedDriverNearNotificationRef.current = true;
+      void displayNotification(
+        'Conducteur bient\u00f4t l\u00e0',
+        'Le conducteur sera bient\u00f4t l\u00e0. Pr\u00e9parez-vous \u00e0 rejoindre le point de r\u00e9cup\u00e9ration.',
+        {
+          type: 'driver_near_pickup',
+          bookingId: event.bookingId,
+          tripId: event.tripId,
+        },
+      );
+    }
+    setPickupNotice({
+      type: nextType,
+      distanceMeters: event.distanceMeters,
+      detectedAt: event.detectedAt,
+      expiresAt: event.expiresAt,
+      pickupWaitSeconds: event.pickupWaitSeconds,
+    });
+
+    const speech =
+      event.type === 'driver_near_pickup'
+        ? 'Le conducteur sera bient\u00f4t l\u00e0. Pr\u00e9parez-vous \u00e0 rejoindre le point de r\u00e9cup\u00e9ration.'
+        : event.type === 'parties_nearby'
+          ? 'Vous \u00eates au point de r\u00e9cup\u00e9ration. Signalez-vous si vous \u00eates pr\u00eat.'
+          : 'Le conducteur est arriv\u00e9 au point de r\u00e9cup\u00e9ration. Vous pouvez vous signaler.';
+
+    void Speech.stop().finally(() => {
+      if (!isMountedRef.current) return;
+      Speech.speak(speech, { language: 'fr-FR', rate: 0.95 });
+    });
+  }, []);
+
+  const presentBoardedNotice = useCallback(() => {
+    if (!isMountedRef.current || hasPresentedBoardedNoticeRef.current) {
+      return;
+    }
+
+    hasPresentedBoardedNoticeRef.current = true;
+    setPickupNotice(null);
+    setPickupNoticeCountdown(null);
+
+    showDialog({
+      variant: 'success',
+      icon: 'checkmark-circle',
+      title: 'Prise en charge confirm\u00e9e',
+      message: 'Votre prise en charge est confirm\u00e9e. Vous \u00eates maintenant en route vers votre destination.',
+    });
+
+    void Speech.stop().finally(() => {
+      if (!isMountedRef.current) return;
+      Speech.speak('Votre prise en charge est confirm\u00e9e.', {
+        language: 'fr-FR',
+        rate: 0.95,
+      });
+    });
+  }, [showDialog]);
+
+  useEffect(() => {
+    if (!pickupNotice?.expiresAt) {
+      setPickupNoticeCountdown(null);
+      return;
+    }
+
+    const expiresAt = new Date(pickupNotice.expiresAt).getTime();
+    if (!Number.isFinite(expiresAt)) {
+      setPickupNoticeCountdown(null);
+      return;
+    }
+
+    const updateCountdown = () => {
+      const remainingSeconds = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+      setPickupNoticeCountdown(remainingSeconds);
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [pickupNotice?.expiresAt]);
+
   useEffect(() => {
     hasPresentedArrivalModalRef.current = false;
+    hasDisplayedDriverNearNotificationRef.current = false;
+    hasPresentedBoardedNoticeRef.current = false;
+    presentedPickupNoticeKeysRef.current.clear();
+    highestPickupNoticePriorityRef.current.clear();
     setArrivalModalVisible(false);
+    setPickupNotice(null);
+    setPickupNoticeCountdown(null);
     setLoadedMarkerKeys(new Set());
   }, [bookingId]);
+
+  useEffect(() => {
+    if (booking?.pickedUp || booking?.pickedUpConfirmedByPassenger) {
+      setPickupNotice(null);
+      setPickupNoticeCountdown(null);
+      if (!booking.droppedOff && !booking.droppedOffConfirmedByPassenger) {
+        presentBoardedNotice();
+      }
+    }
+  }, [
+    booking?.droppedOff,
+    booking?.droppedOffConfirmedByPassenger,
+    booking?.pickedUp,
+    booking?.pickedUpConfirmedByPassenger,
+    presentBoardedNotice,
+  ]);
 
   const handleTrackingMarkerReady = useCallback(
     (markerKey: string, markerRef: React.MutableRefObject<MapMarker | null>) => {
@@ -344,20 +546,12 @@ export default function PassengerNavigationScreen() {
           const totalDistance = route.legs.reduce((acc, leg) => acc + leg.distance, 0);
           const totalDuration = route.legs.reduce((acc, leg) => acc + leg.duration, 0);
           
-          // Formater la distance
-          const distanceKm = totalDistance / 1000;
-          const distanceStr = distanceKm >= 1 
-            ? `${distanceKm.toFixed(1)} km` 
-            : `${totalDistance} m`;
-          
-          // Formater la duree
-          const hours = Math.floor(totalDuration / 3600);
-          const minutes = Math.ceil((totalDuration % 3600) / 60);
-          const durationStr = hours > 0 
-            ? `${hours}h ${minutes}min` 
-            : `${minutes} min`;
-          
-          setRouteInfo({ distance: distanceStr, duration: durationStr });
+          setRouteInfo({
+            distance: formatDistanceMeters(totalDistance) ?? '-',
+            distanceMeters: totalDistance,
+            duration: formatDurationSeconds(totalDuration),
+            durationSeconds: totalDuration,
+          });
         }
         
         routeFetchedRef.current = true;
@@ -370,8 +564,14 @@ export default function PassengerNavigationScreen() {
         // Fallback: utiliser une ligne droite entre pickup et dropoff
         console.warn('[PassengerNavigation] Pas de route trouvee, utilisation de ligne droite');
         
+        const fallbackDistanceMeters = calculateDistance(pickupCoordinate, dropoffCoordinate) * 1000;
         setRouteCoordinates([pickupCoordinate, dropoffCoordinate]);
-        setRouteInfo(null); // Pas d'infos de distance/duree en fallback
+        setRouteInfo({
+          distance: formatDistanceMeters(fallbackDistanceMeters) ?? '-',
+          distanceMeters: fallbackDistanceMeters,
+          duration: '-',
+          durationSeconds: 0,
+        });
         routeFetchedRef.current = true;
       } else {
         console.warn('[PassengerNavigation] Erreur route:', error?.data?.message || error?.message || 'Erreur inconnue');
@@ -433,6 +633,18 @@ export default function PassengerNavigationScreen() {
     const unsubscribeAutoProgress = trackingSocket.subscribeToBookingAutoProgress((payload) => {
       if (!isMountedRef.current || payload.tripId !== tripId) return;
       const bookingEvents = payload.events.filter((event) => event.bookingId === bookingId);
+      bookingEvents.forEach((event) => {
+        if (
+          event.type === 'driver_near_pickup' ||
+          event.type === 'driver_arrived_pickup' ||
+          event.type === 'parties_nearby'
+        ) {
+          presentPickupNotice(event);
+        }
+        if (event.type === 'pickup_confirmed') {
+          presentBoardedNotice();
+        }
+      });
       if (bookingEvents.some((event) => event.type === 'dropoff_confirmed')) {
         presentArrivalModal();
       }
@@ -460,7 +672,15 @@ export default function PassengerNavigationScreen() {
       unsubscribeError();
       clearInterval(interval);
     };
-  }, [bookingId, isTripOngoing, presentArrivalModal, refetchBooking, tripId]);
+  }, [
+    bookingId,
+    isTripOngoing,
+    presentArrivalModal,
+    presentBoardedNotice,
+    presentPickupNotice,
+    refetchBooking,
+    tripId,
+  ]);
 
   useEffect(() => {
     if (!booking?.id || booking.status !== 'accepted' || !isTripOngoing || booking.droppedOff) {
@@ -498,6 +718,23 @@ export default function PassengerNavigationScreen() {
           });
 
         if (response.autoProgress?.events?.length && isMountedRef.current) {
+          response.autoProgress.events
+            .filter((event) => event.bookingId === booking.id)
+            .forEach((event) => {
+              if (
+                event.type === 'driver_near_pickup' ||
+                event.type === 'driver_arrived_pickup' ||
+                event.type === 'parties_nearby'
+              ) {
+                presentPickupNotice(event as BookingAutoProgressEvent);
+              }
+              if (event.type === 'pickup_confirmed') {
+                presentBoardedNotice();
+              }
+              if (event.type === 'dropoff_confirmed') {
+                presentArrivalModal();
+              }
+            });
           refetchBooking();
         }
       } catch (error) {
@@ -566,6 +803,9 @@ export default function PassengerNavigationScreen() {
     booking?.id,
     booking?.status,
     isTripOngoing,
+    presentArrivalModal,
+    presentBoardedNotice,
+    presentPickupNotice,
     refetchBooking,
     showDialog,
     tripId,
@@ -610,6 +850,78 @@ export default function PassengerNavigationScreen() {
   );
   const displayedDriverLocation = routeAlignedDriver?.coordinate ?? driverLocation;
   const displayedDriverHeading = routeAlignedDriver?.heading ?? 0;
+
+  useEffect(() => {
+    if (
+      !booking?.id ||
+      !tripId ||
+      !isTripOngoing ||
+      booking.pickedUp ||
+      booking.pickedUpConfirmedByPassenger ||
+      booking.droppedOff ||
+      booking.droppedOffConfirmedByPassenger ||
+      !displayedDriverLocation
+    ) {
+      return;
+    }
+
+    const passengerReference = passengerLocation ?? pickupCoordinate;
+    if (!passengerReference) {
+      return;
+    }
+
+    const distanceToDriverKm = calculateDistance(displayedDriverLocation, passengerReference);
+    const detectedAt = new Date().toISOString();
+
+    if (distanceToDriverKm <= DRIVER_NEAR_PICKUP_DISTANCE_KM) {
+      presentPickupNotice({
+        type: 'driver_near_pickup',
+        bookingId: booking.id,
+        tripId,
+        passengerId: booking.passengerId,
+        distanceMeters: Math.round(distanceToDriverKm * 1000),
+        detectedAt,
+      });
+    }
+
+    if (distanceToDriverKm <= PASSENGER_READY_PICKUP_DISTANCE_KM) {
+      presentPickupNotice({
+        type: 'parties_nearby',
+        bookingId: booking.id,
+        tripId,
+        passengerId: booking.passengerId,
+        distanceMeters: Math.round(distanceToDriverKm * 1000),
+        detectedAt,
+      });
+    }
+
+    if (passengerLocation && pickupCoordinate) {
+      const driverPickupDistanceKm = calculateDistance(displayedDriverLocation, pickupCoordinate);
+      const passengerPickupDistanceKm = calculateDistance(passengerLocation, pickupCoordinate);
+
+      if (
+        distanceToDriverKm <= MOVING_TOGETHER_DISTANCE_KM &&
+        driverPickupDistanceKm > MOVING_TOGETHER_PICKUP_EXIT_DISTANCE_KM &&
+        passengerPickupDistanceKm > MOVING_TOGETHER_PICKUP_EXIT_DISTANCE_KM
+      ) {
+        presentBoardedNotice();
+      }
+    }
+  }, [
+    booking?.droppedOff,
+    booking?.droppedOffConfirmedByPassenger,
+    booking?.id,
+    booking?.passengerId,
+    booking?.pickedUp,
+    booking?.pickedUpConfirmedByPassenger,
+    displayedDriverLocation,
+    isTripOngoing,
+    passengerLocation,
+    pickupCoordinate,
+    presentBoardedNotice,
+    presentPickupNotice,
+    tripId,
+  ]);
 
   // Calculer la region de la carte
   const mapRegion = useMemo(() => {
@@ -718,40 +1030,41 @@ export default function PassengerNavigationScreen() {
   }, [fitToRoute]);
 
   const handleFinishArrival = useCallback(async () => {
-    if (!booking || isConfirmingArrival) return;
+    if (!booking) return;
+
+    await refetchBooking();
+    setArrivalModalVisible(false);
+    void Speech.stop();
+
+    if (booking.droppedOff || booking.droppedOffConfirmedByPassenger) {
+      router.replace(`/rate/${tripId}`);
+    }
+  }, [booking, refetchBooking, router, tripId]);
+
+  const handleSignalPickupReady = useCallback(async () => {
+    if (!booking?.id) return;
 
     try {
-      if (!booking.droppedOffConfirmedByPassenger && !booking.droppedOff) {
-        const request = booking.paymentMode
-          ? { id: booking.id, paymentMode: booking.paymentMode }
-          : booking.id;
-        await confirmDropoffByPassenger(request).unwrap();
-      }
-
-      await refetchBooking();
-      setArrivalModalVisible(false);
-      void Speech.stop();
-      router.replace(`/rate/${tripId}`);
+      await trackingSocket.signalPassengerReady(booking.id);
+      setPickupNotice(null);
+      setPickupNoticeCountdown(null);
+      showDialog({
+        variant: 'success',
+        title: 'Signal envoyé',
+        message: 'Le conducteur est informé que vous êtes au point de récupération.',
+      });
     } catch (error: any) {
       const message =
         error?.data?.message ??
-        error?.error ??
-        "Impossible de terminer le trajet pour le moment.";
+        error?.message ??
+        "Impossible d'envoyer votre signal pour le moment.";
       showDialog({
-        variant: 'danger',
-        title: "Validation impossible",
+        variant: 'warning',
+        title: 'Signal non envoyé',
         message: Array.isArray(message) ? message.join('\n') : message,
       });
     }
-  }, [
-    booking,
-    confirmDropoffByPassenger,
-    isConfirmingArrival,
-    refetchBooking,
-    router,
-    showDialog,
-    tripId,
-  ]);
+  }, [booking?.id, showDialog]);
 
   // Etat du trajet pour le passager
   const tripStatus = useMemo(() => {
@@ -763,6 +1076,122 @@ export default function PassengerNavigationScreen() {
     if (booking.pickedUp) return 'in_transit';
     return 'waiting_pickup';
   }, [booking, trip]);
+
+  const pickupNoticeDistanceMeters =
+    typeof pickupNotice?.distanceMeters === 'number' && Number.isFinite(pickupNotice.distanceMeters)
+      ? Math.max(10, Math.round(pickupNotice.distanceMeters / 10) * 10)
+      : null;
+  const pickupNoticeAccent =
+    pickupNotice?.type === 'driver_near_pickup'
+      ? Colors.warning
+      : pickupNotice?.type === 'parties_nearby'
+        ? Colors.primary
+        : Colors.secondary;
+  const pickupNoticeIcon: keyof typeof Ionicons.glyphMap =
+    pickupNotice?.type === 'driver_near_pickup'
+      ? 'car-sport'
+      : pickupNotice?.type === 'parties_nearby'
+        ? 'people'
+        : 'car';
+  const pickupNoticeTitle =
+    pickupNotice?.type === 'driver_near_pickup'
+      ? 'Le conducteur sera bient\u00f4t l\u00e0'
+      : pickupNotice?.type === 'parties_nearby'
+        ? 'Vous \u00eates au point'
+        : 'Le conducteur est l\u00e0';
+  const pickupNoticeText =
+    pickupNotice?.type === 'driver_near_pickup'
+      ? `${
+          pickupNoticeDistanceMeters ? `Il est \u00e0 environ ${pickupNoticeDistanceMeters} m. ` : ''
+        }Pr\u00e9parez-vous \u00e0 rejoindre le point de r\u00e9cup\u00e9ration.`
+      : pickupNotice?.type === 'parties_nearby'
+        ? 'Vous \u00eates au point de r\u00e9cup\u00e9ration. Signalez-vous au conducteur si vous \u00eates pr\u00eat.'
+        : 'Le conducteur est arriv\u00e9 au point de r\u00e9cup\u00e9ration. Vous disposez de 10 minutes pour vous signaler.';
+
+  const hasPickupConnectorSegment = Boolean(
+    displayedDriverLocation && !booking?.pickedUp && (passengerLocation || pickupCoordinate),
+  );
+  const canToggleRouteSegments = routeCoordinates.length > 1 && hasPickupConnectorSegment;
+  const isPassengerOnboard = Boolean(
+    booking?.pickedUp && !booking.droppedOff && !booking.droppedOffConfirmedByPassenger,
+  );
+  const canCenterOnPassenger = Boolean(passengerLocation && !isPassengerOnboard);
+  const remainingDistanceMeters = useMemo(() => {
+    if (!dropoffCoordinate) {
+      return null;
+    }
+
+    if (booking?.droppedOff || booking?.droppedOffConfirmedByPassenger) {
+      return 0;
+    }
+
+    if (!isPassengerOnboard) {
+      return (
+        routeInfo?.distanceMeters ??
+        (pickupCoordinate ? calculateDistance(pickupCoordinate, dropoffCoordinate) * 1000 : null)
+      );
+    }
+
+    const currentTripPosition = displayedDriverLocation ?? passengerLocation;
+    if (!currentTripPosition) {
+      return routeInfo?.distanceMeters ?? null;
+    }
+
+    const directDistanceMeters = calculateDistance(currentTripPosition, dropoffCoordinate) * 1000;
+    const alignedPosition =
+      routeCoordinates.length > 1
+        ? getRouteAlignedPosition(currentTripPosition, routeCoordinates, 0.25)?.coordinate ?? null
+        : null;
+
+    if (!alignedPosition) {
+      return directDistanceMeters;
+    }
+
+    const { remainingCoordinates } = splitRouteByProgress(alignedPosition, routeCoordinates);
+    const remainingRouteDistanceMeters = calculateRouteDistanceMeters(remainingCoordinates);
+    return remainingRouteDistanceMeters > 0
+      ? remainingRouteDistanceMeters
+      : directDistanceMeters;
+  }, [
+    booking?.droppedOff,
+    booking?.droppedOffConfirmedByPassenger,
+    displayedDriverLocation,
+    dropoffCoordinate,
+    isPassengerOnboard,
+    passengerLocation,
+    pickupCoordinate,
+    routeCoordinates,
+    routeInfo?.distanceMeters,
+  ]);
+  const remainingDistanceLabel =
+    typeof remainingDistanceMeters === 'number'
+      ? formatDistanceMeters(remainingDistanceMeters)
+      : null;
+  const remainingDurationLabel = useMemo(() => {
+    if (
+      typeof remainingDistanceMeters !== 'number' ||
+      !routeInfo?.distanceMeters ||
+      !routeInfo.durationSeconds
+    ) {
+      return routeInfo?.duration ?? null;
+    }
+
+    const remainingRatio = Math.min(1, Math.max(0, remainingDistanceMeters / routeInfo.distanceMeters));
+    return formatDurationSeconds(routeInfo.durationSeconds * remainingRatio);
+  }, [
+    remainingDistanceMeters,
+    routeInfo?.distanceMeters,
+    routeInfo?.duration,
+    routeInfo?.durationSeconds,
+  ]);
+  const displayedRouteDistance = remainingDistanceLabel ?? routeInfo?.distance ?? null;
+  const displayedRouteDuration = remainingDurationLabel ?? routeInfo?.duration ?? null;
+
+  useEffect(() => {
+    if (!hasPickupConnectorSegment && activeRouteSegment === 'pickup') {
+      setActiveRouteSegment('route');
+    }
+  }, [activeRouteSegment, hasPickupConnectorSegment]);
 
   // Loading
   if (bookingLoading || tripLoading) {
@@ -801,7 +1230,7 @@ export default function PassengerNavigationScreen() {
         initialRegion={mapRegion}
         mapType="standard"
         onMapReady={handleMapReady}
-        showsUserLocation={!passengerLocation}
+        showsUserLocation={!isPassengerOnboard && !passengerLocation}
         showsMyLocationButton={false}
         showsCompass={false}
         showsTraffic={false}
@@ -810,18 +1239,18 @@ export default function PassengerNavigationScreen() {
         showsPointsOfInterest={false}
       >
         {/* Position du passager */}
-        {passengerLocation && (
+        {passengerLocation && !isPassengerOnboard && (
           <Marker
             ref={passengerMarkerRef}
             coordinate={passengerLocation}
             anchor={PASSENGER_TRACKING_MARKER_ANCHOR}
             title="Votre position"
-            description={booking.pickedUp ? 'Vous êtes à bord' : 'Votre position actuelle'}
+            description="Votre position actuelle"
             tracksViewChanges={IS_ANDROID && !loadedMarkerKeys.has('passenger-location')}
             zIndex={25}
           >
             <PassengerTrackingMarker
-              status={booking.pickedUp ? 'live' : 'pickup'}
+              status="pickup"
               onReady={() => handleTrackingMarkerReady('passenger-location', passengerMarkerRef)}
             />
           </Marker>
@@ -889,10 +1318,13 @@ export default function PassengerNavigationScreen() {
         {routeCoordinates.length > 1 && (
           <Polyline
             coordinates={routeCoordinates}
-            strokeColor={Colors.primary}
-            strokeWidth={4}
+            strokeColor={activeRouteSegment === 'route' ? Colors.primaryDark : 'rgba(255, 107, 53, 0.28)'}
+            strokeWidth={activeRouteSegment === 'route' ? 6 : 3}
             lineCap="round"
             lineJoin="round"
+            tappable
+            onPress={() => setActiveRouteSegment('route')}
+            zIndex={activeRouteSegment === 'route' ? 12 : 2}
           />
         )}
 
@@ -900,12 +1332,66 @@ export default function PassengerNavigationScreen() {
         {displayedDriverLocation && !booking.pickedUp && (passengerLocation || pickupCoordinate) && (
           <Polyline
             coordinates={[displayedDriverLocation, passengerLocation ?? pickupCoordinate!]}
-            strokeColor={Colors.info}
-            strokeWidth={3}
-            lineDashPattern={[8, 6]}
+            strokeColor={activeRouteSegment === 'pickup' ? Colors.infoDark : 'rgba(52, 152, 219, 0.28)'}
+            strokeWidth={activeRouteSegment === 'pickup' ? 6 : 3}
+            lineDashPattern={activeRouteSegment === 'pickup' ? undefined : [8, 6]}
+            lineCap="round"
+            lineJoin="round"
+            tappable
+            onPress={() => setActiveRouteSegment('pickup')}
+            zIndex={activeRouteSegment === 'pickup' ? 13 : 3}
           />
         )}
       </MapView>
+
+      {canToggleRouteSegments && (
+        <View style={[styles.segmentToggle, { top: insets.top + 330 }]}>
+          <TouchableOpacity
+            style={[
+              styles.segmentToggleButton,
+              activeRouteSegment === 'route' && styles.segmentToggleButtonActive,
+            ]}
+            onPress={() => setActiveRouteSegment('route')}
+            activeOpacity={0.85}
+          >
+            <Ionicons
+              name="git-branch-outline"
+              size={15}
+              color={activeRouteSegment === 'route' ? Colors.white : Colors.primaryDark}
+            />
+            <Text
+              style={[
+                styles.segmentToggleText,
+                activeRouteSegment === 'route' && styles.segmentToggleTextActive,
+              ]}
+            >
+              Trajet
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.segmentToggleButton,
+              activeRouteSegment === 'pickup' && styles.segmentToggleButtonPickupActive,
+            ]}
+            onPress={() => setActiveRouteSegment('pickup')}
+            activeOpacity={0.85}
+          >
+            <Ionicons
+              name="person-outline"
+              size={15}
+              color={activeRouteSegment === 'pickup' ? Colors.white : Colors.infoDark}
+            />
+            <Text
+              style={[
+                styles.segmentToggleText,
+                activeRouteSegment === 'pickup' && styles.segmentToggleTextActive,
+              ]}
+            >
+              Recup.
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Boutons flottants */}
       <View style={[styles.floatingButtons, { top: insets.top + 70 }]}>
@@ -928,12 +1414,12 @@ export default function PassengerNavigationScreen() {
           <Ionicons name="map-outline" size={22} color={Colors.gray[700]} />
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.floatingButton, !passengerLocation && styles.floatingButtonDisabled]}
+          style={[styles.floatingButton, !canCenterOnPassenger && styles.floatingButtonDisabled]}
           onPress={centerOnPassenger}
-          disabled={!passengerLocation}
+          disabled={!canCenterOnPassenger}
           activeOpacity={0.8}
         >
-          <Ionicons name="locate" size={22} color={passengerLocation ? Colors.primary : Colors.gray[400]} />
+          <Ionicons name="locate" size={22} color={canCenterOnPassenger ? Colors.primary : Colors.gray[400]} />
         </TouchableOpacity>
         <TouchableOpacity 
           style={[styles.floatingButton, !driverLocation && styles.floatingButtonDisabled]}
@@ -987,11 +1473,11 @@ export default function PassengerNavigationScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.headerButton, !passengerLocation && styles.headerButtonDisabled]}
+          style={[styles.headerButton, !canCenterOnPassenger && styles.headerButtonDisabled]}
           onPress={centerOnPassenger}
-          disabled={!passengerLocation}
+          disabled={!canCenterOnPassenger}
         >
-          <Ionicons name="locate" size={24} color={passengerLocation ? Colors.primary : Colors.gray[400]} />
+          <Ionicons name="locate" size={24} color={canCenterOnPassenger ? Colors.primary : Colors.gray[400]} />
         </TouchableOpacity>
       </Animated.View>
 
@@ -1020,17 +1506,17 @@ export default function PassengerNavigationScreen() {
           </View>
         </View>
 
-        {routeInfo && (
+        {(displayedRouteDistance || displayedRouteDuration) && (
           <View style={styles.routeStats}>
             <View style={styles.routeStat}>
               <Ionicons name="navigate-outline" size={18} color={Colors.primary} />
-              <Text style={styles.routeStatValue}>{routeInfo.distance}</Text>
-              <Text style={styles.routeStatLabel}>Distance</Text>
+              <Text style={styles.routeStatValue}>{displayedRouteDistance ?? '-'}</Text>
+              <Text style={styles.routeStatLabel}>Restant</Text>
             </View>
             <View style={styles.routeStatDivider} />
             <View style={styles.routeStat}>
               <Ionicons name="time-outline" size={18} color={Colors.secondary} />
-              <Text style={styles.routeStatValue}>{routeInfo.duration}</Text>
+              <Text style={styles.routeStatValue}>{displayedRouteDuration ?? '-'}</Text>
               <Text style={styles.routeStatLabel}>Projection</Text>
             </View>
             {isSocketConnected && (
@@ -1046,7 +1532,7 @@ export default function PassengerNavigationScreen() {
           </View>
         )}
 
-        {isLoadingRoute && !routeInfo && (
+        {isLoadingRoute && !displayedRouteDistance && (
           <View style={styles.routeLoadingRow}>
             <ActivityIndicator size="small" color={Colors.primary} />
             <Text style={styles.routeLoadingText}>Chargement de l&apos;itineraire...</Text>
@@ -1114,6 +1600,80 @@ export default function PassengerNavigationScreen() {
       )}
 
       <Modal
+        visible={Boolean(pickupNotice)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPickupNotice(null)}
+      >
+        <View style={styles.arrivalModalOverlay}>
+          <View
+            style={[
+              styles.arrivalModalContent,
+              { paddingBottom: Math.max(insets.bottom, Spacing.lg) + Spacing.md },
+            ]}
+          >
+            <View style={styles.arrivalModalHandle} />
+            <View
+              style={[
+                styles.arrivalModalIcon,
+                { backgroundColor: pickupNoticeAccent },
+              ]}
+            >
+              <Ionicons
+                name={pickupNoticeIcon}
+                size={30}
+                color={Colors.white}
+              />
+            </View>
+            <Text style={styles.arrivalModalTitle}>
+              {pickupNoticeTitle}
+            </Text>
+            <Text style={styles.arrivalModalText}>
+              {pickupNoticeText}
+            </Text>
+            <View style={styles.arrivalModalAddressRow}>
+              <Ionicons name="location" size={18} color={Colors.primary} />
+              <Text style={styles.arrivalModalAddress} numberOfLines={2}>
+                {booking.passengerOrigin || trip.departure.address}
+              </Text>
+            </View>
+            {pickupNoticeCountdown !== null && (
+              <View style={styles.arrivalModalGpsStatus}>
+                <Ionicons name="timer" size={18} color={Colors.secondary} />
+                <Text style={[styles.arrivalModalGpsStatusText, { color: Colors.secondary }]}>
+                  {pickupNoticeCountdown > 0
+                    ? `Temps restant ${Math.floor(pickupNoticeCountdown / 60)
+                        .toString()
+                        .padStart(2, '0')}:${(pickupNoticeCountdown % 60)
+                        .toString()
+                        .padStart(2, '0')}`
+                    : 'Le délai est écoulé'}
+                </Text>
+              </View>
+            )}
+            <Text style={styles.arrivalModalHint}>
+              Votre signal sera envoyé au conducteur en temps réel.
+            </Text>
+            <View style={styles.arrivalModalActions}>
+              <TouchableOpacity
+                style={styles.arrivalModalLaterButton}
+                onPress={() => setPickupNotice(null)}
+              >
+                <Text style={styles.arrivalModalLaterButtonText}>Plus tard</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.arrivalModalFinishButton}
+                onPress={() => void handleSignalPickupReady()}
+              >
+                <Ionicons name="hand-left" size={20} color={Colors.white} />
+                <Text style={styles.arrivalModalFinishButtonText}>Je suis là</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={arrivalModalVisible}
         transparent
         animationType="slide"
@@ -1132,7 +1692,7 @@ export default function PassengerNavigationScreen() {
             </View>
             <Text style={styles.arrivalModalTitle}>Vous êtes arrivé</Text>
             <Text style={styles.arrivalModalText}>
-              Validez votre arrivée à la destination choisie pendant la réservation.
+              L'arrivee a destination se confirme automatiquement par GPS.
             </Text>
             <View style={styles.arrivalModalAddressRow}>
               <Ionicons name="location" size={18} color={Colors.primary} />
@@ -1145,29 +1705,29 @@ export default function PassengerNavigationScreen() {
               <Text style={styles.arrivalModalGpsStatusText}>Arrivée détectée par GPS</Text>
             </View>
             <Text style={styles.arrivalModalHint}>
-              Après validation, vous pourrez noter le conducteur.
+              {booking.droppedOff || booking.droppedOffConfirmedByPassenger
+                ? 'Vous pouvez noter le conducteur.'
+                : 'Synchronisation en cours. Vous pourrez noter le conducteur apres confirmation.'}
             </Text>
             <View style={styles.arrivalModalActions}>
               <TouchableOpacity
                 style={styles.arrivalModalLaterButton}
                 onPress={() => setArrivalModalVisible(false)}
-                disabled={isConfirmingArrival}
               >
                 <Text style={styles.arrivalModalLaterButtonText}>Plus tard</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.arrivalModalFinishButton}
                 onPress={() => void handleFinishArrival()}
-                disabled={isConfirmingArrival}
               >
-                {isConfirmingArrival ? (
-                  <ActivityIndicator size="small" color={Colors.white} />
-                ) : (
-                  <>
-                    <Ionicons name="checkmark-circle" size={20} color={Colors.white} />
-                    <Text style={styles.arrivalModalFinishButtonText}>Terminer</Text>
-                  </>
-                )}
+                <Ionicons
+                  name={booking.droppedOff || booking.droppedOffConfirmedByPassenger ? 'star' : 'checkmark-circle'}
+                  size={20}
+                  color={Colors.white}
+                />
+                <Text style={styles.arrivalModalFinishButtonText}>
+                  {booking.droppedOff || booking.droppedOffConfirmedByPassenger ? 'Noter' : 'Compris'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1250,6 +1810,47 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.primary + '33',
     backgroundColor: Colors.primary + '10',
+  },
+  segmentToggle: {
+    position: 'absolute',
+    right: Spacing.md,
+    zIndex: 11,
+    gap: 4,
+    padding: 4,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.14,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  segmentToggleButton: {
+    minWidth: 78,
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    opacity: 0.7,
+  },
+  segmentToggleButtonActive: {
+    backgroundColor: Colors.primaryDark,
+    opacity: 1,
+  },
+  segmentToggleButtonPickupActive: {
+    backgroundColor: Colors.infoDark,
+    opacity: 1,
+  },
+  segmentToggleText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[700],
+  },
+  segmentToggleTextActive: {
+    color: Colors.white,
   },
   header: {
     position: 'absolute',
