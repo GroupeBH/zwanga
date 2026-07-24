@@ -26,6 +26,7 @@ import {
   normalizeTripMapCoordinate,
 } from '@/utils/tripCoordinates';
 import { calculateDistance, getRouteAlignedPosition } from '@/utils/routeHelpers';
+import { shareTrip } from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
@@ -1720,6 +1721,31 @@ export default function NavigationScreen() {
     });
   }, [navigateBackSafely, showDialog]);
 
+  const handleShareTrip = useCallback(async () => {
+    if (!tripId) return;
+
+    try {
+      await shareTrip(
+        tripId,
+        trip?.departure?.name ?? trip?.departure?.address,
+        trip?.arrival?.name ?? trip?.arrival?.address,
+      );
+    } catch (error: any) {
+      showDialog({
+        variant: 'danger',
+        title: 'Partage impossible',
+        message: error?.message || 'Impossible de partager le trajet pour le moment.',
+      });
+    }
+  }, [
+    showDialog,
+    trip?.arrival?.address,
+    trip?.arrival?.name,
+    trip?.departure?.address,
+    trip?.departure?.name,
+    tripId,
+  ]);
+
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (securityModalVisible) {
@@ -2403,6 +2429,15 @@ export default function NavigationScreen() {
             size={22}
             color={isVoiceGuidanceEnabled ? Colors.primary : Colors.gray[500]}
           />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.floatingButton}
+          onPress={() => void handleShareTrip()}
+          accessibilityRole="button"
+          accessibilityLabel="Partager le trajet"
+        >
+          <Ionicons name="share-social-outline" size={22} color={Colors.primary} />
         </TouchableOpacity>
 
         {/* Bouton recalculer l'itinéraire */}

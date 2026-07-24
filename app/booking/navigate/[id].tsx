@@ -22,6 +22,7 @@ import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { getGeoPointCoordinate, normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import { calculateDistance, getRouteAlignedPosition, splitRouteByProgress } from '@/utils/routeHelpers';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
+import { shareTrip } from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -1029,6 +1030,31 @@ export default function PassengerNavigationScreen() {
     });
   }, [fitToRoute]);
 
+  const handleShareTrip = useCallback(async () => {
+    if (!tripId) return;
+
+    try {
+      await shareTrip(
+        tripId,
+        trip?.departure?.name ?? trip?.departure?.address,
+        trip?.arrival?.name ?? trip?.arrival?.address,
+      );
+    } catch (error: any) {
+      showDialog({
+        variant: 'danger',
+        title: 'Partage impossible',
+        message: error?.message || 'Impossible de partager le trajet pour le moment.',
+      });
+    }
+  }, [
+    showDialog,
+    trip?.arrival?.address,
+    trip?.arrival?.name,
+    trip?.departure?.address,
+    trip?.departure?.name,
+    tripId,
+  ]);
+
   const handleRateDriver = useCallback(() => {
     if (!booking?.droppedOff && !booking?.droppedOffConfirmedByPassenger) return;
 
@@ -1444,11 +1470,13 @@ export default function PassengerNavigationScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.headerButton, !canCenterOnPassenger && styles.headerButtonDisabled]}
-          onPress={centerOnPassenger}
-          disabled={!canCenterOnPassenger}
+          style={styles.headerButton}
+          onPress={() => void handleShareTrip()}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Partager le trajet"
         >
-          <Ionicons name="locate" size={24} color={canCenterOnPassenger ? Colors.primary : Colors.gray[400]} />
+          <Ionicons name="share-social-outline" size={23} color={Colors.primary} />
         </TouchableOpacity>
       </Animated.View>
 
@@ -1837,9 +1865,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  headerButtonDisabled: {
-    opacity: 0.6,
   },
   headerCenter: {
     flex: 1,

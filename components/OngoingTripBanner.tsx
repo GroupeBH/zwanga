@@ -65,6 +65,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
       return {
         trip: driverOngoingTrip,
         role: 'driver' as const,
+        bookingId: null,
       };
     }
 
@@ -90,6 +91,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
       return {
         trip: passengerOngoingBooking.trip,
         role: 'passenger' as const,
+        bookingId: passengerOngoingBooking.id,
       };
     }
 
@@ -181,14 +183,17 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
     return null;
   }
 
-  const { trip, role } = ongoingTrip;
+  const { trip, role, bookingId } = ongoingTrip;
   const isDriver = role === 'driver';
 
   const handlePress = () => {
     if (isDriver) {
-      router.push(`/trip/manage/${trip.id}`);
-    } else {
-      router.push(`/trip/${trip.id}`);
+      router.push(`/trip/navigate/${trip.id}`);
+      return;
+    }
+
+    if (bookingId) {
+      router.push(`/booking/navigate/${bookingId}`);
     }
   };
 
@@ -407,4 +412,3 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary + '20',
   },
 });
-
