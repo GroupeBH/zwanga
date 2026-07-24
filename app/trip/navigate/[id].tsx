@@ -1259,7 +1259,25 @@ export default function NavigationScreen() {
   }, [currentLocation, trip, waypoints.length]);
 
   const fetchRoute = async () => {
-    if (!currentLocation || !trip || !tripArrivalCoordinate || !isMountedRef.current) return;
+    if (
+      !currentLocation ||
+      !trip ||
+      !tripDepartureCoordinate ||
+      !tripArrivalCoordinate ||
+      !isMountedRef.current
+    ) return;
+
+    const buildFallbackRoute = () => {
+      const fallbackPoints: { latitude: number; longitude: number }[] = [
+        tripDepartureCoordinate,
+      ];
+
+      waypoints.filter(wp => !wp.completed).forEach(wp => {
+        fallbackPoints.push({ latitude: wp.location.lat, longitude: wp.location.lng });
+      });
+      fallbackPoints.push(tripArrivalCoordinate);
+      return fallbackPoints;
+    };
 
     setIsLoadingRoute(true);
     try {
@@ -1273,8 +1291,8 @@ export default function NavigationScreen() {
       // Appel à l'API backend optimisée
       const data = await getDirections({
         origin: {
-          lat: currentLocation.coords.latitude,
-          lng: currentLocation.coords.longitude,
+          lat: tripDepartureCoordinate.latitude,
+          lng: tripDepartureCoordinate.longitude,
         },
         destination: {
           lat: tripArrivalCoordinate.latitude,
@@ -1291,7 +1309,10 @@ export default function NavigationScreen() {
         const route = data.routes[0];
 
         // Décoder le polyline
-        const points = decodePolyline(route.overviewPolyline);
+        const decodedPoints = route.overviewPolyline
+          ? decodePolyline(route.overviewPolyline)
+          : [];
+        const points = decodedPoints.length > 1 ? decodedPoints : buildFallbackRoute();
         setRouteCoordinates(points);
 
         // Calculer la distance et durée totales
@@ -1331,6 +1352,8 @@ export default function NavigationScreen() {
             animated: true,
           });
         }
+      } else {
+        setRouteCoordinates(buildFallbackRoute());
       }
     } catch (error: any) {
       if (!isMountedRef.current) return;
@@ -1343,20 +1366,7 @@ export default function NavigationScreen() {
         console.warn('[Navigation] Pas de route trouvée, utilisation de ligne droite');
         
         // Créer une route simplifiée avec les waypoints
-        const fallbackPoints: Array<{ latitude: number; longitude: number }> = [
-          { latitude: currentLocation.coords.latitude, longitude: currentLocation.coords.longitude },
-        ];
-        
-        // Ajouter les waypoints non complétés
-        waypoints.filter(wp => !wp.completed).forEach(wp => {
-          fallbackPoints.push({ latitude: wp.location.lat, longitude: wp.location.lng });
-        });
-        
-        // Ajouter la destination finale
-        fallbackPoints.push({
-          latitude: tripArrivalCoordinate.latitude,
-          longitude: tripArrivalCoordinate.longitude,
-        });
+        const fallbackPoints = buildFallbackRoute();
         
         setRouteCoordinates(fallbackPoints);
         setTotalDistance('--');
@@ -1370,9 +1380,11 @@ export default function NavigationScreen() {
       } else if (isNetworkError) {
         // Erreur réseau - afficher un warning discret
         console.warn('[Navigation] Erreur réseau, nouvelle tentative plus tard');
+        setRouteCoordinates(buildFallbackRoute());
       } else {
         // Autres erreurs - log seulement
         console.warn('[Navigation] Erreur itinéraire:', error?.data?.message || error?.message || 'Erreur inconnue');
+        setRouteCoordinates(buildFallbackRoute());
       }
     } finally {
       if (isMountedRef.current) {
