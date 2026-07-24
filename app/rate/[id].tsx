@@ -7,8 +7,8 @@ import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Keyboard, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -21,6 +21,10 @@ export default function RateScreen() {
   const user = useAppSelector(selectUser);
   const tripId = typeof params.id === 'string' ? params.id : '';
   const passengerIdParam = typeof params.passengerId === 'string' ? params.passengerId : null;
+  const isMountedRef = useRef(true);
+  const submitInFlightRef = useRef(false);
+  const successReturnTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasInitializedTargetRef = useRef(false);
   const { data: trip } = useGetTripByIdQuery(tripId, { skip: !tripId });
   const isTripDriver = trip?.driverId === user?.id;
   // Charger les bookings - toujours charger pour le conducteur, et aussi pour les passagers
@@ -41,12 +45,33 @@ export default function RateScreen() {
   const [comment, setComment] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [reportReason, setReportReason] = useState('');
+  const [submitSuccessMessage, setSubmitSuccessMessage] = useState<string | null>(null);
   const [selectedPassenger, setSelectedPassenger] = useState<string | null>(passengerIdParam);
   const [rateTargetType, setRateTargetType] = useState<RateTargetType>(
     isTripDriver ? 'passenger' : passengerIdParam ? 'passenger' : 'driver'
   );
   const { showDialog } = useDialog();
   const [createReview, { isLoading: isSubmittingReview }] = useCreateReviewMutation();
+
+  const goBackSafely = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace('/(tabs)');
+  }, [router]);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      submitInFlightRef.current = false;
+      if (successReturnTimeoutRef.current) {
+        clearTimeout(successReturnTimeoutRef.current);
+        successReturnTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // Liste des passagers (excluant l'utilisateur actuel si c'est un passager)
   const passengers = useMemo(() => {
@@ -100,6 +125,27 @@ export default function RateScreen() {
     
     return result;
   }, [tripBookings, trip?.passengers, isTripPassenger, user?.id]);
+
+  useEffect(() => {
+    if (hasInitializedTargetRef.current || !trip || !user?.id) {
+      return;
+    }
+
+    hasInitializedTargetRef.current = true;
+    if (passengerIdParam) {
+      setRateTargetType('passenger');
+      setSelectedPassenger(passengerIdParam);
+      return;
+    }
+
+    if (trip.driverId === user.id) {
+      setRateTargetType('passenger');
+      return;
+    }
+
+    setRateTargetType('driver');
+    setSelectedPassenger(null);
+  }, [passengerIdParam, trip, user?.id]);
 
   // Pré-sélectionner le passager si un passengerId est fourni dans l'URL
   useEffect(() => {
@@ -163,6 +209,12 @@ export default function RateScreen() {
   };
 
   const handleSubmitRating = async () => {
+    if (submitInFlightRef.current || isSubmittingReview) {
+      return;
+    }
+
+    setSubmitSuccessMessage(null);
+
     if (rating === 0) {
       showDialog({
         variant: 'warning',
@@ -219,23 +271,36 @@ export default function RateScreen() {
       return;
     }
 
+    submitInFlightRef.current = true;
     try {
       const tagsSummary =
         selectedTags.length > 0 ? `\n\nTags: ${selectedTags.map((tag) => `#${tag}`).join(' ')}` : '';
+      const reviewComment = `${comment.trim()}${tagsSummary}`.trim();
       await createReview({
         tripId,
         ratedUserId: targetUserId,
         rating,
-        comment: `${comment.trim()}${tagsSummary}`.trim(),
+        ...(reviewComment ? { comment: reviewComment } : {}),
       }).unwrap();
 
-      showDialog({
-        variant: 'success',
-        title: 'Évaluation envoyée',
-        message: 'Merci pour votre évaluation !',
-        actions: [{ label: 'Retour', variant: 'primary', onPress: () => router.back() }],
-      });
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      Keyboard.dismiss();
+      setSubmitSuccessMessage('Évaluation envoyée. Merci pour votre retour.');
+      successReturnTimeoutRef.current = setTimeout(() => {
+        successReturnTimeoutRef.current = null;
+        if (isMountedRef.current) {
+          goBackSafely();
+        }
+      }, 650);
     } catch (error: any) {
+      submitInFlightRef.current = false;
+      if (!isMountedRef.current) {
+        return;
+      }
+
       const message =
         error?.data?.message ??
         error?.error ??
@@ -263,7 +328,7 @@ export default function RateScreen() {
       title: 'Signalement envoyé',
       message:
         'Nous examinerons votre signalement. Merci pour votre contribution à la sécurité de la communauté.',
-      actions: [{ label: 'Fermer', variant: 'primary', onPress: () => router.back() }],
+      actions: [{ label: 'Fermer', variant: 'primary', onPress: goBackSafely }],
     });
   };
 
@@ -280,7 +345,7 @@ export default function RateScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.closeButton}>
+          <TouchableOpacity onPress={goBackSafely} style={styles.closeButton}>
             <Ionicons name="close" size={28} color={Colors.gray[900]} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>
@@ -598,19 +663,30 @@ export default function RateScreen() {
               </View>
             )}
 
+            {submitSuccessMessage && (
+              <View style={styles.successMessage}>
+                <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
+                <Text style={styles.successMessageText}>{submitSuccessMessage}</Text>
+              </View>
+            )}
+
             {/* Bouton Envoyer */}
             <TouchableOpacity
               style={[
                 styles.submitButton,
                 rating > 0 ? styles.submitButtonActive : styles.submitButtonDisabled,
-                isSubmittingReview && styles.submitButtonDisabled,
+                (isSubmittingReview || Boolean(submitSuccessMessage)) && styles.submitButtonDisabled,
               ]}
               onPress={handleSubmitRating}
-              disabled={rating === 0 || isSubmittingReview}
+              disabled={rating === 0 || isSubmittingReview || Boolean(submitSuccessMessage)}
             >
-              <Text style={styles.submitButtonText}>
-                {isSubmittingReview ? 'Envoi…' : "Envoyer l'évaluation"}
-              </Text>
+              {isSubmittingReview ? (
+                <ActivityIndicator size="small" color={Colors.white} />
+              ) : (
+                <Text style={styles.submitButtonText}>
+                  {submitSuccessMessage ? 'Envoyée' : "Envoyer l'évaluation"}
+                </Text>
+              )}
             </TouchableOpacity>
           </Animated.View>
         )}
@@ -998,6 +1074,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.xxl,
+    minHeight: 56,
   },
   submitButtonActive: {
     backgroundColor: Colors.primary,
@@ -1013,6 +1090,23 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
     textAlign: 'center',
+  },
+  successMessage: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.success + '24',
+    backgroundColor: Colors.success + '10',
+  },
+  successMessageText: {
+    flex: 1,
+    color: Colors.successDark,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
   },
   warningCard: {
     backgroundColor: 'rgba(239, 68, 68, 0.05)',
