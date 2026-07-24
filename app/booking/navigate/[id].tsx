@@ -21,9 +21,10 @@ import { useGetDirectionsMutation } from '@/store/api/googleMapsApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { getGeoPointCoordinate, normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import { calculateDistance, getRouteAlignedPosition, splitRouteByProgress } from '@/utils/routeHelpers';
+import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
+import { shareTrip } from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import * as Speech from 'expo-speech';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -377,8 +378,8 @@ export default function PassengerNavigationScreen() {
       event.type === 'driver_near_pickup'
         ? 'Le conducteur sera bient\u00f4t l\u00e0. Pr\u00e9parez-vous \u00e0 rejoindre le point de r\u00e9cup\u00e9ration.'
         : event.type === 'parties_nearby'
-          ? 'Vous \u00eates au point de r\u00e9cup\u00e9ration. Signalez-vous si vous \u00eates pr\u00eat.'
-          : 'Le conducteur est arriv\u00e9 au point de r\u00e9cup\u00e9ration. Vous pouvez vous signaler.';
+          ? 'Vous \u00eates au point de r\u00e9cup\u00e9ration. La prise en charge sera confirm\u00e9e automatiquement.'
+          : 'Le conducteur est arriv\u00e9 au point de r\u00e9cup\u00e9ration. La prise en charge sera confirm\u00e9e automatiquement.';
 
     void Speech.stop().finally(() => {
       if (!isMountedRef.current) return;
@@ -1029,42 +1030,38 @@ export default function PassengerNavigationScreen() {
     });
   }, [fitToRoute]);
 
-  const handleFinishArrival = useCallback(async () => {
-    if (!booking) return;
-
-    await refetchBooking();
-    setArrivalModalVisible(false);
-    void Speech.stop();
-
-    if (booking.droppedOff || booking.droppedOffConfirmedByPassenger) {
-      router.replace(`/rate/${tripId}`);
-    }
-  }, [booking, refetchBooking, router, tripId]);
-
-  const handleSignalPickupReady = useCallback(async () => {
-    if (!booking?.id) return;
+  const handleShareTrip = useCallback(async () => {
+    if (!tripId) return;
 
     try {
-      await trackingSocket.signalPassengerReady(booking.id);
-      setPickupNotice(null);
-      setPickupNoticeCountdown(null);
-      showDialog({
-        variant: 'success',
-        title: 'Signal envoyé',
-        message: 'Le conducteur est informé que vous êtes au point de récupération.',
-      });
+      await shareTrip(
+        tripId,
+        trip?.departure?.name ?? trip?.departure?.address,
+        trip?.arrival?.name ?? trip?.arrival?.address,
+      );
     } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.message ??
-        "Impossible d'envoyer votre signal pour le moment.";
       showDialog({
-        variant: 'warning',
-        title: 'Signal non envoyé',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        variant: 'danger',
+        title: 'Partage impossible',
+        message: error?.message || 'Impossible de partager le trajet pour le moment.',
       });
     }
-  }, [booking?.id, showDialog]);
+  }, [
+    showDialog,
+    trip?.arrival?.address,
+    trip?.arrival?.name,
+    trip?.departure?.address,
+    trip?.departure?.name,
+    tripId,
+  ]);
+
+  const handleRateDriver = useCallback(() => {
+    if (!booking?.droppedOff && !booking?.droppedOffConfirmedByPassenger) return;
+
+    setArrivalModalVisible(false);
+    void Speech.stop();
+    router.replace(`/rate/${tripId}`);
+  }, [booking?.droppedOff, booking?.droppedOffConfirmedByPassenger, router, tripId]);
 
   // Etat du trajet pour le passager
   const tripStatus = useMemo(() => {
@@ -1473,11 +1470,13 @@ export default function PassengerNavigationScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.headerButton, !canCenterOnPassenger && styles.headerButtonDisabled]}
-          onPress={centerOnPassenger}
-          disabled={!canCenterOnPassenger}
+          style={styles.headerButton}
+          onPress={() => void handleShareTrip()}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Partager le trajet"
         >
-          <Ionicons name="locate" size={24} color={canCenterOnPassenger ? Colors.primary : Colors.gray[400]} />
+          <Ionicons name="share-social-outline" size={23} color={Colors.primary} />
         </TouchableOpacity>
       </Animated.View>
 
@@ -1600,7 +1599,7 @@ export default function PassengerNavigationScreen() {
       )}
 
       <Modal
-        visible={Boolean(pickupNotice)}
+        visible={Boolean(pickupNotice) && !arrivalModalVisible}
         transparent
         animationType="slide"
         onRequestClose={() => setPickupNotice(null)}
@@ -1652,21 +1651,14 @@ export default function PassengerNavigationScreen() {
               </View>
             )}
             <Text style={styles.arrivalModalHint}>
-              Votre signal sera envoyé au conducteur en temps réel.
+              Aucune validation n&apos;est nécessaire. Le suivi GPS met à jour la prise en charge automatiquement.
             </Text>
             <View style={styles.arrivalModalActions}>
               <TouchableOpacity
                 style={styles.arrivalModalLaterButton}
                 onPress={() => setPickupNotice(null)}
               >
-                <Text style={styles.arrivalModalLaterButtonText}>Plus tard</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.arrivalModalFinishButton}
-                onPress={() => void handleSignalPickupReady()}
-              >
-                <Ionicons name="hand-left" size={20} color={Colors.white} />
-                <Text style={styles.arrivalModalFinishButtonText}>Je suis là</Text>
+                <Text style={styles.arrivalModalLaterButtonText}>Fermer</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1692,7 +1684,7 @@ export default function PassengerNavigationScreen() {
             </View>
             <Text style={styles.arrivalModalTitle}>Vous êtes arrivé</Text>
             <Text style={styles.arrivalModalText}>
-              L'arrivee a destination se confirme automatiquement par GPS.
+              L&apos;arrivee a destination se confirme automatiquement par GPS.
             </Text>
             <View style={styles.arrivalModalAddressRow}>
               <Ionicons name="location" size={18} color={Colors.primary} />
@@ -1714,21 +1706,17 @@ export default function PassengerNavigationScreen() {
                 style={styles.arrivalModalLaterButton}
                 onPress={() => setArrivalModalVisible(false)}
               >
-                <Text style={styles.arrivalModalLaterButtonText}>Plus tard</Text>
+                <Text style={styles.arrivalModalLaterButtonText}>Fermer</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.arrivalModalFinishButton}
-                onPress={() => void handleFinishArrival()}
-              >
-                <Ionicons
-                  name={booking.droppedOff || booking.droppedOffConfirmedByPassenger ? 'star' : 'checkmark-circle'}
-                  size={20}
-                  color={Colors.white}
-                />
-                <Text style={styles.arrivalModalFinishButtonText}>
-                  {booking.droppedOff || booking.droppedOffConfirmedByPassenger ? 'Noter' : 'Compris'}
-                </Text>
-              </TouchableOpacity>
+              {(booking.droppedOff || booking.droppedOffConfirmedByPassenger) && (
+                <TouchableOpacity
+                  style={styles.arrivalModalFinishButton}
+                  onPress={handleRateDriver}
+                >
+                  <Ionicons name="star" size={20} color={Colors.white} />
+                  <Text style={styles.arrivalModalFinishButtonText}>Noter</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>
@@ -1877,9 +1865,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  headerButtonDisabled: {
-    opacity: 0.6,
   },
   headerCenter: {
     flex: 1,

@@ -112,6 +112,7 @@ export interface DirectionsRequest {
   mode?: TravelMode;
   avoid?: Avoid[];
   optimizeWaypoints?: boolean;
+  /** Deprecated: ignored by the backend, directions return one route. */
   alternatives?: boolean;
   language?: string;
   region?: string;
