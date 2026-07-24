@@ -514,6 +514,18 @@ export default function PassengerNavigationScreen() {
   // Fonction pour recuperer la route
   const fetchRoute = useCallback(async () => {
     if (!pickupCoordinate || !dropoffCoordinate || !isMountedRef.current) return;
+
+    const applyFallbackRoute = () => {
+      const fallbackDistanceMeters = calculateDistance(pickupCoordinate, dropoffCoordinate) * 1000;
+      setRouteCoordinates([pickupCoordinate, dropoffCoordinate]);
+      setRouteInfo({
+        distance: formatDistanceMeters(fallbackDistanceMeters) ?? '-',
+        distanceMeters: fallbackDistanceMeters,
+        duration: '-',
+        durationSeconds: 0,
+      });
+      routeFetchedRef.current = true;
+    };
     
     // Eviter les appels trop frequents (minimum 30s entre les appels)
     const now = Date.now();
@@ -539,7 +551,13 @@ export default function PassengerNavigationScreen() {
         // Decoder la polyline
         if (route.overviewPolyline) {
           const decoded = decodePolyline(route.overviewPolyline);
-          setRouteCoordinates(decoded);
+          if (decoded.length > 1) {
+            setRouteCoordinates(decoded);
+          } else {
+            applyFallbackRoute();
+          }
+        } else {
+          applyFallbackRoute();
         }
         
         // Calculer les infos de route
@@ -556,27 +574,16 @@ export default function PassengerNavigationScreen() {
         }
         
         routeFetchedRef.current = true;
+      } else {
+        applyFallbackRoute();
       }
     } catch (error: any) {
       if (!isMountedRef.current) return;
-      const isNoRouteError = error?.status === 400 || error?.data?.statusCode === 400;
-      
-      if (isNoRouteError) {
-        // Fallback: utiliser une ligne droite entre pickup et dropoff
-        console.warn('[PassengerNavigation] Pas de route trouvee, utilisation de ligne droite');
-        
-        const fallbackDistanceMeters = calculateDistance(pickupCoordinate, dropoffCoordinate) * 1000;
-        setRouteCoordinates([pickupCoordinate, dropoffCoordinate]);
-        setRouteInfo({
-          distance: formatDistanceMeters(fallbackDistanceMeters) ?? '-',
-          distanceMeters: fallbackDistanceMeters,
-          duration: '-',
-          durationSeconds: 0,
-        });
-        routeFetchedRef.current = true;
-      } else {
-        console.warn('[PassengerNavigation] Erreur route:', error?.data?.message || error?.message || 'Erreur inconnue');
-      }
+      console.warn(
+        '[PassengerNavigation] Route detaillee indisponible, utilisation du trace direct:',
+        error?.data?.message || error?.message || 'Erreur inconnue',
+      );
+      applyFallbackRoute();
     } finally {
       if (isMountedRef.current) {
         setIsLoadingRoute(false);
