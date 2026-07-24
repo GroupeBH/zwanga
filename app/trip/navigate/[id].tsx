@@ -28,7 +28,7 @@ import {
 import { calculateDistance, getRouteAlignedPosition } from '@/utils/routeHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import * as Speech from 'expo-speech';
+import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -1702,16 +1702,6 @@ export default function NavigationScreen() {
     router.replace(`/rate/${tripId}`);
   }, [dismissTripEndNotice, router, tripId]);
 
-  const handleSkipPickupAfterWait = useCallback(() => {
-    const passengerName = pickupNotice?.waypoint.passenger.name || 'le passager';
-    dismissPickupNotice();
-    showDialog({
-      variant: 'warning',
-      title: 'Vous pouvez poursuivre',
-      message: `${passengerName} ne s'est pas signalé dans le délai. Vous pouvez passer au point suivant et signaler le passager si nécessaire.`,
-    });
-  }, [dismissPickupNotice, pickupNotice?.waypoint.passenger.name, showDialog]);
-
   // Quitter la navigation
   const handleExitNavigation = useCallback(() => {
     showDialog({
@@ -2506,7 +2496,7 @@ export default function NavigationScreen() {
       </Modal>
 
       <Modal
-        visible={securityModalVisible}
+        visible={securityModalVisible && !backgroundDisclosureVisible}
         transparent
         animationType="slide"
         onRequestClose={() => setSecurityModalVisible(false)}
@@ -2559,7 +2549,11 @@ export default function NavigationScreen() {
       </Modal>
 
       <Modal
-        visible={Boolean(tripEndNotice)}
+        visible={
+          Boolean(tripEndNotice) &&
+          !backgroundDisclosureVisible &&
+          !securityModalVisible
+        }
         transparent
         animationType="slide"
         onRequestClose={dismissTripEndNotice}
@@ -2619,7 +2613,12 @@ export default function NavigationScreen() {
       </Modal>
 
       <Modal
-        visible={Boolean(pickupNotice)}
+        visible={
+          Boolean(pickupNotice) &&
+          !backgroundDisclosureVisible &&
+          !securityModalVisible &&
+          !tripEndNotice
+        }
         transparent
         animationType="slide"
         onRequestClose={dismissPickupNotice}
@@ -2694,21 +2693,8 @@ export default function NavigationScreen() {
                 style={styles.waypointModalSecondaryButton}
                 onPress={dismissPickupNotice}
               >
-                <Text style={styles.waypointModalSecondaryButtonText}>Compris</Text>
+                <Text style={styles.waypointModalSecondaryButtonText}>Fermer</Text>
               </TouchableOpacity>
-              {pickupNotice?.type === 'driver_arrived_pickup' && (
-                <TouchableOpacity
-                  style={[
-                    styles.waypointModalPrimaryButton,
-                    pickupNoticeCountdown !== 0 && { opacity: 0.45 },
-                  ]}
-                  onPress={handleSkipPickupAfterWait}
-                  disabled={pickupNoticeCountdown !== 0}
-                >
-                  <Ionicons name="arrow-forward-circle" size={20} color={Colors.white} />
-                  <Text style={styles.waypointModalPrimaryButtonText}>Passer</Text>
-                </TouchableOpacity>
-              )}
             </View>
           </View>
         </View>
@@ -2716,7 +2702,14 @@ export default function NavigationScreen() {
 
       {/* Modal de waypoint stylise */}
       <Modal
-        visible={waypointModalVisible && Boolean(activeWaypoint)}
+        visible={
+          waypointModalVisible &&
+          Boolean(activeWaypoint) &&
+          !backgroundDisclosureVisible &&
+          !securityModalVisible &&
+          !tripEndNotice &&
+          !pickupNotice
+        }
         transparent
         animationType="slide"
         onRequestClose={handleDismissWaypointModal}
@@ -2805,7 +2798,7 @@ export default function NavigationScreen() {
                 onPress={handleDismissWaypointModal}
               >
                 <Text style={styles.waypointModalSecondaryButtonText}>
-                  Compris
+                  Fermer
                 </Text>
               </TouchableOpacity>
             </View>
@@ -2824,7 +2817,14 @@ export default function NavigationScreen() {
 
       {/* Panneau des passagers */}
       <Modal
-        visible={passengersPanelVisible}
+        visible={
+          passengersPanelVisible &&
+          !backgroundDisclosureVisible &&
+          !securityModalVisible &&
+          !tripEndNotice &&
+          !pickupNotice &&
+          !waypointModalVisible
+        }
         transparent
         animationType="slide"
         onRequestClose={() => setPassengersPanelVisible(false)}
