@@ -16,11 +16,12 @@ import {
 } from '@/services/trackingSocket';
 import {
   useAcceptBookingMutation,
+  useConfirmPickupMutation,
   useGetTripBookingsQuery,
   useRejectBookingMutation,
 } from '@/store/api/bookingApi';
 import { TravelMode, useGetDirectionsMutation } from '@/store/api/googleMapsApi';
-import { useGetTripByIdQuery } from '@/store/api/tripApi';
+import { useGetTripByIdQuery, useUpdateDriverLocationMutation } from '@/store/api/tripApi';
 import type { Booking } from '@/types';
 import {
   areTripMapCoordinatesSame,
@@ -125,6 +126,10 @@ const DRIVER_PICKUP_ARRIVAL_DISTANCE_KM = 0.05;
 const PASSENGER_READY_DISTANCE_KM = 0.005;
 const MOVING_TOGETHER_DISTANCE_KM = 0.025;
 const MOVING_TOGETHER_PICKUP_EXIT_DISTANCE_KM = 0.03;
+const DRIVER_PICKUP_EXIT_AUTO_CONFIRM_DISTANCE_KM = 0.12;
+const DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS = 3000;
+const DRIVER_LOCATION_BACKEND_UPDATE_INTERVAL_MS = 3000;
+const FRESH_DRIVER_LOCATION_MAX_AGE_MS = 30000;
 const PICKUP_NOTICE_PRIORITY: Record<PickupNoticeEventType, number> = {
   driver_arrived_pickup: 1,
   parties_nearby: 2,
@@ -195,6 +200,35 @@ const getBookingActionErrorMessage = (error: any, fallback: string): string => {
   return Array.isArray(message) ? message.join('\n') : message || fallback;
 };
 
+const hasBookingPickupCompleted = (booking?: Booking | null): boolean =>
+  Boolean(
+    booking?.pickedUp ||
+      booking?.pickedUpConfirmedByPassenger ||
+      booking?.pickedUpAt ||
+      booking?.pickedUpConfirmedAt,
+  );
+
+const hasBookingDropoffCompleted = (booking?: Booking | null): boolean =>
+  Boolean(
+    booking?.status === 'completed' ||
+      booking?.droppedOff ||
+      booking?.droppedOffConfirmedByPassenger ||
+      booking?.droppedOffAt ||
+      booking?.droppedOffConfirmedAt,
+  );
+
+const isFreshLocationObject = (
+  location: Location.LocationObject | null,
+  maxAgeMs = FRESH_DRIVER_LOCATION_MAX_AGE_MS,
+): location is Location.LocationObject => {
+  if (!location) {
+    return false;
+  }
+
+  const timestamp = Number(location.timestamp);
+  return Number.isFinite(timestamp) && Date.now() - timestamp <= maxAgeMs;
+};
+
 export default function NavigationScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -214,7 +248,9 @@ export default function NavigationScreen() {
   );
   const [getDirections] = useGetDirectionsMutation();
   const [acceptBooking, { isLoading: isAcceptingBooking }] = useAcceptBookingMutation();
+  const [confirmPickup] = useConfirmPickupMutation();
   const [rejectBooking, { isLoading: isRejectingBooking }] = useRejectBookingMutation();
+  const [updateDriverLocation] = useUpdateDriverLocationMutation();
   const tripDepartureCoordinate = useMemo(
     () =>
       getTripLocationCoordinate({
@@ -292,16 +328,12 @@ export default function NavigationScreen() {
           return false;
         }
 
-        const isPassengerDroppedOff = Boolean(
-          booking.status === 'completed' || booking.droppedOff || booking.droppedOffConfirmedByPassenger,
-        );
-        return !(booking.pickedUp && !isPassengerDroppedOff);
+        const isPassengerDroppedOff = hasBookingDropoffCompleted(booking);
+        return !(hasBookingPickupCompleted(booking) && !isPassengerDroppedOff);
       })
       .slice(0, MAX_LIVE_PASSENGER_MARKERS)
       .forEach((booking) => {
-        const isPassengerDroppedOff = Boolean(
-          booking.status === 'completed' || booking.droppedOff || booking.droppedOffConfirmedByPassenger,
-        );
+        const isPassengerDroppedOff = hasBookingDropoffCompleted(booking);
         const liveLocation = livePassengerLocations[booking.id];
         const apiLocation = normalizeTripMapCoordinate(
           booking.passengerLocationCoordinates?.latitude,
@@ -375,6 +407,8 @@ export default function NavigationScreen() {
   const presentedWaypointIdsRef = useRef<Set<string>>(new Set());
   const presentedPickupNoticeKeysRef = useRef<Set<string>>(new Set());
   const highestPickupNoticePriorityRef = useRef<Map<string, number>>(new Map());
+  const driverReachedPickupBookingIdsRef = useRef<Set<string>>(new Set());
+  const autoConfirmingPickupBookingIdsRef = useRef<Set<string>>(new Set());
   const presentedPassengerBoardedKeysRef = useRef<Set<string>>(new Set());
   const presentedPassengerDestinationApproachKeysRef = useRef<Set<string>>(new Set());
   const presentedPassengerDestinationKeysRef = useRef<Set<string>>(new Set());
@@ -482,6 +516,8 @@ export default function NavigationScreen() {
     setPickupNoticeCountdown(null);
     presentedPickupNoticeKeysRef.current.clear();
     highestPickupNoticePriorityRef.current.clear();
+    driverReachedPickupBookingIdsRef.current.clear();
+    autoConfirmingPickupBookingIdsRef.current.clear();
     presentedPassengerBoardedKeysRef.current.clear();
     presentedPassengerDestinationApproachKeysRef.current.clear();
     presentedPassengerDestinationKeysRef.current.clear();
@@ -538,6 +574,18 @@ export default function NavigationScreen() {
         !['driver_arrived_pickup', 'parties_nearby', 'passenger_ready_pickup'].includes(event.type)
       ) {
         return;
+      }
+
+      if (
+        waypoint.completed ||
+        hasBookingPickupCompleted(waypoint.booking) ||
+        hasBookingDropoffCompleted(waypoint.booking)
+      ) {
+        return;
+      }
+
+      if (event.type === 'driver_arrived_pickup' || event.type === 'parties_nearby') {
+        driverReachedPickupBookingIdsRef.current.add(event.bookingId);
       }
 
       const key = `${event.type}:${event.bookingId}`;
@@ -598,6 +646,43 @@ export default function NavigationScreen() {
     [bookings],
   );
 
+  const persistLocalPickupConfirmation = useCallback(
+    (event: BookingAutoProgressEvent, waypoint?: Waypoint | null) => {
+      if (!event.bookingId) {
+        return;
+      }
+
+      const booking =
+        waypoint?.booking ?? bookings?.find((item) => item.id === event.bookingId);
+      const alreadyPickedUp = hasBookingPickupCompleted(booking);
+      const looksLocallyDetected =
+        Boolean(event.detectedAt) || typeof event.distanceMeters === 'number';
+
+      if (
+        alreadyPickedUp ||
+        !looksLocallyDetected ||
+        autoConfirmingPickupBookingIdsRef.current.has(event.bookingId)
+      ) {
+        return;
+      }
+
+      autoConfirmingPickupBookingIdsRef.current.add(event.bookingId);
+      void confirmPickup(event.bookingId)
+        .unwrap()
+        .then(() => {
+          refetchBookings();
+          refetchTrip();
+        })
+        .catch((error) => {
+          console.warn('[Navigation] Confirmation pickup automatique non persistee:', error);
+        })
+        .finally(() => {
+          autoConfirmingPickupBookingIdsRef.current.delete(event.bookingId!);
+        });
+    },
+    [bookings, confirmPickup, refetchBookings, refetchTrip],
+  );
+
   const presentPassengerBoardedNotice = useCallback(
     (event: BookingAutoProgressEvent, waypoint?: Waypoint | null) => {
       if (!isMountedRef.current || event.type !== 'pickup_confirmed' || !event.bookingId) {
@@ -610,6 +695,7 @@ export default function NavigationScreen() {
       }
 
       presentedPassengerBoardedKeysRef.current.add(key);
+      persistLocalPickupConfirmation(event, waypoint);
       const passengerName = getPassengerNameForBooking(event.bookingId, waypoint);
       setPickupNotice((current) =>
         current?.waypoint.booking.id === event.bookingId ? null : current,
@@ -631,7 +717,7 @@ export default function NavigationScreen() {
         });
       });
     },
-    [getPassengerNameForBooking, showDialog],
+    [getPassengerNameForBooking, persistLocalPickupConfirmation, showDialog],
   );
 
   const presentPassengerDestinationNotice = useCallback(
@@ -973,7 +1059,7 @@ export default function NavigationScreen() {
             phone: booking.passengerPhone,
           },
           booking,
-          completed: booking.pickedUp || false,
+          completed: hasBookingPickupCompleted(booking),
         });
 
         // Point d'arrivée du passager (destination personnalisée ou arrivée du trip)
@@ -1005,7 +1091,7 @@ export default function NavigationScreen() {
             phone: booking.passengerPhone,
           },
           booking,
-          completed: booking.droppedOff || false,
+          completed: hasBookingDropoffCompleted(booking),
         });
       } catch (error) {
         console.log('Erreur création waypoint pour booking:', booking.id, error);
@@ -1022,6 +1108,38 @@ export default function NavigationScreen() {
       setCurrentWaypointIndex(nextIncompleteIndex);
     }
   }, [bookings, trip, tripArrivalCoordinate, tripDepartureCoordinate]);
+
+  const sendDriverLocationToTracking = useCallback(
+    (location: Location.LocationObject) => {
+      if (!tripId || (!isTripOngoing && !isTripOngoingRef.current)) {
+        return;
+      }
+
+      const coordinates: [number, number] = [
+        location.coords.longitude,
+        location.coords.latitude,
+      ];
+
+      if (!isFreshLocationObject(location)) {
+        return;
+      }
+
+      void trackingSocket
+        .updateDriverLocation(tripId, coordinates)
+        .catch((error) => {
+          console.warn('[Navigation] Position conducteur socket non envoyee:', error);
+          void updateDriverLocation({ tripId, coordinates })
+            .unwrap()
+            .catch((fallbackError) => {
+              console.warn(
+                '[Navigation] Position conducteur REST non envoyee:',
+                fallbackError,
+              );
+            });
+        });
+    },
+    [isTripOngoing, tripId, updateDriverLocation],
+  );
 
   // Demander les permissions de localisation
   useEffect(() => {
@@ -1097,11 +1215,14 @@ export default function NavigationScreen() {
             accuracy: Location.Accuracy.High,
           });
         } catch (error) {
-          location = await Location.getLastKnownPositionAsync({});
+          location = await Location.getLastKnownPositionAsync({
+            maxAge: FRESH_DRIVER_LOCATION_MAX_AGE_MS,
+            requiredAccuracy: 100,
+          });
         }
         if (!isMountedRef.current) return;
 
-        if (location) {
+        if (isFreshLocationObject(location)) {
           currentLocationRef.current = location;
           setCurrentLocation(location);
           driverPosition.setValue({
@@ -1110,6 +1231,7 @@ export default function NavigationScreen() {
             latitudeDelta: 0,
             longitudeDelta: 0,
           });
+          sendDriverLocationToTracking(location);
         } else {
           console.warn('[Navigation] Position initiale indisponible, en attente du GPS');
         }
@@ -1118,16 +1240,16 @@ export default function NavigationScreen() {
       let lastStateUpdateTime = 0;
       let lastBackendUpdateTime = 0;
       let lastStepCheckTime = 0;
-      const STATE_UPDATE_INTERVAL = 10000; // Mise à jour du state toutes les 10 secondes
-      const BACKEND_UPDATE_INTERVAL = 8000; // Mise à jour WebSocket toutes les 8 secondes
+      const STATE_UPDATE_INTERVAL = DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS; // Mise a jour du state toutes les 3 secondes
+      const BACKEND_UPDATE_INTERVAL = DRIVER_LOCATION_BACKEND_UPDATE_INTERVAL_MS; // Mise a jour WebSocket toutes les 3 secondes
       const STEP_CHECK_INTERVAL = 5000; // Vérification étapes toutes les 5 secondes
 
       // S'abonner aux mises à jour de localisation (fréquence réduite pour stabilité)
       const subscription = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.Balanced, // Équilibre entre précision et batterie
-          timeInterval: 5000, // GPS update toutes les 5 secondes
-          distanceInterval: 20, // Ou tous les 20 mètres
+          accuracy: Location.Accuracy.High, // Équilibre entre précision et batterie
+          timeInterval: DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS, // GPS update toutes les 3 secondes
+          distanceInterval: 5, // Ou tous les 5 metres
         },
         (newLocation) => {
           if (!isMountedRef.current) return;
@@ -1194,10 +1316,7 @@ export default function NavigationScreen() {
           // Mettre à jour la position du conducteur via WebSocket (throttled)
           if (tripId && isTripOngoingRef.current && now - lastBackendUpdateTime > BACKEND_UPDATE_INTERVAL) {
             lastBackendUpdateTime = now;
-            trackingSocket.updateDriverLocation(
-              tripId,
-              [newLocation.coords.longitude, newLocation.coords.latitude]
-            ).catch(() => {}); // Ignorer les erreurs silencieusement
+            sendDriverLocationToTracking(newLocation);
           }
 
           // NOTE: Animation de caméra désactivée pour éviter les crashs mémoire
@@ -1233,7 +1352,7 @@ export default function NavigationScreen() {
         locationSubscription.current = null;
       }
     };
-  }, [tripId, isTripOngoing, navigateBackSafely]);
+  }, [tripId, isTripOngoing, navigateBackSafely, sendDriverLocationToTracking]);
 
   // Passer la carte en 3D lorsque la course est en cours
   useEffect(() => {
@@ -1659,13 +1778,12 @@ export default function NavigationScreen() {
     waypoints.forEach((waypoint) => {
       const booking = waypoint.booking;
       const isPassengerAlreadyPickedUp =
-        waypoint.completed || booking.pickedUp || booking.pickedUpConfirmedByPassenger;
+        waypoint.completed || hasBookingPickupCompleted(booking);
 
       if (
         waypoint.type !== 'pickup' ||
         isPassengerAlreadyPickedUp ||
-        booking.droppedOff ||
-        booking.droppedOffConfirmedByPassenger
+        hasBookingDropoffCompleted(booking)
       ) {
         return;
       }
@@ -1677,6 +1795,7 @@ export default function NavigationScreen() {
       const driverPickupDistanceKm = calculateDistance(driverCoordinate, pickupCoordinate);
 
       if (driverPickupDistanceKm <= DRIVER_PICKUP_ARRIVAL_DISTANCE_KM) {
+        driverReachedPickupBookingIdsRef.current.add(booking.id);
         presentPickupNotice(
           {
             type: 'driver_arrived_pickup',
@@ -1688,6 +1807,24 @@ export default function NavigationScreen() {
           },
           waypoint,
         );
+      }
+
+      if (
+        driverReachedPickupBookingIdsRef.current.has(booking.id) &&
+        driverPickupDistanceKm >= DRIVER_PICKUP_EXIT_AUTO_CONFIRM_DISTANCE_KM
+      ) {
+        presentPassengerBoardedNotice(
+          {
+            type: 'pickup_confirmed',
+            bookingId: booking.id,
+            tripId,
+            passengerId: waypoint.passenger.id,
+            distanceMeters: Math.round(driverPickupDistanceKm * 1000),
+            detectedAt,
+          },
+          waypoint,
+        );
+        return;
       }
 
       const passengerLocation = livePassengerLocations[booking.id]?.coordinate;
