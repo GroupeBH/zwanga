@@ -35,7 +35,6 @@ import {
   ActivityIndicator,
   BackHandler,
   Dimensions,
-  Image,
   Modal,
   Platform,
   ScrollView,
@@ -128,7 +127,8 @@ const PICKUP_NOTICE_PRIORITY: Record<PickupNoticeEventType, number> = {
   parties_nearby: 2,
   passenger_ready_pickup: 3,
 };
-const androidNavigationMarkerImages: Record<'pickup' | 'dropoff' | 'destination', ImageRequireSource> = {
+const androidNavigationMarkerImages: Record<'departure' | 'pickup' | 'dropoff' | 'destination', ImageRequireSource> = {
+  departure: require('@/assets/images/map-markers/trip-detail-marker-departure.png'),
   pickup: require('@/assets/images/map-markers/trip-detail-marker-passenger.png'),
   dropoff: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
   destination: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
@@ -320,6 +320,7 @@ export default function NavigationScreen() {
   const presentedPickupNoticeKeysRef = useRef<Set<string>>(new Set());
   const highestPickupNoticePriorityRef = useRef<Map<string, number>>(new Map());
   const presentedPassengerBoardedKeysRef = useRef<Set<string>>(new Set());
+  const presentedPassengerDestinationApproachKeysRef = useRef<Set<string>>(new Set());
   const presentedPassengerDestinationKeysRef = useRef<Set<string>>(new Set());
   const presentedTripDestinationKeysRef = useRef<Set<string>>(new Set());
   const stepsRef = useRef<RouteStep[]>([]);
@@ -426,7 +427,9 @@ export default function NavigationScreen() {
     presentedPickupNoticeKeysRef.current.clear();
     highestPickupNoticePriorityRef.current.clear();
     presentedPassengerBoardedKeysRef.current.clear();
+    presentedPassengerDestinationApproachKeysRef.current.clear();
     presentedPassengerDestinationKeysRef.current.clear();
+    presentedTripDestinationKeysRef.current.clear();
     void Speech.stop();
   }, [tripId]);
 
@@ -607,18 +610,90 @@ export default function NavigationScreen() {
     [getPassengerNameForBooking, showDialog],
   );
 
-  const presentTripDestinationNotice = useCallback(
-    (event: BookingAutoProgressEvent) => {
-      if (!isMountedRef.current || event.type !== 'driver_arrived_destination') {
+  const presentPassengerDestinationApproachNotice = useCallback(
+    (event: BookingAutoProgressEvent, waypoint?: Waypoint | null) => {
+      if (!isMountedRef.current || event.type !== 'passenger_near_destination' || !event.bookingId) {
         return;
       }
 
-      const key = `driver_arrived_destination:${event.tripId}`;
+      const key = `passenger_near_destination:${event.bookingId}`;
+      if (presentedPassengerDestinationApproachKeysRef.current.has(key)) {
+        return;
+      }
+
+      presentedPassengerDestinationApproachKeysRef.current.add(key);
+      const passengerName = getPassengerNameForBooking(event.bookingId, waypoint);
+      const roundedDistance =
+        typeof event.distanceMeters === 'number' && Number.isFinite(event.distanceMeters)
+          ? Math.max(1, Math.round(event.distanceMeters))
+          : null;
+      const distanceText = roundedDistance ? ` Distance detectee: ${roundedDistance} m.` : '';
+
+      showDialog({
+        variant: 'info',
+        icon: 'flag',
+        title: 'Destination passager proche',
+        message: `Le point d'arrivee de ${passengerName} va etre atteint.${distanceText}`,
+      });
+
+      void Speech.stop().finally(() => {
+        if (!isMountedRef.current) return;
+        Speech.speak(`Le point d'arrivee de ${passengerName} va etre atteint.`, {
+          language: SPEECH_LANGUAGE,
+          rate: SPEECH_RATE,
+        });
+      });
+    },
+    [getPassengerNameForBooking, showDialog],
+  );
+
+  const presentTripDestinationNotice = useCallback(
+    (event: BookingAutoProgressEvent) => {
+      if (
+        !isMountedRef.current ||
+        (event.type !== 'driver_near_destination' && event.type !== 'driver_arrived_destination')
+      ) {
+        return;
+      }
+
+      const key = `${event.type}:${event.tripId}`;
       if (presentedTripDestinationKeysRef.current.has(key)) {
         return;
       }
 
       presentedTripDestinationKeysRef.current.add(key);
+      if (event.type === 'driver_near_destination') {
+        const roundedDistance =
+          typeof event.distanceMeters === 'number' && Number.isFinite(event.distanceMeters)
+            ? Math.max(1, Math.round(event.distanceMeters))
+            : null;
+        const distanceText = roundedDistance ? ` Distance detectee: ${roundedDistance} m.` : '';
+        const isReachedZone = roundedDistance !== null && roundedDistance <= 10;
+
+        showDialog({
+          variant: 'info',
+          icon: 'flag',
+          title: isReachedZone ? 'Destination finale atteinte' : 'Destination finale proche',
+          message: isReachedZone
+            ? `Le point d'arrivee du trajet est atteint. Le trajet sera termine automatiquement dans 5 minutes si le vehicule reste sur place.${distanceText}`
+            : `Le point d'arrivee du trajet est presque atteint.${distanceText}`,
+        });
+
+        void Speech.stop().finally(() => {
+          if (!isMountedRef.current) return;
+          Speech.speak(
+            isReachedZone
+              ? "Le point d'arrivee du trajet est atteint."
+              : 'Le point d arrivee du trajet est presque atteint.',
+            {
+              language: SPEECH_LANGUAGE,
+              rate: SPEECH_RATE,
+            },
+          );
+        });
+        return;
+      }
+
       const notice: TripEndNotice = {
         distanceMeters: event.distanceMeters,
         detectedAt: event.detectedAt,
@@ -634,7 +709,7 @@ export default function NavigationScreen() {
         });
       });
     },
-    [],
+    [showDialog],
   );
 
   useEffect(() => {
@@ -698,7 +773,7 @@ export default function NavigationScreen() {
         );
 
         payload.events.forEach((event) => {
-          if (event.type === 'driver_arrived_destination') {
+          if (event.type === 'driver_near_destination' || event.type === 'driver_arrived_destination') {
             presentTripDestinationNotice(event);
             return;
           }
@@ -726,6 +801,14 @@ export default function NavigationScreen() {
               (item) => item.booking.id === event.bookingId && item.type === 'pickup',
             );
             presentPassengerBoardedNotice(event, waypoint ?? null);
+            return;
+          }
+
+          if (event.type === 'passenger_near_destination') {
+            const waypoint = waypointsRef.current.find(
+              (item) => item.booking.id === event.bookingId && item.type === 'dropoff',
+            );
+            presentPassengerDestinationApproachNotice(event, waypoint ?? null);
             return;
           }
 
@@ -787,6 +870,7 @@ export default function NavigationScreen() {
   }, [
     isTripOngoing,
     presentPassengerBoardedNotice,
+    presentPassengerDestinationApproachNotice,
     presentPassengerDestinationNotice,
     presentPickupNotice,
     presentTripDestinationNotice,
@@ -1244,21 +1328,25 @@ export default function NavigationScreen() {
     const timeSinceLastFetch = now - lastRouteFetchTimeRef.current;
     
     // Ne fetch que si:
-    // 1. On a une location et un trip
+    // 1. On a un trip avec depart/arrivee publies
     // 2. ET (le route n'a jamais été fetch OU les waypoints ont changé)
     // 3. ET au moins 30 secondes se sont écoulées depuis le dernier fetch
-    if (currentLocation && trip && 
-        (!routeFetchedRef.current || waypointsChanged) && 
-        timeSinceLastFetch > 30000) {
+    if (
+      trip &&
+      tripDepartureCoordinate &&
+      tripArrivalCoordinate &&
+      (!routeFetchedRef.current || waypointsChanged) &&
+      timeSinceLastFetch > 30000
+    ) {
       routeFetchedRef.current = true;
       waypointsCountRef.current = waypoints.length;
       lastRouteFetchTimeRef.current = now;
       fetchRoute();
     }
-  }, [currentLocation, trip, waypoints.length]);
+  }, [trip, tripArrivalCoordinate, tripDepartureCoordinate, waypoints.length]);
 
   const fetchRoute = async () => {
-    if (!currentLocation || !trip || !tripArrivalCoordinate || !isMountedRef.current) return;
+    if (!trip || !tripDepartureCoordinate || !tripArrivalCoordinate || !isMountedRef.current) return;
 
     setIsLoadingRoute(true);
     try {
@@ -1272,8 +1360,8 @@ export default function NavigationScreen() {
       // Appel à l'API backend optimisée
       const data = await getDirections({
         origin: {
-          lat: currentLocation.coords.latitude,
-          lng: currentLocation.coords.longitude,
+          lat: tripDepartureCoordinate.latitude,
+          lng: tripDepartureCoordinate.longitude,
         },
         destination: {
           lat: tripArrivalCoordinate.latitude,
@@ -1281,7 +1369,7 @@ export default function NavigationScreen() {
         },
         waypoints: waypointsForApi.length > 0 ? waypointsForApi : undefined,
         mode: TravelMode.DRIVING,
-        optimizeWaypoints: true,
+        optimizeWaypoints: false,
         language: 'fr',
       }).unwrap();
       if (!isMountedRef.current) return;
@@ -1325,7 +1413,13 @@ export default function NavigationScreen() {
 
         // Ajuster la vue de la carte pour afficher tout l'itinéraire
         if (mapRef.current && points.length > 0) {
-          mapRef.current.fitToCoordinates(points, {
+          const mapFitPoints = [
+            ...points,
+            tripDepartureCoordinate,
+            tripArrivalCoordinate,
+          ].filter(Boolean) as { latitude: number; longitude: number }[];
+
+          mapRef.current.fitToCoordinates(mapFitPoints, {
             edgePadding: { top: 150, right: 50, bottom: 300, left: 50 },
             animated: true,
           });
@@ -1343,9 +1437,9 @@ export default function NavigationScreen() {
         
         // Créer une route simplifiée avec les waypoints
         const fallbackPoints: Array<{ latitude: number; longitude: number }> = [
-          { latitude: currentLocation.coords.latitude, longitude: currentLocation.coords.longitude },
+          tripDepartureCoordinate,
         ];
-        
+
         // Ajouter les waypoints non complétés
         waypoints.filter(wp => !wp.completed).forEach(wp => {
           fallbackPoints.push({ latitude: wp.location.lat, longitude: wp.location.lng });
@@ -1362,6 +1456,17 @@ export default function NavigationScreen() {
         setTotalDuration('--');
         stepsRef.current = [];
         setSteps([]);
+        if (mapRef.current) {
+          const fallbackFitPoints = [
+            ...fallbackPoints,
+            tripDepartureCoordinate,
+          ].filter(Boolean) as { latitude: number; longitude: number }[];
+
+          mapRef.current.fitToCoordinates(fallbackFitPoints, {
+            edgePadding: { top: 150, right: 50, bottom: 300, left: 50 },
+            animated: true,
+          });
+        }
         void speakNavigationMessage(
           "Itinéraire détaillé indisponible. Suivez la ligne jusqu'à la destination.",
           { force: true }
@@ -1582,7 +1687,7 @@ export default function NavigationScreen() {
   const forceRecalculateRoute = () => {
     lastRouteFetchTimeRef.current = 0; // Reset le timestamp
     routeFetchedRef.current = false; // Permettre un nouveau fetch
-    if (currentLocation && trip) {
+    if (trip && tripDepartureCoordinate && tripArrivalCoordinate) {
       fetchRoute();
     }
   };
@@ -1837,6 +1942,8 @@ export default function NavigationScreen() {
     currentWaypointIndex < waypoints.length && !waypoints[currentWaypointIndex]?.completed
       ? waypoints[currentWaypointIndex]
       : null;
+  const tripDepartureLabel = (trip?.departure?.address || trip?.departure?.name || 'Depart du trajet').trim();
+  const tripArrivalLabel = (trip?.arrival?.address || trip?.arrival?.name || 'Arrivee du trajet').trim();
 
   const routeSectionCoordinates = useMemo(() => {
     if (routeCoordinates.length < 2 || !currentNavigationWaypoint) {
@@ -2048,6 +2155,29 @@ export default function NavigationScreen() {
             </Marker>
           );
         })}
+        {/* Départ publié du trajet */}
+        {tripDepartureCoordinate && (
+          <Marker
+            coordinate={tripDepartureCoordinate}
+            anchor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? ANDROID_PIN_MARKER_ANCHOR : { x: 0.5, y: 0.5 }}
+            image={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? androidNavigationMarkerImages.departure : undefined}
+            pinColor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? undefined : Colors.primary}
+            title="Depart"
+            description={tripDepartureLabel}
+            tracksViewChanges={false}
+            zIndex={8}
+          >
+            {!USE_ANDROID_NAVIGATION_MARKER_IMAGES && (
+              <View
+                collapsable={false}
+                style={[styles.waypointMarkerContainer, styles.departureMarker]}
+              >
+                <Ionicons name="location" size={20} color={Colors.white} />
+              </View>
+            )}
+          </Marker>
+        )}
+
         {/* Prochain waypoint uniquement (1 seul pour éviter les crashs) */}
         {waypoints.length > 0 && currentWaypointIndex < waypoints.length && 
          !waypoints[currentWaypointIndex].completed &&
@@ -2059,6 +2189,13 @@ export default function NavigationScreen() {
               longitude: waypoints[currentWaypointIndex].location.lng,
             }}
             anchor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? ANDROID_PIN_MARKER_ANCHOR : { x: 0.5, y: 0.5 }}
+            image={
+              USE_ANDROID_NAVIGATION_MARKER_IMAGES
+                ? androidNavigationMarkerImages[
+                    waypoints[currentWaypointIndex].type === 'pickup' ? 'pickup' : 'dropoff'
+                  ]
+                : undefined
+            }
             pinColor={
               USE_ANDROID_NAVIGATION_MARKER_IMAGES
                 ? undefined
@@ -2067,19 +2204,11 @@ export default function NavigationScreen() {
                   : Colors.success
             }
             title={`${waypoints[currentWaypointIndex].type === 'pickup' ? 'Lieu de prise en charge' : 'Point d arrivee'} ${waypoints[currentWaypointIndex].passenger.name}`}
+            description={waypoints[currentWaypointIndex].address}
             tracksViewChanges={false}
+            zIndex={26}
           >
-            {USE_ANDROID_NAVIGATION_MARKER_IMAGES ? (
-              <Image
-                source={
-                  androidNavigationMarkerImages[
-                    waypoints[currentWaypointIndex].type === 'pickup' ? 'pickup' : 'dropoff'
-                  ]
-                }
-                style={styles.androidWaypointMarkerImage}
-                resizeMode="contain"
-              />
-            ) : (
+            {!USE_ANDROID_NAVIGATION_MARKER_IMAGES && (
               <View
                 collapsable={false}
                 style={[
@@ -2107,16 +2236,14 @@ export default function NavigationScreen() {
               longitude: tripArrivalCoordinate.longitude,
             }}
             anchor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? ANDROID_PIN_MARKER_ANCHOR : { x: 0.5, y: 1 }}
-            title={trip.arrival.name || 'Arrivée'}
+            image={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? androidNavigationMarkerImages.destination : undefined}
+            pinColor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? undefined : Colors.success}
+            title="Arrivee"
+            description={tripArrivalLabel}
             tracksViewChanges={!USE_ANDROID_NAVIGATION_MARKER_IMAGES && destinationTracksViewChanges}
+            zIndex={18}
           >
-            {USE_ANDROID_NAVIGATION_MARKER_IMAGES ? (
-              <Image
-                source={androidNavigationMarkerImages.destination}
-                style={styles.androidWaypointMarkerImage}
-                resizeMode="contain"
-              />
-            ) : (
+            {!USE_ANDROID_NAVIGATION_MARKER_IMAGES && (
               <View
                 collapsable={false}
                 style={styles.destinationMarkerContainer}
@@ -3517,10 +3644,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
-  androidWaypointMarkerImage: {
-    width: 32,
-    height: 36,
-  },
   passengerLocationMarker: {
     width: 42,
     height: 42,
@@ -3566,6 +3689,9 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.semibold,
+  },
+  departureMarker: {
+    backgroundColor: Colors.primary,
   },
   pickupMarker: {
     backgroundColor: Colors.secondary,

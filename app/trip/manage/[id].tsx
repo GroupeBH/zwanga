@@ -91,8 +91,10 @@ const MANAGE_AUTO_PROGRESS_PRIORITY: Record<ManageAutoProgressEvent['type'], num
   parties_nearby: 2,
   passenger_ready_pickup: 3,
   pickup_confirmed: 4,
-  dropoff_confirmed: 5,
-  driver_arrived_destination: 6,
+  passenger_near_destination: 5,
+  dropoff_confirmed: 6,
+  driver_near_destination: 7,
+  driver_arrived_destination: 8,
 };
 
 export default function ManageTripScreen() {
@@ -277,6 +279,10 @@ export default function ManageTripScreen() {
               ? Math.max(1, Math.round(event.distanceMeters))
               : null;
           const distanceText = roundedDistance ? ` Distance detectee: ${roundedDistance} m.` : '';
+          const isTripDestinationReachedZone =
+            event.type === 'driver_near_destination' &&
+            roundedDistance !== null &&
+            roundedDistance <= 10;
 
           const dialogByType: Record<
             ManageAutoProgressEvent['type'],
@@ -317,11 +323,27 @@ export default function ManageTripScreen() {
               title: 'Passager embarque',
               message: `${passengerName} a ete embarque. Vous pouvez continuer vers sa destination.`,
             },
+            passenger_near_destination: {
+              variant: 'info',
+              icon: 'flag',
+              title: 'Destination passager proche',
+              message: `Le point d'arrivee de ${passengerName} va etre atteint.${distanceText}`,
+            },
             dropoff_confirmed: {
               variant: 'success',
               icon: 'flag',
               title: 'Destination passager atteinte',
               message: `Nous sommes arrives au point de destination de ${passengerName}.`,
+            },
+            driver_near_destination: {
+              variant: 'info',
+              icon: 'flag',
+              title: isTripDestinationReachedZone
+                ? 'Destination finale atteinte'
+                : 'Destination finale proche',
+              message: isTripDestinationReachedZone
+                ? `Le point d'arrivee du trajet est atteint. Le trajet sera termine automatiquement dans 5 minutes si le vehicule reste sur place.${distanceText}`
+                : `Le point d'arrivee du trajet est presque atteint.${distanceText}`,
             },
             driver_arrived_destination: {
               variant: 'success',

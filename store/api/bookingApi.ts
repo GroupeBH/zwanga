@@ -77,7 +77,9 @@ type UpdatePassengerLocationResponse = {
         | 'parties_nearby'
         | 'passenger_ready_pickup'
         | 'pickup_confirmed'
+        | 'passenger_near_destination'
         | 'dropoff_confirmed'
+        | 'driver_near_destination'
         | 'driver_arrived_destination';
       bookingId?: string;
       tripId: string;
