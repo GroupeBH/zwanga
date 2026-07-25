@@ -26,9 +26,10 @@ import {
   normalizeTripMapCoordinate,
 } from '@/utils/tripCoordinates';
 import { calculateDistance, getRouteAlignedPosition } from '@/utils/routeHelpers';
+import { shareTrip } from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import * as Speech from 'expo-speech';
+import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -1348,6 +1349,18 @@ export default function NavigationScreen() {
   const fetchRoute = async () => {
     if (!trip || !tripDepartureCoordinate || !tripArrivalCoordinate || !isMountedRef.current) return;
 
+    const buildFallbackRoute = () => {
+      const fallbackPoints: { latitude: number; longitude: number }[] = [
+        tripDepartureCoordinate,
+      ];
+
+      waypoints.filter(wp => !wp.completed).forEach(wp => {
+        fallbackPoints.push({ latitude: wp.location.lat, longitude: wp.location.lng });
+      });
+      fallbackPoints.push(tripArrivalCoordinate);
+      return fallbackPoints;
+    };
+
     setIsLoadingRoute(true);
     try {
       // Construire les waypoints non complétés pour l'API backend
@@ -1378,7 +1391,10 @@ export default function NavigationScreen() {
         const route = data.routes[0];
 
         // Décoder le polyline
-        const points = decodePolyline(route.overviewPolyline);
+        const decodedPoints = route.overviewPolyline
+          ? decodePolyline(route.overviewPolyline)
+          : [];
+        const points = decodedPoints.length > 1 ? decodedPoints : buildFallbackRoute();
         setRouteCoordinates(points);
 
         // Calculer la distance et durée totales
@@ -1424,6 +1440,8 @@ export default function NavigationScreen() {
             animated: true,
           });
         }
+      } else {
+        setRouteCoordinates(buildFallbackRoute());
       }
     } catch (error: any) {
       if (!isMountedRef.current) return;
@@ -1436,20 +1454,7 @@ export default function NavigationScreen() {
         console.warn('[Navigation] Pas de route trouvée, utilisation de ligne droite');
         
         // Créer une route simplifiée avec les waypoints
-        const fallbackPoints: Array<{ latitude: number; longitude: number }> = [
-          tripDepartureCoordinate,
-        ];
-
-        // Ajouter les waypoints non complétés
-        waypoints.filter(wp => !wp.completed).forEach(wp => {
-          fallbackPoints.push({ latitude: wp.location.lat, longitude: wp.location.lng });
-        });
-        
-        // Ajouter la destination finale
-        fallbackPoints.push({
-          latitude: tripArrivalCoordinate.latitude,
-          longitude: tripArrivalCoordinate.longitude,
-        });
+        const fallbackPoints = buildFallbackRoute();
         
         setRouteCoordinates(fallbackPoints);
         setTotalDistance('--');
@@ -1474,9 +1479,11 @@ export default function NavigationScreen() {
       } else if (isNetworkError) {
         // Erreur réseau - afficher un warning discret
         console.warn('[Navigation] Erreur réseau, nouvelle tentative plus tard');
+        setRouteCoordinates(buildFallbackRoute());
       } else {
         // Autres erreurs - log seulement
         console.warn('[Navigation] Erreur itinéraire:', error?.data?.message || error?.message || 'Erreur inconnue');
+        setRouteCoordinates(buildFallbackRoute());
       }
     } finally {
       if (isMountedRef.current) {
@@ -1807,16 +1814,6 @@ export default function NavigationScreen() {
     router.replace(`/rate/${tripId}`);
   }, [dismissTripEndNotice, router, tripId]);
 
-  const handleSkipPickupAfterWait = useCallback(() => {
-    const passengerName = pickupNotice?.waypoint.passenger.name || 'le passager';
-    dismissPickupNotice();
-    showDialog({
-      variant: 'warning',
-      title: 'Vous pouvez poursuivre',
-      message: `${passengerName} ne s'est pas signalé dans le délai. Vous pouvez passer au point suivant et signaler le passager si nécessaire.`,
-    });
-  }, [dismissPickupNotice, pickupNotice?.waypoint.passenger.name, showDialog]);
-
   // Quitter la navigation
   const handleExitNavigation = useCallback(() => {
     showDialog({
@@ -1834,6 +1831,31 @@ export default function NavigationScreen() {
       ],
     });
   }, [navigateBackSafely, showDialog]);
+
+  const handleShareTrip = useCallback(async () => {
+    if (!tripId) return;
+
+    try {
+      await shareTrip(
+        tripId,
+        trip?.departure?.name ?? trip?.departure?.address,
+        trip?.arrival?.name ?? trip?.arrival?.address,
+      );
+    } catch (error: any) {
+      showDialog({
+        variant: 'danger',
+        title: 'Partage impossible',
+        message: error?.message || 'Impossible de partager le trajet pour le moment.',
+      });
+    }
+  }, [
+    showDialog,
+    trip?.arrival?.address,
+    trip?.arrival?.name,
+    trip?.departure?.address,
+    trip?.departure?.name,
+    tripId,
+  ]);
 
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -2542,6 +2564,15 @@ export default function NavigationScreen() {
           />
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={styles.floatingButton}
+          onPress={() => void handleShareTrip()}
+          accessibilityRole="button"
+          accessibilityLabel="Partager le trajet"
+        >
+          <Ionicons name="share-social-outline" size={22} color={Colors.primary} />
+        </TouchableOpacity>
+
         {/* Bouton recalculer l'itinéraire */}
         {passengerMapLocations.length > 0 && (
           <TouchableOpacity
@@ -2633,7 +2664,7 @@ export default function NavigationScreen() {
       </Modal>
 
       <Modal
-        visible={securityModalVisible}
+        visible={securityModalVisible && !backgroundDisclosureVisible}
         transparent
         animationType="slide"
         onRequestClose={() => setSecurityModalVisible(false)}
@@ -2686,7 +2717,11 @@ export default function NavigationScreen() {
       </Modal>
 
       <Modal
-        visible={Boolean(tripEndNotice)}
+        visible={
+          Boolean(tripEndNotice) &&
+          !backgroundDisclosureVisible &&
+          !securityModalVisible
+        }
         transparent
         animationType="slide"
         onRequestClose={dismissTripEndNotice}
@@ -2746,7 +2781,12 @@ export default function NavigationScreen() {
       </Modal>
 
       <Modal
-        visible={Boolean(pickupNotice)}
+        visible={
+          Boolean(pickupNotice) &&
+          !backgroundDisclosureVisible &&
+          !securityModalVisible &&
+          !tripEndNotice
+        }
         transparent
         animationType="slide"
         onRequestClose={dismissPickupNotice}
@@ -2821,21 +2861,8 @@ export default function NavigationScreen() {
                 style={styles.waypointModalSecondaryButton}
                 onPress={dismissPickupNotice}
               >
-                <Text style={styles.waypointModalSecondaryButtonText}>Compris</Text>
+                <Text style={styles.waypointModalSecondaryButtonText}>Fermer</Text>
               </TouchableOpacity>
-              {pickupNotice?.type === 'driver_arrived_pickup' && (
-                <TouchableOpacity
-                  style={[
-                    styles.waypointModalPrimaryButton,
-                    pickupNoticeCountdown !== 0 && { opacity: 0.45 },
-                  ]}
-                  onPress={handleSkipPickupAfterWait}
-                  disabled={pickupNoticeCountdown !== 0}
-                >
-                  <Ionicons name="arrow-forward-circle" size={20} color={Colors.white} />
-                  <Text style={styles.waypointModalPrimaryButtonText}>Passer</Text>
-                </TouchableOpacity>
-              )}
             </View>
           </View>
         </View>
@@ -2843,7 +2870,14 @@ export default function NavigationScreen() {
 
       {/* Modal de waypoint stylise */}
       <Modal
-        visible={waypointModalVisible && Boolean(activeWaypoint)}
+        visible={
+          waypointModalVisible &&
+          Boolean(activeWaypoint) &&
+          !backgroundDisclosureVisible &&
+          !securityModalVisible &&
+          !tripEndNotice &&
+          !pickupNotice
+        }
         transparent
         animationType="slide"
         onRequestClose={handleDismissWaypointModal}
@@ -2932,7 +2966,7 @@ export default function NavigationScreen() {
                 onPress={handleDismissWaypointModal}
               >
                 <Text style={styles.waypointModalSecondaryButtonText}>
-                  Compris
+                  Fermer
                 </Text>
               </TouchableOpacity>
             </View>
@@ -2951,7 +2985,14 @@ export default function NavigationScreen() {
 
       {/* Panneau des passagers */}
       <Modal
-        visible={passengersPanelVisible}
+        visible={
+          passengersPanelVisible &&
+          !backgroundDisclosureVisible &&
+          !securityModalVisible &&
+          !tripEndNotice &&
+          !pickupNotice &&
+          !waypointModalVisible
+        }
         transparent
         animationType="slide"
         onRequestClose={() => setPassengersPanelVisible(false)}
