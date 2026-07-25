@@ -189,7 +189,7 @@ export default function PassengerNavigationScreen() {
     pollingInterval: 30000, // Polling leger pour sync
   });
   const tripId = booking?.tripId || '';
-  const { data: trip, isLoading: tripLoading } = useGetTripByIdQuery(tripId, { 
+  const { data: trip, isLoading: tripLoading, refetch: refetchTrip } = useGetTripByIdQuery(tripId, {
     skip: !tripId,
     pollingInterval: 30000,
   });
@@ -226,6 +226,9 @@ export default function PassengerNavigationScreen() {
   const highestPickupNoticePriorityRef = useRef<Map<string, number>>(new Map());
   const hasDisplayedDriverNearNotificationRef = useRef(false);
   const hasPresentedBoardedNoticeRef = useRef(false);
+  const hasPresentedDestinationApproachNoticeRef = useRef(false);
+  const hasPresentedTripDestinationApproachNoticeRef = useRef(false);
+  const hasPresentedTripCompletedNoticeRef = useRef(false);
   const passengerLocationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const isMountedRef = useRef(true);
   const isExitingRef = useRef(false);
@@ -412,6 +415,98 @@ export default function PassengerNavigationScreen() {
     });
   }, [showDialog]);
 
+  const presentDestinationApproachNotice = useCallback((event: BookingAutoProgressEvent) => {
+    if (
+      !isMountedRef.current ||
+      event.type !== 'passenger_near_destination' ||
+      hasPresentedDestinationApproachNoticeRef.current
+    ) {
+      return;
+    }
+
+    hasPresentedDestinationApproachNoticeRef.current = true;
+    const roundedDistance =
+      typeof event.distanceMeters === 'number' && Number.isFinite(event.distanceMeters)
+        ? Math.max(1, Math.round(event.distanceMeters))
+        : null;
+    const distanceText = roundedDistance ? ` Distance detectee: ${roundedDistance} m.` : '';
+
+    showDialog({
+      variant: 'info',
+      icon: 'flag',
+      title: 'Votre arrivee approche',
+      message: `Votre point d'arrivee va etre atteint.${distanceText}`,
+    });
+
+    void Speech.stop().finally(() => {
+      if (!isMountedRef.current) return;
+      Speech.speak("Votre point d'arrivee va etre atteint.", {
+        language: 'fr-FR',
+        rate: 0.95,
+      });
+    });
+  }, [showDialog]);
+
+  const presentTripDestinationNotice = useCallback((event: BookingAutoProgressEvent) => {
+    if (
+      !isMountedRef.current ||
+      (event.type !== 'driver_near_destination' && event.type !== 'driver_arrived_destination')
+    ) {
+      return;
+    }
+
+    const isCompleted = event.type === 'driver_arrived_destination';
+    const alreadyPresented = isCompleted
+      ? hasPresentedTripCompletedNoticeRef.current
+      : hasPresentedTripDestinationApproachNoticeRef.current;
+    if (alreadyPresented) {
+      return;
+    }
+
+    if (isCompleted) {
+      hasPresentedTripCompletedNoticeRef.current = true;
+    } else {
+      hasPresentedTripDestinationApproachNoticeRef.current = true;
+    }
+
+    const roundedDistance =
+      typeof event.distanceMeters === 'number' && Number.isFinite(event.distanceMeters)
+        ? Math.max(1, Math.round(event.distanceMeters))
+        : null;
+    const distanceText = roundedDistance ? ` Distance detectee: ${roundedDistance} m.` : '';
+    const isReachedZone = !isCompleted && roundedDistance !== null && roundedDistance <= 10;
+
+    showDialog({
+      variant: isCompleted ? 'success' : 'info',
+      icon: 'flag',
+      title: isCompleted
+        ? 'Trajet termine'
+        : isReachedZone
+          ? 'Destination finale atteinte'
+          : 'Destination finale proche',
+      message: isCompleted
+        ? `Le trajet est termine automatiquement.${distanceText}`
+        : isReachedZone
+          ? `Le point d'arrivee du trajet est atteint. Le trajet sera termine automatiquement dans 5 minutes si le vehicule reste sur place.${distanceText}`
+          : `Le point d'arrivee du trajet est presque atteint.${distanceText}`,
+    });
+
+    void Speech.stop().finally(() => {
+      if (!isMountedRef.current) return;
+      Speech.speak(
+        isCompleted
+          ? 'Le trajet est termine automatiquement.'
+          : isReachedZone
+            ? "Le point d'arrivee du trajet est atteint."
+            : "Le point d'arrivee du trajet est presque atteint.",
+        {
+          language: 'fr-FR',
+          rate: 0.95,
+        },
+      );
+    });
+  }, [showDialog]);
+
   useEffect(() => {
     if (!pickupNotice?.expiresAt) {
       setPickupNoticeCountdown(null);
@@ -438,6 +533,9 @@ export default function PassengerNavigationScreen() {
     hasPresentedArrivalModalRef.current = false;
     hasDisplayedDriverNearNotificationRef.current = false;
     hasPresentedBoardedNoticeRef.current = false;
+    hasPresentedDestinationApproachNoticeRef.current = false;
+    hasPresentedTripDestinationApproachNoticeRef.current = false;
+    hasPresentedTripCompletedNoticeRef.current = false;
     presentedPickupNoticeKeysRef.current.clear();
     highestPickupNoticePriorityRef.current.clear();
     setArrivalModalVisible(false);
@@ -641,6 +739,11 @@ export default function PassengerNavigationScreen() {
     const unsubscribeAutoProgress = trackingSocket.subscribeToBookingAutoProgress((payload) => {
       if (!isMountedRef.current || payload.tripId !== tripId) return;
       const bookingEvents = payload.events.filter((event) => event.bookingId === bookingId);
+      const tripDestinationEvents = payload.events.filter(
+        (event) =>
+          event.type === 'driver_near_destination' ||
+          event.type === 'driver_arrived_destination',
+      );
       bookingEvents.forEach((event) => {
         if (
           event.type === 'driver_near_pickup' ||
@@ -652,12 +755,17 @@ export default function PassengerNavigationScreen() {
         if (event.type === 'pickup_confirmed') {
           presentBoardedNotice();
         }
+        if (event.type === 'passenger_near_destination') {
+          presentDestinationApproachNotice(event);
+        }
       });
       if (bookingEvents.some((event) => event.type === 'dropoff_confirmed')) {
         presentArrivalModal();
       }
-      if (bookingEvents.length > 0) {
+      tripDestinationEvents.forEach(presentTripDestinationNotice);
+      if (bookingEvents.length > 0 || tripDestinationEvents.length > 0) {
         refetchBooking();
+        refetchTrip();
       }
     });
 
@@ -683,10 +791,13 @@ export default function PassengerNavigationScreen() {
   }, [
     bookingId,
     isTripOngoing,
+    presentDestinationApproachNotice,
     presentArrivalModal,
     presentBoardedNotice,
     presentPickupNotice,
+    presentTripDestinationNotice,
     refetchBooking,
+    refetchTrip,
     tripId,
   ]);
 
@@ -726,24 +837,40 @@ export default function PassengerNavigationScreen() {
           });
 
         if (response.autoProgress?.events?.length && isMountedRef.current) {
-          response.autoProgress.events
-            .filter((event) => event.bookingId === booking.id)
-            .forEach((event) => {
-              if (
-                event.type === 'driver_near_pickup' ||
-                event.type === 'driver_arrived_pickup' ||
-                event.type === 'parties_nearby'
-              ) {
-                presentPickupNotice(event as BookingAutoProgressEvent);
-              }
-              if (event.type === 'pickup_confirmed') {
-                presentBoardedNotice();
-              }
-              if (event.type === 'dropoff_confirmed') {
-                presentArrivalModal();
-              }
-            });
+          const bookingEvents = response.autoProgress.events.filter(
+            (event) => event.bookingId === booking.id,
+          );
+          const tripDestinationEvents = response.autoProgress.events.filter(
+            (event) =>
+              event.type === 'driver_near_destination' ||
+              event.type === 'driver_arrived_destination',
+          );
+
+          bookingEvents.forEach((event) => {
+            if (
+              event.type === 'driver_near_pickup' ||
+              event.type === 'driver_arrived_pickup' ||
+              event.type === 'parties_nearby'
+            ) {
+              presentPickupNotice(event as BookingAutoProgressEvent);
+            }
+            if (event.type === 'pickup_confirmed') {
+              presentBoardedNotice();
+            }
+            if (event.type === 'passenger_near_destination') {
+              presentDestinationApproachNotice(event as BookingAutoProgressEvent);
+            }
+            if (event.type === 'dropoff_confirmed') {
+              presentArrivalModal();
+            }
+          });
+          tripDestinationEvents.forEach((event) => {
+            presentTripDestinationNotice(event as BookingAutoProgressEvent);
+          });
           refetchBooking();
+          if (tripDestinationEvents.length > 0) {
+            refetchTrip();
+          }
         }
       } catch (error) {
         console.warn('[PassengerNavigation] Position passager non envoyee:', error);
@@ -811,10 +938,13 @@ export default function PassengerNavigationScreen() {
     booking?.id,
     booking?.status,
     isTripOngoing,
+    presentDestinationApproachNotice,
     presentArrivalModal,
     presentBoardedNotice,
     presentPickupNotice,
+    presentTripDestinationNotice,
     refetchBooking,
+    refetchTrip,
     showDialog,
     tripId,
     updatePassengerLocation,

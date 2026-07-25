@@ -194,8 +194,10 @@ const HOME_AUTO_PROGRESS_PRIORITY: Record<HomeAutoProgressEvent['type'], number>
   parties_nearby: 2,
   passenger_ready_pickup: 3,
   pickup_confirmed: 4,
-  dropoff_confirmed: 5,
-  driver_arrived_destination: 6,
+  passenger_near_destination: 5,
+  dropoff_confirmed: 6,
+  driver_near_destination: 7,
+  driver_arrived_destination: 8,
 };
 
 const EMPTY_HOME_TRIPS: Trip[] = [];
@@ -1470,7 +1472,7 @@ export default function HomeScreen() {
 
       payload.events
         .filter((event) => {
-          if (event.type === 'driver_arrived_destination') {
+          if (event.type === 'driver_near_destination' || event.type === 'driver_arrived_destination') {
             return isHomeDriverTracking;
           }
           if (!event.bookingId) {
@@ -1512,6 +1514,10 @@ export default function HomeScreen() {
               ? Math.max(1, Math.round(event.distanceMeters))
               : null;
           const distanceText = roundedDistance ? ` Distance detectee: ${roundedDistance} m.` : '';
+          const isTripDestinationReachedZone =
+            event.type === 'driver_near_destination' &&
+            roundedDistance !== null &&
+            roundedDistance <= 10;
 
           const dialogByType: Record<
             HomeAutoProgressEvent['type'],
@@ -1558,6 +1564,14 @@ export default function HomeScreen() {
                 ? `${passengerName} a ete embarque.`
                 : 'Votre prise en charge est confirmee.',
             },
+            passenger_near_destination: {
+              variant: 'info',
+              icon: 'flag',
+              title: isHomeDriverTracking ? 'Destination passager proche' : 'Votre arrivee approche',
+              message: isHomeDriverTracking
+                ? `Le point d'arrivee de ${passengerName} va etre atteint.${distanceText}`
+                : `Votre point d'arrivee va etre atteint.${distanceText}`,
+            },
             dropoff_confirmed: {
               variant: 'success',
               icon: 'flag',
@@ -1565,6 +1579,16 @@ export default function HomeScreen() {
               message: isHomeDriverTracking
                 ? `Nous sommes arrives au point de destination de ${passengerName}.`
                 : 'Votre arrivee a destination est confirmee.',
+            },
+            driver_near_destination: {
+              variant: 'info',
+              icon: 'flag',
+              title: isTripDestinationReachedZone
+                ? 'Destination finale atteinte'
+                : 'Destination finale proche',
+              message: isTripDestinationReachedZone
+                ? `Le point d'arrivee du trajet est atteint. Le trajet sera termine automatiquement dans 5 minutes si le vehicule reste sur place.${distanceText}`
+                : `Le point d'arrivee du trajet est presque atteint.${distanceText}`,
             },
             driver_arrived_destination: {
               variant: 'success',

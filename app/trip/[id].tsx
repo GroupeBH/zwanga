@@ -160,8 +160,10 @@ const TRIP_DETAIL_AUTO_PROGRESS_PRIORITY: Record<TripDetailAutoProgressEvent['ty
   parties_nearby: 2,
   passenger_ready_pickup: 3,
   pickup_confirmed: 4,
-  dropoff_confirmed: 5,
-  driver_arrived_destination: 6,
+  passenger_near_destination: 5,
+  dropoff_confirmed: 6,
+  driver_near_destination: 7,
+  driver_arrived_destination: 8,
 };
 const formatTripPaymentPhone = (value?: string | null) => {
   const digits = (value ?? '').replace(/\D/g, '');
@@ -1021,7 +1023,7 @@ export default function TripDetailsScreen() {
         return;
       }
 
-      if (event.type === 'driver_arrived_destination') {
+      if (event.type === 'driver_near_destination' || event.type === 'driver_arrived_destination') {
         if (!isTripDriver) {
           return;
         }
@@ -1035,14 +1037,29 @@ export default function TripDetailsScreen() {
           typeof event.distanceMeters === 'number' && Number.isFinite(event.distanceMeters)
             ? Math.max(1, Math.round(event.distanceMeters))
             : null;
-        const distanceText = roundedDistance ? ` Arrivee detectee a ${roundedDistance} m.` : '';
+        const isTripCompletedEvent = event.type === 'driver_arrived_destination';
+        const distanceText = roundedDistance
+          ? isTripCompletedEvent
+            ? ` Arrivee detectee a ${roundedDistance} m.`
+            : ` Distance detectee: ${roundedDistance} m.`
+          : '';
+        const isReachedZone =
+          !isTripCompletedEvent && roundedDistance !== null && roundedDistance <= 10;
 
         presentedTripDetailAutoProgressKeysRef.current.add(key);
         showDialog({
-          variant: 'success',
+          variant: isTripCompletedEvent ? 'success' : 'info',
           icon: 'flag',
-          title: 'Trajet termine',
-          message: `Vous avez atteint la destination finale.${distanceText}`,
+          title: isTripCompletedEvent
+            ? 'Trajet termine'
+            : isReachedZone
+              ? 'Destination finale atteinte'
+              : 'Destination finale proche',
+          message: isTripCompletedEvent
+            ? `Vous avez atteint la destination finale.${distanceText}`
+            : isReachedZone
+              ? `Le point d'arrivee du trajet est atteint. Le trajet sera termine automatiquement dans 5 minutes si le vehicule reste sur place.${distanceText}`
+              : `Le point d'arrivee du trajet est presque atteint.${distanceText}`,
         });
         return;
       }
@@ -1083,10 +1100,13 @@ export default function TripDetailsScreen() {
         typeof event.distanceMeters === 'number' && Number.isFinite(event.distanceMeters)
           ? Math.max(10, Math.round(event.distanceMeters / 10) * 10)
           : null;
-      const distanceText = roundedDistance ? ` Il est \u00e0 environ ${roundedDistance} m.` : '';
+      const distanceText = roundedDistance ? ` Distance detectee: environ ${roundedDistance} m.` : '';
 
       const dialogByType: Record<
-        Exclude<TripDetailAutoProgressEvent['type'], 'driver_arrived_destination'>,
+        Exclude<
+          TripDetailAutoProgressEvent['type'],
+          'driver_near_destination' | 'driver_arrived_destination'
+        >,
         {
           variant: 'info' | 'success' | 'warning' | 'danger';
           icon: keyof typeof Ionicons.glyphMap;
@@ -1129,6 +1149,14 @@ export default function TripDetailsScreen() {
           message: isTripDriver
             ? `${passengerName} a \u00e9t\u00e9 embarqu\u00e9. Vous pouvez continuer vers sa destination.`
             : 'Votre prise en charge est confirm\u00e9e. Vous \u00eates maintenant en route vers votre destination.',
+        },
+        passenger_near_destination: {
+          variant: 'info',
+          icon: 'flag',
+          title: isTripDriver ? 'Destination passager proche' : 'Votre arrivee approche',
+          message: isTripDriver
+            ? `Le point d'arrivee de ${passengerName} va etre atteint.${distanceText}`
+            : `Votre point d'arrivee va etre atteint.${distanceText}`,
         },
         dropoff_confirmed: {
           variant: 'success',
