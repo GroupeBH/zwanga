@@ -15,7 +15,9 @@ import {
   type PassengerLocationPayload,
 } from '@/services/trackingSocket';
 import {
-  useGetTripBookingsQuery
+  useAcceptBookingMutation,
+  useGetTripBookingsQuery,
+  useRejectBookingMutation,
 } from '@/store/api/bookingApi';
 import { TravelMode, useGetDirectionsMutation } from '@/store/api/googleMapsApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
@@ -163,6 +165,36 @@ const formatDistanceForSpeech = (distanceInMeters: number): string => {
   return `${roundedMeters} mètres`;
 };
 
+const formatSeatCount = (seats: number): string => {
+  const safeSeats = Number.isFinite(seats) && seats > 0 ? Math.round(seats) : 1;
+  return `${safeSeats} place${safeSeats > 1 ? 's' : ''}`;
+};
+
+const formatPendingBookingPayment = (booking: Booking, tripPrice?: number): string => {
+  if (booking.paymentMode === 'cash') {
+    return 'Cash';
+  }
+
+  if (booking.paymentMode === 'points') {
+    return 'Points';
+  }
+
+  if (booking.paymentMode === 'electronic') {
+    return 'Mobile money';
+  }
+
+  if (!tripPrice || tripPrice <= 0) {
+    return 'Gratuit';
+  }
+
+  return `${tripPrice * booking.numberOfSeats} FC`;
+};
+
+const getBookingActionErrorMessage = (error: any, fallback: string): string => {
+  const message = error?.data?.message ?? error?.error;
+  return Array.isArray(message) ? message.join('\n') : message || fallback;
+};
+
 export default function NavigationScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -181,6 +213,8 @@ export default function NavigationScreen() {
     },
   );
   const [getDirections] = useGetDirectionsMutation();
+  const [acceptBooking, { isLoading: isAcceptingBooking }] = useAcceptBookingMutation();
+  const [rejectBooking, { isLoading: isRejectingBooking }] = useRejectBookingMutation();
   const tripDepartureCoordinate = useMemo(
     () =>
       getTripLocationCoordinate({
@@ -227,6 +261,7 @@ export default function NavigationScreen() {
   const [pickupNotice, setPickupNotice] = useState<PickupNotice | null>(null);
   const [pickupNoticeCountdown, setPickupNoticeCountdown] = useState<number | null>(null);
   const [tripEndNotice, setTripEndNotice] = useState<TripEndNotice | null>(null);
+  const [processingBookingId, setProcessingBookingId] = useState<string | null>(null);
   const pickupNoticeRef = useRef<PickupNotice | null>(null);
   const tripEndNoticeRef = useRef<TripEndNotice | null>(null);
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
@@ -306,6 +341,26 @@ export default function NavigationScreen() {
   }, [bookings, livePassengerLocations, tripArrivalCoordinate, tripDepartureCoordinate]);
   
   // Refs pour éviter les re-rendus excessifs
+  const pendingNavigationBookings = useMemo(
+    () => (bookings ?? []).filter((booking) => booking.status === 'pending'),
+    [bookings],
+  );
+  const activePendingBooking = pendingNavigationBookings[0] ?? null;
+  const activePendingBookingPickupLabel =
+    activePendingBooking?.passengerOrigin ||
+    trip?.departure?.address ||
+    trip?.departure?.name ||
+    'Point de montee';
+  const activePendingBookingDropoffLabel =
+    activePendingBooking?.passengerDestination ||
+    trip?.arrival?.address ||
+    trip?.arrival?.name ||
+    'Point de depose';
+  const pendingBookingQueueCount = Math.max(0, pendingNavigationBookings.length - 1);
+  const isProcessingPendingBooking = Boolean(
+    activePendingBooking && processingBookingId === activePendingBooking.id,
+  );
+
   const routeFetchedRef = useRef(false);
   const routeCoordinatesRef = useRef<{ latitude: number; longitude: number }[]>([]);
   const lastRouteFetchTimeRef = useRef(0);
@@ -1699,6 +1754,63 @@ export default function NavigationScreen() {
     }
   };
 
+  const handleAcceptPendingBooking = useCallback(
+    async (booking: Booking) => {
+      setProcessingBookingId(booking.id);
+      try {
+        await acceptBooking(booking.id).unwrap();
+        lastRouteFetchTimeRef.current = 0;
+        routeFetchedRef.current = false;
+        await Promise.all([refetchBookings(), refetchTrip()]);
+        void speakNavigationMessage(
+          `${booking.passengerName || 'Passager'} accepte. Recalcul de l'itineraire.`,
+          { force: true },
+        );
+      } catch (error: any) {
+        showDialog({
+          variant: 'danger',
+          title: 'Reservation impossible',
+          message: getBookingActionErrorMessage(
+            error,
+            'Impossible d accepter cette reservation pour le moment.',
+          ),
+        });
+      } finally {
+        setProcessingBookingId(null);
+      }
+    },
+    [acceptBooking, refetchBookings, refetchTrip, showDialog, speakNavigationMessage],
+  );
+
+  const handleRejectPendingBooking = useCallback(
+    async (booking: Booking) => {
+      setProcessingBookingId(booking.id);
+      try {
+        await rejectBooking({
+          id: booking.id,
+          reason: 'Refus depuis la navigation conducteur',
+        }).unwrap();
+        await Promise.all([refetchBookings(), refetchTrip()]);
+        void speakNavigationMessage(
+          `${booking.passengerName || 'Passager'} refuse.`,
+          { force: true },
+        );
+      } catch (error: any) {
+        showDialog({
+          variant: 'danger',
+          title: 'Refus impossible',
+          message: getBookingActionErrorMessage(
+            error,
+            'Impossible de refuser cette reservation pour le moment.',
+          ),
+        });
+      } finally {
+        setProcessingBookingId(null);
+      }
+    },
+    [refetchBookings, refetchTrip, rejectBooking, showDialog, speakNavigationMessage],
+  );
+
   const fitVehicleAndPassengers = useCallback(() => {
     if (!mapRef.current) return;
 
@@ -2410,13 +2522,14 @@ export default function NavigationScreen() {
       </View>
 
       {/* Barre compacte des passagers */}
-      {isTripOngoing && waypoints.length > 0 && (
+      {isTripOngoing && (waypoints.length > 0 || activePendingBooking) && (
         <View style={styles.passengersBar}>
           {/* Stats des passagers */}
-          <TouchableOpacity 
-            style={styles.passengersStatsButton}
-            onPress={() => setPassengersPanelVisible(true)}
-          >
+          {waypoints.length > 0 && (
+            <TouchableOpacity
+              style={styles.passengersStatsButton}
+              onPress={() => setPassengersPanelVisible(true)}
+            >
             <View style={styles.passengersBadge}>
               <Ionicons name="people" size={16} color={Colors.white} />
               <Text style={styles.passengersBadgeText}>{passengerStats.totalPassengers}</Text>
@@ -2435,7 +2548,8 @@ export default function NavigationScreen() {
               )}
             </View>
             <Ionicons name="chevron-up" size={20} color={Colors.gray[500]} />
-          </TouchableOpacity>
+            </TouchableOpacity>
+          )}
 
           {/* Prochain waypoint compact */}
           {currentWaypointIndex < waypoints.length && !waypoints[currentWaypointIndex].completed && (
@@ -2498,6 +2612,96 @@ export default function NavigationScreen() {
                 </Text>
               </View>
             </TouchableOpacity>
+          )}
+
+          {activePendingBooking && (
+            <View style={styles.pendingBookingPrompt}>
+              <View style={styles.pendingBookingHeader}>
+                <View style={styles.pendingBookingIcon}>
+                  <Ionicons name="person-add-outline" size={18} color={Colors.primary} />
+                </View>
+                <View style={styles.pendingBookingTitleWrap}>
+                  <Text style={styles.pendingBookingEyebrow}>
+                    Nouvelle reservation
+                    {pendingBookingQueueCount > 0 ? ` +${pendingBookingQueueCount}` : ''}
+                  </Text>
+                  <Text style={styles.pendingBookingTitle} numberOfLines={1}>
+                    {activePendingBooking.passengerName || 'Passager'}
+                  </Text>
+                </View>
+                <View style={styles.pendingBookingSeatPill}>
+                  <Ionicons name="people-outline" size={14} color={Colors.primaryDark} />
+                  <Text style={styles.pendingBookingSeatText}>
+                    {formatSeatCount(activePendingBooking.numberOfSeats)}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.pendingBookingRoute}>
+                <View style={styles.pendingBookingRouteRow}>
+                  <View style={[styles.pendingBookingRouteDot, styles.pendingBookingPickupDot]} />
+                  <Text style={styles.pendingBookingRouteLabel} numberOfLines={1}>
+                    {activePendingBookingPickupLabel}
+                  </Text>
+                </View>
+                <View style={styles.pendingBookingRouteRow}>
+                  <View style={[styles.pendingBookingRouteDot, styles.pendingBookingDropoffDot]} />
+                  <Text style={styles.pendingBookingRouteLabel} numberOfLines={1}>
+                    {activePendingBookingDropoffLabel}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.pendingBookingFooter}>
+                <Text style={styles.pendingBookingPaymentText} numberOfLines={1}>
+                  {formatPendingBookingPayment(activePendingBooking, trip?.price)}
+                </Text>
+                <View style={styles.pendingBookingActions}>
+                  <TouchableOpacity
+                    style={[
+                      styles.pendingBookingActionButton,
+                      styles.pendingBookingRejectButton,
+                      isProcessingPendingBooking && styles.pendingBookingActionDisabled,
+                    ]}
+                    onPress={() => void handleRejectPendingBooking(activePendingBooking)}
+                    disabled={isAcceptingBooking || isRejectingBooking || isProcessingPendingBooking}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel="Refuser la reservation"
+                  >
+                    {isProcessingPendingBooking && isRejectingBooking ? (
+                      <ActivityIndicator size="small" color={Colors.danger} />
+                    ) : (
+                      <>
+                        <Ionicons name="close" size={18} color={Colors.danger} />
+                        <Text style={styles.pendingBookingRejectText}>Refuser</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.pendingBookingActionButton,
+                      styles.pendingBookingAcceptButton,
+                      isProcessingPendingBooking && styles.pendingBookingActionDisabled,
+                    ]}
+                    onPress={() => void handleAcceptPendingBooking(activePendingBooking)}
+                    disabled={isAcceptingBooking || isRejectingBooking || isProcessingPendingBooking}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel="Accepter la reservation"
+                  >
+                    {isProcessingPendingBooking && isAcceptingBooking ? (
+                      <ActivityIndicator size="small" color={Colors.white} />
+                    ) : (
+                      <>
+                        <Ionicons name="checkmark" size={18} color={Colors.white} />
+                        <Text style={styles.pendingBookingAcceptText}>Accepter</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
           )}
         </View>
       )}
@@ -3844,6 +4048,132 @@ const styles = StyleSheet.create({
   gpsStatusPillText: {
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
+  },
+  pendingBookingPrompt: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  pendingBookingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  pendingBookingIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '14',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pendingBookingTitleWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  pendingBookingEyebrow: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.primaryDark,
+    textTransform: 'uppercase',
+  },
+  pendingBookingTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  pendingBookingSeatPill: {
+    minHeight: 30,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.primary + '12',
+  },
+  pendingBookingSeatText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.primaryDark,
+  },
+  pendingBookingRoute: {
+    gap: 6,
+  },
+  pendingBookingRouteRow: {
+    minHeight: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  pendingBookingRouteDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  pendingBookingPickupDot: {
+    backgroundColor: Colors.secondary,
+  },
+  pendingBookingDropoffDot: {
+    backgroundColor: Colors.success,
+  },
+  pendingBookingRouteLabel: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+  },
+  pendingBookingFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  pendingBookingPaymentText: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[800],
+  },
+  pendingBookingActions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  pendingBookingActionButton: {
+    minWidth: 92,
+    height: 42,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  pendingBookingRejectButton: {
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.danger + '55',
+  },
+  pendingBookingAcceptButton: {
+    backgroundColor: Colors.primary,
+  },
+  pendingBookingActionDisabled: {
+    opacity: 0.62,
+  },
+  pendingBookingRejectText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.danger,
+  },
+  pendingBookingAcceptText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
   },
   // Panneau des passagers
   passengersPanelOverlay: {
