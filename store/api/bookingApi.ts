@@ -57,10 +57,12 @@ type ServerBooking = {
   pickedUpAt?: string | null;
   pickedUpConfirmedByPassenger?: boolean;
   pickedUpConfirmedAt?: string | null;
+  driverPickupArrivedAt?: string | null;
   droppedOff?: boolean;
   droppedOffAt?: string | null;
   droppedOffConfirmedByPassenger?: boolean;
   droppedOffConfirmedAt?: string | null;
+  passengerDestinationApproachNotifiedAt?: string | null;
   safetyEmergencyContactIds?: string[] | null;
 };
 
@@ -157,10 +159,13 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
   pickedUpAt: booking.pickedUpAt ?? undefined,
   pickedUpConfirmedByPassenger: booking.pickedUpConfirmedByPassenger ?? false,
   pickedUpConfirmedAt: booking.pickedUpConfirmedAt ?? undefined,
+  driverPickupArrivedAt: booking.driverPickupArrivedAt ?? undefined,
   droppedOff: booking.droppedOff ?? false,
   droppedOffAt: booking.droppedOffAt ?? undefined,
   droppedOffConfirmedByPassenger: booking.droppedOffConfirmedByPassenger ?? false,
   droppedOffConfirmedAt: booking.droppedOffConfirmedAt ?? undefined,
+  passengerDestinationApproachNotifiedAt:
+    booking.passengerDestinationApproachNotifiedAt ?? undefined,
   safetyEmergencyContactIds: booking.safetyEmergencyContactIds ?? [],
 });
 

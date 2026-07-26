@@ -47,8 +47,6 @@ const MAX_PASSENGER_ROUTE_POINTS = Platform.OS === 'ios' ? 180 : 250;
 const IS_ANDROID = Platform.OS === 'android';
 const DRIVER_NEAR_PICKUP_DISTANCE_KM = 0.2;
 const PASSENGER_READY_PICKUP_DISTANCE_KM = 0.005;
-const MOVING_TOGETHER_DISTANCE_KM = 0.025;
-const MOVING_TOGETHER_PICKUP_EXIT_DISTANCE_KM = 0.03;
 
 type BookingAutoProgressEvent = BookingAutoProgressPayload['events'][number];
 type PassengerPickupNoticeType = 'driver_near_pickup' | 'driver_arrived_pickup' | 'parties_nearby';
@@ -108,16 +106,12 @@ function decodePolyline(encoded: string): { latitude: number; longitude: number 
 
     const latitude = lat / 1e5;
     const longitude = lng / 1e5;
-    if (
-      !Number.isFinite(latitude) ||
-      !Number.isFinite(longitude) ||
-      Math.abs(latitude) > 90 ||
-      Math.abs(longitude) > 180
-    ) {
-      break;
+    const coordinate = normalizeTripMapCoordinate(latitude, longitude);
+    if (!coordinate) {
+      return [];
     }
 
-    points.push({ latitude, longitude });
+    points.push(coordinate);
   }
 
   // Limiter le nombre de points pour les performances
@@ -889,10 +883,19 @@ export default function PassengerNavigationScreen() {
 
     const sendLocation = async (location: Location.LocationObject) => {
       if (isCancelled || !isMountedRef.current) return;
-      setPassengerLocation({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      });
+      const coordinate = normalizeTripMapCoordinate(
+        location.coords.latitude,
+        location.coords.longitude,
+      );
+      if (!coordinate) {
+        console.warn('[PassengerNavigation] Position passager ignoree car invalide:', {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
+        return;
+      }
+
+      setPassengerLocation(coordinate);
 
       const now = Date.now();
       if (now - lastSentAt < SEND_INTERVAL_MS) return;
@@ -901,8 +904,8 @@ export default function PassengerNavigationScreen() {
       try {
         const response = await updatePassengerLocation({
           bookingId: booking.id,
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
+          latitude: coordinate.latitude,
+          longitude: coordinate.longitude,
         }).unwrap();
 
         void trackingSocket
@@ -1108,18 +1111,7 @@ export default function PassengerNavigationScreen() {
       });
     }
 
-    if (passengerLocation && pickupCoordinate) {
-      const driverPickupDistanceKm = calculateDistance(displayedDriverLocation, pickupCoordinate);
-      const passengerPickupDistanceKm = calculateDistance(passengerLocation, pickupCoordinate);
-
-      if (
-        distanceToDriverKm <= MOVING_TOGETHER_DISTANCE_KM &&
-        driverPickupDistanceKm > MOVING_TOGETHER_PICKUP_EXIT_DISTANCE_KM &&
-        passengerPickupDistanceKm > MOVING_TOGETHER_PICKUP_EXIT_DISTANCE_KM
-      ) {
-        presentBoardedNotice();
-      }
-    }
+    // La confirmation pickup est decidee par le backend a partir de l'historique Redis.
   }, [
     booking?.droppedOff,
     booking?.droppedOffConfirmedByPassenger,
@@ -1131,7 +1123,6 @@ export default function PassengerNavigationScreen() {
     isTripOngoing,
     passengerLocation,
     pickupCoordinate,
-    presentBoardedNotice,
     presentPickupNotice,
     tripId,
   ]);

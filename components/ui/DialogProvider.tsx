@@ -6,7 +6,7 @@ import React, {
   useState,
   type ReactNode,
 } from 'react';
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 
@@ -134,6 +134,18 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const getActionLoaderColor = (action: DialogAction) => {
+    if (action.variant === 'primary') {
+      return Colors.white;
+    }
+
+    if (action.variant === 'danger' || action.variant === 'destructive') {
+      return Colors.danger;
+    }
+
+    return Colors.primary;
+  };
+
   return (
     <DialogContext.Provider value={value}>
       {children}
@@ -148,34 +160,43 @@ export function DialogProvider({ children }: { children: ReactNode }) {
             <Text style={styles.title}>{dialog?.title}</Text>
             {dialog?.message ? <Text style={styles.message}>{dialog.message}</Text> : null}
             <View style={styles.actions}>
-              {dialog?.actions?.map((action) => (
-                <TouchableOpacity
-                  key={action.label}
-                  onPress={() => handleActionPress(action)}
-                  disabled={Boolean(runningActionLabel)}
-                  style={[
-                    styles.actionButton,
-                    action.variant === 'primary' && styles.actionPrimary,
-                    action.variant === 'secondary' && styles.actionSecondary,
-                    action.variant === 'ghost' && styles.actionGhost,
-                    (action.variant === 'danger' || action.variant === 'destructive') &&
-                      styles.actionDanger,
-                    runningActionLabel && action.label !== runningActionLabel && styles.actionDisabled,
-                  ]}
-                >
-                  <Text
+              {dialog?.actions?.map((action) => {
+                const isRunningAction = runningActionLabel === action.label;
+
+                return (
+                  <TouchableOpacity
+                    key={action.label}
+                    onPress={() => handleActionPress(action)}
+                    disabled={Boolean(runningActionLabel)}
                     style={[
-                      styles.actionText,
-                      action.variant === 'primary' && styles.actionTextPrimary,
-                      action.variant === 'ghost' && styles.actionTextGhost,
+                      styles.actionButton,
+                      action.variant === 'primary' && styles.actionPrimary,
+                      action.variant === 'secondary' && styles.actionSecondary,
+                      action.variant === 'ghost' && styles.actionGhost,
                       (action.variant === 'danger' || action.variant === 'destructive') &&
-                        styles.actionTextDanger,
+                        styles.actionDanger,
+                      runningActionLabel && action.label !== runningActionLabel && styles.actionDisabled,
                     ]}
                   >
-                    {action.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <View style={styles.actionContent}>
+                      {isRunningAction && (
+                        <ActivityIndicator size="small" color={getActionLoaderColor(action)} />
+                      )}
+                      <Text
+                        style={[
+                          styles.actionText,
+                          action.variant === 'primary' && styles.actionTextPrimary,
+                          action.variant === 'ghost' && styles.actionTextGhost,
+                          (action.variant === 'danger' || action.variant === 'destructive') &&
+                            styles.actionTextDanger,
+                        ]}
+                      >
+                        {action.label}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
         </View>
@@ -243,6 +264,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Colors.gray[200],
+  },
+  actionContent: {
+    minHeight: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
   },
   actionPrimary: {
     backgroundColor: Colors.primary,

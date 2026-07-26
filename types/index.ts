@@ -294,11 +294,13 @@ export interface Booking {
   pickedUpAt?: string | null;
   pickedUpConfirmedByPassenger?: boolean;
   pickedUpConfirmedAt?: string | null;
+  driverPickupArrivedAt?: string | null;
   // Signalement et confirmation de l'arrivée
   droppedOff?: boolean;
   droppedOffAt?: string | null;
   droppedOffConfirmedByPassenger?: boolean;
   droppedOffConfirmedAt?: string | null;
+  passengerDestinationApproachNotifiedAt?: string | null;
   safetyEmergencyContactIds?: string[];
 }
 
