@@ -16,12 +16,20 @@ import {
 } from '@/services/trackingSocket';
 import {
   useAcceptBookingMutation,
+  useConfirmPickupMutation,
+  useConfirmDropoffMutation,
   useGetTripBookingsQuery,
   useRejectBookingMutation,
 } from '@/store/api/bookingApi';
 import { TravelMode, useGetDirectionsMutation } from '@/store/api/googleMapsApi';
-import { useGetTripByIdQuery } from '@/store/api/tripApi';
-import type { Booking } from '@/types';
+import {
+  useCompleteTripMutation,
+  useGetTripByIdQuery,
+  usePauseTripMutation,
+  useStartTripMutation,
+  useUpdateDriverLocationMutation,
+} from '@/store/api/tripApi';
+import type { Booking, Trip } from '@/types';
 import {
   areTripMapCoordinatesSame,
   getTripLocationCoordinate,
@@ -37,7 +45,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   BackHandler,
-  Dimensions,
   Modal,
   Platform,
   ScrollView,
@@ -50,8 +57,6 @@ import {
 } from 'react-native';
 import MapView, { AnimatedRegion, Marker, Polyline, PROVIDER_GOOGLE, type MapMarker } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-const { width, height } = Dimensions.get('window');
 
 interface RouteStep {
   distance: { text: string; value: number };
@@ -78,9 +83,11 @@ interface Waypoint {
   completed: boolean;
 }
 
+type RouteCoordinate = { latitude: number; longitude: number };
+
 interface PassengerMapLocation {
   bookingId: string;
-  coordinate: { latitude: number; longitude: number };
+  coordinate: RouteCoordinate;
   isLive: boolean;
   passengerId: string;
   passengerName: string;
@@ -88,6 +95,12 @@ interface PassengerMapLocation {
 }
 
 type RouteSectionFocus = 'next' | 'remaining';
+
+type FetchRouteOptions = {
+  originOverride?: RouteCoordinate;
+  announceReroute?: boolean;
+  fitToRoute?: boolean;
+};
 
 type PickupNoticeEventType =
   | 'driver_arrived_pickup'
@@ -111,7 +124,7 @@ interface TripEndNotice {
 }
 
 type LivePassengerLocation = {
-  coordinate: { latitude: number; longitude: number };
+  coordinate: RouteCoordinate;
   updatedAt?: string | null;
 };
 
@@ -123,8 +136,16 @@ const USE_ANDROID_NAVIGATION_MARKER_IMAGES = Platform.OS === 'android';
 const ANDROID_PIN_MARKER_ANCHOR = { x: 0.5, y: 0.88 };
 const DRIVER_PICKUP_ARRIVAL_DISTANCE_KM = 0.05;
 const PASSENGER_READY_DISTANCE_KM = 0.005;
-const MOVING_TOGETHER_DISTANCE_KM = 0.025;
-const MOVING_TOGETHER_PICKUP_EXIT_DISTANCE_KM = 0.03;
+const DRIVER_DROPOFF_APPROACH_DISTANCE_KM = 0.04;
+const DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_KM = 0.02;
+const DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS = 3000;
+const DRIVER_LOCATION_BACKEND_UPDATE_INTERVAL_MS = 3000;
+const FRESH_DRIVER_LOCATION_MAX_AGE_MS = 30000;
+const OFF_ROUTE_DISTANCE_KM = 0.08;
+const OFF_ROUTE_MAX_ACCURACY_METERS = 80;
+const OFF_ROUTE_CONFIRMATION_COUNT = 2;
+const OFF_ROUTE_REROUTE_COOLDOWN_MS = 30000;
+const OFF_ROUTE_MIN_ROUTE_POINTS = 2;
 const PICKUP_NOTICE_PRIORITY: Record<PickupNoticeEventType, number> = {
   driver_arrived_pickup: 1,
   parties_nearby: 2,
@@ -195,6 +216,86 @@ const getBookingActionErrorMessage = (error: any, fallback: string): string => {
   return Array.isArray(message) ? message.join('\n') : message || fallback;
 };
 
+const hasBookingPickupCompleted = (booking?: Booking | null): boolean =>
+  Boolean(
+    booking?.pickedUp ||
+      booking?.pickedUpConfirmedByPassenger ||
+      booking?.pickedUpAt ||
+      booking?.pickedUpConfirmedAt,
+  );
+
+const hasBookingDropoffCompleted = (booking?: Booking | null): boolean =>
+  Boolean(
+    booking?.status === 'completed' ||
+      booking?.droppedOff ||
+      booking?.droppedOffConfirmedByPassenger ||
+      booking?.droppedOffAt ||
+      booking?.droppedOffConfirmedAt,
+  );
+
+const getTripLocationLabel = (
+  location: Trip['departure'] | Trip['arrival'] | undefined,
+  fallback: string,
+) => (location?.address || location?.name || fallback).trim();
+
+const getBookingPickupLabel = (booking: Booking | null | undefined, trip?: Trip | null) => {
+  const tripLabel = getTripLocationLabel(trip?.departure, 'Point de montee');
+  const bookingLabel = (booking?.passengerOrigin || booking?.passengerOriginReference || '').trim();
+  const hasPassengerCoordinate = Boolean(
+    normalizeTripMapCoordinate(
+      booking?.passengerOriginCoordinates?.latitude,
+      booking?.passengerOriginCoordinates?.longitude,
+    ),
+  );
+
+  return hasPassengerCoordinate ? bookingLabel || tripLabel : tripLabel || bookingLabel;
+};
+
+const getBookingDropoffLabel = (booking: Booking | null | undefined, trip?: Trip | null) => {
+  const tripLabel = getTripLocationLabel(trip?.arrival, 'Point de depose');
+  const bookingLabel = (
+    booking?.passengerDestination ||
+    booking?.passengerDestinationReference ||
+    ''
+  ).trim();
+  const hasPassengerCoordinate = Boolean(
+    normalizeTripMapCoordinate(
+      booking?.passengerDestinationCoordinates?.latitude,
+      booking?.passengerDestinationCoordinates?.longitude,
+    ),
+  );
+
+  return hasPassengerCoordinate ? bookingLabel || tripLabel : tripLabel || bookingLabel;
+};
+
+const isFreshLocationObject = (
+  location: Location.LocationObject | null,
+  maxAgeMs = FRESH_DRIVER_LOCATION_MAX_AGE_MS,
+): location is Location.LocationObject => {
+  if (!location) {
+    return false;
+  }
+
+  const timestamp = Number(location.timestamp);
+  return Number.isFinite(timestamp) && Date.now() - timestamp <= maxAgeMs;
+};
+
+const isFreshLivePassengerLocation = (
+  location: LivePassengerLocation | undefined,
+  maxAgeMs = FRESH_DRIVER_LOCATION_MAX_AGE_MS,
+) => {
+  if (!location) {
+    return false;
+  }
+
+  if (!location.updatedAt) {
+    return true;
+  }
+
+  const timestamp = new Date(location.updatedAt).getTime();
+  return Number.isFinite(timestamp) && Date.now() - timestamp <= maxAgeMs;
+};
+
 export default function NavigationScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -214,7 +315,13 @@ export default function NavigationScreen() {
   );
   const [getDirections] = useGetDirectionsMutation();
   const [acceptBooking, { isLoading: isAcceptingBooking }] = useAcceptBookingMutation();
+  const [confirmPickup] = useConfirmPickupMutation();
+  const [confirmDropoff] = useConfirmDropoffMutation();
   const [rejectBooking, { isLoading: isRejectingBooking }] = useRejectBookingMutation();
+  const [completeTrip] = useCompleteTripMutation();
+  const [pauseTrip, { isLoading: isPausingTrip }] = usePauseTripMutation();
+  const [startTrip, { isLoading: isRestartingTrip }] = useStartTripMutation();
+  const [updateDriverLocation] = useUpdateDriverLocationMutation();
   const tripDepartureCoordinate = useMemo(
     () =>
       getTripLocationCoordinate({
@@ -237,13 +344,14 @@ export default function NavigationScreen() {
   const mapRef = useRef<MapView>(null);
   const passengerMarkerRefs = useRef<Record<string, MapMarker | null>>({});
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
-  const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }>>([]);
+  const [routeCoordinates, setRouteCoordinates] = useState<RouteCoordinate[]>([]);
   const [steps, setSteps] = useState<RouteStep[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [currentLegIndex, setCurrentLegIndex] = useState(0);
+  const currentLegIndex = 0;
   const [totalDistance, setTotalDistance] = useState<string>('');
   const [totalDuration, setTotalDuration] = useState<string>('');
   const [isLoadingRoute, setIsLoadingRoute] = useState(true);
+  const [isReroutingRoute, setIsReroutingRoute] = useState(false);
   const [heading, setHeading] = useState<number>(0);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [isVoiceGuidanceEnabled, setIsVoiceGuidanceEnabled] = useState(true);
@@ -292,16 +400,12 @@ export default function NavigationScreen() {
           return false;
         }
 
-        const isPassengerDroppedOff = Boolean(
-          booking.status === 'completed' || booking.droppedOff || booking.droppedOffConfirmedByPassenger,
-        );
-        return !(booking.pickedUp && !isPassengerDroppedOff);
+        const isPassengerDroppedOff = hasBookingDropoffCompleted(booking);
+        return !(hasBookingPickupCompleted(booking) && !isPassengerDroppedOff);
       })
       .slice(0, MAX_LIVE_PASSENGER_MARKERS)
       .forEach((booking) => {
-        const isPassengerDroppedOff = Boolean(
-          booking.status === 'completed' || booking.droppedOff || booking.droppedOffConfirmedByPassenger,
-        );
+        const isPassengerDroppedOff = hasBookingDropoffCompleted(booking);
         const liveLocation = livePassengerLocations[booking.id];
         const apiLocation = normalizeTripMapCoordinate(
           booking.passengerLocationCoordinates?.latitude,
@@ -346,25 +450,22 @@ export default function NavigationScreen() {
     [bookings],
   );
   const activePendingBooking = pendingNavigationBookings[0] ?? null;
-  const activePendingBookingPickupLabel =
-    activePendingBooking?.passengerOrigin ||
-    trip?.departure?.address ||
-    trip?.departure?.name ||
-    'Point de montee';
-  const activePendingBookingDropoffLabel =
-    activePendingBooking?.passengerDestination ||
-    trip?.arrival?.address ||
-    trip?.arrival?.name ||
-    'Point de depose';
+  const activePendingBookingPickupLabel = getBookingPickupLabel(activePendingBooking, trip);
+  const activePendingBookingDropoffLabel = getBookingDropoffLabel(activePendingBooking, trip);
   const pendingBookingQueueCount = Math.max(0, pendingNavigationBookings.length - 1);
   const isProcessingPendingBooking = Boolean(
     activePendingBooking && processingBookingId === activePendingBooking.id,
   );
 
   const routeFetchedRef = useRef(false);
-  const routeCoordinatesRef = useRef<{ latitude: number; longitude: number }[]>([]);
+  const routeCoordinatesRef = useRef<RouteCoordinate[]>([]);
   const lastRouteFetchTimeRef = useRef(0);
-  const waypointsCountRef = useRef(0);
+  const fetchRouteRef = useRef<((options?: FetchRouteOptions) => Promise<void>) | null>(null);
+  const routeSignatureRef = useRef('');
+  const hasFetchedInitialDriverRouteRef = useRef(false);
+  const offRouteSampleCountRef = useRef(0);
+  const lastOffRouteRerouteAtRef = useRef(0);
+  const isReroutingRef = useRef(false);
   const currentLocationRef = useRef<Location.LocationObject | null>(null);
   const hasEnabled3DRef = useRef(false);
   const isExitingRef = useRef(false);
@@ -375,6 +476,9 @@ export default function NavigationScreen() {
   const presentedWaypointIdsRef = useRef<Set<string>>(new Set());
   const presentedPickupNoticeKeysRef = useRef<Set<string>>(new Set());
   const highestPickupNoticePriorityRef = useRef<Map<string, number>>(new Map());
+  const autoConfirmingPickupBookingIdsRef = useRef<Set<string>>(new Set());
+  const autoConfirmingDropoffBookingIdsRef = useRef<Set<string>>(new Set());
+  const autoCompletingTripRef = useRef(false);
   const presentedPassengerBoardedKeysRef = useRef<Set<string>>(new Set());
   const presentedPassengerDestinationApproachKeysRef = useRef<Set<string>>(new Set());
   const presentedPassengerDestinationKeysRef = useRef<Set<string>>(new Set());
@@ -384,6 +488,7 @@ export default function NavigationScreen() {
   const waypointsRef = useRef<Waypoint[]>([]);
   const currentWaypointIndexRef = useRef(0);
   const waypointModalVisibleRef = useRef(false);
+  const bookingsRef = useRef<Booking[] | undefined>(undefined);
 
   stepsRef.current = steps;
   currentStepIndexRef.current = currentStepIndex;
@@ -393,6 +498,7 @@ export default function NavigationScreen() {
   routeCoordinatesRef.current = routeCoordinates;
   pickupNoticeRef.current = pickupNotice;
   tripEndNoticeRef.current = tripEndNotice;
+  bookingsRef.current = bookings;
 
   const cleanupNavigationUi = useCallback(() => {
     if (recalcRouteTimeoutRef.current) {
@@ -409,6 +515,11 @@ export default function NavigationScreen() {
     }
     void Speech.stop();
 
+    offRouteSampleCountRef.current = 0;
+    isReroutingRef.current = false;
+    hasFetchedInitialDriverRouteRef.current = false;
+    autoCompletingTripRef.current = false;
+    setIsReroutingRoute(false);
     setBackgroundDisclosureVisible(false);
     setSecurityModalVisible(false);
     setPickupNotice(null);
@@ -482,6 +593,15 @@ export default function NavigationScreen() {
     setPickupNoticeCountdown(null);
     presentedPickupNoticeKeysRef.current.clear();
     highestPickupNoticePriorityRef.current.clear();
+    autoConfirmingPickupBookingIdsRef.current.clear();
+    autoConfirmingDropoffBookingIdsRef.current.clear();
+    offRouteSampleCountRef.current = 0;
+    lastOffRouteRerouteAtRef.current = 0;
+    isReroutingRef.current = false;
+    routeSignatureRef.current = '';
+    hasFetchedInitialDriverRouteRef.current = false;
+    autoCompletingTripRef.current = false;
+    setIsReroutingRoute(false);
     presentedPassengerBoardedKeysRef.current.clear();
     presentedPassengerDestinationApproachKeysRef.current.clear();
     presentedPassengerDestinationKeysRef.current.clear();
@@ -536,6 +656,14 @@ export default function NavigationScreen() {
         !isMountedRef.current ||
         !event.bookingId ||
         !['driver_arrived_pickup', 'parties_nearby', 'passenger_ready_pickup'].includes(event.type)
+      ) {
+        return;
+      }
+
+      if (
+        waypoint.completed ||
+        hasBookingPickupCompleted(waypoint.booking) ||
+        hasBookingDropoffCompleted(waypoint.booking)
       ) {
         return;
       }
@@ -598,6 +726,43 @@ export default function NavigationScreen() {
     [bookings],
   );
 
+  const persistLocalPickupConfirmation = useCallback(
+    (event: BookingAutoProgressEvent, waypoint?: Waypoint | null) => {
+      if (!event.bookingId) {
+        return;
+      }
+
+      const booking =
+        waypoint?.booking ?? bookings?.find((item) => item.id === event.bookingId);
+      const alreadyPickedUp = hasBookingPickupCompleted(booking);
+      const looksLocallyDetected =
+        Boolean(event.detectedAt) || typeof event.distanceMeters === 'number';
+
+      if (
+        alreadyPickedUp ||
+        !looksLocallyDetected ||
+        autoConfirmingPickupBookingIdsRef.current.has(event.bookingId)
+      ) {
+        return;
+      }
+
+      autoConfirmingPickupBookingIdsRef.current.add(event.bookingId);
+      void confirmPickup(event.bookingId)
+        .unwrap()
+        .then(() => {
+          refetchBookings();
+          refetchTrip();
+        })
+        .catch((error) => {
+          console.warn('[Navigation] Confirmation pickup automatique non persistee:', error);
+        })
+        .finally(() => {
+          autoConfirmingPickupBookingIdsRef.current.delete(event.bookingId!);
+        });
+    },
+    [bookings, confirmPickup, refetchBookings, refetchTrip],
+  );
+
   const presentPassengerBoardedNotice = useCallback(
     (event: BookingAutoProgressEvent, waypoint?: Waypoint | null) => {
       if (!isMountedRef.current || event.type !== 'pickup_confirmed' || !event.bookingId) {
@@ -610,6 +775,7 @@ export default function NavigationScreen() {
       }
 
       presentedPassengerBoardedKeysRef.current.add(key);
+      persistLocalPickupConfirmation(event, waypoint);
       const passengerName = getPassengerNameForBooking(event.bookingId, waypoint);
       setPickupNotice((current) =>
         current?.waypoint.booking.id === event.bookingId ? null : current,
@@ -631,7 +797,46 @@ export default function NavigationScreen() {
         });
       });
     },
-    [getPassengerNameForBooking, showDialog],
+    [getPassengerNameForBooking, persistLocalPickupConfirmation, showDialog],
+  );
+
+  const persistLocalDropoffConfirmation = useCallback(
+    (event: BookingAutoProgressEvent, waypoint?: Waypoint | null) => {
+      if (!event.bookingId) {
+        return;
+      }
+
+      const booking =
+        waypoint?.booking ?? bookings?.find((item) => item.id === event.bookingId);
+      const alreadyDroppedOff = hasBookingDropoffCompleted(booking);
+      const wasPickedUp = hasBookingPickupCompleted(booking);
+      const looksLocallyDetected =
+        Boolean(event.detectedAt) || typeof event.distanceMeters === 'number';
+
+      if (
+        alreadyDroppedOff ||
+        !wasPickedUp ||
+        !looksLocallyDetected ||
+        autoConfirmingDropoffBookingIdsRef.current.has(event.bookingId)
+      ) {
+        return;
+      }
+
+      autoConfirmingDropoffBookingIdsRef.current.add(event.bookingId);
+      void confirmDropoff(event.bookingId)
+        .unwrap()
+        .then(() => {
+          refetchBookings();
+          refetchTrip();
+        })
+        .catch((error) => {
+          console.warn('[Navigation] Confirmation dropoff automatique non persistee:', error);
+        })
+        .finally(() => {
+          autoConfirmingDropoffBookingIdsRef.current.delete(event.bookingId!);
+        });
+    },
+    [bookings, confirmDropoff, refetchBookings, refetchTrip],
   );
 
   const presentPassengerDestinationNotice = useCallback(
@@ -646,6 +851,7 @@ export default function NavigationScreen() {
       }
 
       presentedPassengerDestinationKeysRef.current.add(key);
+      persistLocalDropoffConfirmation(event, waypoint);
       const passengerName = getPassengerNameForBooking(event.bookingId, waypoint);
 
       showDialog({
@@ -663,7 +869,7 @@ export default function NavigationScreen() {
         });
       });
     },
-    [getPassengerNameForBooking, showDialog],
+    [getPassengerNameForBooking, persistLocalDropoffConfirmation, showDialog],
   );
 
   const presentPassengerDestinationApproachNotice = useCallback(
@@ -768,6 +974,46 @@ export default function NavigationScreen() {
     [showDialog],
   );
 
+  const tryCompleteTripFromNavigation = useCallback(
+    (distanceMeters?: number) => {
+      if (!tripId || autoCompletingTripRef.current || trip?.status !== 'ongoing') {
+        return;
+      }
+
+      const acceptedBookings = (bookingsRef.current ?? []).filter(
+        (booking) => booking.status === 'accepted',
+      );
+      const hasUnfinishedBooking = acceptedBookings.some(
+        (booking) => !hasBookingDropoffCompleted(booking),
+      );
+
+      if (hasUnfinishedBooking) {
+        return;
+      }
+
+      autoCompletingTripRef.current = true;
+      void completeTrip(tripId)
+        .unwrap()
+        .then(() => {
+          presentTripDestinationNotice({
+            type: 'driver_arrived_destination',
+            tripId,
+            distanceMeters,
+            detectedAt: new Date().toISOString(),
+          });
+          refetchTrip();
+          refetchBookings();
+        })
+        .catch((error) => {
+          console.warn('[Navigation] Finalisation automatique du trajet non persistee:', error);
+        })
+        .finally(() => {
+          autoCompletingTripRef.current = false;
+        });
+    },
+    [completeTrip, presentTripDestinationNotice, refetchBookings, refetchTrip, trip?.status, tripId],
+  );
+
   useEffect(() => {
     if (!pickupNotice?.expiresAt) {
       setPickupNoticeCountdown(null);
@@ -818,6 +1064,7 @@ export default function NavigationScreen() {
     // Ecouter les erreurs WebSocket
     const unsubscribeError = trackingSocket.subscribeToErrors((message) => {
       if (!isMountedRef.current || isCancelled) return;
+      setIsSocketConnected(false);
       console.warn('[Navigation] Erreur tracking:', message);
     });
 
@@ -912,6 +1159,10 @@ export default function NavigationScreen() {
       },
     );
 
+    const passengerLocationsRefreshInterval = setInterval(() => {
+      void trackingSocket.requestPassengerLocations(tripId);
+    }, 10000);
+
     return () => {
       isCancelled = true;
       // Quitter la room et se deconnecter proprement
@@ -919,6 +1170,7 @@ export default function NavigationScreen() {
       unsubscribeError();
       unsubscribeAutoProgress();
       unsubscribePassengerLocation();
+      clearInterval(passengerLocationsRefreshInterval);
       currentLocationRef.current = null;
 
       console.log('[Navigation] Deconnecte et memoire nettoyee');
@@ -961,19 +1213,19 @@ export default function NavigationScreen() {
           lat: passengerPickupCoordinate?.latitude ?? tripDepartureCoordinate!.latitude,
           lng: passengerPickupCoordinate?.longitude ?? tripDepartureCoordinate!.longitude,
         };
-
+        const pickupAddress = getBookingPickupLabel(booking, trip);
         waypointsList.push({
           id: `pickup-${booking.id}`,
           type: 'pickup',
           location: pickupLocation,
-          address: booking.passengerOrigin || trip.departure.address || '',
+          address: pickupAddress,
           passenger: {
             id: booking.passengerId,
             name: booking.passengerName || 'Passager',
             phone: booking.passengerPhone,
           },
           booking,
-          completed: booking.pickedUp || false,
+          completed: hasBookingPickupCompleted(booking),
         });
 
         // Point d'arrivée du passager (destination personnalisée ou arrivée du trip)
@@ -993,19 +1245,19 @@ export default function NavigationScreen() {
             lng: passengerDestinationCoordinate.longitude,
           };
         }
-
+        const dropoffAddress = getBookingDropoffLabel(booking, trip);
         waypointsList.push({
           id: `dropoff-${booking.id}`,
           type: 'dropoff',
           location: dropoffLocation,
-          address: booking.passengerDestination || trip.arrival.address || '',
+          address: dropoffAddress,
           passenger: {
             id: booking.passengerId,
             name: booking.passengerName || 'Passager',
             phone: booking.passengerPhone,
           },
           booking,
-          completed: booking.droppedOff || false,
+          completed: hasBookingDropoffCompleted(booking),
         });
       } catch (error) {
         console.log('Erreur création waypoint pour booking:', booking.id, error);
@@ -1020,8 +1272,78 @@ export default function NavigationScreen() {
     if (nextIncompleteIndex !== -1) {
       currentWaypointIndexRef.current = nextIncompleteIndex;
       setCurrentWaypointIndex(nextIncompleteIndex);
+    } else {
+      currentWaypointIndexRef.current = waypointsList.length;
+      setCurrentWaypointIndex(waypointsList.length);
     }
   }, [bookings, trip, tripArrivalCoordinate, tripDepartureCoordinate]);
+
+  useEffect(() => {
+    const currentNotice = pickupNoticeRef.current;
+    if (currentNotice) {
+      const latestBooking = bookings?.find(
+        (booking) => booking.id === currentNotice.waypoint.booking.id,
+      );
+
+      if (
+        !latestBooking ||
+        hasBookingPickupCompleted(latestBooking) ||
+        hasBookingDropoffCompleted(latestBooking)
+      ) {
+        pickupNoticeRef.current = null;
+        setPickupNotice(null);
+        setPickupNoticeCountdown(null);
+      }
+    }
+
+    if (activeWaypoint) {
+      const latestBooking = bookings?.find(
+        (booking) => booking.id === activeWaypoint.booking.id,
+      );
+      const isCompleted =
+        activeWaypoint.type === 'pickup'
+          ? hasBookingPickupCompleted(latestBooking)
+          : hasBookingDropoffCompleted(latestBooking);
+
+      if (!latestBooking || isCompleted) {
+        waypointModalVisibleRef.current = false;
+        setWaypointModalVisible(false);
+        setActiveWaypoint(null);
+      }
+    }
+  }, [activeWaypoint, bookings]);
+
+  const sendDriverLocationToTracking = useCallback(
+    (location: Location.LocationObject) => {
+      if (!tripId || (!isTripOngoing && !isTripOngoingRef.current)) {
+        return;
+      }
+
+      const coordinates: [number, number] = [
+        location.coords.longitude,
+        location.coords.latitude,
+      ];
+
+      if (!isFreshLocationObject(location)) {
+        return;
+      }
+
+      void trackingSocket
+        .updateDriverLocation(tripId, coordinates)
+        .catch((error) => {
+          console.warn('[Navigation] Position conducteur socket non envoyee:', error);
+          void updateDriverLocation({ tripId, coordinates })
+            .unwrap()
+            .catch((fallbackError) => {
+              console.warn(
+                '[Navigation] Position conducteur REST non envoyee:',
+                fallbackError,
+              );
+            });
+        });
+    },
+    [isTripOngoing, tripId, updateDriverLocation],
+  );
 
   // Demander les permissions de localisation
   useEffect(() => {
@@ -1096,12 +1418,15 @@ export default function NavigationScreen() {
           location = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.High,
           });
-        } catch (error) {
-          location = await Location.getLastKnownPositionAsync({});
+        } catch {
+          location = await Location.getLastKnownPositionAsync({
+            maxAge: FRESH_DRIVER_LOCATION_MAX_AGE_MS,
+            requiredAccuracy: 100,
+          });
         }
         if (!isMountedRef.current) return;
 
-        if (location) {
+        if (isFreshLocationObject(location)) {
           currentLocationRef.current = location;
           setCurrentLocation(location);
           driverPosition.setValue({
@@ -1110,6 +1435,17 @@ export default function NavigationScreen() {
             latitudeDelta: 0,
             longitudeDelta: 0,
           });
+          sendDriverLocationToTracking(location);
+          if (!hasFetchedInitialDriverRouteRef.current) {
+            hasFetchedInitialDriverRouteRef.current = true;
+            void fetchRouteRef.current?.({
+              originOverride: {
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
+              },
+              fitToRoute: true,
+            });
+          }
         } else {
           console.warn('[Navigation] Position initiale indisponible, en attente du GPS');
         }
@@ -1118,16 +1454,16 @@ export default function NavigationScreen() {
       let lastStateUpdateTime = 0;
       let lastBackendUpdateTime = 0;
       let lastStepCheckTime = 0;
-      const STATE_UPDATE_INTERVAL = 10000; // Mise à jour du state toutes les 10 secondes
-      const BACKEND_UPDATE_INTERVAL = 8000; // Mise à jour WebSocket toutes les 8 secondes
+      const STATE_UPDATE_INTERVAL = DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS; // Mise a jour du state toutes les 3 secondes
+      const BACKEND_UPDATE_INTERVAL = DRIVER_LOCATION_BACKEND_UPDATE_INTERVAL_MS; // Mise a jour WebSocket toutes les 3 secondes
       const STEP_CHECK_INTERVAL = 5000; // Vérification étapes toutes les 5 secondes
 
       // S'abonner aux mises à jour de localisation (fréquence réduite pour stabilité)
       const subscription = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.Balanced, // Équilibre entre précision et batterie
-          timeInterval: 5000, // GPS update toutes les 5 secondes
-          distanceInterval: 20, // Ou tous les 20 mètres
+          accuracy: Location.Accuracy.High, // Équilibre entre précision et batterie
+          timeInterval: DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS, // GPS update toutes les 3 secondes
+          distanceInterval: 5, // Ou tous les 5 metres
         },
         (newLocation) => {
           if (!isMountedRef.current) return;
@@ -1146,10 +1482,53 @@ export default function NavigationScreen() {
             latitude: newLocation.coords.latitude,
             longitude: newLocation.coords.longitude,
           };
+          if (!hasFetchedInitialDriverRouteRef.current) {
+            hasFetchedInitialDriverRouteRef.current = true;
+            void fetchRouteRef.current?.({
+              originOverride: rawCoordinate,
+              fitToRoute: !routeFetchedRef.current,
+            });
+          }
           const routeAlignment = getRouteAlignedPosition(
             rawCoordinate,
             routeCoordinatesRef.current,
+            OFF_ROUTE_DISTANCE_KM,
           );
+          const gpsAccuracy =
+            typeof newLocation.coords.accuracy === 'number' ? newLocation.coords.accuracy : null;
+          const hasReliableOffRouteSignal =
+            gpsAccuracy === null || gpsAccuracy <= OFF_ROUTE_MAX_ACCURACY_METERS;
+          const hasRouteForReroute =
+            isTripOngoingRef.current &&
+            routeFetchedRef.current &&
+            routeCoordinatesRef.current.length >= OFF_ROUTE_MIN_ROUTE_POINTS;
+          const isOffRoute = hasRouteForReroute && !routeAlignment && hasReliableOffRouteSignal;
+
+          offRouteSampleCountRef.current = isOffRoute
+            ? offRouteSampleCountRef.current + 1
+            : 0;
+
+          if (
+            isOffRoute &&
+            offRouteSampleCountRef.current >= OFF_ROUTE_CONFIRMATION_COUNT &&
+            now - lastOffRouteRerouteAtRef.current > OFF_ROUTE_REROUTE_COOLDOWN_MS &&
+            !isReroutingRef.current
+          ) {
+            const routeFetcher = fetchRouteRef.current;
+            if (routeFetcher) {
+              lastOffRouteRerouteAtRef.current = now;
+              offRouteSampleCountRef.current = 0;
+              isReroutingRef.current = true;
+              void routeFetcher({
+                originOverride: rawCoordinate,
+                announceReroute: true,
+                fitToRoute: false,
+              }).finally(() => {
+                isReroutingRef.current = false;
+              });
+            }
+          }
+
           const displayedCoordinate = routeAlignment?.coordinate ?? rawCoordinate;
 
           driverPosition.timing({
@@ -1194,10 +1573,7 @@ export default function NavigationScreen() {
           // Mettre à jour la position du conducteur via WebSocket (throttled)
           if (tripId && isTripOngoingRef.current && now - lastBackendUpdateTime > BACKEND_UPDATE_INTERVAL) {
             lastBackendUpdateTime = now;
-            trackingSocket.updateDriverLocation(
-              tripId,
-              [newLocation.coords.longitude, newLocation.coords.latitude]
-            ).catch(() => {}); // Ignorer les erreurs silencieusement
+            sendDriverLocationToTracking(newLocation);
           }
 
           // NOTE: Animation de caméra désactivée pour éviter les crashs mémoire
@@ -1233,7 +1609,7 @@ export default function NavigationScreen() {
         locationSubscription.current = null;
       }
     };
-  }, [tripId, isTripOngoing, navigateBackSafely]);
+  }, [tripId, isTripOngoing, navigateBackSafely, sendDriverLocationToTracking]);
 
   // Passer la carte en 3D lorsque la course est en cours
   useEffect(() => {
@@ -1378,36 +1754,80 @@ export default function NavigationScreen() {
     );
   }, [announceInstruction, currentStepIndex, isLoadingRoute, isTripOngoing, steps]);
   // Récupérer l'itinéraire depuis Google Directions API (une seule fois au démarrage et quand les waypoints changent)
+  const getFreshDriverCoordinate = useCallback((): RouteCoordinate | null => {
+    const location = currentLocationRef.current;
+    if (!isFreshLocationObject(location)) {
+      return null;
+    }
+
+    return {
+      latitude: location.coords.latitude,
+      longitude: location.coords.longitude,
+    };
+  }, []);
+
+  const routeSignature = useMemo(() => {
+    if (!trip || !tripDepartureCoordinate || !tripArrivalCoordinate) {
+      return '';
+    }
+
+    const waypointSignature = waypoints
+      .map((waypoint) =>
+        [
+          waypoint.id,
+          waypoint.completed ? '1' : '0',
+          waypoint.location.lat.toFixed(6),
+          waypoint.location.lng.toFixed(6),
+        ].join(':'),
+      )
+      .join('|');
+
+    return [
+      trip.id,
+      trip.status,
+      tripDepartureCoordinate.latitude.toFixed(6),
+      tripDepartureCoordinate.longitude.toFixed(6),
+      tripArrivalCoordinate.latitude.toFixed(6),
+      tripArrivalCoordinate.longitude.toFixed(6),
+      waypointSignature,
+    ].join('|');
+  }, [trip, tripArrivalCoordinate, tripDepartureCoordinate, waypoints]);
+
   useEffect(() => {
-    const now = Date.now();
-    const waypointsChanged = waypoints.length !== waypointsCountRef.current;
-    const timeSinceLastFetch = now - lastRouteFetchTimeRef.current;
+    if (!trip || !tripDepartureCoordinate || !tripArrivalCoordinate || !routeSignature) {
+      return;
+    }
+
+    const signatureChanged = routeSignatureRef.current !== routeSignature;
     
     // Ne fetch que si:
     // 1. On a un trip avec depart/arrivee publies
     // 2. ET (le route n'a jamais été fetch OU les waypoints ont changé)
     // 3. ET au moins 30 secondes se sont écoulées depuis le dernier fetch
-    if (
-      trip &&
-      tripDepartureCoordinate &&
-      tripArrivalCoordinate &&
-      (!routeFetchedRef.current || waypointsChanged) &&
-      timeSinceLastFetch > 30000
-    ) {
-      routeFetchedRef.current = true;
-      waypointsCountRef.current = waypoints.length;
-      lastRouteFetchTimeRef.current = now;
-      fetchRoute();
+    if (!signatureChanged && routeFetchedRef.current) {
+      return;
     }
-  }, [trip, tripArrivalCoordinate, tripDepartureCoordinate, waypoints.length]);
 
-  const fetchRoute = async () => {
+    routeSignatureRef.current = routeSignature;
+    const originOverride = isTripOngoing ? getFreshDriverCoordinate() ?? undefined : undefined;
+    void fetchRouteRef.current?.({ originOverride });
+  }, [
+    getFreshDriverCoordinate,
+    isTripOngoing,
+    routeSignature,
+    trip,
+    tripArrivalCoordinate,
+    tripDepartureCoordinate,
+  ]);
+
+  const fetchRoute = async (options: FetchRouteOptions = {}) => {
     if (!trip || !tripDepartureCoordinate || !tripArrivalCoordinate || !isMountedRef.current) return;
 
+    const routeOrigin = options.originOverride ?? tripDepartureCoordinate;
+    const shouldFitToRoute = options.fitToRoute ?? true;
+
     const buildFallbackRoute = () => {
-      const fallbackPoints: { latitude: number; longitude: number }[] = [
-        tripDepartureCoordinate,
-      ];
+      const fallbackPoints: RouteCoordinate[] = [routeOrigin];
 
       waypoints.filter(wp => !wp.completed).forEach(wp => {
         fallbackPoints.push({ latitude: wp.location.lat, longitude: wp.location.lng });
@@ -1416,7 +1836,10 @@ export default function NavigationScreen() {
       return fallbackPoints;
     };
 
+    routeFetchedRef.current = true;
+    lastRouteFetchTimeRef.current = Date.now();
     setIsLoadingRoute(true);
+    setIsReroutingRoute(Boolean(options.announceReroute));
     try {
       // Construire les waypoints non complétés pour l'API backend
       const incompletWaypoints = waypoints.filter(wp => !wp.completed);
@@ -1428,8 +1851,8 @@ export default function NavigationScreen() {
       // Appel à l'API backend optimisée
       const data = await getDirections({
         origin: {
-          lat: tripDepartureCoordinate.latitude,
-          lng: tripDepartureCoordinate.longitude,
+          lat: routeOrigin.latitude,
+          lng: routeOrigin.longitude,
         },
         destination: {
           lat: tripArrivalCoordinate.latitude,
@@ -1480,15 +1903,25 @@ export default function NavigationScreen() {
           currentStepIndexRef.current = 0;
           setSteps(convertedSteps);
           setCurrentStepIndex(0);
+
+          if (options.announceReroute) {
+            const nextStep = convertedSteps[0];
+            void speakNavigationMessage(
+              nextStep
+                ? buildInstructionSpeech(nextStep, 'Nouvel itineraire calcule.')
+                : 'Nouvel itineraire calcule.',
+              { force: true },
+            );
+          }
         }
 
         // Ajuster la vue de la carte pour afficher tout l'itinéraire
-        if (mapRef.current && points.length > 0) {
+        if (shouldFitToRoute && mapRef.current && points.length > 0) {
           const mapFitPoints = [
             ...points,
-            tripDepartureCoordinate,
+            routeOrigin,
             tripArrivalCoordinate,
-          ].filter(Boolean) as { latitude: number; longitude: number }[];
+          ].filter(Boolean) as RouteCoordinate[];
 
           mapRef.current.fitToCoordinates(mapFitPoints, {
             edgePadding: { top: 150, right: 50, bottom: 300, left: 50 },
@@ -1497,6 +1930,16 @@ export default function NavigationScreen() {
         }
       } else {
         setRouteCoordinates(buildFallbackRoute());
+        setTotalDistance('--');
+        setTotalDuration('--');
+        stepsRef.current = [];
+        setSteps([]);
+        if (options.announceReroute) {
+          void speakNavigationMessage(
+            "Nouvel itineraire simplifie. Suivez la ligne jusqu'a la destination.",
+            { force: true },
+          );
+        }
       }
     } catch (error: any) {
       if (!isMountedRef.current) return;
@@ -1516,11 +1959,11 @@ export default function NavigationScreen() {
         setTotalDuration('--');
         stepsRef.current = [];
         setSteps([]);
-        if (mapRef.current) {
+        if (shouldFitToRoute && mapRef.current) {
           const fallbackFitPoints = [
             ...fallbackPoints,
-            tripDepartureCoordinate,
-          ].filter(Boolean) as { latitude: number; longitude: number }[];
+            routeOrigin,
+          ].filter(Boolean) as RouteCoordinate[];
 
           mapRef.current.fitToCoordinates(fallbackFitPoints, {
             edgePadding: { top: 150, right: 50, bottom: 300, left: 50 },
@@ -1543,11 +1986,16 @@ export default function NavigationScreen() {
     } finally {
       if (isMountedRef.current) {
         setIsLoadingRoute(false);
+        if (options.announceReroute) {
+          setIsReroutingRoute(false);
+        }
       }
     }
   };
 
   // Mettre à jour l'étape actuelle en fonction de la position
+  fetchRouteRef.current = fetchRoute;
+
   const updateCurrentStep = (location: Location.LocationObject) => {
     const latestSteps = stepsRef.current;
     const latestWaypoints = waypointsRef.current;
@@ -1622,24 +2070,6 @@ export default function NavigationScreen() {
     return normalized < 0 ? normalized + 360 : normalized;
   };
 
-  // Calculer la distance entre deux points (en km)
-  const calculateDistance = useCallback((
-    point1: { latitude: number; longitude: number },
-    point2: { latitude: number; longitude: number }
-  ): number => {
-    const R = 6371; // Rayon de la Terre en km
-    const dLat = ((point2.latitude - point1.latitude) * Math.PI) / 180;
-    const dLon = ((point2.longitude - point1.longitude) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((point1.latitude * Math.PI) / 180) *
-        Math.cos((point2.latitude * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }, []);
-
   useEffect(() => {
     if (!isTripOngoing || !tripId) {
       return;
@@ -1658,14 +2088,42 @@ export default function NavigationScreen() {
 
     waypoints.forEach((waypoint) => {
       const booking = waypoint.booking;
+
+      if (waypoint.type === 'dropoff') {
+        if (!hasBookingPickupCompleted(booking) || hasBookingDropoffCompleted(booking)) {
+          return;
+        }
+
+        const dropoffCoordinate = {
+          latitude: waypoint.location.lat,
+          longitude: waypoint.location.lng,
+        };
+        const driverDropoffDistanceKm = calculateDistance(driverCoordinate, dropoffCoordinate);
+
+        if (driverDropoffDistanceKm <= DRIVER_DROPOFF_APPROACH_DISTANCE_KM) {
+          presentPassengerDestinationApproachNotice(
+            {
+              type: 'passenger_near_destination',
+              bookingId: booking.id,
+              tripId,
+              passengerId: waypoint.passenger.id,
+              distanceMeters: Math.round(driverDropoffDistanceKm * 1000),
+              detectedAt,
+            },
+            waypoint,
+          );
+        }
+
+        return;
+      }
+
       const isPassengerAlreadyPickedUp =
-        waypoint.completed || booking.pickedUp || booking.pickedUpConfirmedByPassenger;
+        waypoint.completed || hasBookingPickupCompleted(booking);
 
       if (
         waypoint.type !== 'pickup' ||
         isPassengerAlreadyPickedUp ||
-        booking.droppedOff ||
-        booking.droppedOffConfirmedByPassenger
+        hasBookingDropoffCompleted(booking)
       ) {
         return;
       }
@@ -1690,10 +2148,11 @@ export default function NavigationScreen() {
         );
       }
 
-      const passengerLocation = livePassengerLocations[booking.id]?.coordinate;
-      if (!passengerLocation) {
+      const passengerLiveLocation = livePassengerLocations[booking.id];
+      if (!isFreshLivePassengerLocation(passengerLiveLocation)) {
         return;
       }
+      const passengerLocation = passengerLiveLocation.coordinate;
 
       const driverPassengerDistanceKm = calculateDistance(driverCoordinate, passengerLocation);
       const passengerPickupDistanceKm = calculateDistance(passengerLocation, pickupCoordinate);
@@ -1716,32 +2175,36 @@ export default function NavigationScreen() {
         );
       }
 
-      if (
-        driverPassengerDistanceKm <= MOVING_TOGETHER_DISTANCE_KM &&
-        driverPickupDistanceKm > MOVING_TOGETHER_PICKUP_EXIT_DISTANCE_KM &&
-        passengerPickupDistanceKm > MOVING_TOGETHER_PICKUP_EXIT_DISTANCE_KM
-      ) {
-        presentPassengerBoardedNotice(
-          {
-            type: 'pickup_confirmed',
-            bookingId: booking.id,
-            tripId,
-            passengerId: waypoint.passenger.id,
-            distanceMeters: Math.round(driverPassengerDistanceKm * 1000),
-            detectedAt,
-          },
-          waypoint,
-        );
-      }
+      // La confirmation pickup est decidee par le backend a partir de l'historique Redis.
     });
+
+    if (tripArrivalCoordinate) {
+      const driverTripEndDistanceKm = calculateDistance(driverCoordinate, tripArrivalCoordinate);
+      const driverTripEndDistanceMeters = Math.round(driverTripEndDistanceKm * 1000);
+
+      if (driverTripEndDistanceKm <= DRIVER_DROPOFF_APPROACH_DISTANCE_KM) {
+        presentTripDestinationNotice({
+          type: 'driver_near_destination',
+          tripId,
+          distanceMeters: driverTripEndDistanceMeters,
+          detectedAt,
+        });
+      }
+
+      if (driverTripEndDistanceKm <= DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_KM) {
+        tryCompleteTripFromNavigation(driverTripEndDistanceMeters);
+      }
+    }
   }, [
-    calculateDistance,
     currentLocation,
     isTripOngoing,
     livePassengerLocations,
-    presentPassengerBoardedNotice,
+    presentPassengerDestinationApproachNotice,
     presentPickupNotice,
+    presentTripDestinationNotice,
     tripId,
+    tripArrivalCoordinate,
+    tryCompleteTripFromNavigation,
     waypoints,
   ]);
 
@@ -1749,8 +2212,10 @@ export default function NavigationScreen() {
   const forceRecalculateRoute = () => {
     lastRouteFetchTimeRef.current = 0; // Reset le timestamp
     routeFetchedRef.current = false; // Permettre un nouveau fetch
+    routeSignatureRef.current = '';
     if (trip && tripDepartureCoordinate && tripArrivalCoordinate) {
-      fetchRoute();
+      const originOverride = isTripOngoing ? getFreshDriverCoordinate() ?? undefined : undefined;
+      fetchRoute({ originOverride });
     }
   };
 
@@ -1944,6 +2409,63 @@ export default function NavigationScreen() {
     });
   }, [navigateBackSafely, showDialog]);
 
+  const handlePauseTripFromNavigation = useCallback(() => {
+    if (!tripId || isPausingTrip) {
+      return;
+    }
+
+    showDialog({
+      title: 'Interrompre le trajet',
+      message:
+        'Voulez-vous interrompre ce trajet ? Les passagers seront notifies et le trajet repassera en attente.',
+      variant: 'warning',
+      icon: 'pause-circle-outline',
+      actions: [
+        { label: 'Annuler', variant: 'ghost' },
+        {
+          label: 'Interrompre',
+          variant: 'secondary',
+          onPress: async () => {
+            try {
+              await pauseTrip(tripId).unwrap();
+              locationSubscription.current?.remove();
+              locationSubscription.current = null;
+              currentLocationRef.current = null;
+              setIsSocketConnected(false);
+              setLivePassengerLocations({});
+              cleanupNavigationUi();
+              refetchTrip();
+              refetchBookings();
+              showDialog({
+                variant: 'success',
+                icon: 'checkmark-circle',
+                title: 'Trajet interrompu',
+                message: 'Le trajet a ete interrompu avec succes.',
+              });
+            } catch (error: any) {
+              const message =
+                error?.data?.message ?? error?.error ?? "Impossible d'interrompre ce trajet.";
+              showDialog({
+                variant: 'danger',
+                icon: 'alert-circle',
+                title: 'Interruption impossible',
+                message,
+              });
+            }
+          },
+        },
+      ],
+    });
+  }, [
+    cleanupNavigationUi,
+    isPausingTrip,
+    pauseTrip,
+    refetchBookings,
+    refetchTrip,
+    showDialog,
+    tripId,
+  ]);
+
   const handleShareTrip = useCallback(async () => {
     if (!tripId) return;
 
@@ -1985,8 +2507,8 @@ export default function NavigationScreen() {
   }, [handleExitNavigation, securityModalVisible]);
 
   // Décoder un polyline Google (avec simplification pour économiser la mémoire)
-  const decodePolyline = (encoded: string): Array<{ latitude: number; longitude: number }> => {
-    const allPoints: Array<{ latitude: number; longitude: number }> = [];
+  const decodePolyline = (encoded: string): RouteCoordinate[] => {
+    const allPoints: RouteCoordinate[] = [];
     let index = 0;
     const len = encoded.length;
     let lat = 0;
@@ -2027,7 +2549,7 @@ export default function NavigationScreen() {
     }
     
     const step = Math.ceil(allPoints.length / maxPoints);
-    const simplified: Array<{ latitude: number; longitude: number }> = [];
+    const simplified: RouteCoordinate[] = [];
     for (let i = 0; i < allPoints.length; i += step) {
       simplified.push(allPoints[i]);
     }
@@ -2083,7 +2605,7 @@ export default function NavigationScreen() {
     if (routeCoordinates.length < 2 || !currentNavigationWaypoint) {
       return {
         nextCoordinates: routeCoordinates,
-        remainingCoordinates: [] as Array<{ latitude: number; longitude: number }>,
+        remainingCoordinates: [] as RouteCoordinate[],
       };
     }
 
@@ -2109,9 +2631,7 @@ export default function NavigationScreen() {
       remainingCoordinates: routeCoordinates.slice(splitIndex),
     };
   }, [
-    currentNavigationWaypoint?.id,
-    currentNavigationWaypoint?.location.lat,
-    currentNavigationWaypoint?.location.lng,
+    currentNavigationWaypoint,
     routeCoordinates,
   ]);
 
@@ -2741,7 +3261,9 @@ export default function NavigationScreen() {
       {isTripOngoing && isLoadingRoute && (
         <View style={styles.loadingRouteCard}>
           <ActivityIndicator size="small" color={Colors.primary} />
-          <Text style={styles.loadingRouteText}>Calcul de l itineraire...</Text>
+          <Text style={styles.loadingRouteText}>
+            {isReroutingRoute ? "Recalcul de l'itineraire..." : "Calcul de l'itineraire..."}
+          </Text>
         </View>
       )}
 
@@ -2753,6 +3275,20 @@ export default function NavigationScreen() {
           onPress={() => setSecurityModalVisible(true)}
         >
           <Ionicons name="shield-checkmark" size={22} color={Colors.primary} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.floatingButton, styles.interruptTripButton, isPausingTrip && styles.floatingButtonDisabled]}
+          onPress={handlePauseTripFromNavigation}
+          disabled={isPausingTrip}
+          accessibilityRole="button"
+          accessibilityLabel="Interrompre le trajet"
+        >
+          {isPausingTrip ? (
+            <ActivityIndicator size="small" color={Colors.warning} />
+          ) : (
+            <Ionicons name="pause-circle" size={22} color={Colors.warning} />
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -3667,6 +4203,9 @@ const styles = StyleSheet.create({
   },
   floatingButtonDisabled: {
     opacity: 0.6,
+  },
+  interruptTripButton: {
+    backgroundColor: Colors.warning + '16',
   },
   voiceButtonMuted: {
     backgroundColor: Colors.gray[100],

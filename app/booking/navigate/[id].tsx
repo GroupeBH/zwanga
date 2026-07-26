@@ -18,7 +18,7 @@ import {
   useUpdatePassengerLocationMutation,
 } from '@/store/api/bookingApi';
 import { useGetDirectionsMutation } from '@/store/api/googleMapsApi';
-import { useGetTripByIdQuery } from '@/store/api/tripApi';
+import { useGetDriverLocationQuery, useGetTripByIdQuery } from '@/store/api/tripApi';
 import { getGeoPointCoordinate, normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import { calculateDistance, getRouteAlignedPosition, splitRouteByProgress } from '@/utils/routeHelpers';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
@@ -47,8 +47,6 @@ const MAX_PASSENGER_ROUTE_POINTS = Platform.OS === 'ios' ? 180 : 250;
 const IS_ANDROID = Platform.OS === 'android';
 const DRIVER_NEAR_PICKUP_DISTANCE_KM = 0.2;
 const PASSENGER_READY_PICKUP_DISTANCE_KM = 0.005;
-const MOVING_TOGETHER_DISTANCE_KM = 0.025;
-const MOVING_TOGETHER_PICKUP_EXIT_DISTANCE_KM = 0.03;
 
 type BookingAutoProgressEvent = BookingAutoProgressPayload['events'][number];
 type PassengerPickupNoticeType = 'driver_near_pickup' | 'driver_arrived_pickup' | 'parties_nearby';
@@ -108,16 +106,12 @@ function decodePolyline(encoded: string): { latitude: number; longitude: number 
 
     const latitude = lat / 1e5;
     const longitude = lng / 1e5;
-    if (
-      !Number.isFinite(latitude) ||
-      !Number.isFinite(longitude) ||
-      Math.abs(latitude) > 90 ||
-      Math.abs(longitude) > 180
-    ) {
-      break;
+    const coordinate = normalizeTripMapCoordinate(latitude, longitude);
+    if (!coordinate) {
+      return [];
     }
 
-    points.push({ latitude, longitude });
+    points.push(coordinate);
   }
 
   // Limiter le nombre de points pour les performances
@@ -191,9 +185,14 @@ export default function PassengerNavigationScreen() {
   const tripId = booking?.tripId || '';
   const { data: trip, isLoading: tripLoading, refetch: refetchTrip } = useGetTripByIdQuery(tripId, {
     skip: !tripId,
-    pollingInterval: 30000,
+    pollingInterval: 10000,
   });
   const isTripOngoing = trip?.status === 'ongoing';
+  const { data: driverLocationSnapshot } = useGetDriverLocationQuery(tripId, {
+    skip: !tripId || !isTripOngoing,
+    pollingInterval: 5000,
+    skipPollingIfUnfocused: true,
+  });
 
   const [updatePassengerLocation] = useUpdatePassengerLocationMutation();
 
@@ -229,6 +228,8 @@ export default function PassengerNavigationScreen() {
   const hasPresentedDestinationApproachNoticeRef = useRef(false);
   const hasPresentedTripDestinationApproachNoticeRef = useRef(false);
   const hasPresentedTripCompletedNoticeRef = useRef(false);
+  const hasObservedPickupStateRef = useRef(false);
+  const previousPickupStateRef = useRef(false);
   const passengerLocationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const isMountedRef = useRef(true);
   const isExitingRef = useRef(false);
@@ -342,6 +343,15 @@ export default function PassengerNavigationScreen() {
       return;
     }
 
+    if (
+      booking?.pickedUp ||
+      booking?.pickedUpConfirmedByPassenger ||
+      booking?.droppedOff ||
+      booking?.droppedOffConfirmedByPassenger
+    ) {
+      return;
+    }
+
     const key = `${event.type}:${event.bookingId}`;
     if (presentedPickupNoticeKeysRef.current.has(key)) {
       return;
@@ -388,7 +398,12 @@ export default function PassengerNavigationScreen() {
       if (!isMountedRef.current) return;
       Speech.speak(speech, { language: 'fr-FR', rate: 0.95 });
     });
-  }, []);
+  }, [
+    booking?.droppedOff,
+    booking?.droppedOffConfirmedByPassenger,
+    booking?.pickedUp,
+    booking?.pickedUpConfirmedByPassenger,
+  ]);
 
   const presentBoardedNotice = useCallback(() => {
     if (!isMountedRef.current || hasPresentedBoardedNoticeRef.current) {
@@ -536,6 +551,8 @@ export default function PassengerNavigationScreen() {
     hasPresentedDestinationApproachNoticeRef.current = false;
     hasPresentedTripDestinationApproachNoticeRef.current = false;
     hasPresentedTripCompletedNoticeRef.current = false;
+    hasObservedPickupStateRef.current = false;
+    previousPickupStateRef.current = false;
     presentedPickupNoticeKeysRef.current.clear();
     highestPickupNoticePriorityRef.current.clear();
     setArrivalModalVisible(false);
@@ -545,16 +562,36 @@ export default function PassengerNavigationScreen() {
   }, [bookingId]);
 
   useEffect(() => {
-    if (booking?.pickedUp || booking?.pickedUpConfirmedByPassenger) {
+    if (!booking?.id) {
+      return;
+    }
+
+    const isPickedUp = Boolean(
+      booking?.pickedUp || booking?.pickedUpConfirmedByPassenger,
+    );
+    const isDroppedOff = Boolean(
+      booking?.droppedOff || booking?.droppedOffConfirmedByPassenger,
+    );
+
+    if (isPickedUp) {
       setPickupNotice(null);
       setPickupNoticeCountdown(null);
-      if (!booking.droppedOff && !booking.droppedOffConfirmedByPassenger) {
+
+      if (
+        hasObservedPickupStateRef.current &&
+        !previousPickupStateRef.current &&
+        !isDroppedOff
+      ) {
         presentBoardedNotice();
       }
     }
+
+    hasObservedPickupStateRef.current = true;
+    previousPickupStateRef.current = isPickedUp;
   }, [
     booking?.droppedOff,
     booking?.droppedOffConfirmedByPassenger,
+    booking?.id,
     booking?.pickedUp,
     booking?.pickedUpConfirmedByPassenger,
     presentBoardedNotice,
@@ -608,6 +645,38 @@ export default function PassengerNavigationScreen() {
       }
     }
   }, [driverLocation, lastUpdate, trip?.lastLocationUpdateAt, tripDriverLocation]);
+
+  useEffect(() => {
+    if (!driverLocationSnapshot?.coordinates) {
+      return;
+    }
+
+    const coordinate = normalizeTripMapCoordinate(
+      driverLocationSnapshot.coordinates[1],
+      driverLocationSnapshot.coordinates[0],
+    );
+    if (!coordinate) {
+      return;
+    }
+
+    const snapshotUpdatedAt = driverLocationSnapshot.updatedAt
+      ? new Date(driverLocationSnapshot.updatedAt)
+      : null;
+    const isNewerSnapshot = Boolean(
+      snapshotUpdatedAt &&
+        !Number.isNaN(snapshotUpdatedAt.getTime()) &&
+        (!lastUpdate || snapshotUpdatedAt.getTime() >= lastUpdate.getTime()),
+    );
+
+    if (!driverLocation || isNewerSnapshot) {
+      setDriverLocation(coordinate);
+      if (snapshotUpdatedAt && !Number.isNaN(snapshotUpdatedAt.getTime())) {
+        setLastUpdate(snapshotUpdatedAt);
+      } else {
+        setLastUpdate(new Date());
+      }
+    }
+  }, [driverLocation, driverLocationSnapshot, lastUpdate]);
 
   // Fonction pour recuperer la route
   const fetchRoute = useCallback(async () => {
@@ -814,10 +883,19 @@ export default function PassengerNavigationScreen() {
 
     const sendLocation = async (location: Location.LocationObject) => {
       if (isCancelled || !isMountedRef.current) return;
-      setPassengerLocation({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      });
+      const coordinate = normalizeTripMapCoordinate(
+        location.coords.latitude,
+        location.coords.longitude,
+      );
+      if (!coordinate) {
+        console.warn('[PassengerNavigation] Position passager ignoree car invalide:', {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
+        return;
+      }
+
+      setPassengerLocation(coordinate);
 
       const now = Date.now();
       if (now - lastSentAt < SEND_INTERVAL_MS) return;
@@ -826,8 +904,8 @@ export default function PassengerNavigationScreen() {
       try {
         const response = await updatePassengerLocation({
           bookingId: booking.id,
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
+          latitude: coordinate.latitude,
+          longitude: coordinate.longitude,
         }).unwrap();
 
         void trackingSocket
@@ -1033,18 +1111,7 @@ export default function PassengerNavigationScreen() {
       });
     }
 
-    if (passengerLocation && pickupCoordinate) {
-      const driverPickupDistanceKm = calculateDistance(displayedDriverLocation, pickupCoordinate);
-      const passengerPickupDistanceKm = calculateDistance(passengerLocation, pickupCoordinate);
-
-      if (
-        distanceToDriverKm <= MOVING_TOGETHER_DISTANCE_KM &&
-        driverPickupDistanceKm > MOVING_TOGETHER_PICKUP_EXIT_DISTANCE_KM &&
-        passengerPickupDistanceKm > MOVING_TOGETHER_PICKUP_EXIT_DISTANCE_KM
-      ) {
-        presentBoardedNotice();
-      }
-    }
+    // La confirmation pickup est decidee par le backend a partir de l'historique Redis.
   }, [
     booking?.droppedOff,
     booking?.droppedOffConfirmedByPassenger,
@@ -1056,7 +1123,6 @@ export default function PassengerNavigationScreen() {
     isTripOngoing,
     passengerLocation,
     pickupCoordinate,
-    presentBoardedNotice,
     presentPickupNotice,
     tripId,
   ]);

@@ -610,6 +610,21 @@ export const tripApi = baseApi.injectEndpoints({
       ],
     }),
 
+    // Terminer un trajet actif
+    completeTrip: builder.mutation<Trip, string>({
+      query: (id: string) => ({
+        url: `/trips/${id}/complete`,
+        method: 'PUT',
+      }),
+      transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
+      invalidatesTags: (_result, _error, id: string) => [
+        { type: 'Trip', id },
+        { type: 'MyTrips', id },
+        tripListTag,
+        myTripsListTag,
+      ],
+    }),
+
     // Mettre à jour la position du conducteur
     updateDriverLocation: builder.mutation<
       { tripId: string; coordinates: [number, number]; updatedAt: string },
@@ -680,6 +695,7 @@ export const {
   useSearchTripsByCoordinatesMutation,
   useStartTripMutation,
   usePauseTripMutation,
+  useCompleteTripMutation,
   usePauseRecurringTripMutation,
   useResumeRecurringTripMutation,
   useUpdateDriverLocationMutation,

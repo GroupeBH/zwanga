@@ -2,6 +2,8 @@ import { API_BASE_URL } from '@/config/env';
 import { getValidAccessToken } from '@/services/tokenRefresh';
 import { io, Socket } from 'socket.io-client';
 
+const SOCKET_CONNECT_TIMEOUT_MS = 8000;
+
 export interface DriverLocationPayload {
   tripId: string;
   coordinates: [number, number] | null;
@@ -100,10 +102,56 @@ class TrackingSocketClient {
     });
   }
 
+  private waitForConnected(socket: Socket): Promise<Socket> {
+    if (socket.connected) {
+      return Promise.resolve(socket);
+    }
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let timeout: ReturnType<typeof setTimeout>;
+
+      const cleanup = () => {
+        clearTimeout(timeout);
+        socket.off('connect', handleConnect);
+        socket.off('connect_error', handleConnectError);
+        socket.off('disconnect', handleDisconnect);
+      };
+
+      const finish = (callback: () => void) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        callback();
+      };
+
+      const handleConnect = () => finish(() => resolve(socket));
+      const handleConnectError = (error: Error) =>
+        finish(() => reject(error));
+      const handleDisconnect = (reason: string) =>
+        finish(() => reject(new Error(reason || 'Tracking deconnecte')));
+
+      timeout = setTimeout(() => {
+        finish(() => reject(new Error('Connexion tracking expiree')));
+      }, SOCKET_CONNECT_TIMEOUT_MS);
+
+      socket.once('connect', handleConnect);
+      socket.once('connect_error', handleConnectError);
+      socket.once('disconnect', handleDisconnect);
+      socket.connect();
+    });
+  }
+
   private async connect(): Promise<Socket> {
     if (this.socket) {
       if (!this.socket.connected) {
-        this.socket.connect();
+        try {
+          return await this.waitForConnected(this.socket);
+        } catch (error) {
+          this.socket.disconnect();
+          this.socket = null;
+          throw error;
+        }
       }
       return this.socket;
     }
@@ -118,6 +166,7 @@ class TrackingSocketClient {
       const socket = io(`${baseUrl}/tracking`, {
         transports: ['websocket'],
         auth: { token },
+        autoConnect: false,
       });
       this.socket = socket;
 
@@ -162,7 +211,15 @@ class TrackingSocketClient {
         this.notifyErrorListeners(message);
       });
 
-      return socket;
+      try {
+        return await this.waitForConnected(socket);
+      } catch (error) {
+        socket.disconnect();
+        if (this.socket === socket) {
+          this.socket = null;
+        }
+        throw error;
+      }
     })();
 
     this.connecting = connection;
