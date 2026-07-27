@@ -1165,7 +1165,11 @@ export default function LocationPickerModal({
         Number(pendingTarget?.latitude ?? finalLocation.latitude),
         Number(pendingTarget?.longitude ?? finalLocation.longitude),
       );
-      if (!isFiniteCoordinate(normalizedCoordinate.latitude, normalizedCoordinate.longitude)) {
+      const validCoordinate = getValidRdcCoordinate(
+        normalizedCoordinate.latitude,
+        normalizedCoordinate.longitude,
+      );
+      if (!validCoordinate) {
         console.warn('[LocationPickerModal] Coordonnées refusées:', finalLocation);
         return;
       }
@@ -1173,7 +1177,7 @@ export default function LocationPickerModal({
       const hasAddress = finalLocation.address && finalLocation.address.length > 0;
       const selection: MapLocationSelection = {
         ...finalLocation,
-        ...normalizedCoordinate,
+        ...validCoordinate,
         address: hasAddress ? finalLocation.address : finalLocation.title,
       };
       

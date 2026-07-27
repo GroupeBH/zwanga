@@ -11,6 +11,7 @@ import { baseApi } from './baseApi';
 import type { ServerTrip } from './tripApi';
 import { mapServerTripToClient } from './tripApi';
 import type { BaseEndpointBuilder } from './types';
+import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 
 type ServerUser = {
   id: string;
@@ -107,10 +108,10 @@ const mapBookingCoordinates = (
   coordinates?: { latitude: number; longitude: number } | null,
 ) => {
   if (point) {
-    return { latitude: point.coordinates[1], longitude: point.coordinates[0] };
+    return normalizeTripMapCoordinate(point.coordinates[1], point.coordinates[0]) ?? undefined;
   }
   if (coordinates) {
-    return coordinates;
+    return normalizeTripMapCoordinate(coordinates.latitude, coordinates.longitude) ?? undefined;
   }
   return undefined;
 };

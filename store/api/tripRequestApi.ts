@@ -11,6 +11,7 @@ import { baseApi } from './baseApi';
 import type { ServerTrip } from './tripApi';
 import { mapServerTripToClient } from './tripApi';
 import type { BaseEndpointBuilder } from './types';
+import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 
 type ServerTripRequest = {
   id: string;
@@ -149,9 +150,32 @@ type ServerDriverOfferWithTripRequest = {
   };
 };
 
+const mapServerCoordinateTupleToClient = (coordinates?: [number, number] | null) => {
+  if (!coordinates || coordinates.length < 2) {
+    return null;
+  }
+
+  const coordinate = normalizeTripMapCoordinate(coordinates[1], coordinates[0]);
+  if (!coordinate) {
+    return null;
+  }
+
+  return {
+    lat: coordinate.latitude,
+    lng: coordinate.longitude,
+  };
+};
+
+const normalizeServerCoordinateTuple = (
+  coordinates?: [number, number] | null,
+): [number, number] | undefined => {
+  const coordinate = mapServerCoordinateTupleToClient(coordinates);
+  return coordinate ? [coordinate.lng, coordinate.lat] : undefined;
+};
+
 const mapServerTripRequestToClient = (request: ServerTripRequest): TripRequest => {
-  const departureCoords = request.departureCoordinates;
-  const arrivalCoords = request.arrivalCoordinates;
+  const departureCoords = mapServerCoordinateTupleToClient(request.departureCoordinates);
+  const arrivalCoords = mapServerCoordinateTupleToClient(request.arrivalCoordinates);
 
   const formatFullName = (user: { firstName: string; lastName: string }) => {
     const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
@@ -184,16 +208,16 @@ const mapServerTripRequestToClient = (request: ServerTripRequest): TripRequest =
     departure: {
       name: request.departureLocation,
       address: request.departureLocation,
-      lat: departureCoords?.[1] ?? 0,
-      lng: departureCoords?.[0] ?? 0,
+      lat: departureCoords?.lat ?? 0,
+      lng: departureCoords?.lng ?? 0,
       reference: request.departureReference ?? null,
       hasCoordinates: Boolean(departureCoords),
     },
     arrival: {
       name: request.arrivalLocation,
       address: request.arrivalLocation,
-      lat: arrivalCoords?.[1] ?? 0,
-      lng: arrivalCoords?.[0] ?? 0,
+      lat: arrivalCoords?.lat ?? 0,
+      lng: arrivalCoords?.lng ?? 0,
       reference: request.arrivalReference ?? null,
       hasCoordinates: Boolean(arrivalCoords),
     },
@@ -267,9 +291,9 @@ const mapServerDriverOfferToClient = (offer: ServerDriverOffer): DriverOffer => 
     availableSeats: offer.availableSeats,
     message: offer.message ?? undefined,
     departureReference: offer.departureReference ?? undefined,
-    departureCoordinates: offer.departureCoordinates ?? undefined,
+    departureCoordinates: normalizeServerCoordinateTuple(offer.departureCoordinates),
     arrivalReference: offer.arrivalReference ?? undefined,
-    arrivalCoordinates: offer.arrivalCoordinates ?? undefined,
+    arrivalCoordinates: normalizeServerCoordinateTuple(offer.arrivalCoordinates),
     status: mapStatus(offer.status),
     acceptedAt: offer.acceptedAt ?? undefined,
     rejectedAt: offer.rejectedAt ?? undefined,

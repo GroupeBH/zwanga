@@ -14,12 +14,17 @@ import {
 } from '@/services/trackingSocket';
 import { displayNotification } from '@/services/pushNotifications';
 import {
+  useCancelBookingMutation,
   useGetBookingByIdQuery,
   useUpdatePassengerLocationMutation,
 } from '@/store/api/bookingApi';
 import { TravelMode, useGetDirectionsMutation } from '@/store/api/googleMapsApi';
 import { useGetDriverLocationQuery, useGetTripByIdQuery } from '@/store/api/tripApi';
-import { getGeoPointCoordinate, normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
+import {
+  getGeoPointCoordinate,
+  isCoordinateInKinshasaBounds,
+  normalizeTripMapCoordinate,
+} from '@/utils/tripCoordinates';
 import { calculateDistance, getRouteAlignedPosition } from '@/utils/routeHelpers';
 import {
   LOCATION_FRESHNESS_MS,
@@ -39,6 +44,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   BackHandler,
+  InteractionManager,
   Modal,
   Platform,
   StatusBar,
@@ -50,10 +56,12 @@ import {
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import type { MapMarker } from 'react-native-maps';
 import Animated, { FadeInDown, FadeInUp } from '@/utils/reanimated';
+import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const MAX_PASSENGER_ROUTE_POINTS = Platform.OS === 'ios' ? 180 : 250;
 const IS_ANDROID = Platform.OS === 'android';
+const PASSENGER_NAVIGATION_MAP_PROVIDER = IS_ANDROID ? PROVIDER_GOOGLE : undefined;
 const DRIVER_NEAR_PICKUP_DISTANCE_KM = 0.2;
 const PASSENGER_READY_PICKUP_DISTANCE_KM = 0.005;
 
@@ -172,6 +180,7 @@ export default function PassengerNavigationScreen() {
   const { showDialog } = useDialog();
   const insets = useSafeAreaInsets();
   const bookingId = typeof id === 'string' ? id : '';
+  const isFocused = useIsFocused();
 
   // Recuperer la reservation et le trajet
   const { data: booking, isLoading: bookingLoading, refetch: refetchBooking } = useGetBookingByIdQuery(bookingId, { 
@@ -191,6 +200,7 @@ export default function PassengerNavigationScreen() {
   });
 
   const [updatePassengerLocation] = useUpdatePassengerLocationMutation();
+  const [cancelBooking, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
 
   const mapRef = useRef<MapView>(null);
   const driverMarkerRef = useRef<MapMarker | null>(null);
@@ -213,6 +223,7 @@ export default function PassengerNavigationScreen() {
   const [arrivalModalVisible, setArrivalModalVisible] = useState(false);
   const [pickupNotice, setPickupNotice] = useState<PassengerPickupNotice | null>(null);
   const [pickupNoticeCountdown, setPickupNoticeCountdown] = useState<number | null>(null);
+  const [isNavigationMapReady, setIsNavigationMapReady] = useState(IS_ANDROID);
   const routeFetchedRef = useRef(false);
   const lastRouteFetchRef = useRef<number>(0);
   const hasFitInitialMapRef = useRef(false);
@@ -281,6 +292,38 @@ export default function PassengerNavigationScreen() {
   }, []);
 
   useEffect(() => {
+    if (IS_ANDROID) {
+      setIsNavigationMapReady(true);
+      return;
+    }
+
+    if (!isFocused) {
+      setIsNavigationMapReady(false);
+      hasFitInitialMapRef.current = false;
+      return;
+    }
+
+    setIsNavigationMapReady(false);
+    hasFitInitialMapRef.current = false;
+
+    let isCancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const interactionTask = InteractionManager.runAfterInteractions(() => {
+      timeoutId = setTimeout(() => {
+        if (!isCancelled && isMountedRef.current) {
+          setIsNavigationMapReady(true);
+        }
+      }, 420);
+    });
+
+    return () => {
+      isCancelled = true;
+      interactionTask.cancel();
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [bookingId, isFocused]);
+
+  useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       navigateBackSafely();
       return true;
@@ -293,32 +336,135 @@ export default function PassengerNavigationScreen() {
 
   // Coordonnees importantes
   // Le point de recuperation peut etre personnalise par le passager
-  const pickupCoordinate = useMemo(() => {
-    return (
+  const tripDepartureCoordinate = useMemo(
+    () => normalizeTripMapCoordinate(trip?.departure?.lat, trip?.departure?.lng),
+    [trip?.departure?.lat, trip?.departure?.lng],
+  );
+  const tripArrivalCoordinate = useMemo(
+    () => normalizeTripMapCoordinate(trip?.arrival?.lat, trip?.arrival?.lng),
+    [trip?.arrival?.lat, trip?.arrival?.lng],
+  );
+  const isKinshasaTrip = Boolean(
+    tripDepartureCoordinate &&
+      tripArrivalCoordinate &&
+      isCoordinateInKinshasaBounds(tripDepartureCoordinate) &&
+      isCoordinateInKinshasaBounds(tripArrivalCoordinate),
+  );
+  const bookingPickupCoordinate = useMemo(
+    () =>
       normalizeTripMapCoordinate(
         booking?.passengerOriginCoordinates?.latitude,
         booking?.passengerOriginCoordinates?.longitude,
-      ) ?? normalizeTripMapCoordinate(trip?.departure?.lat, trip?.departure?.lng)
-    );
-  }, [
-    booking?.passengerOriginCoordinates?.latitude,
-    booking?.passengerOriginCoordinates?.longitude,
-    trip?.departure?.lat,
-    trip?.departure?.lng,
-  ]);
-
-  const dropoffCoordinate = useMemo(() => {
-    return (
+      ),
+    [
+      booking?.passengerOriginCoordinates?.latitude,
+      booking?.passengerOriginCoordinates?.longitude,
+    ],
+  );
+  const bookingDropoffCoordinate = useMemo(
+    () =>
       normalizeTripMapCoordinate(
         booking?.passengerDestinationCoordinates?.latitude,
         booking?.passengerDestinationCoordinates?.longitude,
-      ) ?? normalizeTripMapCoordinate(trip?.arrival?.lat, trip?.arrival?.lng)
-    );
+      ),
+    [
+      booking?.passengerDestinationCoordinates?.latitude,
+      booking?.passengerDestinationCoordinates?.longitude,
+    ],
+  );
+
+  const pickupCoordinate = useMemo(() => {
+    if (bookingPickupCoordinate) {
+      if (isKinshasaTrip && !isCoordinateInKinshasaBounds(bookingPickupCoordinate)) {
+        console.warn('[PassengerNavigation] Point de prise en charge hors Kinshasa ignore:', {
+          bookingId,
+          coordinate: bookingPickupCoordinate,
+        });
+      } else {
+        return bookingPickupCoordinate;
+      }
+    }
+
+    return tripDepartureCoordinate;
   }, [
-    booking?.passengerDestinationCoordinates?.latitude,
-    booking?.passengerDestinationCoordinates?.longitude,
+    bookingId,
+    bookingPickupCoordinate,
+    isKinshasaTrip,
+    tripDepartureCoordinate,
+  ]);
+
+  const dropoffCoordinate = useMemo(() => {
+    if (bookingDropoffCoordinate) {
+      if (isKinshasaTrip && !isCoordinateInKinshasaBounds(bookingDropoffCoordinate)) {
+        console.warn('[PassengerNavigation] Destination passager hors Kinshasa ignoree:', {
+          bookingId,
+          coordinate: bookingDropoffCoordinate,
+          destination: booking?.passengerDestination,
+        });
+      } else {
+        return bookingDropoffCoordinate;
+      }
+    }
+
+    return tripArrivalCoordinate;
+  }, [
+    booking?.passengerDestination,
+    bookingId,
+    bookingDropoffCoordinate,
+    isKinshasaTrip,
+    tripArrivalCoordinate,
+  ]);
+
+  useEffect(() => {
+    if (!booking?.id && !trip?.id) {
+      return;
+    }
+
+    console.log('[PassengerNavigation] route endpoint coordinates', {
+      bookingId,
+      tripId,
+      tripDeparture: {
+        raw: {
+          lat: trip?.departure?.lat,
+          lng: trip?.departure?.lng,
+          hasCoordinates: trip?.departure?.hasCoordinates,
+        },
+        normalized: tripDepartureCoordinate,
+      },
+      tripArrival: {
+        raw: {
+          lat: trip?.arrival?.lat,
+          lng: trip?.arrival?.lng,
+          hasCoordinates: trip?.arrival?.hasCoordinates,
+        },
+        normalized: tripArrivalCoordinate,
+      },
+      pickup: {
+        raw: booking?.passengerOriginCoordinates ?? null,
+        normalized: pickupCoordinate,
+      },
+      dropoff: {
+        raw: booking?.passengerDestinationCoordinates ?? null,
+        normalized: dropoffCoordinate,
+      },
+    });
+  }, [
+    booking?.id,
+    booking?.passengerDestinationCoordinates,
+    booking?.passengerOriginCoordinates,
+    bookingId,
+    dropoffCoordinate,
+    pickupCoordinate,
+    trip?.arrival?.hasCoordinates,
     trip?.arrival?.lat,
     trip?.arrival?.lng,
+    trip?.departure?.hasCoordinates,
+    trip?.departure?.lat,
+    trip?.departure?.lng,
+    trip?.id,
+    tripArrivalCoordinate,
+    tripDepartureCoordinate,
+    tripId,
   ]);
 
   const hasPassengerPickedUp = Boolean(
@@ -1437,6 +1583,76 @@ export default function PassengerNavigationScreen() {
     router.replace(`/rate/${tripId}`);
   }, [booking?.droppedOff, booking?.droppedOffConfirmedByPassenger, router, tripId]);
 
+  const handleCancelPassengerTrip = useCallback(async () => {
+    if (!booking?.id) return;
+
+    try {
+      await cancelBooking(booking.id).unwrap();
+      passengerLocationSubscriptionRef.current?.remove();
+      passengerLocationSubscriptionRef.current = null;
+      setPickupNotice(null);
+      setPickupNoticeCountdown(null);
+      setArrivalModalVisible(false);
+      void Speech.stop();
+      refetchBooking();
+      refetchTrip();
+
+      showDialog({
+        variant: 'success',
+        title: 'Trajet annule',
+        message: 'Votre participation a ete annulee.',
+        actions: [
+          {
+            label: 'Retour',
+            variant: 'primary',
+            onPress: navigateBackSafely,
+          },
+        ],
+      });
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        "Impossible d'annuler votre participation pour le moment.";
+      showDialog({
+        variant: 'danger',
+        title: 'Annulation impossible',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
+  }, [
+    booking?.id,
+    cancelBooking,
+    navigateBackSafely,
+    refetchBooking,
+    refetchTrip,
+    showDialog,
+  ]);
+
+  const confirmCancelPassengerTrip = useCallback(() => {
+    if (!booking?.id || isCancellingBooking) return;
+
+    showDialog({
+      variant: 'warning',
+      title: 'Annuler ce trajet',
+      message:
+        'Voulez-vous vraiment annuler votre participation a ce trajet ? Le conducteur sera informe.',
+      actions: [
+        { label: 'Garder', variant: 'ghost' },
+        {
+          label: 'Oui, annuler',
+          variant: 'danger',
+          onPress: handleCancelPassengerTrip,
+        },
+      ],
+    });
+  }, [
+    booking?.id,
+    handleCancelPassengerTrip,
+    isCancellingBooking,
+    showDialog,
+  ]);
+
   // Etat du trajet pour le passager
   const tripStatus = useMemo(() => {
     if (!booking || !trip) return 'loading';
@@ -1447,6 +1663,14 @@ export default function PassengerNavigationScreen() {
     if (booking.pickedUp) return 'in_transit';
     return 'waiting_pickup';
   }, [booking, trip]);
+  const canCancelPassengerTrip = Boolean(
+    booking?.id &&
+      booking.status === 'accepted' &&
+      !booking.droppedOff &&
+      !booking.droppedOffConfirmedByPassenger &&
+      trip?.status !== 'completed' &&
+      trip?.status !== 'cancelled',
+  );
 
   const pickupNoticeDistanceMeters =
     typeof pickupNotice?.distanceMeters === 'number' && Number.isFinite(pickupNotice.distanceMeters)
@@ -1588,21 +1812,22 @@ export default function PassengerNavigationScreen() {
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
       
       {/* Carte */}
-      <MapView
-        ref={mapRef}
-        provider={PROVIDER_GOOGLE}
-        style={[styles.map, { top: mapTopOffset }]}
-        initialRegion={mapRegion}
-        mapType="standard"
-        onMapReady={handleMapReady}
-        showsUserLocation={!isPassengerOnboard && !passengerLocation}
-        showsMyLocationButton={false}
-        showsCompass={false}
-        showsTraffic={false}
-        showsBuildings={false}
-        showsIndoors={false}
-        showsPointsOfInterest={false}
-      >
+      {isNavigationMapReady ? (
+        <MapView
+          ref={mapRef}
+          provider={PASSENGER_NAVIGATION_MAP_PROVIDER}
+          style={[styles.map, { top: mapTopOffset }]}
+          initialRegion={mapRegion}
+          mapType="standard"
+          onMapReady={handleMapReady}
+          showsUserLocation={!isPassengerOnboard && !passengerLocation}
+          showsMyLocationButton={false}
+          showsCompass={false}
+          showsTraffic={false}
+          showsBuildings={false}
+          showsIndoors={false}
+          showsPointsOfInterest={false}
+        >
         {/* Position du passager */}
         {passengerLocation && !isPassengerOnboard && (
           <Marker
@@ -1707,7 +1932,13 @@ export default function PassengerNavigationScreen() {
             zIndex={activeRouteSegment === 'pickup' ? 13 : 3}
           />
         )}
-      </MapView>
+        </MapView>
+      ) : (
+        <View style={[styles.map, styles.mapPlaceholder, { top: mapTopOffset }]}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.mapPlaceholderText}>Preparation de la navigation...</Text>
+        </View>
+      )}
 
       {canToggleRouteSegments && (
         <View style={[styles.segmentToggle, { top: insets.top + 330 }]}>
@@ -1954,6 +2185,28 @@ export default function PassengerNavigationScreen() {
                 <Text style={styles.completedText}>Trajet termine</Text>
               </View>
             )}
+
+            {canCancelPassengerTrip && (
+              <TouchableOpacity
+                style={[
+                  styles.actionButton,
+                  styles.cancelTripButton,
+                  isCancellingBooking && styles.actionButtonDisabled,
+                ]}
+                onPress={confirmCancelPassengerTrip}
+                disabled={isCancellingBooking}
+                activeOpacity={0.85}
+              >
+                {isCancellingBooking ? (
+                  <ActivityIndicator size="small" color={Colors.danger} />
+                ) : (
+                  <Ionicons name="close-circle-outline" size={22} color={Colors.danger} />
+                )}
+                <Text style={styles.cancelTripButtonText}>
+                  {isCancellingBooking ? 'Annulation...' : 'Annuler ma participation'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -2136,6 +2389,16 @@ const styles = StyleSheet.create({
   },
   map: {
     ...StyleSheet.absoluteFillObject,
+  },
+  mapPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.gray[100],
+  },
+  mapPlaceholderText: {
+    marginTop: Spacing.sm,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
   },
   floatingButtons: {
     position: 'absolute',
@@ -2421,6 +2684,9 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     gap: Spacing.sm,
   },
+  actionButtonDisabled: {
+    opacity: 0.65,
+  },
   pickupButton: {
     backgroundColor: Colors.secondary,
   },
@@ -2435,6 +2701,17 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
+  },
+  cancelTripButton: {
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.danger + '33',
+    backgroundColor: Colors.danger + '10',
+  },
+  cancelTripButtonText: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.danger,
   },
   completedBadge: {
     flexDirection: 'row',

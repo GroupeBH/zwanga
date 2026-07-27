@@ -1,5 +1,9 @@
 import type { MapLocationSelection } from '@/components/LocationPickerModal';
 import type { GeocodeResponse } from '@/store/api/googleMapsApi';
+import {
+  isCoordinateInKinshasaBounds,
+  normalizeTripMapCoordinate,
+} from '@/utils/tripCoordinates';
 
 export type ManualGeocodeStatus = 'idle' | 'searching' | 'found' | 'missing';
 
@@ -32,10 +36,20 @@ export function mapGeocodeResponseToSelection(
     return null;
   }
 
+  const coordinate = normalizeTripMapCoordinate(response.lat, response.lng);
+  if (!coordinate) {
+    return null;
+  }
+  const expectsKinshasaCoordinate =
+    /\bkinshasa\b/i.test(trimmedAddress) || !LOCATION_CONTEXT_PATTERN.test(trimmedAddress);
+  if (expectsKinshasaCoordinate && !isCoordinateInKinshasaBounds(coordinate)) {
+    return null;
+  }
+
   return {
     title: trimmedAddress,
     address: response.formattedAddress?.trim() || trimmedAddress,
-    latitude: response.lat,
-    longitude: response.lng,
+    latitude: coordinate.latitude,
+    longitude: coordinate.longitude,
   };
 }
