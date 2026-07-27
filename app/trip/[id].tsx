@@ -6,6 +6,7 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import {
   ELECTRONIC_PAYMENTS_ENABLED,
 } from '@/constants/paymentFeatures';
+import { MAP_MARKER_ANCHORS, MAP_MARKER_SIZES } from '@/constants/mapMarkers';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useUserLocation } from '@/hooks/useUserLocation';
@@ -70,7 +71,6 @@ import {
   TouchableOpacity,
   useWindowDimensions,
   View,
-  type ImageRequireSource
 } from 'react-native';
 import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -107,19 +107,12 @@ const arrayToLatLng = (coordinates?: [number, number] | null) => {
   };
 };
 
-const USE_CUSTOM_MAP_MARKERS = Platform.OS !== 'android';
-const USE_ANDROID_MAP_MARKER_IMAGES = Platform.OS === 'android';
+const USE_CUSTOM_MAP_MARKERS = true;
 const TRIP_DETAIL_MAP_PROVIDER = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
 const TRIP_DETAIL_MAP_MIN_DELTA = 0.006;
 const TRIP_DETAIL_MAP_MAX_DELTA = 0.014;
 const TRIP_DETAIL_MAP_PADDING = 1.02;
 const LOCATION_PICKER_OPEN_DELAY_MS = Platform.OS === 'ios' ? 250 : 0;
-const ANDROID_TRIP_DETAIL_MARKER_ANCHOR = { x: 0.5, y: 0.86 };
-const androidTripDetailMarkerImages: Record<'departure' | 'arrival' | 'passenger', ImageRequireSource> = {
-  departure: require('@/assets/images/map-markers/trip-detail-marker-departure.png'),
-  arrival: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
-  passenger: require('@/assets/images/map-markers/trip-detail-marker-passenger.png'),
-};
 const DEFAULT_MAP_REGION = {
   latitude: -4.325,
   longitude: 15.322,
@@ -2466,32 +2459,28 @@ export default function TripDetailsScreen() {
 
                 <Marker
                   coordinate={departureCoordinate}
-                  anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
-                  image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.departure : undefined}
-                  pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.success}
+                  anchor={MAP_MARKER_ANCHORS.center}
                   title="Depart"
                   description={trip?.departure?.address}
                   tracksViewChanges={false}
                 >
                   {USE_CUSTOM_MAP_MARKERS ? (
                     <View style={styles.markerStartCircle}>
-                      <Ionicons name="location" size={18} color={Colors.white} />
+                      <Ionicons name="location" size={MAP_MARKER_SIZES.tripDetailMain.icon} color={Colors.white} />
                     </View>
                   ) : null}
                 </Marker>
 
                 <Marker
                   coordinate={arrivalCoordinate}
-                  anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
-                  image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.arrival : undefined}
-                  pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.primary}
+                  anchor={MAP_MARKER_ANCHORS.center}
                   title="Arrivee"
                   description={trip?.arrival?.address}
                   tracksViewChanges={false}
                 >
                   {USE_CUSTOM_MAP_MARKERS ? (
                     <View style={styles.markerEndCircle}>
-                      <Ionicons name="navigate" size={18} color={Colors.white} />
+                      <Ionicons name="navigate" size={MAP_MARKER_SIZES.tripDetailMain.icon} color={Colors.white} />
                     </View>
                   ) : null}
                 </Marker>
@@ -2501,16 +2490,14 @@ export default function TripDetailsScreen() {
                   <Marker
                     key={`passenger-dest-${marker.id}`}
                     coordinate={marker.coordinate}
-                    anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
-                    image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.passenger : undefined}
-                    pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.secondary}
+                    anchor={MAP_MARKER_ANCHORS.center}
                     title={marker.title}
                     description={marker.description}
                     tracksViewChanges={false}
                   >
                     {USE_CUSTOM_MAP_MARKERS ? (
                       <View style={styles.markerPassengerDestCircle}>
-                        <Ionicons name="person" size={14} color={Colors.white} />
+                        <Ionicons name="person" size={MAP_MARKER_SIZES.tripDetailPassenger.icon} color={Colors.white} />
                       </View>
                     ) : null}
                   </Marker>
@@ -2565,9 +2552,7 @@ export default function TripDetailsScreen() {
 
                   <Marker
                     coordinate={departureCoordinate}
-                    anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
-                    image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.departure : undefined}
-                    pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.success}
+                    anchor={MAP_MARKER_ANCHORS.center}
                     title="Depart"
                     description={trip?.departure?.address}
                     tracksViewChanges={false}
@@ -2575,7 +2560,7 @@ export default function TripDetailsScreen() {
                     {USE_CUSTOM_MAP_MARKERS ? (
                       <>
                     <View style={styles.markerStartCircle}>
-                      <Ionicons name="location" size={20} color={Colors.white} />
+                      <Ionicons name="location" size={MAP_MARKER_SIZES.tripDetailMain.fullscreenIcon} color={Colors.white} />
                     </View>
                     <Callout>
                       <View>
@@ -2589,9 +2574,7 @@ export default function TripDetailsScreen() {
 
                   <Marker
                     coordinate={arrivalCoordinate}
-                    anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
-                    image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.arrival : undefined}
-                    pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.primary}
+                    anchor={MAP_MARKER_ANCHORS.center}
                     title="Arrivee"
                     description={trip?.arrival?.address}
                     tracksViewChanges={false}
@@ -2599,7 +2582,7 @@ export default function TripDetailsScreen() {
                     {USE_CUSTOM_MAP_MARKERS ? (
                       <>
                     <View style={styles.markerEndCircle}>
-                      <Ionicons name="navigate" size={20} color={Colors.white} />
+                      <Ionicons name="navigate" size={MAP_MARKER_SIZES.tripDetailMain.fullscreenIcon} color={Colors.white} />
                     </View>
                     <Callout>
                       <View>
@@ -2616,9 +2599,7 @@ export default function TripDetailsScreen() {
                     <Marker
                       key={`passenger-dest-fullscreen-${marker.id}`}
                       coordinate={marker.coordinate}
-                      anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
-                      image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.passenger : undefined}
-                      pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.secondary}
+                      anchor={MAP_MARKER_ANCHORS.center}
                       title={marker.title}
                       description={marker.description}
                       tracksViewChanges={false}
@@ -2626,7 +2607,7 @@ export default function TripDetailsScreen() {
                       {USE_CUSTOM_MAP_MARKERS ? (
                         <>
                           <View style={styles.markerPassengerDestCircle}>
-                            <Ionicons name="person" size={16} color={Colors.white} />
+                            <Ionicons name="person" size={MAP_MARKER_SIZES.tripDetailPassenger.fullscreenIcon} color={Colors.white} />
                           </View>
                           <Callout>
                             <View>
@@ -4651,23 +4632,23 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   markerStartCircle: {
-    width: 32,
-    height: 32,
+    width: MAP_MARKER_SIZES.tripDetailMain.size,
+    height: MAP_MARKER_SIZES.tripDetailMain.size,
     backgroundColor: Colors.success,
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
+    borderWidth: MAP_MARKER_SIZES.tripDetailMain.borderWidth,
     borderColor: Colors.white,
   },
   markerEndCircle: {
-    width: 32,
-    height: 32,
+    width: MAP_MARKER_SIZES.tripDetailMain.size,
+    height: MAP_MARKER_SIZES.tripDetailMain.size,
     backgroundColor: Colors.primary,
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
+    borderWidth: MAP_MARKER_SIZES.tripDetailMain.borderWidth,
     borderColor: Colors.white,
   },
   markerCurrentCircle: {
@@ -4686,8 +4667,8 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
   },
   markerPassengerDestCircle: {
-    width: 28,
-    height: 28,
+    width: MAP_MARKER_SIZES.tripDetailPassenger.size,
+    height: MAP_MARKER_SIZES.tripDetailPassenger.size,
     backgroundColor: Colors.secondary,
     borderRadius: BorderRadius.full,
     alignItems: 'center',

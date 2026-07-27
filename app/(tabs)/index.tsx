@@ -8,6 +8,7 @@ import {
   VehicleTrackingMarker,
 } from '@/components/TrackingMapMarkers';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { MAP_MARKER_ANCHORS, MAP_MARKER_SIZES } from '@/constants/mapMarkers';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { getCurrentTripInfo } from '@/services/ongoingTripNotification';
@@ -45,7 +46,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -70,8 +71,8 @@ const HOME_MAP_ANIMATION_MIN_INTERVAL_MS = Platform.OS === 'ios' ? 1200 : 700;
 const DRIVER_UPCOMING_TRIP_HIGHLIGHT_WINDOW_MS = 3 * 60 * 60 * 1000;
 const IS_ANDROID = Platform.OS === 'android';
 const HOME_MAP_PROVIDER = IS_ANDROID ? PROVIDER_GOOGLE : undefined;
-const TRIP_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
-const USER_LOCATION_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
+const TRIP_MARKER_ANCHOR = MAP_MARKER_ANCHORS.center;
+const USER_LOCATION_MARKER_ANCHOR = MAP_MARKER_ANCHORS.center;
 
 const KINSHASA_REGION: Region = {
   latitude: -4.325,
@@ -784,6 +785,26 @@ export default function HomeScreen() {
   useEffect(() => {
     setLoadedTripMarkerKeys(new Set());
   }, [isFocused]);
+
+  const handleTripMarkerReady = useCallback((tripId: string, markerRenderKey: string) => {
+    if (!IS_ANDROID) return;
+
+    [80, 220].forEach((delay) => {
+      setTimeout(() => {
+        tripMarkerRefs.current[tripId]?.redraw();
+      }, delay);
+    });
+    setTimeout(() => {
+      setLoadedTripMarkerKeys((current) => {
+        if (current.has(markerRenderKey)) return current;
+
+        const next = new Set(current);
+        next.add(markerRenderKey);
+        return next;
+      });
+    }, 320);
+  }, []);
+
   const [isCenteringOnUser, setIsCenteringOnUser] = useState(false);
   const [mapFocusedOnUser, setMapFocusedOnUser] = useState(false);
   const [userLocationMarker, setUserLocationMarker] = useState<UserLocationMarkerState | null>(null);
@@ -2041,7 +2062,9 @@ export default function HomeScreen() {
           const coordinate =
             (isActiveDriverTrip ? liveUserCoordinate : null) ?? getTripMapCoordinate(trip);
           const isSelected = trip.id === selectedTrip?.id;
-          const markerRenderKey = `${trip.id}:${trip.vehicleType || 'car'}:${isActiveDriverTrip ? 'tracking' : 'vehicle'}`;
+          const markerRenderKey = `${trip.id}:${trip.vehicleType || 'car'}:${
+            isActiveDriverTrip ? 'tracking' : isSelected ? 'selected' : 'vehicle'
+          }`;
 
           if (!coordinate) {
             return null;
@@ -2060,38 +2083,23 @@ export default function HomeScreen() {
               identifier={trip.id}
               coordinate={coordinate}
               anchor={isActiveDriverTrip ? VEHICLE_TRACKING_MARKER_ANCHOR : TRIP_MARKER_ANCHOR}
-              image={IS_ANDROID ? getTripMarkerImage(trip, isSelected) : undefined}
               onPress={() => openTripDetail(trip.id)}
               tappable
-              tracksViewChanges={false}
+              tracksViewChanges={IS_ANDROID && !loadedTripMarkerKeys.has(markerRenderKey)}
               zIndex={isSelected ? 10 : 1}
             >
-              {isActiveDriverTrip && !IS_ANDROID ? (
-                <VehicleTrackingMarker vehicleType={trip.vehicleType} />
-              ) : !IS_ANDROID ? (
+              {isActiveDriverTrip ? (
+                <VehicleTrackingMarker
+                  vehicleType={trip.vehicleType}
+                  onReady={() => handleTripMarkerReady(trip.id, markerRenderKey)}
+                />
+              ) : (
                 <TripVehicleMapMarker
                   trip={trip}
                   isSelected={isSelected}
-                  onReady={() => {
-                    if (!IS_ANDROID) return;
-
-                    [80, 220].forEach((delay) => {
-                      setTimeout(() => {
-                        tripMarkerRefs.current[trip.id]?.redraw();
-                      }, delay);
-                    });
-                    setTimeout(() => {
-                      setLoadedTripMarkerKeys((current) => {
-                        if (current.has(markerRenderKey)) return current;
-
-                        const next = new Set(current);
-                        next.add(markerRenderKey);
-                        return next;
-                      });
-                    }, 320);
-                  }}
+                  onReady={() => handleTripMarkerReady(trip.id, markerRenderKey)}
                 />
-              ) : null}
+              )}
             </Marker>
           );
         })}
@@ -2868,47 +2876,47 @@ const styles = StyleSheet.create({
     }),
   },
   tripVehicleMarkerFrame: {
-    width: IS_ANDROID ? 96 : 86,
-    height: IS_ANDROID ? 96 : 86,
+    width: MAP_MARKER_SIZES.homeTrip.frame,
+    height: MAP_MARKER_SIZES.homeTrip.frame,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
     overflow: 'visible',
   },
   tripVehicleMarkerImageShell: {
-    width: IS_ANDROID ? 72 : 70,
-    height: IS_ANDROID ? 72 : 70,
+    width: MAP_MARKER_SIZES.homeTrip.shell,
+    height: MAP_MARKER_SIZES.homeTrip.shell,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
     overflow: 'visible',
   },
   tripVehicleMarkerImage: {
-    width: IS_ANDROID ? 56 : 58,
-    height: IS_ANDROID ? 56 : 58,
+    width: MAP_MARKER_SIZES.homeTrip.image,
+    height: MAP_MARKER_SIZES.homeTrip.image,
   },
   tripVehicleMarkerImageSelected: {
-    width: IS_ANDROID ? 62 : 64,
-    height: IS_ANDROID ? 62 : 64,
+    width: MAP_MARKER_SIZES.homeTrip.selectedImage,
+    height: MAP_MARKER_SIZES.homeTrip.selectedImage,
   },
   userLocationMarkerFrame: {
-    width: 64,
-    height: 64,
+    width: MAP_MARKER_SIZES.homeUserLocation.frame,
+    height: MAP_MARKER_SIZES.homeUserLocation.frame,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'visible',
   },
   userLocationMarkerImage: {
-    width: 58,
-    height: 58,
+    width: MAP_MARKER_SIZES.homeUserLocation.image,
+    height: MAP_MARKER_SIZES.homeUserLocation.image,
   },
   userLocationMarkerFrameAndroid: {
-    width: 46,
-    height: 46,
+    width: MAP_MARKER_SIZES.homeUserLocation.frame,
+    height: MAP_MARKER_SIZES.homeUserLocation.frame,
   },
   userLocationMarkerImageAndroid: {
-    width: 42,
-    height: 42,
+    width: MAP_MARKER_SIZES.homeUserLocation.image,
+    height: MAP_MARKER_SIZES.homeUserLocation.image,
   },
   passengerLocationMarkerFrame: {
     width: 42,
