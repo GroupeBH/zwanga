@@ -33,6 +33,7 @@ import type { Booking, Trip } from '@/types';
 import {
   areTripMapCoordinatesSame,
   getTripLocationCoordinate,
+  isCoordinateInKinshasaBounds,
   normalizeTripMapCoordinate,
 } from '@/utils/tripCoordinates';
 import { calculateDistance, getRouteAlignedPosition } from '@/utils/routeHelpers';
@@ -48,6 +49,7 @@ import {
   resolveActiveDestination,
   trimPolylineFromCurrentPosition,
   type NavigationCoordinate,
+  type NavigationStop,
 } from '@/utils/navigation/routeProgress';
 import { shareTrip } from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
@@ -155,6 +157,13 @@ const DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS = 3000;
 const DRIVER_LOCATION_BACKEND_UPDATE_INTERVAL_MS = 3000;
 const FRESH_DRIVER_LOCATION_MAX_AGE_MS = LOCATION_FRESHNESS_MS;
 const OFF_ROUTE_DISTANCE_KM = ROUTE_DEVIATION_THRESHOLD_METERS / 1000;
+
+const isCoordinateAllowedForNavigationRoute = (
+  coordinate: RouteCoordinate | null | undefined,
+  restrictToKinshasa: boolean,
+): coordinate is RouteCoordinate => Boolean(
+  coordinate && (!restrictToKinshasa || isCoordinateInKinshasaBounds(coordinate)),
+);
 const OFF_ROUTE_MAX_ACCURACY_METERS = MAX_ACCEPTABLE_GPS_ACCURACY_METERS;
 const OFF_ROUTE_MIN_ROUTE_POINTS = 2;
 const PICKUP_NOTICE_PRIORITY: Record<PickupNoticeEventType, number> = {
@@ -418,6 +427,12 @@ export default function NavigationScreen() {
       }),
     [trip?.arrival?.hasCoordinates, trip?.arrival?.lat, trip?.arrival?.lng],
   );
+  const isKinshasaNavigationTrip = Boolean(
+    tripDepartureCoordinate &&
+      tripArrivalCoordinate &&
+      isCoordinateInKinshasaBounds(tripDepartureCoordinate) &&
+      isCoordinateInKinshasaBounds(tripArrivalCoordinate),
+  );
 
   useEffect(() => {
     if (!trip?.id) {
@@ -442,8 +457,10 @@ export default function NavigationScreen() {
         },
         normalized: tripArrivalCoordinate,
       },
+      isKinshasaNavigationTrip,
     });
   }, [
+    isKinshasaNavigationTrip,
     trip?.arrival?.hasCoordinates,
     trip?.arrival?.lat,
     trip?.arrival?.lng,
@@ -526,34 +543,90 @@ export default function NavigationScreen() {
       .forEach((booking) => {
         const isPassengerDroppedOff = hasBookingDropoffCompleted(booking);
         const liveLocation = livePassengerLocations[booking.id];
-        const apiLocation = normalizeTripMapCoordinate(
+        const liveLocationCoordinate = liveLocation?.coordinate ?? null;
+        const apiLocationCoordinate = normalizeTripMapCoordinate(
           booking.passengerLocationCoordinates?.latitude,
           booking.passengerLocationCoordinates?.longitude,
         );
-        const pickupLocation = normalizeTripMapCoordinate(
+        const passengerPickupCoordinate = normalizeTripMapCoordinate(
           booking.passengerOriginCoordinates?.latitude,
           booking.passengerOriginCoordinates?.longitude,
         );
-        const dropoffLocation =
-          normalizeTripMapCoordinate(
-            booking.passengerDestinationCoordinates?.latitude,
-            booking.passengerDestinationCoordinates?.longitude,
-          ) ?? tripArrivalCoordinate;
+        const passengerDropoffCoordinate = normalizeTripMapCoordinate(
+          booking.passengerDestinationCoordinates?.latitude,
+          booking.passengerDestinationCoordinates?.longitude,
+        );
+        const liveCoordinate = isCoordinateAllowedForNavigationRoute(
+          liveLocationCoordinate,
+          isKinshasaNavigationTrip,
+        )
+          ? liveLocationCoordinate
+          : null;
+        const apiLocation = isCoordinateAllowedForNavigationRoute(
+          apiLocationCoordinate,
+          isKinshasaNavigationTrip,
+        )
+          ? apiLocationCoordinate
+          : null;
+        const pickupLocation = isCoordinateAllowedForNavigationRoute(
+          passengerPickupCoordinate,
+          isKinshasaNavigationTrip,
+        )
+          ? passengerPickupCoordinate
+          : null;
+        const safePassengerDropoffCoordinate = isCoordinateAllowedForNavigationRoute(
+          passengerDropoffCoordinate,
+          isKinshasaNavigationTrip,
+        )
+          ? passengerDropoffCoordinate
+          : null;
+        const dropoffLocation = safePassengerDropoffCoordinate ?? tripArrivalCoordinate;
+
+        if (isKinshasaNavigationTrip && liveLocationCoordinate && !liveCoordinate) {
+          console.warn('[DriverNavigation] Position live passager hors Kinshasa ignoree:', {
+            bookingId: booking.id,
+            coordinate: liveLocationCoordinate,
+          });
+        }
+        if (isKinshasaNavigationTrip && apiLocationCoordinate && !apiLocation) {
+          console.warn('[DriverNavigation] Position API passager hors Kinshasa ignoree:', {
+            bookingId: booking.id,
+            coordinate: apiLocationCoordinate,
+          });
+        }
+        if (isKinshasaNavigationTrip && passengerPickupCoordinate && !pickupLocation) {
+          console.warn('[DriverNavigation] Pickup passager hors Kinshasa ignore:', {
+            bookingId: booking.id,
+            coordinate: passengerPickupCoordinate,
+          });
+        }
+        if (
+          isKinshasaNavigationTrip &&
+          passengerDropoffCoordinate &&
+          !safePassengerDropoffCoordinate
+        ) {
+          console.warn('[DriverNavigation] Dropoff passager hors Kinshasa ignore:', {
+            bookingId: booking.id,
+            coordinate: passengerDropoffCoordinate,
+            destination: booking.passengerDestination,
+          });
+        }
+
         const status: PassengerTrackingMarkerStatus =
           isPassengerDroppedOff
             ? 'arrived'
             : 'pickup';
         const coordinate =
           status === 'arrived'
-            ? dropoffLocation ?? liveLocation?.coordinate ?? apiLocation ?? pickupLocation ?? tripDepartureCoordinate
-            : liveLocation?.coordinate ?? apiLocation ?? pickupLocation ?? tripDepartureCoordinate;
+            ? dropoffLocation ?? liveCoordinate ?? apiLocation ?? pickupLocation ?? tripDepartureCoordinate
+            : liveCoordinate ?? apiLocation ?? pickupLocation ?? tripDepartureCoordinate;
 
         if (!coordinate) return;
 
         locations.push({
           bookingId: booking.id,
           coordinate,
-          isLive: Boolean(liveLocation || apiLocation),
+          isLive: Boolean(liveCoordinate || apiLocation),
           passengerId: booking.passengerId,
           passengerName: booking.passengerName || 'Passager',
           status,
@@ -561,7 +634,13 @@ export default function NavigationScreen() {
       });
 
     return locations;
-  }, [bookings, livePassengerLocations, tripArrivalCoordinate, tripDepartureCoordinate]);
+  }, [
+    bookings,
+    isKinshasaNavigationTrip,
+    livePassengerLocations,
+    tripArrivalCoordinate,
+    tripDepartureCoordinate,
+  ]);
   
   // Refs pour éviter les re-rendus excessifs
   const pendingNavigationBookings = useMemo(
@@ -619,22 +698,37 @@ export default function NavigationScreen() {
   tripEndNoticeRef.current = tripEndNotice;
   bookingsRef.current = bookings;
 
-  const activeNavigationDestination = useMemo(
-    () =>
-      resolveActiveDestination(
-        waypoints.map((waypoint) => ({
-          id: waypoint.id,
-          kind: waypoint.type,
-          completed: waypoint.completed,
-          coordinate: {
-            latitude: waypoint.location.lat,
-            longitude: waypoint.location.lng,
-          },
-        })),
-        tripArrivalCoordinate,
-      ),
-    [tripArrivalCoordinate, waypoints],
-  );
+  const activeNavigationDestination = useMemo(() => {
+    const navigationStops = waypoints.reduce<NavigationStop[]>((stops, waypoint) => {
+      const coordinate = normalizeTripMapCoordinate(
+        waypoint.location.lat,
+        waypoint.location.lng,
+      );
+
+      if (!isCoordinateAllowedForNavigationRoute(coordinate, isKinshasaNavigationTrip)) {
+        if (isKinshasaNavigationTrip && coordinate) {
+          console.warn('[DriverNavigation] Waypoint hors Kinshasa ignore pour le trace:', {
+            waypointId: waypoint.id,
+            type: waypoint.type,
+            coordinate,
+          });
+        }
+
+        return stops;
+      }
+
+      stops.push({
+        id: waypoint.id,
+        kind: waypoint.type,
+        completed: waypoint.completed,
+        coordinate,
+      });
+
+      return stops;
+    }, []);
+
+    return resolveActiveDestination(navigationStops, tripArrivalCoordinate);
+  }, [isKinshasaNavigationTrip, tripArrivalCoordinate, waypoints]);
   const activeRouteDestination = activeNavigationDestination?.coordinate ?? null;
 
   const cleanupNavigationUi = useCallback(() => {
@@ -1354,9 +1448,22 @@ export default function NavigationScreen() {
           booking.passengerOriginCoordinates?.latitude,
           booking.passengerOriginCoordinates?.longitude,
         );
+        const safePassengerPickupCoordinate = isCoordinateAllowedForNavigationRoute(
+          passengerPickupCoordinate,
+          isKinshasaNavigationTrip,
+        )
+          ? passengerPickupCoordinate
+          : null;
+        if (isKinshasaNavigationTrip && passengerPickupCoordinate && !safePassengerPickupCoordinate) {
+          console.warn('[DriverNavigation] Pickup waypoint passager hors Kinshasa ignore:', {
+            bookingId: booking.id,
+            coordinate: passengerPickupCoordinate,
+            origin: booking.passengerOrigin,
+          });
+        }
         const pickupLocation = {
-          lat: passengerPickupCoordinate?.latitude ?? tripDepartureCoordinate!.latitude,
-          lng: passengerPickupCoordinate?.longitude ?? tripDepartureCoordinate!.longitude,
+          lat: safePassengerPickupCoordinate?.latitude ?? tripDepartureCoordinate!.latitude,
+          lng: safePassengerPickupCoordinate?.longitude ?? tripDepartureCoordinate!.longitude,
         };
         const pickupAddress = getBookingPickupLabel(booking, trip);
         waypointsList.push({
@@ -1383,11 +1490,28 @@ export default function NavigationScreen() {
           booking.passengerDestinationCoordinates?.latitude,
           booking.passengerDestinationCoordinates?.longitude,
         );
+        const safePassengerDestinationCoordinate = isCoordinateAllowedForNavigationRoute(
+          passengerDestinationCoordinate,
+          isKinshasaNavigationTrip,
+        )
+          ? passengerDestinationCoordinate
+          : null;
+        if (
+          isKinshasaNavigationTrip &&
+          passengerDestinationCoordinate &&
+          !safePassengerDestinationCoordinate
+        ) {
+          console.warn('[DriverNavigation] Dropoff waypoint passager hors Kinshasa ignore:', {
+            bookingId: booking.id,
+            coordinate: passengerDestinationCoordinate,
+            destination: booking.passengerDestination,
+          });
+        }
 
-        if (passengerDestinationCoordinate) {
+        if (safePassengerDestinationCoordinate) {
           dropoffLocation = { 
-            lat: passengerDestinationCoordinate.latitude,
-            lng: passengerDestinationCoordinate.longitude,
+            lat: safePassengerDestinationCoordinate.latitude,
+            lng: safePassengerDestinationCoordinate.longitude,
           };
         }
         const dropoffAddress = getBookingDropoffLabel(booking, trip);
@@ -1409,6 +1533,19 @@ export default function NavigationScreen() {
       }
     });
 
+    console.log('[DriverNavigation] navigation waypoints', {
+      tripId,
+      isKinshasaNavigationTrip,
+      count: waypointsList.length,
+      waypoints: waypointsList.map((waypoint) => ({
+        id: waypoint.id,
+        type: waypoint.type,
+        completed: waypoint.completed,
+        bookingId: waypoint.booking.id,
+        coordinate: waypoint.location,
+      })),
+    });
+
     waypointsRef.current = waypointsList;
     setWaypoints(waypointsList);
 
@@ -1421,7 +1558,14 @@ export default function NavigationScreen() {
       currentWaypointIndexRef.current = waypointsList.length;
       setCurrentWaypointIndex(waypointsList.length);
     }
-  }, [bookings, trip, tripArrivalCoordinate, tripDepartureCoordinate]);
+  }, [
+    bookings,
+    isKinshasaNavigationTrip,
+    trip,
+    tripArrivalCoordinate,
+    tripDepartureCoordinate,
+    tripId,
+  ]);
 
   useEffect(() => {
     const currentNotice = pickupNoticeRef.current;
@@ -2040,9 +2184,40 @@ export default function NavigationScreen() {
   const fetchRoute = async (options: FetchRouteOptions = {}) => {
     if (!trip || !tripDepartureCoordinate || !activeRouteDestination || !isMountedRef.current) return;
 
-    const routeOrigin = options.originOverride ?? tripDepartureCoordinate;
-    const routeDestination = activeRouteDestination;
+    let routeOrigin = options.originOverride ?? tripDepartureCoordinate;
+    let routeDestination = activeRouteDestination;
+    if (isKinshasaNavigationTrip && !isCoordinateInKinshasaBounds(routeOrigin)) {
+      console.warn('[DriverNavigation] Origine Directions hors Kinshasa ignoree:', {
+        tripId,
+        origin: routeOrigin,
+        fallback: tripDepartureCoordinate,
+      });
+      routeOrigin = tripDepartureCoordinate;
+    }
+    if (
+      isKinshasaNavigationTrip &&
+      tripArrivalCoordinate &&
+      !isCoordinateInKinshasaBounds(routeDestination)
+    ) {
+      console.warn('[DriverNavigation] Destination Directions hors Kinshasa ignoree:', {
+        tripId,
+        activeDestination: activeNavigationDestination,
+        destination: routeDestination,
+        fallback: tripArrivalCoordinate,
+      });
+      routeDestination = tripArrivalCoordinate;
+    }
     const shouldFitToRoute = options.fitToRoute ?? true;
+    const directDistanceKm = calculateDistance(routeOrigin, routeDestination);
+
+    console.log('[DriverNavigation] Directions request coordinates', {
+      tripId,
+      isKinshasaNavigationTrip,
+      activeDestination: activeNavigationDestination,
+      origin: routeOrigin,
+      destination: routeDestination,
+      directDistanceKm: Number(directDistanceKm.toFixed(2)),
+    });
 
     const buildFallbackRoute = () => {
       return [routeOrigin, routeDestination];
