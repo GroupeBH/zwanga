@@ -1,5 +1,6 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import {
+  getVehicleTrackingMarkerImage,
   PASSENGER_TRACKING_MARKER_ANCHOR,
   PassengerTrackingMarker,
   type PassengerTrackingMarkerStatus,
@@ -65,10 +66,10 @@ import {
   Text,
   TouchableOpacity,
   View,
+  type ImageRequireSource,
 } from 'react-native';
 import MapView, { AnimatedRegion, Marker, Polyline, PROVIDER_GOOGLE, type MapMarker } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MAP_MARKER_ANCHORS, MAP_MARKER_SIZES } from '@/constants/mapMarkers';
 
 interface RouteStep {
   distance: { text: string; value: number };
@@ -144,7 +145,8 @@ const SPEECH_LANGUAGE = 'fr-FR';
 const SPEECH_RATE = 0.95;
 const SPEECH_MIN_INTERVAL_MS = 2500;
 const MAX_LIVE_PASSENGER_MARKERS = Platform.OS === 'ios' ? 10 : 16;
-const IS_ANDROID = Platform.OS === 'android';
+const USE_ANDROID_NAVIGATION_MARKER_IMAGES = Platform.OS === 'android';
+const ANDROID_PIN_MARKER_ANCHOR = { x: 0.5, y: 0.88 };
 const DRIVER_PICKUP_ARRIVAL_DISTANCE_KM = 0.05;
 const PASSENGER_READY_DISTANCE_KM = 0.005;
 const DRIVER_DROPOFF_APPROACH_DISTANCE_KM = 0.04;
@@ -159,6 +161,12 @@ const PICKUP_NOTICE_PRIORITY: Record<PickupNoticeEventType, number> = {
   driver_arrived_pickup: 1,
   parties_nearby: 2,
   passenger_ready_pickup: 3,
+};
+const androidNavigationMarkerImages: Record<'departure' | 'pickup' | 'dropoff' | 'destination', ImageRequireSource> = {
+  departure: require('@/assets/images/map-markers/trip-detail-marker-departure.png'),
+  pickup: require('@/assets/images/map-markers/trip-detail-marker-passenger.png'),
+  dropoff: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
+  destination: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
 };
 
 const cleanHtmlInstructions = (html: string): string => {
@@ -455,10 +463,6 @@ export default function NavigationScreen() {
   const [loadedPassengerMarkerKeys, setLoadedPassengerMarkerKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const [loadedStaticMarkerKeys, setLoadedStaticMarkerKeys] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  const [driverMarkerReady, setDriverMarkerReady] = useState(!IS_ANDROID);
   const [destinationTracksViewChanges, setDestinationTracksViewChanges] = useState(true);
   const driverPosition = useRef(
     new AnimatedRegion({
@@ -468,36 +472,6 @@ export default function NavigationScreen() {
       longitudeDelta: 0,
     })
   ).current;
-
-  const handleDriverTrackingMarkerReady = useCallback(() => {
-    if (!IS_ANDROID) return;
-
-    [80, 220].forEach((delay) => {
-      setTimeout(() => {
-        driverMarkerRef.current?.redraw();
-      }, delay);
-    });
-    setTimeout(() => {
-      if (!isMountedRef.current) return;
-      setDriverMarkerReady(true);
-    }, 320);
-  }, []);
-
-  const handleStaticMarkerReady = useCallback((markerKey: string) => {
-    if (!IS_ANDROID) return;
-
-    setTimeout(() => {
-      if (!isMountedRef.current) return;
-
-      setLoadedStaticMarkerKeys((current) => {
-        if (current.has(markerKey)) return current;
-
-        const next = new Set(current);
-        next.add(markerKey);
-        return next;
-      });
-    }, 320);
-  }, []);
 
   const passengerMapLocations = useMemo<PassengerMapLocation[]>(() => {
     const locations: PassengerMapLocation[] = [];
@@ -2954,15 +2928,6 @@ export default function NavigationScreen() {
   }
 
   const currentStep = steps[currentStepIndex];
-  const currentWaypoint = currentWaypointIndex < waypoints.length ? waypoints[currentWaypointIndex] : null;
-  const shouldShowCurrentWaypointMarker =
-    Boolean(currentWaypoint) &&
-    !currentWaypoint?.completed &&
-    Boolean(currentWaypoint?.location?.lat) &&
-    Boolean(currentWaypoint?.location?.lng);
-  const currentWaypointMarkerKey = currentWaypoint
-    ? `current-waypoint-${currentWaypoint.id}:${currentWaypoint.type}`
-    : null;
 
   return (
     <View style={styles.container}>
@@ -3032,14 +2997,18 @@ export default function NavigationScreen() {
             coordinate={driverPosition as unknown as { latitude: number; longitude: number }}
             anchor={VEHICLE_TRACKING_MARKER_ANCHOR}
             title="Ma position"
+            image={
+              USE_ANDROID_NAVIGATION_MARKER_IMAGES
+                ? getVehicleTrackingMarkerImage(trip.vehicleType)
+                : undefined
+            }
             flat
             rotation={heading}
-            tracksViewChanges={IS_ANDROID && !driverMarkerReady}
+            tracksViewChanges={false}
           >
-            <VehicleTrackingMarker
-              vehicleType={trip.vehicleType}
-              onReady={handleDriverTrackingMarkerReady}
-            />
+            {!USE_ANDROID_NAVIGATION_MARKER_IMAGES && (
+              <VehicleTrackingMarker vehicleType={trip.vehicleType} />
+            )}
           </Marker.Animated>
         )}
 
@@ -3069,13 +3038,13 @@ export default function NavigationScreen() {
               title={passenger.passengerName}
               description={passengerDescription}
               onPress={() => router.push(`/passenger/${passenger.passengerId}`)}
-              tracksViewChanges={IS_ANDROID && !loadedPassengerMarkerKeys.has(passengerMarkerKey)}
+              tracksViewChanges={USE_ANDROID_NAVIGATION_MARKER_IMAGES && !loadedPassengerMarkerKeys.has(passengerMarkerKey)}
               zIndex={20}
             >
               <PassengerTrackingMarker
                 status={passenger.status}
                 onReady={() => {
-                  if (!IS_ANDROID) return;
+                  if (!USE_ANDROID_NAVIGATION_MARKER_IMAGES) return;
 
                   [80, 220].forEach((delay) => {
                     setTimeout(() => {
@@ -3102,51 +3071,72 @@ export default function NavigationScreen() {
         {tripDepartureCoordinate && (
           <Marker
             coordinate={tripDepartureCoordinate}
-            anchor={MAP_MARKER_ANCHORS.center}
+            anchor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? ANDROID_PIN_MARKER_ANCHOR : { x: 0.5, y: 0.5 }}
+            image={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? androidNavigationMarkerImages.departure : undefined}
+            pinColor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? undefined : Colors.primary}
             title="Depart"
             description={tripDepartureLabel}
-            tracksViewChanges={IS_ANDROID && !loadedStaticMarkerKeys.has('trip-departure')}
+            tracksViewChanges={false}
             zIndex={8}
           >
-            <View
-              collapsable={false}
-              style={[styles.waypointMarkerContainer, styles.departureMarker]}
-              onLayout={() => handleStaticMarkerReady('trip-departure')}
-            >
-              <Ionicons name="location" size={MAP_MARKER_SIZES.navigationWaypoint.icon} color={Colors.white} />
-            </View>
+            {!USE_ANDROID_NAVIGATION_MARKER_IMAGES && (
+              <View
+                collapsable={false}
+                style={[styles.waypointMarkerContainer, styles.departureMarker]}
+              >
+                <Ionicons name="location" size={20} color={Colors.white} />
+              </View>
+            )}
           </Marker>
         )}
 
         {/* Prochain waypoint uniquement (1 seul pour éviter les crashs) */}
-        {shouldShowCurrentWaypointMarker && currentWaypoint && currentWaypointMarkerKey && (
+        {waypoints.length > 0 && currentWaypointIndex < waypoints.length && 
+         !waypoints[currentWaypointIndex].completed &&
+         waypoints[currentWaypointIndex].location?.lat && 
+         waypoints[currentWaypointIndex].location?.lng && (
           <Marker
             coordinate={{
-              latitude: currentWaypoint.location.lat,
-              longitude: currentWaypoint.location.lng,
+              latitude: waypoints[currentWaypointIndex].location.lat,
+              longitude: waypoints[currentWaypointIndex].location.lng,
             }}
-            anchor={MAP_MARKER_ANCHORS.center}
-            title={`${currentWaypoint.type === 'pickup' ? 'Lieu de prise en charge' : 'Point d arrivee'} ${currentWaypoint.passenger.name}`}
-            description={currentWaypoint.address}
-            tracksViewChanges={IS_ANDROID && !loadedStaticMarkerKeys.has(currentWaypointMarkerKey)}
+            anchor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? ANDROID_PIN_MARKER_ANCHOR : { x: 0.5, y: 0.5 }}
+            image={
+              USE_ANDROID_NAVIGATION_MARKER_IMAGES
+                ? androidNavigationMarkerImages[
+                    waypoints[currentWaypointIndex].type === 'pickup' ? 'pickup' : 'dropoff'
+                  ]
+                : undefined
+            }
+            pinColor={
+              USE_ANDROID_NAVIGATION_MARKER_IMAGES
+                ? undefined
+                : waypoints[currentWaypointIndex].type === 'pickup'
+                  ? Colors.secondary
+                  : Colors.success
+            }
+            title={`${waypoints[currentWaypointIndex].type === 'pickup' ? 'Lieu de prise en charge' : 'Point d arrivee'} ${waypoints[currentWaypointIndex].passenger.name}`}
+            description={waypoints[currentWaypointIndex].address}
+            tracksViewChanges={false}
             zIndex={26}
           >
-            <View
-              collapsable={false}
-              style={[
-                styles.waypointMarkerContainer,
-                currentWaypoint.type === 'pickup'
-                  ? styles.pickupMarker
-                  : styles.dropoffMarker,
-              ]}
-              onLayout={() => handleStaticMarkerReady(currentWaypointMarkerKey)}
-            >
-              <Ionicons
-                name={currentWaypoint.type === 'pickup' ? 'person-add' : 'flag'}
-                size={MAP_MARKER_SIZES.navigationWaypoint.icon}
-                color={Colors.white}
-              />
-            </View>
+            {!USE_ANDROID_NAVIGATION_MARKER_IMAGES && (
+              <View
+                collapsable={false}
+                style={[
+                  styles.waypointMarkerContainer,
+                  waypoints[currentWaypointIndex].type === 'pickup'
+                    ? styles.pickupMarker
+                    : styles.dropoffMarker,
+                ]}
+              >
+                <Ionicons
+                  name={waypoints[currentWaypointIndex].type === 'pickup' ? 'person-add' : 'flag'}
+                  size={20}
+                  color={Colors.white}
+                />
+              </View>
+            )}
           </Marker>
         )}
 
@@ -3157,35 +3147,30 @@ export default function NavigationScreen() {
               latitude: tripArrivalCoordinate.latitude,
               longitude: tripArrivalCoordinate.longitude,
             }}
-            anchor={MAP_MARKER_ANCHORS.pin}
+            anchor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? ANDROID_PIN_MARKER_ANCHOR : { x: 0.5, y: 1 }}
+            image={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? androidNavigationMarkerImages.destination : undefined}
+            pinColor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? undefined : Colors.success}
             title="Arrivee"
             description={tripArrivalLabel}
-            tracksViewChanges={
-              IS_ANDROID
-                ? !loadedStaticMarkerKeys.has('trip-destination')
-                : destinationTracksViewChanges
-            }
+            tracksViewChanges={!USE_ANDROID_NAVIGATION_MARKER_IMAGES && destinationTracksViewChanges}
             zIndex={18}
           >
-            <View
-              collapsable={false}
-              style={styles.destinationMarkerContainer}
-              onLayout={() => {
-                if (IS_ANDROID) {
-                  handleStaticMarkerReady('trip-destination');
-                  return;
-                }
-
-                if (isMountedRef.current && destinationTracksViewChanges) {
-                  setDestinationTracksViewChanges(false);
-                }
-              }}
-            >
-              <View style={styles.destinationMarkerBody}>
-                <Ionicons name="flag" size={MAP_MARKER_SIZES.navigationDestination.icon} color={Colors.white} />
+            {!USE_ANDROID_NAVIGATION_MARKER_IMAGES && (
+              <View
+                collapsable={false}
+                style={styles.destinationMarkerContainer}
+                onLayout={() => {
+                  if (isMountedRef.current && destinationTracksViewChanges) {
+                    setDestinationTracksViewChanges(false);
+                  }
+                }}
+              >
+                <View style={styles.destinationMarkerBody}>
+                  <Ionicons name="flag" size={22} color={Colors.white} />
+                </View>
+                <View style={styles.destinationMarkerTip} />
               </View>
-              <View style={styles.destinationMarkerTip} />
-            </View>
+            )}
           </Marker>
         )}
       </MapView>
@@ -4679,18 +4664,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   destinationMarkerContainer: {
-    width: MAP_MARKER_SIZES.navigationDestination.frameWidth,
-    height: MAP_MARKER_SIZES.navigationDestination.frameHeight,
+    width: 72,
+    height: 72,
     alignItems: 'center',
     justifyContent: 'flex-start',
     backgroundColor: 'transparent',
-    paddingTop: MAP_MARKER_SIZES.navigationDestination.paddingTop,
+    paddingTop: 6,
     overflow: 'visible',
   },
   destinationMarkerBody: {
-    width: MAP_MARKER_SIZES.navigationDestination.body,
-    height: MAP_MARKER_SIZES.navigationDestination.body,
-    borderRadius: MAP_MARKER_SIZES.navigationDestination.body / 2,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: Colors.success,
     justifyContent: 'center',
     alignItems: 'center',
@@ -4706,17 +4691,17 @@ const styles = StyleSheet.create({
     marginTop: 2,
     width: 0,
     height: 0,
-    borderLeftWidth: MAP_MARKER_SIZES.navigationDestination.tipHalfWidth,
-    borderRightWidth: MAP_MARKER_SIZES.navigationDestination.tipHalfWidth,
-    borderTopWidth: MAP_MARKER_SIZES.navigationDestination.tipHeight,
+    borderLeftWidth: 8,
+    borderRightWidth: 8,
+    borderTopWidth: 12,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
     borderTopColor: Colors.success,
   },
   waypointMarkerContainer: {
-    width: MAP_MARKER_SIZES.navigationWaypoint.size,
-    height: MAP_MARKER_SIZES.navigationWaypoint.size,
-    borderRadius: MAP_MARKER_SIZES.navigationWaypoint.size / 2,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,

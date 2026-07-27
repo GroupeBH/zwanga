@@ -5,7 +5,6 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import {
   ELECTRONIC_PAYMENTS_ENABLED,
 } from '@/constants/paymentFeatures';
-import { MAP_MARKER_ANCHORS, MAP_MARKER_SIZES } from '@/constants/mapMarkers';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackEvent } from '@/services/analytics';
@@ -47,6 +46,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  type ImageRequireSource,
 } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -81,7 +81,11 @@ const DEFAULT_REQUEST_REGION: Region = {
   latitudeDelta: 0.08,
   longitudeDelta: 0.08,
 };
-const REQUEST_MAP_MARKER_ANCHOR = MAP_MARKER_ANCHORS.center;
+const REQUEST_MAP_MARKER_ANCHOR = { x: 0.5, y: 0.86 };
+const requestMapMarkerImages: Record<'departure' | 'arrival', ImageRequireSource> = {
+  departure: require('@/assets/images/map-markers/trip-detail-marker-departure.png'),
+  arrival: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
+};
 const POPULAR_PLACES = [
   { name: 'Gare Centrale', commune: 'Gombe' },
   { name: 'Marché Zando', commune: 'Kalamu' },
@@ -1352,13 +1356,10 @@ export default function RequestTripScreen() {
                         longitude: departureLocation.longitude,
                       }}
                       anchor={REQUEST_MAP_MARKER_ANCHOR}
+                      image={requestMapMarkerImages.departure}
                       title="Départ"
                       tracksViewChanges={false}
-                    >
-                      <View style={[styles.requestRouteMarker, styles.requestDepartureMarker]}>
-                        <Ionicons name="location" size={MAP_MARKER_SIZES.requestRoute.icon} color={Colors.white} />
-                      </View>
-                    </Marker>
+                    />
                   ) : null}
                   {arrivalLocation ? (
                     <Marker
@@ -1367,13 +1368,10 @@ export default function RequestTripScreen() {
                         longitude: arrivalLocation.longitude,
                       }}
                       anchor={REQUEST_MAP_MARKER_ANCHOR}
+                      image={requestMapMarkerImages.arrival}
                       title="Destination"
                       tracksViewChanges={false}
-                    >
-                      <View style={[styles.requestRouteMarker, styles.requestArrivalMarker]}>
-                        <Ionicons name="flag" size={MAP_MARKER_SIZES.requestRoute.icon} color={Colors.white} />
-                      </View>
-                    </Marker>
+                    />
                   ) : null}
                   {routeCoordinates.length > 1 ? (
                     <Polyline
@@ -1734,9 +1732,6 @@ const styles = StyleSheet.create({
   mapPreview: { height: 240, overflow: 'hidden', backgroundColor: Colors.gray[200] },
   detailsMapPreview: { height: 190, borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: Colors.gray[200] },
   mapPreviewMap: { ...StyleSheet.absoluteFillObject },
-  requestRouteMarker: { width: MAP_MARKER_SIZES.requestRoute.size, height: MAP_MARKER_SIZES.requestRoute.size, borderRadius: BorderRadius.full, alignItems: 'center', justifyContent: 'center', borderWidth: MAP_MARKER_SIZES.requestRoute.borderWidth, borderColor: Colors.white, backgroundColor: Colors.primary },
-  requestDepartureMarker: { backgroundColor: Colors.success },
-  requestArrivalMarker: { backgroundColor: Colors.primary },
   mapPreviewShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 78, backgroundColor: 'rgba(238,242,246,0.72)' },
   mapLocateButton: { position: 'absolute', right: Spacing.lg, top: Spacing.md, minHeight: 42, borderRadius: BorderRadius.full, paddingHorizontal: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, backgroundColor: Colors.white, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 12, elevation: 4 },
   mapLocateButtonText: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[900] },

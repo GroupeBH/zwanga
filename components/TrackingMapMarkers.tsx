@@ -1,8 +1,7 @@
 import { Colors } from '@/constants/styles';
-import { MAP_MARKER_ANCHORS, MAP_MARKER_SIZES } from '@/constants/mapMarkers';
 import { Ionicons } from '@expo/vector-icons';
 import React, { memo } from 'react';
-import { Image, StyleSheet, View, type ImageRequireSource } from 'react-native';
+import { Image, Platform, StyleSheet, View, type ImageRequireSource } from 'react-native';
 import type { VehicleType } from '@/types';
 
 type PassengerTrackingMarkerProps = {
@@ -17,8 +16,7 @@ type VehicleTrackingMarkerProps = {
 
 export type PassengerTrackingMarkerStatus = 'pickup' | 'live' | 'arrived';
 
-const PASSENGER_MARKER_SIZES = MAP_MARKER_SIZES.passengerTracking;
-const VEHICLE_MARKER_SIZES = MAP_MARKER_SIZES.vehicleTracking;
+const IS_ANDROID = Platform.OS === 'android';
 
 const vehicleTrackingMarkerImages: Record<VehicleType, ImageRequireSource> = {
   car: require('@/assets/images/map-markers/trip-marker-car.png'),
@@ -39,8 +37,8 @@ const passengerMarkerMeta: Record<
   arrived: { color: Colors.primary, icon: 'flag', ring: Colors.primary + '20' },
 };
 
-export const PASSENGER_TRACKING_MARKER_ANCHOR = MAP_MARKER_ANCHORS.passengerTracking;
-export const VEHICLE_TRACKING_MARKER_ANCHOR = MAP_MARKER_ANCHORS.vehicleTracking;
+export const PASSENGER_TRACKING_MARKER_ANCHOR = { x: 0.5, y: 0.92 };
+export const VEHICLE_TRACKING_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
 
 export const PassengerTrackingMarker = memo(function PassengerTrackingMarker({
   status,
@@ -52,7 +50,7 @@ export const PassengerTrackingMarker = memo(function PassengerTrackingMarker({
     <View collapsable={false} style={styles.passengerMarkerFrame} onLayout={onReady}>
       <View style={[styles.passengerMarkerRing, { backgroundColor: meta.ring }]}>
         <View style={[styles.passengerMarkerBody, { backgroundColor: meta.color }]}>
-          <Ionicons name={meta.icon} size={PASSENGER_MARKER_SIZES.icon} color={Colors.white} />
+          <Ionicons name={meta.icon} size={16} color={Colors.white} />
         </View>
       </View>
       <View style={[styles.passengerMarkerTip, { borderTopColor: meta.color }]} />
@@ -81,52 +79,52 @@ export const VehicleTrackingMarker = memo(function VehicleTrackingMarker({
 
 const styles = StyleSheet.create({
   passengerMarkerFrame: {
-    width: PASSENGER_MARKER_SIZES.frameWidth,
-    height: PASSENGER_MARKER_SIZES.frameHeight,
+    width: 46,
+    height: 54,
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
     overflow: 'visible',
   },
   passengerMarkerRing: {
-    width: PASSENGER_MARKER_SIZES.ring,
-    height: PASSENGER_MARKER_SIZES.ring,
-    borderRadius: PASSENGER_MARKER_SIZES.ring / 2,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
   },
   passengerMarkerBody: {
-    width: PASSENGER_MARKER_SIZES.body,
-    height: PASSENGER_MARKER_SIZES.body,
-    borderRadius: PASSENGER_MARKER_SIZES.body / 2,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: Colors.white,
-    elevation: PASSENGER_MARKER_SIZES.elevation,
+    elevation: 4,
     shadowColor: Colors.black,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
   },
   passengerMarkerTip: {
-    marginTop: PASSENGER_MARKER_SIZES.tipMarginTop,
+    marginTop: -2,
     width: 0,
     height: 0,
-    borderLeftWidth: PASSENGER_MARKER_SIZES.tipHalfWidth,
-    borderRightWidth: PASSENGER_MARKER_SIZES.tipHalfWidth,
-    borderTopWidth: PASSENGER_MARKER_SIZES.tipHeight,
+    borderLeftWidth: 5,
+    borderRightWidth: 5,
+    borderTopWidth: 7,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
   },
   vehicleFrame: {
-    width: VEHICLE_MARKER_SIZES.frame,
-    height: VEHICLE_MARKER_SIZES.frame,
+    width: IS_ANDROID ? 96 : 76,
+    height: IS_ANDROID ? 96 : 76,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'visible',
   },
   vehicleImage: {
-    width: VEHICLE_MARKER_SIZES.image,
-    height: VEHICLE_MARKER_SIZES.image,
+    width: IS_ANDROID ? 56 : 58,
+    height: IS_ANDROID ? 56 : 58,
   },
 });
