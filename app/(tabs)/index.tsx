@@ -36,10 +36,12 @@ import { setTrips } from '@/store/slices/tripsSlice';
 import type { Booking, Trip, TripRequest } from '@/types';
 import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
 import { formatDateTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
+import { isFreshLocationTimestamp } from '@/utils/navigation/routeProgress';
 import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requestNavigation';
 import {
   getGeoPointCoordinate as getSafeGeoPointCoordinate,
   getTripLocationCoordinate,
+  isCoordinateInKinshasaBounds,
   normalizeTripMapCoordinate,
 } from '@/utils/tripCoordinates';
 import { Ionicons } from '@expo/vector-icons';
@@ -214,6 +216,26 @@ type FeaturedDriverReservation = {
   trip: Trip;
 };
 
+function isFreshLivePassengerLocation(location?: LivePassengerLocation | null) {
+  if (!location) {
+    return false;
+  }
+
+  if (!location.updatedAt) {
+    return true;
+  }
+
+  return isFreshLocationTimestamp(new Date(location.updatedAt).getTime());
+}
+
+function hasFreshBookingPassengerLocation(booking: Booking) {
+  if (!booking.passengerLocationUpdatedAt) {
+    return false;
+  }
+
+  return isFreshLocationTimestamp(new Date(booking.passengerLocationUpdatedAt).getTime());
+}
+
 function formatPrice(price?: number | null) {
   const safePrice = Number(price ?? 0);
 
@@ -257,12 +279,46 @@ function getGeoPointCoordinate(point?: Trip['currentLocation']): MapCoordinate |
   return getSafeGeoPointCoordinate(point);
 }
 
-function getTripMapCoordinate(trip: Trip): MapCoordinate | null {
-  if (trip.status === 'ongoing') {
-    return getGeoPointCoordinate(trip.currentLocation) ?? getLocationCoordinate(trip.departure);
+function isKinshasaHomeTrip(trip?: Trip | null) {
+  const departureCoordinate = trip ? getLocationCoordinate(trip.departure) : null;
+  const arrivalCoordinate = trip ? getLocationCoordinate(trip.arrival) : null;
+
+  return Boolean(
+    departureCoordinate &&
+      arrivalCoordinate &&
+      isCoordinateInKinshasaBounds(departureCoordinate) &&
+      isCoordinateInKinshasaBounds(arrivalCoordinate),
+  );
+}
+
+function isCoordinateAllowedForHomeTrip(
+  coordinate: MapCoordinate | null | undefined,
+  trip?: Trip | null,
+): coordinate is MapCoordinate {
+  return Boolean(
+    coordinate && (!isKinshasaHomeTrip(trip) || isCoordinateInKinshasaBounds(coordinate)),
+  );
+}
+
+function getTripMapCoordinate(
+  trip: Trip,
+  liveCoordinate?: MapCoordinate | null,
+): MapCoordinate | null {
+  const departureCoordinate = getLocationCoordinate(trip.departure);
+
+  if (liveCoordinate && isCoordinateAllowedForHomeTrip(liveCoordinate, trip)) {
+    return liveCoordinate;
   }
 
-  return getLocationCoordinate(trip.departure);
+  if (trip.status === 'ongoing') {
+    const currentLocationCoordinate = getGeoPointCoordinate(trip.currentLocation);
+
+    return isCoordinateAllowedForHomeTrip(currentLocationCoordinate, trip)
+      ? currentLocationCoordinate
+      : departureCoordinate;
+  }
+
+  return departureCoordinate;
 }
 
 function hasUpcomingDeparture(trip: Pick<Trip, 'departureTime' | 'status'>) {
@@ -1308,9 +1364,29 @@ export default function HomeScreen() {
   const driverPassengerMarkers = useMemo<DriverPassengerMarker[]>(() => {
     if (!ongoingDriverTrip) return [];
 
+    const isKinshasaDriverTrip = isKinshasaHomeTrip(ongoingDriverTrip);
     const fallbackPickup = getLocationCoordinate(ongoingDriverTrip.departure);
     const fallbackDropoff = getLocationCoordinate(ongoingDriverTrip.arrival);
     const markers: DriverPassengerMarker[] = [];
+    const resolvePassengerCoordinate = (
+      coordinate: MapCoordinate | null | undefined,
+      booking: Booking,
+      label: string,
+    ) => {
+      if (isCoordinateAllowedForHomeTrip(coordinate, ongoingDriverTrip)) {
+        return coordinate;
+      }
+
+      if (isKinshasaDriverTrip && coordinate) {
+        console.warn(`[Home] ${label} hors Kinshasa ignoree:`, {
+          bookingId: booking.id,
+          coordinate,
+          tripId: ongoingDriverTrip.id,
+        });
+      }
+
+      return null;
+    };
 
     ongoingDriverBookings
       .filter((booking) => booking.status === 'accepted' || booking.status === 'completed')
@@ -1321,20 +1397,48 @@ export default function HomeScreen() {
         const isPassengerOnboard = Boolean(booking.pickedUp && !isPassengerDroppedOff);
 
         const liveLocation = liveDriverPassengerLocations[booking.id];
-        const apiLocation = normalizeTripMapCoordinate(
+        const rawApiLocationCoordinate = normalizeTripMapCoordinate(
           booking.passengerLocationCoordinates?.latitude,
           booking.passengerLocationCoordinates?.longitude,
         );
-        const pickupLocation =
+        const liveCoordinate = resolvePassengerCoordinate(
+          isFreshLivePassengerLocation(liveLocation) ? liveLocation?.coordinate : null,
+          booking,
+          'Position live passager',
+        );
+        if (liveLocation && !isFreshLivePassengerLocation(liveLocation)) {
+          console.warn('[Home] Position live passager trop ancienne ignoree:', {
+            bookingId: booking.id,
+            updatedAt: liveLocation.updatedAt,
+          });
+        }
+        if (rawApiLocationCoordinate && !hasFreshBookingPassengerLocation(booking)) {
+          console.warn('[Home] Position API passager trop ancienne ignoree:', {
+            bookingId: booking.id,
+            updatedAt: booking.passengerLocationUpdatedAt,
+          });
+        }
+        const apiLocation = resolvePassengerCoordinate(
+          hasFreshBookingPassengerLocation(booking) ? rawApiLocationCoordinate : null,
+          booking,
+          'Position API passager',
+        );
+        const pickupLocation = resolvePassengerCoordinate(
           normalizeTripMapCoordinate(
             booking.passengerOriginCoordinates?.latitude,
             booking.passengerOriginCoordinates?.longitude,
-          ) ?? fallbackPickup;
-        const dropoffLocation =
+          ),
+          booking,
+          'Pickup passager',
+        ) ?? fallbackPickup;
+        const dropoffLocation = resolvePassengerCoordinate(
           normalizeTripMapCoordinate(
             booking.passengerDestinationCoordinates?.latitude,
             booking.passengerDestinationCoordinates?.longitude,
-          ) ?? fallbackDropoff;
+          ),
+          booking,
+          'Dropoff passager',
+        ) ?? fallbackDropoff;
         const status: PassengerTrackingMarkerStatus =
           isPassengerDroppedOff
             ? 'arrived'
@@ -1343,15 +1447,15 @@ export default function HomeScreen() {
               : 'pickup';
         const coordinate =
           status === 'arrived'
-            ? dropoffLocation ?? liveLocation?.coordinate ?? apiLocation ?? pickupLocation
-            : liveLocation?.coordinate ?? apiLocation ?? pickupLocation;
+            ? dropoffLocation ?? liveCoordinate ?? apiLocation ?? pickupLocation
+            : liveCoordinate ?? apiLocation ?? pickupLocation;
 
         if (!coordinate) return;
 
         markers.push({
           bookingId: booking.id,
           coordinate,
-          isLive: Boolean(liveLocation || apiLocation),
+          isLive: Boolean(liveCoordinate || apiLocation),
           isVisible: !isPassengerOnboard,
           passengerId: booking.passengerId,
           passengerName: booking.passengerName || 'Passager',
@@ -1396,6 +1500,7 @@ export default function HomeScreen() {
   const isHomeDriverTracking = Boolean(
     ongoingDriverTrip?.id && homeTrackingTripId === ongoingDriverTrip.id,
   );
+  const isOngoingDriverTripKinshasa = isKinshasaHomeTrip(ongoingDriverTrip);
 
   useEffect(() => {
     presentedHomeAutoProgressKeysRef.current.clear();
@@ -1443,13 +1548,30 @@ export default function HomeScreen() {
           payload.coordinates[0],
         );
         if (!coordinate) return;
+        const liveLocation = {
+          coordinate,
+          updatedAt: payload.updatedAt,
+        };
+
+        if (!isFreshLivePassengerLocation(liveLocation)) {
+          console.warn('[Home] Position passager socket trop ancienne ignoree:', {
+            bookingId: payload.bookingId,
+            updatedAt: payload.updatedAt,
+          });
+          return;
+        }
+
+        if (isOngoingDriverTripKinshasa && !isCoordinateInKinshasaBounds(coordinate)) {
+          console.warn('[Home] Position passager socket hors Kinshasa ignoree:', {
+            bookingId: payload.bookingId,
+            coordinate,
+          });
+          return;
+        }
 
         setLiveDriverPassengerLocations((current) => ({
           ...current,
-          [payload.bookingId]: {
-            coordinate,
-            updatedAt: payload.updatedAt,
-          },
+          [payload.bookingId]: liveLocation,
         }));
       },
     );
@@ -1619,6 +1741,7 @@ export default function HomeScreen() {
     homeTrackingTripId,
     isFocused,
     isHomeDriverTracking,
+    isOngoingDriverTripKinshasa,
   ]);
 
   useEffect(() => {
@@ -1636,6 +1759,14 @@ export default function HomeScreen() {
       return;
     }
 
+    if (isOngoingDriverTripKinshasa && !isCoordinateInKinshasaBounds(liveUserCoordinate)) {
+      console.warn('[Home] Position live conducteur hors Kinshasa ignoree:', {
+        tripId: homeTrackingTripId,
+        coordinate: liveUserCoordinate,
+      });
+      return;
+    }
+
     lastHomeDriverLocationSentAtRef.current = now;
     void trackingSocket
       .updateDriverLocation(homeTrackingTripId, [
@@ -1649,8 +1780,8 @@ export default function HomeScreen() {
     homeTrackingTripId,
     isFocused,
     isHomeDriverTracking,
-    liveUserCoordinate?.latitude,
-    liveUserCoordinate?.longitude,
+    isOngoingDriverTripKinshasa,
+    liveUserCoordinate,
   ]);
 
   const featuredDriverReservation = useMemo<FeaturedDriverReservation | null>(() => {
@@ -1720,8 +1851,10 @@ export default function HomeScreen() {
     () =>
       homeMapTrips.filter((trip) =>
         Boolean(
-          (trip.id === ongoingDriverTrip?.id ? liveUserCoordinate : null) ??
-            getTripMapCoordinate(trip),
+          getTripMapCoordinate(
+            trip,
+            trip.id === ongoingDriverTrip?.id ? liveUserCoordinate : null,
+          ),
         ),
       ),
     [homeMapTrips, liveUserCoordinate, ongoingDriverTrip?.id],
@@ -1748,12 +1881,16 @@ export default function HomeScreen() {
   const mapRegion = useMemo<Region>(() => {
     const selectedDeparture = selectedTrip ? getLocationCoordinate(selectedTrip.departure) : null;
     const selectedMapCoordinate = selectedTrip
-      ? (selectedTrip.id === ongoingDriverTrip?.id ? liveUserCoordinate : null) ??
-        getTripMapCoordinate(selectedTrip)
+      ? getTripMapCoordinate(
+        selectedTrip,
+        selectedTrip.id === ongoingDriverTrip?.id ? liveUserCoordinate : null,
+      )
       : null;
     const fallbackDeparture = tripsWithMapCoordinates[0]
-      ? (tripsWithMapCoordinates[0].id === ongoingDriverTrip?.id ? liveUserCoordinate : null) ??
-        getTripMapCoordinate(tripsWithMapCoordinates[0])
+      ? getTripMapCoordinate(
+        tripsWithMapCoordinates[0],
+        tripsWithMapCoordinates[0].id === ongoingDriverTrip?.id ? liveUserCoordinate : null,
+      )
       : null;
     const coordinate = selectedMapCoordinate ?? selectedDeparture ?? fallbackDeparture;
 
@@ -2038,8 +2175,10 @@ export default function HomeScreen() {
       >
         {tripsWithMapCoordinates.map((trip) => {
           const isActiveDriverTrip = trip.id === ongoingDriverTrip?.id;
-          const coordinate =
-            (isActiveDriverTrip ? liveUserCoordinate : null) ?? getTripMapCoordinate(trip);
+          const coordinate = getTripMapCoordinate(
+            trip,
+            isActiveDriverTrip ? liveUserCoordinate : null,
+          );
           const isSelected = trip.id === selectedTrip?.id;
           const markerRenderKey = `${trip.id}:${trip.vehicleType || 'car'}:${isActiveDriverTrip ? 'tracking' : 'vehicle'}`;
 
