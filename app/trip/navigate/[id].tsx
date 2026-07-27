@@ -276,8 +276,37 @@ const isFreshLocationObject = (
     return false;
   }
 
+  if (!normalizeTripMapCoordinate(location.coords.latitude, location.coords.longitude)) {
+    return false;
+  }
+
   const timestamp = Number(location.timestamp);
   return Number.isFinite(timestamp) && Date.now() - timestamp <= maxAgeMs;
+};
+
+const normalizeDriverLocationObject = (
+  location: Location.LocationObject | null,
+): Location.LocationObject | null => {
+  if (!location) {
+    return null;
+  }
+
+  const coordinate = normalizeTripMapCoordinate(
+    location.coords.latitude,
+    location.coords.longitude,
+  );
+  if (!coordinate) {
+    return null;
+  }
+
+  return {
+    ...location,
+    coords: {
+      ...location.coords,
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude,
+    },
+  };
 };
 
 const isFreshLivePassengerLocation = (
@@ -1319,9 +1348,21 @@ export default function NavigationScreen() {
         return;
       }
 
-      const coordinates: [number, number] = [
-        location.coords.longitude,
+      const coordinate = normalizeTripMapCoordinate(
         location.coords.latitude,
+        location.coords.longitude,
+      );
+      if (!coordinate) {
+        console.warn('[Navigation] Position conducteur non envoyee car invalide:', {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
+        return;
+      }
+
+      const coordinates: [number, number] = [
+        coordinate.longitude,
+        coordinate.latitude,
       ];
 
       if (!isFreshLocationObject(location)) {
@@ -1426,23 +1467,25 @@ export default function NavigationScreen() {
         }
         if (!isMountedRef.current) return;
 
-        if (isFreshLocationObject(location)) {
-          currentLocationRef.current = location;
-          setCurrentLocation(location);
+        const normalizedInitialLocation = normalizeDriverLocationObject(location);
+        if (isFreshLocationObject(normalizedInitialLocation)) {
+          const initialCoordinate = {
+            latitude: normalizedInitialLocation.coords.latitude,
+            longitude: normalizedInitialLocation.coords.longitude,
+          };
+          currentLocationRef.current = normalizedInitialLocation;
+          setCurrentLocation(normalizedInitialLocation);
           driverPosition.setValue({
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
+            latitude: initialCoordinate.latitude,
+            longitude: initialCoordinate.longitude,
             latitudeDelta: 0,
             longitudeDelta: 0,
           });
-          sendDriverLocationToTracking(location);
+          sendDriverLocationToTracking(normalizedInitialLocation);
           if (!hasFetchedInitialDriverRouteRef.current) {
             hasFetchedInitialDriverRouteRef.current = true;
             void fetchRouteRef.current?.({
-              originOverride: {
-                latitude: location.coords.latitude,
-                longitude: location.coords.longitude,
-              },
+              originOverride: initialCoordinate,
               fitToRoute: true,
             });
           }
@@ -1468,19 +1511,27 @@ export default function NavigationScreen() {
         (newLocation) => {
           if (!isMountedRef.current) return;
           const now = Date.now();
+          const normalizedLocation = normalizeDriverLocationObject(newLocation);
+          if (!normalizedLocation) {
+            console.warn('[Navigation] Position conducteur ignoree car invalide:', {
+              latitude: newLocation.coords.latitude,
+              longitude: newLocation.coords.longitude,
+            });
+            return;
+          }
 
           if (
             currentLocationRef.current &&
-            typeof newLocation.coords.accuracy === 'number' &&
-            newLocation.coords.accuracy > 80
+            typeof normalizedLocation.coords.accuracy === 'number' &&
+            normalizedLocation.coords.accuracy > 80
           ) {
             return;
           }
 
-          currentLocationRef.current = newLocation;
+          currentLocationRef.current = normalizedLocation;
           const rawCoordinate = {
-            latitude: newLocation.coords.latitude,
-            longitude: newLocation.coords.longitude,
+            latitude: normalizedLocation.coords.latitude,
+            longitude: normalizedLocation.coords.longitude,
           };
           if (!hasFetchedInitialDriverRouteRef.current) {
             hasFetchedInitialDriverRouteRef.current = true;
@@ -1495,7 +1546,9 @@ export default function NavigationScreen() {
             OFF_ROUTE_DISTANCE_KM,
           );
           const gpsAccuracy =
-            typeof newLocation.coords.accuracy === 'number' ? newLocation.coords.accuracy : null;
+            typeof normalizedLocation.coords.accuracy === 'number'
+              ? normalizedLocation.coords.accuracy
+              : null;
           const hasReliableOffRouteSignal =
             gpsAccuracy === null || gpsAccuracy <= OFF_ROUTE_MAX_ACCURACY_METERS;
           const hasRouteForReroute =
@@ -1529,7 +1582,7 @@ export default function NavigationScreen() {
             }
           }
 
-          const displayedCoordinate = routeAlignment?.coordinate ?? rawCoordinate;
+          const displayedCoordinate = rawCoordinate;
 
           driverPosition.timing({
             latitude: displayedCoordinate.latitude,
@@ -1542,10 +1595,10 @@ export default function NavigationScreen() {
           }).start();
 
           const gpsHeading =
-            newLocation.coords.heading !== null &&
-            newLocation.coords.heading !== -1 &&
-            (newLocation.coords.speed ?? 0) > 0.8
-              ? normalizeHeading(newLocation.coords.heading)
+            normalizedLocation.coords.heading !== null &&
+            normalizedLocation.coords.heading !== -1 &&
+            (normalizedLocation.coords.speed ?? 0) > 0.8
+              ? normalizeHeading(normalizedLocation.coords.heading)
               : null;
           const alignedHeading = routeAlignment?.heading ?? gpsHeading;
 
@@ -1567,13 +1620,13 @@ export default function NavigationScreen() {
           // Mettre à jour le state très rarement (pour éviter les re-rendus)
           if (now - lastStateUpdateTime > STATE_UPDATE_INTERVAL) {
             lastStateUpdateTime = now;
-            setCurrentLocation(newLocation);
+            setCurrentLocation(normalizedLocation);
           }
 
           // Mettre à jour la position du conducteur via WebSocket (throttled)
           if (tripId && isTripOngoingRef.current && now - lastBackendUpdateTime > BACKEND_UPDATE_INTERVAL) {
             lastBackendUpdateTime = now;
-            sendDriverLocationToTracking(newLocation);
+            sendDriverLocationToTracking(normalizedLocation);
           }
 
           // NOTE: Animation de caméra désactivée pour éviter les crashs mémoire
@@ -1582,7 +1635,7 @@ export default function NavigationScreen() {
           // Calculer la distance à chaque étape (throttled)
           if (now - lastStepCheckTime > STEP_CHECK_INTERVAL) {
             lastStepCheckTime = now;
-            updateCurrentStep(newLocation);
+            updateCurrentStep(normalizedLocation);
           }
         }
       );
@@ -1760,10 +1813,10 @@ export default function NavigationScreen() {
       return null;
     }
 
-    return {
-      latitude: location.coords.latitude,
-      longitude: location.coords.longitude,
-    };
+    return normalizeTripMapCoordinate(
+      location.coords.latitude,
+      location.coords.longitude,
+    );
   }, []);
 
   const routeSignature = useMemo(() => {
@@ -2409,6 +2462,49 @@ export default function NavigationScreen() {
     });
   }, [navigateBackSafely, showDialog]);
 
+  const handleRestartTripFromNavigation = useCallback(async () => {
+    if (!tripId || isRestartingTrip || isTripFetching) {
+      return;
+    }
+
+    try {
+      await startTrip(tripId).unwrap();
+      lastRouteFetchTimeRef.current = 0;
+      routeFetchedRef.current = false;
+      routeSignatureRef.current = '';
+      hasFetchedInitialDriverRouteRef.current = false;
+      offRouteSampleCountRef.current = 0;
+      lastOffRouteRerouteAtRef.current = 0;
+      setRouteCoordinates([]);
+      setSteps([]);
+      setCurrentStepIndex(0);
+      await Promise.all([refetchTrip(), refetchBookings()]);
+      showDialog({
+        variant: 'success',
+        icon: 'play-circle',
+        title: 'Trajet redemarre',
+        message: 'La navigation va reprendre depuis votre position actuelle.',
+      });
+    } catch (error: any) {
+      const message =
+        error?.data?.message ?? error?.error ?? 'Impossible de redemarrer ce trajet.';
+      showDialog({
+        variant: 'danger',
+        icon: 'alert-circle',
+        title: 'Redemarrage impossible',
+        message,
+      });
+    }
+  }, [
+    isRestartingTrip,
+    isTripFetching,
+    refetchBookings,
+    refetchTrip,
+    showDialog,
+    startTrip,
+    tripId,
+  ]);
+
   const handlePauseTripFromNavigation = useCallback(() => {
     if (!tripId || isPausingTrip) {
       return;
@@ -2536,10 +2632,12 @@ export default function NavigationScreen() {
       const dlng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
       lng += dlng;
 
-      allPoints.push({
-        latitude: lat / 1e5,
-        longitude: lng / 1e5,
-      });
+      const coordinate = normalizeTripMapCoordinate(lat / 1e5, lng / 1e5);
+      if (!coordinate) {
+        return [];
+      }
+
+      allPoints.push(coordinate);
     }
 
     // Simplifier le polyline pour économiser la mémoire (max 200 points)
@@ -2598,6 +2696,10 @@ export default function NavigationScreen() {
     currentWaypointIndex < waypoints.length && !waypoints[currentWaypointIndex]?.completed
       ? waypoints[currentWaypointIndex]
       : null;
+  const canRestartTripFromOverlay = Boolean(
+    tripId && trip?.status !== 'completed' && trip?.status !== 'cancelled',
+  );
+  const isRestartOverlayActionLoading = isRestartingTrip || isTripFetching;
   const tripDepartureLabel = (trip?.departure?.address || trip?.departure?.name || 'Depart du trajet').trim();
   const tripArrivalLabel = (trip?.arrival?.address || trip?.arrival?.name || 'Arrivee du trajet').trim();
 
@@ -2993,13 +3095,19 @@ export default function NavigationScreen() {
             <View style={styles.preStartActions}>
               <TouchableOpacity
                 style={[styles.preStartButton, styles.preStartButtonPrimary]}
-                onPress={() => refetchTrip()}
-                disabled={isTripFetching}
+                onPress={
+                  canRestartTripFromOverlay
+                    ? () => void handleRestartTripFromNavigation()
+                    : () => refetchTrip()
+                }
+                disabled={isRestartOverlayActionLoading}
               >
-                {isTripFetching ? (
+                {isRestartOverlayActionLoading ? (
                   <ActivityIndicator size="small" color={Colors.white} />
                 ) : (
-                  <Text style={styles.preStartButtonPrimaryText}>Rafraichir</Text>
+                  <Text style={styles.preStartButtonPrimaryText}>
+                    {canRestartTripFromOverlay ? 'Redemarrer' : 'Actualiser'}
+                  </Text>
                 )}
               </TouchableOpacity>
               <TouchableOpacity
@@ -3285,9 +3393,9 @@ export default function NavigationScreen() {
           accessibilityLabel="Interrompre le trajet"
         >
           {isPausingTrip ? (
-            <ActivityIndicator size="small" color={Colors.warning} />
+            <ActivityIndicator size="small" color={Colors.white} />
           ) : (
-            <Ionicons name="pause-circle" size={22} color={Colors.warning} />
+            <Ionicons name="stop-circle" size={24} color={Colors.white} />
           )}
         </TouchableOpacity>
 
@@ -4205,7 +4313,13 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   interruptTripButton: {
-    backgroundColor: Colors.warning + '16',
+    backgroundColor: Colors.danger,
+    borderWidth: 2,
+    borderColor: Colors.white,
+    shadowColor: Colors.danger,
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    elevation: 6,
   },
   voiceButtonMuted: {
     backgroundColor: Colors.gray[100],

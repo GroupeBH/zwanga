@@ -902,17 +902,21 @@ export default function PassengerNavigationScreen() {
       lastSentAt = now;
 
       try {
+        await trackingSocket.updatePassengerLocation(tripId, booking.id, [
+          coordinate.longitude,
+          coordinate.latitude,
+        ]);
+        return;
+      } catch (socketError) {
+        console.warn('[PassengerNavigation] Envoi temps reel indisponible, fallback REST:', socketError);
+      }
+
+      try {
         const response = await updatePassengerLocation({
           bookingId: booking.id,
           latitude: coordinate.latitude,
           longitude: coordinate.longitude,
         }).unwrap();
-
-        void trackingSocket
-          .updatePassengerLocation(tripId, booking.id, response.coordinates)
-          .catch((error) => {
-            console.warn('[PassengerNavigation] Relais temps reel indisponible:', error);
-          });
 
         if (response.autoProgress?.events?.length && isMountedRef.current) {
           const bookingEvents = response.autoProgress.events.filter(
