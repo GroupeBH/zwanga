@@ -17,10 +17,19 @@ import {
   useGetBookingByIdQuery,
   useUpdatePassengerLocationMutation,
 } from '@/store/api/bookingApi';
-import { useGetDirectionsMutation } from '@/store/api/googleMapsApi';
+import { TravelMode, useGetDirectionsMutation } from '@/store/api/googleMapsApi';
 import { useGetDriverLocationQuery, useGetTripByIdQuery } from '@/store/api/tripApi';
 import { getGeoPointCoordinate, normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
-import { calculateDistance, getRouteAlignedPosition, splitRouteByProgress } from '@/utils/routeHelpers';
+import { calculateDistance, getRouteAlignedPosition } from '@/utils/routeHelpers';
+import {
+  LOCATION_FRESHNESS_MS,
+  MAX_ACCEPTABLE_GPS_ACCURACY_METERS,
+  MAX_PLAUSIBLE_LOCATION_JUMP_METERS,
+  calculatePolylineDistanceMeters,
+  isPlausibleLocationUpdate,
+  trimPolylineFromCurrentPosition,
+  type NavigationCoordinate,
+} from '@/utils/navigation/routeProgress';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
 import { shareTrip } from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
@@ -157,19 +166,6 @@ function formatDurationSeconds(durationSeconds: number) {
   return hours > 0 ? `${hours}h ${minutes}min` : `${minutes} min`;
 }
 
-function calculateRouteDistanceMeters(coordinates: { latitude: number; longitude: number }[]) {
-  if (coordinates.length < 2) {
-    return 0;
-  }
-
-  let distanceKm = 0;
-  for (let index = 1; index < coordinates.length; index += 1) {
-    distanceKm += calculateDistance(coordinates[index - 1], coordinates[index]);
-  }
-
-  return distanceKm * 1000;
-}
-
 export default function PassengerNavigationScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -231,6 +227,11 @@ export default function PassengerNavigationScreen() {
   const hasObservedPickupStateRef = useRef(false);
   const previousPickupStateRef = useRef(false);
   const passengerLocationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  const lastAcceptedDriverCoordinateRef = useRef<NavigationCoordinate | null>(null);
+  const lastAcceptedDriverTimestampRef = useRef<number | null>(null);
+  const lastAcceptedPassengerCoordinateRef = useRef<NavigationCoordinate | null>(null);
+  const lastAcceptedPassengerTimestampRef = useRef<number | null>(null);
+  const routeSignatureRef = useRef('');
   const isMountedRef = useRef(true);
   const isExitingRef = useRef(false);
   const mapTopOffset = insets.top + 84;
@@ -319,6 +320,55 @@ export default function PassengerNavigationScreen() {
     trip?.arrival?.lat,
     trip?.arrival?.lng,
   ]);
+
+  const hasPassengerPickedUp = Boolean(
+    booking?.pickedUp || booking?.pickedUpConfirmedByPassenger || booking?.pickedUpAt,
+  );
+  const hasPassengerDroppedOff = Boolean(
+    booking?.droppedOff ||
+      booking?.droppedOffConfirmedByPassenger ||
+      booking?.droppedOffAt ||
+      booking?.status === 'completed',
+  );
+  const isPassengerOnboard = hasPassengerPickedUp && !hasPassengerDroppedOff;
+  const activePassengerDestination = useMemo(() => {
+    if (!hasPassengerPickedUp) {
+      return pickupCoordinate;
+    }
+
+    if (!hasPassengerDroppedOff) {
+      return dropoffCoordinate;
+    }
+
+    return dropoffCoordinate;
+  }, [
+    dropoffCoordinate,
+    hasPassengerDroppedOff,
+    hasPassengerPickedUp,
+    pickupCoordinate,
+  ]);
+  const routeOriginCoordinate = useMemo(() => {
+    if (isTripOngoing && driverLocation) {
+      return driverLocation;
+    }
+
+    return !hasPassengerPickedUp
+      ? passengerLocation ?? pickupCoordinate
+      : pickupCoordinate ?? passengerLocation;
+  }, [
+    driverLocation,
+    hasPassengerPickedUp,
+    isTripOngoing,
+    passengerLocation,
+    pickupCoordinate,
+  ]);
+  const passengerRouteSignature = [
+    booking?.id ?? 'booking',
+    hasPassengerPickedUp ? 'picked' : 'pickup',
+    hasPassengerDroppedOff ? 'dropped' : 'active',
+    activePassengerDestination?.latitude.toFixed(6) ?? 'no-lat',
+    activePassengerDestination?.longitude.toFixed(6) ?? 'no-lng',
+  ].join(':');
 
   const presentArrivalModal = useCallback(() => {
     if (!isMountedRef.current || hasPresentedArrivalModalRef.current) return;
@@ -553,6 +603,13 @@ export default function PassengerNavigationScreen() {
     hasPresentedTripCompletedNoticeRef.current = false;
     hasObservedPickupStateRef.current = false;
     previousPickupStateRef.current = false;
+    lastAcceptedDriverCoordinateRef.current = null;
+    lastAcceptedDriverTimestampRef.current = null;
+    lastAcceptedPassengerCoordinateRef.current = null;
+    lastAcceptedPassengerTimestampRef.current = null;
+    routeSignatureRef.current = '';
+    routeFetchedRef.current = false;
+    lastRouteFetchRef.current = 0;
     presentedPickupNoticeKeysRef.current.clear();
     highestPickupNoticePriorityRef.current.clear();
     setArrivalModalVisible(false);
@@ -639,6 +696,21 @@ export default function PassengerNavigationScreen() {
     );
 
     if (!driverLocation || hasFreshApiLocation) {
+      const apiTimestamp = apiUpdatedAt?.getTime() ?? Date.now();
+      if (
+        !isPlausibleLocationUpdate({
+          previous: lastAcceptedDriverCoordinateRef.current,
+          current: tripDriverLocation,
+          previousTimestamp: lastAcceptedDriverTimestampRef.current,
+          currentTimestamp: apiTimestamp,
+          maxJumpMeters: MAX_PLAUSIBLE_LOCATION_JUMP_METERS,
+        })
+      ) {
+        return;
+      }
+
+      lastAcceptedDriverCoordinateRef.current = tripDriverLocation;
+      lastAcceptedDriverTimestampRef.current = apiTimestamp;
       setDriverLocation(tripDriverLocation);
       if (apiUpdatedAt && !Number.isNaN(apiUpdatedAt.getTime())) {
         setLastUpdate(apiUpdatedAt);
@@ -669,6 +741,21 @@ export default function PassengerNavigationScreen() {
     );
 
     if (!driverLocation || isNewerSnapshot) {
+      const snapshotTimestamp = snapshotUpdatedAt?.getTime() ?? Date.now();
+      if (
+        !isPlausibleLocationUpdate({
+          previous: lastAcceptedDriverCoordinateRef.current,
+          current: coordinate,
+          previousTimestamp: lastAcceptedDriverTimestampRef.current,
+          currentTimestamp: snapshotTimestamp,
+          maxJumpMeters: MAX_PLAUSIBLE_LOCATION_JUMP_METERS,
+        })
+      ) {
+        return;
+      }
+
+      lastAcceptedDriverCoordinateRef.current = coordinate;
+      lastAcceptedDriverTimestampRef.current = snapshotTimestamp;
       setDriverLocation(coordinate);
       if (snapshotUpdatedAt && !Number.isNaN(snapshotUpdatedAt.getTime())) {
         setLastUpdate(snapshotUpdatedAt);
@@ -680,11 +767,13 @@ export default function PassengerNavigationScreen() {
 
   // Fonction pour recuperer la route
   const fetchRoute = useCallback(async () => {
-    if (!pickupCoordinate || !dropoffCoordinate || !isMountedRef.current) return;
+    if (!routeOriginCoordinate || !activePassengerDestination || !isMountedRef.current) return;
+    if (isTripOngoing && !driverLocation && !hasPassengerPickedUp) return;
 
     const applyFallbackRoute = () => {
-      const fallbackDistanceMeters = calculateDistance(pickupCoordinate, dropoffCoordinate) * 1000;
-      setRouteCoordinates([pickupCoordinate, dropoffCoordinate]);
+      const fallbackRoute = [routeOriginCoordinate, activePassengerDestination];
+      const fallbackDistanceMeters = calculatePolylineDistanceMeters(fallbackRoute);
+      setRouteCoordinates(fallbackRoute);
       setRouteInfo({
         distance: formatDistanceMeters(fallbackDistanceMeters) ?? '-',
         distanceMeters: fallbackDistanceMeters,
@@ -702,13 +791,16 @@ export default function PassengerNavigationScreen() {
     setIsLoadingRoute(true);
     
     try {
-      const origin = { lat: pickupCoordinate.latitude, lng: pickupCoordinate.longitude };
-      const destination = { lat: dropoffCoordinate.latitude, lng: dropoffCoordinate.longitude };
+      const origin = { lat: routeOriginCoordinate.latitude, lng: routeOriginCoordinate.longitude };
+      const destination = {
+        lat: activePassengerDestination.latitude,
+        lng: activePassengerDestination.longitude,
+      };
       
       const response = await getDirections({
         origin,
         destination,
-        mode: 'driving' as any,
+        mode: TravelMode.DRIVING,
       }).unwrap();
       if (!isMountedRef.current) return;
       
@@ -718,13 +810,23 @@ export default function PassengerNavigationScreen() {
         // Decoder la polyline
         if (route.overviewPolyline) {
           const decoded = decodePolyline(route.overviewPolyline);
-          if (decoded.length > 1) {
+          const routeCheck =
+            decoded.length > 1
+              ? trimPolylineFromCurrentPosition(
+                  routeOriginCoordinate,
+                  decoded,
+                  activePassengerDestination,
+                )
+              : null;
+          if (routeCheck?.isRouteUsable && decoded.length > 1) {
             setRouteCoordinates(decoded);
           } else {
             applyFallbackRoute();
+            return;
           }
         } else {
           applyFallbackRoute();
+          return;
         }
         
         // Calculer les infos de route
@@ -750,20 +852,36 @@ export default function PassengerNavigationScreen() {
         '[PassengerNavigation] Route detaillee indisponible, utilisation du trace direct:',
         error?.data?.message || error?.message || 'Erreur inconnue',
       );
-      applyFallbackRoute();
+      if (routeCoordinates.length < 2) {
+        applyFallbackRoute();
+      }
     } finally {
       if (isMountedRef.current) {
         setIsLoadingRoute(false);
       }
     }
-  }, [dropoffCoordinate, getDirections, pickupCoordinate]);
+  }, [
+    activePassengerDestination,
+    driverLocation,
+    getDirections,
+    hasPassengerPickedUp,
+    isTripOngoing,
+    routeCoordinates.length,
+    routeOriginCoordinate,
+  ]);
   
   // Recuperer la route au chargement
   useEffect(() => {
+    if (routeSignatureRef.current !== passengerRouteSignature) {
+      routeSignatureRef.current = passengerRouteSignature;
+      routeFetchedRef.current = false;
+      lastRouteFetchRef.current = 0;
+    }
+
     if (trip && !routeFetchedRef.current) {
       fetchRoute();
     }
-  }, [trip, fetchRoute]);
+  }, [fetchRoute, passengerRouteSignature, trip]);
 
   // Connexion WebSocket pour recevoir la position du conducteur
   useEffect(() => {
@@ -799,9 +917,27 @@ export default function PassengerNavigationScreen() {
           payload.coordinates[0],
         );
         if (!coordinate) return;
+        const updatedAtMs = payload.updatedAt
+          ? new Date(payload.updatedAt).getTime()
+          : Date.now();
+        const safeUpdatedAtMs = Number.isFinite(updatedAtMs) ? updatedAtMs : Date.now();
+        if (
+          !isPlausibleLocationUpdate({
+            previous: lastAcceptedDriverCoordinateRef.current,
+            current: coordinate,
+            previousTimestamp: lastAcceptedDriverTimestampRef.current,
+            currentTimestamp: safeUpdatedAtMs,
+            maxJumpMeters: MAX_PLAUSIBLE_LOCATION_JUMP_METERS,
+          })
+        ) {
+          console.warn('[PassengerNavigation] Position conducteur ignoree: saut GPS incoherent');
+          return;
+        }
 
+        lastAcceptedDriverCoordinateRef.current = coordinate;
+        lastAcceptedDriverTimestampRef.current = safeUpdatedAtMs;
         setDriverLocation(coordinate);
-        setLastUpdate(new Date());
+        setLastUpdate(new Date(safeUpdatedAtMs));
       }
     });
 
@@ -895,6 +1031,37 @@ export default function PassengerNavigationScreen() {
         return;
       }
 
+      const locationTimestamp = Number(location.timestamp);
+      const acceptedTimestamp = Number.isFinite(locationTimestamp)
+        ? locationTimestamp
+        : Date.now();
+      if (Date.now() - acceptedTimestamp > LOCATION_FRESHNESS_MS) {
+        return;
+      }
+
+      if (
+        lastAcceptedPassengerCoordinateRef.current &&
+        typeof location.coords.accuracy === 'number' &&
+        location.coords.accuracy > MAX_ACCEPTABLE_GPS_ACCURACY_METERS
+      ) {
+        return;
+      }
+
+      if (
+        !isPlausibleLocationUpdate({
+          previous: lastAcceptedPassengerCoordinateRef.current,
+          current: coordinate,
+          previousTimestamp: lastAcceptedPassengerTimestampRef.current,
+          currentTimestamp: acceptedTimestamp,
+          maxJumpMeters: MAX_PLAUSIBLE_LOCATION_JUMP_METERS,
+        })
+      ) {
+        console.warn('[PassengerNavigation] Position passager ignoree: saut GPS incoherent');
+        return;
+      }
+
+      lastAcceptedPassengerCoordinateRef.current = coordinate;
+      lastAcceptedPassengerTimestampRef.current = acceptedTimestamp;
       setPassengerLocation(coordinate);
 
       const now = Date.now();
@@ -1068,7 +1235,7 @@ export default function PassengerNavigationScreen() {
         : null,
     [driverLocation, routeCoordinates],
   );
-  const displayedDriverLocation = routeAlignedDriver?.coordinate ?? driverLocation;
+  const displayedDriverLocation = driverLocation;
   const displayedDriverHeading = routeAlignedDriver?.heading ?? 0;
 
   useEffect(() => {
@@ -1313,15 +1480,29 @@ export default function PassengerNavigationScreen() {
         : 'Le conducteur est arriv\u00e9 au point de r\u00e9cup\u00e9ration. Vous disposez de 10 minutes pour vous signaler.';
 
   const hasPickupConnectorSegment = Boolean(
-    displayedDriverLocation && !booking?.pickedUp && (passengerLocation || pickupCoordinate),
+    displayedDriverLocation &&
+      !booking?.pickedUp &&
+      routeCoordinates.length < 2 &&
+      (passengerLocation || pickupCoordinate),
   );
   const canToggleRouteSegments = routeCoordinates.length > 1 && hasPickupConnectorSegment;
-  const isPassengerOnboard = Boolean(
-    booking?.pickedUp && !booking.droppedOff && !booking.droppedOffConfirmedByPassenger,
-  );
   const canCenterOnPassenger = Boolean(passengerLocation && !isPassengerOnboard);
+  const currentVehicleRoutePosition = displayedDriverLocation ?? routeOriginCoordinate;
+  const remainingPassengerRoute = useMemo(
+    () =>
+      trimPolylineFromCurrentPosition(
+        currentVehicleRoutePosition,
+        routeCoordinates,
+        activePassengerDestination,
+      ),
+    [activePassengerDestination, currentVehicleRoutePosition, routeCoordinates],
+  );
+  const displayedRouteCoordinates =
+    remainingPassengerRoute.remainingCoordinates.length > 1
+      ? remainingPassengerRoute.remainingCoordinates
+      : routeCoordinates;
   const remainingDistanceMeters = useMemo(() => {
-    if (!dropoffCoordinate) {
+    if (!activePassengerDestination) {
       return null;
     }
 
@@ -1329,42 +1510,22 @@ export default function PassengerNavigationScreen() {
       return 0;
     }
 
-    if (!isPassengerOnboard) {
-      return (
-        routeInfo?.distanceMeters ??
-        (pickupCoordinate ? calculateDistance(pickupCoordinate, dropoffCoordinate) * 1000 : null)
-      );
+    if (remainingPassengerRoute.remainingCoordinates.length > 1) {
+      return remainingPassengerRoute.distanceMeters;
     }
 
-    const currentTripPosition = displayedDriverLocation ?? passengerLocation;
-    if (!currentTripPosition) {
+    if (!currentVehicleRoutePosition) {
       return routeInfo?.distanceMeters ?? null;
     }
 
-    const directDistanceMeters = calculateDistance(currentTripPosition, dropoffCoordinate) * 1000;
-    const alignedPosition =
-      routeCoordinates.length > 1
-        ? getRouteAlignedPosition(currentTripPosition, routeCoordinates, 0.25)?.coordinate ?? null
-        : null;
-
-    if (!alignedPosition) {
-      return directDistanceMeters;
-    }
-
-    const { remainingCoordinates } = splitRouteByProgress(alignedPosition, routeCoordinates);
-    const remainingRouteDistanceMeters = calculateRouteDistanceMeters(remainingCoordinates);
-    return remainingRouteDistanceMeters > 0
-      ? remainingRouteDistanceMeters
-      : directDistanceMeters;
+    return calculateDistance(currentVehicleRoutePosition, activePassengerDestination) * 1000;
   }, [
+    activePassengerDestination,
     booking?.droppedOff,
     booking?.droppedOffConfirmedByPassenger,
-    displayedDriverLocation,
-    dropoffCoordinate,
-    isPassengerOnboard,
-    passengerLocation,
-    pickupCoordinate,
-    routeCoordinates,
+    currentVehicleRoutePosition,
+    remainingPassengerRoute.distanceMeters,
+    remainingPassengerRoute.remainingCoordinates.length,
     routeInfo?.distanceMeters,
   ]);
   const remainingDistanceLabel =
@@ -1519,9 +1680,9 @@ export default function PassengerNavigationScreen() {
           </Marker>
         )}
         {/* Route complete */}
-        {routeCoordinates.length > 1 && (
+        {displayedRouteCoordinates.length > 1 && (
           <Polyline
-            coordinates={routeCoordinates}
+            coordinates={displayedRouteCoordinates}
             strokeColor={activeRouteSegment === 'route' ? Colors.primaryDark : 'rgba(255, 107, 53, 0.28)'}
             strokeWidth={activeRouteSegment === 'route' ? 6 : 3}
             lineCap="round"
