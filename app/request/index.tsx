@@ -23,6 +23,7 @@ import {
   mapGeocodeResponseToSelection,
   type ManualGeocodeStatus,
 } from '@/utils/manualAddressGeocode';
+import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import Animated, { FadeIn, FadeOut } from '@/utils/reanimated';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { getRouteCoordinates } from '@/utils/routeApi';
@@ -170,10 +171,13 @@ function getLocationText(selection: MapLocationSelection | null, manualAddress: 
 }
 
 function getLocationCoordinates(selection: MapLocationSelection | null): [number, number] | undefined {
-  if (!selection || !Number.isFinite(selection.latitude) || !Number.isFinite(selection.longitude)) {
+  const coordinate = selection
+    ? normalizeTripMapCoordinate(selection.latitude, selection.longitude)
+    : null;
+  if (!coordinate) {
     return undefined;
   }
-  return [selection.longitude, selection.latitude];
+  return [coordinate.longitude, coordinate.latitude];
 }
 
 function parseNumberParam(value: unknown): number | undefined {
@@ -219,13 +223,16 @@ function formatDistanceKm(distanceMeters: number | null) {
 }
 
 function getMapCoordinate(selection: MapLocationSelection | null): LatLng | null {
-  if (!selection || !Number.isFinite(selection.latitude) || !Number.isFinite(selection.longitude)) {
+  const coordinate = selection
+    ? normalizeTripMapCoordinate(selection.latitude, selection.longitude)
+    : null;
+  if (!coordinate) {
     return null;
   }
 
   return {
-    latitude: selection.latitude,
-    longitude: selection.longitude,
+    latitude: coordinate.latitude,
+    longitude: coordinate.longitude,
   };
 }
 

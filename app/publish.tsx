@@ -27,6 +27,7 @@ import {
 } from '@/utils/manualAddressGeocode';
 import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
 import { getRouteCoordinates } from '@/utils/routeApi';
+import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -77,20 +78,26 @@ function getLocationText(selection: MapLocationSelection | null, manualAddress: 
 }
 
 function getLocationCoordinates(selection: MapLocationSelection | null): [number, number] | undefined {
-  if (!selection || !Number.isFinite(selection.latitude) || !Number.isFinite(selection.longitude)) {
+  const coordinate = selection
+    ? normalizeTripMapCoordinate(selection.latitude, selection.longitude)
+    : null;
+  if (!coordinate) {
     return undefined;
   }
-  return [selection.longitude, selection.latitude];
+  return [coordinate.longitude, coordinate.latitude];
 }
 
 function getMapCoordinate(selection: MapLocationSelection | null): LatLng | null {
-  if (!selection || !Number.isFinite(selection.latitude) || !Number.isFinite(selection.longitude)) {
+  const coordinate = selection
+    ? normalizeTripMapCoordinate(selection.latitude, selection.longitude)
+    : null;
+  if (!coordinate) {
     return null;
   }
 
   return {
-    latitude: selection.latitude,
-    longitude: selection.longitude,
+    latitude: coordinate.latitude,
+    longitude: coordinate.longitude,
   };
 }
 

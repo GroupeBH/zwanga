@@ -10,10 +10,11 @@ import {
 import type { FavoriteLocation } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -49,12 +50,14 @@ export default function FavoriteLocationsScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [isOpeningLocationPicker, setIsOpeningLocationPicker] = useState(false);
   const [editingLocation, setEditingLocation] = useState<FavoriteLocation | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<MapLocationSelection | null>(null);
   const [locationName, setLocationName] = useState('');
   const [locationType, setLocationType] = useState<FavoriteLocationType>('other');
   const [isDefault, setIsDefault] = useState(false);
   const [notes, setNotes] = useState('');
+  const locationPickerOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleAddLocation = () => {
     setSelectedLocation(null);
@@ -64,6 +67,14 @@ export default function FavoriteLocationsScreen() {
     setNotes('');
     setShowAddModal(true);
   };
+
+  useEffect(() => {
+    return () => {
+      if (locationPickerOpenTimerRef.current) {
+        clearTimeout(locationPickerOpenTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleEditLocation = (location: FavoriteLocation) => {
     setEditingLocation(location);
@@ -83,10 +94,20 @@ export default function FavoriteLocationsScreen() {
   const handleLocationSelected = (location: MapLocationSelection) => {
     setSelectedLocation(location);
     setShowLocationPicker(false);
+    setIsOpeningLocationPicker(false);
     if (!locationName.trim()) {
       // Suggérer un nom basé sur le type si aucun nom n'est entré
       setLocationName(location.title || TYPE_LABELS[locationType]);
     }
+  };
+
+  const handleLocationPickerClose = () => {
+    if (locationPickerOpenTimerRef.current) {
+      clearTimeout(locationPickerOpenTimerRef.current);
+      locationPickerOpenTimerRef.current = null;
+    }
+    setIsOpeningLocationPicker(false);
+    setShowLocationPicker(false);
   };
 
   const handleSaveLocation = async () => {
@@ -211,6 +232,42 @@ export default function FavoriteLocationsScreen() {
     },
     {} as Record<FavoriteLocationType, FavoriteLocation[]>
   );
+  const isFormModalVisible =
+    (showAddModal || showEditModal) && !showLocationPicker && !isOpeningLocationPicker;
+
+  const openLocationPicker = () => {
+    if (locationPickerOpenTimerRef.current) {
+      clearTimeout(locationPickerOpenTimerRef.current);
+      locationPickerOpenTimerRef.current = null;
+    }
+    setShowLocationPicker(true);
+    setIsOpeningLocationPicker(false);
+  };
+
+  const handleOpenLocationPicker = () => {
+    if (showLocationPicker || isOpeningLocationPicker) {
+      return;
+    }
+
+    setIsOpeningLocationPicker(true);
+
+    if (Platform.OS === 'ios') {
+      return;
+    }
+
+    if (locationPickerOpenTimerRef.current) {
+      clearTimeout(locationPickerOpenTimerRef.current);
+    }
+    locationPickerOpenTimerRef.current = setTimeout(() => {
+      openLocationPicker();
+    }, 250);
+  };
+
+  const handleFormModalDismiss = () => {
+    if (Platform.OS === 'ios' && isOpeningLocationPicker && !showLocationPicker) {
+      openLocationPicker();
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -239,7 +296,7 @@ export default function FavoriteLocationsScreen() {
             </View>
             <Text style={styles.emptyTitle}>Aucun lieu favori</Text>
             <Text style={styles.emptyDescription}>
-              Ajoutez vos lieux fréquents pour les retrouver rapidement lors de la création d'un trajet.
+              Ajoutez vos lieux fréquents pour les retrouver rapidement lors de la création d&apos;un trajet.
             </Text>
             <TouchableOpacity style={styles.emptyButton} onPress={handleAddLocation}>
               <Ionicons name="add-circle" size={20} color={Colors.white} />
@@ -308,9 +365,10 @@ export default function FavoriteLocationsScreen() {
 
       {/* Modal pour ajouter/modifier un lieu favori */}
       <Modal
-        visible={showAddModal || showEditModal}
+        visible={isFormModalVisible}
         animationType="slide"
         presentationStyle="pageSheet"
+        onDismiss={handleFormModalDismiss}
         onRequestClose={() => {
           setShowAddModal(false);
           setShowEditModal(false);
@@ -332,12 +390,16 @@ export default function FavoriteLocationsScreen() {
             <View style={styles.modalHeaderSpacer} />
           </View>
 
-          <ScrollView style={styles.modalScrollView} contentContainerStyle={styles.modalContent}>
+          <ScrollView
+            style={styles.modalScrollView}
+            contentContainerStyle={styles.modalContent}
+            keyboardShouldPersistTaps="handled"
+          >
             <View style={styles.formSection}>
               <Text style={styles.inputLabel}>Sélectionner le lieu *</Text>
               <TouchableOpacity
                 style={styles.locationPickerButton}
-                onPress={() => setShowLocationPicker(true)}
+                onPress={handleOpenLocationPicker}
               >
                 <Ionicons name="location" size={20} color={Colors.primary} />
                 <View style={styles.locationPickerContent}>
@@ -454,7 +516,7 @@ export default function FavoriteLocationsScreen() {
       {/* LocationPickerModal pour la sélection */}
       <LocationPickerModal
         visible={showLocationPicker}
-        onClose={() => setShowLocationPicker(false)}
+        onClose={handleLocationPickerClose}
         onSelect={handleLocationSelected}
         title="Choisir un lieu"
         initialLocation={selectedLocation}

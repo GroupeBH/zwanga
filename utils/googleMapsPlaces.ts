@@ -660,7 +660,8 @@ export async function getGoogleMapsPlaceDetails(
       place.lat < -90 ||
       place.lat > 90 ||
       place.lng < -180 ||
-      place.lng > 180
+      place.lng > 180 ||
+      !isInRdcBounds(place.lat, place.lng)
     ) {
       console.warn('Invalid coordinates from backend:', { lat: place.lat, lng: place.lng });
       return null;

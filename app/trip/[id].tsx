@@ -33,6 +33,10 @@ import {
   buildManualGeocodeQuery,
   mapGeocodeResponseToSelection,
 } from '@/utils/manualAddressGeocode';
+import {
+  isCoordinateInKinshasaBounds,
+  normalizeTripMapCoordinate,
+} from '@/utils/tripCoordinates';
 import { openWhatsApp } from '@/utils/phoneHelpers';
 import Animated, {
   FadeInDown,
@@ -204,25 +208,21 @@ const findDirectConversationWithUser = (
 };
 
 const isValidMapCoordinate = (coordinate?: { latitude: number; longitude: number } | null) =>
-  Boolean(
-    coordinate &&
-    Number.isFinite(coordinate.latitude) &&
-    Number.isFinite(coordinate.longitude) &&
-    !(coordinate.latitude === 0 && coordinate.longitude === 0) &&
-    Math.abs(coordinate.latitude) <= 90 &&
-    Math.abs(coordinate.longitude) <= 180,
-  );
+  Boolean(coordinate && normalizeTripMapCoordinate(coordinate.latitude, coordinate.longitude));
 
 const getLocationText = (selection: MapLocationSelection | null, manualAddress: string) =>
   (manualAddress.trim() || selection?.title || selection?.address || '').trim();
 
 const getLocationCoordinatesObject = (selection: MapLocationSelection | null) => {
-  if (!selection || !Number.isFinite(selection.latitude) || !Number.isFinite(selection.longitude)) {
+  const coordinate = selection
+    ? normalizeTripMapCoordinate(selection.latitude, selection.longitude)
+    : null;
+  if (!coordinate) {
     return undefined;
   }
   return {
-    latitude: selection.latitude,
-    longitude: selection.longitude,
+    latitude: coordinate.latitude,
+    longitude: coordinate.longitude,
   };
 };
 
@@ -231,10 +231,13 @@ type EditTripStep = 1 | 2;
 const getLocationCoordinatesTuple = (
   selection: MapLocationSelection | null,
 ): [number, number] | undefined => {
-  if (!selection || !Number.isFinite(selection.latitude) || !Number.isFinite(selection.longitude)) {
+  const coordinate = selection
+    ? normalizeTripMapCoordinate(selection.latitude, selection.longitude)
+    : null;
+  if (!coordinate) {
     return undefined;
   }
-  return [selection.longitude, selection.latitude];
+  return [coordinate.longitude, coordinate.latitude];
 };
 
 const BOOKING_STATUS_CONFIG: Record<
@@ -1412,16 +1415,17 @@ export default function TripDetailsScreen() {
     };
   }, [lastKnownLocation?.coords?.latitude, lastKnownLocation?.coords?.longitude]);
   const defaultPassengerDestinationSelection = useMemo<MapLocationSelection | null>(() => {
-    const latitude = Number(trip?.arrival?.lat);
-    const longitude = Number(trip?.arrival?.lng);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    const coordinate = normalizeTripMapCoordinate(trip?.arrival?.lat, trip?.arrival?.lng);
+    if (!coordinate) {
       return null;
     }
     return {
       title: trip?.arrival?.name || trip?.arrival?.address || 'Arrivée du trajet',
-      address: trip?.arrival?.address || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
-      latitude,
-      longitude,
+      address:
+        trip?.arrival?.address ||
+        `${coordinate.latitude.toFixed(5)}, ${coordinate.longitude.toFixed(5)}`,
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude,
     };
   }, [trip?.arrival?.address, trip?.arrival?.lat, trip?.arrival?.lng, trip?.arrival?.name]);
   const passengerOriginDisplay = useMemo(
@@ -1806,20 +1810,52 @@ export default function TripDetailsScreen() {
       setIsValidatingDestination(false);
     }
 
-    const tripArrivalLatitude = Number(trip.arrival?.lat);
-    const tripArrivalLongitude = Number(trip.arrival?.lng);
+    const tripDepartureCoordinate = normalizeTripMapCoordinate(
+      trip.departure?.lat,
+      trip.departure?.lng,
+    );
+    const tripArrivalCoordinate = normalizeTripMapCoordinate(trip.arrival?.lat, trip.arrival?.lng);
+    const isTripInsideKinshasa = Boolean(
+      tripDepartureCoordinate &&
+        tripArrivalCoordinate &&
+        isCoordinateInKinshasaBounds(tripDepartureCoordinate) &&
+        isCoordinateInKinshasaBounds(tripArrivalCoordinate),
+    );
+
+    if (
+      isTripInsideKinshasa &&
+      resolvedPassengerOrigin &&
+      !isCoordinateInKinshasaBounds(resolvedPassengerOrigin)
+    ) {
+      setBookingModalError(
+        'Le point de prise en charge detecte est hors Kinshasa. Choisissez-le sur la carte ou precisez la commune.',
+      );
+      return;
+    }
+
+    if (
+      isTripInsideKinshasa &&
+      resolvedPassengerDestination &&
+      !isCoordinateInKinshasaBounds(resolvedPassengerDestination)
+    ) {
+      setBookingModalError(
+        "La destination detectee est hors Kinshasa. Choisissez-la sur la carte ou precisez la commune.",
+      );
+      return;
+    }
+
     const passengerOriginText = getLocationText(resolvedPassengerOrigin, manualPassengerOrigin);
     const passengerDestinationText = getLocationText(
       resolvedPassengerDestination,
       manualPassengerDestination,
     );
-    const hasTripArrivalCoordinates =
-      Number.isFinite(tripArrivalLatitude) && Number.isFinite(tripArrivalLongitude);
+    const hasTripArrivalCoordinates = Boolean(tripArrivalCoordinate);
     const isDefaultTripArrivalDestination = Boolean(
       resolvedPassengerDestination &&
       hasTripArrivalCoordinates &&
-      Math.abs(resolvedPassengerDestination.latitude - tripArrivalLatitude) < 0.000001 &&
-      Math.abs(resolvedPassengerDestination.longitude - tripArrivalLongitude) < 0.000001,
+      tripArrivalCoordinate &&
+      Math.abs(resolvedPassengerDestination.latitude - tripArrivalCoordinate.latitude) < 0.000001 &&
+      Math.abs(resolvedPassengerDestination.longitude - tripArrivalCoordinate.longitude) < 0.000001,
     );
     const hasCustomPassengerDestination = Boolean(
       (manualPassengerDestination || resolvedPassengerDestination) && !isDefaultTripArrivalDestination,
@@ -2092,33 +2128,61 @@ export default function TripDetailsScreen() {
 
   const departureCoordinate = useMemo(
     () => {
-      const latitude = Number(trip?.departure?.lat);
-      const longitude = Number(trip?.departure?.lng);
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      const coordinate = normalizeTripMapCoordinate(trip?.departure?.lat, trip?.departure?.lng);
+      if (!coordinate) {
         return { latitude: 0, longitude: 0 };
       }
-      return {
-        latitude,
-        longitude,
-      };
+      return coordinate;
     },
     [trip?.departure?.lat, trip?.departure?.lng],
   );
 
   const arrivalCoordinate = useMemo(
     () => {
-      const latitude = Number(trip?.arrival?.lat);
-      const longitude = Number(trip?.arrival?.lng);
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      const coordinate = normalizeTripMapCoordinate(trip?.arrival?.lat, trip?.arrival?.lng);
+      if (!coordinate) {
         return { latitude: 0, longitude: 0 };
       }
-      return {
-        latitude,
-        longitude,
-      };
+      return coordinate;
     },
     [trip?.arrival?.lat, trip?.arrival?.lng],
   );
+
+  useEffect(() => {
+    if (!trip?.id) {
+      return;
+    }
+
+    console.log('[TripDetails] route endpoint coordinates', {
+      tripId: trip?.id,
+      departure: {
+        raw: {
+          lat: trip?.departure?.lat,
+          lng: trip?.departure?.lng,
+          hasCoordinates: trip?.departure?.hasCoordinates,
+        },
+        normalized: departureCoordinate,
+      },
+      arrival: {
+        raw: {
+          lat: trip?.arrival?.lat,
+          lng: trip?.arrival?.lng,
+          hasCoordinates: trip?.arrival?.hasCoordinates,
+        },
+        normalized: arrivalCoordinate,
+      },
+    });
+  }, [
+    arrivalCoordinate,
+    departureCoordinate,
+    trip?.arrival?.hasCoordinates,
+    trip?.arrival?.lat,
+    trip?.arrival?.lng,
+    trip?.departure?.hasCoordinates,
+    trip?.departure?.lat,
+    trip?.departure?.lng,
+    trip?.id,
+  ]);
 
   const hasValidRouteEndpoints = useMemo(
     () => Boolean(trip && isValidMapCoordinate(departureCoordinate) && isValidMapCoordinate(arrivalCoordinate)),

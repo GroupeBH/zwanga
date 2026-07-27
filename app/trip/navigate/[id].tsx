@@ -419,6 +419,43 @@ export default function NavigationScreen() {
     [trip?.arrival?.hasCoordinates, trip?.arrival?.lat, trip?.arrival?.lng],
   );
 
+  useEffect(() => {
+    if (!trip?.id) {
+      return;
+    }
+
+    console.log('[DriverNavigation] route endpoint coordinates', {
+      tripId,
+      departure: {
+        raw: {
+          lat: trip?.departure?.lat,
+          lng: trip?.departure?.lng,
+          hasCoordinates: trip?.departure?.hasCoordinates,
+        },
+        normalized: tripDepartureCoordinate,
+      },
+      arrival: {
+        raw: {
+          lat: trip?.arrival?.lat,
+          lng: trip?.arrival?.lng,
+          hasCoordinates: trip?.arrival?.hasCoordinates,
+        },
+        normalized: tripArrivalCoordinate,
+      },
+    });
+  }, [
+    trip?.arrival?.hasCoordinates,
+    trip?.arrival?.lat,
+    trip?.arrival?.lng,
+    trip?.departure?.hasCoordinates,
+    trip?.departure?.lat,
+    trip?.departure?.lng,
+    trip?.id,
+    tripArrivalCoordinate,
+    tripDepartureCoordinate,
+    tripId,
+  ]);
+
   const mapRef = useRef<MapView>(null);
   const passengerMarkerRefs = useRef<Record<string, MapMarker | null>>({});
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);

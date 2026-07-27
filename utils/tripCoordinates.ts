@@ -5,11 +5,25 @@ export type MapCoordinate = {
   longitude: number;
 };
 
-const RDC_BOUNDS = {
+type CoordinateBounds = {
+  minLatitude: number;
+  maxLatitude: number;
+  minLongitude: number;
+  maxLongitude: number;
+};
+
+const RDC_BOUNDS: CoordinateBounds = {
   minLatitude: -13.5,
   maxLatitude: 5.5,
   minLongitude: 12,
   maxLongitude: 31.5,
+};
+
+export const KINSHASA_BOUNDS: CoordinateBounds = {
+  minLatitude: -4.7,
+  maxLatitude: -4.1,
+  minLongitude: 14.95,
+  maxLongitude: 15.65,
 };
 
 function isFiniteCoordinate(latitude: number, longitude: number) {
@@ -22,13 +36,17 @@ function isFiniteCoordinate(latitude: number, longitude: number) {
   );
 }
 
-function isInRdcBounds(latitude: number, longitude: number) {
+function isInBounds(latitude: number, longitude: number, bounds: CoordinateBounds) {
   return (
-    latitude >= RDC_BOUNDS.minLatitude &&
-    latitude <= RDC_BOUNDS.maxLatitude &&
-    longitude >= RDC_BOUNDS.minLongitude &&
-    longitude <= RDC_BOUNDS.maxLongitude
+    latitude >= bounds.minLatitude &&
+    latitude <= bounds.maxLatitude &&
+    longitude >= bounds.minLongitude &&
+    longitude <= bounds.maxLongitude
   );
+}
+
+function isInRdcBounds(latitude: number, longitude: number) {
+  return isInBounds(latitude, longitude, RDC_BOUNDS);
 }
 
 export function normalizeTripMapCoordinate(
@@ -51,6 +69,21 @@ export function normalizeTripMapCoordinate(
   }
 
   return null;
+}
+
+export function isCoordinateInKinshasaBounds(coordinate?: MapCoordinate | null) {
+  const normalizedCoordinate = coordinate
+    ? normalizeTripMapCoordinate(coordinate.latitude, coordinate.longitude)
+    : null;
+
+  return Boolean(
+    normalizedCoordinate &&
+      isInBounds(
+        normalizedCoordinate.latitude,
+        normalizedCoordinate.longitude,
+        KINSHASA_BOUNDS,
+      ),
+  );
 }
 
 export function isValidTripMapCoordinate(coordinate?: MapCoordinate | null) {
