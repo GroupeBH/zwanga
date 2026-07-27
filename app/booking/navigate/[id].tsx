@@ -1176,6 +1176,14 @@ export default function PassengerNavigationScreen() {
         });
         return;
       }
+      if (isKinshasaTrip && !isCoordinateInKinshasaBounds(coordinate)) {
+        console.warn('[PassengerNavigation] Position passager hors Kinshasa non envoyee:', {
+          bookingId: booking.id,
+          tripId,
+          coordinate,
+        });
+        return;
+      }
 
       const locationTimestamp = Number(location.timestamp);
       const acceptedTimestamp = Number.isFinite(locationTimestamp)
@@ -1332,6 +1340,7 @@ export default function PassengerNavigationScreen() {
     booking?.droppedOff,
     booking?.id,
     booking?.status,
+    isKinshasaTrip,
     isTripOngoing,
     presentDestinationApproachNotice,
     presentArrivalModal,

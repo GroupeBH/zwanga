@@ -44,6 +44,7 @@ import {
   ROUTE_DEVIATION_THRESHOLD_METERS,
   calculatePolylineDistanceMeters,
   distanceFromCoordinateToPolyline,
+  isFreshLocationTimestamp,
   isPlausibleLocationUpdate,
   isRouteDeviationConfirmed,
   resolveActiveDestination,
@@ -383,6 +384,14 @@ const isFreshLivePassengerLocation = (
   return Number.isFinite(timestamp) && Date.now() - timestamp <= maxAgeMs;
 };
 
+const hasFreshBookingPassengerLocation = (booking: Booking) => {
+  if (!booking.passengerLocationUpdatedAt) {
+    return false;
+  }
+
+  return isFreshLocationTimestamp(new Date(booking.passengerLocationUpdatedAt).getTime());
+};
+
 export default function NavigationScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -544,10 +553,13 @@ export default function NavigationScreen() {
         const isPassengerDroppedOff = hasBookingDropoffCompleted(booking);
         const liveLocation = livePassengerLocations[booking.id];
         const liveLocationCoordinate = liveLocation?.coordinate ?? null;
-        const apiLocationCoordinate = normalizeTripMapCoordinate(
+        const rawApiLocationCoordinate = normalizeTripMapCoordinate(
           booking.passengerLocationCoordinates?.latitude,
           booking.passengerLocationCoordinates?.longitude,
         );
+        const apiLocationCoordinate = hasFreshBookingPassengerLocation(booking)
+          ? rawApiLocationCoordinate
+          : null;
         const passengerPickupCoordinate = normalizeTripMapCoordinate(
           booking.passengerOriginCoordinates?.latitude,
           booking.passengerOriginCoordinates?.longitude,
@@ -586,6 +598,12 @@ export default function NavigationScreen() {
           console.warn('[DriverNavigation] Position live passager hors Kinshasa ignoree:', {
             bookingId: booking.id,
             coordinate: liveLocationCoordinate,
+          });
+        }
+        if (rawApiLocationCoordinate && !apiLocationCoordinate) {
+          console.warn('[DriverNavigation] Position API passager trop ancienne ignoree:', {
+            bookingId: booking.id,
+            updatedAt: booking.passengerLocationUpdatedAt,
           });
         }
         if (isKinshasaNavigationTrip && apiLocationCoordinate && !apiLocation) {
@@ -1387,13 +1405,30 @@ export default function NavigationScreen() {
           payload.coordinates[0],
         );
         if (!coordinate) return;
+        const passengerLiveLocation = {
+          coordinate,
+          updatedAt: payload.updatedAt,
+        };
+
+        if (!isFreshLivePassengerLocation(passengerLiveLocation)) {
+          console.warn('[DriverNavigation] Position passager ignoree car trop ancienne:', {
+            bookingId: payload.bookingId,
+            updatedAt: payload.updatedAt,
+          });
+          return;
+        }
+
+        if (!isCoordinateAllowedForNavigationRoute(coordinate, isKinshasaNavigationTrip)) {
+          console.warn('[DriverNavigation] Position passager live hors Kinshasa ignoree:', {
+            bookingId: payload.bookingId,
+            coordinate,
+          });
+          return;
+        }
 
         setLivePassengerLocations((current) => ({
           ...current,
-          [payload.bookingId]: {
-            coordinate,
-            updatedAt: payload.updatedAt,
-          },
+          [payload.bookingId]: passengerLiveLocation,
         }));
       },
     );
@@ -1416,6 +1451,7 @@ export default function NavigationScreen() {
     };
   }, [
     isTripOngoing,
+    isKinshasaNavigationTrip,
     presentPassengerBoardedNotice,
     presentPassengerDestinationApproachNotice,
     presentPassengerDestinationNotice,
