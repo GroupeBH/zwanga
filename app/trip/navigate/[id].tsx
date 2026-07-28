@@ -42,11 +42,15 @@ import {
   MAX_ACCEPTABLE_GPS_ACCURACY_METERS,
   MAX_PLAUSIBLE_LOCATION_JUMP_METERS,
   ROUTE_DEVIATION_THRESHOLD_METERS,
+  calculateBearingDegrees,
+  calculateDistanceMeters,
   calculatePolylineDistanceMeters,
   distanceFromCoordinateToPolyline,
+  getPolylineProgress,
   isFreshLocationTimestamp,
   isPlausibleLocationUpdate,
   isRouteDeviationConfirmed,
+  normalizeHeadingDelta,
   resolveActiveDestination,
   trimPolylineFromCurrentPosition,
   type NavigationCoordinate,
@@ -158,6 +162,13 @@ const DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS = 3000;
 const DRIVER_LOCATION_BACKEND_UPDATE_INTERVAL_MS = 3000;
 const FRESH_DRIVER_LOCATION_MAX_AGE_MS = LOCATION_FRESHNESS_MS;
 const OFF_ROUTE_DISTANCE_KM = ROUTE_DEVIATION_THRESHOLD_METERS / 1000;
+const DRIVER_REROUTE_DEVIATION_THRESHOLD_METERS = 55;
+const DRIVER_REROUTE_CONFIRMATION_COUNT = 2;
+const DRIVER_REROUTE_MIN_INTERVAL_MS = 12_000;
+const PICKUP_BYPASS_OBSERVED_DISTANCE_METERS = 90;
+const PICKUP_BYPASS_MIN_AHEAD_METERS = 120;
+const PICKUP_BYPASS_MIN_DISTANCE_METERS = 160;
+const PICKUP_BYPASS_BEHIND_HEADING_DEGREES = 125;
 
 const isCoordinateAllowedForNavigationRoute = (
   coordinate: RouteCoordinate | null | undefined,
@@ -499,6 +510,9 @@ export default function NavigationScreen() {
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [isVoiceGuidanceEnabled, setIsVoiceGuidanceEnabled] = useState(true);
   const [livePassengerLocations, setLivePassengerLocations] = useState<Record<string, LivePassengerLocation>>({});
+  const [skippedPickupBookingIds, setSkippedPickupBookingIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [routeSectionFocus, setRouteSectionFocus] = useState<RouteSectionFocus>('next');
   
   // Modal et panneau pour les waypoints
@@ -694,6 +708,11 @@ export default function NavigationScreen() {
   const highestPickupNoticePriorityRef = useRef<Map<string, number>>(new Map());
   const autoConfirmingPickupBookingIdsRef = useRef<Set<string>>(new Set());
   const autoConfirmingDropoffBookingIdsRef = useRef<Set<string>>(new Set());
+  const skippedPickupBookingIdsRef = useRef<ReadonlySet<string>>(new Set());
+  const pickupClosestDistanceMetersRef = useRef<Map<string, number>>(new Map());
+  const evaluatePickupBypassRef = useRef<
+    ((driverCoordinate: RouteCoordinate, gpsHeadingDegrees: number | null) => void) | null
+  >(null);
   const autoCompletingTripRef = useRef(false);
   const presentedPassengerBoardedKeysRef = useRef<Set<string>>(new Set());
   const presentedPassengerDestinationApproachKeysRef = useRef<Set<string>>(new Set());
@@ -715,9 +734,17 @@ export default function NavigationScreen() {
   pickupNoticeRef.current = pickupNotice;
   tripEndNoticeRef.current = tripEndNotice;
   bookingsRef.current = bookings;
+  skippedPickupBookingIdsRef.current = skippedPickupBookingIds;
 
   const activeNavigationDestination = useMemo(() => {
     const navigationStops = waypoints.reduce<NavigationStop[]>((stops, waypoint) => {
+      const isSkippedPickupBooking =
+        skippedPickupBookingIds.has(waypoint.booking.id) &&
+        !hasBookingPickupCompleted(waypoint.booking);
+      if (isSkippedPickupBooking) {
+        return stops;
+      }
+
       const coordinate = normalizeTripMapCoordinate(
         waypoint.location.lat,
         waypoint.location.lng,
@@ -746,8 +773,125 @@ export default function NavigationScreen() {
     }, []);
 
     return resolveActiveDestination(navigationStops, tripArrivalCoordinate);
-  }, [isKinshasaNavigationTrip, tripArrivalCoordinate, waypoints]);
+  }, [
+    isKinshasaNavigationTrip,
+    skippedPickupBookingIds,
+    tripArrivalCoordinate,
+    waypoints,
+  ]);
   const activeRouteDestination = activeNavigationDestination?.coordinate ?? null;
+
+  evaluatePickupBypassRef.current = (
+    driverCoordinate: RouteCoordinate,
+    gpsHeadingDegrees: number | null,
+  ) => {
+    const route = routeCoordinatesRef.current;
+    const driverProgress = route.length >= 2
+      ? getPolylineProgress(driverCoordinate, route)
+      : null;
+    const activeDestinationId = activeNavigationDestination?.id ?? null;
+
+    for (const waypoint of waypointsRef.current) {
+      const booking = waypoint.booking;
+      if (
+        waypoint.type !== 'pickup' ||
+        waypoint.id !== activeDestinationId ||
+        waypoint.completed ||
+        hasBookingPickupCompleted(booking) ||
+        hasBookingDropoffCompleted(booking) ||
+        skippedPickupBookingIdsRef.current.has(booking.id)
+      ) {
+        continue;
+      }
+
+      const pickupCoordinate = normalizeTripMapCoordinate(
+        waypoint.location.lat,
+        waypoint.location.lng,
+      );
+      if (!pickupCoordinate) {
+        continue;
+      }
+
+      const distanceToPickupMeters = calculateDistanceMeters(
+        driverCoordinate,
+        pickupCoordinate,
+      );
+      const previousClosestDistance =
+        pickupClosestDistanceMetersRef.current.get(booking.id) ??
+        Number.POSITIVE_INFINITY;
+      const closestDistance = Math.min(
+        previousClosestDistance,
+        distanceToPickupMeters,
+      );
+      pickupClosestDistanceMetersRef.current.set(booking.id, closestDistance);
+
+      if (
+        closestDistance > PICKUP_BYPASS_OBSERVED_DISTANCE_METERS ||
+        distanceToPickupMeters < PICKUP_BYPASS_MIN_DISTANCE_METERS
+      ) {
+        continue;
+      }
+
+      const pickupProgress = route.length >= 2
+        ? getPolylineProgress(pickupCoordinate, route)
+        : null;
+      const hasPassedPickupOnRoute = Boolean(
+        driverProgress &&
+          pickupProgress &&
+          pickupProgress.closestPoint.distanceMeters <=
+            ROUTE_DEVIATION_THRESHOLD_METERS * 2 &&
+          driverProgress.distanceFromStartMeters -
+            pickupProgress.distanceFromStartMeters >=
+            PICKUP_BYPASS_MIN_AHEAD_METERS,
+      );
+      const pickupBearing = calculateBearingDegrees(
+        driverCoordinate,
+        pickupCoordinate,
+      );
+      const isPickupBehindDriver =
+        typeof gpsHeadingDegrees === 'number' &&
+        Number.isFinite(gpsHeadingDegrees) &&
+        normalizeHeadingDelta(gpsHeadingDegrees, pickupBearing) >=
+          PICKUP_BYPASS_BEHIND_HEADING_DEGREES;
+
+      if (!hasPassedPickupOnRoute && !isPickupBehindDriver) {
+        continue;
+      }
+
+      console.warn('[DriverNavigation] Pickup depasse sans embarquement, retrait local du trace:', {
+        bookingId: booking.id,
+        passengerName: waypoint.passenger.name,
+        distanceToPickupMeters: Math.round(distanceToPickupMeters),
+        closestDistanceMeters: Math.round(closestDistance),
+        hasPassedPickupOnRoute,
+        isPickupBehindDriver,
+      });
+
+      setSkippedPickupBookingIds((current) => {
+        if (current.has(booking.id)) {
+          return current;
+        }
+
+        const next = new Set(current);
+        next.add(booking.id);
+        skippedPickupBookingIdsRef.current = next;
+        return next;
+      });
+
+      const currentNotice = pickupNoticeRef.current;
+      if (currentNotice?.waypoint.booking.id === booking.id) {
+        pickupNoticeRef.current = null;
+        setPickupNotice(null);
+        setPickupNoticeCountdown(null);
+      }
+
+      routeFetchedRef.current = false;
+      routeSignatureRef.current = '';
+      offRouteSampleCountRef.current = 0;
+      lastOffRouteRerouteAtRef.current = 0;
+      break;
+    }
+  };
 
   const cleanupNavigationUi = useCallback(() => {
     if (recalcRouteTimeoutRef.current) {
@@ -770,6 +914,8 @@ export default function NavigationScreen() {
     autoCompletingTripRef.current = false;
     lastAcceptedDriverCoordinateRef.current = null;
     lastAcceptedDriverTimestampRef.current = null;
+    skippedPickupBookingIdsRef.current = new Set();
+    pickupClosestDistanceMetersRef.current.clear();
     setIsReroutingRoute(false);
     setRouteDistanceMeters(null);
     setRouteDurationSeconds(null);
@@ -856,6 +1002,9 @@ export default function NavigationScreen() {
     autoCompletingTripRef.current = false;
     lastAcceptedDriverCoordinateRef.current = null;
     lastAcceptedDriverTimestampRef.current = null;
+    skippedPickupBookingIdsRef.current = new Set();
+    pickupClosestDistanceMetersRef.current.clear();
+    setSkippedPickupBookingIds(new Set());
     setRouteDistanceMeters(null);
     setRouteDurationSeconds(null);
     setIsReroutingRoute(false);
@@ -1586,7 +1735,12 @@ export default function NavigationScreen() {
     setWaypoints(waypointsList);
 
     // Trouver le prochain waypoint non complété
-    const nextIncompleteIndex = waypointsList.findIndex(wp => !wp.completed);
+    const nextIncompleteIndex = waypointsList.findIndex((wp) => {
+      const isSkippedPickupBooking =
+        skippedPickupBookingIds.has(wp.booking.id) &&
+        !hasBookingPickupCompleted(wp.booking);
+      return !wp.completed && !isSkippedPickupBooking;
+    });
     if (nextIncompleteIndex !== -1) {
       currentWaypointIndexRef.current = nextIncompleteIndex;
       setCurrentWaypointIndex(nextIncompleteIndex);
@@ -1597,11 +1751,56 @@ export default function NavigationScreen() {
   }, [
     bookings,
     isKinshasaNavigationTrip,
+    skippedPickupBookingIds,
     trip,
     tripArrivalCoordinate,
     tripDepartureCoordinate,
     tripId,
   ]);
+
+  useEffect(() => {
+    if (!bookings) {
+      return;
+    }
+
+    const activeSkippedIds = new Set(
+      bookings
+        .filter(
+          (booking) =>
+            booking.status === 'accepted' &&
+            !hasBookingPickupCompleted(booking) &&
+            !hasBookingDropoffCompleted(booking),
+        )
+        .map((booking) => booking.id),
+    );
+
+    setSkippedPickupBookingIds((current) => {
+      const next = new Set(
+        Array.from(current).filter((bookingId) =>
+          activeSkippedIds.has(bookingId),
+        ),
+      );
+
+      if (
+        next.size === current.size &&
+        Array.from(current).every((bookingId) => next.has(bookingId))
+      ) {
+        return current;
+      }
+
+      skippedPickupBookingIdsRef.current = next;
+      return next;
+    });
+
+    const bookingIds = new Set(bookings.map((booking) => booking.id));
+    Array.from(pickupClosestDistanceMetersRef.current.keys()).forEach(
+      (bookingId) => {
+        if (!bookingIds.has(bookingId)) {
+          pickupClosestDistanceMetersRef.current.delete(bookingId);
+        }
+      },
+    );
+  }, [bookings]);
 
   useEffect(() => {
     const currentNotice = pickupNoticeRef.current;
@@ -1888,7 +2087,7 @@ export default function NavigationScreen() {
             hasRouteForReroute &&
             hasReliableOffRouteSignal &&
             typeof distanceFromRouteMeters === 'number' &&
-            distanceFromRouteMeters > ROUTE_DEVIATION_THRESHOLD_METERS;
+            distanceFromRouteMeters > DRIVER_REROUTE_DEVIATION_THRESHOLD_METERS;
 
           offRouteSampleCountRef.current = isOffRoute
             ? offRouteSampleCountRef.current + 1
@@ -1901,6 +2100,10 @@ export default function NavigationScreen() {
               consecutiveOffRouteCount: offRouteSampleCountRef.current,
               nowMs: now,
               lastRecalculationAtMs: lastOffRouteRerouteAtRef.current,
+              routeDeviationThresholdMeters:
+                DRIVER_REROUTE_DEVIATION_THRESHOLD_METERS,
+              confirmationCount: DRIVER_REROUTE_CONFIRMATION_COUNT,
+              minRecalculationIntervalMs: DRIVER_REROUTE_MIN_INTERVAL_MS,
             }) &&
             !isReroutingRef.current
           ) {
@@ -1938,6 +2141,7 @@ export default function NavigationScreen() {
               ? normalizeHeading(normalizedLocation.coords.heading)
               : null;
           const alignedHeading = routeAlignment?.heading ?? gpsHeading;
+          evaluatePickupBypassRef.current?.(rawCoordinate, gpsHeading);
 
           if (alignedHeading !== null) {
             setHeading((previousHeading) => {
@@ -2982,6 +3186,17 @@ export default function NavigationScreen() {
     tripId,
   ]);
 
+  const handleEditTripFromNavigation = useCallback(() => {
+    if (!tripId) {
+      return;
+    }
+
+    cleanupNavigationUi();
+    currentLocationRef.current = null;
+    mapRef.current = null;
+    router.replace(`/trip/${tripId}?openEdit=1`);
+  }, [cleanupNavigationUi, router, tripId]);
+
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (securityModalVisible) {
@@ -3792,6 +4007,15 @@ export default function NavigationScreen() {
           onPress={() => setSecurityModalVisible(true)}
         >
           <Ionicons name="shield-checkmark" size={22} color={Colors.primary} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.floatingButton}
+          onPress={handleEditTripFromNavigation}
+          accessibilityRole="button"
+          accessibilityLabel="Modifier le trajet"
+        >
+          <Ionicons name="create-outline" size={22} color={Colors.primary} />
         </TouchableOpacity>
 
         <TouchableOpacity

@@ -24,6 +24,13 @@ export type RemainingRoute = {
   isRouteUsable: boolean;
 };
 
+export type PolylineProgress = {
+  closestPoint: ClosestPolylinePoint;
+  distanceFromStartMeters: number;
+  distanceToEndMeters: number;
+  routeDistanceMeters: number;
+};
+
 export type LocationJumpInput = {
   previous: NavigationCoordinate | null | undefined;
   current: NavigationCoordinate | null | undefined;
@@ -40,6 +47,9 @@ export type RouteDeviationInput = {
   nowMs: number;
   lastRecalculationAtMs: number;
   headingDeltaDegrees?: number | null;
+  routeDeviationThresholdMeters?: number;
+  confirmationCount?: number;
+  minRecalculationIntervalMs?: number;
 };
 
 // Kinshasa urban defaults: tolerate small GPS drift and short network lag,
@@ -172,6 +182,21 @@ export function calculateDistanceMeters(
     2 *
     Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
   );
+}
+
+export function calculateBearingDegrees(
+  from: NavigationCoordinate,
+  to: NavigationCoordinate,
+) {
+  const startLatitude = toRadians(from.latitude);
+  const endLatitude = toRadians(to.latitude);
+  const longitudeDelta = toRadians(to.longitude - from.longitude);
+  const y = Math.sin(longitudeDelta) * Math.cos(endLatitude);
+  const x =
+    Math.cos(startLatitude) * Math.sin(endLatitude) -
+    Math.sin(startLatitude) * Math.cos(endLatitude) * Math.cos(longitudeDelta);
+
+  return normalizeHeading((Math.atan2(y, x) * 180) / Math.PI);
 }
 
 export function calculatePolylineDistanceMeters(
@@ -365,6 +390,33 @@ export function distanceFromCoordinateToPolyline(
   return findClosestPointOnPolyline(coordinate, polyline)?.distanceMeters ?? null;
 }
 
+export function getPolylineProgress(
+  coordinate: NavigationCoordinate,
+  polyline: NavigationCoordinate[],
+): PolylineProgress | null {
+  const route = normalizeCoordinateList(polyline);
+  const closestPoint = findClosestPointOnPolyline(coordinate, route);
+  if (!closestPoint) {
+    return null;
+  }
+
+  const traveledCoordinates = route.slice(0, closestPoint.segmentIndex + 1);
+  pushCoordinateIfDifferent(traveledCoordinates, closestPoint.coordinate);
+  const routeDistanceMeters = calculatePolylineDistanceMeters(route);
+  const distanceFromStartMeters =
+    calculatePolylineDistanceMeters(traveledCoordinates);
+
+  return {
+    closestPoint,
+    distanceFromStartMeters,
+    distanceToEndMeters: Math.max(
+      0,
+      routeDistanceMeters - distanceFromStartMeters,
+    ),
+    routeDistanceMeters,
+  };
+}
+
 export function isPlausibleLocationUpdate({
   previous,
   current,
@@ -415,11 +467,14 @@ export function isRouteDeviationConfirmed({
   nowMs,
   lastRecalculationAtMs,
   headingDeltaDegrees,
+  routeDeviationThresholdMeters = ROUTE_DEVIATION_THRESHOLD_METERS,
+  confirmationCount = DEVIATION_CONFIRMATION_COUNT,
+  minRecalculationIntervalMs = MIN_ROUTE_RECALC_INTERVAL_MS,
 }: RouteDeviationInput) {
   if (
     typeof distanceFromRouteMeters !== 'number' ||
     !Number.isFinite(distanceFromRouteMeters) ||
-    distanceFromRouteMeters <= ROUTE_DEVIATION_THRESHOLD_METERS
+    distanceFromRouteMeters <= routeDeviationThresholdMeters
   ) {
     return false;
   }
@@ -432,11 +487,11 @@ export function isRouteDeviationConfirmed({
     return false;
   }
 
-  if (consecutiveOffRouteCount < DEVIATION_CONFIRMATION_COUNT) {
+  if (consecutiveOffRouteCount < confirmationCount) {
     return false;
   }
 
-  if (nowMs - lastRecalculationAtMs < MIN_ROUTE_RECALC_INTERVAL_MS) {
+  if (nowMs - lastRecalculationAtMs < minRecalculationIntervalMs) {
     return false;
   }
 
