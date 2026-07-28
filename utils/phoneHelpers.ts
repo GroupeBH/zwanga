@@ -6,7 +6,7 @@ import { Linking } from 'react-native';
  */
 export function formatPhoneForCall(phone: string): string {
   // Garder le + au début si présent, puis ne garder que les chiffres
-  const cleaned = phone.replace(/[^\d+]/g, '');
+  const cleaned = phone.trim().replace(/[^\d+]/g, '');
   // Si le numéro commence par +, le garder, sinon ajouter +
   if (cleaned.startsWith('+')) {
     return cleaned;
@@ -28,9 +28,17 @@ export function formatPhoneForCall(phone: string): string {
  * WhatsApp nécessite le format international avec +243
  */
 export function formatPhoneForWhatsApp(phone: string): string {
-  const cleaned = phone.replace(/[^\d+]/g, '');
+  const cleaned = phone.trim().replace(/[^\d+]/g, '');
+  const digits = cleaned.replace(/\D/g, '');
+  if (!digits) {
+    return '';
+  }
   
   // Si le numéro commence par +, le garder
+  if (cleaned.startsWith('+') && !cleaned.startsWith('+243')) {
+    return `+${digits}`;
+  }
+
   if (cleaned.startsWith('+')) {
     // Si c'est déjà +243, le retourner tel quel
     if (cleaned.startsWith('+243')) {
@@ -41,17 +49,21 @@ export function formatPhoneForWhatsApp(phone: string): string {
   }
   
   // Si le numéro commence par 0, remplacer le 0 par +243
+  if (digits.startsWith('00')) {
+    return `+${digits.substring(2)}`;
+  }
+
   if (cleaned.startsWith('0')) {
-    return '+243' + cleaned.substring(1);
+    return '+243' + digits.substring(1);
   }
   
   // Si le numéro commence déjà par 243, ajouter le +
-  if (cleaned.startsWith('243')) {
-    return '+' + cleaned;
+  if (digits.startsWith('243')) {
+    return '+' + digits;
   }
   
   // Par défaut, ajouter +243
-  return '+243' + cleaned;
+  return '+243' + digits;
 }
 
 /**
@@ -117,10 +129,26 @@ export async function openWhatsApp(
   phone: string,
   onError?: (message: string) => void
 ): Promise<void> {
+  if (!phone || phone.trim() === '') {
+    const errorMsg = 'Numero de telephone invalide.';
+    if (onError) {
+      onError(errorMsg);
+    }
+    return;
+  }
+
   const phoneNumber = formatPhoneForWhatsApp(phone);
   // Pour l'URL WhatsApp, retirer le + car WhatsApp nécessite le format sans +
-  const phoneNumberForUrl = phoneNumber.startsWith('+') ? phoneNumber.substring(1) : phoneNumber;
+  const phoneNumberForUrl = phoneNumber.replace(/\D/g, '');
+  if (!phoneNumberForUrl) {
+    const errorMsg = 'Numero de telephone invalide.';
+    if (onError) {
+      onError(errorMsg);
+    }
+    return;
+  }
   const url = `whatsapp://send?phone=${phoneNumberForUrl}`;
+  const webUrl = `https://wa.me/${phoneNumberForUrl}`;
   
   try {
     const canOpen = await Linking.canOpenURL(url);
@@ -129,7 +157,6 @@ export async function openWhatsApp(
     } else {
       // Essayer avec https://wa.me/ si l'app n'est pas installée
       // Pour wa.me, on peut garder le + ou le retirer, les deux fonctionnent
-      const webUrl = `https://wa.me/${phoneNumberForUrl}`;
       const canOpenWeb = await Linking.canOpenURL(webUrl);
       if (canOpenWeb) {
         await Linking.openURL(webUrl);
@@ -143,7 +170,13 @@ export async function openWhatsApp(
       }
     }
   } catch (error) {
-    console.error('Erreur lors de l\'ouverture de WhatsApp:', error);
+    console.warn('Ouverture WhatsApp native indisponible, fallback web:', error);
+    try {
+      await Linking.openURL(webUrl);
+      return;
+    } catch (fallbackError) {
+      console.error('Erreur lors de l\'ouverture de WhatsApp:', fallbackError);
+    }
     const errorMsg = 'Impossible d\'ouvrir WhatsApp.';
     if (onError) {
       onError(errorMsg);

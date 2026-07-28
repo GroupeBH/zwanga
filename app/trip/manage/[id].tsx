@@ -742,6 +742,14 @@ export default function ManageTripScreen() {
     router.push(`/trip/navigate/${trip.id}`);
   };
 
+  const handleOpenTripEdit = () => {
+    if (!trip || (trip.status !== 'upcoming' && trip.status !== 'ongoing')) {
+      return;
+    }
+
+    router.push(`/trip/${trip.id}?openEdit=1`);
+  };
+
   const handleCancelTrip = () => {
     if (!trip) return;
     showDialog({
@@ -977,12 +985,12 @@ export default function ManageTripScreen() {
             </View>
           </View>
 
-          {/* {trip.status === 'upcoming' && (
+          {trip.status === 'upcoming' && (
             <TouchableOpacity style={styles.editRouteButton} onPress={openEditRouteModal} activeOpacity={0.9}>
               <Ionicons name="create-outline" size={16} color={Colors.primary} />
               <Text style={styles.editRouteButtonText}>Modifier les adresses</Text>
             </TouchableOpacity>
-          )} */}
+          )}
 
           <View style={styles.statsGrid}>
             <View style={styles.statItem}>
@@ -1217,7 +1225,7 @@ export default function ManageTripScreen() {
           <>
             <View style={styles.upcomingActionsRow}>
               <TouchableOpacity
-                style={[styles.primaryButton, styles.startTripButton, { flex: 1 }]}
+                style={[styles.primaryButton, styles.startTripButton, styles.footerPrimaryAction]}
                 onPress={handleStartTrip}
                 disabled={isStartingTrip}
                 activeOpacity={0.8}
@@ -1232,16 +1240,18 @@ export default function ManageTripScreen() {
                 )}
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.primaryButton, styles.navigationButton, { flex: 1 }]}
-                onPress={handleOpenNavigation}
+                style={[styles.footerSecondaryAction, styles.editTripFooterButton]}
+                onPress={handleOpenTripEdit}
                 activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Modifier le trajet"
               >
-                <Ionicons name="navigate" size={20} color={Colors.white} />
-                <Text style={styles.primaryButtonText}>Navigation</Text>
+                <Ionicons name="create-outline" size={20} color={Colors.primary} />
+                <Text style={styles.footerSecondaryActionText} numberOfLines={1}>Modifier</Text>
               </TouchableOpacity>
             </View>
             <TouchableOpacity
-              style={styles.secondaryButton}
+              style={[styles.secondaryButton, styles.footerFullWidthButton, styles.cancelTripFooterButton]}
               onPress={handleCancelTrip}
               disabled={isUpdatingTripStatus}
               activeOpacity={0.8}
@@ -1256,7 +1266,7 @@ export default function ManageTripScreen() {
         )}
 
         {canCompleteTrip && (
-          <View style={[styles.primaryButton, styles.completeTripButton]}>
+          <View style={[styles.primaryButton, styles.completeTripButton, styles.footerFullWidthButton]}>
             <Ionicons name="checkmark-done" size={20} color={Colors.white} />
             <Text style={styles.primaryButtonText}>Finalisation automatique</Text>
           </View>
@@ -1265,25 +1275,39 @@ export default function ManageTripScreen() {
         {trip.status === 'ongoing' && !canCompleteTrip && (
           <View style={styles.ongoingActionsRow}>
             <TouchableOpacity
-              style={[styles.primaryButton, styles.navigationButton]}
+              style={[styles.primaryButton, styles.navigationButton, styles.footerPrimaryAction]}
               onPress={handleOpenNavigation}
               activeOpacity={0.8}
             >
               <Ionicons name="navigate" size={20} color={Colors.white} />
-              <Text style={styles.primaryButtonText}>Navigation</Text>
+              <Text style={styles.primaryButtonText} numberOfLines={1}>Navigation</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.secondaryButton}
+              style={[styles.footerSecondaryAction, styles.editTripFooterButton]}
+              onPress={handleOpenTripEdit}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Modifier le trajet"
+            >
+              <Ionicons name="create-outline" size={20} color={Colors.primary} />
+              <Text style={styles.footerSecondaryActionText} numberOfLines={1}>Modifier</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.footerSecondaryAction, styles.pauseTripFooterButton]}
               onPress={handlePauseTrip}
               disabled={isPausingTrip}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Interrompre le trajet"
             >
               {isPausingTrip ? (
                 <ActivityIndicator color={Colors.warning} />
               ) : (
                 <>
                   <Ionicons name="pause" size={20} color={Colors.warning} />
-                  <Text style={[styles.secondaryButtonText, { color: Colors.warning }]}>Interrompre</Text>
+                  <Text style={[styles.footerSecondaryActionText, styles.pauseTripFooterButtonText]} numberOfLines={1}>
+                    Pause
+                  </Text>
                 </>
               )}
             </TouchableOpacity>
@@ -1292,7 +1316,7 @@ export default function ManageTripScreen() {
 
         {trip.status === 'completed' && (
           <TouchableOpacity
-            style={[styles.primaryButton, { backgroundColor: Colors.secondary }]}
+            style={[styles.primaryButton, styles.footerFullWidthButton, { backgroundColor: Colors.secondary }]}
             onPress={() => router.push(`/rate/${trip.id}`)}
             activeOpacity={0.8}
           >
@@ -1996,8 +2020,8 @@ const styles = StyleSheet.create({
     // paddingBottom is set dynamically via useSafeAreaInsets
     borderTopWidth: 1,
     borderTopColor: Colors.gray[100],
-    flexDirection: 'row',
-    gap: Spacing.md,
+    flexDirection: 'column',
+    gap: Spacing.sm,
     ...CommonStyles.shadowLg,
   },
   securityModalOverlay: {
@@ -2079,18 +2103,74 @@ const styles = StyleSheet.create({
   },
   ongoingActionsRow: {
     flexDirection: 'row',
-    gap: Spacing.md,
+    alignItems: 'center',
+    gap: Spacing.sm,
     width: '100%',
   },
   upcomingActionsRow: {
     flexDirection: 'row',
-    gap: Spacing.md,
+    alignItems: 'center',
+    gap: Spacing.sm,
     width: '100%',
-    marginBottom: Spacing.sm,
   },
   navigationButton: {
     flex: 1,
     backgroundColor: Colors.primary,
+  },
+  footerPrimaryAction: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: Spacing.md,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+  },
+  footerFullWidthButton: {
+    flex: 0,
+    width: '100%',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+  },
+  footerSecondaryAction: {
+    width: 104,
+    height: 54,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.primary + '24',
+    backgroundColor: Colors.white,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.sm,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+  },
+  footerSecondaryActionText: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  editTripFooterButton: {
+    backgroundColor: Colors.primary + '08',
+  },
+  pauseTripFooterButton: {
+    width: 82,
+    borderColor: Colors.warning + '40',
+    backgroundColor: Colors.warning + '10',
+    shadowOpacity: 0,
+  },
+  pauseTripFooterButtonText: {
+    color: Colors.warning,
+  },
+  cancelTripFooterButton: {
+    borderColor: Colors.danger + '22',
+    backgroundColor: Colors.danger + '08',
   },
   bookingModalOverlay: {
     flex: 1,

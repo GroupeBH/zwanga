@@ -286,6 +286,9 @@ export default function TripDetailsScreen() {
   const insets = useSafeAreaInsets();
   const { height: viewportHeight } = useWindowDimensions();
   const tripId = typeof params.id === 'string' ? (params.id as string) : '';
+  const openEditParamValue = Array.isArray(params.openEdit) ? params.openEdit[0] : params.openEdit;
+  const shouldOpenEditFromParams = openEditParamValue === '1' || openEditParamValue === 'true';
+  const openEditParamKey = `${tripId}:${openEditParamValue ?? ''}`;
   const trackParam = Array.isArray(params.track) ? params.track.includes('true') : params.track === 'true'; // Permet le suivi via lien partagé
   const tripFromStore = useAppSelector((state) => selectTripById(tripId)(state));
 
@@ -393,6 +396,8 @@ export default function TripDetailsScreen() {
   const [editArrivalManualAddress, setEditArrivalManualAddress] = useState('');
   const [editRoutePickerTarget, setEditRoutePickerTarget] = useState<'departure' | 'arrival' | null>(null);
   const [editVehicleId, setEditVehicleId] = useState<string | null>(null);
+  const openEditModalRef = useRef<() => void>(() => undefined);
+  const handledOpenEditParamKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -528,6 +533,54 @@ export default function TripDetailsScreen() {
     setEditRoutePickerTarget(null);
     setEditVehicleId(null);
   };
+
+  useEffect(() => {
+    openEditModalRef.current = openEditModal;
+  });
+
+  useEffect(() => {
+    if (!shouldOpenEditFromParams) {
+      handledOpenEditParamKeyRef.current = null;
+      return;
+    }
+
+    if (
+      !isFocused ||
+      !trip ||
+      !isTripDriver ||
+      editTripModalVisible ||
+      handledOpenEditParamKeyRef.current === openEditParamKey
+    ) {
+      return;
+    }
+
+    handledOpenEditParamKeyRef.current = openEditParamKey;
+
+    if (trip.status !== 'upcoming' && trip.status !== 'ongoing') {
+      showDialog({
+        variant: 'warning',
+        title: 'Modification indisponible',
+        message: 'Ce trajet ne peut plus etre modifie.',
+      });
+      return;
+    }
+
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      openEditModalRef.current();
+    });
+
+    return () => {
+      interaction.cancel?.();
+    };
+  }, [
+    editTripModalVisible,
+    isFocused,
+    isTripDriver,
+    openEditParamKey,
+    shouldOpenEditFromParams,
+    showDialog,
+    trip,
+  ]);
 
   const swapEditRoutePoints = () => {
     setEditDepartureSelection(editArrivalSelection);
