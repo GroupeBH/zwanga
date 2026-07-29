@@ -15,6 +15,10 @@ import {
   type PassengerLocationPayload,
 } from '@/services/trackingSocket';
 import {
+  startDriverBackgroundLocationTracking,
+  stopDriverBackgroundLocationTracking,
+} from '@/services/driverBackgroundLocationTask';
+import {
   useAcceptBookingMutation,
   useConfirmPickupMutation,
   useConfirmDropoffMutation,
@@ -56,6 +60,13 @@ import {
   type NavigationCoordinate,
   type NavigationStop,
 } from '@/utils/navigation/routeProgress';
+import {
+  DRIVER_TRIP_END_APPROACH_DISTANCE_METERS,
+  DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS,
+  DRIVER_TRIP_END_AUTO_COMPLETE_DWELL_MS,
+  DRIVER_TRIP_END_DIRECT_COMPLETE_DISTANCE_METERS,
+  evaluateDestinationAutoComplete,
+} from '@/utils/navigation/tripCompletion';
 import { shareTrip } from '@/utils/shareHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -157,7 +168,6 @@ const ANDROID_PIN_MARKER_ANCHOR = { x: 0.5, y: 0.88 };
 const DRIVER_PICKUP_ARRIVAL_DISTANCE_KM = 0.05;
 const PASSENGER_READY_DISTANCE_KM = 0.005;
 const DRIVER_DROPOFF_APPROACH_DISTANCE_KM = 0.04;
-const DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_KM = 0.02;
 const DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS = 3000;
 const DRIVER_LOCATION_BACKEND_UPDATE_INTERVAL_MS = 3000;
 const FRESH_DRIVER_LOCATION_MAX_AGE_MS = LOCATION_FRESHNESS_MS;
@@ -710,6 +720,7 @@ export default function NavigationScreen() {
   const autoConfirmingDropoffBookingIdsRef = useRef<Set<string>>(new Set());
   const skippedPickupBookingIdsRef = useRef<ReadonlySet<string>>(new Set());
   const pickupClosestDistanceMetersRef = useRef<Map<string, number>>(new Map());
+  const tripDestinationNearSinceMsRef = useRef<number | null>(null);
   const evaluatePickupBypassRef = useRef<
     ((driverCoordinate: RouteCoordinate, gpsHeadingDegrees: number | null) => void) | null
   >(null);
@@ -916,6 +927,7 @@ export default function NavigationScreen() {
     lastAcceptedDriverTimestampRef.current = null;
     skippedPickupBookingIdsRef.current = new Set();
     pickupClosestDistanceMetersRef.current.clear();
+    tripDestinationNearSinceMsRef.current = null;
     setIsReroutingRoute(false);
     setRouteDistanceMeters(null);
     setRouteDurationSeconds(null);
@@ -1324,34 +1336,41 @@ export default function NavigationScreen() {
         return;
       }
 
-      const key = `${event.type}:${event.tripId}`;
+      const roundedDistance =
+        typeof event.distanceMeters === 'number' && Number.isFinite(event.distanceMeters)
+          ? Math.max(1, Math.round(event.distanceMeters))
+          : null;
+      const isAutoCompleteZone =
+        event.type === 'driver_near_destination' &&
+        roundedDistance !== null &&
+        roundedDistance <= DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS;
+      const key = [
+        event.type,
+        event.tripId,
+        isAutoCompleteZone ? 'auto-complete-zone' : 'approach',
+      ].join(':');
       if (presentedTripDestinationKeysRef.current.has(key)) {
         return;
       }
 
       presentedTripDestinationKeysRef.current.add(key);
       if (event.type === 'driver_near_destination') {
-        const roundedDistance =
-          typeof event.distanceMeters === 'number' && Number.isFinite(event.distanceMeters)
-            ? Math.max(1, Math.round(event.distanceMeters))
-            : null;
         const distanceText = roundedDistance ? ` Distance detectee: ${roundedDistance} m.` : '';
-        const isReachedZone = roundedDistance !== null && roundedDistance <= 10;
 
         showDialog({
           variant: 'info',
           icon: 'flag',
-          title: isReachedZone ? 'Destination finale atteinte' : 'Destination finale proche',
-          message: isReachedZone
-            ? `Le point d'arrivee du trajet est atteint. Le trajet sera termine automatiquement dans 5 minutes si le vehicule reste sur place.${distanceText}`
+          title: isAutoCompleteZone ? 'Zone de destination atteinte' : 'Destination finale proche',
+          message: isAutoCompleteZone
+            ? `Le vehicule est a moins de ${DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS} m du point d'arrivee. Le trajet sera termine automatiquement apres 10 minutes si le vehicule reste dans cette zone.${distanceText}`
             : `Le point d'arrivee du trajet est presque atteint.${distanceText}`,
         });
 
         void Speech.stop().finally(() => {
           if (!isMountedRef.current) return;
           Speech.speak(
-            isReachedZone
-              ? "Le point d'arrivee du trajet est atteint."
+            isAutoCompleteZone
+              ? "Zone d'arrivee atteinte."
               : 'Le point d arrivee du trajet est presque atteint.',
             {
               language: SPEECH_LANGUAGE,
@@ -1401,6 +1420,7 @@ export default function NavigationScreen() {
       void completeTrip(tripId)
         .unwrap()
         .then(() => {
+          void stopDriverBackgroundLocationTracking(tripId);
           presentTripDestinationNotice({
             type: 'driver_arrived_destination',
             tripId,
@@ -1888,6 +1908,10 @@ export default function NavigationScreen() {
         locationSubscription.current.remove();
         locationSubscription.current = null;
       }
+      tripDestinationNearSinceMsRef.current = null;
+      if (tripId) {
+        void stopDriverBackgroundLocationTracking(tripId);
+      }
       return;
     }
 
@@ -1947,6 +1971,13 @@ export default function NavigationScreen() {
           });
           return;
         }
+
+        void startDriverBackgroundLocationTracking(tripId, {
+          arrivalCoordinate: tripArrivalCoordinate,
+          autoCompleteDistanceMeters: DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS,
+          autoCompleteDwellMs: DRIVER_TRIP_END_AUTO_COMPLETE_DWELL_MS,
+          requestMissingPermissions: false,
+        });
 
         // Obtenir la position initiale (avec fallback)
         let location: Location.LocationObject | null = null;
@@ -2203,7 +2234,13 @@ export default function NavigationScreen() {
         locationSubscription.current = null;
       }
     };
-  }, [tripId, isTripOngoing, navigateBackSafely, sendDriverLocationToTracking]);
+  }, [
+    tripId,
+    isTripOngoing,
+    navigateBackSafely,
+    sendDriverLocationToTracking,
+    tripArrivalCoordinate,
+  ]);
 
   // Passer la carte en 3D lorsque la course est en cours
   useEffect(() => {
@@ -2829,20 +2866,34 @@ export default function NavigationScreen() {
     });
 
     if (tripArrivalCoordinate) {
-      const driverTripEndDistanceKm = calculateDistance(driverCoordinate, tripArrivalCoordinate);
-      const driverTripEndDistanceMeters = Math.round(driverTripEndDistanceKm * 1000);
+      const driverTripEndDistanceMeters = calculateDistanceMeters(
+        driverCoordinate,
+        tripArrivalCoordinate,
+      );
+      const roundedTripEndDistanceMeters = Math.round(driverTripEndDistanceMeters);
 
-      if (driverTripEndDistanceKm <= DRIVER_DROPOFF_APPROACH_DISTANCE_KM) {
+      if (driverTripEndDistanceMeters <= DRIVER_TRIP_END_APPROACH_DISTANCE_METERS) {
         presentTripDestinationNotice({
           type: 'driver_near_destination',
           tripId,
-          distanceMeters: driverTripEndDistanceMeters,
+          distanceMeters: roundedTripEndDistanceMeters,
           detectedAt,
         });
       }
 
-      if (driverTripEndDistanceKm <= DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_KM) {
-        tryCompleteTripFromNavigation(driverTripEndDistanceMeters);
+      const destinationAutoComplete = evaluateDestinationAutoComplete({
+        destinationCoordinate: tripArrivalCoordinate,
+        driverCoordinate,
+        nearDestinationSinceMs: tripDestinationNearSinceMsRef.current,
+      });
+      tripDestinationNearSinceMsRef.current =
+        destinationAutoComplete.nearDestinationSinceMs;
+
+      if (
+        driverTripEndDistanceMeters <= DRIVER_TRIP_END_DIRECT_COMPLETE_DISTANCE_METERS ||
+        destinationAutoComplete.shouldComplete
+      ) {
+        tryCompleteTripFromNavigation(roundedTripEndDistanceMeters);
       }
     }
   }, [
@@ -3123,6 +3174,7 @@ export default function NavigationScreen() {
           onPress: async () => {
             try {
               await pauseTrip(tripId).unwrap();
+              void stopDriverBackgroundLocationTracking(tripId);
               locationSubscription.current?.remove();
               locationSubscription.current = null;
               currentLocationRef.current = null;

@@ -698,7 +698,7 @@ export default function PassengerNavigationScreen() {
       message: isCompleted
         ? `Le trajet est termine automatiquement.${distanceText}`
         : isReachedZone
-          ? `Le point d'arrivee du trajet est atteint. Le trajet sera termine automatiquement dans 5 minutes si le vehicule reste sur place.${distanceText}`
+          ? `Le point d'arrivee du trajet est atteint. Le trajet sera termine automatiquement dans 10 minutes si le vehicule reste sur place.${distanceText}`
           : `Le point d'arrivee du trajet est presque atteint.${distanceText}`,
     });
 
