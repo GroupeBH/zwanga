@@ -12,10 +12,16 @@ import {
   useRejectBookingMutation,
 } from '@/store/api/bookingApi';
 import { useGeocodeMutation } from '@/store/api/googleMapsApi';
-import { useGetTripByIdQuery, usePauseTripMutation, useStartTripMutation, useUpdateTripMutation } from '@/store/api/tripApi';
+import {
+  useGetTripByIdQuery,
+  usePauseTripMutation,
+  useRequestDriverTripInterruptionMutation,
+  useStartTripMutation,
+  useUpdateTripMutation,
+} from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
-import type { Booking, BookingStatus } from '@/types';
+import type { Booking, BookingStatus, TripInterruptionReason } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
 import {
   buildManualGeocodeQuery,
@@ -82,6 +88,15 @@ const BOOKING_STATUS_CONFIG: Record<
 
 const hasPassengerBoarded = (booking: Booking) =>
   Boolean(booking.pickedUp || booking.pickedUpConfirmedByPassenger);
+
+const hasPassengerDroppedOff = (booking: Booking) =>
+  Boolean(
+    booking.status === 'completed' ||
+      booking.droppedOff ||
+      booking.droppedOffConfirmedByPassenger ||
+      booking.droppedOffAt ||
+      booking.droppedOffConfirmedAt,
+  );
 
 type ManageAutoProgressEvent = BookingAutoProgressPayload['events'][number];
 
@@ -166,6 +181,8 @@ export default function ManageTripScreen() {
   const [geocodeManualAddress] = useGeocodeMutation();
   const [startTrip, { isLoading: isStartingTrip }] = useStartTripMutation();
   const [pauseTrip, { isLoading: isPausingTrip }] = usePauseTripMutation();
+  const [requestDriverTripInterruption, { isLoading: isRequestingDriverInterruption }] =
+    useRequestDriverTripInterruptionMutation();
 
   // console.log("this bookings", bookings);
 
@@ -686,32 +703,103 @@ export default function ManageTripScreen() {
     });
   };
 
+  const pauseTripWithoutPassengerConfirmation = async () => {
+    if (!trip) return;
+
+    try {
+      await pauseTrip(trip.id).unwrap();
+      void trackEvent('trip_paused', {
+        trip_id: trip.id,
+        source_screen: 'trip_manage',
+      });
+      showFeedback('success', 'Le trajet a ete interrompu avec succes.');
+      refreshAll();
+    } catch (error: any) {
+      const message =
+        error?.data?.message ?? error?.error ?? 'Impossible d\'interrompre ce trajet.';
+      showFeedback('error', message);
+    }
+  };
+
+  const sendDriverInterruptionRequest = async (reason: TripInterruptionReason) => {
+    if (!trip) return;
+
+    try {
+      await requestDriverTripInterruption({
+        tripId: trip.id,
+        reason,
+        note:
+          reason === 'emergency'
+            ? 'Le conducteur demande une interruption urgente du trajet.'
+            : 'Le conducteur demande une interruption du trajet.',
+        coordinates: lastKnownLocation?.coords
+          ? {
+              latitude: lastKnownLocation.coords.latitude,
+              longitude: lastKnownLocation.coords.longitude,
+            }
+          : null,
+      }).unwrap();
+      void trackEvent('trip_interruption_requested', {
+        trip_id: trip.id,
+        reason,
+        source_screen: 'trip_manage',
+      });
+      showFeedback(
+        'success',
+        'Demande envoyee. Tous les passagers a bord doivent confirmer.',
+      );
+      refreshAll();
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        "Impossible d'envoyer la demande d'interruption.";
+      showFeedback('error', Array.isArray(message) ? message.join('\n') : message);
+    }
+  };
+
   const handlePauseTrip = async () => {
     if (!trip) return;
+    const passengersOnBoard = (bookings ?? []).filter(
+      (booking) =>
+        booking.status === 'accepted' &&
+        hasPassengerBoarded(booking) &&
+        !hasPassengerDroppedOff(booking),
+    );
+
+    if (passengersOnBoard.length === 0) {
+      showDialog({
+        variant: 'warning',
+        title: 'Interrompre le trajet',
+        message: "Aucun passager n'est a bord. Vous pouvez interrompre ce trajet directement.",
+        actions: [
+          { label: 'Annuler', variant: 'ghost' },
+          {
+            label: 'Interrompre',
+            variant: 'secondary',
+            onPress: pauseTripWithoutPassengerConfirmation,
+          },
+        ],
+      });
+      return;
+    }
+
     showDialog({
       variant: 'warning',
-      title: 'Interrompre le trajet',
-      message: 'Voulez-vous interrompre ce trajet ? Les passagers seront notifiés et le trajet repassera en attente.',
+      title: 'Demander une interruption',
+      message:
+        'Cette interruption devra etre confirmee par tous les passagers a bord avant de prendre effet.',
       actions: [
         { label: 'Annuler', variant: 'ghost' },
         {
-          label: 'Interrompre',
+          label: 'Urgence',
+          variant: 'danger',
+          onPress: () => sendDriverInterruptionRequest('emergency'),
+        },
+        {
+          label: 'Autre raison',
           variant: 'secondary',
-          onPress: async () => {
-            try {
-              await pauseTrip(trip.id).unwrap();
-              void trackEvent('trip_paused', {
-                trip_id: trip.id,
-                source_screen: 'trip_manage',
-              });
-              showFeedback('success', 'Le trajet a été interrompu avec succès.');
-              refreshAll();
-            } catch (error: any) {
-              const message =
-                error?.data?.message ?? error?.error ?? 'Impossible d\'interrompre ce trajet.';
-              showFeedback('error', message);
-            }
-          },
+          onPress: () => sendDriverInterruptionRequest('other'),
         },
       ],
     });
@@ -1295,12 +1383,12 @@ export default function ManageTripScreen() {
             <TouchableOpacity
               style={[styles.footerSecondaryAction, styles.pauseTripFooterButton]}
               onPress={handlePauseTrip}
-              disabled={isPausingTrip}
+              disabled={isPausingTrip || isRequestingDriverInterruption}
               activeOpacity={0.8}
               accessibilityRole="button"
               accessibilityLabel="Interrompre le trajet"
             >
-              {isPausingTrip ? (
+              {isPausingTrip || isRequestingDriverInterruption ? (
                 <ActivityIndicator color={Colors.warning} />
               ) : (
                 <>
