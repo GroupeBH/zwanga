@@ -1,9 +1,12 @@
 import type {
   GeoPoint,
   BookingStatus,
+  DriverTripInterruptionRequest,
   RecurringTripStatus,
   RecurringTripTemplate,
   Trip,
+  TripInterruptionReason,
+  TripInterruptionStatus,
   TripStatus,
   Vehicle,
   VehicleType,
@@ -35,6 +38,37 @@ type ServerBooking = {
   seats?: number;
   status?: string;
   passenger: ServerUser | null;
+};
+
+type ServerTripInterruptionConfirmation = {
+  id?: string;
+  bookingId?: string;
+  passengerId?: string;
+  passengerName?: string | null;
+  status?: string | null;
+  confirmedAt?: string | null;
+  rejectedAt?: string | null;
+  passenger?: ServerUser | null;
+};
+
+type ServerDriverTripInterruptionRequest = {
+  id?: string;
+  tripId?: string;
+  requestedByDriverId?: string;
+  driverId?: string;
+  reason?: string | null;
+  note?: string | null;
+  status?: string | null;
+  requestedAt?: string | null;
+  createdAt?: string | null;
+  confirmedAt?: string | null;
+  rejectedAt?: string | null;
+  cancelledAt?: string | null;
+  completedAt?: string | null;
+  requiredPassengerCount?: number | null;
+  confirmedPassengerCount?: number | null;
+  rejectedPassengerCount?: number | null;
+  confirmations?: ServerTripInterruptionConfirmation[] | null;
 };
 
 type ServerVehicle = {
@@ -78,6 +112,9 @@ export type ServerTrip = {
   recurringTemplateId?: string | null;
   recurringOccurrenceDate?: string | null;
   isFeatured?: boolean;
+  interruptionRequest?: ServerDriverTripInterruptionRequest | null;
+  activeInterruptionRequest?: ServerDriverTripInterruptionRequest | null;
+  currentInterruptionRequest?: ServerDriverTripInterruptionRequest | null;
 };
 
 export type ServerRecurringTripTemplate = {
@@ -172,6 +209,94 @@ const mapBookingStatus = (status?: string): BookingStatus | undefined => {
     default:
       return undefined;
   }
+};
+
+const mapTripInterruptionReason = (reason?: string | null): TripInterruptionReason => {
+  const normalizedReason = (reason ?? '').toLowerCase();
+  switch (normalizedReason) {
+    case 'emergency':
+    case 'health':
+    case 'safety':
+    case 'route_issue':
+    case 'personal':
+    case 'other':
+      return normalizedReason as TripInterruptionReason;
+    default:
+      return 'other';
+  }
+};
+
+const mapTripInterruptionStatus = (status?: string | null): TripInterruptionStatus => {
+  switch ((status ?? '').toLowerCase()) {
+    case 'confirmed':
+    case 'approved':
+    case 'accepted':
+      return 'confirmed';
+    case 'rejected':
+    case 'declined':
+      return 'rejected';
+    case 'cancelled':
+    case 'canceled':
+      return 'cancelled';
+    case 'completed':
+    case 'done':
+      return 'completed';
+    default:
+      return 'pending';
+  }
+};
+
+const resolveRequestedAt = (requestedAt?: string | null, createdAt?: string | null) =>
+  requestedAt ?? createdAt ?? new Date(0).toISOString();
+
+const mapDriverInterruptionRequest = (
+  request?: ServerDriverTripInterruptionRequest | null,
+): DriverTripInterruptionRequest | null => {
+  if (!request?.id || !request.tripId) {
+    return null;
+  }
+
+  const confirmations = (request.confirmations ?? [])
+    .filter((confirmation) => confirmation.bookingId && confirmation.passengerId)
+    .map((confirmation) => {
+      const confirmationStatus = mapTripInterruptionStatus(confirmation.status);
+      return {
+        id: confirmation.id,
+        bookingId: confirmation.bookingId!,
+        passengerId: confirmation.passengerId!,
+        passengerName: confirmation.passengerName ?? formatFullName(confirmation.passenger),
+        status:
+          confirmationStatus === 'confirmed'
+            ? 'confirmed' as const
+            : confirmationStatus === 'rejected'
+              ? 'rejected' as const
+              : 'pending' as const,
+        confirmedAt: confirmation.confirmedAt ?? null,
+        rejectedAt: confirmation.rejectedAt ?? null,
+      };
+    });
+
+  return {
+    id: request.id,
+    tripId: request.tripId,
+    requestedByDriverId: request.requestedByDriverId ?? request.driverId ?? '',
+    requestedByRole: 'driver',
+    reason: mapTripInterruptionReason(request.reason),
+    note: request.note ?? null,
+    status: mapTripInterruptionStatus(request.status),
+    requestedAt: resolveRequestedAt(request.requestedAt, request.createdAt),
+    confirmedAt: request.confirmedAt ?? null,
+    rejectedAt: request.rejectedAt ?? null,
+    cancelledAt: request.cancelledAt ?? null,
+    completedAt: request.completedAt ?? null,
+    requiredPassengerCount:
+      Number(request.requiredPassengerCount ?? confirmations.length) || confirmations.length,
+    confirmedPassengerCount:
+      Number(request.confirmedPassengerCount ?? confirmations.filter((item) => item.status === 'confirmed').length) || 0,
+    rejectedPassengerCount:
+      Number(request.rejectedPassengerCount ?? confirmations.filter((item) => item.status === 'rejected').length) || 0,
+    confirmations,
+  };
 };
 
 const mapPassengers = (bookings?: ServerBooking[]): Trip['passengers'] => {
@@ -297,6 +422,11 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     recurringTemplateId: trip.recurringTemplateId ?? null,
     recurringOccurrenceDate: trip.recurringOccurrenceDate ?? null,
     isFeatured: Boolean(trip.isFeatured),
+    interruptionRequest: mapDriverInterruptionRequest(
+      trip.interruptionRequest ??
+        trip.activeInterruptionRequest ??
+        trip.currentInterruptionRequest,
+    ),
   };
 };
 
@@ -610,6 +740,80 @@ export const tripApi = baseApi.injectEndpoints({
       ],
     }),
 
+    requestDriverTripInterruption: builder.mutation<
+      Trip,
+      {
+        tripId: string;
+        reason: TripInterruptionReason;
+        note?: string;
+        coordinates?: { latitude: number; longitude: number } | null;
+      }
+    >({
+      query: ({ tripId, ...body }) => ({
+        url: `/trips/${tripId}/interruption-request`,
+        method: 'POST',
+        body,
+      }),
+      transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
+      invalidatesTags: (_result, _error, { tripId }) => [
+        { type: 'Trip', id: tripId },
+        { type: 'MyTrips', id: tripId },
+        tripListTag,
+        myTripsListTag,
+      ],
+    }),
+
+    cancelDriverTripInterruption: builder.mutation<Trip, string>({
+      query: (tripId: string) => ({
+        url: `/trips/${tripId}/interruption-request/cancel`,
+        method: 'PUT',
+        body: {},
+      }),
+      transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
+      invalidatesTags: (_result, _error, tripId) => [
+        { type: 'Trip', id: tripId },
+        { type: 'MyTrips', id: tripId },
+        tripListTag,
+        myTripsListTag,
+      ],
+    }),
+
+    confirmDriverTripInterruption: builder.mutation<
+      Trip,
+      { tripId: string; bookingId?: string }
+    >({
+      query: ({ tripId, bookingId }) => ({
+        url: `/trips/${tripId}/interruption-request/confirm`,
+        method: 'PUT',
+        body: bookingId ? { bookingId } : {},
+      }),
+      transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
+      invalidatesTags: (_result, _error, { tripId }) => [
+        { type: 'Trip', id: tripId },
+        { type: 'MyTrips', id: tripId },
+        tripListTag,
+        myTripsListTag,
+      ],
+    }),
+
+    rejectDriverTripInterruption: builder.mutation<
+      Trip,
+      { tripId: string; bookingId?: string; reason?: string }
+    >({
+      query: ({ tripId, bookingId, reason }) => ({
+        url: `/trips/${tripId}/interruption-request/reject`,
+        method: 'PUT',
+        body: cleanObject({ bookingId, reason }),
+      }),
+      transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
+      invalidatesTags: (_result, _error, { tripId }) => [
+        { type: 'Trip', id: tripId },
+        { type: 'MyTrips', id: tripId },
+        tripListTag,
+        myTripsListTag,
+      ],
+    }),
+
     // Terminer un trajet actif
     completeTrip: builder.mutation<Trip, string>({
       query: (id: string) => ({
@@ -695,6 +899,10 @@ export const {
   useSearchTripsByCoordinatesMutation,
   useStartTripMutation,
   usePauseTripMutation,
+  useRequestDriverTripInterruptionMutation,
+  useCancelDriverTripInterruptionMutation,
+  useConfirmDriverTripInterruptionMutation,
+  useRejectDriverTripInterruptionMutation,
   useCompleteTripMutation,
   usePauseRecurringTripMutation,
   useResumeRecurringTripMutation,

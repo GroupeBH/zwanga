@@ -16,10 +16,17 @@ import { displayNotification } from '@/services/pushNotifications';
 import {
   useCancelBookingMutation,
   useGetBookingByIdQuery,
+  useRequestPassengerTripInterruptionMutation,
   useUpdatePassengerLocationMutation,
 } from '@/store/api/bookingApi';
 import { TravelMode, useGetDirectionsMutation } from '@/store/api/googleMapsApi';
-import { useGetDriverLocationQuery, useGetTripByIdQuery } from '@/store/api/tripApi';
+import {
+  useConfirmDriverTripInterruptionMutation,
+  useGetDriverLocationQuery,
+  useGetTripByIdQuery,
+  useRejectDriverTripInterruptionMutation,
+} from '@/store/api/tripApi';
+import type { TripInterruptionReason } from '@/types';
 import {
   getGeoPointCoordinate,
   isCoordinateInKinshasaBounds,
@@ -37,6 +44,10 @@ import {
 } from '@/utils/navigation/routeProgress';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
 import { shareTrip } from '@/utils/shareHelpers';
+import {
+  getTripInterruptionReasonLabel,
+  isPendingTripInterruption,
+} from '@/utils/tripInterruption';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -201,6 +212,12 @@ export default function PassengerNavigationScreen() {
 
   const [updatePassengerLocation] = useUpdatePassengerLocationMutation();
   const [cancelBooking, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
+  const [requestPassengerTripInterruption, { isLoading: isRequestingPassengerInterruption }] =
+    useRequestPassengerTripInterruptionMutation();
+  const [confirmDriverTripInterruption, { isLoading: isConfirmingDriverInterruption }] =
+    useConfirmDriverTripInterruptionMutation();
+  const [rejectDriverTripInterruption, { isLoading: isRejectingDriverInterruption }] =
+    useRejectDriverTripInterruptionMutation();
 
   const mapRef = useRef<MapView>(null);
   const driverMarkerRef = useRef<MapMarker | null>(null);
@@ -1662,6 +1679,180 @@ export default function PassengerNavigationScreen() {
     showDialog,
   ]);
 
+  const pendingPassengerInterruptionRequest = isPendingTripInterruption(
+    booking?.interruptionRequest?.status,
+  )
+    ? booking?.interruptionRequest ?? null
+    : null;
+  const pendingDriverInterruptionRequest = isPendingTripInterruption(
+    trip?.interruptionRequest?.status,
+  )
+    ? trip?.interruptionRequest ?? null
+    : null;
+  const driverInterruptionConfirmation = pendingDriverInterruptionRequest?.confirmations.find(
+    (confirmation) =>
+      confirmation.bookingId === booking?.id ||
+      confirmation.passengerId === booking?.passengerId,
+  );
+  const hasRespondedToDriverInterruption =
+    driverInterruptionConfirmation?.status === 'confirmed' ||
+    driverInterruptionConfirmation?.status === 'rejected';
+  const canRequestPassengerInterruption = Boolean(
+    booking?.id &&
+      booking.status === 'accepted' &&
+      trip?.status === 'ongoing' &&
+      booking.pickedUp &&
+      booking.pickedUpConfirmedByPassenger &&
+      !booking.droppedOff &&
+      !booking.droppedOffConfirmedByPassenger &&
+      !pendingPassengerInterruptionRequest,
+  );
+  const canRespondToDriverInterruption = Boolean(
+    booking?.id &&
+      trip?.status === 'ongoing' &&
+      pendingDriverInterruptionRequest &&
+      !hasRespondedToDriverInterruption &&
+      !booking?.droppedOff &&
+      !booking?.droppedOffConfirmedByPassenger,
+  );
+
+  const sendPassengerInterruptionRequest = useCallback(
+    async (reason: TripInterruptionReason) => {
+      if (!booking?.id) return;
+
+      try {
+        await requestPassengerTripInterruption({
+          bookingId: booking.id,
+          reason,
+          note:
+            reason === 'emergency'
+              ? 'Le passager demande a descendre avant sa destination pour urgence.'
+              : 'Le passager demande a descendre avant sa destination.',
+          coordinates: passengerLocation,
+        }).unwrap();
+        await Promise.all([refetchBooking(), refetchTrip()]);
+        showDialog({
+          variant: 'success',
+          title: 'Demande envoyee',
+          message: 'Le conducteur doit confirmer avant que votre trajet soit interrompu.',
+        });
+      } catch (error: any) {
+        const message =
+          error?.data?.message ??
+          error?.error ??
+          "Impossible d'envoyer votre demande d'interruption.";
+        showDialog({
+          variant: 'danger',
+          title: 'Demande impossible',
+          message: Array.isArray(message) ? message.join('\n') : message,
+        });
+      }
+    },
+    [
+      booking?.id,
+      passengerLocation,
+      refetchBooking,
+      refetchTrip,
+      requestPassengerTripInterruption,
+      showDialog,
+    ],
+  );
+
+  const openPassengerInterruptionDialog = useCallback(() => {
+    if (!canRequestPassengerInterruption || isRequestingPassengerInterruption) return;
+
+    showDialog({
+      variant: 'warning',
+      icon: 'walk-outline',
+      title: 'Descendre avant destination',
+      message: 'Le conducteur devra confirmer cette interruption avant la fin de votre trajet.',
+      actions: [
+        { label: 'Annuler', variant: 'ghost' },
+        {
+          label: 'Urgence',
+          variant: 'danger',
+          onPress: () => sendPassengerInterruptionRequest('emergency'),
+        },
+        {
+          label: 'Autre raison',
+          variant: 'secondary',
+          onPress: () => sendPassengerInterruptionRequest('other'),
+        },
+      ],
+    });
+  }, [
+    canRequestPassengerInterruption,
+    isRequestingPassengerInterruption,
+    sendPassengerInterruptionRequest,
+    showDialog,
+  ]);
+
+  const handleConfirmDriverInterruption = useCallback(async () => {
+    if (!tripId || !booking?.id) return;
+
+    try {
+      await confirmDriverTripInterruption({ tripId, bookingId: booking.id }).unwrap();
+      await Promise.all([refetchBooking(), refetchTrip()]);
+      showDialog({
+        variant: 'success',
+        title: 'Interruption confirmee',
+        message: 'Votre confirmation a ete envoyee au conducteur.',
+      });
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        "Impossible de confirmer l'interruption du trajet.";
+      showDialog({
+        variant: 'danger',
+        title: 'Confirmation impossible',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
+  }, [
+    booking?.id,
+    confirmDriverTripInterruption,
+    refetchBooking,
+    refetchTrip,
+    showDialog,
+    tripId,
+  ]);
+
+  const handleRejectDriverInterruption = useCallback(async () => {
+    if (!tripId || !booking?.id) return;
+
+    try {
+      await rejectDriverTripInterruption({
+        tripId,
+        bookingId: booking.id,
+        reason: "Le passager refuse l'interruption du trajet.",
+      }).unwrap();
+      await Promise.all([refetchBooking(), refetchTrip()]);
+      showDialog({
+        variant: 'info',
+        title: 'Reponse envoyee',
+        message: 'Votre refus a ete transmis au conducteur.',
+      });
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        "Impossible d'envoyer votre refus.";
+      showDialog({
+        variant: 'danger',
+        title: 'Refus impossible',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
+  }, [
+    booking?.id,
+    refetchBooking,
+    refetchTrip,
+    rejectDriverTripInterruption,
+    showDialog,
+    tripId,
+  ]);
+
   // Etat du trajet pour le passager
   const tripStatus = useMemo(() => {
     if (!booking || !trip) return 'loading';
@@ -2195,6 +2386,97 @@ export default function PassengerNavigationScreen() {
               </View>
             )}
 
+            {pendingPassengerInterruptionRequest && (
+              <View style={styles.interruptionStatusCard}>
+                <Ionicons name="hourglass-outline" size={22} color={Colors.warning} />
+                <View style={styles.interruptionStatusCopy}>
+                  <Text style={styles.interruptionStatusTitle}>
+                    Demande d'interruption envoyee
+                  </Text>
+                  <Text style={styles.interruptionStatusText}>
+                    En attente de confirmation du conducteur.
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {canRequestPassengerInterruption && (
+              <TouchableOpacity
+                style={[
+                  styles.actionButton,
+                  styles.interruptionButton,
+                  isRequestingPassengerInterruption && styles.actionButtonDisabled,
+                ]}
+                onPress={openPassengerInterruptionDialog}
+                disabled={isRequestingPassengerInterruption}
+                activeOpacity={0.85}
+              >
+                {isRequestingPassengerInterruption ? (
+                  <ActivityIndicator size="small" color={Colors.white} />
+                ) : (
+                  <Ionicons name="walk-outline" size={22} color={Colors.white} />
+                )}
+                <Text style={styles.actionButtonText}>
+                  {isRequestingPassengerInterruption
+                    ? 'Envoi...'
+                    : 'Descendre avant destination'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {pendingDriverInterruptionRequest && (
+              <View style={styles.driverInterruptionCard}>
+                <View style={styles.driverInterruptionHeader}>
+                  <Ionicons name="stop-circle-outline" size={22} color={Colors.danger} />
+                  <View style={styles.interruptionStatusCopy}>
+                    <Text style={styles.driverInterruptionTitle}>
+                      Le conducteur veut interrompre le trajet
+                    </Text>
+                    <Text style={styles.driverInterruptionText}>
+                      Motif: {getTripInterruptionReasonLabel(pendingDriverInterruptionRequest.reason)}
+                    </Text>
+                  </View>
+                </View>
+
+                {hasRespondedToDriverInterruption ? (
+                  <Text style={styles.driverInterruptionResponseText}>
+                    Reponse envoyee: {driverInterruptionConfirmation?.status === 'confirmed' ? 'confirmee' : 'refusee'}.
+                  </Text>
+                ) : canRespondToDriverInterruption ? (
+                  <View style={styles.driverInterruptionActions}>
+                    <TouchableOpacity
+                      style={[styles.driverInterruptionSecondaryButton, (isConfirmingDriverInterruption || isRejectingDriverInterruption) && styles.actionButtonDisabled]}
+                      onPress={handleRejectDriverInterruption}
+                      disabled={isConfirmingDriverInterruption || isRejectingDriverInterruption}
+                      activeOpacity={0.85}
+                    >
+                      {isRejectingDriverInterruption ? (
+                        <ActivityIndicator size="small" color={Colors.danger} />
+                      ) : (
+                        <Text style={styles.driverInterruptionSecondaryText}>Refuser</Text>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.driverInterruptionPrimaryButton, (isConfirmingDriverInterruption || isRejectingDriverInterruption) && styles.actionButtonDisabled]}
+                      onPress={handleConfirmDriverInterruption}
+                      disabled={isConfirmingDriverInterruption || isRejectingDriverInterruption}
+                      activeOpacity={0.85}
+                    >
+                      {isConfirmingDriverInterruption ? (
+                        <ActivityIndicator size="small" color={Colors.white} />
+                      ) : (
+                        <Text style={styles.driverInterruptionPrimaryText}>Confirmer</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <Text style={styles.driverInterruptionResponseText}>
+                    Aucune confirmation requise pour votre reservation.
+                  </Text>
+                )}
+              </View>
+            )}
+
             {canCancelPassengerTrip && (
               <TouchableOpacity
                 style={[
@@ -2701,6 +2983,99 @@ const styles = StyleSheet.create({
   },
   dropoffButton: {
     backgroundColor: Colors.success,
+  },
+  interruptionButton: {
+    marginTop: Spacing.sm,
+    backgroundColor: Colors.danger,
+  },
+  interruptionStatusCard: {
+    marginTop: Spacing.sm,
+    minHeight: 58,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.warning + '44',
+    backgroundColor: Colors.warning + '12',
+    padding: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  interruptionStatusCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  interruptionStatusTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  interruptionStatusText: {
+    marginTop: 2,
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+    color: Colors.gray[600],
+  },
+  driverInterruptionCard: {
+    marginTop: Spacing.sm,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.danger + '33',
+    backgroundColor: Colors.danger + '08',
+    padding: Spacing.md,
+    gap: Spacing.sm,
+  },
+  driverInterruptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+  },
+  driverInterruptionTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  driverInterruptionText: {
+    marginTop: 2,
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+    color: Colors.gray[700],
+  },
+  driverInterruptionResponseText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+  },
+  driverInterruptionActions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  driverInterruptionSecondaryButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.danger + '55',
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  driverInterruptionPrimaryButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  driverInterruptionSecondaryText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.danger,
+  },
+  driverInterruptionPrimaryText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
   },
   reportButton: {
     backgroundColor: Colors.danger,

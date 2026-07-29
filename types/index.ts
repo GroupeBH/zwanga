@@ -3,6 +3,21 @@ export type VehicleType = 'car' | 'moto' | 'tricycle';
 export type TripStatus = 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
 export type RecurringTripStatus = 'active' | 'paused';
 export type BookingStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'completed' | 'expired';
+export type TripInterruptionReason =
+  | 'emergency'
+  | 'health'
+  | 'safety'
+  | 'route_issue'
+  | 'personal'
+  | 'other';
+export type TripInterruptionStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'rejected'
+  | 'cancelled'
+  | 'completed';
+export type TripInterruptionRequesterRole = 'driver' | 'passenger';
+export type TripInterruptionConfirmationStatus = 'pending' | 'confirmed' | 'rejected';
 export type PaymentMethod = 'orange_money' | 'm_pesa' | 'airtel_money' | 'cash';
 export type SubscriptionPaymentMethod = 'mobile_money' | 'card';
 export type TripPaymentMode = 'electronic' | 'cash' | 'points';
@@ -221,6 +236,7 @@ export interface Trip {
   recurringTemplateId?: string | null;
   recurringOccurrenceDate?: string | null;
   isFeatured?: boolean;
+  interruptionRequest?: DriverTripInterruptionRequest | null;
 }
 
 export interface RecurringTripTemplate {
@@ -302,6 +318,55 @@ export interface Booking {
   droppedOffConfirmedAt?: string | null;
   passengerDestinationApproachNotifiedAt?: string | null;
   safetyEmergencyContactIds?: string[];
+  interruptionRequest?: PassengerTripInterruptionRequest | null;
+  tripInterruptionRequest?: DriverTripInterruptionRequest | null;
+}
+
+export interface PassengerTripInterruptionRequest {
+  id: string;
+  tripId: string;
+  bookingId: string;
+  passengerId: string;
+  requestedByRole: 'passenger';
+  reason: TripInterruptionReason;
+  note?: string | null;
+  status: TripInterruptionStatus;
+  requestedAt: string;
+  confirmedAt?: string | null;
+  rejectedAt?: string | null;
+  cancelledAt?: string | null;
+  completedAt?: string | null;
+  confirmedByDriverId?: string | null;
+  rejectedByDriverId?: string | null;
+}
+
+export interface DriverTripInterruptionConfirmation {
+  id?: string;
+  bookingId: string;
+  passengerId: string;
+  passengerName?: string | null;
+  status: TripInterruptionConfirmationStatus;
+  confirmedAt?: string | null;
+  rejectedAt?: string | null;
+}
+
+export interface DriverTripInterruptionRequest {
+  id: string;
+  tripId: string;
+  requestedByDriverId: string;
+  requestedByRole: 'driver';
+  reason: TripInterruptionReason;
+  note?: string | null;
+  status: TripInterruptionStatus;
+  requestedAt: string;
+  confirmedAt?: string | null;
+  rejectedAt?: string | null;
+  cancelledAt?: string | null;
+  completedAt?: string | null;
+  requiredPassengerCount: number;
+  confirmedPassengerCount: number;
+  rejectedPassengerCount: number;
+  confirmations: DriverTripInterruptionConfirmation[];
 }
 
 export interface BookingPayment {

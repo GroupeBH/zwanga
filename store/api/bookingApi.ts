@@ -2,9 +2,13 @@ import type {
   Booking,
   BookingPaymentResponse,
   BookingStatus,
+  DriverTripInterruptionRequest,
+  PassengerTripInterruptionRequest,
   SubscriptionPaymentMethod,
   TripPaymentMode,
   TripPaymentStatus,
+  TripInterruptionReason,
+  TripInterruptionStatus,
   WhatsAppNotificationData,
 } from '../../types';
 import { baseApi } from './baseApi';
@@ -65,6 +69,60 @@ type ServerBooking = {
   droppedOffConfirmedAt?: string | null;
   passengerDestinationApproachNotifiedAt?: string | null;
   safetyEmergencyContactIds?: string[] | null;
+  interruptionRequest?: ServerPassengerTripInterruptionRequest | null;
+  activeInterruptionRequest?: ServerPassengerTripInterruptionRequest | null;
+  currentInterruptionRequest?: ServerPassengerTripInterruptionRequest | null;
+  tripInterruptionRequest?: ServerDriverTripInterruptionRequest | null;
+  activeTripInterruptionRequest?: ServerDriverTripInterruptionRequest | null;
+};
+
+type ServerTripInterruptionConfirmation = {
+  id?: string;
+  bookingId?: string;
+  passengerId?: string;
+  passengerName?: string | null;
+  status?: string | null;
+  confirmedAt?: string | null;
+  rejectedAt?: string | null;
+  passenger?: ServerUser | null;
+};
+
+type ServerPassengerTripInterruptionRequest = {
+  id?: string;
+  tripId?: string;
+  bookingId?: string;
+  passengerId?: string;
+  reason?: string | null;
+  note?: string | null;
+  status?: string | null;
+  requestedAt?: string | null;
+  createdAt?: string | null;
+  confirmedAt?: string | null;
+  rejectedAt?: string | null;
+  cancelledAt?: string | null;
+  completedAt?: string | null;
+  confirmedByDriverId?: string | null;
+  rejectedByDriverId?: string | null;
+};
+
+type ServerDriverTripInterruptionRequest = {
+  id?: string;
+  tripId?: string;
+  requestedByDriverId?: string;
+  driverId?: string;
+  reason?: string | null;
+  note?: string | null;
+  status?: string | null;
+  requestedAt?: string | null;
+  createdAt?: string | null;
+  confirmedAt?: string | null;
+  rejectedAt?: string | null;
+  cancelledAt?: string | null;
+  completedAt?: string | null;
+  requiredPassengerCount?: number | null;
+  confirmedPassengerCount?: number | null;
+  rejectedPassengerCount?: number | null;
+  confirmations?: ServerTripInterruptionConfirmation[] | null;
 };
 
 type UpdatePassengerLocationResponse = {
@@ -114,6 +172,117 @@ const mapBookingCoordinates = (
     return normalizeTripMapCoordinate(coordinates.latitude, coordinates.longitude) ?? undefined;
   }
   return undefined;
+};
+
+const mapTripInterruptionReason = (reason?: string | null): TripInterruptionReason => {
+  const normalizedReason = (reason ?? '').toLowerCase();
+  switch (normalizedReason) {
+    case 'emergency':
+    case 'health':
+    case 'safety':
+    case 'route_issue':
+    case 'personal':
+    case 'other':
+      return normalizedReason as TripInterruptionReason;
+    default:
+      return 'other';
+  }
+};
+
+const mapTripInterruptionStatus = (status?: string | null): TripInterruptionStatus => {
+  switch ((status ?? '').toLowerCase()) {
+    case 'confirmed':
+    case 'approved':
+    case 'accepted':
+      return 'confirmed';
+    case 'rejected':
+    case 'declined':
+      return 'rejected';
+    case 'cancelled':
+    case 'canceled':
+      return 'cancelled';
+    case 'completed':
+    case 'done':
+      return 'completed';
+    default:
+      return 'pending';
+  }
+};
+
+const resolveRequestedAt = (requestedAt?: string | null, createdAt?: string | null) =>
+  requestedAt ?? createdAt ?? new Date(0).toISOString();
+
+const mapPassengerInterruptionRequest = (
+  request?: ServerPassengerTripInterruptionRequest | null,
+): PassengerTripInterruptionRequest | null => {
+  if (!request?.id || !request.tripId || !request.bookingId || !request.passengerId) {
+    return null;
+  }
+
+  return {
+    id: request.id,
+    tripId: request.tripId,
+    bookingId: request.bookingId,
+    passengerId: request.passengerId,
+    requestedByRole: 'passenger',
+    reason: mapTripInterruptionReason(request.reason),
+    note: request.note ?? null,
+    status: mapTripInterruptionStatus(request.status),
+    requestedAt: resolveRequestedAt(request.requestedAt, request.createdAt),
+    confirmedAt: request.confirmedAt ?? null,
+    rejectedAt: request.rejectedAt ?? null,
+    cancelledAt: request.cancelledAt ?? null,
+    completedAt: request.completedAt ?? null,
+    confirmedByDriverId: request.confirmedByDriverId ?? null,
+    rejectedByDriverId: request.rejectedByDriverId ?? null,
+  };
+};
+
+const mapDriverInterruptionRequest = (
+  request?: ServerDriverTripInterruptionRequest | null,
+): DriverTripInterruptionRequest | null => {
+  if (!request?.id || !request.tripId) {
+    return null;
+  }
+
+  const confirmations = (request.confirmations ?? [])
+    .filter((confirmation) => confirmation.bookingId && confirmation.passengerId)
+    .map((confirmation) => ({
+      id: confirmation.id,
+      bookingId: confirmation.bookingId!,
+      passengerId: confirmation.passengerId!,
+      passengerName: confirmation.passengerName ?? formatPassengerName(confirmation.passenger),
+      status:
+        mapTripInterruptionStatus(confirmation.status) === 'confirmed'
+          ? 'confirmed' as const
+          : mapTripInterruptionStatus(confirmation.status) === 'rejected'
+            ? 'rejected' as const
+            : 'pending' as const,
+      confirmedAt: confirmation.confirmedAt ?? null,
+      rejectedAt: confirmation.rejectedAt ?? null,
+    }));
+
+  return {
+    id: request.id,
+    tripId: request.tripId,
+    requestedByDriverId: request.requestedByDriverId ?? request.driverId ?? '',
+    requestedByRole: 'driver',
+    reason: mapTripInterruptionReason(request.reason),
+    note: request.note ?? null,
+    status: mapTripInterruptionStatus(request.status),
+    requestedAt: resolveRequestedAt(request.requestedAt, request.createdAt),
+    confirmedAt: request.confirmedAt ?? null,
+    rejectedAt: request.rejectedAt ?? null,
+    cancelledAt: request.cancelledAt ?? null,
+    completedAt: request.completedAt ?? null,
+    requiredPassengerCount:
+      Number(request.requiredPassengerCount ?? confirmations.length) || confirmations.length,
+    confirmedPassengerCount:
+      Number(request.confirmedPassengerCount ?? confirmations.filter((item) => item.status === 'confirmed').length) || 0,
+    rejectedPassengerCount:
+      Number(request.rejectedPassengerCount ?? confirmations.filter((item) => item.status === 'rejected').length) || 0,
+    confirmations,
+  };
 };
 
 const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
@@ -168,6 +337,14 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
   passengerDestinationApproachNotifiedAt:
     booking.passengerDestinationApproachNotifiedAt ?? undefined,
   safetyEmergencyContactIds: booking.safetyEmergencyContactIds ?? [],
+  interruptionRequest: mapPassengerInterruptionRequest(
+    booking.interruptionRequest ??
+      booking.activeInterruptionRequest ??
+      booking.currentInterruptionRequest,
+  ),
+  tripInterruptionRequest: mapDriverInterruptionRequest(
+    booking.tripInterruptionRequest ?? booking.activeTripInterruptionRequest,
+  ),
 });
 
 const bookingListTag = { type: 'Booking' as const, id: 'LIST' };
@@ -454,6 +631,77 @@ export const bookingApi = baseApi.injectEndpoints({
             ]
           : [bookingListTag, tripListTag, myTripsListTag],
     }),
+    requestPassengerTripInterruption: builder.mutation<
+      Booking,
+      {
+        bookingId: string;
+        reason: TripInterruptionReason;
+        note?: string;
+        coordinates?: { latitude: number; longitude: number } | null;
+      }
+    >({
+      query: ({ bookingId, ...body }) => ({
+        url: `/bookings/${bookingId}/interruption-request`,
+        method: 'POST',
+        body,
+      }),
+      transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
+      invalidatesTags: (result, _error, { bookingId }) => [
+        { type: 'Booking', id: result?.id ?? bookingId },
+        ...(result?.tripId ? [{ type: 'Trip' as const, id: result.tripId }] : []),
+        bookingListTag,
+        tripListTag,
+        myTripsListTag,
+      ],
+    }),
+    cancelPassengerTripInterruption: builder.mutation<Booking, string>({
+      query: (bookingId: string) => ({
+        url: `/bookings/${bookingId}/interruption-request/cancel`,
+        method: 'PUT',
+        body: {},
+      }),
+      transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
+      invalidatesTags: (result, _error, bookingId) => [
+        { type: 'Booking', id: result?.id ?? bookingId },
+        ...(result?.tripId ? [{ type: 'Trip' as const, id: result.tripId }] : []),
+        bookingListTag,
+        tripListTag,
+        myTripsListTag,
+      ],
+    }),
+    confirmPassengerTripInterruption: builder.mutation<Booking, string>({
+      query: (bookingId: string) => ({
+        url: `/bookings/${bookingId}/interruption-request/confirm`,
+        method: 'PUT',
+        body: {},
+      }),
+      transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
+      invalidatesTags: (result, _error, bookingId) => [
+        { type: 'Booking', id: result?.id ?? bookingId },
+        ...(result?.tripId ? [{ type: 'Trip' as const, id: result.tripId }] : []),
+        bookingListTag,
+        tripListTag,
+        myTripsListTag,
+      ],
+    }),
+    rejectPassengerTripInterruption: builder.mutation<
+      Booking,
+      { bookingId: string; reason?: string }
+    >({
+      query: ({ bookingId, reason }) => ({
+        url: `/bookings/${bookingId}/interruption-request/reject`,
+        method: 'PUT',
+        body: reason ? { reason } : {},
+      }),
+      transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
+      invalidatesTags: (result, _error, { bookingId }) => [
+        { type: 'Booking', id: result?.id ?? bookingId },
+        ...(result?.tripId ? [{ type: 'Trip' as const, id: result.tripId }] : []),
+        bookingListTag,
+        tripListTag,
+        myTripsListTag,
+      ],
+    }),
     updatePassengerLocation: builder.mutation<
       UpdatePassengerLocationResponse,
       { bookingId: string; latitude: number; longitude: number }
@@ -503,5 +751,9 @@ export const {
   useConfirmPickupByPassengerMutation,
   useConfirmDropoffMutation,
   useConfirmDropoffByPassengerMutation,
+  useRequestPassengerTripInterruptionMutation,
+  useCancelPassengerTripInterruptionMutation,
+  useConfirmPassengerTripInterruptionMutation,
+  useRejectPassengerTripInterruptionMutation,
   useUpdatePassengerLocationMutation,
 } = bookingApi;
