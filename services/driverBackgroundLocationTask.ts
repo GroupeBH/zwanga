@@ -15,7 +15,10 @@ import { MAX_ACCEPTABLE_GPS_ACCURACY_METERS } from '@/utils/navigation/routeProg
 import {
   DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS,
   DRIVER_TRIP_END_AUTO_COMPLETE_DWELL_MS,
+  DRIVER_TRIP_END_DIRECT_COMPLETE_DISTANCE_METERS,
+  DRIVER_TRIP_END_PARALLEL_COMPLETE_DISTANCE_METERS,
   evaluateDestinationAutoComplete,
+  evaluateDestinationPassage,
 } from '@/utils/navigation/tripCompletion';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 
@@ -34,6 +37,7 @@ type BackgroundLocationTaskData = {
 
 type StartDriverBackgroundLocationTrackingOptions = {
   arrivalCoordinate?: DriverBackgroundLocationCoordinate | null;
+  lastDriverCoordinate?: DriverBackgroundLocationCoordinate | null;
   autoCompleteDistanceMeters?: number;
   autoCompleteDwellMs?: number;
   requestMissingPermissions?: boolean;
@@ -299,6 +303,7 @@ async function evaluateBackgroundTripEnd(
   }
 
   let nearDestinationSinceMs = session.nearDestinationSinceMs ?? null;
+  let previousDriverCoordinate = session.lastDriverCoordinate ?? null;
   let lastDistanceMeters: number | null = null;
   const sortedLocations = locations
     .filter((location) => typeof location?.timestamp === 'number')
@@ -326,11 +331,19 @@ async function evaluateBackgroundTripEnd(
         session.autoCompleteDistanceMeters ?? DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS,
       dwellMs: session.autoCompleteDwellMs ?? DRIVER_TRIP_END_AUTO_COMPLETE_DWELL_MS,
     });
+    const passage = evaluateDestinationPassage({
+      destinationCoordinate: session.arrivalCoordinate,
+      driverCoordinate,
+      previousDriverCoordinate,
+      directDistanceThresholdMeters: DRIVER_TRIP_END_DIRECT_COMPLETE_DISTANCE_METERS,
+      parallelDistanceThresholdMeters: DRIVER_TRIP_END_PARALLEL_COMPLETE_DISTANCE_METERS,
+    });
 
     nearDestinationSinceMs = evaluation.nearDestinationSinceMs;
-    lastDistanceMeters = evaluation.distanceMeters;
+    lastDistanceMeters = passage.distanceMeters ?? evaluation.distanceMeters;
+    previousDriverCoordinate = driverCoordinate;
 
-    if (!evaluation.shouldComplete) {
+    if (!evaluation.shouldComplete && !passage.shouldComplete) {
       continue;
     }
 
@@ -360,6 +373,7 @@ async function evaluateBackgroundTripEnd(
 
     return {
       ...currentSession,
+      lastDriverCoordinate: previousDriverCoordinate,
       nearDestinationSinceMs,
     };
   });
@@ -477,6 +491,10 @@ export async function startDriverBackgroundLocationTracking(
     const existingSession = await getActiveDriverBackgroundTripSession();
     const sessionStored = await setActiveDriverBackgroundTripId(tripId, {
       arrivalCoordinate: options.arrivalCoordinate ?? existingSession?.arrivalCoordinate ?? null,
+      lastDriverCoordinate:
+        options.lastDriverCoordinate ??
+        existingSession?.lastDriverCoordinate ??
+        null,
       autoCompleteDistanceMeters:
         options.autoCompleteDistanceMeters ??
         existingSession?.autoCompleteDistanceMeters ??
@@ -518,6 +536,26 @@ export async function startDriverBackgroundLocationTracking(
     console.warn('[DriverBackgroundLocation] Demarrage ignore apres erreur:', error);
     return false;
   }
+}
+
+export async function updateDriverBackgroundLocationCheckpoint(
+  tripId: string,
+  coordinate: DriverBackgroundLocationCoordinate,
+) {
+  if (!tripId) {
+    return;
+  }
+
+  await updateActiveDriverBackgroundTripSession((session) => {
+    if (session.tripId !== tripId) {
+      return session;
+    }
+
+    return {
+      ...session,
+      lastDriverCoordinate: coordinate,
+    };
+  });
 }
 
 export async function stopDriverBackgroundLocationTracking(tripId?: string | null) {
