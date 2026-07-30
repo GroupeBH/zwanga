@@ -908,6 +908,7 @@ export const {
   useResumeRecurringTripMutation,
   useUpdateDriverLocationMutation,
   useGetDriverLocationQuery,
+  useLazyGetDriverLocationQuery,
   useSetDriverEmergencyContactsMutation,
 } = tripApi;
 

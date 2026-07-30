@@ -10,6 +10,10 @@ import {
   trimPolylineFromCurrentPosition,
   type NavigationCoordinate,
 } from '../utils/navigation/routeProgress';
+import {
+  DRIVER_TRIP_END_PARALLEL_COMPLETE_DISTANCE_METERS,
+  evaluateDestinationPassage,
+} from '../utils/navigation/tripCompletion';
 
 function assert(condition: unknown, message: string) {
   if (!condition) {
@@ -121,6 +125,36 @@ assert(
     d,
   )?.id === 'trip-destination',
   'final destination should be used when no active stop remains',
+);
+
+const destinationPassage = evaluateDestinationPassage({
+  destinationCoordinate: c,
+  previousDriverCoordinate: b,
+  driverCoordinate: {
+    latitude: c.latitude + 0.00008,
+    longitude: c.longitude + 0.00075,
+  },
+  routeCoordinates: [a, b, c],
+  parallelDistanceThresholdMeters: DRIVER_TRIP_END_PARALLEL_COMPLETE_DISTANCE_METERS,
+});
+assert(
+  destinationPassage.shouldComplete,
+  'crossing the destination parallel within 100 meters should complete the trip',
+);
+
+const destinationNotPassed = evaluateDestinationPassage({
+  destinationCoordinate: c,
+  previousDriverCoordinate: a,
+  driverCoordinate: {
+    latitude: b.latitude - 0.0001,
+    longitude: b.longitude,
+  },
+  routeCoordinates: [a, b, c],
+  parallelDistanceThresholdMeters: DRIVER_TRIP_END_PARALLEL_COMPLETE_DISTANCE_METERS,
+});
+assert(
+  !destinationNotPassed.shouldComplete,
+  'being before the destination parallel should not complete the trip',
 );
 
 console.log('navigation-route-progress tests passed');
