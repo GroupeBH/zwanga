@@ -193,6 +193,11 @@ const PICKUP_BYPASS_OBSERVED_DISTANCE_METERS = 90;
 const PICKUP_BYPASS_MIN_AHEAD_METERS = 120;
 const PICKUP_BYPASS_MIN_DISTANCE_METERS = 160;
 const PICKUP_BYPASS_BEHIND_HEADING_DEGREES = 125;
+const DIRECT_NEAR_WAYPOINT_ROUTE_DISTANCE_METERS = 120;
+const DIRECT_NEAR_WAYPOINT_REACHED_DISTANCE_METERS = 30;
+const DIRECT_NEAR_WAYPOINT_MAX_TURN_DEGREES = 35;
+const DIRECT_NEAR_WAYPOINT_MAX_ROUTE_RATIO = 1.35;
+const ROUTE_TURN_SEGMENT_MIN_METERS = 8;
 
 const isCoordinateAllowedForNavigationRoute = (
   coordinate: RouteCoordinate | null | undefined,
@@ -202,6 +207,72 @@ const isCoordinateAllowedForNavigationRoute = (
 );
 const OFF_ROUTE_MAX_ACCURACY_METERS = MAX_ACCEPTABLE_GPS_ACCURACY_METERS;
 const OFF_ROUTE_MIN_ROUTE_POINTS = 2;
+
+const getMaximumRouteTurnDegrees = (coordinates: RouteCoordinate[]) => {
+  let maxTurnDegrees = 0;
+  let previousBearing: number | null = null;
+
+  for (let index = 1; index < coordinates.length; index += 1) {
+    const previous = coordinates[index - 1];
+    const current = coordinates[index];
+    if (calculateDistanceMeters(previous, current) < ROUTE_TURN_SEGMENT_MIN_METERS) {
+      continue;
+    }
+
+    const bearing = calculateBearingDegrees(previous, current);
+    if (previousBearing !== null) {
+      maxTurnDegrees = Math.max(
+        maxTurnDegrees,
+        normalizeHeadingDelta(previousBearing, bearing),
+      );
+    }
+    previousBearing = bearing;
+  }
+
+  return maxTurnDegrees;
+};
+
+const shouldUseDirectNearWaypointRoute = ({
+  activeDestinationKind,
+  directDistanceMeters,
+  isTripOngoing,
+  routeCoordinates,
+}: {
+  activeDestinationKind?: NavigationStop['kind'];
+  directDistanceMeters: number;
+  isTripOngoing: boolean;
+  routeCoordinates: RouteCoordinate[];
+}) => {
+  if (
+    !isTripOngoing ||
+    activeDestinationKind === 'destination' ||
+    !Number.isFinite(directDistanceMeters) ||
+    directDistanceMeters > DIRECT_NEAR_WAYPOINT_ROUTE_DISTANCE_METERS
+  ) {
+    return false;
+  }
+
+  if (directDistanceMeters <= DIRECT_NEAR_WAYPOINT_REACHED_DISTANCE_METERS) {
+    return true;
+  }
+
+  const routeDistanceMeters = calculatePolylineDistanceMeters(routeCoordinates);
+  if (!Number.isFinite(routeDistanceMeters) || routeDistanceMeters <= 0) {
+    return false;
+  }
+
+  const routeRatio = routeDistanceMeters / Math.max(1, directDistanceMeters);
+  const maxTurnDegrees = getMaximumRouteTurnDegrees(routeCoordinates);
+
+  if (
+    maxTurnDegrees <= DIRECT_NEAR_WAYPOINT_MAX_TURN_DEGREES &&
+    routeRatio <= DIRECT_NEAR_WAYPOINT_MAX_ROUTE_RATIO
+  ) {
+    return true;
+  }
+
+  return false;
+};
 const PICKUP_NOTICE_PRIORITY: Record<PickupNoticeEventType, number> = {
   driver_arrived_pickup: 1,
   parties_nearby: 2,
@@ -2873,6 +2944,7 @@ export default function NavigationScreen() {
     }
     const shouldFitToRoute = options.fitToRoute ?? true;
     const directDistanceKm = calculateDistance(routeOrigin, routeDestination);
+    const directDistanceMeters = directDistanceKm * 1000;
 
     console.log('[DriverNavigation] Directions request coordinates', {
       tripId,
@@ -2891,6 +2963,7 @@ export default function NavigationScreen() {
     lastRouteFetchTimeRef.current = Date.now();
     setIsLoadingRoute(true);
     setIsReroutingRoute(Boolean(options.announceReroute));
+
     try {
       // Construire les waypoints non complétés pour l'API backend
       // Appel à l'API backend optimisée
@@ -2920,22 +2993,33 @@ export default function NavigationScreen() {
           decodedPoints.length > 1
             ? trimPolylineFromCurrentPosition(routeOrigin, decodedPoints, routeDestination)
             : null;
-        const points =
+        const detailedRoutePoints =
           routeCheck?.isRouteUsable && decodedPoints.length > 1
             ? decodedPoints
             : buildFallbackRoute();
+        const shouldSimplifyNearWaypointRoute = shouldUseDirectNearWaypointRoute({
+          activeDestinationKind: activeNavigationDestination?.kind,
+          directDistanceMeters,
+          isTripOngoing,
+          routeCoordinates: detailedRoutePoints,
+        });
+        const points = shouldSimplifyNearWaypointRoute
+          ? buildFallbackRoute()
+          : detailedRoutePoints;
         setRouteCoordinates(points);
 
         // Calculer la distance et durée totales
         let totalDist = 0;
         let totalDur = 0;
-        route.legs.forEach(leg => {
-          totalDist += leg.distance; // déjà en mètres
-          totalDur += leg.duration; // déjà en secondes
-        });
+        if (!shouldSimplifyNearWaypointRoute) {
+          route.legs.forEach(leg => {
+            totalDist += leg.distance;
+            totalDur += leg.duration;
+          });
+        }
 
         const fallbackDistanceMeters = calculatePolylineDistanceMeters(points);
-        if (!totalDist || !routeCheck?.isRouteUsable) {
+        if (shouldSimplifyNearWaypointRoute || !totalDist || !routeCheck?.isRouteUsable) {
           totalDist = fallbackDistanceMeters;
           totalDur = 0;
         }
@@ -2943,10 +3027,10 @@ export default function NavigationScreen() {
         setRouteDistanceMeters(totalDist || fallbackDistanceMeters);
         setRouteDurationSeconds(totalDur || null);
         setTotalDistance(`${(totalDist / 1000).toFixed(1)} km`);
-        setTotalDuration(`${Math.round(totalDur / 60)} min`);
+        setTotalDuration(totalDur > 0 ? `${Math.round(totalDur / 60)} min` : '--');
 
         // Convertir et stocker les étapes du leg actuel
-        if (route.legs.length > 0) {
+        if (!shouldSimplifyNearWaypointRoute && route.legs.length > 0) {
           const currentLeg = route.legs[currentLegIndex] || route.legs[0];
           const convertedSteps: RouteStep[] = currentLeg.steps.map(step => ({
             distance: { text: `${Math.round(step.distance)} m`, value: step.distance },
@@ -2969,6 +3053,17 @@ export default function NavigationScreen() {
               nextStep
                 ? buildInstructionSpeech(nextStep, 'Nouvel itineraire calcule.')
                 : 'Nouvel itineraire calcule.',
+              { force: true },
+            );
+          }
+        } else {
+          stepsRef.current = [];
+          currentStepIndexRef.current = 0;
+          setSteps([]);
+          setCurrentStepIndex(0);
+          if (shouldSimplifyNearWaypointRoute && options.announceReroute) {
+            void speakNavigationMessage(
+              "Point proche. Suivez la ligne jusqu'au point indique.",
               { force: true },
             );
           }
@@ -4061,13 +4156,41 @@ export default function NavigationScreen() {
     [currentLocation?.coords?.latitude, currentLocation?.coords?.longitude],
   );
   const remainingRoute = useMemo(
-    () =>
-      trimPolylineFromCurrentPosition(
-        isTripOngoing ? currentDriverCoordinate : routeCoordinates[0] ?? tripDepartureCoordinate,
-        routeCoordinates,
+    () => {
+      const routeOrigin = isTripOngoing
+        ? currentDriverCoordinate
+        : routeCoordinates[0] ?? tripDepartureCoordinate;
+      const distanceToActiveDestinationMeters =
+        routeOrigin && activeRouteDestination
+          ? calculateDistanceMeters(routeOrigin, activeRouteDestination)
+          : null;
+      const routeForNearWaypointDecision =
+        routeCoordinates.length >= 2
+          ? routeCoordinates
+          : routeOrigin && activeRouteDestination
+            ? [routeOrigin, activeRouteDestination]
+            : routeCoordinates;
+      const shouldUseDirectNearWaypointRouteForDisplay =
+        typeof distanceToActiveDestinationMeters === 'number' &&
+        shouldUseDirectNearWaypointRoute({
+          activeDestinationKind: activeNavigationDestination?.kind,
+          directDistanceMeters: distanceToActiveDestinationMeters,
+          isTripOngoing,
+          routeCoordinates: routeForNearWaypointDecision,
+        });
+
+      return trimPolylineFromCurrentPosition(
+        routeOrigin,
+        shouldUseDirectNearWaypointRouteForDisplay
+          ? [routeOrigin, activeRouteDestination].filter(
+              (coordinate): coordinate is RouteCoordinate => Boolean(coordinate),
+            )
+          : routeCoordinates,
         activeRouteDestination,
-      ),
+      );
+    },
     [
+      activeNavigationDestination?.kind,
       activeRouteDestination,
       currentDriverCoordinate,
       isTripOngoing,

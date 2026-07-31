@@ -3509,11 +3509,11 @@ const styles = StyleSheet.create({
   },
   tripsHorizontalContent: {
     paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.lg,
+    paddingBottom: Spacing.xxl,
     gap: Spacing.md,
   },
   tripPreviewCard: {
-    height: 208,
+    minHeight: 208,
     borderRadius: BorderRadius.xl,
     backgroundColor: Colors.white,
     borderWidth: 1,
@@ -3576,6 +3576,8 @@ const styles = StyleSheet.create({
   },
   tripPreviewPriceBlock: {
     alignItems: 'flex-end',
+    flexShrink: 0,
+    maxWidth: 118,
   },
   tripPreviewPrice: {
     color: HOME_COLORS.ink,
@@ -3591,6 +3593,7 @@ const styles = StyleSheet.create({
   tripPreviewRoute: {
     flexDirection: 'row',
     marginTop: Spacing.md,
+    flexShrink: 1,
   },
   tripPreviewRail: {
     width: 18,
@@ -3621,6 +3624,7 @@ const styles = StyleSheet.create({
   },
   tripPreviewRouteCopy: {
     flex: 1,
+    minWidth: 0,
     gap: Spacing.sm,
   },
   tripPreviewRouteLabel: {
@@ -3636,7 +3640,8 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   tripPreviewFooter: {
-    marginTop: Spacing.md,
+    marginTop: 'auto',
+    paddingTop: Spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -3648,9 +3653,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+    overflow: 'hidden',
   },
   tripPreviewChip: {
-    paddingHorizontal: Spacing.md,
+    flexShrink: 1,
+    maxWidth: 96,
+    paddingHorizontal: Spacing.sm,
     paddingVertical: 7,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.gray[100],
@@ -3661,10 +3669,12 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   tripPreviewVehicleChip: {
+    flexShrink: 1,
+    maxWidth: 104,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.sm,
     paddingVertical: 7,
     borderRadius: BorderRadius.full,
     backgroundColor: HOME_COLORS.navySoft,
@@ -3689,12 +3699,13 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.primary,
   },
   requestPreviewCard: {
-    height: 208,
+    minHeight: 208,
     borderRadius: BorderRadius.xl,
     backgroundColor: '#FBFEFF',
     borderWidth: 1,
@@ -3747,6 +3758,7 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.semibold,
   },
   requestPreviewStatusBadge: {
+    flexShrink: 0,
     maxWidth: 132,
     minHeight: 30,
     borderRadius: BorderRadius.full,
@@ -3763,6 +3775,7 @@ const styles = StyleSheet.create({
   requestPreviewRoute: {
     flexDirection: 'row',
     marginTop: Spacing.md,
+    flexShrink: 1,
   },
   requestPreviewRail: {
     width: 18,
@@ -3793,6 +3806,7 @@ const styles = StyleSheet.create({
   },
   requestPreviewRouteCopy: {
     flex: 1,
+    minWidth: 0,
     gap: Spacing.sm,
   },
   requestPreviewRouteLabel: {
@@ -3807,7 +3821,8 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   requestPreviewFooter: {
-    marginTop: Spacing.md,
+    marginTop: 'auto',
+    paddingTop: Spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -3819,12 +3834,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+    overflow: 'hidden',
   },
   requestPreviewChip: {
+    flexShrink: 1,
+    maxWidth: 100,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.sm,
     paddingVertical: 7,
     borderRadius: BorderRadius.full,
     backgroundColor: HOME_COLORS.navySoft,
@@ -3835,7 +3853,9 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   requestPreviewBudgetChip: {
-    paddingHorizontal: Spacing.md,
+    flexShrink: 1,
+    maxWidth: 118,
+    paddingHorizontal: Spacing.sm,
     paddingVertical: 7,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.primary + '14',
@@ -3846,7 +3866,9 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   requestPreviewOffersChip: {
-    paddingHorizontal: Spacing.md,
+    flexShrink: 1,
+    maxWidth: 96,
+    paddingHorizontal: Spacing.sm,
     paddingVertical: 7,
     borderRadius: BorderRadius.full,
     backgroundColor: '#DDF8EA',
@@ -3860,6 +3882,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: HOME_COLORS.navy,
