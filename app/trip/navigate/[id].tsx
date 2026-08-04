@@ -130,6 +130,13 @@ interface Waypoint {
 
 type RouteCoordinate = NavigationCoordinate;
 
+type MapEdgePadding = {
+  bottom: number;
+  left: number;
+  right: number;
+  top: number;
+};
+
 interface PassengerMapLocation {
   bookingId: string;
   coordinate: RouteCoordinate;
@@ -164,6 +171,7 @@ interface PickupNotice {
 }
 
 interface TripEndNotice {
+  completedWhileAppInactive?: boolean;
   distanceMeters?: number;
   detectedAt?: string;
 }
@@ -198,6 +206,13 @@ const DIRECT_NEAR_WAYPOINT_REACHED_DISTANCE_METERS = 30;
 const DIRECT_NEAR_WAYPOINT_MAX_TURN_DEGREES = 35;
 const DIRECT_NEAR_WAYPOINT_MAX_ROUTE_RATIO = 1.35;
 const ROUTE_TURN_SEGMENT_MIN_METERS = 8;
+const MAP_FIT_MIN_COORDINATE_DISTANCE_METERS = 2;
+const MAP_POLYLINE_MIN_COORDINATE_DISTANCE_METERS = 0.5;
+const DEFAULT_MAP_FOCUS_DELTA = 0.01;
+const KINSHASA_FALLBACK_MAP_COORDINATE: RouteCoordinate = {
+  latitude: -4.4419,
+  longitude: 15.2663,
+};
 
 const isCoordinateAllowedForNavigationRoute = (
   coordinate: RouteCoordinate | null | undefined,
@@ -207,6 +222,99 @@ const isCoordinateAllowedForNavigationRoute = (
 );
 const OFF_ROUTE_MAX_ACCURACY_METERS = MAX_ACCEPTABLE_GPS_ACCURACY_METERS;
 const OFF_ROUTE_MIN_ROUTE_POINTS = 2;
+
+const getSafeMapCoordinate = (
+  coordinate: RouteCoordinate | null | undefined,
+) =>
+  coordinate
+    ? normalizeTripMapCoordinate(coordinate.latitude, coordinate.longitude)
+    : null;
+
+const getSafeMapCoordinateList = (
+  coordinates: Array<RouteCoordinate | null | undefined>,
+  minimumDistanceMeters = MAP_POLYLINE_MIN_COORDINATE_DISTANCE_METERS,
+) => {
+  const safeCoordinates: RouteCoordinate[] = [];
+
+  coordinates.forEach((coordinate) => {
+    const safeCoordinate = getSafeMapCoordinate(coordinate);
+    if (!safeCoordinate) {
+      return;
+    }
+
+    const previousCoordinate = safeCoordinates[safeCoordinates.length - 1];
+    if (
+      !previousCoordinate ||
+      calculateDistanceMeters(previousCoordinate, safeCoordinate) >
+        minimumDistanceMeters
+    ) {
+      safeCoordinates.push(safeCoordinate);
+    }
+  });
+
+  return safeCoordinates;
+};
+
+const getSafePolylineCoordinates = (
+  coordinates: Array<RouteCoordinate | null | undefined>,
+) => {
+  const safeCoordinates = getSafeMapCoordinateList(coordinates);
+  return safeCoordinates.length > 1 ? safeCoordinates : [];
+};
+
+const fitMapToSafeCoordinates = (
+  map: MapView | null,
+  coordinates: Array<RouteCoordinate | null | undefined>,
+  {
+    animated = true,
+    durationMs = 320,
+    edgePadding,
+    logContext = 'navigation-map',
+    singleCoordinateDelta = DEFAULT_MAP_FOCUS_DELTA,
+  }: {
+    animated?: boolean;
+    durationMs?: number;
+    edgePadding: MapEdgePadding;
+    logContext?: string;
+    singleCoordinateDelta?: number;
+  },
+) => {
+  if (!map) {
+    return;
+  }
+
+  const safeCoordinates = getSafeMapCoordinateList(
+    coordinates,
+    MAP_FIT_MIN_COORDINATE_DISTANCE_METERS,
+  );
+  if (safeCoordinates.length === 0) {
+    return;
+  }
+
+  try {
+    if (safeCoordinates.length === 1) {
+      map.animateToRegion(
+        {
+          ...safeCoordinates[0],
+          latitudeDelta: singleCoordinateDelta,
+          longitudeDelta: singleCoordinateDelta,
+        },
+        durationMs,
+      );
+      return;
+    }
+
+    map.fitToCoordinates(safeCoordinates, {
+      edgePadding,
+      animated,
+    });
+  } catch (error) {
+    console.warn('[Navigation] Ajustement carte ignore pour eviter un crash:', {
+      context: logContext,
+      error,
+    });
+  }
+};
 
 const getMaximumRouteTurnDegrees = (coordinates: RouteCoordinate[]) => {
   let maxTurnDegrees = 0;
@@ -404,7 +512,7 @@ const getTripLocationLabel = (
 ) => (location?.address || location?.name || fallback).trim();
 
 const getBookingPickupLabel = (booking: Booking | null | undefined, trip?: Trip | null) => {
-  const tripLabel = getTripLocationLabel(trip?.departure, 'Point de montee');
+  const tripLabel = getTripLocationLabel(trip?.departure, 'Point de récuperation');
   const bookingLabel = (booking?.passengerOrigin || booking?.passengerOriginReference || '').trim();
   const hasPassengerCoordinate = Boolean(
     normalizeTripMapCoordinate(
@@ -417,7 +525,7 @@ const getBookingPickupLabel = (booking: Booking | null | undefined, trip?: Trip 
 };
 
 const getBookingDropoffLabel = (booking: Booking | null | undefined, trip?: Trip | null) => {
-  const tripLabel = getTripLocationLabel(trip?.arrival, 'Point de depose');
+  const tripLabel = getTripLocationLabel(trip?.arrival, 'Point de destination');
   const bookingLabel = (
     booking?.passengerDestination ||
     booking?.passengerDestinationReference ||
@@ -611,6 +719,7 @@ export default function NavigationScreen() {
   ]);
 
   const mapRef = useRef<MapView>(null);
+  const isMapReadyRef = useRef(false);
   const passengerMarkerRefs = useRef<Record<string, MapMarker | null>>({});
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<RouteCoordinate[]>([]);
@@ -659,6 +768,7 @@ export default function NavigationScreen() {
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const isRestCompletionCheckRunningRef = useRef(false);
   const lastRestCompletionCheckAtRef = useRef(0);
+  const completedDuringInactiveCandidateRef = useRef(false);
   const [loadedPassengerMarkerKeys, setLoadedPassengerMarkerKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -671,6 +781,24 @@ export default function NavigationScreen() {
       longitudeDelta: 0,
     })
   ).current;
+
+  const focusMapOnCoordinates = useCallback(
+    (
+      coordinates: Array<RouteCoordinate | null | undefined>,
+      options: Parameters<typeof fitMapToSafeCoordinates>[2],
+    ) => {
+      if (!isMapReadyRef.current) {
+        return;
+      }
+
+      fitMapToSafeCoordinates(mapRef.current, coordinates, options);
+    },
+    [],
+  );
+
+  const handleMapReady = useCallback(() => {
+    isMapReadyRef.current = true;
+  }, []);
 
   const passengerMapLocations = useMemo<PassengerMapLocation[]>(() => {
     const locations: PassengerMapLocation[] = [];
@@ -868,6 +996,7 @@ export default function NavigationScreen() {
   const presentedPassengerDestinationApproachKeysRef = useRef<Set<string>>(new Set());
   const presentedPassengerDestinationKeysRef = useRef<Set<string>>(new Set());
   const presentedTripDestinationKeysRef = useRef<Set<string>>(new Set());
+  const previousTripStatusRef = useRef<Trip['status'] | null>(trip?.status ?? null);
   const stepsRef = useRef<RouteStep[]>([]);
   const currentStepIndexRef = useRef(0);
   const waypointsRef = useRef<Waypoint[]>([]);
@@ -902,7 +1031,7 @@ export default function NavigationScreen() {
 
       if (!isCoordinateAllowedForNavigationRoute(coordinate, isKinshasaNavigationTrip)) {
         if (isKinshasaNavigationTrip && coordinate) {
-          console.warn('[DriverNavigation] Waypoint hors Kinshasa ignore pour le trace:', {
+          console.warn('[DriverNavigation] Waypoint hors Kinshasa ignoré pour le tracé:', {
             waypointId: waypoint.id,
             type: waypoint.type,
             coordinate,
@@ -1068,6 +1197,8 @@ export default function NavigationScreen() {
     lastBackgroundCheckpointAtRef.current = 0;
     isRestCompletionCheckRunningRef.current = false;
     lastRestCompletionCheckAtRef.current = 0;
+    completedDuringInactiveCandidateRef.current = false;
+    previousTripStatusRef.current = null;
     skippedPickupBookingIdsRef.current = new Set();
     pickupClosestDistanceMetersRef.current.clear();
     tripDestinationNearSinceMsRef.current = null;
@@ -1161,6 +1292,7 @@ export default function NavigationScreen() {
     lastBackgroundCheckpointAtRef.current = 0;
     isRestCompletionCheckRunningRef.current = false;
     lastRestCompletionCheckAtRef.current = 0;
+    completedDuringInactiveCandidateRef.current = false;
     skippedPickupBookingIdsRef.current = new Set();
     pickupClosestDistanceMetersRef.current.clear();
     setSkippedPickupBookingIds(new Set());
@@ -1475,7 +1607,10 @@ export default function NavigationScreen() {
   );
 
   const presentTripDestinationNotice = useCallback(
-    (event: BookingAutoProgressEvent) => {
+    (
+      event: BookingAutoProgressEvent,
+      options: { completedWhileAppInactive?: boolean } = {},
+    ) => {
       if (
         !isMountedRef.current ||
         (event.type !== 'driver_near_destination' && event.type !== 'driver_arrived_destination')
@@ -1494,7 +1629,11 @@ export default function NavigationScreen() {
       const key = [
         event.type,
         event.tripId,
-        isAutoCompleteZone ? 'auto-complete-zone' : 'approach',
+        event.type === 'driver_arrived_destination'
+          ? 'completed'
+          : isAutoCompleteZone
+            ? 'auto-complete-zone'
+            : 'approach',
       ].join(':');
       if (presentedTripDestinationKeysRef.current.has(key)) {
         return;
@@ -1529,6 +1668,7 @@ export default function NavigationScreen() {
       }
 
       const notice: TripEndNotice = {
+        completedWhileAppInactive: options.completedWhileAppInactive,
         distanceMeters: event.distanceMeters,
         detectedAt: event.detectedAt,
       };
@@ -1537,13 +1677,83 @@ export default function NavigationScreen() {
 
       void Speech.stop().finally(() => {
         if (!isMountedRef.current) return;
-        Speech.speak('Vous avez atteint la destination finale. Le trajet est termine automatiquement.', {
-          language: SPEECH_LANGUAGE,
-          rate: SPEECH_RATE,
-        });
+        Speech.speak(
+          options.completedWhileAppInactive
+            ? "Le trajet s'est termine pendant que l'application etait en veille."
+            : 'Vous avez atteint la destination finale. Le trajet est termine automatiquement.',
+          {
+            language: SPEECH_LANGUAGE,
+            rate: SPEECH_RATE,
+          },
+        );
       });
     },
     [showDialog],
+  );
+
+  const resolveCompletedTripDistanceMeters = useCallback(
+    (completedTrip?: Trip | null) => {
+      if (!tripArrivalCoordinate) {
+        return undefined;
+      }
+
+      const tripLocationCoordinate = normalizeTripMapCoordinate(
+        completedTrip?.currentLocation?.coordinates?.[1],
+        completedTrip?.currentLocation?.coordinates?.[0],
+      );
+      const driverLocationCoordinate = normalizeDriverLocationObject(
+        currentLocationRef.current,
+      );
+      const driverCoordinate =
+        tripLocationCoordinate ??
+        (driverLocationCoordinate
+          ? {
+              latitude: driverLocationCoordinate.coords.latitude,
+              longitude: driverLocationCoordinate.coords.longitude,
+            }
+          : null) ??
+        lastAcceptedDriverCoordinateRef.current;
+
+      if (!driverCoordinate) {
+        return undefined;
+      }
+
+      const distanceMeters = calculateDistanceMeters(
+        driverCoordinate,
+        tripArrivalCoordinate,
+      );
+      return Number.isFinite(distanceMeters)
+        ? Math.max(1, Math.round(distanceMeters))
+        : undefined;
+    },
+    [tripArrivalCoordinate],
+  );
+
+  const presentCompletedTripFromServerSync = useCallback(
+    (
+      completedTrip?: Trip | null,
+      options: { completedWhileAppInactive?: boolean } = {},
+    ) => {
+      if (!tripId || completedTrip?.status !== 'completed') {
+        return false;
+      }
+
+      void stopDriverBackgroundLocationTracking(tripId);
+      presentTripDestinationNotice(
+        {
+          type: 'driver_arrived_destination',
+          tripId,
+          distanceMeters: resolveCompletedTripDistanceMeters(completedTrip),
+          detectedAt: completedTrip.completedAt ?? new Date().toISOString(),
+        },
+        {
+          completedWhileAppInactive: options.completedWhileAppInactive,
+        },
+      );
+      completedDuringInactiveCandidateRef.current = false;
+      return true;
+    },
+    [presentTripDestinationNotice, resolveCompletedTripDistanceMeters, tripId],
   );
 
   const getTripDestinationReferenceRoute = useCallback((): RouteCoordinate[] => {
@@ -1601,7 +1811,10 @@ export default function NavigationScreen() {
   const tryCompleteTripFromNavigation = useCallback(
     (
       distanceMeters?: number,
-      options: { reconcileBookings?: boolean } = {},
+      options: {
+        completedWhileAppInactive?: boolean;
+        reconcileBookings?: boolean;
+      } = {},
     ) => {
       if (!tripId || autoCompletingTripRef.current || trip?.status !== 'ongoing') {
         return;
@@ -1643,7 +1856,10 @@ export default function NavigationScreen() {
             tripId,
             distanceMeters,
             detectedAt: new Date().toISOString(),
+          }, {
+            completedWhileAppInactive: options.completedWhileAppInactive,
           });
+          completedDuringInactiveCandidateRef.current = false;
           refetchTrip();
           refetchBookings();
         })
@@ -1692,6 +1908,13 @@ export default function NavigationScreen() {
       const refreshedBookings = (bookingsResult as { data?: Booking[] }).data;
       if (refreshedBookings) {
         bookingsRef.current = refreshedBookings;
+      }
+
+      if (refreshedTrip?.status === 'completed') {
+        presentCompletedTripFromServerSync(refreshedTrip, {
+          completedWhileAppInactive: completedDuringInactiveCandidateRef.current,
+        });
+        return;
       }
 
       if (refreshedTrip?.status !== 'ongoing') {
@@ -1842,17 +2065,22 @@ export default function NavigationScreen() {
 
       if (completionDistanceMeters !== null) {
         tryCompleteTripFromNavigation(completionDistanceMeters, {
+          completedWhileAppInactive: completedDuringInactiveCandidateRef.current,
           reconcileBookings: true,
         });
       }
     } catch (error) {
       console.warn('[Navigation] Verification REST de fin de trajet impossible:', error);
     } finally {
+      if (appStateRef.current === 'active') {
+        completedDuringInactiveCandidateRef.current = false;
+      }
       isRestCompletionCheckRunningRef.current = false;
     }
   }, [
     getDriverLocationSnapshot,
     getTripDestinationReferenceRoute,
+    presentCompletedTripFromServerSync,
     refetchBookings,
     refetchTrip,
     trip,
@@ -1866,6 +2094,13 @@ export default function NavigationScreen() {
     const subscription = AppState.addEventListener('change', (nextState) => {
       const previousState = appStateRef.current;
       appStateRef.current = nextState;
+
+      if (
+        (nextState === 'background' || nextState === 'inactive') &&
+        isTripOngoingRef.current
+      ) {
+        completedDuringInactiveCandidateRef.current = true;
+      }
 
       if (
         nextState === 'active' &&
@@ -1887,6 +2122,19 @@ export default function NavigationScreen() {
 
     void checkTripCompletionFromRestOnForeground();
   }, [checkTripCompletionFromRestOnForeground, isTripOngoing, tripArrivalCoordinate]);
+
+  useEffect(() => {
+    const previousStatus = previousTripStatusRef.current;
+    const currentStatus = trip?.status ?? null;
+
+    if (previousStatus === 'ongoing' && currentStatus === 'completed' && trip) {
+      presentCompletedTripFromServerSync(trip, {
+        completedWhileAppInactive: completedDuringInactiveCandidateRef.current,
+      });
+    }
+
+    previousTripStatusRef.current = currentStatus;
+  }, [presentCompletedTripFromServerSync, trip]);
 
   useEffect(() => {
     if (!pickupNotice?.expiresAt) {
@@ -2942,6 +3190,20 @@ export default function NavigationScreen() {
       });
       routeDestination = tripArrivalCoordinate;
     }
+
+    const safeRouteOrigin = getSafeMapCoordinate(routeOrigin);
+    const safeRouteDestination = getSafeMapCoordinate(routeDestination);
+    if (!safeRouteOrigin || !safeRouteDestination) {
+      console.warn('[DriverNavigation] Directions ignorees: coordonnees invalides', {
+        tripId,
+        origin: routeOrigin,
+        destination: routeDestination,
+      });
+      return;
+    }
+    routeOrigin = safeRouteOrigin;
+    routeDestination = safeRouteDestination;
+
     const shouldFitToRoute = options.fitToRoute ?? true;
     const directDistanceKm = calculateDistance(routeOrigin, routeDestination);
     const directDistanceMeters = directDistanceKm * 1000;
@@ -2956,7 +3218,7 @@ export default function NavigationScreen() {
     });
 
     const buildFallbackRoute = () => {
-      return [routeOrigin, routeDestination];
+      return getSafeMapCoordinateList([routeOrigin, routeDestination]);
     };
 
     routeFetchedRef.current = true;
@@ -2989,13 +3251,14 @@ export default function NavigationScreen() {
         const decodedPoints = route.overviewPolyline
           ? decodePolyline(route.overviewPolyline)
           : [];
+        const safeDecodedPoints = getSafePolylineCoordinates(decodedPoints);
         const routeCheck =
-          decodedPoints.length > 1
-            ? trimPolylineFromCurrentPosition(routeOrigin, decodedPoints, routeDestination)
+          safeDecodedPoints.length > 1
+            ? trimPolylineFromCurrentPosition(routeOrigin, safeDecodedPoints, routeDestination)
             : null;
         const detailedRoutePoints =
-          routeCheck?.isRouteUsable && decodedPoints.length > 1
-            ? decodedPoints
+          routeCheck?.isRouteUsable && safeDecodedPoints.length > 1
+            ? safeDecodedPoints
             : buildFallbackRoute();
         const shouldSimplifyNearWaypointRoute = shouldUseDirectNearWaypointRoute({
           activeDestinationKind: activeNavigationDestination?.kind,
@@ -3070,17 +3333,18 @@ export default function NavigationScreen() {
         }
 
         // Ajuster la vue de la carte pour afficher tout l'itinéraire
-        if (shouldFitToRoute && mapRef.current && points.length > 0) {
-          const mapFitPoints = [
+        if (shouldFitToRoute && points.length > 0) {
+          focusMapOnCoordinates(
+            [
             ...points,
             routeOrigin,
             routeDestination,
-          ].filter(Boolean) as RouteCoordinate[];
-
-          mapRef.current.fitToCoordinates(mapFitPoints, {
-            edgePadding: { top: 150, right: 50, bottom: 300, left: 50 },
-            animated: true,
-          });
+            ],
+            {
+              edgePadding: { top: 150, right: 50, bottom: 300, left: 50 },
+              logContext: 'route-fetch',
+            },
+          );
         }
       } else {
         const fallbackPoints = buildFallbackRoute();
@@ -3118,16 +3382,17 @@ export default function NavigationScreen() {
         setTotalDuration('--');
         stepsRef.current = [];
         setSteps([]);
-        if (shouldFitToRoute && mapRef.current) {
-          const fallbackFitPoints = [
+        if (shouldFitToRoute) {
+          focusMapOnCoordinates(
+            [
             ...fallbackPoints,
             routeOrigin,
-          ].filter(Boolean) as RouteCoordinate[];
-
-          mapRef.current.fitToCoordinates(fallbackFitPoints, {
-            edgePadding: { top: 150, right: 50, bottom: 300, left: 50 },
-            animated: true,
-          });
+            ],
+            {
+              edgePadding: { top: 150, right: 50, bottom: 300, left: 50 },
+              logContext: 'route-fallback',
+            },
+          );
         }
         void speakNavigationMessage(
           "Itinéraire détaillé indisponible. Suivez la ligne jusqu'à la destination.",
@@ -3618,36 +3883,21 @@ export default function NavigationScreen() {
   );
 
   const fitVehicleAndPassengers = useCallback(() => {
-    if (!mapRef.current) return;
-
     const coordinates = passengerMapLocations.map((passenger) => passenger.coordinate);
     const driverLocation = currentLocationRef.current ?? currentLocation;
-    if (driverLocation) {
+    const driverCoordinate = normalizeDriverLocationObject(driverLocation);
+    if (driverCoordinate) {
       coordinates.unshift({
-        latitude: driverLocation.coords.latitude,
-        longitude: driverLocation.coords.longitude,
+        latitude: driverCoordinate.coords.latitude,
+        longitude: driverCoordinate.coords.longitude,
       });
     }
 
-    if (coordinates.length === 1) {
-      mapRef.current.animateToRegion(
-        {
-          ...coordinates[0],
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        },
-        320,
-      );
-      return;
-    }
-
-    if (coordinates.length > 1) {
-      mapRef.current.fitToCoordinates(coordinates, {
+    focusMapOnCoordinates(coordinates, {
         edgePadding: { top: 190, right: 56, bottom: 190, left: 56 },
-        animated: true,
-      });
-    }
-  }, [currentLocation, passengerMapLocations]);
+      logContext: 'vehicle-passengers',
+    });
+  }, [currentLocation, focusMapOnCoordinates, passengerMapLocations]);
 
   // Calculs pour les stats passagers (mémorisés)
   const passengerStats = React.useMemo(() => {
@@ -4160,16 +4410,19 @@ export default function NavigationScreen() {
       const routeOrigin = isTripOngoing
         ? currentDriverCoordinate
         : routeCoordinates[0] ?? tripDepartureCoordinate;
+      const safeRouteCoordinates = getSafePolylineCoordinates(routeCoordinates);
       const distanceToActiveDestinationMeters =
         routeOrigin && activeRouteDestination
           ? calculateDistanceMeters(routeOrigin, activeRouteDestination)
           : null;
+      const directRouteCoordinates = getSafeMapCoordinateList([
+        routeOrigin,
+        activeRouteDestination,
+      ]);
       const routeForNearWaypointDecision =
-        routeCoordinates.length >= 2
-          ? routeCoordinates
-          : routeOrigin && activeRouteDestination
-            ? [routeOrigin, activeRouteDestination]
-            : routeCoordinates;
+        safeRouteCoordinates.length >= 2
+          ? safeRouteCoordinates
+          : directRouteCoordinates;
       const shouldUseDirectNearWaypointRouteForDisplay =
         typeof distanceToActiveDestinationMeters === 'number' &&
         shouldUseDirectNearWaypointRoute({
@@ -4182,10 +4435,8 @@ export default function NavigationScreen() {
       return trimPolylineFromCurrentPosition(
         routeOrigin,
         shouldUseDirectNearWaypointRouteForDisplay
-          ? [routeOrigin, activeRouteDestination].filter(
-              (coordinate): coordinate is RouteCoordinate => Boolean(coordinate),
-            )
-          : routeCoordinates,
+          ? directRouteCoordinates
+          : safeRouteCoordinates,
         activeRouteDestination,
       );
     },
@@ -4217,7 +4468,7 @@ export default function NavigationScreen() {
 
   const routeSectionCoordinates = useMemo(() => {
     return {
-      nextCoordinates: remainingRoute.remainingCoordinates,
+      nextCoordinates: getSafePolylineCoordinates(remainingRoute.remainingCoordinates),
       remainingCoordinates: [] as RouteCoordinate[],
     };
   }, [remainingRoute.remainingCoordinates]);
@@ -4257,6 +4508,10 @@ export default function NavigationScreen() {
   }
 
   const currentStep = steps[currentStepIndex];
+  const initialMapCoordinate =
+    currentDriverCoordinate ??
+    tripDepartureCoordinate ??
+    KINSHASA_FALLBACK_MAP_COORDINATE;
 
   return (
     <View style={styles.container}>
@@ -4265,6 +4520,7 @@ export default function NavigationScreen() {
       {/* Carte (ultra-optimisée pour éviter les crashs) */}
       <MapView
         ref={mapRef}
+        onMapReady={handleMapReady}
         style={styles.map}
         provider={PROVIDER_GOOGLE}
         showsUserLocation={false}
@@ -4285,8 +4541,8 @@ export default function NavigationScreen() {
         toolbarEnabled={false}
         moveOnMarkerPress={false}
         initialRegion={{
-          latitude: currentLocation?.coords?.latitude ?? tripDepartureCoordinate?.latitude ?? -4.4419,
-          longitude: currentLocation?.coords?.longitude ?? tripDepartureCoordinate?.longitude ?? 15.2663,
+          latitude: initialMapCoordinate.latitude,
+          longitude: initialMapCoordinate.longitude,
           latitudeDelta: 0.02,
           longitudeDelta: 0.02,
         }}
@@ -4320,7 +4576,7 @@ export default function NavigationScreen() {
         )}
 
         {/* Position actuelle du conducteur - Marqueur voiture */}
-        {currentLocation?.coords?.latitude && currentLocation?.coords?.longitude && (
+        {currentDriverCoordinate && (
           <Marker.Animated
             ref={driverMarkerRef}
             coordinate={driverPosition as unknown as { latitude: number; longitude: number }}
@@ -5053,13 +5309,22 @@ export default function NavigationScreen() {
           style={styles.floatingButton}
           onPress={() => {
             const loc = currentLocationRef.current || currentLocation;
-            if (mapRef.current && loc) {
-              mapRef.current.animateToRegion({
-                latitude: loc.coords.latitude,
-                longitude: loc.coords.longitude,
-                latitudeDelta: 0.005,
-                longitudeDelta: 0.005,
-              }, 300);
+            const normalizedLocation = normalizeDriverLocationObject(loc);
+            if (normalizedLocation) {
+              focusMapOnCoordinates(
+                [
+                  {
+                    latitude: normalizedLocation.coords.latitude,
+                    longitude: normalizedLocation.coords.longitude,
+                  },
+                ],
+                {
+                  durationMs: 300,
+                  edgePadding: { top: 150, right: 50, bottom: 300, left: 50 },
+                  logContext: 'recenter-driver',
+                  singleCoordinateDelta: 0.005,
+                },
+              );
             }
           }}
         >
@@ -5198,7 +5463,9 @@ export default function NavigationScreen() {
               </Text>
             </View>
             <Text style={styles.waypointModalWaitingText}>
-              Vous avez atteint la destination finale. Le trajet est termine automatiquement. Vous pouvez noter les passagers.
+              {tripEndNotice?.completedWhileAppInactive
+                ? "Le trajet s'est termine pendant que le telephone etait en veille ou hors de l'application. Il est maintenant cloture. Vous pouvez noter les passagers."
+                : 'Vous avez atteint la destination finale. Le trajet est termine automatiquement. Vous pouvez noter les passagers.'}
             </Text>
             <View
               style={[
