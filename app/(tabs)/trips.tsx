@@ -680,7 +680,7 @@ export default function TripsScreen() {
       closeEditModal();
     } catch (error: any) {
       const message =
-        error?.data?.message ?? error?.error ?? 'Impossible de mettre a jour ce trajet pour le moment.';
+        error?.data?.message ?? error?.error ?? 'Impossible de mettre à jour ce trajet pour le moment.';
       showFeedback('error', message);
     }
   };

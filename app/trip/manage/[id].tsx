@@ -295,7 +295,7 @@ export default function ManageTripScreen() {
             typeof event.distanceMeters === 'number' && Number.isFinite(event.distanceMeters)
               ? Math.max(1, Math.round(event.distanceMeters))
               : null;
-          const distanceText = roundedDistance ? ` Distance detectee: ${roundedDistance} m.` : '';
+          const distanceText = roundedDistance ? ` Distance detectée: ${roundedDistance} m.` : '';
           const isTripDestinationReachedZone =
             event.type === 'driver_near_destination' &&
             roundedDistance !== null &&
@@ -314,43 +314,43 @@ export default function ManageTripScreen() {
               variant: 'info',
               icon: 'car-sport',
               title: 'Conducteur proche',
-              message: `Vous approchez du point de recuperation de ${passengerName}.${distanceText}`,
+              message: `Vous approchez du point de récuperation de ${passengerName}.${distanceText}`,
             },
             driver_arrived_pickup: {
               variant: 'info',
               icon: 'location',
               title: 'Point de recuperation atteint',
-              message: `Vous etes arrive au point de recuperation de ${passengerName}. Le passager est notifie.`,
+              message: `Vous êtes arrivé au point de récuperation de ${passengerName}. Le passager est notifié.`,
             },
             parties_nearby: {
               variant: 'success',
               icon: 'people',
-              title: 'Passager pret a embarquer',
-              message: `${passengerName} est la et pret a etre embarque.`,
+              title: 'Passager prêt à embarquer',
+              message: `${passengerName} est là et prêt à être embarqué.`,
             },
             passenger_ready_pickup: {
               variant: 'success',
               icon: 'hand-left',
-              title: "Le passager s'est signale",
-              message: `${passengerName} indique qu'il est au point de recuperation.`,
+              title: "Le passager s'est signalé",
+              message: `${passengerName} indique qu'il est au point de récuperation.`,
             },
             pickup_confirmed: {
               variant: 'success',
               icon: 'checkmark-circle',
               title: 'Passager embarque',
-              message: `${passengerName} a ete embarque. Vous pouvez continuer vers sa destination.`,
+              message: `${passengerName} a été embarqué. Vous pouvez continuer vers sa destination.`,
             },
             passenger_near_destination: {
               variant: 'info',
               icon: 'flag',
               title: 'Destination passager proche',
-              message: `Le point d'arrivee de ${passengerName} va etre atteint.${distanceText}`,
+              message: `Le point d'arrivée de ${passengerName} va être atteint.${distanceText}`,
             },
             dropoff_confirmed: {
               variant: 'success',
               icon: 'flag',
               title: 'Destination passager atteinte',
-              message: `Nous sommes arrives au point de destination de ${passengerName}.`,
+              message: `Nous sommes arrivés au point de destination de ${passengerName}.`,
             },
             driver_near_destination: {
               variant: 'info',
@@ -359,8 +359,8 @@ export default function ManageTripScreen() {
                 ? 'Destination finale atteinte'
                 : 'Destination finale proche',
               message: isTripDestinationReachedZone
-                ? `Le point d'arrivee du trajet est atteint. Le trajet sera termine automatiquement dans 10 minutes si le vehicule reste sur place.${distanceText}`
-                : `Le point d'arrivee du trajet est presque atteint.${distanceText}`,
+                ? `Le point d'arrivée du trajet est atteint. Le trajet sera terminé automatiquement dans 10 minutes si le vehicule reste sur place.${distanceText}`
+                : `Le point d'arrivée du trajet est presque atteint.${distanceText}`,
             },
             driver_arrived_destination: {
               variant: 'success',
@@ -407,7 +407,7 @@ export default function ManageTripScreen() {
         lastKnownLocation.coords.latitude,
       ])
       .catch((error) => {
-        console.warn('[ManageTrip] Position conducteur non envoyee:', error);
+        console.warn('[ManageTrip] Position conducteur non envoyée:', error);
       });
   }, [
     isOwner,
@@ -478,7 +478,7 @@ export default function ManageTripScreen() {
     }
 
     if (nextDeparture.toLowerCase() === nextArrival.toLowerCase()) {
-      setEditRouteError('Les adresses de depart et d arrivee doivent etre differentes.');
+      setEditRouteError("Les adresses de départ et d'arrivée doivent être differentes.");
       return;
     }
 
@@ -510,7 +510,7 @@ export default function ManageTripScreen() {
       if (!coordinates) {
         setIsResolvingRoute(false);
         setEditRouteError(
-          'Impossible de localiser cette adresse de depart. Verifiez le texte puis reessayez.',
+          'Impossible de localiser cette adresse de départ. Vérifiez le texte puis réessayez.',
         );
         return;
       }
@@ -522,7 +522,7 @@ export default function ManageTripScreen() {
       if (!coordinates) {
         setIsResolvingRoute(false);
         setEditRouteError(
-          'Impossible de localiser cette adresse d arrivee. Verifiez le texte puis reessayez.',
+          'Impossible de localiser cette adresse d\'arrivée. Verifiez le texte puis réessayez.',
         );
         return;
       }
@@ -539,11 +539,11 @@ export default function ManageTripScreen() {
       });
       setEditRouteModalVisible(false);
       setEditRouteError('');
-      showFeedback('success', 'Les adresses du trajet ont ete mises a jour.');
+      showFeedback('success', 'Les adresses du trajet ont été mises à jour.');
       refreshAll();
     } catch (error: any) {
       const message =
-        error?.data?.message ?? error?.error ?? 'Impossible de mettre a jour les adresses du trajet.';
+        error?.data?.message ?? error?.error ?? 'Impossible de mettre à jour les adresses du trajet.';
       setEditRouteError(Array.isArray(message) ? message.join('\n') : message);
     } finally {
       setIsResolvingRoute(false);
@@ -746,7 +746,7 @@ export default function ManageTripScreen() {
       });
       showFeedback(
         'success',
-        'Demande envoyee. Tous les passagers a bord doivent confirmer.',
+        'Demande envoyée. Tous les passagers à bord doivent confirmer.',
       );
       refreshAll();
     } catch (error: any) {
@@ -771,7 +771,7 @@ export default function ManageTripScreen() {
       showDialog({
         variant: 'warning',
         title: 'Interrompre le trajet',
-        message: "Aucun passager n'est a bord. Vous pouvez interrompre ce trajet directement.",
+        message: "Aucun passager n'est à bord. Vous pouvez interrompre ce trajet directement.",
         actions: [
           { label: 'Annuler', variant: 'ghost' },
           {
@@ -812,7 +812,7 @@ export default function ManageTripScreen() {
       showDialog({
         variant: 'info',
         title: 'Navigation indisponible',
-        message: 'Demarrez d abord le trajet pour acceder a la navigation en direct.',
+        message: "Demarrez d'abord le trajet pour acceder à la navigation en direct.",
       });
       return;
     }
@@ -1250,7 +1250,7 @@ export default function ManageTripScreen() {
                     {trip.status === 'ongoing' && booking.pickedUp && booking.pickedUpConfirmedByPassenger && booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
                       <View style={[styles.bookingStatusBadge, styles.bookingStatusBadgeSuccess]}>
                         <View style={[styles.bookingStatusDot, { backgroundColor: Colors.success }]} />
-                        <Text style={[styles.bookingStatusText, { color: Colors.success }]}>Arrivee en cours</Text>
+                        <Text style={[styles.bookingStatusText, { color: Colors.success }]}>Arrivée en cours</Text>
                       </View>
                     )}
 
@@ -1301,7 +1301,7 @@ export default function ManageTripScreen() {
           >
             <Ionicons name="settings-outline" size={16} color={Colors.primary} />
             <Text style={styles.securitySecondaryButtonText}>
-              Ajouter ou gerer mes contacts d urgence
+              Ajouter ou gérer mes contacts d'urgence
             </Text>
           </TouchableOpacity>
         </View>
@@ -1433,7 +1433,7 @@ export default function ManageTripScreen() {
             ]}
           >
             <View style={styles.securityModalHeader}>
-              <Text style={styles.securityModalTitle}>Securite du trajet</Text>
+              <Text style={styles.securityModalTitle}>Sécurité du trajet</Text>
               <TouchableOpacity
                 style={styles.securityModalCloseButton}
                 onPress={closeTripSecurityModal}
@@ -1470,10 +1470,10 @@ export default function ManageTripScreen() {
           <View style={[styles.bookingModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
             <Text style={styles.bookingModalTitle}>Modifier le trajet</Text>
             <Text style={styles.bookingModalDescription}>
-              Mettez a jour l adresse de depart et/ou d arrivee.
+              Mettez à jour l'adresse de depart et/ou d'arrivée.
             </Text>
 
-            <Text style={styles.editRouteLabel}>Adresse de depart</Text>
+            <Text style={styles.editRouteLabel}>Adresse de départ</Text>
             <TextInput
               style={styles.editRouteInput}
               placeholder="Ex: avenue Kasa-Vubu, Bandal"
@@ -1486,7 +1486,7 @@ export default function ManageTripScreen() {
               editable={!isSavingRoute}
             />
 
-            <Text style={styles.editRouteLabel}>Adresse d arrivee</Text>
+            <Text style={styles.editRouteLabel}>Adresse d'arrivée</Text>
             <TextInput
               style={styles.editRouteInput}
               placeholder="Ex: rond-point Victoire"
