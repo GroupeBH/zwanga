@@ -832,14 +832,21 @@ export const tripApi = baseApi.injectEndpoints({
     // Mettre à jour la position du conducteur
     updateDriverLocation: builder.mutation<
       { tripId: string; coordinates: [number, number]; updatedAt: string },
-      { tripId: string; coordinates: [number, number] }
+      {
+        tripId: string;
+        coordinates: [number, number];
+        accuracy?: number;
+        speed?: number;
+        heading?: number;
+        recordedAt?: string;
+      }
     >({
-      query: ({ tripId, coordinates }: { tripId: string; coordinates: [number, number] }) => ({
+      query: ({ tripId, coordinates, accuracy, speed, heading, recordedAt }) => ({
         url: `/trips/${tripId}/driver-location`,
         method: 'PUT',
-        body: { coordinates },
+        body: { coordinates, accuracy, speed, heading, recordedAt },
       }),
-      invalidatesTags: (_result, _error, { tripId }: { tripId: string }) => [
+      invalidatesTags: (_result, _error, { tripId }) => [
         { type: 'Trip', id: tripId },
       ],
     }),

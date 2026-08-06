@@ -41,6 +41,15 @@ export const subscriptionApi = baseApi.injectEndpoints({
       invalidatesTags: ['Subscription', 'User', 'Trip', 'MyTrips', 'PaymentHistory'],
     }),
 
+    subscribeToProWithPoints: builder.mutation<SubscriptionPaymentResponse, void>({
+      query: () => ({
+        url: '/subscriptions/subscribe/points',
+        method: 'POST',
+        body: { plan: 'pro' },
+      }),
+      invalidatesTags: ['Subscription', 'User', 'Trip', 'MyTrips', 'Wallet'],
+    }),
+
     checkSubscriptionPaymentStatus: builder.query<SubscriptionPaymentResponse, string>({
       query: (orderNumber: string) => ({
         url: `/subscriptions/payments/${encodeURIComponent(orderNumber)}/status`,
@@ -57,5 +66,7 @@ export const {
   useGetPremiumOverviewQuery,
   useStartPremiumTrialMutation,
   useSubscribeToProMutation,
+  useSubscribeToProWithPointsMutation,
+  useCheckSubscriptionPaymentStatusQuery,
   useLazyCheckSubscriptionPaymentStatusQuery,
 } = subscriptionApi;

@@ -27,6 +27,7 @@ import './tripRequestApi';
 import './safetyApi';
 import './googleMapsApi';
 import './supportApi';
+import './subscriptionApi';
 import './walletApi';
 import './driverSettlementsApi';
 import './trackingApi';
@@ -190,10 +191,21 @@ export {
 } from './supportApi';
 
 export {
+  useCheckSubscriptionPaymentStatusQuery,
+  useGetPremiumOverviewQuery,
+  useGetSubscriptionPlansQuery,
+  useLazyCheckSubscriptionPaymentStatusQuery,
+  useStartPremiumTrialMutation,
+  useSubscribeToProMutation,
+  useSubscribeToProWithPointsMutation,
+} from './subscriptionApi';
+
+export {
   useGetMyWalletQuery,
   useGetWalletLedgerQuery,
   useInitiateWalletTopUpMutation,
   useLazyCheckWalletTopUpStatusQuery,
+  useTransferWalletPointsMutation,
 } from './walletApi';
 
 export {

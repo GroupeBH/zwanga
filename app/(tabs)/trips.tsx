@@ -744,11 +744,7 @@ export default function TripsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
-          <View style={styles.headerCopy}>
-            <Text style={styles.headerEyebrow}>VOTRE ACTIVITÉ</Text>
-            <Text style={styles.headerTitle}>Mes trajets</Text>
-            <Text style={styles.headerSubtitle}>Suivez et gérez tous vos déplacements.</Text>
-          </View>
+          <Text style={styles.headerTitle}>Mes trajets</Text>
           <TouchableOpacity
             style={styles.headerPublishButton}
             onPress={() => router.push('/publish')}
@@ -767,8 +763,11 @@ export default function TripsScreen() {
               setSubTab('upcoming');
             }}
           >
-            <Text style={[styles.mainTabText, mainTab === 'published' && styles.mainTabTextActive]}>
-              Publiés ({trips.length})
+            <Text
+              numberOfLines={1}
+              style={[styles.mainTabText, mainTab === 'published' && styles.mainTabTextActive]}
+            >
+              Publiés {trips.length}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -778,8 +777,11 @@ export default function TripsScreen() {
               setSubTab('upcoming');
             }}
           >
-            <Text style={[styles.mainTabText, mainTab === 'bookings' && styles.mainTabTextActive]}>
-              Réservations ({myBookings?.length ?? 0})
+            <Text
+              numberOfLines={1}
+              style={[styles.mainTabText, mainTab === 'bookings' && styles.mainTabTextActive]}
+            >
+              Réservations {myBookings?.length ?? 0}
             </Text>
           </TouchableOpacity>
         </View>
@@ -790,16 +792,22 @@ export default function TripsScreen() {
             style={[styles.subTab, subTab === 'upcoming' && styles.subTabActive]}
             onPress={() => setSubTab('upcoming')}
           >
-            <Text style={[styles.subTabText, subTab === 'upcoming' && styles.subTabTextActive]}>
-              À venir ({mainTab === 'published' ? upcomingTrips.length : upcomingBookings.length})
+            <Text
+              numberOfLines={1}
+              style={[styles.subTabText, subTab === 'upcoming' && styles.subTabTextActive]}
+            >
+              À venir {mainTab === 'published' ? upcomingTrips.length : upcomingBookings.length}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.subTab, subTab === 'completed' && styles.subTabActive]}
             onPress={() => setSubTab('completed')}
           >
-            <Text style={[styles.subTabText, subTab === 'completed' && styles.subTabTextActive]}>
-              Terminés ({mainTab === 'published' ? completedTrips.length : completedBookingsList.length})
+            <Text
+              numberOfLines={1}
+              style={[styles.subTabText, subTab === 'completed' && styles.subTabTextActive]}
+            >
+              Terminés {mainTab === 'published' ? completedTrips.length : completedBookingsList.length}
             </Text>
           </TouchableOpacity>
         </View>
@@ -809,7 +817,7 @@ export default function TripsScreen() {
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder={mainTab === 'published' ? 'Rechercher un trajet...' : 'Rechercher une réservation...'}
+            placeholder="Rechercher..."
             placeholderTextColor={Colors.gray[400]}
             style={styles.searchInput}
             returnKeyType="search"
@@ -874,11 +882,11 @@ export default function TripsScreen() {
               <Ionicons name="repeat" size={20} color={Colors.white} />
             </View>
             <View style={styles.recurringHubContent}>
-              <Text style={styles.recurringHubTitle}>Trajets recurrents</Text>
+              <Text style={styles.recurringHubTitle}>Trajets réguliers</Text>
               <Text style={styles.recurringHubText}>
                 {recurringTemplates.length > 0
-                  ? `${activeRecurringTemplates} actif(s) et ${recurringTemplates.length} modèle(s) à gerer`
-                  : 'Publier automatiquement un trajet habituel pour plusieurs jours'}
+                  ? `${activeRecurringTemplates} actif(s), ${recurringTemplates.length} trajet(s) enregistré(s)`
+                  : 'Publier automatiquement vos trajets habituels'}
               </Text>
             </View>
             <View style={styles.recurringHubAction}>
@@ -1582,39 +1590,26 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: Colors.white,
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[200],
   },
   headerTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.lg,
-  },
-  headerCopy: {
-    flex: 1,
-  },
-  headerEyebrow: {
-    marginBottom: 3,
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-    letterSpacing: 1.1,
-    color: Colors.primary,
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
   },
   headerTitle: {
-    fontSize: FontSizes.xxl,
+    flex: 1,
+    fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
-  headerSubtitle: {
-    marginTop: 3,
-    fontSize: FontSizes.sm,
-    color: Colors.gray[500],
-  },
   headerPublishButton: {
-    width: 46,
-    height: 46,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: Spacing.md,
@@ -1625,14 +1620,16 @@ const styles = StyleSheet.create({
   mainTabsContainer: {
     flexDirection: 'row',
     backgroundColor: Colors.gray[100],
-    borderRadius: BorderRadius.xl,
-    padding: 4,
-    marginBottom: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    padding: 3,
+    marginBottom: Spacing.sm,
   },
   mainTab: {
     flex: 1,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
+    minHeight: 38,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
+    borderRadius: BorderRadius.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1644,7 +1641,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: FontWeights.bold,
     color: Colors.gray[600],
-    fontSize: FontSizes.base,
+    fontSize: FontSizes.sm,
   },
   mainTabTextActive: {
     color: Colors.primary,
@@ -1655,8 +1652,10 @@ const styles = StyleSheet.create({
   },
   subTab: {
     flex: 1,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.full,
+    minHeight: 32,
+    paddingVertical: 6,
+    paddingHorizontal: Spacing.xs,
+    borderRadius: BorderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.gray[100],
@@ -1668,29 +1667,29 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: FontWeights.medium,
     color: Colors.gray[500],
-    fontSize: FontSizes.sm,
+    fontSize: FontSizes.xs,
   },
   subTabTextActive: {
     color: Colors.primary,
     fontWeight: FontWeights.semibold,
   },
   searchContainer: {
-    minHeight: 48,
+    minHeight: 40,
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: Spacing.md,
-    paddingHorizontal: Spacing.md,
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.xl,
+    borderRadius: BorderRadius.lg,
     backgroundColor: Colors.gray[50],
   },
   searchInput: {
     flex: 1,
-    height: 46,
+    height: 38,
     marginLeft: Spacing.sm,
     paddingVertical: 0,
-    fontSize: FontSizes.base,
+    fontSize: FontSizes.sm,
     color: Colors.gray[900],
   },
   searchClearButton: {

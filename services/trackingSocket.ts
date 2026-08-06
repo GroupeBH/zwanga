@@ -18,6 +18,13 @@ export interface PassengerLocationPayload {
   updatedAt?: string | null;
 }
 
+export interface TrackingLocationMetadata {
+  accuracy?: number;
+  speed?: number;
+  heading?: number;
+  recordedAt?: string;
+}
+
 export interface BookingAutoProgressPayload {
   tripId: string;
   events: Array<{
@@ -287,10 +294,14 @@ class TrackingSocketClient {
     }
   }
 
-  async updateDriverLocation(tripId: string, coordinates: [number, number]) {
+  async updateDriverLocation(
+    tripId: string,
+    coordinates: [number, number],
+    metadata: TrackingLocationMetadata = {},
+  ) {
     if (!tripId || !coordinates) return;
     const socket = await this.connect();
-    socket.emit('driver_location_update', { tripId, coordinates });
+    socket.emit('driver_location_update', { tripId, coordinates, ...metadata });
   }
 
   async requestDriverLocation(tripId: string) {
@@ -303,10 +314,22 @@ class TrackingSocketClient {
     tripId: string,
     bookingId: string,
     coordinates: [number, number],
+    metadata: TrackingLocationMetadata = {},
   ) {
     if (!tripId || !bookingId || !coordinates) return;
     const socket = await this.connect();
-    socket.emit('passenger_location_update', { tripId, bookingId, coordinates });
+    socket.emit('passenger_location_update', {
+      tripId,
+      bookingId,
+      coordinates,
+      ...metadata,
+    });
+  }
+
+  async resumeBoardingDetection(tripId: string) {
+    if (!tripId) return;
+    const socket = await this.connect();
+    socket.emit('resume_boarding_detection', { tripId });
   }
 
   async requestPassengerLocations(tripId: string) {

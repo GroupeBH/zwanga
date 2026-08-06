@@ -135,27 +135,47 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
   label: string;
   description: string;
   icon: keyof typeof Ionicons.glyphMap;
+  selection: 'checkbox' | 'radio';
 }[] = [
   ...(ELECTRONIC_PAYMENTS_ENABLED
     ? [
         {
           id: 'electronic' as const,
           label: 'Paiement electronique',
-          description: 'Paiement securise via FlexPay',
+          description: 'Recevoir une demande Mobile Money apres acceptation',
           icon: 'card-outline' as const,
+          selection: 'checkbox' as const,
         },
       ]
     : []),
+  {
+    id: 'points',
+    label: 'Points Zwanga',
+    description: 'Utiliser votre solde de points/jetons',
+    icon: 'wallet-outline',
+    selection: 'radio',
+  },
   {
     id: 'cash',
     label: "Paiement a l'arrivee",
     description: 'Reglez directement aupres du conducteur',
     icon: 'cash-outline',
+    selection: 'radio',
   },
 ];
 const getTripPaymentModeLabel = (mode?: TripPaymentMode | null) =>
   TRIP_PAYMENT_MODE_OPTIONS.find((option) => option.id === mode)?.label ??
   "Paiement a l'arrivee";
+const getTripPaymentSelectionIcon = (
+  option: (typeof TRIP_PAYMENT_MODE_OPTIONS)[number],
+  selected: boolean,
+): keyof typeof Ionicons.glyphMap => {
+  if (option.selection === 'checkbox') {
+    return selected ? 'checkbox' : 'square-outline';
+  }
+
+  return selected ? 'radio-button-on' : 'radio-button-off';
+};
 const DRC_PAYMENT_PHONE_REGEX = /^\+243\d{9}$/;
 type TripDetailAutoProgressEvent = BookingAutoProgressPayload['events'][number];
 const TRIP_DETAIL_AUTO_PROGRESS_PRIORITY: Record<TripDetailAutoProgressEvent['type'], number> = {
@@ -3562,7 +3582,7 @@ export default function TripDetailsScreen() {
                             <Text style={styles.bookingPaymentOptionText}>{option.description}</Text>
                           </View>
                           <Ionicons
-                            name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                            name={getTripPaymentSelectionIcon(option, selected)}
                             size={20}
                             color={selected ? Colors.primary : Colors.gray[300]}
                           />

@@ -38,7 +38,7 @@ const WEEKDAY_LABELS: Record<number, string> = {
 };
 
 const formatDateTimeLabel = (value?: string | null) => {
-  if (!value) return 'Aucune occurrence générée pour le moment';
+  if (!value) return 'Aucune publication prévue pour le moment';
   return new Intl.DateTimeFormat('fr-FR', {
     weekday: 'short',
     day: 'numeric',
@@ -68,7 +68,7 @@ const statusConfig = (status: RecurringTripTemplate['status']) => {
       badgeBackground: 'rgba(99, 110, 114, 0.14)',
       badgeColor: Colors.gray[700],
       label: 'En pause',
-      actionLabel: 'Reprendre',
+      actionLabel: 'Relancer',
       actionBackground: Colors.primary,
       actionColor: Colors.white,
       icon: 'play',
@@ -135,9 +135,9 @@ export default function RecurringTripsScreen() {
           <Ionicons name="arrow-back" size={22} color={Colors.gray[900]} />
         </TouchableOpacity>
         <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Trajets récurrents</Text>
+          <Text style={styles.headerTitle}>Trajets réguliers</Text>
           <Text style={styles.headerSubtitle}>
-            Gérez vos trajets quotidiens sans republier chaque jour.
+            Publiez automatiquement les trajets que vous faites souvent.
           </Text>
         </View>
       </View>
@@ -157,19 +157,20 @@ export default function RecurringTripsScreen() {
         <View style={styles.heroCard}>
           <View style={styles.heroTopRow}>
             <View style={styles.heroIcon}>
-              <Ionicons name="repeat" size={22} color={Colors.white} />
+              <Ionicons name="repeat" size={20} color={Colors.primary} />
             </View>
             <TouchableOpacity
               style={styles.heroAction}
               onPress={() => router.push({ pathname: '/publish', params: { mode: 'recurring' } })}
             >
-              <Text style={styles.heroActionText}>Nouveau</Text>
+              <Text style={styles.heroActionText}>Créer</Text>
               <Ionicons name="add" size={16} color={Colors.primary} />
             </TouchableOpacity>
           </View>
-          <Text style={styles.heroTitle}>Vos modèles automatiques</Text>
+          <Text style={styles.heroTitle}>Publication automatique</Text>
           <Text style={styles.heroText}>
-            Un trajet récurrent génère automatiquement les prochaines occurrences.
+            Enregistrez une route habituelle: maison, travail, école ou marché. Zwanga publie
+            le trajet les jours choisis.
           </Text>
           <View style={styles.heroStatsRow}>
             <View style={styles.heroStat}>
@@ -192,8 +193,8 @@ export default function RecurringTripsScreen() {
         <View style={styles.infoCard}>
           <Ionicons name="information-circle-outline" size={18} color={Colors.info} />
           <Text style={styles.infoText}>
-            Mettre un modèle en pause arrête les prochaines générations. Les trajets déjà
-            publiés restent visibles dans Mes trajets.
+            En pause = Zwanga ne publie plus de nouveaux trajets. Les trajets déjà publiés
+            restent visibles dans Mes trajets.
           </Text>
         </View>
 
@@ -209,13 +210,14 @@ export default function RecurringTripsScreen() {
             </View>
             <Text style={styles.emptyTitle}>Aucun trajet récurrent</Text>
             <Text style={styles.emptyText}>
-              Créez un modèle pour publier automatiquement vos trajets habituels.
+              Créez un trajet régulier pour vos déplacements habituels: travail, école,
+              université ou marché.
             </Text>
             <TouchableOpacity
               style={styles.emptyButton}
               onPress={() => router.push({ pathname: '/publish', params: { mode: 'recurring' } })}
             >
-              <Text style={styles.emptyButtonText}>Créer un trajet récurrent</Text>
+              <Text style={styles.emptyButtonText}>Créer un trajet régulier</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -227,13 +229,25 @@ export default function RecurringTripsScreen() {
               <View key={template.id} style={styles.card}>
                 <View style={styles.cardHeader}>
                   <View style={styles.routeBlock}>
-                    <Text style={styles.routeTitle} numberOfLines={1}>
-                      {template.departure.name}
-                    </Text>
-                    <View style={styles.routeDivider} />
-                    <Text style={styles.routeTitle} numberOfLines={1}>
-                      {template.arrival.name}
-                    </Text>
+                    <View style={styles.routeStopRow}>
+                      <View style={[styles.routeDot, styles.routeDotDeparture]} />
+                      <View style={styles.routeStopContent}>
+                        <Text style={styles.routeLabel}>Départ</Text>
+                        <Text style={styles.routeTitle} numberOfLines={1}>
+                          {template.departure.name}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.routeLine} />
+                    <View style={styles.routeStopRow}>
+                      <View style={[styles.routeDot, styles.routeDotArrival]} />
+                      <View style={styles.routeStopContent}>
+                        <Text style={styles.routeLabel}>Arrivée</Text>
+                        <Text style={styles.routeTitle} numberOfLines={1}>
+                          {template.arrival.name}
+                        </Text>
+                      </View>
+                    </View>
                   </View>
                   <View
                     style={[
@@ -247,6 +261,10 @@ export default function RecurringTripsScreen() {
                   </View>
                 </View>
 
+                <View style={styles.scheduleLabelRow}>
+                  <Ionicons name="calendar-outline" size={15} color={Colors.primary} />
+                  <Text style={styles.scheduleLabel}>Jours de publication</Text>
+                </View>
                 <View style={styles.dayChipsRow}>
                   {formatWeekdays(template.weekdays).map((label) => (
                     <View key={`${template.id}-${label}`} style={styles.dayChip}>
@@ -257,21 +275,21 @@ export default function RecurringTripsScreen() {
 
                 <View style={styles.detailGrid}>
                   <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>Heure</Text>
+                    <Text style={styles.detailLabel}>Heure de départ</Text>
                     <Text style={styles.detailValue}>{template.departureTime}</Text>
                   </View>
                   <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>Places</Text>
+                    <Text style={styles.detailLabel}>Places dispo</Text>
                     <Text style={styles.detailValue}>{template.totalSeats}</Text>
                   </View>
                   <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>Prix</Text>
+                    <Text style={styles.detailLabel}>Prix/place</Text>
                     <Text style={styles.detailValue}>
                       {template.isFree ? 'Gratuit' : `${template.pricePerSeat} FC`}
                     </Text>
                   </View>
                   <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>Fin</Text>
+                    <Text style={styles.detailLabel}>Jusqu'au</Text>
                     <Text style={styles.detailValue}>{formatDateLabel(template.endDate)}</Text>
                   </View>
                 </View>
@@ -279,7 +297,7 @@ export default function RecurringTripsScreen() {
                 <View style={styles.nextTripCard}>
                   <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
                   <View style={styles.nextTripContent}>
-                    <Text style={styles.nextTripLabel}>Prochaine occurrence</Text>
+                    <Text style={styles.nextTripLabel}>Prochaine publication</Text>
                     <Text style={styles.nextTripValue}>
                       {formatDateTimeLabel(template.nextOccurrenceDate)}
                     </Text>
@@ -288,6 +306,7 @@ export default function RecurringTripsScreen() {
                     <Text style={styles.countBadgeText}>
                       {template.upcomingGeneratedTripsCount}
                     </Text>
+                    <Text style={styles.countBadgeLabel}>créés</Text>
                   </View>
                 </View>
 
@@ -305,19 +324,6 @@ export default function RecurringTripsScreen() {
                 ) : null}
 
                 <View style={styles.actionsRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.manageButton,
-                      styles.secondaryButton,
-                      isPending && styles.disabledButton,
-                    ]}
-                    onPress={() =>
-                      router.push({ pathname: '/publish', params: { mode: 'recurring' } })
-                    }
-                    disabled={isPending}
-                  >
-                    <Text style={styles.secondaryButtonText}>Dupliquer</Text>
-                  </TouchableOpacity>
                   <TouchableOpacity
                     style={[
                       styles.manageButton,
@@ -358,15 +364,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
+    paddingTop: Spacing.md,
     paddingBottom: Spacing.md,
     backgroundColor: Colors.white,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[200],
   },
   backButton: {
-    width: 42,
-    height: 42,
+    width: 40,
+    height: 40,
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
@@ -377,7 +383,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerTitle: {
-    fontSize: FontSizes.xl,
+    fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
@@ -391,29 +397,31 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xxl,
+    paddingTop: Spacing.lg,
     paddingBottom: Spacing.xxl,
-    gap: Spacing.lg,
+    gap: Spacing.md,
   },
   heroCard: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.xxl,
-    padding: Spacing.xl,
-    ...CommonStyles.shadowLg,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    borderWidth: 1,
+    borderColor: Colors.primary + '18',
+    padding: Spacing.md,
+    ...CommonStyles.shadowSm,
   },
   heroTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.sm,
   },
   heroIcon: {
-    width: 46,
-    height: 46,
+    width: 38,
+    height: 38,
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: Colors.primary + '12',
   },
   heroAction: {
     flexDirection: 'row',
@@ -422,7 +430,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.full,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.primary + '10',
+    borderWidth: 1,
+    borderColor: Colors.primary + '24',
   },
   heroActionText: {
     fontSize: FontSizes.sm,
@@ -430,50 +440,50 @@ const styles = StyleSheet.create({
     color: Colors.primary,
   },
   heroTitle: {
-    fontSize: FontSizes.xl,
+    fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
-    color: Colors.white,
+    color: Colors.gray[900],
   },
   heroText: {
-    marginTop: Spacing.sm,
-    color: 'rgba(255,255,255,0.88)',
-    fontSize: FontSizes.base,
-    lineHeight: 22,
+    marginTop: Spacing.xs,
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+    lineHeight: 20,
   },
   heroStatsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: Spacing.xl,
-    paddingTop: Spacing.lg,
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.16)',
+    borderTopColor: Colors.gray[100],
   },
   heroStat: {
     flex: 1,
     alignItems: 'center',
   },
   heroStatValue: {
-    color: Colors.white,
-    fontSize: FontSizes.xl,
+    color: Colors.primary,
+    fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
   },
   heroStatLabel: {
     marginTop: 2,
-    color: 'rgba(255,255,255,0.74)',
+    color: Colors.gray[500],
     fontSize: FontSizes.xs,
     textTransform: 'uppercase',
   },
   heroStatDivider: {
     width: 1,
-    height: 26,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    height: 24,
+    backgroundColor: Colors.gray[100],
   },
   infoCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: Spacing.sm,
     padding: Spacing.md,
-    borderRadius: BorderRadius.xl,
+    borderRadius: BorderRadius.lg,
     backgroundColor: Colors.white,
     borderWidth: 1,
     borderColor: Colors.gray[200],
@@ -537,8 +547,8 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xxl,
-    padding: Spacing.lg,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.md,
     ...CommonStyles.shadowSm,
   },
   cardHeader: {
@@ -549,22 +559,48 @@ const styles = StyleSheet.create({
   },
   routeBlock: {
     flex: 1,
+    gap: 2,
+  },
+  routeStopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  routeStopContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  routeDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: Spacing.sm,
+  },
+  routeDotDeparture: {
+    backgroundColor: Colors.success,
+  },
+  routeDotArrival: {
+    backgroundColor: Colors.primary,
+  },
+  routeLine: {
+    width: 2,
+    height: 18,
+    marginLeft: 5,
+    backgroundColor: Colors.gray[200],
+  },
+  routeLabel: {
+    color: Colors.gray[500],
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    textTransform: 'uppercase',
   },
   routeTitle: {
-    fontSize: FontSizes.lg,
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
-  routeDivider: {
-    width: 30,
-    height: 2,
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.full,
-    marginVertical: Spacing.sm,
-  },
   statusBadge: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 5,
     borderRadius: BorderRadius.full,
   },
   statusText: {
@@ -572,14 +608,26 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     textTransform: 'uppercase',
   },
+  scheduleLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginTop: Spacing.md,
+  },
+  scheduleLabel: {
+    color: Colors.gray[700],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
   dayChipsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.xs,
-    marginTop: Spacing.md,
+    marginTop: Spacing.sm,
   },
   dayChip: {
-    paddingHorizontal: Spacing.md,
+    minHeight: 30,
+    paddingHorizontal: Spacing.sm,
     paddingVertical: 6,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.gray[100],
@@ -592,17 +640,18 @@ const styles = StyleSheet.create({
   detailGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: Spacing.lg,
-    rowGap: Spacing.md,
+    marginTop: Spacing.md,
+    rowGap: Spacing.sm,
   },
   detailItem: {
     width: '50%',
   },
   detailLabel: {
     color: Colors.gray[500],
-    fontSize: FontSizes.xs,
+    fontSize: 10,
     textTransform: 'uppercase',
     marginBottom: 4,
+    fontWeight: FontWeights.bold,
   },
   detailValue: {
     color: Colors.gray[900],
@@ -612,9 +661,9 @@ const styles = StyleSheet.create({
   nextTripCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: Spacing.lg,
+    marginTop: Spacing.md,
     padding: Spacing.md,
-    borderRadius: BorderRadius.xl,
+    borderRadius: BorderRadius.lg,
     backgroundColor: Colors.primary + '10',
     gap: Spacing.sm,
   },
@@ -632,16 +681,22 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   countBadge: {
-    minWidth: 34,
-    height: 34,
-    borderRadius: BorderRadius.full,
+    minWidth: 42,
+    minHeight: 38,
+    borderRadius: BorderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.white,
+    paddingHorizontal: Spacing.xs,
   },
   countBadgeText: {
     color: Colors.primary,
     fontWeight: FontWeights.bold,
+  },
+  countBadgeLabel: {
+    color: Colors.gray[500],
+    fontSize: 9,
+    fontWeight: FontWeights.semibold,
   },
   vehicleRow: {
     flexDirection: 'row',
@@ -661,23 +716,16 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: 'row',
     gap: Spacing.sm,
-    marginTop: Spacing.lg,
+    marginTop: Spacing.md,
   },
   manageButton: {
     flex: 1,
-    minHeight: 48,
-    borderRadius: BorderRadius.xl,
+    minHeight: 44,
+    borderRadius: BorderRadius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: Spacing.xs,
-  },
-  secondaryButton: {
-    backgroundColor: Colors.gray[100],
-  },
-  secondaryButtonText: {
-    color: Colors.gray[800],
-    fontWeight: FontWeights.semibold,
   },
   manageButtonText: {
     fontWeight: FontWeights.bold,

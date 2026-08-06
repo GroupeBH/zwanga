@@ -85,7 +85,9 @@ export interface SubscriptionPlanSummary {
   documentFundingEnabled: boolean;
   documentFundingLimit: number | null;
   documentFundingCurrency?: string;
-  paymentMethods?: SubscriptionPaymentMethod[];
+  paymentMethods?: Array<SubscriptionPaymentMethod | 'points'>;
+  pointsAmount?: number | string | null;
+  pointsCurrency?: string | null;
   eligibleDocumentTypes: string[];
 }
 
@@ -138,6 +140,7 @@ export interface SubscriptionPayment {
 
 export interface SubscriptionPaymentResponse {
   subscription: Subscription;
+  walletEntry?: WalletLedgerEntry | null;
   payment: SubscriptionPayment;
 }
 
@@ -397,7 +400,15 @@ export interface WalletAccount {
   updatedAt: string;
 }
 
-export type WalletLedgerEntryType = 'top_up' | 'loyalty_reward' | 'booking_payment' | 'booking_refund';
+export type WalletLedgerEntryType =
+  | 'top_up'
+  | 'loyalty_reward'
+  | 'booking_payment'
+  | 'booking_refund'
+  | 'booking_fare_adjustment'
+  | 'subscription_payment'
+  | 'transfer_out'
+  | 'transfer_in';
 
 export interface WalletLedgerEntry {
   id: string;
@@ -423,6 +434,23 @@ export interface WalletSummary {
 export interface WalletPaymentResponse {
   account: WalletAccount;
   payment: SubscriptionPayment;
+}
+
+export interface WalletTransferResponse {
+  transferId: string;
+  amount: number;
+  currency: string;
+  senderAccount: WalletAccount;
+  recipientAccount: WalletAccount;
+  senderEntry: WalletLedgerEntry;
+  recipientEntry: WalletLedgerEntry;
+  recipient: {
+    id: string;
+    firstName?: string;
+    lastName?: string;
+    phone?: string | null;
+    email?: string | null;
+  };
 }
 
 export type DriverEarningStatus = 'available' | 'paid' | 'cancelled';
