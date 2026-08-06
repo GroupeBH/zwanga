@@ -131,6 +131,24 @@ async function putDriverLocation(tripId: string, location: Location.LocationObje
       },
       body: JSON.stringify({
         coordinates: [coordinate.longitude, coordinate.latitude],
+        ...(typeof location.coords.accuracy === 'number' &&
+        Number.isFinite(location.coords.accuracy) &&
+        location.coords.accuracy >= 0
+          ? { accuracy: location.coords.accuracy }
+          : {}),
+        ...(typeof location.coords.speed === 'number' &&
+        Number.isFinite(location.coords.speed) &&
+        location.coords.speed >= 0
+          ? { speed: location.coords.speed }
+          : {}),
+        ...(typeof location.coords.heading === 'number' &&
+        Number.isFinite(location.coords.heading) &&
+        location.coords.heading >= 0
+          ? { heading: location.coords.heading }
+          : {}),
+        ...(Number.isFinite(location.timestamp)
+          ? { recordedAt: new Date(location.timestamp).toISOString() }
+          : {}),
       }),
     });
 

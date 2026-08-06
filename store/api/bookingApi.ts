@@ -704,12 +704,35 @@ export const bookingApi = baseApi.injectEndpoints({
     }),
     updatePassengerLocation: builder.mutation<
       UpdatePassengerLocationResponse,
-      { bookingId: string; latitude: number; longitude: number }
+      {
+        bookingId: string;
+        latitude: number;
+        longitude: number;
+        accuracy?: number;
+        speed?: number;
+        heading?: number;
+        recordedAt?: string;
+      }
     >({
-      query: ({ bookingId, latitude, longitude }) => ({
+      query: ({
+        bookingId,
+        latitude,
+        longitude,
+        accuracy,
+        speed,
+        heading,
+        recordedAt,
+      }) => ({
         url: `/bookings/${bookingId}/passenger-location`,
         method: 'PUT',
-        body: { latitude, longitude },
+        body: {
+          latitude,
+          longitude,
+          accuracy,
+          speed,
+          heading,
+          recordedAt,
+        },
       }),
       invalidatesTags: (result, _error, { bookingId }) => [
         { type: 'Booking', id: bookingId },

@@ -1,1 +1,1 @@
-export const ELECTRONIC_PAYMENTS_ENABLED = false;
+export const ELECTRONIC_PAYMENTS_ENABLED = true;

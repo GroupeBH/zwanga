@@ -6,8 +6,10 @@ import {
   useGetSubscriptionPlansQuery,
   useLazyCheckSubscriptionPaymentStatusQuery,
   useSubscribeToProMutation,
+  useSubscribeToProWithPointsMutation,
 } from '@/store/api/subscriptionApi';
 import { useGetProfileSummaryQuery } from '@/store/api/userApi';
+import { useGetMyWalletQuery } from '@/store/api/walletApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type {
@@ -40,7 +42,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type PaymentChannel = 'mpesa' | 'airtel' | 'orange' | 'card';
+type PaymentChannel = 'mpesa' | 'airtel' | 'orange' | 'card' | 'points';
 type PaymentStage =
   | 'idle'
   | 'preparing'
@@ -84,6 +86,7 @@ const PAYMENT_OPTIONS: {
   { id: 'airtel', label: 'Airtel Money', hint: 'Mobile Money', icon: 'phone-portrait-outline' },
   { id: 'orange', label: 'Orange Money', hint: 'Mobile Money', icon: 'phone-portrait-outline' },
   { id: 'card', label: 'Carte', hint: 'Visa ou Mastercard', icon: 'card-outline' },
+  { id: 'points', label: 'Points', hint: 'Solde Zwanga', icon: 'wallet-outline' },
 ];
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -94,6 +97,18 @@ const formatSubscriptionAmount = (amount?: number | string, currency?: string) =
   const formatted =
     numericAmount % 1 === 0 ? Math.round(numericAmount).toString() : numericAmount.toFixed(2);
   return `${formatted} ${currency || 'CDF'}`;
+};
+
+const formatPointsAmount = (amount?: number | string | null, currency?: string | null) => {
+  const numericAmount = Number(amount);
+  const displayCurrency = currency || 'PTS';
+  if (!Number.isFinite(numericAmount)) return `${amount ?? 0} ${displayCurrency}`;
+
+  const formatted =
+    numericAmount % 1 === 0
+      ? Math.round(numericAmount).toLocaleString('fr-FR')
+      : numericAmount.toFixed(2);
+  return `${formatted} ${displayCurrency}`;
 };
 
 const getPlanLabel = (plan?: SubscriptionPlan | null) => {
@@ -240,8 +255,10 @@ const isNetworkOrTimeoutError = (error: any) =>
 const getStoredPaymentKey = (userId?: string | null) =>
   userId ? `zwanga:subscription:pending-payment:${userId}` : null;
 
-const getPaymentMethodForChannel = (channel: PaymentChannel): SubscriptionPaymentMethod =>
-  channel === 'card' ? 'card' : 'mobile_money';
+const getPaymentMethodForChannel = (channel: PaymentChannel): SubscriptionPaymentMethod | null => {
+  if (channel === 'points') return null;
+  return channel === 'card' ? 'card' : 'mobile_money';
+};
 
 const isPaymentChannel = (value: unknown): value is PaymentChannel =>
   value === 'mpesa' || value === 'airtel' || value === 'orange' || value === 'card';
@@ -261,10 +278,12 @@ const parseStoredPayment = (value?: string | null): StoredPayment | null => {
     if (!Number.isFinite(createdAtMs)) return null;
     if (Date.now() - createdAtMs > RECENT_PENDING_PAYMENT_MAX_AGE_MS) return null;
 
+    const fallbackPaymentMethod = getPaymentMethodForChannel(parsed.channel);
     const paymentMethod =
       parsed.paymentMethod === 'card' || parsed.paymentMethod === 'mobile_money'
         ? parsed.paymentMethod
         : getPaymentMethodForChannel(parsed.channel);
+    if (!paymentMethod || !fallbackPaymentMethod) return null;
 
     return {
       channel: parsed.channel,
@@ -312,7 +331,11 @@ const buildStoredPaymentFromHistory = (
 ): StoredPayment | null => {
   if (!payment.orderNumber || !userId) return null;
 
-  const channel = payment.method === 'card' ? 'card' : fallbackChannel === 'card' ? 'mpesa' : fallbackChannel;
+  const mobileMoneyFallback =
+    fallbackChannel === 'mpesa' || fallbackChannel === 'airtel' || fallbackChannel === 'orange'
+      ? fallbackChannel
+      : 'mpesa';
+  const channel = payment.method === 'card' ? 'card' : mobileMoneyFallback;
   return {
     channel,
     createdAt: payment.createdAt,
@@ -362,7 +385,13 @@ export default function SubscriptionPaymentScreen() {
     data: paymentHistory,
     refetch: refetchPaymentHistory,
   } = useGetPaymentHistoryQuery(undefined, { skip: !isDriver });
+  const {
+    data: walletSummary,
+    refetch: refetchWallet,
+  } = useGetMyWalletQuery(undefined, { skip: !isDriver });
   const [subscribeToPro, { isLoading: isSubscribing }] = useSubscribeToProMutation();
+  const [subscribeToProWithPoints, { isLoading: isPayingWithPoints }] =
+    useSubscribeToProWithPointsMutation();
   const [checkPaymentStatus, { isFetching: isChecking }] =
     useLazyCheckSubscriptionPaymentStatusQuery();
 
@@ -390,6 +419,15 @@ export default function SubscriptionPaymentScreen() {
   const priceLabel = formatSubscriptionAmount(proPlan?.amount, proPlan?.currency);
   const planLabel = getPlanLabel(proPlan?.plan);
   const isCardPayment = selectedChannel === 'card';
+  const isPointsPayment = selectedChannel === 'points';
+  const subscriptionPointsAmount = Number(proPlan?.pointsAmount ?? proPlan?.amount ?? 0);
+  const walletBalance = Number(walletSummary?.account.balance ?? 0);
+  const pointsCurrency = proPlan?.pointsCurrency || walletSummary?.account.currency || 'PTS';
+  const subscriptionPointsLabel = formatPointsAmount(
+    proPlan?.pointsAmount ?? proPlan?.amount ?? 0,
+    pointsCurrency,
+  );
+  const walletBalanceLabel = formatPointsAmount(walletSummary?.account.balance ?? 0, pointsCurrency);
   const isPremiumActive = Boolean(
     premiumOverview?.isPremium ||
       premiumOverview?.isActive ||
@@ -405,7 +443,22 @@ export default function SubscriptionPaymentScreen() {
   const progressSteps = useMemo(() => {
     const activeStage = stage === 'idle' && orderNumber ? 'operator_confirmation' : stage;
     const paymentStarted = activeStage !== 'idle' || Boolean(orderNumber);
-    const baseSteps = isCardPayment
+    const baseSteps = isPointsPayment
+      ? [
+          {
+            key: 'wallet',
+            title: 'Solde',
+            description: 'Zwanga verifie et debite votre solde de points.',
+            icon: 'wallet-outline' as keyof typeof Ionicons.glyphMap,
+          },
+          {
+            key: 'activation',
+            title: 'Activation',
+            description: "L'abonnement est active des que le debit points est confirme.",
+            icon: 'shield-checkmark-outline' as keyof typeof Ionicons.glyphMap,
+          },
+        ]
+      : isCardPayment
       ? [
           {
             key: 'preparing',
@@ -460,24 +513,16 @@ export default function SubscriptionPaymentScreen() {
           },
         ];
 
-    const currentStepKey =
-      !paymentStarted
-        ? null
-        : activeStage === 'preparing'
-        ? 'preparing'
-        : activeStage === 'card_redirect'
-          ? 'card'
-          : activeStage === 'phone_confirmation'
-            ? 'phone'
-            : activeStage === 'operator_confirmation' || activeStage === 'waiting_long'
-              ? 'operator'
-              : activeStage === 'zwanga_activation' || activeStage === 'success'
-                ? 'activation'
-                : activeStage === 'failed'
-                  ? isCardPayment
-                    ? 'card'
-                    : 'operator'
-                  : 'preparing';
+    const currentStepKey = (() => {
+      if (!paymentStarted) return null;
+      if (activeStage === 'preparing') return isPointsPayment ? 'wallet' : 'preparing';
+      if (activeStage === 'card_redirect') return 'card';
+      if (activeStage === 'phone_confirmation') return 'phone';
+      if (activeStage === 'operator_confirmation' || activeStage === 'waiting_long') return 'operator';
+      if (activeStage === 'zwanga_activation' || activeStage === 'success') return 'activation';
+      if (activeStage === 'failed') return isPointsPayment ? 'wallet' : isCardPayment ? 'card' : 'operator';
+      return 'preparing';
+    })();
 
     const currentIndex = Math.max(
       -1,
@@ -500,7 +545,7 @@ export default function SubscriptionPaymentScreen() {
 
       return { ...step, status: stepStatus };
     });
-  }, [autoCheckAttempt, isCardPayment, orderNumber, stage]);
+  }, [autoCheckAttempt, isCardPayment, isPointsPayment, orderNumber, stage]);
   const highlightedProgressStep =
     stage === 'idle' && !orderNumber
       ? progressSteps[0]
@@ -529,13 +574,17 @@ export default function SubscriptionPaymentScreen() {
       };
     }
 
-    if (isSubscribing || stage === 'preparing') {
+    if (isSubscribing || isPayingWithPoints || stage === 'preparing') {
       return {
-        icon: 'lock-closed-outline' as keyof typeof Ionicons.glyphMap,
-        title: 'Référence en préparation',
+        icon: isPointsPayment
+          ? ('wallet-outline' as keyof typeof Ionicons.glyphMap)
+          : ('lock-closed-outline' as keyof typeof Ionicons.glyphMap),
+        title: isPointsPayment ? 'Debit points' : 'Reference en preparation',
         text:
           message ||
-          "Aucun débit n'est lancé ici. Zwanga crée seulement une référence sécurisée.",
+          (isPointsPayment
+            ? "Verification du solde et activation de l'abonnement."
+            : "Aucun debit n'est lance ici. Zwanga cree seulement une reference securisee."),
         activity: false,
         color: Colors.primary,
       };
@@ -576,9 +625,19 @@ export default function SubscriptionPaymentScreen() {
     }
 
     return null;
-  }, [autoCheckAttempt, isAutoChecking, isChecking, isSubscribing, message, orderNumber, stage]);
+  }, [
+    autoCheckAttempt,
+    isAutoChecking,
+    isChecking,
+    isPayingWithPoints,
+    isPointsPayment,
+    isSubscribing,
+    message,
+    orderNumber,
+    stage,
+  ]);
 
-  const isBusy = isSubscribing || isChecking;
+  const isBusy = isSubscribing || isPayingWithPoints || isChecking;
   const primaryButtonLabel =
     isPremiumActive || stage === 'success'
       ? 'Abonnement actif'
@@ -592,9 +651,11 @@ export default function SubscriptionPaymentScreen() {
               : 'Actualiser le statut'
           : stage === 'failed'
             ? 'Reessayer'
-            : isCardPayment
-              ? 'Payer par carte'
-              : "Payer l'abonnement";
+            : isPointsPayment
+              ? 'Payer avec points'
+              : isCardPayment
+                ? 'Payer par carte'
+                : "Payer l'abonnement";
   const isPrimaryActionDisabled = isBusy || isPremiumActive || stage === 'success';
 
   const stopAutoCheck = useCallback(() => {
@@ -673,7 +734,7 @@ export default function SubscriptionPaymentScreen() {
 
       stopAutoCheck();
       await clearStoredPayment();
-      await Promise.allSettled([refetchPremiumOverview(), refetchProfile()]);
+      await Promise.allSettled([refetchPremiumOverview(), refetchProfile(), refetchWallet()]);
       setStage('success');
       setOrderNumber(null);
       setPaymentUrl(null);
@@ -686,7 +747,7 @@ export default function SubscriptionPaymentScreen() {
       });
       return true;
     },
-    [clearStoredPayment, refetchPremiumOverview, refetchProfile, showDialog, stopAutoCheck],
+    [clearStoredPayment, refetchPremiumOverview, refetchProfile, refetchWallet, showDialog, stopAutoCheck],
   );
 
   const checkPaymentByOrderNumber = useCallback(
@@ -914,13 +975,13 @@ export default function SubscriptionPaymentScreen() {
     try {
       const refreshTasks: PromiseLike<unknown>[] = [refetchProfile()];
       if (isDriver) {
-        refreshTasks.push(refetchPremiumOverview(), refetchPaymentHistory());
+        refreshTasks.push(refetchPremiumOverview(), refetchPaymentHistory(), refetchWallet());
       }
       await Promise.allSettled(refreshTasks);
     } finally {
       setRefreshing(false);
     }
-  }, [isDriver, refetchPaymentHistory, refetchPremiumOverview, refetchProfile]);
+  }, [isDriver, refetchPaymentHistory, refetchPremiumOverview, refetchProfile, refetchWallet]);
 
   const handlePrimaryAction = useCallback(async () => {
     Keyboard.dismiss();
@@ -969,7 +1030,49 @@ export default function SubscriptionPaymentScreen() {
       return;
     }
 
+    if (isPointsPayment) {
+      if (
+        walletSummary?.account &&
+        Number.isFinite(subscriptionPointsAmount) &&
+        Number.isFinite(walletBalance) &&
+        subscriptionPointsAmount > 0 &&
+        walletBalance < subscriptionPointsAmount
+      ) {
+        showDialog({
+          variant: 'warning',
+          title: 'Solde insuffisant',
+          message: `Votre solde est de ${walletBalanceLabel}. Il faut ${subscriptionPointsLabel} pour cet abonnement.`,
+        });
+        return;
+      }
+
+      try {
+        stopAutoCheck();
+        await clearStoredPayment();
+        setOrderNumber(null);
+        setPaymentUrl(null);
+        setStage('preparing');
+        setAutoCheckAttempt(0);
+        setMessage("Debit du solde points Zwanga en cours.");
+
+        const response = await subscribeToProWithPoints().unwrap();
+        if (await finishPayment(response)) return;
+
+        setStage('failed');
+        setMessage(response.payment.message || "Le paiement par points n'a pas ete confirme.");
+      } catch (error: any) {
+        setStage('failed');
+        showDialog({
+          variant: 'danger',
+          title: 'Paiement impossible',
+          message: getApiErrorMessage(error, 'Impossible de payer cet abonnement avec vos points.'),
+        });
+      }
+      return;
+    }
+
     const method = getPaymentMethodForChannel(selectedChannel);
+    if (!method) return;
     const formattedPhone = formatCongolesePaymentPhone(phone);
 
     if (method === 'mobile_money' && !formattedPhone) {
@@ -1089,6 +1192,7 @@ export default function SubscriptionPaymentScreen() {
     finishPayment,
     isDriver,
     isPremiumActive,
+    isPointsPayment,
     openCardPaymentUrl,
     orderNumber,
     paymentMethod,
@@ -1102,6 +1206,12 @@ export default function SubscriptionPaymentScreen() {
     stage,
     stopAutoCheck,
     subscribeToPro,
+    subscribeToProWithPoints,
+    subscriptionPointsAmount,
+    subscriptionPointsLabel,
+    walletBalance,
+    walletBalanceLabel,
+    walletSummary?.account,
   ]);
 
   const handleRetry = useCallback(async () => {
@@ -1332,7 +1442,10 @@ export default function SubscriptionPaymentScreen() {
                     disabled={disabled}
                     onPress={() => {
                       setSelectedChannel(option.id);
-                      setPaymentMethod(getPaymentMethodForChannel(option.id));
+                      const nextPaymentMethod = getPaymentMethodForChannel(option.id);
+                      if (nextPaymentMethod) {
+                        setPaymentMethod(nextPaymentMethod);
+                      }
                     }}
                     style={[
                       styles.paymentOption,
@@ -1358,7 +1471,23 @@ export default function SubscriptionPaymentScreen() {
             </View>
           </View>
 
-          {!isCardPayment ? (
+          {isPointsPayment ? (
+            <View style={[styles.pointsNotice, isCompactHeight && styles.pointsNoticeCompact]}>
+              <View style={styles.pointsNoticeIcon}>
+                <Ionicons name="wallet-outline" size={20} color={Colors.primary} />
+              </View>
+              <View style={styles.pointsNoticeTextBlock}>
+                <View style={styles.pointsNoticeRow}>
+                  <Text style={styles.pointsNoticeLabel}>Solde</Text>
+                  <Text style={styles.pointsNoticeValue}>{walletBalanceLabel}</Text>
+                </View>
+                <View style={styles.pointsNoticeRow}>
+                  <Text style={styles.pointsNoticeLabel}>Abonnement</Text>
+                  <Text style={styles.pointsNoticeValue}>{subscriptionPointsLabel}</Text>
+                </View>
+              </View>
+            </View>
+          ) : !isCardPayment ? (
             <View style={[styles.section, isCompactHeight && styles.sectionCompact]}>
               <Text style={styles.sectionLabel}>Numéro Mobile Money</Text>
               <View
@@ -1719,6 +1848,48 @@ const styles = StyleSheet.create({
     color: Colors.gray[700],
     fontSize: FontSizes.sm,
     lineHeight: 20,
+  },
+  pointsNotice: {
+    minHeight: 64,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary + '24',
+    backgroundColor: Colors.white,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  pointsNoticeCompact: {
+    minHeight: 56,
+  },
+  pointsNoticeIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.primary + '10',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pointsNoticeTextBlock: {
+    flex: 1,
+    gap: 4,
+  },
+  pointsNoticeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  pointsNoticeLabel: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+  },
+  pointsNoticeValue: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
   },
   progressPanel: {
     borderRadius: BorderRadius.sm,

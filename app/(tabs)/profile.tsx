@@ -2458,39 +2458,113 @@ export default function ProfileScreen() {
     return activeRequests.length;
   }, [myTripRequests]);
 
-  const tripRequestsWithOffersCount = useMemo(() => {
-    return myTripRequests.filter(
-      (req) => req.status === 'offers_received' && (req.offers?.length || 0) > 0
-    ).length;
-  }, [myTripRequests]);
-
   // Calculer les compteurs pour les offres
   const pendingOffersCount = useMemo(() => {
     return myDriverOffers.filter((offer) => offer.status === 'pending').length;
   }, [myDriverOffers]);
 
-  const acceptedOffersCount = useMemo(() => {
-    return myDriverOffers.filter((offer) => offer.status === 'accepted').length;
-  }, [myDriverOffers]);
+  const driverTripsCount = stats?.tripsAsDriver ?? currentUser?.totalTrips ?? 0;
+  const passengerBookingsCount = stats?.bookingsAsPassenger ?? 0;
+  const driverBookingsCount = stats?.bookingsAsDriver ?? 0;
+  const hasVehicle = vehicleList.length > 0;
+  const kycStatusLabel = isKycApproved
+    ? 'Verifiee'
+    : isKycPending
+      ? 'En revue'
+      : isKycRejected
+        ? 'A corriger'
+        : 'A verifier';
+  const kycStatusColor = isKycApproved
+    ? Colors.success
+    : isKycPending
+      ? Colors.warning
+      : isKycRejected
+        ? Colors.danger
+        : Colors.gray[500];
+  const driverStatusItems = [
+    {
+      icon: 'shield-checkmark-outline' as keyof typeof Ionicons.glyphMap,
+      label: 'Identite',
+      value: kycStatusLabel,
+      color: kycStatusColor,
+    },
+    {
+      icon: 'car-outline' as keyof typeof Ionicons.glyphMap,
+      label: 'Vehicule',
+      value: hasVehicle ? `${vehicleList.length} ajoute${vehicleList.length > 1 ? 's' : ''}` : 'A ajouter',
+      color: hasVehicle ? Colors.success : Colors.warning,
+    },
+    {
+      icon: isPremiumActive
+        ? ('shield-checkmark-outline' as keyof typeof Ionicons.glyphMap)
+        : ('sparkles-outline' as keyof typeof Ionicons.glyphMap),
+      label: 'Pro',
+      value: needsDriverOnboarding ? 'Profil incomplet' : isPremiumActive ? 'Actif' : 'Disponible',
+      color: needsDriverOnboarding ? Colors.gray[500] : isPremiumActive ? Colors.success : Colors.primary,
+    },
+  ];
+  const priorityCta = needsDriverOnboarding
+    ? {
+        label: 'Completer conducteur',
+        icon: 'car-sport-outline' as keyof typeof Ionicons.glyphMap,
+        onPress: handleStartDriverOnboarding,
+      }
+    : isDriver && !isPremiumActive
+      ? {
+          label: 'Activer Pro',
+          icon: 'sparkles-outline' as keyof typeof Ionicons.glyphMap,
+          onPress: handleSubscribePro,
+        }
+      : {
+          label: 'Points Zwanga',
+          icon: 'wallet-outline' as keyof typeof Ionicons.glyphMap,
+          onPress: () => router.push('/wallet' as any),
+        };
+  const isPriorityCtaBusy = needsDriverOnboarding ? isUpdatingUser : proBusy;
+  const shouldShowProDetailsCard = !needsDriverOnboarding && isPremiumActive;
+  const quickActionItems = [
+    {
+      icon: 'calendar-outline' as keyof typeof Ionicons.glyphMap,
+      label: 'Reservations',
+      meta: `${passengerBookingsCount + driverBookingsCount} au total`,
+      onPress: () => router.push('/bookings'),
+    },
+    {
+      icon: 'document-text-outline' as keyof typeof Ionicons.glyphMap,
+      label: 'Demandes',
+      meta: `${tripRequestsStats.activeRequests} actives`,
+      badge: tripRequestsCount > 0 ? tripRequestsCount : undefined,
+      onPress: () => router.push('/my-requests'),
+    },
+    {
+      icon: 'wallet-outline' as keyof typeof Ionicons.glyphMap,
+      label: 'Points',
+      meta: 'Solde et partage',
+      onPress: () => router.push('/wallet' as any),
+    },
+    {
+      icon: 'person-outline' as keyof typeof Ionicons.glyphMap,
+      label: 'Infos',
+      meta: 'Profil personnel',
+      onPress: () => router.push('/edit-profile'),
+    },
+  ];
 
   const menuItems = [
-    { icon: 'person-outline', label: 'Modifier le profil', route: '/edit-profile' },
     { icon: 'lock-closed-outline', label: 'Modifier le code PIN', route: null, onPress: handleOpenPinModal },
     { icon: 'star-outline', label: 'Lieux favoris', route: '/favorite-locations' },
-    {
-      icon: 'document-text-outline',
-      label: 'Mes demandes de trajet',
-      route: '/my-requests',
-      badge: tripRequestsCount > 0 ? tripRequestsCount : undefined,
-      badgeColor: tripRequestsWithOffersCount > 0 ? Colors.info : Colors.warning,
-    },
     ...(isDriver
       ? [
-          { icon: 'list-outline', label: 'Demandes disponibles', route: '/requests' },
+          {
+            icon: 'list-outline',
+            label: 'Demandes disponibles',
+            route: '/requests',
+            badge: pendingOffersCount > 0 ? pendingOffersCount : undefined,
+            badgeColor: Colors.info,
+          },
         ]
       : []),
     { icon: 'notifications-outline', label: 'Notifications', route: '/notifications' },
-    { icon: 'settings-outline', label: 'Paramètres', route: '/settings' },
     { icon: 'help-circle-outline', label: 'Aide & Support', route: '/support' },
   ];
 
@@ -2559,30 +2633,119 @@ export default function ProfileScreen() {
                 <Ionicons name="camera" size={14} color={Colors.white} />
               </TouchableOpacity>
             </TouchableOpacity>
-            
-            <Text style={styles.userName}>{currentUser?.name || 'Utilisateur'}</Text>
-            <View style={styles.userPhoneRow}>
-              <Ionicons name="call-outline" size={14} color="rgba(255,255,255,0.7)" />
-              <Text style={styles.userPhone}>{currentUser?.phone || ''}</Text>
-            </View>
-
-            <View style={styles.headerStats}>
-              <View style={styles.headerStatItem}>
-                <Ionicons name="star" size={16} color={Colors.secondary} />
-                <Text style={styles.headerStatValue}>{reviewAverage.toFixed(1)}</Text>
-                <Text style={styles.headerStatLabel}>Note</Text>
+            <View style={styles.userIdentityBlock}>
+              <Text numberOfLines={1} style={styles.userName}>
+                {currentUser?.name || 'Utilisateur'}
+              </Text>
+              <View style={styles.userPhoneRow}>
+                <Ionicons name="call-outline" size={13} color="rgba(255,255,255,0.75)" />
+                <Text numberOfLines={1} style={styles.userPhone}>
+                  {currentUser?.phone || ''}
+                </Text>
               </View>
-              <View style={styles.headerStatDivider} />
-              <View style={styles.headerStatItem}>
-                <Ionicons name="car-outline" size={18} color={Colors.white} />
-                <Text style={styles.headerStatValue}>{stats?.tripsAsDriver ?? currentUser?.totalTrips ?? 0}</Text>
-                <Text style={styles.headerStatLabel}>Trajets</Text>
+              <View style={styles.userRoleRow}>
+                <View style={styles.userRolePill}>
+                  <Ionicons
+                    name={isDriver ? 'car-outline' : 'person-outline'}
+                    size={12}
+                    color={Colors.white}
+                  />
+                  <Text style={styles.userRolePillText}>
+                    {isDriver ? 'Conducteur' : 'Passager'}
+                  </Text>
+                </View>
+                {isPremiumActive ? (
+                  <View style={styles.userRolePill}>
+                    <Ionicons name="shield-checkmark-outline" size={12} color={Colors.white} />
+                    <Text style={styles.userRolePillText}>Pro</Text>
+                  </View>
+                ) : null}
               </View>
             </View>
           </View>
         </View>
 
         <View style={styles.mainActionsContainer}>
+          <Animated.View entering={FadeInDown.delay(120)} style={styles.profileOverviewPanel}>
+            <View style={styles.profileOverviewHeader}>
+              <View style={styles.profileOverviewTitleBlock}>
+                <Text style={styles.profileOverviewTitle}>Tableau de bord</Text>
+                <Text style={styles.profileOverviewSubtitle}>
+                  {isDriver ? `${driverTripsCount} trajets publies` : 'Profil passager'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                disabled={isPriorityCtaBusy}
+                onPress={priorityCta.onPress}
+                style={[
+                  styles.profileOverviewCta,
+                  isPriorityCtaBusy && styles.profileOverviewCtaDisabled,
+                ]}
+              >
+                {isPriorityCtaBusy ? (
+                  <ActivityIndicator size="small" color={Colors.white} />
+                ) : (
+                  <>
+                    <Ionicons name={priorityCta.icon} size={16} color={Colors.white} />
+                    <Text numberOfLines={1} style={styles.profileOverviewCtaText}>
+                      {priorityCta.label}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.driverStatusGrid}>
+              {driverStatusItems.map((item) => (
+                <View key={item.label} style={styles.driverStatusItem}>
+                  <View style={[styles.driverStatusIcon, { backgroundColor: item.color + '14' }]}>
+                    <Ionicons name={item.icon} size={16} color={item.color} />
+                  </View>
+                  <Text style={styles.driverStatusLabel}>{item.label}</Text>
+                  <Text numberOfLines={1} style={[styles.driverStatusValue, { color: item.color }]}>
+                    {item.value}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            {isKycRejected && kycStatus?.rejectionReason ? (
+              <TouchableOpacity activeOpacity={0.85} onPress={handleOpenKycModal} style={styles.profileAlert}>
+                <Ionicons name="alert-circle-outline" size={18} color={Colors.danger} />
+                <Text numberOfLines={2} style={styles.profileAlertText}>
+                  {kycStatus?.rejectionReason}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+
+            <View style={styles.quickActionsGrid}>
+              {quickActionItems.map((item) => (
+                <TouchableOpacity
+                  key={item.label}
+                  activeOpacity={0.85}
+                  onPress={item.onPress}
+                  style={styles.quickActionButton}
+                >
+                  <View style={styles.quickActionIconWrap}>
+                    <Ionicons name={item.icon} size={19} color={Colors.primary} />
+                    {item.badge ? (
+                      <View style={styles.quickActionBadge}>
+                        <Text style={styles.quickActionBadgeText}>{item.badge}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={styles.quickActionLabel}>{item.label}</Text>
+                  <Text numberOfLines={1} style={styles.quickActionMeta}>
+                    {item.meta}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </Animated.View>
+
+          {false && (
+            <>
           <TouchableOpacity
             style={[styles.mainActionCard, { borderColor: Colors.primary + '30' }]}
             onPress={() => router.push('/bookings')}
@@ -2684,7 +2847,11 @@ export default function ProfileScreen() {
             </Animated.View>
           )}
 
-          <Animated.View entering={FadeInDown.delay(260)}>
+            </>
+          )}
+
+          {shouldShowProDetailsCard && (
+            <Animated.View entering={FadeInDown.delay(260)}>
             <View style={[styles.proCard, isPremiumActive && styles.proCardActive]}>
               <View style={styles.proHeader}>
                 <View style={[styles.proIcon, isPremiumActive && styles.proIconActive]}>
@@ -2777,7 +2944,8 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               )}
             </View>
-          </Animated.View>
+            </Animated.View>
+          )}
 
           {!needsDriverOnboarding && (
             <Animated.View entering={FadeInDown.delay(300)}>
@@ -2813,6 +2981,8 @@ export default function ProfileScreen() {
           )}
         </View>
 
+        {false && (
+          <>
         <View style={styles.section}>
           <Text style={styles.sectionHeaderTitle}>Activité</Text>
           <View style={styles.statsGrid}>
@@ -2845,6 +3015,8 @@ export default function ProfileScreen() {
               </View>
             </View>
           </View>
+        )}
+          </>
         )}
 
         <View style={styles.reviewsContainer}>
@@ -2899,6 +3071,7 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {false && (
         <View style={styles.kycContainer}>
           <View style={styles.kycCard}>
             <View style={styles.kycHeader}>
@@ -2926,9 +3099,7 @@ export default function ProfileScreen() {
             {isKycRejected && kycStatus?.rejectionReason ? (
               <View style={styles.kycRejectionContainer}>
                 <Text style={styles.kycRejectionTitle}>Motif du rejet :</Text>
-                <Text style={styles.kycRejectionText}>
-                  {kycStatus.rejectionReason}
-                </Text>
+                <Text style={styles.kycRejectionText}>{kycStatus?.rejectionReason}</Text>
               </View>
             ) : null}
             <Text style={styles.kycHelperText}>
@@ -2965,6 +3136,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        )}
 
         <View style={styles.vehiclesContainer}>
           <View style={styles.vehiclesHeader}>
@@ -3739,8 +3911,8 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.xxl,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.lg,
     borderBottomLeftRadius: BorderRadius.xxl,
     borderBottomRightRadius: BorderRadius.xxl,
     overflow: 'hidden',
@@ -3753,17 +3925,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.sm,
     zIndex: 1,
   },
   headerTitle: {
-    fontSize: FontSizes.xxl,
+    fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
     color: Colors.white,
   },
   settingsButton: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
     borderRadius: BorderRadius.full,
     alignItems: 'center',
@@ -3772,18 +3944,19 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   userInfo: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing.md,
     zIndex: 1,
   },
   avatarContainer: {
     position: 'relative',
-    marginBottom: Spacing.md,
   },
   avatarWrapper: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 4,
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.3)',
     overflow: 'hidden',
     backgroundColor: Colors.white,
@@ -3800,7 +3973,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[100],
   },
   avatarEmoji: {
-    fontSize: 40,
+    fontSize: 25,
   },
   uploadingOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -3810,13 +3983,13 @@ const styles = StyleSheet.create({
   },
   verifiedBadge: {
     position: 'absolute',
-    top: 0,
-    right: 0,
-    width: 28,
-    height: 28,
+    top: -2,
+    right: -2,
+    width: 22,
+    height: 22,
     backgroundColor: Colors.success,
-    borderRadius: 14,
-    borderWidth: 3,
+    borderRadius: 11,
+    borderWidth: 2,
     borderColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -3824,70 +3997,223 @@ const styles = StyleSheet.create({
   },
   cameraBadge: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 28,
-    height: 28,
+    bottom: -2,
+    right: -2,
+    width: 24,
+    height: 24,
     backgroundColor: Colors.primary,
-    borderRadius: 14,
-    borderWidth: 3,
+    borderRadius: 12,
+    borderWidth: 2,
     borderColor: Colors.white,
     alignItems: 'center',
     justifyContent: 'center',
     ...CommonStyles.shadowSm,
   },
+  userIdentityBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
   userName: {
-    fontSize: FontSizes.xxl,
+    fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
     color: Colors.white,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   userPhoneRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    opacity: 0.8,
-    marginBottom: Spacing.xl,
+    opacity: 0.85,
   },
   userPhone: {
     color: Colors.white,
     fontSize: FontSizes.sm,
   },
-  headerStats: {
+  userRoleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.xl,
-    gap: Spacing.xl,
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    marginTop: Spacing.xs,
   },
-  headerStatItem: {
+  userRolePill: {
+    minHeight: 24,
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 4,
+    paddingHorizontal: 8,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.22)',
   },
-  headerStatValue: {
+  userRolePillText: {
     color: Colors.white,
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.base,
-  },
-  headerStatLabel: {
-    color: Colors.white,
-    opacity: 0.7,
     fontSize: 10,
+    fontWeight: FontWeights.bold,
     textTransform: 'uppercase',
-    fontWeight: FontWeights.medium,
-  },
-  headerStatDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   mainActionsContainer: {
     paddingHorizontal: Spacing.xl,
-    marginTop: -Spacing.xl,
+    marginTop: -Spacing.xs,
     gap: Spacing.md,
     marginBottom: Spacing.xl,
+  },
+  profileOverviewPanel: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    padding: Spacing.md,
+    gap: Spacing.md,
+    ...CommonStyles.shadowSm,
+  },
+  profileOverviewHeader: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.md,
+  },
+  profileOverviewTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  profileOverviewTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+  },
+  profileOverviewSubtitle: {
+    marginTop: 2,
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+  },
+  profileOverviewCta: {
+    maxWidth: '58%',
+    minHeight: 40,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+  },
+  profileOverviewCtaDisabled: {
+    opacity: 0.65,
+  },
+  profileOverviewCtaText: {
+    flexShrink: 1,
+    color: Colors.white,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  driverStatusGrid: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  driverStatusItem: {
+    flex: 1,
+    minHeight: 76,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    backgroundColor: Colors.gray[50],
+    padding: Spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    gap: 3,
+  },
+  driverStatusIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  driverStatusLabel: {
+    color: Colors.gray[500],
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    textTransform: 'uppercase',
+  },
+  driverStatusValue: {
+    maxWidth: '100%',
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  profileAlert: {
+    minHeight: 44,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.danger + '24',
+    backgroundColor: Colors.danger + '08',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  profileAlertText: {
+    flex: 1,
+    color: Colors.danger,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+    lineHeight: 17,
+  },
+  quickActionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  quickActionButton: {
+    flexBasis: '47%',
+    flexGrow: 1,
+    minHeight: 76,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    backgroundColor: Colors.white,
+    padding: Spacing.sm,
+    justifyContent: 'center',
+    gap: 4,
+  },
+  quickActionIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: Colors.primary + '10',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickActionBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -7,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: Colors.warning,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  quickActionBadgeText: {
+    color: Colors.white,
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+  },
+  quickActionLabel: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  quickActionMeta: {
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
   },
   mainActionCard: {
     flexDirection: 'row',

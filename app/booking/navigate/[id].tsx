@@ -54,6 +54,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   BackHandler,
   InteractionManager,
   Modal,
@@ -1238,12 +1239,30 @@ export default function PassengerNavigationScreen() {
       const now = Date.now();
       if (now - lastSentAt < SEND_INTERVAL_MS) return;
       lastSentAt = now;
+      const metadata = {
+        ...(typeof location.coords.accuracy === 'number' &&
+        Number.isFinite(location.coords.accuracy) &&
+        location.coords.accuracy >= 0
+          ? { accuracy: location.coords.accuracy }
+          : {}),
+        ...(typeof location.coords.speed === 'number' &&
+        Number.isFinite(location.coords.speed) &&
+        location.coords.speed >= 0
+          ? { speed: location.coords.speed }
+          : {}),
+        ...(typeof location.coords.heading === 'number' &&
+        Number.isFinite(location.coords.heading) &&
+        location.coords.heading >= 0
+          ? { heading: location.coords.heading }
+          : {}),
+        recordedAt: new Date(acceptedTimestamp).toISOString(),
+      };
 
       try {
         await trackingSocket.updatePassengerLocation(tripId, booking.id, [
           coordinate.longitude,
           coordinate.latitude,
-        ]);
+        ], metadata);
         return;
       } catch (socketError) {
         console.warn('[PassengerNavigation] Envoi temps reel indisponible, fallback REST:', socketError);
@@ -1254,6 +1273,7 @@ export default function PassengerNavigationScreen() {
           bookingId: booking.id,
           latitude: coordinate.latitude,
           longitude: coordinate.longitude,
+          ...metadata,
         }).unwrap();
 
         if (response.autoProgress?.events?.length && isMountedRef.current) {
@@ -1347,9 +1367,22 @@ export default function PassengerNavigationScreen() {
     };
 
     void startPassengerLocationSharing();
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active' || isCancelled) return;
+
+      void trackingSocket.resumeBoardingDetection(tripId).catch((error) => {
+        console.warn('[PassengerNavigation] Reprise detection embarquement impossible:', error);
+      });
+      void Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+        .then(sendLocation)
+        .catch((error) => {
+          console.warn('[PassengerNavigation] Position de reprise indisponible:', error);
+        });
+    });
 
     return () => {
       isCancelled = true;
+      appStateSubscription.remove();
       passengerLocationSubscriptionRef.current?.remove();
       passengerLocationSubscriptionRef.current = null;
     };

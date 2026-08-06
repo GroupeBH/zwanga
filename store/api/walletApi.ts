@@ -3,6 +3,7 @@ import type {
   WalletLedgerEntry,
   WalletPaymentResponse,
   WalletSummary,
+  WalletTransferResponse,
 } from '../../types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
@@ -14,6 +15,14 @@ type InitiateWalletTopUpPayload = {
   approveUrl?: string;
   cancelUrl?: string;
   declineUrl?: string;
+};
+
+type TransferWalletPointsPayload = {
+  amount: number;
+  recipientUserId?: string;
+  recipientPhone?: string;
+  recipientEmail?: string;
+  note?: string;
 };
 
 const walletTag = { type: 'Wallet' as const, id: 'ME' };
@@ -41,6 +50,14 @@ export const walletApi = baseApi.injectEndpoints({
       query: (orderNumber) => `/wallet/topups/${encodeURIComponent(orderNumber)}/status`,
       providesTags: [walletTag],
     }),
+    transferWalletPoints: builder.mutation<WalletTransferResponse, TransferWalletPointsPayload>({
+      query: (body) => ({
+        url: '/wallet/transfers',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: [walletTag],
+    }),
   }),
 });
 
@@ -49,4 +66,5 @@ export const {
   useGetWalletLedgerQuery,
   useInitiateWalletTopUpMutation,
   useLazyCheckWalletTopUpStatusQuery,
+  useTransferWalletPointsMutation,
 } = walletApi;
