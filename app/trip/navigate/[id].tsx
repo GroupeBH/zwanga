@@ -1648,7 +1648,7 @@ export default function NavigationScreen() {
           icon: 'flag',
           title: isAutoCompleteZone ? 'Zone de destination atteinte' : 'Destination finale proche',
           message: isAutoCompleteZone
-            ? `Le vehicule est a moins de ${DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS} m du point d'arrivee. Le trajet sera termine automatiquement apres 10 minutes si le vehicule reste dans cette zone.${distanceText}`
+            ? `Le vehicule est à moins de ${DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS} m du point d'arrivée. Le trajet sera terminé automatiquement après 10 minutes si le vehicule reste dans cette zone.${distanceText}`
             : `Le point d'arrivee du trajet est presque atteint.${distanceText}`,
         });
 
@@ -1864,7 +1864,7 @@ export default function NavigationScreen() {
           refetchBookings();
         })
         .catch((error) => {
-          console.warn('[Navigation] Finalisation automatique du trajet non persistee:', error);
+          console.warn('[Navigation] Finalisation automatique du trajet non persistée:', error);
         })
         .finally(() => {
           autoCompletingTripRef.current = false;

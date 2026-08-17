@@ -128,7 +128,7 @@ export default function WalletScreen() {
   const router = useRouter();
   const { showDialog } = useDialog();
   const [activeTab, setActiveTab] = useState<WalletTab>('top_up');
-  const [topUpAmount, setTopUpAmount] = useState('5000');
+  const [topUpAmount, setTopUpAmount] = useState('50');
   const [topUpMethod, setTopUpMethod] = useState<SubscriptionPaymentMethod>('mobile_money');
   const [topUpPhone, setTopUpPhone] = useState('');
   const [topUpOrderNumber, setTopUpOrderNumber] = useState<string | null>(null);
@@ -170,8 +170,8 @@ export default function WalletScreen() {
     if (!amount) {
       showDialog({
         variant: 'warning',
-        title: 'Montant invalide',
-        message: 'Entrez un montant superieur a 0 pour acheter des points.',
+        title: 'Nombre de points invalide',
+        message: 'Entrez un nombre de points superieur a 0.',
       });
       return;
     }
@@ -253,7 +253,7 @@ export default function WalletScreen() {
     if (!amount) {
       showDialog({
         variant: 'warning',
-        title: 'Montant invalide',
+        title: 'Nombre de points invalide',
         message: 'Entrez le nombre de points a partager.',
       });
       return;
@@ -445,11 +445,12 @@ export default function WalletScreen() {
               <TextInput
                 keyboardType="numeric"
                 onChangeText={setTopUpAmount}
-                placeholder="Montant a acheter"
+                placeholder="Nombre de points"
                 placeholderTextColor={Colors.gray[400]}
                 style={styles.input}
                 value={topUpAmount}
               />
+              <Text style={styles.helperText}>1 point = 100 FC. Exemple: 50 points = 5 000 FC.</Text>
               {isTopUpPhoneRequired ? (
                 <TextInput
                   keyboardType="phone-pad"
@@ -731,6 +732,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     color: Colors.gray[900],
     fontSize: FontSizes.base,
+  },
+  helperText: {
+    marginTop: -Spacing.xs,
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
   },
   primaryButton: {
     minHeight: 50,

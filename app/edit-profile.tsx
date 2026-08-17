@@ -1,8 +1,10 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { GenderSelector } from '@/components/GenderSelector';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
 import { useGetProfileSummaryQuery, useUpdateUserMutation } from '@/store/api/userApi';
 import { useAppDispatch } from '@/store/hooks';
 import { updateUser as updateUserAction } from '@/store/slices/authSlice';
+import type { UserGender } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -32,6 +34,7 @@ export default function EditProfileScreen() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
+  const [gender, setGender] = useState<UserGender | null>(null);
   const [wantsToBeDriver, setWantsToBeDriver] = useState(false);
   const [feedback, setFeedback] = useState<{ visible: boolean; success: boolean; message: string }>({
     visible: false,
@@ -44,6 +47,7 @@ export default function EditProfileScreen() {
       setFirstName(user.firstName ?? '');
       setLastName(user.lastName ?? '');
       setPhone(user.phone ?? '');
+      setGender(user.gender ?? null);
       // Utiliser role pour déterminer si l'utilisateur est conducteur
       const isDriver = user?.role === 'driver' || user?.role === 'both';
       setWantsToBeDriver(isDriver);
@@ -76,6 +80,7 @@ export default function EditProfileScreen() {
       formData.append('firstName', firstName.trim());
       formData.append('lastName', lastName.trim());
       formData.append('phone', phone.trim());
+      if (gender) formData.append('gender', gender);
       // Ne modifier le rôle que si l'utilisateur n'est pas déjà conducteur
       // et qu'il souhaite devenir conducteur
       if (canBecomeDriver && wantsToBeDriver) {
@@ -93,6 +98,7 @@ export default function EditProfileScreen() {
           firstName: updated.firstName,
           lastName: updated.lastName,
           phone: updated.phone,
+          gender: updated.gender,
           avatar: updated.profilePicture ?? updated.avatar,
           profilePicture: updated.profilePicture,
           role: updated.role,
@@ -185,6 +191,7 @@ export default function EditProfileScreen() {
               onChangeText={setPhone}
             />
           </View>
+          <GenderSelector value={gender} onChange={setGender} />
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(200)} style={styles.card}>

@@ -612,17 +612,39 @@ export const authStyles = StyleSheet.create({
   },
 
   // Profile
-  profileHeader: {
+  profileStepContainer: {
+    paddingBottom: Spacing.sm,
+  },
+  profileCompactHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.xl,
+    justifyContent: 'space-between',
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  profileCompactHeading: {
+    flex: 1,
+  },
+  profileCompactEyebrow: {
+    color: Colors.primaryDark,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  profileCompactTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.xxl,
+    fontWeight: FontWeights.bold,
   },
   avatarUpload: {
     position: 'relative',
+    marginRight: 2,
   },
   avatarPlaceholder: {
-    width: 104,
-    height: 104,
-    borderRadius: 34,
+    width: 54,
+    height: 54,
+    borderRadius: 18,
     backgroundColor: AUTH_WARM_SURFACE,
     alignItems: 'center',
     justifyContent: 'center',
@@ -635,10 +657,10 @@ export const authStyles = StyleSheet.create({
     elevation: 3,
   },
   avatarImage: {
-    width: 104,
-    height: 104,
-    borderRadius: 34,
-    borderWidth: 3,
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    borderWidth: 2,
     borderColor: AUTH_SURFACE,
   },
   editBadge: {
@@ -646,8 +668,8 @@ export const authStyles = StyleSheet.create({
     bottom: -4,
     right: -4,
     backgroundColor: Colors.primaryDark,
-    width: 30,
-    height: 30,
+    width: 23,
+    height: 23,
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
@@ -655,8 +677,24 @@ export const authStyles = StyleSheet.create({
     borderColor: AUTH_SURFACE,
   },
 
-  formGrid: {
-    gap: Spacing.md,
+  profileNameRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  profileInputWrapper: {
+    flex: 1,
+    height: 46,
+    minWidth: 0,
+    marginBottom: 0,
+    paddingHorizontal: Spacing.md,
+    borderRadius: 14,
+  },
+  profileInputIcon: {
+    marginRight: Spacing.sm,
+  },
+
+  genderSelection: {
+    marginTop: Spacing.sm,
   },
 
   // Roles
@@ -668,29 +706,39 @@ export const authStyles = StyleSheet.create({
     marginTop: Spacing.sm,
   },
   roleSelection: {
-    marginTop: Spacing.lg,
+    marginTop: Spacing.sm,
+  },
+  profileSectionLabel: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[800],
+    marginBottom: 6,
   },
   roleCards: {
     flexDirection: 'row',
-    gap: Spacing.md,
+    gap: Spacing.sm,
   },
   roleCard: {
     flex: 1,
+    minHeight: 46,
+    flexDirection: 'row',
+    justifyContent: 'center',
     backgroundColor: AUTH_SURFACE,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: AUTH_WARM_BORDER,
-    borderRadius: 20,
-    padding: Spacing.lg,
+    borderRadius: 14,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
     alignItems: 'center',
-    gap: Spacing.md,
+    gap: Spacing.sm,
   },
   roleCardActive: {
     borderColor: Colors.primary,
     backgroundColor: AUTH_WARM_SURFACE,
   },
   roleIconBadge: {
-    width: 50,
-    height: 50,
+    width: 28,
+    height: 28,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.gray[100],
     alignItems: 'center',
@@ -711,22 +759,24 @@ export const authStyles = StyleSheet.create({
 
   // Vehicle
   vehicleSection: {
-    marginTop: Spacing.xl,
+    marginTop: Spacing.sm,
   },
   vehicleTypesScroll: {
-    paddingVertical: Spacing.sm,
-    gap: Spacing.md,
+    flexDirection: 'row',
+    paddingVertical: Spacing.xs,
+    gap: Spacing.sm,
   },
   vehicleTypeCard: {
+    flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    width: 92,
-    height: 92,
-    borderRadius: 18,
-    borderWidth: 1.5,
+    height: 58,
+    borderRadius: 14,
+    borderWidth: 1,
     borderColor: AUTH_WARM_BORDER,
     backgroundColor: AUTH_SURFACE,
-    gap: Spacing.sm,
+    gap: 2,
   },
   vehicleTypeCardActive: {
     borderColor: Colors.primary,
@@ -745,9 +795,11 @@ export const authStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: AUTH_SURFACE,
-    padding: Spacing.lg,
-    borderRadius: 18,
-    marginTop: Spacing.lg,
+    minHeight: 52,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: 14,
+    marginTop: Spacing.sm,
     borderWidth: 1,
     borderColor: AUTH_WARM_BORDER,
   },
@@ -763,6 +815,11 @@ export const authStyles = StyleSheet.create({
     fontSize: FontSizes.sm,
     color: AUTH_MUTED_TEXT,
     marginTop: 2,
+  },
+  profileContinueButton: {
+    height: 52,
+    marginTop: Spacing.md,
+    marginBottom: 0,
   },
 
   // KYC

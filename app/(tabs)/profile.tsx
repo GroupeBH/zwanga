@@ -2580,19 +2580,17 @@ export default function ProfileScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       >
         <View style={styles.header}>
-          <LinearGradient
-            colors={[Colors.primary, '#2563EB']}
-            style={styles.headerGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          />
           <View style={styles.headerTop}>
-            <Text style={styles.headerTitle}>Mon Profil</Text>
+            <View style={styles.headerTitleGroup}>
+              <View style={styles.headerTitleAccent} />
+              <Text style={styles.headerTitle}>Mon profil</Text>
+            </View>
             <TouchableOpacity
+              accessibilityLabel="Ouvrir les paramètres"
               style={styles.settingsButton}
               onPress={() => router.push('/settings')}
             >
-              <Ionicons name="settings-outline" size={24} color={Colors.white} />
+              <Ionicons name="settings-outline" size={22} color={Colors.gray[800]} />
             </TouchableOpacity>
           </View>
 
@@ -2638,7 +2636,7 @@ export default function ProfileScreen() {
                 {currentUser?.name || 'Utilisateur'}
               </Text>
               <View style={styles.userPhoneRow}>
-                <Ionicons name="call-outline" size={13} color="rgba(255,255,255,0.75)" />
+                <Ionicons name="call-outline" size={14} color={Colors.gray[500]} />
                 <Text numberOfLines={1} style={styles.userPhone}>
                   {currentUser?.phone || ''}
                 </Text>
@@ -2648,7 +2646,7 @@ export default function ProfileScreen() {
                   <Ionicons
                     name={isDriver ? 'car-outline' : 'person-outline'}
                     size={12}
-                    color={Colors.white}
+                    color={Colors.primaryDark}
                   />
                   <Text style={styles.userRolePillText}>
                     {isDriver ? 'Conducteur' : 'Passager'}
@@ -2656,7 +2654,7 @@ export default function ProfileScreen() {
                 </View>
                 {isPremiumActive ? (
                   <View style={styles.userRolePill}>
-                    <Ionicons name="shield-checkmark-outline" size={12} color={Colors.white} />
+                    <Ionicons name="shield-checkmark-outline" size={12} color={Colors.primaryDark} />
                     <Text style={styles.userRolePillText}>Pro</Text>
                   </View>
                 ) : null}
@@ -3911,15 +3909,15 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.sm,
-    paddingBottom: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xl,
     borderBottomLeftRadius: BorderRadius.xxl,
     borderBottomRightRadius: BorderRadius.xxl,
     overflow: 'hidden',
     position: 'relative',
-  },
-  headerGradient: {
-    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#FFF7F2',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3E4DC',
   },
   headerTop: {
     flexDirection: 'row',
@@ -3928,20 +3926,32 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
     zIndex: 1,
   },
+  headerTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  headerTitleAccent: {
+    width: 5,
+    height: 24,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+  },
   headerTitle: {
     fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
-    color: Colors.white,
+    color: Colors.gray[900],
   },
   settingsButton: {
     width: 38,
     height: 38,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: Colors.white,
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: '#EEDFD7',
+    ...CommonStyles.shadowSm,
   },
   userInfo: {
     flexDirection: 'row',
@@ -3956,10 +3966,11 @@ const styles = StyleSheet.create({
     width: 62,
     height: 62,
     borderRadius: 31,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderWidth: 3,
+    borderColor: Colors.white,
     overflow: 'hidden',
     backgroundColor: Colors.white,
+    ...CommonStyles.shadowSm,
   },
   avatarImage: {
     width: '100%',
@@ -3990,7 +4001,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.success,
     borderRadius: 11,
     borderWidth: 2,
-    borderColor: Colors.primary,
+    borderColor: '#FFF7F2',
     alignItems: 'center',
     justifyContent: 'center',
     ...CommonStyles.shadowSm,
@@ -4016,17 +4027,16 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
-    color: Colors.white,
+    color: Colors.gray[900],
     marginBottom: 2,
   },
   userPhoneRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    opacity: 0.85,
   },
   userPhone: {
-    color: Colors.white,
+    color: Colors.gray[600],
     fontSize: FontSizes.sm,
   },
   userRoleRow: {
@@ -4043,12 +4053,12 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 8,
     borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    backgroundColor: Colors.primary + '0D',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.22)',
+    borderColor: Colors.primary + '24',
   },
   userRolePillText: {
-    color: Colors.white,
+    color: Colors.primaryDark,
     fontSize: 10,
     fontWeight: FontWeights.bold,
     textTransform: 'uppercase',
