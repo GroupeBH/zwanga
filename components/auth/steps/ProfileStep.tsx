@@ -1,16 +1,21 @@
 import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Image } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing } from '@/constants/styles';
+import { Colors } from '@/constants/styles';
+import { GenderSelector } from '@/components/GenderSelector';
+import type { UserGender } from '@/types';
 import { authStyles as styles } from '../styles';
 import { VehicleType, vehicleOptions } from '../types';
+
+const SIGNUP_GENDERS = ['male', 'female'] as const satisfies readonly UserGender[];
 
 interface ProfileStepProps {
   firstName: string;
   lastName: string;
   showNameFields?: boolean;
   profilePicture: string | null;
+  gender: UserGender | null;
   role: 'driver' | 'passenger';
   vehicleType: VehicleType | null;
   vehicleBrand: string;
@@ -20,6 +25,7 @@ interface ProfileStepProps {
   onFirstNameChange: (name: string) => void;
   onLastNameChange: (name: string) => void;
   onSelectProfilePicture: () => void;
+  onGenderChange: (gender: UserGender) => void;
   onRoleChange: (role: 'driver' | 'passenger') => void;
   onVehicleTypeChange: (type: VehicleType) => void;
   onOpenVehicleModal: () => void;
@@ -31,6 +37,7 @@ export function ProfileStep({
   lastName,
   showNameFields = true,
   profilePicture,
+  gender,
   role,
   vehicleType,
   vehicleBrand,
@@ -40,39 +47,41 @@ export function ProfileStep({
   onFirstNameChange,
   onLastNameChange,
   onSelectProfilePicture,
+  onGenderChange,
   onRoleChange,
   onVehicleTypeChange,
   onOpenVehicleModal,
   onContinue,
 }: ProfileStepProps) {
   return (
-    <Animated.View entering={FadeInDown.springify()} exiting={FadeOutUp} style={styles.stepContainer}>
-      <View style={styles.heroSectionCompact}>
-        <Text style={styles.heroTitle}>Créez votre profil</Text>
-        <Text style={styles.heroSubtitle}>
-          {showNameFields ? 'Dites-nous en plus sur vous' : 'Choisissez votre rôle sur Zwanga'}
-        </Text>
-      </View>
-
-      <View style={styles.profileHeader}>
+    <Animated.View
+      entering={FadeInDown.springify()}
+      exiting={FadeOutUp}
+      style={[styles.stepContainer, styles.profileStepContainer]}
+    >
+      <View style={styles.profileCompactHeader}>
+        <View style={styles.profileCompactHeading}>
+          <Text style={styles.profileCompactEyebrow}>DERNIÈRE ÉTAPE</Text>
+          <Text style={styles.profileCompactTitle}>Votre profil</Text>
+        </View>
         <TouchableOpacity style={styles.avatarUpload} onPress={onSelectProfilePicture}>
           {profilePicture ? (
             <Image source={{ uri: profilePicture }} style={styles.avatarImage} />
           ) : (
             <View style={styles.avatarPlaceholder}>
-              <Ionicons name="camera" size={32} color={Colors.primary} />
+              <Ionicons name="camera" size={22} color={Colors.primary} />
             </View>
           )}
           <View style={styles.editBadge}>
-            <Ionicons name="pencil" size={14} color="white" />
+            <Ionicons name="pencil" size={11} color="white" />
           </View>
         </TouchableOpacity>
       </View>
 
       {showNameFields && (
-        <View style={styles.formGrid}>
-          <View style={styles.inputWrapper}>
-            <Ionicons name="person-outline" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+        <View style={styles.profileNameRow}>
+          <View style={[styles.inputWrapper, styles.profileInputWrapper]}>
+            <Ionicons name="person-outline" size={17} color={Colors.gray[500]} style={styles.profileInputIcon} />
             <TextInput
               style={styles.input}
               placeholder="Prénom"
@@ -81,8 +90,8 @@ export function ProfileStep({
               onChangeText={onFirstNameChange}
             />
           </View>
-          <View style={styles.inputWrapper}>
-            <Ionicons name="person-outline" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+          <View style={[styles.inputWrapper, styles.profileInputWrapper]}>
+            <Ionicons name="person-outline" size={17} color={Colors.gray[500]} style={styles.profileInputIcon} />
             <TextInput
               style={styles.input}
               placeholder="Nom"
@@ -94,8 +103,18 @@ export function ProfileStep({
         </View>
       )}
 
+      <View style={styles.genderSelection}>
+        <GenderSelector
+          compact
+          label="Sexe"
+          value={gender}
+          onChange={onGenderChange}
+          allowedGenders={SIGNUP_GENDERS}
+        />
+      </View>
+
       <View style={styles.roleSelection}>
-        <Text style={styles.sectionLabel}>Je suis principalement :</Text>
+        <Text style={styles.profileSectionLabel}>Statut</Text>
         <View style={styles.roleCards}>
           <TouchableOpacity
             style={[styles.roleCard, role === 'passenger' && styles.roleCardActive]}
@@ -104,7 +123,7 @@ export function ProfileStep({
             <View style={[styles.roleIconBadge, role === 'passenger' && styles.roleIconBadgeActive]}>
               <Ionicons
                 name="person"
-                size={24}
+                size={17}
                 color={role === 'passenger' ? 'white' : Colors.gray[500]}
               />
             </View>
@@ -120,7 +139,7 @@ export function ProfileStep({
             <View style={[styles.roleIconBadge, role === 'driver' && styles.roleIconBadgeActive]}>
               <Ionicons
                 name="car"
-                size={24}
+                size={17}
                 color={role === 'driver' ? 'white' : Colors.gray[500]}
               />
             </View>
@@ -133,12 +152,8 @@ export function ProfileStep({
 
       {role === 'driver' && (
         <Animated.View entering={FadeInDown} style={styles.vehicleSection}>
-          <Text style={styles.sectionLabel}>Votre véhicule</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.vehicleTypesScroll}
-          >
+          <Text style={styles.profileSectionLabel}>Votre véhicule</Text>
+          <View style={styles.vehicleTypesScroll}>
             {vehicleOptions.map((opt) => (
               <TouchableOpacity
                 key={opt.id}
@@ -150,10 +165,12 @@ export function ProfileStep({
               >
                 <Ionicons
                   name={opt.icon}
-                  size={28}
+                  size={20}
                   color={vehicleType === opt.id ? Colors.primary : Colors.gray[400]}
                 />
                 <Text
+                  adjustsFontSizeToFit
+                  numberOfLines={1}
                   style={[
                     styles.vehicleTypeLabel,
                     vehicleType === opt.id && styles.vehicleTypeLabelActive,
@@ -163,7 +180,7 @@ export function ProfileStep({
                 </Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </View>
 
           <TouchableOpacity style={styles.vehicleDetailsSheet} onPress={onOpenVehicleModal}>
             <View style={styles.vehicleDetailsInfo}>
@@ -180,7 +197,7 @@ export function ProfileStep({
       )}
 
       <TouchableOpacity
-        style={[styles.mainButton, styles.mainButtonActive, { marginTop: Spacing.xl, marginBottom: Spacing.xxl }]}
+        style={[styles.mainButton, styles.mainButtonActive, styles.profileContinueButton]}
         onPress={onContinue}
       >
         <Text style={styles.mainButtonText}>Continuer</Text>

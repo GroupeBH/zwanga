@@ -2,7 +2,7 @@ import type { FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import { API_BASE_URL } from '../../config/env';
 import { storeTokens } from '../../services/tokenStorage';
 import { saveTokensAndUpdateState, setUser } from '../../store/slices/authSlice';
-import type { User } from '../../types';
+import type { User, UserGender } from '../../types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 import { userApi } from './userApi';
@@ -61,7 +61,7 @@ export const authApi = baseApi.injectEndpoints({
             dispatch(setUser(data.user));
           }
         } catch (error) {
-          console.error('[authApi] Erreur lors du stockage des tokens après login:', error);
+          console.error('[authApi] Échec de la connexion ou de l’initialisation de session:', error);
         }
       },
       invalidatesTags: [currentUserTag],
@@ -102,13 +102,13 @@ export const authApi = baseApi.injectEndpoints({
             dispatch(setUser(data.user));
           }
         } catch (error) {
-          console.error('[authApi] Erreur lors du stockage des tokens après inscription:', error);
+          console.error('[authApi] Échec de l’inscription ou de l’initialisation de session:', error);
         }
       },
     }),
 
     // Google mobile (login ou signup)
-    googleMobile: builder.mutation<AuthResponse, { idToken: string; phone?: string }>({
+    googleMobile: builder.mutation<AuthResponse, { idToken: string; phone?: string; gender?: UserGender }>({
       query: (body) => ({
         url: '/auth/google/mobile',
         method: 'POST',
@@ -151,6 +151,7 @@ export const authApi = baseApi.injectEndpoints({
       idToken: string;
       phone?: string;
       nonce?: string;
+      gender?: UserGender;
       role?: 'driver' | 'passenger';
       isDriver?: boolean;
       vehicle?: {
@@ -160,13 +161,14 @@ export const authApi = baseApi.injectEndpoints({
         licensePlate: string;
       };
     }>({
-      query: ({ idToken, phone, nonce, role, isDriver, vehicle }) => ({
+      query: ({ idToken, phone, nonce, gender, role, isDriver, vehicle }) => ({
         url: '/auth/apple/mobile',
         method: 'POST',
         body: {
           idToken,
           ...(phone ? { phone } : {}),
           ...(nonce ? { nonce } : {}),
+          ...(gender ? { gender } : {}),
           ...(role ? { role } : {}),
           ...(typeof isDriver === 'boolean' ? { isDriver } : {}),
           ...(vehicle ? { vehicle } : {}),

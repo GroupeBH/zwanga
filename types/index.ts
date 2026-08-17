@@ -1,4 +1,5 @@
 export type UserRole = 'driver' | 'passenger' | 'both';
+export type UserGender = 'male' | 'female' | 'other' | 'prefer_not_to_say';
 export type VehicleType = 'car' | 'moto' | 'tricycle';
 export type TripStatus = 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
 export type RecurringTripStatus = 'active' | 'paused';
@@ -42,6 +43,7 @@ export interface User {
   name: string;
   phone: string;
   email?: string;
+  gender?: UserGender | null;
   role: UserRole;
   avatar?: string;
   profilePicture?: string | null;
@@ -586,6 +588,7 @@ export interface TripRequest {
   passengerId: string;
   passengerName?: string;
   passengerAvatar?: string;
+  passengerGender?: UserGender | null;
   departure: Location;
   arrival: Location;
   departureDateMin: string; // ISO string date - Date/heure de départ minimum souhaitée

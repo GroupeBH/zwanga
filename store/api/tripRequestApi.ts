@@ -6,6 +6,7 @@ import type {
   TripPaymentMode,
   TripRequest,
   TripRequestStatus,
+  UserGender,
 } from '@/types';
 import { baseApi } from './baseApi';
 import type { ServerTrip } from './tripApi';
@@ -21,6 +22,7 @@ type ServerTripRequest = {
     lastName: string;
     phone: string;
     profilePicture: string | null;
+    gender?: UserGender | null;
   };
   departureLocation: string;
   arrivalLocation: string;
@@ -205,6 +207,7 @@ const mapServerTripRequestToClient = (request: ServerTripRequest): TripRequest =
     passengerId: request.passenger.id,
     passengerName: formatFullName(request.passenger),
     passengerAvatar: request.passenger.profilePicture ?? undefined,
+    passengerGender: request.passenger.gender ?? null,
     departure: {
       name: request.departureLocation,
       address: request.departureLocation,

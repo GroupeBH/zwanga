@@ -73,6 +73,7 @@ const DRIVER_UPCOMING_TRIP_HIGHLIGHT_WINDOW_MS = 3 * 60 * 60 * 1000;
 const IS_ANDROID = Platform.OS === 'android';
 const HOME_MAP_PROVIDER = IS_ANDROID ? PROVIDER_GOOGLE : undefined;
 const TRIP_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
+const TRIP_REQUEST_MARKER_ANCHOR = { x: 0.5, y: 0.92 };
 const USER_LOCATION_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
 
 const KINSHASA_REGION: Region = {
@@ -95,6 +96,12 @@ const HOME_COLORS = {
   softLine: '#E8EBEF',
   success: '#0EAD65',
 };
+
+const TRIP_REQUEST_BADGE_COLORS = {
+  male: '#3B82F6',
+  female: '#EC4899',
+  neutral: Colors.primary,
+} as const;
 
 const vehicleLabel: Record<Trip['vehicleType'], string> = {
   car: 'Voiture',
@@ -125,6 +132,12 @@ const androidTripMarkerImages: Record<Trip['vehicleType'], ImageRequireSource> =
   moto: require('@/assets/images/map-markers/trip-marker-moto.png'),
   tricycle: require('@/assets/images/map-markers/trip-marker-tricycle.png'),
 };
+
+const androidTripRequestMarkerImages = {
+  male: require('@/assets/images/map-markers/trip-request-marker-male.png'),
+  female: require('@/assets/images/map-markers/trip-request-marker-female.png'),
+  neutral: require('@/assets/images/map-markers/trip-request-marker-neutral.png'),
+} satisfies Record<'male' | 'female' | 'neutral', ImageRequireSource>;
 
 const selectedTripMarkerImages: Record<Trip['vehicleType'], ImageRequireSource> = {
   car: require('@/assets/images/map-markers/trip-marker-car-selected.png'),
@@ -168,6 +181,10 @@ type TripVehicleMapMarkerProps = {
   isSelected: boolean;
   onReady?: () => void;
   trip: Trip;
+};
+
+type TripRequestMapMarkerProps = {
+  gender?: TripRequest['passengerGender'];
 };
 
 type HomeSheetMode = 'trips' | 'requests';
@@ -348,6 +365,22 @@ function getTripMarkerImage(trip: Trip, isSelected: boolean) {
   }
 
   return androidTripMarkerImages[tripVehicleType];
+}
+
+function getTripRequestMarkerImage(gender?: TripRequest['passengerGender']): ImageRequireSource {
+  if (gender === 'male' || gender === 'female') {
+    return androidTripRequestMarkerImages[gender];
+  }
+
+  return androidTripRequestMarkerImages.neutral;
+}
+
+function getTripRequestBadgeColor(gender?: TripRequest['passengerGender']) {
+  if (gender === 'male' || gender === 'female') {
+    return TRIP_REQUEST_BADGE_COLORS[gender];
+  }
+
+  return TRIP_REQUEST_BADGE_COLORS.neutral;
 }
 
 
@@ -569,6 +602,29 @@ function TripVehicleMapMarker({ isSelected, onReady, trip }: TripVehicleMapMarke
           resizeMode="contain"
           onLoadEnd={onReady}
         />
+      </View>
+    </View>
+  );
+}
+
+function TripRequestMapMarker({ gender }: TripRequestMapMarkerProps) {
+  const genderIcon: keyof typeof Ionicons.glyphMap =
+    gender === 'female' ? 'woman' : gender === 'male' ? 'man' : 'person';
+
+  return (
+    <View collapsable={false} style={styles.tripRequestMarkerFrame}>
+      <View style={styles.tripRequestMarkerTip} />
+      <View collapsable={false} style={styles.tripRequestMarkerBody}>
+        <Ionicons name={genderIcon} size={22} color={Colors.white} />
+      </View>
+      <View
+        collapsable={false}
+        style={[
+          styles.tripRequestMarkerBadge,
+          { backgroundColor: getTripRequestBadgeColor(gender) },
+        ]}
+      >
+        <Ionicons name="document-text" size={9} color={Colors.white} />
       </View>
     </View>
   );
@@ -1080,7 +1136,7 @@ export default function HomeScreen() {
     refetch: refetchAvailableTripRequests,
   } = useGetAvailableTripRequestsQuery(undefined, {
     skip: !isDriver,
-    pollingInterval: isFocused && homeSheetMode === 'requests' ? 30000 : 0,
+    pollingInterval: isFocused && isDriver ? 30000 : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: isFocused,
     refetchOnReconnect: isFocused,
@@ -1860,6 +1916,17 @@ export default function HomeScreen() {
     [homeMapTrips, liveUserCoordinate, ongoingDriverTrip?.id],
   );
 
+  const tripRequestsWithMapCoordinates = useMemo(() => {
+    if (isHomeSheetLockedRetracted) {
+      return [];
+    }
+
+    return availableDriverRequests.flatMap((request) => {
+      const coordinate = getTripLocationCoordinate(request.departure);
+      return coordinate ? [{ request, coordinate }] : [];
+    });
+  }, [availableDriverRequests, isHomeSheetLockedRetracted]);
+
   useEffect(() => {
     if (homeMapTrips.length === 0) {
       setSelectedTripId(null);
@@ -1892,7 +1959,8 @@ export default function HomeScreen() {
         tripsWithMapCoordinates[0].id === ongoingDriverTrip?.id ? liveUserCoordinate : null,
       )
       : null;
-    const coordinate = selectedMapCoordinate ?? selectedDeparture ?? fallbackDeparture;
+    const fallbackRequestDeparture = tripRequestsWithMapCoordinates[0]?.coordinate ?? null;
+    const coordinate = selectedMapCoordinate ?? selectedDeparture ?? fallbackDeparture ?? fallbackRequestDeparture;
 
     if (ongoingDriverTrip && selectedMapCoordinate && visibleDriverPassengerMarkers.length > 0) {
       const coordinates = [
@@ -1928,6 +1996,7 @@ export default function HomeScreen() {
     liveUserCoordinate,
     ongoingDriverTrip,
     selectedTrip,
+    tripRequestsWithMapCoordinates,
     tripsWithMapCoordinates,
   ]);
 
@@ -2231,6 +2300,27 @@ export default function HomeScreen() {
                   }}
                 />
               ) : null}
+            </Marker>
+          );
+        })}
+        {tripRequestsWithMapCoordinates.map(({ request, coordinate }) => {
+          const markerRenderKey = `trip-request-${request.id}:${request.passengerGender ?? 'unknown'}`;
+
+          return (
+            <Marker
+              key={markerRenderKey}
+              identifier={`trip-request-${request.id}`}
+              coordinate={coordinate}
+              anchor={TRIP_REQUEST_MARKER_ANCHOR}
+              image={IS_ANDROID ? getTripRequestMarkerImage(request.passengerGender) : undefined}
+              title={request.passengerName || 'Demande de trajet'}
+              description={`${placeName(request.departure)} → ${placeName(request.arrival)}`}
+              onPress={() => router.push(getTripRequestDetailHref(request.id))}
+              tappable
+              tracksViewChanges={false}
+              zIndex={6}
+            >
+              {!IS_ANDROID ? <TripRequestMapMarker gender={request.passengerGender} /> : null}
             </Marker>
           );
         })}
@@ -3029,6 +3119,62 @@ const styles = StyleSheet.create({
   tripVehicleMarkerImageSelected: {
     width: IS_ANDROID ? 62 : 64,
     height: IS_ANDROID ? 62 : 64,
+  },
+  tripRequestMarkerFrame: {
+    width: 60,
+    height: 58,
+    alignItems: 'center',
+    position: 'relative',
+  },
+  tripRequestMarkerBody: {
+    position: 'absolute',
+    top: 8,
+    left: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: HOME_COLORS.navy,
+    borderWidth: 3,
+    borderColor: Colors.white,
+    ...Platform.select({
+      ios: {
+        shadowColor: Colors.black,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.2,
+        shadowRadius: 5,
+      },
+    }),
+    zIndex: 2,
+  },
+  tripRequestMarkerBadge: {
+    position: 'absolute',
+    top: 3,
+    right: 2,
+    width: 17,
+    height: 17,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    borderWidth: 2,
+    borderColor: Colors.white,
+    zIndex: 3,
+  },
+  tripRequestMarkerTip: {
+    position: 'absolute',
+    top: 46,
+    left: 24,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderTopWidth: 8,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: HOME_COLORS.navy,
+    zIndex: 1,
   },
   userLocationMarkerFrame: {
     width: 64,

@@ -9,6 +9,7 @@ import { useAppleMobileMutation, useGoogleMobileMutation, useLoginMutation, useR
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated } from '@/store/selectors';
 import { saveTokensAndUpdateState } from '@/store/slices/authSlice';
+import type { UserGender } from '@/types';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -172,6 +173,7 @@ export default function AuthScreen() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
+  const [gender, setGender] = useState<UserGender | null>(null);
   const [role, setRole] = useState<'driver' | 'passenger'>('passenger');
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
 
@@ -346,6 +348,7 @@ export default function AuthScreen() {
     setFirstName('');
     setLastName('');
     setEmail('');
+    setGender(null);
     setRole('passenger');
     setProfilePicture(null);
     setVehicleType(null);
@@ -393,6 +396,7 @@ export default function AuthScreen() {
     setFirstName(keepsProfileIdentity ? seed.firstName ?? '' : '');
     setLastName(keepsProfileIdentity ? seed.lastName ?? '' : '');
     setEmail(keepsProfileIdentity ? seed.email ?? '' : '');
+    setGender(null);
     setRole('passenger');
     setProfilePicture(null);
     setVehicleType(null);
@@ -972,6 +976,7 @@ export default function AuthScreen() {
               idToken: googleIdToken,
               phone,
               nonce: appleNonce ?? undefined,
+              gender: gender ?? undefined,
               role,
               isDriver: requiresVehicle,
               vehicle: requiresVehicle
@@ -983,7 +988,7 @@ export default function AuthScreen() {
                   }
                 : undefined,
             }).unwrap()
-          : await googleMobile({ idToken: googleIdToken, phone }).unwrap();
+          : await googleMobile({ idToken: googleIdToken, phone, gender: gender ?? undefined }).unwrap();
         await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
         
         if (requiresVehicle && kycFiles) {
@@ -1021,6 +1026,7 @@ export default function AuthScreen() {
       formData.append('pin', pin);
       formData.append('firstName', firstName);
       formData.append('lastName', lastName);
+      if (gender) formData.append('gender', gender);
       formData.append('role', role);
       formData.append('isDriver', JSON.stringify(requiresVehicle));
 
@@ -1193,6 +1199,7 @@ export default function AuthScreen() {
               lastName={lastName}
               showNameFields={!isAppleSignupFlow}
               profilePicture={profilePicture}
+              gender={gender}
               role={role}
               vehicleType={vehicleType}
               vehicleBrand={vehicleBrand}
@@ -1202,6 +1209,7 @@ export default function AuthScreen() {
               onFirstNameChange={setFirstName}
               onLastNameChange={setLastName}
               onSelectProfilePicture={handleSelectProfilePicture}
+              onGenderChange={setGender}
               onRoleChange={setRole}
               onVehicleTypeChange={setVehicleType}
               onOpenVehicleModal={() => setVehicleModalVisible(true)}

@@ -35,6 +35,7 @@ const mapServerUser = (user: ServerUser): User => {
     lastName: user.lastName,
     phone: user.phone ?? '',
     email: user.email ?? undefined,
+    gender: user.gender ?? null,
     role: (user.role ?? 'passenger') as UserRole,
     avatar: user.profilePicture ?? user.avatar ?? undefined,
     profilePicture: user.profilePicture ?? null,
