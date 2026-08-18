@@ -97,10 +97,10 @@ const HOME_COLORS = {
   success: '#0EAD65',
 };
 
-const TRIP_REQUEST_BADGE_COLORS = {
-  male: '#3B82F6',
+const TRIP_REQUEST_MARKER_COLORS = {
+  male: HOME_COLORS.navy,
   female: '#EC4899',
-  neutral: Colors.primary,
+  neutral: HOME_COLORS.navy,
 } as const;
 
 const vehicleLabel: Record<Trip['vehicleType'], string> = {
@@ -375,12 +375,12 @@ function getTripRequestMarkerImage(gender?: TripRequest['passengerGender']): Ima
   return androidTripRequestMarkerImages.neutral;
 }
 
-function getTripRequestBadgeColor(gender?: TripRequest['passengerGender']) {
+function getTripRequestMarkerColor(gender?: TripRequest['passengerGender']) {
   if (gender === 'male' || gender === 'female') {
-    return TRIP_REQUEST_BADGE_COLORS[gender];
+    return TRIP_REQUEST_MARKER_COLORS[gender];
   }
 
-  return TRIP_REQUEST_BADGE_COLORS.neutral;
+  return TRIP_REQUEST_MARKER_COLORS.neutral;
 }
 
 
@@ -610,20 +610,18 @@ function TripVehicleMapMarker({ isSelected, onReady, trip }: TripVehicleMapMarke
 function TripRequestMapMarker({ gender }: TripRequestMapMarkerProps) {
   const genderIcon: keyof typeof Ionicons.glyphMap =
     gender === 'female' ? 'woman' : gender === 'male' ? 'man' : 'person';
+  const markerColor = getTripRequestMarkerColor(gender);
 
   return (
     <View collapsable={false} style={styles.tripRequestMarkerFrame}>
-      <View style={styles.tripRequestMarkerTip} />
-      <View collapsable={false} style={styles.tripRequestMarkerBody}>
-        <Ionicons name={genderIcon} size={22} color={Colors.white} />
-      </View>
+      <View style={[styles.tripRequestMarkerTip, { borderTopColor: markerColor }]} />
       <View
         collapsable={false}
-        style={[
-          styles.tripRequestMarkerBadge,
-          { backgroundColor: getTripRequestBadgeColor(gender) },
-        ]}
+        style={[styles.tripRequestMarkerBody, { backgroundColor: markerColor }]}
       >
+        <Ionicons name={genderIcon} size={22} color={Colors.white} />
+      </View>
+      <View collapsable={false} style={styles.tripRequestMarkerBadge}>
         <Ionicons name="document-text" size={9} color={Colors.white} />
       </View>
     </View>

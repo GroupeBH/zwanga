@@ -5,7 +5,6 @@ Add-Type -AssemblyName System.Drawing
 $assetDirectory = Join-Path $PSScriptRoot '..\assets\images\map-markers'
 $navy = [System.Drawing.ColorTranslator]::FromHtml('#304B77')
 $orange = [System.Drawing.ColorTranslator]::FromHtml('#FF6B35')
-$maleBlue = [System.Drawing.ColorTranslator]::FromHtml('#3B82F6')
 $femalePink = [System.Drawing.ColorTranslator]::FromHtml('#EC4899')
 $white = [System.Drawing.Color]::White
 
@@ -82,22 +81,9 @@ function Draw-GenderIcon(
   }
 }
 
-function Draw-RequestBadge(
-  [System.Drawing.Graphics]$graphics,
-  [ValidateSet('male', 'female', 'neutral')]
-  [string]$gender
-) {
-  $badgeColor = if ($gender -eq 'male') {
-    $maleBlue
-  }
-  elseif ($gender -eq 'female') {
-    $femalePink
-  }
-  else {
-    $orange
-  }
+function Draw-RequestBadge([System.Drawing.Graphics]$graphics) {
   $whiteBrush = [System.Drawing.SolidBrush]::new($white)
-  $badgeBrush = [System.Drawing.SolidBrush]::new($badgeColor)
+  $badgeBrush = [System.Drawing.SolidBrush]::new($orange)
   $documentPen = [System.Drawing.Pen]::new($white, 1.35)
   $documentPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
   $documentPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
@@ -143,7 +129,8 @@ function New-TripRequestMarker(
   )
   $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
   $whiteBrush = [System.Drawing.SolidBrush]::new($white)
-  $navyBrush = [System.Drawing.SolidBrush]::new($navy)
+  $markerColor = if ($gender -eq 'female') { $femalePink } else { $navy }
+  $markerBrush = [System.Drawing.SolidBrush]::new($markerColor)
 
   try {
     $graphics.Clear([System.Drawing.Color]::Transparent)
@@ -162,13 +149,13 @@ function New-TripRequestMarker(
       (New-Point 30 56.5)
     )
     $graphics.FillPolygon($whiteBrush, $outerTip)
-    $graphics.FillPolygon($navyBrush, $innerTip)
+    $graphics.FillPolygon($markerBrush, $innerTip)
 
     $graphics.FillEllipse($whiteBrush, 6, 4, 48, 48)
-    $graphics.FillEllipse($navyBrush, 9, 7, 42, 42)
+    $graphics.FillEllipse($markerBrush, 9, 7, 42, 42)
 
     Draw-GenderIcon $graphics $gender
-    Draw-RequestBadge $graphics $gender
+    Draw-RequestBadge $graphics
 
     $suffix = if ($scale -eq 2) { '@2x' } else { '' }
     $outputPath = Join-Path $assetDirectory "trip-request-marker-$gender$suffix.png"
@@ -176,7 +163,7 @@ function New-TripRequestMarker(
     Write-Output "Generated $outputPath"
   }
   finally {
-    $navyBrush.Dispose()
+    $markerBrush.Dispose()
     $whiteBrush.Dispose()
     $graphics.Dispose()
     $bitmap.Dispose()
