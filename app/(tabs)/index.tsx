@@ -70,6 +70,7 @@ const HOME_MIN_AVAILABLE_SEATS = 1;
 const MAX_LIVE_PASSENGER_MARKERS = Platform.OS === 'ios' ? 10 : 16;
 const HOME_MAP_ANIMATION_MIN_INTERVAL_MS = Platform.OS === 'ios' ? 1200 : 700;
 const DRIVER_UPCOMING_TRIP_HIGHLIGHT_WINDOW_MS = 3 * 60 * 60 * 1000;
+const UNACCEPTED_TRIP_REQUEST_EXPIRATION_MS = 12 * 60 * 60 * 1000;
 const IS_ANDROID = Platform.OS === 'android';
 const HOME_MAP_PROVIDER = IS_ANDROID ? PROVIDER_GOOGLE : undefined;
 const TRIP_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
@@ -118,6 +119,31 @@ const tripRequestStatusMeta: Record<
   driver_selected: { label: 'Attribuée', color: Colors.success, bg: Colors.success + '16', icon: 'checkmark-circle-outline' },
   cancelled: { label: 'Annulée', color: Colors.danger, bg: Colors.danger + '16', icon: 'close-circle-outline' },
   expired: { label: 'Expirée', color: Colors.gray[500], bg: Colors.gray[200], icon: 'time-outline' },
+};
+
+const isTripRequestWithinAcceptanceWindow = (
+  request: TripRequest,
+  now = Date.now(),
+) => {
+  const hasAcceptedDriver =
+    request.status === 'driver_selected' ||
+    Boolean(request.selectedDriverId) ||
+    Boolean(request.tripId) ||
+    Boolean(request.offers?.some((offer) => offer.status === 'accepted'));
+
+  if (hasAcceptedDriver) {
+    return true;
+  }
+
+  if (request.status !== 'pending' && request.status !== 'offers_received') {
+    return false;
+  }
+
+  const latestAcceptedDepartureAt = new Date(request.departureDateMax).getTime();
+  return (
+    Number.isFinite(latestAcceptedDepartureAt) &&
+    latestAcceptedDepartureAt + UNACCEPTED_TRIP_REQUEST_EXPIRATION_MS > now
+  );
 };
 
 
@@ -830,8 +856,9 @@ export default function HomeScreen() {
   const tripMarkerRefs = useRef<Record<string, MapMarker | null>>({});
   const passengerMarkerRefs = useRef<Record<string, MapMarker | null>>({});
   const userLocationMarkerRef = useRef<MapMarker | null>(null);
-  const openingTripRef = useRef(false);
-  const openingTripTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openingMapDetailRef = useRef(false);
+  const openingMapDetailTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openingMapDetailRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const presentedHomeAutoProgressKeysRef = useRef<Set<string>>(new Set());
   const highestHomeAutoProgressPriorityRef = useRef<Map<string, number>>(new Map());
   const lastHomeDriverLocationSentAtRef = useRef(0);
@@ -858,7 +885,7 @@ export default function HomeScreen() {
   const [isCenteringOnUser, setIsCenteringOnUser] = useState(false);
   const [mapFocusedOnUser, setMapFocusedOnUser] = useState(false);
   const [userLocationMarker, setUserLocationMarker] = useState<UserLocationMarkerState | null>(null);
-  const [openingTripId, setOpeningTripId] = useState<string | null>(null);
+  const [openingMapDetailKey, setOpeningMapDetailKey] = useState<string | null>(null);
   const [liveDriverPassengerLocations, setLiveDriverPassengerLocations] = useState<
     Record<string, LivePassengerLocation>
   >({});
@@ -1195,7 +1222,8 @@ export default function HomeScreen() {
             (request.status === 'pending' ||
               request.status === 'offers_received' ||
               request.status === 'driver_selected') &&
-            !request.tripId,
+            !request.tripId &&
+            isTripRequestWithinAcceptanceWindow(request),
         )
         .sort((a, b) => {
           const departureA = getDepartureTime(a.departureDateMin);
@@ -1260,7 +1288,13 @@ export default function HomeScreen() {
     };
 
     return [...availableTripRequests]
-      .filter((request) => request.passengerId !== currentUser.id && !request.tripId)
+      .filter(
+        (request) =>
+          request.passengerId !== currentUser.id &&
+          !request.tripId &&
+          (request.status === 'pending' || request.status === 'offers_received') &&
+          isTripRequestWithinAcceptanceWindow(request),
+      )
       .sort((a, b) => {
         const departureDelta = getDepartureTime(a.departureDateMin) - getDepartureTime(b.departureDateMin);
         if (departureDelta !== 0) {
@@ -1960,7 +1994,7 @@ export default function HomeScreen() {
   ]);
 
   useEffect(() => {
-    if (!isFocused || mapFocusedOnUser || openingTripId) {
+    if (!isFocused || mapFocusedOnUser || openingMapDetailKey) {
       return;
     }
 
@@ -1989,7 +2023,7 @@ export default function HomeScreen() {
         mapAnimationTimerRef.current = null;
       }
     };
-  }, [isFocused, mapFocusedOnUser, mapRegion, openingTripId]);
+  }, [isFocused, mapFocusedOnUser, mapRegion, openingMapDetailKey]);
 
   useEffect(() => {
     if (!isFocused || !liveUserCoordinate || ongoingDriverTrip) {
@@ -2004,7 +2038,7 @@ export default function HomeScreen() {
   }, [isFocused, liveUserCoordinate, ongoingDriverTrip]);
 
   useEffect(() => {
-    if (!isFocused || !mapFocusedOnUser || !liveUserCoordinate || openingTripId) {
+    if (!isFocused || !mapFocusedOnUser || !liveUserCoordinate || openingMapDetailKey) {
       return;
     }
 
@@ -2016,7 +2050,7 @@ export default function HomeScreen() {
       },
       420,
     );
-  }, [isFocused, liveUserCoordinate, mapFocusedOnUser, openingTripId]);
+  }, [isFocused, liveUserCoordinate, mapFocusedOnUser, openingMapDetailKey]);
 
   const firstName = currentUser?.firstName || currentUser?.name?.split(' ')[0] || 'Kinshasa';
   const avatarUri = currentUser?.profilePicture || currentUser?.avatar;
@@ -2059,7 +2093,7 @@ export default function HomeScreen() {
   const sheetError = isRequestsSheetMode ? availableTripRequestsError : tripsError;
   const sheetEmpty = isRequestsSheetMode ? availableDriverRequests.length === 0 : latestTrips.length === 0;
   const showInitialHomeLoader = tripsLoading && !remoteTrips && storedTrips.length === 0;
-  const shouldRenderHomeMap = isFocused && !openingTripId;
+  const shouldRenderHomeMap = isFocused && !openingMapDetailKey;
   const featuredDriverReservationStatus = featuredDriverReservation?.booking
     ? getBookingStatusMeta(featuredDriverReservation.booking.status)
     : null;
@@ -2092,23 +2126,51 @@ export default function HomeScreen() {
 
     setTripsSheetOpen((current) => !current);
   };
-  const openTripDetail = (tripId: string) => {
-    if (openingTripRef.current) return;
+  const scheduleMapDetailNavigation = (key: string, navigate: () => void) => {
+    if (openingMapDetailRef.current) return;
 
-    openingTripRef.current = true;
-    setOpeningTripId(tripId);
-    openingTripTimerRef.current = setTimeout(() => {
-      router.replace(`/trip/${tripId}`);
-      openingTripTimerRef.current = null;
+    openingMapDetailRef.current = true;
+    setOpeningMapDetailKey(key);
+    // Give MapKit time to release native marker views before changing screens.
+    openingMapDetailTimerRef.current = setTimeout(() => {
+      openingMapDetailRecoveryTimerRef.current = setTimeout(() => {
+        openingMapDetailRef.current = false;
+        setOpeningMapDetailKey(null);
+        openingMapDetailRecoveryTimerRef.current = null;
+      }, 1500);
+      navigate();
+      openingMapDetailTimerRef.current = null;
     }, Platform.OS === 'ios' ? 260 : 40);
   };
 
+  const openTripDetail = (tripId: string) => {
+    scheduleMapDetailNavigation(`trip:${tripId}`, () => {
+      router.replace(`/trip/${tripId}`);
+    });
+  };
+
+  const openTripRequestDetail = (requestId: string) => {
+    scheduleMapDetailNavigation(`request:${requestId}`, () => {
+      router.push(getTripRequestDetailHref(requestId));
+    });
+  };
+
   useEffect(() => {
-    if (isFocused && !openingTripId) openingTripRef.current = false;
-  }, [isFocused, openingTripId]);
+    if (!isFocused) {
+      if (openingMapDetailRecoveryTimerRef.current) {
+        clearTimeout(openingMapDetailRecoveryTimerRef.current);
+        openingMapDetailRecoveryTimerRef.current = null;
+      }
+      openingMapDetailRef.current = false;
+      setOpeningMapDetailKey(null);
+    }
+  }, [isFocused]);
 
   useEffect(() => () => {
-    if (openingTripTimerRef.current) clearTimeout(openingTripTimerRef.current);
+    if (openingMapDetailTimerRef.current) clearTimeout(openingMapDetailTimerRef.current);
+    if (openingMapDetailRecoveryTimerRef.current) {
+      clearTimeout(openingMapDetailRecoveryTimerRef.current);
+    }
   }, []);
 
   const showUserLocationCallout = () => {
@@ -2274,7 +2336,7 @@ export default function HomeScreen() {
               image={getTripRequestMarkerImage(request.passengerGender)}
               title={request.passengerName || 'Demande de trajet'}
               description={`${placeName(request.departure)} → ${placeName(request.arrival)}`}
-              onPress={() => router.push(getTripRequestDetailHref(request.id))}
+              onPress={() => openTripRequestDetail(request.id)}
               tappable
               tracksViewChanges={false}
               zIndex={6}
@@ -2542,7 +2604,7 @@ export default function HomeScreen() {
           <TouchableOpacity
             activeOpacity={0.9}
             style={styles.activeRequestCard}
-            onPress={() => router.push(getTripRequestDetailHref(activeTripRequest.id))}
+            onPress={() => openTripRequestDetail(activeTripRequest.id)}
           >
             <View style={styles.activeRequestIcon}>
               <Ionicons name={activeRequestStatus.icon} size={17} color={Colors.primary} />
@@ -2697,7 +2759,7 @@ export default function HomeScreen() {
                 key={request.id}
                 cardWidth={tripCardWidth}
                 request={request}
-                onOpen={() => router.push(getTripRequestDetailHref(request.id))}
+                onOpen={() => openTripRequestDetail(request.id)}
               />
             ))}
           </ScrollView>
