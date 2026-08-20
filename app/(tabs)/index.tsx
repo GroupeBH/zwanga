@@ -70,6 +70,7 @@ const HOME_MIN_AVAILABLE_SEATS = 1;
 const MAX_LIVE_PASSENGER_MARKERS = Platform.OS === 'ios' ? 10 : 16;
 const HOME_MAP_ANIMATION_MIN_INTERVAL_MS = Platform.OS === 'ios' ? 1200 : 700;
 const DRIVER_UPCOMING_TRIP_HIGHLIGHT_WINDOW_MS = 3 * 60 * 60 * 1000;
+const UNACCEPTED_TRIP_REQUEST_EXPIRATION_MS = 12 * 60 * 60 * 1000;
 const IS_ANDROID = Platform.OS === 'android';
 const HOME_MAP_PROVIDER = IS_ANDROID ? PROVIDER_GOOGLE : undefined;
 const TRIP_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
@@ -97,12 +98,6 @@ const HOME_COLORS = {
   success: '#0EAD65',
 };
 
-const TRIP_REQUEST_MARKER_COLORS = {
-  male: HOME_COLORS.navy,
-  female: '#EC4899',
-  neutral: HOME_COLORS.navy,
-} as const;
-
 const vehicleLabel: Record<Trip['vehicleType'], string> = {
   car: 'Voiture',
   moto: 'Moto',
@@ -126,14 +121,39 @@ const tripRequestStatusMeta: Record<
   expired: { label: 'Expirée', color: Colors.gray[500], bg: Colors.gray[200], icon: 'time-outline' },
 };
 
+const isTripRequestWithinAcceptanceWindow = (
+  request: TripRequest,
+  now = Date.now(),
+) => {
+  const hasAcceptedDriver =
+    request.status === 'driver_selected' ||
+    Boolean(request.selectedDriverId) ||
+    Boolean(request.tripId) ||
+    Boolean(request.offers?.some((offer) => offer.status === 'accepted'));
+
+  if (hasAcceptedDriver) {
+    return true;
+  }
+
+  if (request.status !== 'pending' && request.status !== 'offers_received') {
+    return false;
+  }
+
+  const latestAcceptedDepartureAt = new Date(request.departureDateMax).getTime();
+  return (
+    Number.isFinite(latestAcceptedDepartureAt) &&
+    latestAcceptedDepartureAt + UNACCEPTED_TRIP_REQUEST_EXPIRATION_MS > now
+  );
+};
+
 
 const androidTripMarkerImages: Record<Trip['vehicleType'], ImageRequireSource> = {
   car: require('@/assets/images/map-markers/trip-marker-car.png'),
-  moto: require('@/assets/images/map-markers/trip-marker-moto.png'),
-  tricycle: require('@/assets/images/map-markers/trip-marker-tricycle.png'),
+  moto: require('@/assets/images/map-markers/trip-marker-moto-v2.png'),
+  tricycle: require('@/assets/images/map-markers/trip-marker-tricycle-v2.png'),
 };
 
-const androidTripRequestMarkerImages = {
+const tripRequestMarkerImages = {
   male: require('@/assets/images/map-markers/trip-request-marker-male.png'),
   female: require('@/assets/images/map-markers/trip-request-marker-female.png'),
   neutral: require('@/assets/images/map-markers/trip-request-marker-neutral.png'),
@@ -141,8 +161,8 @@ const androidTripRequestMarkerImages = {
 
 const selectedTripMarkerImages: Record<Trip['vehicleType'], ImageRequireSource> = {
   car: require('@/assets/images/map-markers/trip-marker-car-selected.png'),
-  moto: require('@/assets/images/map-markers/trip-marker-moto-selected.png'),
-  tricycle: require('@/assets/images/map-markers/trip-marker-tricycle-selected.png'),
+  moto: require('@/assets/images/map-markers/trip-marker-moto-v2-selected.png'),
+  tricycle: require('@/assets/images/map-markers/trip-marker-tricycle-v2-selected.png'),
 };
 
 const bookingStatusMeta: Record<
@@ -181,10 +201,6 @@ type TripVehicleMapMarkerProps = {
   isSelected: boolean;
   onReady?: () => void;
   trip: Trip;
-};
-
-type TripRequestMapMarkerProps = {
-  gender?: TripRequest['passengerGender'];
 };
 
 type HomeSheetMode = 'trips' | 'requests';
@@ -369,18 +385,10 @@ function getTripMarkerImage(trip: Trip, isSelected: boolean) {
 
 function getTripRequestMarkerImage(gender?: TripRequest['passengerGender']): ImageRequireSource {
   if (gender === 'male' || gender === 'female') {
-    return androidTripRequestMarkerImages[gender];
+    return tripRequestMarkerImages[gender];
   }
 
-  return androidTripRequestMarkerImages.neutral;
-}
-
-function getTripRequestMarkerColor(gender?: TripRequest['passengerGender']) {
-  if (gender === 'male' || gender === 'female') {
-    return TRIP_REQUEST_MARKER_COLORS[gender];
-  }
-
-  return TRIP_REQUEST_MARKER_COLORS.neutral;
+  return tripRequestMarkerImages.neutral;
 }
 
 
@@ -602,27 +610,6 @@ function TripVehicleMapMarker({ isSelected, onReady, trip }: TripVehicleMapMarke
           resizeMode="contain"
           onLoadEnd={onReady}
         />
-      </View>
-    </View>
-  );
-}
-
-function TripRequestMapMarker({ gender }: TripRequestMapMarkerProps) {
-  const genderIcon: keyof typeof Ionicons.glyphMap =
-    gender === 'female' ? 'woman' : gender === 'male' ? 'man' : 'person';
-  const markerColor = getTripRequestMarkerColor(gender);
-
-  return (
-    <View collapsable={false} style={styles.tripRequestMarkerFrame}>
-      <View style={[styles.tripRequestMarkerTip, { borderTopColor: markerColor }]} />
-      <View
-        collapsable={false}
-        style={[styles.tripRequestMarkerBody, { backgroundColor: markerColor }]}
-      >
-        <Ionicons name={genderIcon} size={22} color={Colors.white} />
-      </View>
-      <View collapsable={false} style={styles.tripRequestMarkerBadge}>
-        <Ionicons name="document-text" size={9} color={Colors.white} />
       </View>
     </View>
   );
@@ -869,8 +856,9 @@ export default function HomeScreen() {
   const tripMarkerRefs = useRef<Record<string, MapMarker | null>>({});
   const passengerMarkerRefs = useRef<Record<string, MapMarker | null>>({});
   const userLocationMarkerRef = useRef<MapMarker | null>(null);
-  const openingTripRef = useRef(false);
-  const openingTripTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openingMapDetailRef = useRef(false);
+  const openingMapDetailTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openingMapDetailRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const presentedHomeAutoProgressKeysRef = useRef<Set<string>>(new Set());
   const highestHomeAutoProgressPriorityRef = useRef<Map<string, number>>(new Map());
   const lastHomeDriverLocationSentAtRef = useRef(0);
@@ -897,7 +885,7 @@ export default function HomeScreen() {
   const [isCenteringOnUser, setIsCenteringOnUser] = useState(false);
   const [mapFocusedOnUser, setMapFocusedOnUser] = useState(false);
   const [userLocationMarker, setUserLocationMarker] = useState<UserLocationMarkerState | null>(null);
-  const [openingTripId, setOpeningTripId] = useState<string | null>(null);
+  const [openingMapDetailKey, setOpeningMapDetailKey] = useState<string | null>(null);
   const [liveDriverPassengerLocations, setLiveDriverPassengerLocations] = useState<
     Record<string, LivePassengerLocation>
   >({});
@@ -1234,7 +1222,8 @@ export default function HomeScreen() {
             (request.status === 'pending' ||
               request.status === 'offers_received' ||
               request.status === 'driver_selected') &&
-            !request.tripId,
+            !request.tripId &&
+            isTripRequestWithinAcceptanceWindow(request),
         )
         .sort((a, b) => {
           const departureA = getDepartureTime(a.departureDateMin);
@@ -1299,7 +1288,13 @@ export default function HomeScreen() {
     };
 
     return [...availableTripRequests]
-      .filter((request) => request.passengerId !== currentUser.id && !request.tripId)
+      .filter(
+        (request) =>
+          request.passengerId !== currentUser.id &&
+          !request.tripId &&
+          (request.status === 'pending' || request.status === 'offers_received') &&
+          isTripRequestWithinAcceptanceWindow(request),
+      )
       .sort((a, b) => {
         const departureDelta = getDepartureTime(a.departureDateMin) - getDepartureTime(b.departureDateMin);
         if (departureDelta !== 0) {
@@ -1999,7 +1994,7 @@ export default function HomeScreen() {
   ]);
 
   useEffect(() => {
-    if (!isFocused || mapFocusedOnUser || openingTripId) {
+    if (!isFocused || mapFocusedOnUser || openingMapDetailKey) {
       return;
     }
 
@@ -2028,7 +2023,7 @@ export default function HomeScreen() {
         mapAnimationTimerRef.current = null;
       }
     };
-  }, [isFocused, mapFocusedOnUser, mapRegion, openingTripId]);
+  }, [isFocused, mapFocusedOnUser, mapRegion, openingMapDetailKey]);
 
   useEffect(() => {
     if (!isFocused || !liveUserCoordinate || ongoingDriverTrip) {
@@ -2043,7 +2038,7 @@ export default function HomeScreen() {
   }, [isFocused, liveUserCoordinate, ongoingDriverTrip]);
 
   useEffect(() => {
-    if (!isFocused || !mapFocusedOnUser || !liveUserCoordinate || openingTripId) {
+    if (!isFocused || !mapFocusedOnUser || !liveUserCoordinate || openingMapDetailKey) {
       return;
     }
 
@@ -2055,7 +2050,7 @@ export default function HomeScreen() {
       },
       420,
     );
-  }, [isFocused, liveUserCoordinate, mapFocusedOnUser, openingTripId]);
+  }, [isFocused, liveUserCoordinate, mapFocusedOnUser, openingMapDetailKey]);
 
   const firstName = currentUser?.firstName || currentUser?.name?.split(' ')[0] || 'Kinshasa';
   const avatarUri = currentUser?.profilePicture || currentUser?.avatar;
@@ -2098,7 +2093,7 @@ export default function HomeScreen() {
   const sheetError = isRequestsSheetMode ? availableTripRequestsError : tripsError;
   const sheetEmpty = isRequestsSheetMode ? availableDriverRequests.length === 0 : latestTrips.length === 0;
   const showInitialHomeLoader = tripsLoading && !remoteTrips && storedTrips.length === 0;
-  const shouldRenderHomeMap = isFocused && !openingTripId;
+  const shouldRenderHomeMap = isFocused && !openingMapDetailKey;
   const featuredDriverReservationStatus = featuredDriverReservation?.booking
     ? getBookingStatusMeta(featuredDriverReservation.booking.status)
     : null;
@@ -2131,23 +2126,51 @@ export default function HomeScreen() {
 
     setTripsSheetOpen((current) => !current);
   };
-  const openTripDetail = (tripId: string) => {
-    if (openingTripRef.current) return;
+  const scheduleMapDetailNavigation = (key: string, navigate: () => void) => {
+    if (openingMapDetailRef.current) return;
 
-    openingTripRef.current = true;
-    setOpeningTripId(tripId);
-    openingTripTimerRef.current = setTimeout(() => {
-      router.replace(`/trip/${tripId}`);
-      openingTripTimerRef.current = null;
+    openingMapDetailRef.current = true;
+    setOpeningMapDetailKey(key);
+    // Give MapKit time to release native marker views before changing screens.
+    openingMapDetailTimerRef.current = setTimeout(() => {
+      openingMapDetailRecoveryTimerRef.current = setTimeout(() => {
+        openingMapDetailRef.current = false;
+        setOpeningMapDetailKey(null);
+        openingMapDetailRecoveryTimerRef.current = null;
+      }, 1500);
+      navigate();
+      openingMapDetailTimerRef.current = null;
     }, Platform.OS === 'ios' ? 260 : 40);
   };
 
+  const openTripDetail = (tripId: string) => {
+    scheduleMapDetailNavigation(`trip:${tripId}`, () => {
+      router.replace(`/trip/${tripId}`);
+    });
+  };
+
+  const openTripRequestDetail = (requestId: string) => {
+    scheduleMapDetailNavigation(`request:${requestId}`, () => {
+      router.push(getTripRequestDetailHref(requestId));
+    });
+  };
+
   useEffect(() => {
-    if (isFocused && !openingTripId) openingTripRef.current = false;
-  }, [isFocused, openingTripId]);
+    if (!isFocused) {
+      if (openingMapDetailRecoveryTimerRef.current) {
+        clearTimeout(openingMapDetailRecoveryTimerRef.current);
+        openingMapDetailRecoveryTimerRef.current = null;
+      }
+      openingMapDetailRef.current = false;
+      setOpeningMapDetailKey(null);
+    }
+  }, [isFocused]);
 
   useEffect(() => () => {
-    if (openingTripTimerRef.current) clearTimeout(openingTripTimerRef.current);
+    if (openingMapDetailTimerRef.current) clearTimeout(openingMapDetailTimerRef.current);
+    if (openingMapDetailRecoveryTimerRef.current) {
+      clearTimeout(openingMapDetailRecoveryTimerRef.current);
+    }
   }, []);
 
   const showUserLocationCallout = () => {
@@ -2310,16 +2333,14 @@ export default function HomeScreen() {
               identifier={`trip-request-${request.id}`}
               coordinate={coordinate}
               anchor={TRIP_REQUEST_MARKER_ANCHOR}
-              image={IS_ANDROID ? getTripRequestMarkerImage(request.passengerGender) : undefined}
+              image={getTripRequestMarkerImage(request.passengerGender)}
               title={request.passengerName || 'Demande de trajet'}
               description={`${placeName(request.departure)} → ${placeName(request.arrival)}`}
-              onPress={() => router.push(getTripRequestDetailHref(request.id))}
+              onPress={() => openTripRequestDetail(request.id)}
               tappable
               tracksViewChanges={false}
               zIndex={6}
-            >
-              {!IS_ANDROID ? <TripRequestMapMarker gender={request.passengerGender} /> : null}
-            </Marker>
+            />
           );
         })}
         {ongoingDriverTrip && visibleDriverPassengerMarkers.map((passenger) => {
@@ -2583,7 +2604,7 @@ export default function HomeScreen() {
           <TouchableOpacity
             activeOpacity={0.9}
             style={styles.activeRequestCard}
-            onPress={() => router.push(getTripRequestDetailHref(activeTripRequest.id))}
+            onPress={() => openTripRequestDetail(activeTripRequest.id)}
           >
             <View style={styles.activeRequestIcon}>
               <Ionicons name={activeRequestStatus.icon} size={17} color={Colors.primary} />
@@ -2738,7 +2759,7 @@ export default function HomeScreen() {
                 key={request.id}
                 cardWidth={tripCardWidth}
                 request={request}
-                onOpen={() => router.push(getTripRequestDetailHref(request.id))}
+                onOpen={() => openTripRequestDetail(request.id)}
               />
             ))}
           </ScrollView>
@@ -3117,62 +3138,6 @@ const styles = StyleSheet.create({
   tripVehicleMarkerImageSelected: {
     width: IS_ANDROID ? 62 : 64,
     height: IS_ANDROID ? 62 : 64,
-  },
-  tripRequestMarkerFrame: {
-    width: 60,
-    height: 58,
-    alignItems: 'center',
-    position: 'relative',
-  },
-  tripRequestMarkerBody: {
-    position: 'absolute',
-    top: 8,
-    left: 10,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: HOME_COLORS.navy,
-    borderWidth: 3,
-    borderColor: Colors.white,
-    ...Platform.select({
-      ios: {
-        shadowColor: Colors.black,
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.2,
-        shadowRadius: 5,
-      },
-    }),
-    zIndex: 2,
-  },
-  tripRequestMarkerBadge: {
-    position: 'absolute',
-    top: 3,
-    right: 2,
-    width: 17,
-    height: 17,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.primary,
-    borderWidth: 2,
-    borderColor: Colors.white,
-    zIndex: 3,
-  },
-  tripRequestMarkerTip: {
-    position: 'absolute',
-    top: 46,
-    left: 24,
-    width: 0,
-    height: 0,
-    borderLeftWidth: 6,
-    borderRightWidth: 6,
-    borderTopWidth: 8,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderTopColor: HOME_COLORS.navy,
-    zIndex: 1,
   },
   userLocationMarkerFrame: {
     width: 64,

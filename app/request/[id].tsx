@@ -2286,71 +2286,6 @@ export default function TripRequestDetailsScreen() {
           </View>
         )}
 
-        {/* Driver sélectionné et trajet créé (pour le propriétaire) */}
-        {isOwner && (tripRequest.selectedDriverId || tripRequest.tripId) && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeaderWithBadge}>
-              <View style={styles.sectionTitleContainer}>
-                <Ionicons name="checkmark-circle" size={24} color={Colors.success} />
-                <Text style={styles.sectionTitle}>
-                  {tripRequest.tripId ? 'Course en cours' : 'Conducteur choisi'}
-                </Text>
-              </View>
-            </View>
-            <View style={[styles.offerCard, styles.offerCardAccepted]}>
-              <View style={styles.offerHeader}>
-                <View style={styles.driverInfo}>
-                  {tripRequest.selectedDriverAvatar ? (
-                    <Image
-                      source={{ uri: tripRequest.selectedDriverAvatar }}
-                      style={styles.offerAvatar}
-                    />
-                  ) : (
-                    <View style={styles.offerAvatar}>
-                      <Ionicons name="person" size={20} color={Colors.gray[500]} />
-                    </View>
-                  )}
-                  <View>
-                    <Text style={styles.driverName}>
-                      {tripRequest.selectedDriverName || 'Conducteur confirmé'}
-                    </Text>
-                    {tripRequest.selectedVehicle && (
-                      <Text style={styles.ratingText}>
-                        {tripRequest.selectedVehicle.brand} {tripRequest.selectedVehicle.model}
-                      </Text>
-                    )}
-                  </View>
-                </View>
-              </View>
-              {tripRequest.selectedPricePerSeat && (
-                <View style={styles.offerDetail}>
-                  <Ionicons name="cash-outline" size={16} color={Colors.gray[600]} />
-                  <Text style={styles.offerDetailText}>
-                    {tripRequest.selectedPricePerSeat} FC/place
-                  </Text>
-                </View>
-              )}
-              {tripRequest.tripId && (
-                <View style={styles.tripCreatedContainer}>
-                  <View style={styles.tripCreatedInfo}>
-                    <Ionicons name="car" size={20} color={Colors.primary} />
-                    <Text style={styles.tripCreatedText}>
-                      Le conducteur a déjà lancé le trajet. Vous pouvez suivre la course en temps réel.
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.viewTripButton}
-                    onPress={() => handleViewTrip(tripRequest.tripId!)}
-                  >
-                    <Ionicons name="arrow-forward" size={18} color={Colors.primary} />
-                    <Text style={styles.viewTripButtonText}>Voir le trajet</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          </View>
-        )}
-
         {/* Offres reçues (pour le propriétaire) */}
         {shouldShowReceivedOffers && isOwner && (
           <View style={styles.section}>
@@ -4673,24 +4608,6 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: FontWeights.bold,
     fontSize: FontSizes.sm,
-  },
-  tripCreatedContainer: {
-    marginTop: Spacing.md,
-    paddingTop: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray[200],
-  },
-  tripCreatedInfo: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  tripCreatedText: {
-    flex: 1,
-    fontSize: FontSizes.sm,
-    color: Colors.gray[700],
-    lineHeight: 20,
   },
   makeOfferButton: {
     flexDirection: 'row',

@@ -20,8 +20,8 @@ const IS_ANDROID = Platform.OS === 'android';
 
 const vehicleTrackingMarkerImages: Record<VehicleType, ImageRequireSource> = {
   car: require('@/assets/images/map-markers/trip-marker-car.png'),
-  moto: require('@/assets/images/map-markers/trip-marker-moto.png'),
-  tricycle: require('@/assets/images/map-markers/trip-marker-tricycle.png'),
+  moto: require('@/assets/images/map-markers/trip-marker-moto-v2.png'),
+  tricycle: require('@/assets/images/map-markers/trip-marker-tricycle-v2.png'),
 };
 
 export function getVehicleTrackingMarkerImage(vehicleType?: VehicleType): ImageRequireSource {
