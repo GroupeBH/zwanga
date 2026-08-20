@@ -1,10 +1,14 @@
-import { Ionicons } from '@expo/vector-icons';
+import {
+  REGISTERED_VEHICLE_TYPE_OPTIONS,
+  type RegisteredVehicleTypeOption,
+} from '@/constants/vehicleTypes';
+import type { TripRequestVehicleType } from '@/types';
 import { TextInput } from 'react-native';
 
 // Types
 export type AuthMode = 'login' | 'signup';
 export type AuthStep = 'phone' | 'sms' | 'pin' | 'profile' | 'kyc' | 'resetPin';
-export type VehicleType = 'sedan' | 'suv' | 'van' | 'moto';
+export type VehicleType = TripRequestVehicleType;
 export type GoogleSignupStep = 'phone' | 'otp';
 export type ResetPinMode = 'otp' | 'newPin';
 
@@ -13,39 +17,9 @@ export const LOGIN_STEPS: AuthStep[] = ['phone', 'pin'];
 export const SIGNUP_STEPS: AuthStep[] = ['phone', 'sms', 'pin', 'profile'];
 
 // Vehicle options
-export type VehicleOption = {
-  id: VehicleType;
-  label: string;
-  description: string;
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-};
+export type VehicleOption = RegisteredVehicleTypeOption;
 
-export const vehicleOptions: VehicleOption[] = [
-  {
-    id: 'sedan',
-    label: 'Berline',
-    description: 'Confort 1-4 passagers',
-    icon: 'car',
-  },
-  {
-    id: 'suv',
-    label: 'SUV / 4x4',
-    description: 'Routes difficiles',
-    icon: 'car-outline',
-  },
-  {
-    id: 'van',
-    label: 'Van / Mini-bus',
-    description: 'Jusqu\'à 8 places',
-    icon: 'bus',
-  },
-  {
-    id: 'moto',
-    label: 'Moto',
-    description: 'Rapide & Agile',
-    icon: 'bicycle',
-  },
-];
+export const vehicleOptions: VehicleOption[] = REGISTERED_VEHICLE_TYPE_OPTIONS;
 
 // Motivational messages per step
 export const getMotivationalMessage = (step: AuthStep, mode: AuthMode): string => {

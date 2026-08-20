@@ -7,6 +7,7 @@ import type {
   Trip,
   TripInterruptionReason,
   TripInterruptionStatus,
+  TripRequestVehicleType,
   TripStatus,
   Vehicle,
   VehicleType,
@@ -74,6 +75,7 @@ type ServerDriverTripInterruptionRequest = {
 type ServerVehicle = {
   id: string;
   ownerId: string;
+  type?: TripRequestVehicleType;
   brand: string;
   model: string;
   color: string;
@@ -325,6 +327,7 @@ const mapServerVehicleToClient = (vehicle: ServerVehicle | null | undefined): Ve
   return {
     id: vehicle.id,
     ownerId: vehicle.ownerId,
+    type: vehicle.type ?? 'car',
     brand: vehicle.brand ?? '',
     model: vehicle.model ?? '',
     color: vehicle.color ?? '',

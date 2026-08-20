@@ -3,6 +3,7 @@ import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { VehicleFormModal } from '@/components/VehicleFormModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { getRegisteredVehicleTypeLabel } from '@/constants/vehicleTypes';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
 import { useGetPaymentHistoryQuery } from '@/store/api/paymentApi';
@@ -19,7 +20,7 @@ import { useCreateVehicleMutation, useDeleteVehicleMutation, useGetVehiclesQuery
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { performLogout } from '@/store/slices/authSlice';
-import type { PaymentHistoryItem, SubscriptionPaymentMethod, SubscriptionPaymentResponse, SubscriptionPlan, Vehicle } from '@/types';
+import type { PaymentHistoryItem, SubscriptionPaymentMethod, SubscriptionPaymentResponse, SubscriptionPlan, TripRequestVehicleType, Vehicle } from '@/types';
 import { createBecomeDriverAction, getApiErrorMessage, isDriverRequiredError } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -391,6 +392,7 @@ export default function ProfileScreen() {
   const { showDialog } = useDialog();
   const [refreshing, setRefreshing] = useState(false);
   const [vehicleModalVisible, setVehicleModalVisible] = useState(false);
+  const [vehicleType, setVehicleType] = useState<TripRequestVehicleType | null>(null);
   const [vehicleBrand, setVehicleBrand] = useState('');
   const [vehicleModel, setVehicleModel] = useState('');
   const [vehicleColor, setVehicleColor] = useState('');
@@ -860,6 +862,7 @@ export default function ProfileScreen() {
   };
 
   const resetVehicleForm = useCallback(() => {
+    setVehicleType(null);
     setVehicleBrand('');
     setVehicleModel('');
     setVehicleColor('');
@@ -906,17 +909,18 @@ export default function ProfileScreen() {
   }, [kycModalVisible]);
 
   const handleAddVehicle = async () => {
-    if (!vehicleBrand.trim() || !vehicleModel.trim() || !vehicleColor.trim() || !vehiclePlate.trim()) {
+    if (!vehicleType || !vehicleBrand.trim() || !vehicleModel.trim() || !vehicleColor.trim() || !vehiclePlate.trim()) {
       showDialog({
         variant: 'warning',
         title: 'Champs requis',
-        message: 'Merci de renseigner la marque, le modèle, la couleur et la plaque.',
+        message: 'Merci de choisir le type et de renseigner la marque, le modèle, la couleur et la plaque.',
       });
       return;
     }
 
     try {
       await createVehicle({
+        type: vehicleType,
         brand: vehicleBrand.trim(),
         model: vehicleModel.trim(),
         color: vehicleColor.trim(),
@@ -2516,7 +2520,7 @@ export default function ProfileScreen() {
           onPress: handleSubscribePro,
         }
       : {
-          label: 'Points Zwanga',
+          label: 'Jetons Zwanga',
           icon: 'wallet-outline' as keyof typeof Ionicons.glyphMap,
           onPress: () => router.push('/wallet' as any),
         };
@@ -2538,7 +2542,7 @@ export default function ProfileScreen() {
     },
     {
       icon: 'wallet-outline' as keyof typeof Ionicons.glyphMap,
-      label: 'Points',
+      label: 'Jetons',
       meta: 'Solde et partage',
       onPress: () => router.push('/wallet' as any),
     },
@@ -3160,7 +3164,9 @@ export default function ProfileScreen() {
                       {vehicle.brand} {vehicle.model}
                     </Text>
                     <Text style={styles.vehiclePlate}>{vehicle.licensePlate}</Text>
-                    <Text style={styles.vehicleColor}>{vehicle.color}</Text>
+                    <Text style={styles.vehicleColor}>
+                      {getRegisteredVehicleTypeLabel(vehicle.type)} • {vehicle.color}
+                    </Text>
                   </View>
                   <View
                     style={[
@@ -3255,10 +3261,12 @@ export default function ProfileScreen() {
         visible={vehicleModalVisible}
         {...vehicleModalCopy}
         submitLabel="Ajouter"
+        vehicleType={vehicleType}
         brand={vehicleBrand}
         model={vehicleModel}
         color={vehicleColor}
         licensePlate={vehiclePlate}
+        onVehicleTypeChange={setVehicleType}
         onBrandChange={handleVehicleBrandChange}
         onModelChange={handleVehicleModelChange}
         onColorChange={handleVehicleColorChange}

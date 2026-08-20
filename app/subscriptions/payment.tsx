@@ -86,7 +86,7 @@ const PAYMENT_OPTIONS: {
   { id: 'airtel', label: 'Airtel Money', hint: 'Mobile Money', icon: 'phone-portrait-outline' },
   { id: 'orange', label: 'Orange Money', hint: 'Mobile Money', icon: 'phone-portrait-outline' },
   { id: 'card', label: 'Carte', hint: 'Visa ou Mastercard', icon: 'card-outline' },
-  { id: 'points', label: 'Points', hint: 'Solde Zwanga', icon: 'wallet-outline' },
+  { id: 'points', label: 'Jetons', hint: 'Solde Zwanga', icon: 'wallet-outline' },
 ];
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -108,7 +108,12 @@ const formatPointsAmount = (amount?: number | string | null, currency?: string |
     numericAmount % 1 === 0
       ? Math.round(numericAmount).toLocaleString('fr-FR')
       : numericAmount.toFixed(2);
-  return `${formatted} ${displayCurrency}`;
+  const unit = !currency || currency.toUpperCase() === 'PTS'
+    ? Math.abs(numericAmount) === 1
+      ? 'jeton'
+      : 'jetons'
+    : displayCurrency;
+  return `${formatted} ${unit}`;
 };
 
 const getPlanLabel = (plan?: SubscriptionPlan | null) => {
@@ -420,14 +425,21 @@ export default function SubscriptionPaymentScreen() {
   const planLabel = getPlanLabel(proPlan?.plan);
   const isCardPayment = selectedChannel === 'card';
   const isPointsPayment = selectedChannel === 'points';
-  const subscriptionPointsAmount = Number(proPlan?.pointsAmount ?? proPlan?.amount ?? 0);
+  const subscriptionPointsAmount = Number(
+    proPlan?.tokensAmount ?? proPlan?.pointsAmount ?? proPlan?.amount ?? 0,
+  );
   const walletBalance = Number(walletSummary?.account.balance ?? 0);
-  const pointsCurrency = proPlan?.pointsCurrency || walletSummary?.account.currency || 'PTS';
+  const pointsCurrency =
+    proPlan?.tokensCurrency ||
+    proPlan?.pointsCurrency ||
+    walletSummary?.account.currency ||
+    'PTS';
   const subscriptionPointsLabel = formatPointsAmount(
-    proPlan?.pointsAmount ?? proPlan?.amount ?? 0,
+    proPlan?.tokensAmount ?? proPlan?.pointsAmount ?? proPlan?.amount ?? 0,
     pointsCurrency,
   );
   const walletBalanceLabel = formatPointsAmount(walletSummary?.account.balance ?? 0, pointsCurrency);
+  const subscriptionRewardTokens = Number(proPlan?.subscriptionRewardTokens ?? 25);
   const isPremiumActive = Boolean(
     premiumOverview?.isPremium ||
       premiumOverview?.isActive ||
@@ -448,13 +460,13 @@ export default function SubscriptionPaymentScreen() {
           {
             key: 'wallet',
             title: 'Solde',
-            description: 'Zwanga verifie et debite votre solde de points.',
+            description: 'Zwanga verifie et debite votre solde de jetons.',
             icon: 'wallet-outline' as keyof typeof Ionicons.glyphMap,
           },
           {
             key: 'activation',
             title: 'Activation',
-            description: "L'abonnement est active des que le debit points est confirme.",
+            description: "L'abonnement est active des que le debit de jetons est confirme.",
             icon: 'shield-checkmark-outline' as keyof typeof Ionicons.glyphMap,
           },
         ]
@@ -579,7 +591,7 @@ export default function SubscriptionPaymentScreen() {
         icon: isPointsPayment
           ? ('wallet-outline' as keyof typeof Ionicons.glyphMap)
           : ('lock-closed-outline' as keyof typeof Ionicons.glyphMap),
-        title: isPointsPayment ? 'Debit points' : 'Reference en preparation',
+        title: isPointsPayment ? 'Debit de jetons' : 'Reference en preparation',
         text:
           message ||
           (isPointsPayment
@@ -652,7 +664,7 @@ export default function SubscriptionPaymentScreen() {
           : stage === 'failed'
             ? 'Reessayer'
             : isPointsPayment
-              ? 'Payer avec points'
+              ? 'Payer avec jetons'
               : isCardPayment
                 ? 'Payer par carte'
                 : "Payer l'abonnement";
@@ -738,16 +750,16 @@ export default function SubscriptionPaymentScreen() {
       setStage('success');
       setOrderNumber(null);
       setPaymentUrl(null);
-      setMessage('Abonnement conducteur active.');
+      setMessage(`Abonnement conducteur active. ${subscriptionRewardTokens} jetons credites.`);
       setAutoCheckAttempt(0);
       showDialog({
         variant: 'success',
         title: 'Abonnement actif',
-        message: 'Votre abonnement conducteur est actif. Vous pouvez publier plus de 5 trajets par jour.',
+        message: `Votre abonnement conducteur est actif et ${subscriptionRewardTokens} jetons ont ete credites.`,
       });
       return true;
     },
-    [clearStoredPayment, refetchPremiumOverview, refetchProfile, refetchWallet, showDialog, stopAutoCheck],
+    [clearStoredPayment, refetchPremiumOverview, refetchProfile, refetchWallet, showDialog, stopAutoCheck, subscriptionRewardTokens],
   );
 
   const checkPaymentByOrderNumber = useCallback(
@@ -1053,19 +1065,19 @@ export default function SubscriptionPaymentScreen() {
         setPaymentUrl(null);
         setStage('preparing');
         setAutoCheckAttempt(0);
-        setMessage("Debit du solde points Zwanga en cours.");
+        setMessage("Debit du solde de jetons Zwanga en cours.");
 
         const response = await subscribeToProWithPoints().unwrap();
         if (await finishPayment(response)) return;
 
         setStage('failed');
-        setMessage(response.payment.message || "Le paiement par points n'a pas ete confirme.");
+        setMessage(response.payment.message || "Le paiement par jetons n'a pas ete confirme.");
       } catch (error: any) {
         setStage('failed');
         showDialog({
           variant: 'danger',
           title: 'Paiement impossible',
-          message: getApiErrorMessage(error, 'Impossible de payer cet abonnement avec vos points.'),
+          message: getApiErrorMessage(error, 'Impossible de payer cet abonnement avec vos jetons.'),
         });
       }
       return;
@@ -1425,7 +1437,7 @@ export default function SubscriptionPaymentScreen() {
               numberOfLines={isTightHeight ? 1 : 2}
               style={[styles.planText, isCompactHeight && styles.planTextCompact]}
             >
-              Publiez au-delà des 5 trajets inclus chaque jour dès que le paiement est confirmé.
+              Publiez au-delà des 5 trajets inclus chaque jour. Après paiement : +{subscriptionRewardTokens} jetons.
             </Text>
           </LinearGradient>
 

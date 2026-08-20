@@ -150,8 +150,8 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
     : []),
   {
     id: 'points',
-    label: 'Points Zwanga',
-    description: 'Utiliser votre solde de points/jetons',
+    label: 'Jetons Zwanga',
+    description: 'Utiliser votre solde de jetons',
     icon: 'wallet-outline',
     selection: 'radio',
   },

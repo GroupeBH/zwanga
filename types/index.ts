@@ -1,6 +1,10 @@
 export type UserRole = 'driver' | 'passenger' | 'both';
 export type UserGender = 'male' | 'female' | 'other' | 'prefer_not_to_say';
 export type VehicleType = 'car' | 'moto' | 'tricycle';
+export type TripRequestVehicleType =
+  | 'car'
+  | 'motorcycle_2_wheels'
+  | 'motorcycle_3_wheels';
 export type TripStatus = 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
 export type RecurringTripStatus = 'active' | 'paused';
 export type BookingStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'completed' | 'expired';
@@ -90,6 +94,9 @@ export interface SubscriptionPlanSummary {
   paymentMethods?: Array<SubscriptionPaymentMethod | 'points'>;
   pointsAmount?: number | string | null;
   pointsCurrency?: string | null;
+  tokensAmount?: number | string | null;
+  tokensCurrency?: string | null;
+  subscriptionRewardTokens?: number | string | null;
   eligibleDocumentTypes: string[];
 }
 
@@ -192,6 +199,7 @@ export interface GeoPoint {
 export interface Vehicle {
   id: string;
   ownerId: string;
+  type: TripRequestVehicleType;
   brand: string;
   model: string;
   color: string;
@@ -409,6 +417,7 @@ export type WalletLedgerEntryType =
   | 'booking_refund'
   | 'booking_fare_adjustment'
   | 'subscription_payment'
+  | 'subscription_reward'
   | 'transfer_out'
   | 'transfer_in';
 
@@ -594,6 +603,7 @@ export interface TripRequest {
   departureDateMin: string; // ISO string date - Date/heure de départ minimum souhaitée
   departureDateMax: string; // ISO string date - Date/heure de départ maximum acceptée
   numberOfSeats: number;
+  vehicleType: TripRequestVehicleType;
   maxPricePerSeat?: number | null; // Prix maximum par place accepté (optionnel)
   paymentMode?: TripPaymentMode | null;
   description?: string | null;

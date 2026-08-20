@@ -6,6 +6,7 @@ import type {
   TripPaymentMode,
   TripRequest,
   TripRequestStatus,
+  TripRequestVehicleType,
   UserGender,
 } from '@/types';
 import { baseApi } from './baseApi';
@@ -33,6 +34,7 @@ type ServerTripRequest = {
   departureDateMin: string;
   departureDateMax: string;
   numberOfSeats: number;
+  vehicleType?: TripRequestVehicleType;
   maxPricePerSeat: number | null;
   paymentMode?: TripPaymentMode | null;
   description: string | null;
@@ -227,6 +229,7 @@ const mapServerTripRequestToClient = (request: ServerTripRequest): TripRequest =
     departureDateMin: request.departureDateMin,
     departureDateMax: request.departureDateMax,
     numberOfSeats: request.numberOfSeats,
+    vehicleType: request.vehicleType ?? 'car',
     maxPricePerSeat: request.maxPricePerSeat ?? undefined,
     paymentMode: request.paymentMode ?? undefined,
     description: request.description ?? undefined,
@@ -382,7 +385,8 @@ type CreateTripRequestPayload = {
   arrivalCoordinates?: [number, number];
   departureDateMin: string; // ISO string date
   departureDateMax: string; // ISO string date
-  numberOfSeats: number;
+  numberOfSeats?: number;
+  vehicleType: TripRequestVehicleType;
   maxPricePerSeat?: number;
   paymentMode?: TripPaymentMode;
   description?: string;
@@ -405,6 +409,28 @@ export type TripRequestPriceRecommendation = {
   pricePerKmPerPassenger: number;
   recommendedPricePerSeat: number | null;
   recommendedTotalPrice: number | null;
+};
+
+export type TripRequestVehiclePriceOption = {
+  vehicleType: TripRequestVehicleType;
+  displayName: string;
+  maximumSeats: number | null;
+  availableForRequestedSeats: boolean;
+  pricePerKmPerPassenger: number;
+  recommendedPricePerSeat: number | null;
+  recommendedTotalPrice: number | null;
+};
+
+export type TripRequestVehicleOptions = {
+  currency: 'CDF';
+  pricingModel: 'distance_per_vehicle_type';
+  distanceMeters: number | null;
+  numberOfSeats: number;
+  weatherImpact: {
+    priceMultiplier: number;
+    [key: string]: unknown;
+  };
+  options: TripRequestVehiclePriceOption[];
 };
 
 const tripRequestListTag = { type: 'TripRequest' as const, id: 'LIST' };
@@ -470,6 +496,14 @@ export const tripRequestApi = baseApi.injectEndpoints({
     recommendTripRequestPrice: builder.mutation<TripRequestPriceRecommendation, RecommendTripRequestPricePayload>({
       query: (payload: RecommendTripRequestPricePayload) => ({
         url: '/trip-requests/recommended-price',
+        method: 'POST',
+        body: payload,
+      }),
+    }),
+
+    getTripRequestVehicleOptions: builder.mutation<TripRequestVehicleOptions, RecommendTripRequestPricePayload>({
+      query: (payload: RecommendTripRequestPricePayload) => ({
+        url: '/trip-requests/vehicle-options',
         method: 'POST',
         body: payload,
       }),
@@ -658,6 +692,7 @@ export const tripRequestApi = baseApi.injectEndpoints({
 export const {
   useCreateTripRequestMutation,
   useRecommendTripRequestPriceMutation,
+  useGetTripRequestVehicleOptionsMutation,
   useGetAvailableTripRequestsQuery,
   useGetMyTripRequestsQuery,
   useLazyGetMyTripRequestsQuery,

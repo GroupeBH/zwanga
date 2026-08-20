@@ -1,4 +1,6 @@
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { REGISTERED_VEHICLE_TYPE_OPTIONS } from '@/constants/vehicleTypes';
+import type { TripRequestVehicleType } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import {
@@ -23,10 +25,12 @@ type VehicleFormModalProps = {
   submitLabel?: string;
   submitting?: boolean;
   errorMessage?: string | null;
+  vehicleType: TripRequestVehicleType | null;
   brand: string;
   model: string;
   color: string;
   licensePlate: string;
+  onVehicleTypeChange: (value: TripRequestVehicleType) => void;
   onBrandChange: (value: string) => void;
   onModelChange: (value: string) => void;
   onColorChange: (value: string) => void;
@@ -48,10 +52,12 @@ export function VehicleFormModal({
   submitLabel = DEFAULT_SUBMIT_LABEL,
   submitting = false,
   errorMessage = null,
+  vehicleType,
   brand,
   model,
   color,
   licensePlate,
+  onVehicleTypeChange,
   onBrandChange,
   onModelChange,
   onColorChange,
@@ -122,6 +128,66 @@ export function VehicleFormModal({
                 scrollIndicatorInsets={{ bottom: contentBottomPadding }}
                 bounces={false}
               >
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Type de véhicule</Text>
+                  <View style={styles.vehicleTypeList}>
+                    {REGISTERED_VEHICLE_TYPE_OPTIONS.map((option) => {
+                      const selected = vehicleType === option.id;
+
+                      return (
+                        <TouchableOpacity
+                          key={option.id}
+                          accessibilityRole="radio"
+                          accessibilityState={{ checked: selected }}
+                          accessibilityLabel={`${option.label}. ${option.description}`}
+                          activeOpacity={0.82}
+                          style={[
+                            styles.vehicleTypeOption,
+                            selected && styles.vehicleTypeOptionSelected,
+                          ]}
+                          onPress={() => onVehicleTypeChange(option.id)}
+                          disabled={submitting}
+                        >
+                          <View
+                            style={[
+                              styles.vehicleTypeIcon,
+                              selected && styles.vehicleTypeIconSelected,
+                            ]}
+                          >
+                            <Ionicons
+                              name={option.icon}
+                              size={22}
+                              color={selected ? Colors.primary : Colors.gray[500]}
+                            />
+                          </View>
+                          <View style={styles.vehicleTypeCopy}>
+                            <Text
+                              style={[
+                                styles.vehicleTypeLabel,
+                                selected && styles.vehicleTypeLabelSelected,
+                              ]}
+                              numberOfLines={2}
+                            >
+                              {option.label}
+                            </Text>
+                            <Text style={styles.vehicleTypeDescription} numberOfLines={2}>
+                              {option.description}
+                            </Text>
+                          </View>
+                          <View
+                            style={[
+                              styles.selectionDot,
+                              selected && styles.selectionDotSelected,
+                            ]}
+                          >
+                            {selected ? <View style={styles.selectionDotCore} /> : null}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>Marque</Text>
                   <TextInput
@@ -194,10 +260,10 @@ export function VehicleFormModal({
                     style={[
                       styles.actionButton,
                       styles.primaryButton,
-                      submitting && styles.primaryButtonDisabled,
+                      (submitting || !vehicleType) && styles.primaryButtonDisabled,
                     ]}
                     onPress={onSubmit}
-                    disabled={submitting}
+                    disabled={submitting || !vehicleType}
                   >
                     {submitting ? (
                       <ActivityIndicator color={Colors.white} />
@@ -287,6 +353,82 @@ const styles = StyleSheet.create({
   },
   inputGroup: {
     gap: 4,
+  },
+  vehicleTypeList: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 6,
+  },
+  vehicleTypeOption: {
+    position: 'relative',
+    flex: 1,
+    minWidth: 0,
+    minHeight: 126,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.white,
+    paddingHorizontal: 6,
+    paddingVertical: Spacing.sm,
+  },
+  vehicleTypeOptionSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '0D',
+  },
+  vehicleTypeIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.gray[100],
+  },
+  vehicleTypeIconSelected: {
+    backgroundColor: Colors.primary + '18',
+  },
+  vehicleTypeCopy: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 6,
+  },
+  vehicleTypeLabel: {
+    color: Colors.gray[800],
+    fontSize: FontSizes.xs,
+    lineHeight: 15,
+    fontWeight: FontWeights.bold,
+    textAlign: 'center',
+  },
+  vehicleTypeLabelSelected: {
+    color: Colors.primaryDark,
+  },
+  vehicleTypeDescription: {
+    color: Colors.gray[500],
+    fontSize: 10,
+    lineHeight: 13,
+    textAlign: 'center',
+  },
+  selectionDot: {
+    position: 'absolute',
+    top: 7,
+    right: 7,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: Colors.gray[300],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectionDotSelected: {
+    borderColor: Colors.primary,
+  },
+  selectionDotCore: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.primary,
   },
   label: {
     fontSize: 12,

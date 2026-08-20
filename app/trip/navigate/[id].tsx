@@ -470,7 +470,7 @@ const formatPendingBookingPayment = (booking: Booking, tripPrice?: number): stri
   }
 
   if (booking.paymentMode === 'points') {
-    return 'Points';
+    return 'Jetons';
   }
 
   if (booking.paymentMode === 'electronic') {
