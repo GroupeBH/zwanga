@@ -103,7 +103,7 @@ export type ServerTrip = {
   isFree?: boolean;
   description?: string;
   status?: string;
-  vehicleType?: VehicleType;
+  vehicleType?: TripRequestVehicleType | VehicleType;
   vehicleId?: string | null;
   vehicle?: ServerVehicle | null;
   bookings?: ServerBooking[];
@@ -117,6 +117,22 @@ export type ServerTrip = {
   interruptionRequest?: ServerDriverTripInterruptionRequest | null;
   activeInterruptionRequest?: ServerDriverTripInterruptionRequest | null;
   currentInterruptionRequest?: ServerDriverTripInterruptionRequest | null;
+};
+
+const mapServerVehicleTypeToClient = (
+  vehicleType?: TripRequestVehicleType | VehicleType | null,
+): VehicleType => {
+  switch (vehicleType) {
+    case 'motorcycle_2_wheels':
+    case 'moto':
+      return 'moto';
+    case 'motorcycle_3_wheels':
+    case 'tricycle':
+      return 'tricycle';
+    case 'car':
+    default:
+      return 'car';
+  }
 };
 
 export type ServerRecurringTripTemplate = {
@@ -386,7 +402,9 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
               : undefined,
         }
       : null,
-    vehicleType: trip.vehicleType ?? 'car',
+    vehicleType: mapServerVehicleTypeToClient(
+      trip.vehicle?.type ?? trip.vehicleType,
+    ),
     vehicleInfo: trip.description?.trim() || 'Informations véhicule fournies par le conducteur',
     departure: {
       name: trip.departureLocation,

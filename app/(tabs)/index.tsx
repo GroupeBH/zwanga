@@ -129,8 +129,8 @@ const tripRequestStatusMeta: Record<
 
 const androidTripMarkerImages: Record<Trip['vehicleType'], ImageRequireSource> = {
   car: require('@/assets/images/map-markers/trip-marker-car.png'),
-  moto: require('@/assets/images/map-markers/trip-marker-moto.png'),
-  tricycle: require('@/assets/images/map-markers/trip-marker-tricycle.png'),
+  moto: require('@/assets/images/map-markers/trip-marker-moto-v2.png'),
+  tricycle: require('@/assets/images/map-markers/trip-marker-tricycle-v2.png'),
 };
 
 const androidTripRequestMarkerImages = {
@@ -141,8 +141,8 @@ const androidTripRequestMarkerImages = {
 
 const selectedTripMarkerImages: Record<Trip['vehicleType'], ImageRequireSource> = {
   car: require('@/assets/images/map-markers/trip-marker-car-selected.png'),
-  moto: require('@/assets/images/map-markers/trip-marker-moto-selected.png'),
-  tricycle: require('@/assets/images/map-markers/trip-marker-tricycle-selected.png'),
+  moto: require('@/assets/images/map-markers/trip-marker-moto-v2-selected.png'),
+  tricycle: require('@/assets/images/map-markers/trip-marker-tricycle-v2-selected.png'),
 };
 
 const bookingStatusMeta: Record<
