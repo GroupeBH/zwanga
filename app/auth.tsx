@@ -916,7 +916,7 @@ export default function AuthScreen() {
         showDialog({ variant: 'warning', title: 'Véhicule', message: 'Veuillez sélectionner un type de véhicule.' });
         return;
       }
-      if (!vehicleBrand.trim() || !vehicleModel.trim() || !vehiclePlate.trim()) {
+      if (!vehicleBrand.trim() || !vehicleModel.trim() || !vehicleColor.trim() || !vehiclePlate.trim()) {
         showDialog({ variant: 'warning', title: 'Véhicule', message: 'Veuillez compléter les informations du véhicule.' });
         return;
       }
@@ -968,6 +968,24 @@ export default function AuthScreen() {
   const handleFinalRegister = async () => {
     try {
       const requiresVehicle = role === 'driver';
+      if (requiresVehicle && !vehicleType) {
+        showDialog({
+          variant: 'warning',
+          title: 'Véhicule',
+          message: 'Veuillez sélectionner un type de véhicule.',
+        });
+        return;
+      }
+
+      const signupVehicle = requiresVehicle
+        ? {
+            type: vehicleType!,
+            brand: vehicleBrand.trim(),
+            model: vehicleModel.trim(),
+            color: vehicleColor.trim(),
+            licensePlate: vehiclePlate.trim(),
+          }
+        : undefined;
       
       if (googleIdToken && isGooglePhoneVerified) {
         const authMethod = socialProvider ?? 'google';
@@ -979,16 +997,16 @@ export default function AuthScreen() {
               gender: gender ?? undefined,
               role,
               isDriver: requiresVehicle,
-              vehicle: requiresVehicle
-                ? {
-                    brand: vehicleBrand.trim(),
-                    model: vehicleModel.trim(),
-                    color: vehicleColor.trim(),
-                    licensePlate: vehiclePlate.trim(),
-                  }
-                : undefined,
+              vehicle: signupVehicle,
             }).unwrap()
-          : await googleMobile({ idToken: googleIdToken, phone, gender: gender ?? undefined }).unwrap();
+          : await googleMobile({
+              idToken: googleIdToken,
+              phone,
+              gender: gender ?? undefined,
+              role,
+              isDriver: requiresVehicle,
+              vehicle: signupVehicle,
+            }).unwrap();
         await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
         
         if (requiresVehicle && kycFiles) {
@@ -1031,6 +1049,7 @@ export default function AuthScreen() {
       formData.append('isDriver', JSON.stringify(requiresVehicle));
 
       if (requiresVehicle) {
+        formData.append('vehicle[type]', vehicleType!);
         formData.append('vehicle[brand]', vehicleBrand.trim());
         formData.append('vehicle[model]', vehicleModel.trim());
         formData.append('vehicle[color]', vehicleColor.trim());

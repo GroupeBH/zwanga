@@ -63,12 +63,14 @@ const LEDGER_META: Record<
   booking_refund: { label: 'Remboursement', icon: 'return-down-back-outline', color: Colors.success },
   booking_fare_adjustment: { label: 'Ajustement trajet', icon: 'swap-horizontal-outline', color: Colors.infoDark },
   subscription_payment: { label: 'Abonnement', icon: 'shield-checkmark-outline', color: Colors.danger },
+  subscription_reward: { label: 'Bonus abonnement', icon: 'gift-outline', color: Colors.successDark },
   transfer_out: { label: 'Partage envoye', icon: 'arrow-up-circle-outline', color: Colors.danger },
   transfer_in: { label: 'Partage recu', icon: 'arrow-down-circle-outline', color: Colors.successDark },
 };
 
 const formatWalletAmount = (amount?: number | string | null, currency?: string | null) => {
   const numericAmount = Number(amount);
+  const isTokenCurrency = !currency || currency.toUpperCase() === 'PTS';
   const displayCurrency = currency || 'PTS';
   if (!Number.isFinite(numericAmount)) return `${amount ?? 0} ${displayCurrency}`;
 
@@ -77,8 +79,19 @@ const formatWalletAmount = (amount?: number | string | null, currency?: string |
     absoluteAmount % 1 === 0
       ? Math.round(absoluteAmount).toLocaleString('fr-FR')
       : absoluteAmount.toFixed(2);
-  return `${numericAmount < 0 ? '-' : ''}${formatted} ${displayCurrency}`;
+  const unit = isTokenCurrency
+    ? absoluteAmount === 1
+      ? 'jeton'
+      : 'jetons'
+    : displayCurrency;
+  return `${numericAmount < 0 ? '-' : ''}${formatted} ${unit}`;
 };
+
+const formatLedgerDescription = (description: string) =>
+  description
+    .replace(/\bPoints\b/g, 'Jetons')
+    .replace(/\bpoints\b/g, 'jetons')
+    .replace(/\bpoint\b/g, 'jeton');
 
 const parsePositiveAmount = (value: string) => {
   const normalized = value.replace(/\s/g, '').replace(',', '.');
@@ -170,8 +183,8 @@ export default function WalletScreen() {
     if (!amount) {
       showDialog({
         variant: 'warning',
-        title: 'Nombre de points invalide',
-        message: 'Entrez un nombre de points superieur a 0.',
+        title: 'Nombre de jetons invalide',
+        message: 'Entrez un nombre de jetons superieur a 0.',
       });
       return;
     }
@@ -253,8 +266,8 @@ export default function WalletScreen() {
     if (!amount) {
       showDialog({
         variant: 'warning',
-        title: 'Nombre de points invalide',
-        message: 'Entrez le nombre de points a partager.',
+        title: 'Nombre de jetons invalide',
+        message: 'Entrez le nombre de jetons a partager.',
       });
       return;
     }
@@ -287,14 +300,14 @@ export default function WalletScreen() {
 
       showDialog({
         variant: 'success',
-        title: 'Points partages',
+        title: 'Jetons partages',
         message: `${formatWalletAmount(response.amount, response.currency)} envoyes a ${recipientName}.`,
       });
     } catch (error) {
       showDialog({
         variant: 'danger',
         title: 'Transfert impossible',
-        message: getApiErrorMessage(error, 'Impossible de partager ces points pour le moment.'),
+        message: getApiErrorMessage(error, 'Impossible de partager ces jetons pour le moment.'),
       });
     }
   };
@@ -314,7 +327,9 @@ export default function WalletScreen() {
           <Ionicons name={meta.icon} size={18} color={meta.color} />
         </View>
         <View style={styles.ledgerTextBlock}>
-          <Text style={styles.ledgerTitle}>{entry.description || meta.label}</Text>
+          <Text style={styles.ledgerTitle}>
+            {entry.description ? formatLedgerDescription(entry.description) : meta.label}
+          </Text>
           <Text style={styles.ledgerSubtitle}>{formatDate(entry.createdAt)}</Text>
         </View>
         <View style={styles.ledgerAmountBlock}>
@@ -336,7 +351,7 @@ export default function WalletScreen() {
           <Ionicons name="arrow-back" size={22} color={Colors.gray[900]} />
         </TouchableOpacity>
         <View style={styles.headerText}>
-          <Text style={styles.headerTitle}>Points Zwanga</Text>
+          <Text style={styles.headerTitle}>Jetons Zwanga</Text>
           <Text style={styles.headerSubtitle}>Recharge, fidelite et partage</Text>
         </View>
         <TouchableOpacity onPress={refreshAll} style={styles.headerButton}>
@@ -373,7 +388,7 @@ export default function WalletScreen() {
               </Text>
             )}
             <Text style={styles.balanceHint}>
-              Les points achetes et les points de fidelite sont utilisables pour vos trajets et abonnements.
+              Les jetons achetes et les jetons de fidelite sont utilisables pour vos trajets et abonnements.
             </Text>
           </View>
 
@@ -410,7 +425,7 @@ export default function WalletScreen() {
 
           {activeTab === 'top_up' ? (
             <View style={styles.formPanel}>
-              <Text style={styles.sectionTitle}>Acheter des points</Text>
+              <Text style={styles.sectionTitle}>Acheter des jetons</Text>
               <View style={styles.methodRow}>
                 {TOP_UP_METHOD_OPTIONS.map((option) => {
                   const selected = topUpMethod === option.id;
@@ -445,12 +460,12 @@ export default function WalletScreen() {
               <TextInput
                 keyboardType="numeric"
                 onChangeText={setTopUpAmount}
-                placeholder="Nombre de points"
+                placeholder="Nombre de jetons"
                 placeholderTextColor={Colors.gray[400]}
                 style={styles.input}
                 value={topUpAmount}
               />
-              <Text style={styles.helperText}>1 point = 100 FC. Exemple: 50 points = 5 000 FC.</Text>
+              <Text style={styles.helperText}>1 jeton = 100 FC. Exemple: 50 jetons = 5 000 FC.</Text>
               {isTopUpPhoneRequired ? (
                 <TextInput
                   keyboardType="phone-pad"
@@ -503,7 +518,7 @@ export default function WalletScreen() {
               <TextInput
                 keyboardType="numeric"
                 onChangeText={setTransferAmount}
-                placeholder="Nombre de points"
+                placeholder="Nombre de jetons"
                 placeholderTextColor={Colors.gray[400]}
                 style={styles.input}
                 value={transferAmount}
@@ -535,7 +550,7 @@ export default function WalletScreen() {
                 ) : (
                   <>
                     <Ionicons name="send-outline" size={18} color={Colors.white} />
-                    <Text style={styles.primaryButtonText}>Partager les points</Text>
+                    <Text style={styles.primaryButtonText}>Partager les jetons</Text>
                   </>
                 )}
               </TouchableOpacity>

@@ -9,14 +9,16 @@ import {
   useAcceptTripRequestMutation,
   useCancelTripRequestMutation,
   useCreateDriverOfferMutation,
+  useGetTripRequestVehicleOptionsMutation,
   useGetTripRequestByIdQuery,
   useRejectDriverOfferMutation,
   useStartTripFromRequestMutation,
   useUpdateTripRequestMutation,
+  type TripRequestVehiclePriceOption,
 } from '@/store/api/tripRequestApi';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
-import type { Vehicle } from '@/types';
+import type { TripRequestVehicleType, Vehicle } from '@/types';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import {
   createBecomeDriverAction,
@@ -51,8 +53,12 @@ import {
   View
 } from 'react-native';
 import type { LatLng, Region } from 'react-native-maps';
-import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import Animated, { FadeInDown } from '@/utils/reanimated';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import Animated, {
+  FadeInDown,
+  FadeOutUp,
+  LinearTransition,
+} from '@/utils/reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type RequestRouteMapData = {
@@ -69,6 +75,145 @@ type RouteOverridePickerTarget =
   | 'directArrival';
 
 const LANDMARK_PLACEHOLDER = 'Ex: devant la station, portail bleu, entr\u00E9e principale';
+const TRIP_REQUEST_VEHICLE_LABELS: Record<TripRequestVehicleType, string> = {
+  car: 'Voiture',
+  motorcycle_2_wheels: 'Moto à 2 roues',
+  motorcycle_3_wheels: 'Moto à 3 roues',
+};
+const TRIP_REQUEST_VEHICLE_ICONS: Record<
+  TripRequestVehicleType,
+  keyof typeof Ionicons.glyphMap
+> = {
+  car: 'car-sport',
+  motorcycle_2_wheels: 'bicycle',
+  motorcycle_3_wheels: 'car-outline',
+};
+
+function formatCdfPrice(value: number) {
+  return `${String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} FC`;
+}
+
+type CollapsibleRouteMapProps = {
+  arrivalName: string;
+  departureName: string;
+  mapData: RequestRouteMapData | null;
+  routeCoordinates: LatLng[];
+};
+
+function CollapsibleRouteMap({
+  arrivalName,
+  departureName,
+  mapData,
+  routeCoordinates,
+}: CollapsibleRouteMapProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const mapRef = useRef<MapView>(null);
+
+  const fitMapToRoute = useCallback(() => {
+    if (!mapData) return;
+
+    const visibleCoordinates =
+      routeCoordinates.length > 1 ? routeCoordinates : mapData.fallbackCoordinates;
+
+    requestAnimationFrame(() => {
+      mapRef.current?.fitToCoordinates(visibleCoordinates, {
+        edgePadding: { top: 34, right: 34, bottom: 34, left: 34 },
+        animated: false,
+      });
+    });
+  }, [mapData, routeCoordinates]);
+
+  useEffect(() => {
+    if (isExpanded) {
+      fitMapToRoute();
+    }
+  }, [fitMapToRoute, isExpanded]);
+
+  const toggleMap = useCallback(() => {
+    setIsExpanded((currentValue) => !currentValue);
+  }, []);
+
+  if (!mapData) {
+    return (
+      <View
+        accessibilityLabel="Carte indisponible pour ce trajet"
+        style={[styles.driverMapIconButton, styles.driverMapIconButtonDisabled]}
+      >
+        <Ionicons name="map-outline" size={16} color={Colors.gray[400]} />
+      </View>
+    );
+  }
+
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={isExpanded ? 'Masquer la carte du trajet' : 'Afficher la carte du trajet'}
+        accessibilityState={{ expanded: isExpanded }}
+        onPress={toggleMap}
+        style={({ pressed }) => [
+          styles.driverMapIconButton,
+          isExpanded && styles.driverMapIconButtonActive,
+          pressed && styles.driverMapIconButtonPressed,
+        ]}
+      >
+        <Ionicons
+          name={isExpanded ? 'map' : 'map-outline'}
+          size={20}
+          color={isExpanded ? Colors.white : Colors.primaryLight}
+        />
+      </Pressable>
+
+      {isExpanded && (
+        <Animated.View
+          entering={FadeInDown.duration(220)}
+          exiting={FadeOutUp.duration(160)}
+          style={styles.driverInlineMapFrame}
+        >
+          <MapView
+            ref={mapRef}
+            provider={PROVIDER_GOOGLE}
+            style={styles.driverInlineMap}
+            mapType="standard"
+            initialRegion={mapData.initialRegion}
+            onMapReady={fitMapToRoute}
+            rotateEnabled={false}
+            pitchEnabled={false}
+          >
+            <Polyline
+              coordinates={routeCoordinates.length > 0 ? routeCoordinates : mapData.fallbackCoordinates}
+              strokeColor={Colors.primary}
+              strokeWidth={5}
+              lineDashPattern={routeCoordinates.length > 0 ? undefined : [4, 4]}
+            />
+            <Marker
+              coordinate={mapData.departureCoordinate}
+              title="Départ"
+              description={departureName}
+            >
+              <View style={[styles.driverMapMarker, styles.driverMapMarkerDeparture]}>
+                <View style={styles.driverMapMarkerCore} />
+              </View>
+            </Marker>
+            <Marker
+              coordinate={mapData.arrivalCoordinate}
+              title="Destination"
+              description={arrivalName}
+            >
+              <View style={[styles.driverMapMarker, styles.driverMapMarkerArrival]}>
+                <Ionicons name="flag" size={13} color={Colors.white} />
+              </View>
+            </Marker>
+          </MapView>
+          <View pointerEvents="none" style={styles.driverMapCaption}>
+            <Ionicons name="navigate" size={12} color={Colors.primaryDark} />
+            <Text style={styles.driverMapCaptionText}>Itinéraire demandé</Text>
+          </View>
+        </Animated.View>
+      )}
+    </>
+  );
+}
 
 function getLocationText(selection: MapLocationSelection | null, manualAddress: string) {
   return (manualAddress.trim() || selection?.title || selection?.address || '').trim();
@@ -174,6 +319,10 @@ export default function TripRequestDetailsScreen() {
   const [rejectOffer, { isLoading: isRejectingOffer }] = useRejectDriverOfferMutation();
   const [cancelRequest, { isLoading: isCancelling }] = useCancelTripRequestMutation();
   const [updateTripRequest, { isLoading: isUpdating }] = useUpdateTripRequestMutation();
+  const [
+    getEditVehicleOptions,
+    { isLoading: isEditVehicleOptionsLoading, isError: isEditVehicleOptionsError },
+  ] = useGetTripRequestVehicleOptionsMutation();
   const [startTripFromRequest, { isLoading: isStartingTripFromRequest }] = useStartTripFromRequestMutation();
   const [startTrip, { isLoading: isStartingTrip }] = useStartTripMutation();
 
@@ -202,6 +351,11 @@ export default function TripRequestDetailsScreen() {
   const [editDepartureDateMin, setEditDepartureDateMin] = useState<Date | null>(null);
   const [editDepartureDateMax, setEditDepartureDateMax] = useState<Date | null>(null);
   const [editNumberOfSeats, setEditNumberOfSeats] = useState('');
+  const [editVehicleType, setEditVehicleType] = useState<TripRequestVehicleType>('car');
+  const [editVehicleOptions, setEditVehicleOptions] = useState<TripRequestVehiclePriceOption[]>([]);
+  const [editVehiclePriceMultiplier, setEditVehiclePriceMultiplier] = useState(1);
+  const [editVehicleOptionsRetry, setEditVehicleOptionsRetry] = useState(0);
+  const [editHasEditedBudget, setEditHasEditedBudget] = useState(false);
   const [editMaxPricePerSeat, setEditMaxPricePerSeat] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editIosPickerModeMin, setEditIosPickerModeMin] = useState<'date' | 'time' | null>(null);
@@ -244,7 +398,7 @@ export default function TripRequestDetailsScreen() {
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[] | null>(null);
   const [, setIsLoadingRoute] = useState(false);
-  const [mapModalVisible, setMapModalVisible] = useState(false);
+  const [areDirectOptionsExpanded, setAreDirectOptionsExpanded] = useState(false);
 
   const directAcceptVehicle = useMemo(
     () => activeVehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? activeVehicles[0],
@@ -407,6 +561,112 @@ export default function TripRequestDetailsScreen() {
     editAddressInputMode === 'manual'
       ? editArrivalManualAddress.trim()
       : getLocationText(editArrivalLocation, editArrivalManualAddress);
+  const parsedEditNumberOfSeats = Number.parseInt(editNumberOfSeats, 10);
+  const selectedEditVehicleOption = editVehicleOptions.find(
+    (option) => option.vehicleType === editVehicleType,
+  );
+  const isEditVehicleSelectionValid = Boolean(
+    selectedEditVehicleOption?.availableForRequestedSeats,
+  );
+  const isEditFormValid = Boolean(
+    editDepartureAddress &&
+    editArrivalAddress &&
+    editDepartureDateMin &&
+    editDepartureDateMax &&
+    Number.isFinite(parsedEditNumberOfSeats) &&
+    parsedEditNumberOfSeats >= 1 &&
+    parsedEditNumberOfSeats <= 2 &&
+    isEditVehicleSelectionValid,
+  );
+
+  useEffect(() => {
+    if (!showEditForm || !tripRequest?.id) return;
+
+    if (
+      !editDepartureAddress ||
+      !editArrivalAddress ||
+      !Number.isFinite(parsedEditNumberOfSeats) ||
+      parsedEditNumberOfSeats < 1 ||
+      parsedEditNumberOfSeats > 2
+    ) {
+      setEditVehicleOptions([]);
+      setEditVehiclePriceMultiplier(1);
+      return;
+    }
+
+    let isCurrent = true;
+    setEditVehicleOptions([]);
+
+    const timer = setTimeout(() => {
+      getEditVehicleOptions({
+        departureLocation: editDepartureAddress,
+        departureReference: editDepartureReference.trim() || undefined,
+        departureCoordinates:
+          editAddressInputMode === 'map' ? getLocationCoordinates(editDepartureLocation) : undefined,
+        arrivalLocation: editArrivalAddress,
+        arrivalReference: editArrivalReference.trim() || undefined,
+        arrivalCoordinates:
+          editAddressInputMode === 'map' ? getLocationCoordinates(editArrivalLocation) : undefined,
+        numberOfSeats: parsedEditNumberOfSeats,
+      })
+        .unwrap()
+        .then((response) => {
+          if (!isCurrent) return;
+
+          setEditVehicleOptions(response.options);
+          setEditVehiclePriceMultiplier(response.weatherImpact.priceMultiplier);
+        })
+        .catch((requestError) => {
+          if (!isCurrent) return;
+          console.warn('Impossible de recuperer les tarifs pour la modification', requestError);
+          setEditVehicleOptions([]);
+          setEditVehiclePriceMultiplier(1);
+        });
+    }, 350);
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(timer);
+    };
+  }, [
+    editAddressInputMode,
+    editArrivalAddress,
+    editArrivalLocation,
+    editArrivalReference,
+    editDepartureAddress,
+    editDepartureLocation,
+    editDepartureReference,
+    editVehicleOptionsRetry,
+    getEditVehicleOptions,
+    parsedEditNumberOfSeats,
+    showEditForm,
+    tripRequest?.id,
+  ]);
+
+  useEffect(() => {
+    if (
+      editHasEditedBudget ||
+      editVehicleType === tripRequest?.vehicleType
+    ) {
+      return;
+    }
+
+    const selectedOption = editVehicleOptions.find(
+      (option) => option.vehicleType === editVehicleType,
+    );
+    if (!selectedOption) return;
+
+    setEditMaxPricePerSeat(
+      selectedOption.recommendedPricePerSeat === null
+        ? ''
+        : String(selectedOption.recommendedPricePerSeat),
+    );
+  }, [
+    editHasEditedBudget,
+    editVehicleOptions,
+    editVehicleType,
+    tripRequest?.vehicleType,
+  ]);
 
   const isOfferDraftValid = useMemo(() => {
     if (!tripRequest) return false;
@@ -1049,6 +1309,17 @@ export default function TripRequestDetailsScreen() {
     router.push(targetRoute);
   };
 
+  const handleSelectEditVehicle = (option: TripRequestVehiclePriceOption) => {
+    if (!option.availableForRequestedSeats) return;
+    setEditVehicleType(option.vehicleType);
+    setEditMaxPricePerSeat(
+      option.recommendedPricePerSeat === null
+        ? ''
+        : String(option.recommendedPricePerSeat),
+    );
+    setEditHasEditedBudget(false);
+  };
+
   // Initialiser le formulaire de modification avec les valeurs actuelles
   const initializeEditForm = () => {
     if (!tripRequest) return;
@@ -1084,6 +1355,10 @@ export default function TripRequestDetailsScreen() {
     setEditDepartureDateMin(new Date(tripRequest.departureDateMin));
     setEditDepartureDateMax(new Date(tripRequest.departureDateMax));
     setEditNumberOfSeats(tripRequest.numberOfSeats.toString());
+    setEditVehicleType(tripRequest.vehicleType ?? 'car');
+    setEditVehicleOptions([]);
+    setEditVehiclePriceMultiplier(1);
+    setEditHasEditedBudget(false);
     setEditMaxPricePerSeat(tripRequest.maxPricePerSeat?.toString() || '');
     setEditDescription(tripRequest.description || '');
   };
@@ -1125,6 +1400,43 @@ export default function TripRequestDetailsScreen() {
       });
       return;
     }
+    if (
+      !Number.isFinite(parsedEditNumberOfSeats) ||
+      parsedEditNumberOfSeats < 1 ||
+      parsedEditNumberOfSeats > 2
+    ) {
+      showDialog({
+        title: 'Nombre de places invalide',
+        message: 'Choisissez entre 1 et 2 places pour cette demande.',
+        variant: 'warning',
+      });
+      return;
+    }
+    if (!selectedEditVehicleOption?.availableForRequestedSeats) {
+      showDialog({
+        title: 'Véhicule requis',
+        message: 'Choisissez un type de véhicule disponible avant d\'enregistrer.',
+        variant: 'warning',
+      });
+      return;
+    }
+
+    const parsedEditBudget = editMaxPricePerSeat.trim()
+      ? Number.parseFloat(editMaxPricePerSeat)
+      : undefined;
+    if (
+      parsedEditBudget !== undefined &&
+      (!Number.isFinite(parsedEditBudget) || parsedEditBudget <= 0)
+    ) {
+      showDialog({
+        title: 'Budget invalide',
+        message: 'Le prix maximum par place doit être un montant positif.',
+        variant: 'warning',
+      });
+      return;
+    }
+
+    const vehicleTypeChanged = editVehicleType !== tripRequest?.vehicleType;
 
     try {
       await updateTripRequest({
@@ -1140,8 +1452,14 @@ export default function TripRequestDetailsScreen() {
             editAddressInputMode === 'map' ? getLocationCoordinates(editArrivalLocation) : undefined,
           departureDateMin: editDepartureDateMin?.toISOString() || tripRequest?.departureDateMin || '',
           departureDateMax: editDepartureDateMax?.toISOString() || tripRequest?.departureDateMax || '',
-          numberOfSeats: parseInt(editNumberOfSeats) || tripRequest?.numberOfSeats || 1,
-          maxPricePerSeat: editMaxPricePerSeat ? parseFloat(editMaxPricePerSeat) : undefined,
+          numberOfSeats: parsedEditNumberOfSeats,
+          vehicleType: editVehicleType,
+          ...(
+            parsedEditBudget !== undefined &&
+            (editHasEditedBudget || !vehicleTypeChanged)
+              ? { maxPricePerSeat: parsedEditBudget }
+              : {}
+          ),
           description: editDescription.trim() || undefined,
         },
       }).unwrap();
@@ -1152,7 +1470,7 @@ export default function TripRequestDetailsScreen() {
       setTimeout(() => {
         showDialog({
           title: 'Demande modifiée',
-          message: 'Votre demande a été modifiée avec succès',
+          message: `Votre demande utilise maintenant : ${TRIP_REQUEST_VEHICLE_LABELS[editVehicleType]}.`,
           variant: 'success',
         });
       }, Platform.OS === 'ios' ? 350 : 0);
@@ -1287,8 +1605,8 @@ export default function TripRequestDetailsScreen() {
       initialRegion: {
         latitude: (departureLat + arrivalLat) / 2,
         longitude: (departureLng + arrivalLng) / 2,
-        latitudeDelta: Math.abs(departureLat - arrivalLat) * 2.5 || 0.1,
-        longitudeDelta: Math.abs(departureLng - arrivalLng) * 2.5 || 0.1,
+        latitudeDelta: Math.max(Math.abs(departureLat - arrivalLat) * 1.45, 0.012),
+        longitudeDelta: Math.max(Math.abs(departureLng - arrivalLng) * 1.45, 0.012),
       },
     };
   }
@@ -1307,6 +1625,7 @@ export default function TripRequestDetailsScreen() {
   const statusConfig = statusConfigMap[tripRequest.status] || statusConfigMap.pending;
 
   const pendingOffersCount = tripRequest.offers?.filter((offer) => offer.status === 'pending').length ?? 0;
+  const ownerDisplayedBudget = tripRequest.selectedPricePerSeat ?? tripRequest.maxPricePerSeat;
   const heroStepIndex =
     tripRequest.tripId
       ? 3
@@ -1351,12 +1670,12 @@ export default function TripRequestDetailsScreen() {
     if (tripRequest.status === 'expired') {
       return {
         title: 'Votre demande a expiré',
-        subtitle: "Aucun conducteur ne s'est positionné à temps. Vous pouvez relancer une nouvelle demande.",
+        subtitle: "Aucun conducteur n'a répondu dans les deux heures. Vous pouvez relancer une nouvelle demande.",
       };
     }
     return {
       title: 'Nous cherchons un conducteur',
-      subtitle: 'Votre demande circule déjà auprès des conducteurs disponibles autour de votre trajet.',
+      subtitle: "Votre demande circule auprès des conducteurs et n'expirera après deux heures que si personne ne répond.",
     };
   })();
   const ownerHeroHintMessage =
@@ -1427,22 +1746,30 @@ export default function TripRequestDetailsScreen() {
         <TouchableOpacity onPress={goHome} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Détails de la demande</Text>
+        <Text style={styles.headerTitle}>{isOwner ? 'Votre demande' : 'Demande de trajet'}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, !isOwner && styles.driverContent]}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
         }
       >
         {/* En-tête avec statut */}
         {isOwner ? (
-          <View style={styles.ownerHeroCard}>
+          <Animated.View
+            entering={FadeInDown.duration(280)}
+            layout={LinearTransition.duration(220)}
+            style={[styles.ownerHeroCard, styles.ownerRequestHeroCard]}
+          >
             <View style={styles.ownerHeroTopRow}>
-              <View style={styles.ownerHeroStatusBadge}>
-                <Text style={styles.ownerHeroStatusText}>{statusConfig.label}</Text>
+              <View style={[styles.ownerHeroStatusBadge, { backgroundColor: statusConfig.bg }]}>
+                <View style={[styles.ownerHeroStatusDot, { backgroundColor: statusConfig.color }]} />
+                <Text style={[styles.ownerHeroStatusText, { color: statusConfig.color }]}>
+                  {statusConfig.label}
+                </Text>
               </View>
               {pendingOffersCount > 0 && !tripRequest.tripId && (
                 <View style={styles.ownerHeroCounter}>
@@ -1454,72 +1781,130 @@ export default function TripRequestDetailsScreen() {
               )}
             </View>
 
-            <Text style={styles.ownerHeroTitle}>{ownerHero.title}</Text>
-            <Text style={styles.ownerHeroSubtitle}>{ownerHero.subtitle}</Text>
+            <View style={styles.ownerHeroLead}>
+              <View style={styles.ownerHeroLeadIcon}>
+                <Ionicons
+                  name={
+                    tripRequest.tripId
+                      ? 'navigate'
+                      : pendingOffersCount > 0
+                        ? 'chatbubbles'
+                        : 'radio'
+                  }
+                  size={24}
+                  color={Colors.primary}
+                />
+              </View>
+              <View style={styles.ownerHeroLeadCopy}>
+                <Text style={styles.ownerHeroTitle} numberOfLines={2}>{ownerHero.title}</Text>
+                <Text style={styles.ownerHeroSubtitle} numberOfLines={2}>{ownerHero.subtitle}</Text>
+              </View>
+            </View>
 
-            <View style={styles.ownerHeroRouteCard}>
+            <Animated.View layout={LinearTransition.duration(220)} style={styles.driverRouteCard}>
               <View style={styles.ownerHeroRouteRow}>
                 <View style={[styles.ownerHeroRouteDot, { backgroundColor: Colors.success }]} />
                 <View style={styles.ownerHeroRouteInfo}>
-                  <Text style={styles.ownerHeroRouteLabel}>Départ</Text>
-                  <Text style={styles.ownerHeroRouteText}>{tripRequest.departure.name}</Text>
+                  <Text style={styles.driverRouteLabel}>Départ</Text>
+                  <Text style={styles.driverRouteText} numberOfLines={1}>{tripRequest.departure.name}</Text>
                 </View>
               </View>
-              <View style={styles.ownerHeroRouteLine} />
+              <View style={[styles.ownerHeroRouteLine, styles.driverRouteLine]} />
               <View style={styles.ownerHeroRouteRow}>
                 <View style={[styles.ownerHeroRouteDot, styles.ownerHeroRouteSquare]} />
                 <View style={styles.ownerHeroRouteInfo}>
-                  <Text style={styles.ownerHeroRouteLabel}>Destination</Text>
-                  <Text style={styles.ownerHeroRouteText}>{tripRequest.arrival.name}</Text>
+                  <Text style={styles.driverRouteLabel}>Destination</Text>
+                  <Text style={styles.driverRouteText} numberOfLines={1}>{tripRequest.arrival.name}</Text>
                 </View>
+              </View>
+              <CollapsibleRouteMap
+                arrivalName={tripRequest.arrival.name}
+                departureName={tripRequest.departure.name}
+                mapData={requestRouteMapData}
+                routeCoordinates={displayedRouteCoordinates}
+              />
+            </Animated.View>
+
+            <View style={[styles.driverVehicleSpotlight, styles.ownerVehicleSpotlight]}>
+              <View style={styles.driverVehicleIconShell}>
+                <Ionicons
+                  name={TRIP_REQUEST_VEHICLE_ICONS[tripRequest.vehicleType]}
+                  size={28}
+                  color={Colors.primary}
+                />
+              </View>
+              <View style={styles.driverVehicleCopy}>
+                <Text style={styles.driverVehicleEyebrow}>Véhicule demandé</Text>
+                <Text style={styles.driverVehicleName}>
+                  {TRIP_REQUEST_VEHICLE_LABELS[tripRequest.vehicleType]}
+                </Text>
+                <Text style={styles.driverVehicleHint}>
+                  Choisi pour {tripRequest.numberOfSeats} place{tripRequest.numberOfSeats > 1 ? 's' : ''}
+                </Text>
+              </View>
+              <View style={styles.ownerVehicleChoiceIcon}>
+                <Ionicons name="checkmark" size={16} color={Colors.primary} />
               </View>
             </View>
 
-            <View style={styles.ownerHeroMetaRow}>
-              <View style={styles.ownerHeroMetaChip}>
-                <Ionicons name="time-outline" size={14} color={Colors.primary} />
-                <Text style={styles.ownerHeroMetaText}>
+            <View style={styles.driverFactsRow}>
+              <View style={styles.driverFact}>
+                <Ionicons name="time-outline" size={18} color={Colors.primary} />
+                <Text style={styles.driverFactLabel}>Départ souhaité</Text>
+                <Text style={styles.driverFactValue} numberOfLines={2}>
                   {formatDateWithRelativeLabel(tripRequest.departureDateMin, true)}
                 </Text>
               </View>
-              <View style={styles.ownerHeroMetaChip}>
-                <Ionicons name="people-outline" size={14} color={Colors.primary} />
-                <Text style={styles.ownerHeroMetaText}>
-                  {tripRequest.numberOfSeats} place{tripRequest.numberOfSeats > 1 ? 's' : ''}
+              <View style={styles.driverFactDivider} />
+              <View style={styles.driverFact}>
+                <Ionicons name="hourglass-outline" size={18} color={Colors.primary} />
+                <Text style={styles.driverFactLabel}>Au plus tard</Text>
+                <Text style={styles.driverFactValue} numberOfLines={2}>
+                  {formatDateWithRelativeLabel(tripRequest.departureDateMax, true)}
                 </Text>
               </View>
-              {(tripRequest.selectedPricePerSeat || tripRequest.maxPricePerSeat) && (
-                <View style={styles.ownerHeroMetaChip}>
-                  <Ionicons name="cash-outline" size={14} color={Colors.primary} />
-                  <Text style={styles.ownerHeroMetaText}>
-                    {tripRequest.selectedPricePerSeat || tripRequest.maxPricePerSeat} FC
-                  </Text>
-                </View>
-              )}
+              {ownerDisplayedBudget ? (
+                <>
+                  <View style={styles.driverFactDivider} />
+                  <View style={styles.driverFact}>
+                    <Ionicons name="wallet-outline" size={18} color={Colors.primary} />
+                    <Text style={styles.driverFactLabel}>Budget</Text>
+                    <Text style={styles.driverFactValue}>{formatCdfPrice(ownerDisplayedBudget)}</Text>
+                  </View>
+                </>
+              ) : null}
             </View>
 
-            <View style={styles.ownerHeroSteps}>
-              {heroSteps.map((step, index) => {
-                const active = heroStepIndex >= index;
-                return (
-                  <View key={step} style={styles.ownerHeroStep}>
-                    <View
-                      style={[
-                        styles.ownerHeroStepDot,
-                        active && styles.ownerHeroStepDotActive,
-                      ]}
-                    />
-                    <Text
-                      style={[
-                        styles.ownerHeroStepText,
-                        active && styles.ownerHeroStepTextActive,
-                      ]}
-                    >
-                      {step}
-                    </Text>
-                  </View>
-                );
-              })}
+            <View style={styles.ownerProgressPanel}>
+              <View style={styles.ownerProgressHeader}>
+                <Text style={styles.ownerProgressTitle}>Suivi de la demande</Text>
+                <Text style={styles.ownerProgressCount}>
+                  {heroStepIndex >= 0 ? `Étape ${heroStepIndex + 1} sur 4` : 'Demande clôturée'}
+                </Text>
+              </View>
+              <View style={styles.ownerHeroSteps}>
+                {heroSteps.map((step, index) => {
+                  const active = heroStepIndex >= index;
+                  return (
+                    <View key={step} style={styles.ownerHeroStep}>
+                      <View
+                        style={[
+                          styles.ownerHeroStepDot,
+                          active && styles.ownerHeroStepDotActive,
+                        ]}
+                      />
+                      <Text
+                        style={[
+                          styles.ownerHeroStepText,
+                          active && styles.ownerHeroStepTextActive,
+                        ]}
+                      >
+                        {step}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
             </View>
 
             {tripRequest.tripId ? (
@@ -1562,10 +1947,10 @@ export default function TripRequestDetailsScreen() {
                   disabled={isCancelling}
                 >
                   {isCancelling ? (
-                    <ActivityIndicator size="small" color={Colors.white} />
+                    <ActivityIndicator size="small" color={Colors.danger} />
                   ) : (
                     <>
-                      <Ionicons name="close-circle-outline" size={16} color={Colors.white} />
+                      <Ionicons name="close-circle-outline" size={16} color={Colors.danger} />
                       <Text style={[styles.ownerHeroGhostButtonText, styles.ownerHeroGhostButtonTextDanger]}>
                         Annuler
                       </Text>
@@ -1574,12 +1959,17 @@ export default function TripRequestDetailsScreen() {
                 </Pressable>
               </View>
             )}
-          </View>
+          </Animated.View>
         ) : (
-          <View style={styles.ownerHeroCard}>
+          <Animated.View
+            entering={FadeInDown.duration(280)}
+            layout={LinearTransition.duration(220)}
+            style={[styles.ownerHeroCard, styles.driverHeroCard]}
+          >
             <View style={styles.ownerHeroTopRow}>
-              <View style={styles.ownerHeroStatusBadge}>
-                <Text style={styles.ownerHeroStatusText}>{driverHero.badge}</Text>
+              <View style={styles.driverHeroStatusBadge}>
+                <View style={styles.driverHeroStatusDot} />
+                <Text style={styles.driverHeroStatusText}>{driverHero.badge}</Text>
               </View>
               {!!myOffer?.pricePerSeat && (
                 <View style={styles.ownerHeroCounter}>
@@ -1598,88 +1988,151 @@ export default function TripRequestDetailsScreen() {
                 </View>
               )}
               <View style={styles.driverHeroPassengerInfo}>
-                <Text style={styles.driverHeroPassengerLabel}>Passager</Text>
+                <Text style={styles.driverHeroPassengerLabel}>Demande de</Text>
                 <Text style={styles.driverHeroPassengerName}>{tripRequest.passengerName}</Text>
+              </View>
+              <View style={styles.driverHeroRoleBadge}>
+                <Ionicons name="person-circle-outline" size={14} color={Colors.gray[600]} />
+                <Text style={styles.driverHeroRoleBadgeText}>Passager</Text>
               </View>
             </View>
 
-            <Text style={styles.ownerHeroTitle}>{driverHero.title}</Text>
-            <Text style={styles.ownerHeroSubtitle}>{driverHero.subtitle}</Text>
+            <Text style={styles.ownerHeroTitle} numberOfLines={2}>{driverHero.title}</Text>
+            <Text style={styles.ownerHeroSubtitle} numberOfLines={2}>{driverHero.subtitle}</Text>
 
-            <View style={styles.ownerHeroRouteCard}>
+            <Animated.View layout={LinearTransition.duration(220)} style={styles.driverRouteCard}>
               <View style={styles.ownerHeroRouteRow}>
                 <View style={[styles.ownerHeroRouteDot, { backgroundColor: Colors.success }]} />
                 <View style={styles.ownerHeroRouteInfo}>
-                  <Text style={styles.ownerHeroRouteLabel}>Départ</Text>
-                  <Text style={styles.ownerHeroRouteText}>{tripRequest.departure.name}</Text>
+                  <Text style={styles.driverRouteLabel}>Départ</Text>
+                  <Text style={styles.driverRouteText} numberOfLines={1}>{tripRequest.departure.name}</Text>
                 </View>
               </View>
-              <View style={styles.ownerHeroRouteLine} />
+              <View style={[styles.ownerHeroRouteLine, styles.driverRouteLine]} />
               <View style={styles.ownerHeroRouteRow}>
                 <View style={[styles.ownerHeroRouteDot, styles.ownerHeroRouteSquare]} />
                 <View style={styles.ownerHeroRouteInfo}>
-                  <Text style={styles.ownerHeroRouteLabel}>Destination</Text>
-                  <Text style={styles.ownerHeroRouteText}>{tripRequest.arrival.name}</Text>
+                  <Text style={styles.driverRouteLabel}>Destination</Text>
+                  <Text style={styles.driverRouteText} numberOfLines={1}>{tripRequest.arrival.name}</Text>
                 </View>
+              </View>
+
+              <CollapsibleRouteMap
+                arrivalName={tripRequest.arrival.name}
+                departureName={tripRequest.departure.name}
+                mapData={requestRouteMapData}
+                routeCoordinates={displayedRouteCoordinates}
+              />
+            </Animated.View>
+
+            <View style={styles.driverVehicleSpotlight}>
+              <View style={styles.driverVehicleIconShell}>
+                <Ionicons
+                  name={TRIP_REQUEST_VEHICLE_ICONS[tripRequest.vehicleType]}
+                  size={28}
+                  color={Colors.primary}
+                />
+              </View>
+              <View style={styles.driverVehicleCopy}>
+                <Text style={styles.driverVehicleEyebrow}>Véhicule demandé</Text>
+                <Text style={styles.driverVehicleName}>
+                  {TRIP_REQUEST_VEHICLE_LABELS[tripRequest.vehicleType]}
+                </Text>
+                <Text style={styles.driverVehicleHint}>Souhaité par le passager pour cette course</Text>
+              </View>
+              <View style={styles.driverVehicleCheck}>
+                <Ionicons name="checkmark" size={16} color={Colors.white} />
               </View>
             </View>
 
-            <View style={styles.ownerHeroMetaRow}>
-              <View style={styles.ownerHeroMetaChip}>
-                <Ionicons name="time-outline" size={14} color={Colors.primary} />
-                <Text style={styles.ownerHeroMetaText}>
+            <View style={styles.driverFactsRow}>
+              <View style={styles.driverFact}>
+                <Ionicons name="time-outline" size={18} color={Colors.primary} />
+                <Text style={styles.driverFactLabel}>Départ souhaité</Text>
+                <Text style={styles.driverFactValue} numberOfLines={2}>
                   {formatDateWithRelativeLabel(tripRequest.departureDateMin, true)}
                 </Text>
               </View>
-              <View style={styles.ownerHeroMetaChip}>
-                <Ionicons name="people-outline" size={14} color={Colors.primary} />
-                <Text style={styles.ownerHeroMetaText}>
+              <View style={styles.driverFactDivider} />
+              <View style={styles.driverFact}>
+                <Ionicons name="people-outline" size={18} color={Colors.primary} />
+                <Text style={styles.driverFactLabel}>Passagers</Text>
+                <Text style={styles.driverFactValue}>
                   {tripRequest.numberOfSeats} place{tripRequest.numberOfSeats > 1 ? 's' : ''}
                 </Text>
               </View>
-              {tripRequest.maxPricePerSeat && (
-                <View style={styles.ownerHeroMetaChip}>
-                  <Ionicons name="wallet-outline" size={14} color={Colors.primary} />
-                  <Text style={styles.ownerHeroMetaText}>{tripRequest.maxPricePerSeat} FC max</Text>
-                </View>
-              )}
+              {tripRequest.maxPricePerSeat ? (
+                <>
+                  <View style={styles.driverFactDivider} />
+                  <View style={styles.driverFact}>
+                    <Ionicons name="wallet-outline" size={18} color={Colors.primary} />
+                    <Text style={styles.driverFactLabel}>Budget max.</Text>
+                    <Text style={styles.driverFactValue}>{formatCdfPrice(tripRequest.maxPricePerSeat)}</Text>
+                  </View>
+                </>
+              ) : null}
             </View>
 
             {canAcceptDirectly && (
               <View style={styles.driverOverridePanel}>
-                <Text style={styles.driverOverrideTitle}>Précisions optionnelles</Text>
-                <TouchableOpacity
-                  style={styles.driverOverrideButton}
-                  onPress={() => setRouteOverridePickerTarget('directDeparture')}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: areDirectOptionsExpanded }}
+                  onPress={() => setAreDirectOptionsExpanded((isExpanded) => !isExpanded)}
+                  style={({ pressed }) => [
+                    styles.driverOverrideToggle,
+                    pressed && styles.driverOverrideTogglePressed,
+                  ]}
                 >
-                  <Ionicons name="location-outline" size={16} color={Colors.primary} />
-                  <Text style={styles.driverOverrideButtonText}>
-                    {directAcceptDepartureLocation?.title || 'Point de départ sur la carte'}
-                  </Text>
-                </TouchableOpacity>
-                <TextInput
-                  style={styles.driverOverrideInput}
-                  placeholder={LANDMARK_PLACEHOLDER}
-                  placeholderTextColor={Colors.gray[400]}
-                  value={directAcceptDepartureReference}
-                  onChangeText={setDirectAcceptDepartureReference}
-                />
-                <TouchableOpacity
-                  style={styles.driverOverrideButton}
-                  onPress={() => setRouteOverridePickerTarget('directArrival')}
-                >
-                  <Ionicons name="navigate-outline" size={16} color={Colors.primary} />
-                  <Text style={styles.driverOverrideButtonText}>
-                    {directAcceptArrivalLocation?.title || 'Point d’arrivée sur la carte'}
-                  </Text>
-                </TouchableOpacity>
-                <TextInput
-                  style={styles.driverOverrideInput}
-                  placeholder={LANDMARK_PLACEHOLDER}
-                  placeholderTextColor={Colors.gray[400]}
-                  value={directAcceptArrivalReference}
-                  onChangeText={setDirectAcceptArrivalReference}
-                />
+                  <View style={styles.driverOverrideToggleIcon}>
+                    <Ionicons name="options-outline" size={18} color={Colors.primary} />
+                  </View>
+                  <View style={styles.driverOverrideToggleCopy}>
+                    <Text style={styles.driverOverrideTitle}>Ajuster les points de rendez-vous</Text>
+                    <Text style={styles.driverOverrideSubtitle}>Optionnel · seulement si nécessaire</Text>
+                  </View>
+                  <Ionicons
+                    name={areDirectOptionsExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={18}
+                    color={Colors.gray[600]}
+                  />
+                </Pressable>
+                {areDirectOptionsExpanded && (
+                  <Animated.View entering={FadeInDown.duration(200)} style={styles.driverOverrideFields}>
+                    <TouchableOpacity
+                      style={styles.driverOverrideButton}
+                      onPress={() => setRouteOverridePickerTarget('directDeparture')}
+                    >
+                      <Ionicons name="location-outline" size={16} color={Colors.primary} />
+                      <Text style={styles.driverOverrideButtonText}>
+                        {directAcceptDepartureLocation?.title || 'Point de départ sur la carte'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TextInput
+                      style={styles.driverOverrideInput}
+                      placeholder={LANDMARK_PLACEHOLDER}
+                      placeholderTextColor={Colors.gray[400]}
+                      value={directAcceptDepartureReference}
+                      onChangeText={setDirectAcceptDepartureReference}
+                    />
+                    <TouchableOpacity
+                      style={styles.driverOverrideButton}
+                      onPress={() => setRouteOverridePickerTarget('directArrival')}
+                    >
+                      <Ionicons name="navigate-outline" size={16} color={Colors.primary} />
+                      <Text style={styles.driverOverrideButtonText}>
+                        {directAcceptArrivalLocation?.title || 'Point d’arrivée sur la carte'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TextInput
+                      style={styles.driverOverrideInput}
+                      placeholder={LANDMARK_PLACEHOLDER}
+                      placeholderTextColor={Colors.gray[400]}
+                      value={directAcceptArrivalReference}
+                      onChangeText={setDirectAcceptArrivalReference}
+                    />
+                  </Animated.View>
+                )}
               </View>
             )}
 
@@ -1754,7 +2207,7 @@ export default function TripRequestDetailsScreen() {
                 </Text>
               </View>
             )}
-          </View>
+          </Animated.View>
         )}
 
         {false && (
@@ -2174,47 +2627,6 @@ export default function TripRequestDetailsScreen() {
                 </View>
               )}
             </View>
-          </View>
-        )}
-
-        {/* Aide contextuelle pour les conducteurs non éligibles */}
-        {!isOwner && !myOffer && !canMakeOffer && (
-          <View style={styles.section}>
-            {!(currentUser?.role === 'driver' || currentUser?.role === 'both') ? (
-              <View style={styles.driverRequiredCard}>
-                <View style={styles.driverRequiredIconContainer}>
-                  <Ionicons name="car-outline" size={32} color={Colors.primary} />
-                </View>
-                <Text style={styles.driverRequiredTitle}>Conducteur requis</Text>
-                <Text style={styles.driverRequiredText}>
-                  Seuls les conducteurs peuvent proposer un covoiturage sur cette demande. Activez votre compte conducteur pour proposer vos places.
-                </Text>
-                <TouchableOpacity
-                  style={styles.becomeDriverButton}
-                  onPress={openDriverOnboarding}
-                >
-                  <Ionicons name="car" size={18} color={Colors.white} />
-                  <Text style={styles.becomeDriverButtonText}>Devenir conducteur</Text>
-                </TouchableOpacity>
-              </View>
-            ) : !isIdentityVerified ? (
-              <View style={styles.driverRequiredCard}>
-                <View style={styles.driverRequiredIconContainer}>
-                  <Ionicons name="shield-checkmark-outline" size={32} color={Colors.warning} />
-                </View>
-                <Text style={styles.driverRequiredTitle}>Vérification d&apos;identité requise</Text>
-                <Text style={styles.driverRequiredText}>
-                  Vous devez compléter la vérification de votre identité (KYC) avant de pouvoir proposer un covoiturage.
-                </Text>
-                <TouchableOpacity
-                  style={styles.becomeDriverButton}
-                  onPress={() => checkIdentity('publish')}
-                >
-                  <Ionicons name="shield-checkmark" size={18} color={Colors.white} />
-                  <Text style={styles.becomeDriverButtonText}>Vérifier mon identité</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
           </View>
         )}
 
@@ -2643,74 +3055,6 @@ export default function TripRequestDetailsScreen() {
           </Modal>
         )}
 
-        {/* Modal de la carte en plein écran */}
-        {requestRouteMapData && (
-          <Modal visible={mapModalVisible} animationType="fade" transparent onRequestClose={() => setMapModalVisible(false)}>
-            <View style={styles.mapModalOverlay}>
-              <View style={styles.mapModalContent}>
-                <MapView
-                  provider={PROVIDER_GOOGLE}
-                  style={styles.fullscreenMap}
-                  mapType="standard"
-                  initialRegion={requestRouteMapData.initialRegion}
-                >
-                  {/* Trajectoire réelle de circulation */}
-                  {displayedRouteCoordinates.length > 0 ? (
-                    <Polyline
-                      coordinates={displayedRouteCoordinates}
-                      strokeColor={Colors.primary}
-                      strokeWidth={5}
-                    />
-                  ) : (
-                    // Fallback sur ligne droite pendant le chargement ou en cas d'erreur
-                    <Polyline
-                      coordinates={requestRouteMapData.fallbackCoordinates}
-                      strokeColor={Colors.gray[400]}
-                      strokeWidth={4}
-                      lineDashPattern={[2, 2]}
-                    />
-                  )}
-
-                  {/* Marqueur de départ */}
-                  <Marker
-                    coordinate={requestRouteMapData.departureCoordinate}
-                    tracksViewChanges={false}
-                  >
-                    <View style={styles.markerStartCircle}>
-                      <Ionicons name="location" size={18} color={Colors.white} />
-                    </View>
-                    <Callout>
-                      <View>
-                        <Text style={{ fontWeight: 'bold' }}>Départ</Text>
-                        <Text>{tripRequest.departure.name}</Text>
-                      </View>
-                    </Callout>
-                  </Marker>
-
-                  {/* Marqueur d'arrivée */}
-                  <Marker
-                    coordinate={requestRouteMapData.arrivalCoordinate}
-                    tracksViewChanges={false}
-                  >
-                    <View style={styles.markerEndCircle}>
-                      <Ionicons name="navigate" size={18} color={Colors.white} />
-                    </View>
-                    <Callout>
-                      <View>
-                        <Text style={{ fontWeight: 'bold' }}>Destination</Text>
-                        <Text>{tripRequest.arrival.name}</Text>
-                      </View>
-                    </Callout>
-                  </Marker>
-                </MapView>
-                <TouchableOpacity style={styles.closeMapButton} onPress={() => setMapModalVisible(false)}>
-                  <Ionicons name="close" size={24} color={Colors.white} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          </Modal>
-        )}
-
         {/* Modal de modification de la demande */}
         {showEditForm && tripRequest && (
             <Modal
@@ -2896,6 +3240,116 @@ export default function TripRequestDetailsScreen() {
                       )}
                     </View>
 
+                    {/* Type de véhicule et estimation */}
+                    <View style={styles.editSection}>
+                      <View style={styles.editVehicleHeader}>
+                        <View style={styles.editSectionHeaderCompact}>
+                          <Ionicons name="car-sport-outline" size={20} color={Colors.primary} />
+                          <View>
+                            <Text style={styles.editSectionTitle}>Type de véhicule</Text>
+                            <Text style={styles.editVehicleSubtitle}>Estimation par place</Text>
+                          </View>
+                        </View>
+                        {editVehiclePriceMultiplier > 1 ? (
+                          <View style={styles.editWeatherBadge}>
+                            <Ionicons name="rainy-outline" size={12} color={Colors.primaryDark} />
+                            <Text style={styles.editWeatherBadgeText}>
+                              x{editVehiclePriceMultiplier.toFixed(1)}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+
+                      {isEditVehicleOptionsLoading && editVehicleOptions.length === 0 ? (
+                        <View style={styles.editVehicleLoading}>
+                          <ActivityIndicator size="small" color={Colors.primary} />
+                          <Text style={styles.editVehicleLoadingText}>Mise à jour des tarifs…</Text>
+                        </View>
+                      ) : null}
+
+                      {!isEditVehicleOptionsLoading && isEditVehicleOptionsError && editVehicleOptions.length === 0 ? (
+                        <View style={styles.editVehicleError}>
+                          <Text style={styles.editVehicleErrorText}>Tarifs indisponibles.</Text>
+                          <TouchableOpacity
+                            style={styles.editVehicleRetry}
+                            onPress={() => setEditVehicleOptionsRetry((value) => value + 1)}
+                          >
+                            <Text style={styles.editVehicleRetryText}>Réessayer</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : null}
+
+                      <View style={styles.editVehicleOptionsList}>
+                        {editVehicleOptions.map((option) => {
+                          const selected = option.vehicleType === editVehicleType;
+                          const unavailable = !option.availableForRequestedSeats;
+                          const price = option.recommendedPricePerSeat === null
+                            ? 'À confirmer'
+                            : formatCdfPrice(option.recommendedPricePerSeat);
+                          const detail = unavailable
+                            ? `Indisponible pour ${parsedEditNumberOfSeats} places`
+                            : option.recommendedTotalPrice !== null && parsedEditNumberOfSeats > 1
+                              ? `${formatCdfPrice(option.recommendedTotalPrice)} au total`
+                              : `${formatCdfPrice(option.pricePerKmPerPassenger)} / km / pers.`;
+
+                          return (
+                            <TouchableOpacity
+                              key={option.vehicleType}
+                              style={[
+                                styles.editVehicleOption,
+                                selected && styles.editVehicleOptionSelected,
+                                unavailable && styles.editVehicleOptionDisabled,
+                              ]}
+                              onPress={() => handleSelectEditVehicle(option)}
+                              disabled={unavailable}
+                              accessibilityRole="radio"
+                              accessibilityState={{ checked: selected, disabled: unavailable }}
+                              activeOpacity={0.82}
+                            >
+                              <View style={[
+                                styles.editVehicleIcon,
+                                selected && styles.editVehicleIconSelected,
+                              ]}>
+                                <Ionicons
+                                  name={TRIP_REQUEST_VEHICLE_ICONS[option.vehicleType]}
+                                  size={20}
+                                  color={unavailable ? Colors.gray[400] : selected ? Colors.primary : Colors.gray[700]}
+                                />
+                              </View>
+                              <View style={styles.editVehicleCopy}>
+                                <Text style={[
+                                  styles.editVehicleName,
+                                  unavailable && styles.editVehicleTextDisabled,
+                                ]}>
+                                  {option.displayName}
+                                </Text>
+                                <Text style={[
+                                  styles.editVehicleMeta,
+                                  unavailable && styles.editVehicleTextDisabled,
+                                ]}>
+                                  {detail}
+                                </Text>
+                              </View>
+                              <View style={styles.editVehiclePriceBlock}>
+                                <Text style={[
+                                  styles.editVehiclePrice,
+                                  unavailable && styles.editVehicleTextDisabled,
+                                ]}>
+                                  {price}
+                                </Text>
+                                {!unavailable ? <Text style={styles.editVehiclePriceUnit}>par place</Text> : null}
+                              </View>
+                              <Ionicons
+                                name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                                size={20}
+                                color={unavailable ? Colors.gray[300] : selected ? Colors.primary : Colors.gray[300]}
+                              />
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+
                     {/* Capacité & Prix */}
                     <View style={styles.editSection}>
                       <View style={styles.editSectionHeader}>
@@ -2904,7 +3358,7 @@ export default function TripRequestDetailsScreen() {
                       </View>
                       <View style={styles.editRowInputs}>
                         <View style={{flex: 1}}>
-                          <Text style={styles.editLabel}>Places demandées</Text>
+                          <Text style={styles.editLabel}>Places demandées (facultatif)</Text>
                           <TextInput
                             style={styles.editInput}
                             keyboardType="numeric"
@@ -2920,7 +3374,10 @@ export default function TripRequestDetailsScreen() {
                             keyboardType="numeric"
                             placeholder="Ex: 5000"
                             value={editMaxPricePerSeat}
-                            onChangeText={setEditMaxPricePerSeat}
+                            onChangeText={(value) => {
+                              setEditMaxPricePerSeat(value);
+                              setEditHasEditedBudget(true);
+                            }}
                           />
                         </View>
                       </View>
@@ -2948,14 +3405,10 @@ export default function TripRequestDetailsScreen() {
                     <TouchableOpacity
                       style={[
                         styles.editModalSaveButton,
-                        (!editDepartureAddress || !editArrivalAddress || !editDepartureDateMin || !editDepartureDateMax || !editNumberOfSeats || parseInt(editNumberOfSeats) <= 0) && styles.editModalSaveButtonDisabled
+                        (!isEditFormValid || isEditVehicleOptionsLoading) && styles.editModalSaveButtonDisabled
                       ]}
                       onPress={handleUpdateRequest}
-                      disabled={
-                        isUpdating || !editDepartureAddress || !editArrivalAddress ||
-                        !editDepartureDateMin || !editDepartureDateMax ||
-                        !editNumberOfSeats || parseInt(editNumberOfSeats) <= 0
-                      }
+                      disabled={isUpdating || isEditVehicleOptionsLoading || !isEditFormValid}
                     >
                       {isUpdating ? (
                         <ActivityIndicator size="small" color={Colors.white} />
@@ -3029,14 +3482,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 2,
     backgroundColor: Colors.white,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[100],
   },
   backButton: {
-    padding: Spacing.xs,
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   // Styles pour le formulaire d'offre en deux étapes
   offerStepIndicator: {
@@ -3239,7 +3696,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   headerSpacer: {
-    width: 32,
+    width: 44,
   },
   loadingContainer: {
     flex: 1,
@@ -3247,14 +3704,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   content: {
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
     paddingBottom: Spacing.xl,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.gray[50],
+  },
+  driverContent: {
+    backgroundColor: Colors.gray[50],
   },
   ownerHeroCard: {
     borderRadius: BorderRadius.lg,
-    padding: Spacing.lg,
+    padding: Spacing.md,
     marginBottom: Spacing.lg,
     gap: Spacing.md,
     backgroundColor: Colors.white,
@@ -3266,17 +3726,66 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 1,
   },
+  ownerRequestHeroCard: {
+    borderColor: Colors.gray[100],
+    borderRadius: BorderRadius.xl,
+    shadowColor: Colors.gray[900],
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 3,
+  },
+  driverHeroCard: {
+    borderTopWidth: 4,
+    borderColor: Colors.primary + '28',
+    borderTopColor: Colors.primary,
+    borderRadius: BorderRadius.xl,
+    shadowColor: Colors.gray[900],
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 4,
+  },
   ownerHeroTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: Spacing.sm,
   },
-  ownerHeroStatusBadge: {
+  driverHeroStatusBadge: {
+    minHeight: 30,
     paddingHorizontal: Spacing.md,
-    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '10',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  driverHeroStatusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+  },
+  driverHeroStatusText: {
+    color: Colors.primaryDark,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  ownerHeroStatusBadge: {
+    minHeight: 30,
+    paddingHorizontal: Spacing.md,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.primary + '12',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  ownerHeroStatusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
   },
   ownerHeroStatusText: {
     color: Colors.primaryDark,
@@ -3298,22 +3807,34 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   ownerHeroTitle: {
-    fontSize: FontSizes.xxl,
+    fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    lineHeight: 30,
+    lineHeight: 26,
   },
   ownerHeroSubtitle: {
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
     lineHeight: 20,
   },
-  ownerHeroRouteCard: {
-    backgroundColor: Colors.gray[50],
+  ownerHeroLead: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.md,
+  },
+  ownerHeroLeadIcon: {
+    width: 42,
+    height: 42,
     borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
+    backgroundColor: Colors.primary + '10',
     borderWidth: 1,
-    borderColor: Colors.gray[100],
+    borderColor: Colors.primary + '18',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ownerHeroLeadCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   ownerHeroRouteRow: {
     flexDirection: 'row',
@@ -3333,18 +3854,7 @@ const styles = StyleSheet.create({
   ownerHeroRouteInfo: {
     flex: 1,
     marginLeft: Spacing.md,
-  },
-  ownerHeroRouteLabel: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[500],
-    textTransform: 'uppercase',
-  },
-  ownerHeroRouteText: {
-    marginTop: 4,
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[900],
+    paddingRight: 46,
   },
   ownerHeroRouteLine: {
     width: 1,
@@ -3353,40 +3863,283 @@ const styles = StyleSheet.create({
     marginLeft: 5,
     marginVertical: 6,
   },
-  ownerHeroMetaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
+  driverRouteCard: {
+    padding: Spacing.md,
+    borderRadius: BorderRadius.xl,
+    backgroundColor: Colors.gray[900],
+    overflow: 'hidden',
   },
-  ownerHeroMetaChip: {
+  driverRouteLabel: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[400],
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  driverRouteText: {
+    marginTop: 4,
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.white,
+    lineHeight: 22,
+  },
+  driverRouteLine: {
+    backgroundColor: Colors.gray[600],
+  },
+  driverMapIconButton: {
+    position: 'absolute',
+    right: Spacing.sm,
+    top: Spacing.sm,
+    zIndex: 4,
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.primary + '35',
+    backgroundColor: Colors.primary + '18',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  driverMapIconButtonActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary,
+  },
+  driverMapIconButtonPressed: {
+    opacity: 0.72,
+  },
+  driverMapIconButtonDisabled: {
+    borderColor: Colors.gray[700],
+    backgroundColor: Colors.gray[800],
+    opacity: 0.72,
+  },
+  driverInlineMapFrame: {
+    height: 180,
+    marginHorizontal: -Spacing.md,
+    marginTop: Spacing.md,
+    marginBottom: -Spacing.md,
+    overflow: 'hidden',
+    backgroundColor: Colors.gray[200],
+  },
+  driverInlineMap: {
+    width: '100%',
+    height: '100%',
+  },
+  driverMapCaption: {
+    position: 'absolute',
+    left: Spacing.md,
+    top: Spacing.md,
+    minHeight: 26,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.sm,
+    gap: 5,
+    shadowColor: Colors.gray[900],
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  driverMapCaptionText: {
+    color: Colors.gray[800],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  driverMapMarker: {
+    width: 26,
+    height: 26,
     borderRadius: BorderRadius.full,
-    backgroundColor: Colors.gray[50],
+    borderWidth: 3,
+    borderColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.gray[900],
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  driverMapMarkerDeparture: {
+    backgroundColor: Colors.success,
+  },
+  driverMapMarkerArrival: {
+    backgroundColor: Colors.primary,
+  },
+  driverMapMarkerCore: {
+    width: 8,
+    height: 8,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+  },
+  driverVehicleSpotlight: {
+    minHeight: 72,
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.primary + '22',
+    backgroundColor: Colors.primary + '08',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  ownerVehicleSpotlight: {
+    backgroundColor: Colors.white,
+    borderColor: Colors.gray[200],
+  },
+  driverVehicleIconShell: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.white,
     borderWidth: 1,
     borderColor: Colors.primary + '18',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.primaryDark,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  ownerHeroMetaText: {
-    color: Colors.gray[700],
-    fontSize: FontSizes.sm,
+  driverVehicleCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  driverVehicleEyebrow: {
+    color: Colors.primaryDark,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  driverVehicleName: {
+    marginTop: 2,
+    color: Colors.gray[900],
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+  },
+  driverVehicleHint: {
+    marginTop: 2,
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    lineHeight: 15,
+  },
+  driverVehicleCheck: {
+    width: 28,
+    height: 28,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ownerVehicleChoiceIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+    backgroundColor: Colors.primary + '0D',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  driverFactsRow: {
+    minHeight: 78,
+    paddingVertical: Spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  driverFact: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: Spacing.xs,
+    alignItems: 'flex-start',
+  },
+  driverFactDivider: {
+    width: 1,
+    marginHorizontal: Spacing.xs,
+    backgroundColor: Colors.gray[200],
+  },
+  driverFactLabel: {
+    marginTop: Spacing.xs,
+    color: Colors.gray[500],
+    fontSize: 10,
     fontWeight: FontWeights.semibold,
+    textTransform: 'uppercase',
+  },
+  driverFactValue: {
+    marginTop: 3,
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    lineHeight: 18,
+  },
+  ownerProgressPanel: {
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.gray[50],
+  },
+  ownerProgressHeader: {
+    marginBottom: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  ownerProgressTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  ownerProgressCount: {
+    color: Colors.primaryDark,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
   },
   driverOverridePanel: {
-    gap: Spacing.sm,
-    padding: Spacing.md,
     borderRadius: BorderRadius.lg,
     backgroundColor: Colors.gray[50],
     borderWidth: 1,
     borderColor: Colors.gray[200],
-    marginBottom: Spacing.md,
+    marginBottom: 0,
+    overflow: 'hidden',
+  },
+  driverOverrideToggle: {
+    minHeight: 52,
+    paddingHorizontal: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  driverOverrideTogglePressed: {
+    backgroundColor: Colors.gray[100],
+  },
+  driverOverrideToggleIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary + '10',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  driverOverrideToggleCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   driverOverrideTitle: {
     color: Colors.gray[900],
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
+  },
+  driverOverrideSubtitle: {
+    marginTop: 2,
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+  },
+  driverOverrideFields: {
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    paddingTop: 0,
   },
   driverOverrideButton: {
     minHeight: 42,
@@ -3422,7 +4175,7 @@ const styles = StyleSheet.create({
   ownerHeroStep: {
     flex: 1,
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
   ownerHeroStepDot: {
     width: '100%',
@@ -3443,7 +4196,7 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   ownerHeroPrimaryButton: {
-    minHeight: 52,
+    minHeight: 48,
     borderRadius: BorderRadius.lg,
     backgroundColor: Colors.primary,
     borderWidth: 1,
@@ -3462,7 +4215,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    padding: Spacing.md,
+    padding: Spacing.sm,
     borderRadius: BorderRadius.lg,
     backgroundColor: Colors.gray[50],
     borderWidth: 1,
@@ -3472,7 +4225,7 @@ const styles = StyleSheet.create({
     flex: 1,
     color: Colors.gray[700],
     fontSize: FontSizes.sm,
-    lineHeight: 20,
+    lineHeight: 18,
   },
   ownerHeroActions: {
     flexDirection: 'row',
@@ -3494,8 +4247,8 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   ownerHeroGhostButtonDanger: {
-    backgroundColor: Colors.danger,
-    borderColor: Colors.danger,
+    backgroundColor: Colors.danger + '08',
+    borderColor: Colors.danger + '24',
   },
   ownerHeroButtonPressed: {
     opacity: 0.72,
@@ -3509,7 +4262,7 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   ownerHeroGhostButtonTextDanger: {
-    color: Colors.white,
+    color: Colors.danger,
   },
   driverHeroPassengerRow: {
     flexDirection: 'row',
@@ -3517,8 +4270,8 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   driverHeroAvatar: {
-    width: 42,
-    height: 42,
+    width: 38,
+    height: 38,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.primary,
     alignItems: 'center',
@@ -3527,6 +4280,20 @@ const styles = StyleSheet.create({
   },
   driverHeroPassengerInfo: {
     flex: 1,
+  },
+  driverHeroRoleBadge: {
+    minHeight: 28,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[100],
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  driverHeroRoleBadgeText: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
   },
   driverHeroPassengerLabel: {
     color: Colors.gray[500],
@@ -3935,53 +4702,6 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   makeOfferButtonText: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.base,
-  },
-  driverRequiredCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.lg,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-  },
-  driverRequiredIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary + '15',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.md,
-  },
-  driverRequiredTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    marginBottom: Spacing.sm,
-    textAlign: 'center',
-  },
-  driverRequiredText: {
-    fontSize: FontSizes.base,
-    color: Colors.gray[600],
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: Spacing.lg,
-  },
-  becomeDriverButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.xl,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    gap: Spacing.sm,
-    minWidth: 200,
-  },
-  becomeDriverButtonText: {
     color: Colors.white,
     fontWeight: FontWeights.bold,
     fontSize: FontSizes.base,
@@ -4483,49 +5203,6 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     fontSize: FontSizes.base,
   },
-  mapModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    padding: Spacing.md,
-    justifyContent: 'center',
-  },
-  mapModalContent: {
-    flex: 1,
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
-  },
-  fullscreenMap: {
-    width: '100%',
-    height: '100%',
-  },
-  closeMapButton: {
-    position: 'absolute',
-    top: Spacing.xl,
-    right: Spacing.xl,
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
-  },
-  markerStartCircle: {
-    width: 32,
-    height: 32,
-    backgroundColor: Colors.success,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  markerEndCircle: {
-    width: 32,
-    height: 32,
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
     // === MODAL DE MODIFICATION ===
   editModalRoot: {
     flex: 1,
@@ -4590,6 +5267,144 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
     borderRadius: BorderRadius.lg,
     padding: Spacing.md,
+  },
+  editVehicleHeader: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  editSectionHeaderCompact: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  editVehicleSubtitle: {
+    marginTop: 1,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+  },
+  editWeatherBadge: {
+    minHeight: 28,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '10',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.sm,
+  },
+  editWeatherBadgeText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.primaryDark,
+  },
+  editVehicleLoading: {
+    minHeight: 62,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+  },
+  editVehicleLoadingText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  editVehicleError: {
+    minHeight: 58,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.danger + '08',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+  },
+  editVehicleErrorText: {
+    flex: 1,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+  },
+  editVehicleRetry: {
+    minHeight: 34,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  editVehicleRetryText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.primary,
+  },
+  editVehicleOptionsList: {
+    gap: Spacing.xs,
+  },
+  editVehicleOption: {
+    minHeight: 66,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  editVehicleOptionSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '08',
+  },
+  editVehicleOptionDisabled: {
+    borderColor: Colors.gray[100],
+    backgroundColor: Colors.gray[50],
+    opacity: 0.72,
+  },
+  editVehicleIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.gray[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editVehicleIconSelected: {
+    backgroundColor: Colors.primary + '12',
+  },
+  editVehicleCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  editVehicleName: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  editVehicleMeta: {
+    marginTop: 2,
+    fontSize: 10,
+    color: Colors.gray[500],
+  },
+  editVehiclePriceBlock: {
+    alignItems: 'flex-end',
+  },
+  editVehiclePrice: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  editVehiclePriceUnit: {
+    marginTop: 1,
+    fontSize: 9,
+    color: Colors.gray[500],
+  },
+  editVehicleTextDisabled: {
+    color: Colors.gray[400],
   },
   editSectionHeader: {
     flexDirection: 'row',

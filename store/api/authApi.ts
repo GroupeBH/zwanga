@@ -2,7 +2,7 @@ import type { FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import { API_BASE_URL } from '../../config/env';
 import { storeTokens } from '../../services/tokenStorage';
 import { saveTokensAndUpdateState, setUser } from '../../store/slices/authSlice';
-import type { User, UserGender } from '../../types';
+import type { TripRequestVehicleType, User, UserGender } from '../../types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 import { userApi } from './userApi';
@@ -108,7 +108,20 @@ export const authApi = baseApi.injectEndpoints({
     }),
 
     // Google mobile (login ou signup)
-    googleMobile: builder.mutation<AuthResponse, { idToken: string; phone?: string; gender?: UserGender }>({
+    googleMobile: builder.mutation<AuthResponse, {
+      idToken: string;
+      phone?: string;
+      gender?: UserGender;
+      role?: 'driver' | 'passenger';
+      isDriver?: boolean;
+      vehicle?: {
+        type: TripRequestVehicleType;
+        brand: string;
+        model: string;
+        color: string;
+        licensePlate: string;
+      };
+    }>({
       query: (body) => ({
         url: '/auth/google/mobile',
         method: 'POST',
@@ -155,6 +168,7 @@ export const authApi = baseApi.injectEndpoints({
       role?: 'driver' | 'passenger';
       isDriver?: boolean;
       vehicle?: {
+        type: TripRequestVehicleType;
         brand: string;
         model: string;
         color: string;

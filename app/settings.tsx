@@ -115,7 +115,7 @@ export default function SettingsScreen() {
       onPress: changeProfilePhoto,
     },
     { icon: 'receipt-outline', label: 'Historique paiements', route: '/payment-history' },
-    { icon: 'wallet-outline', label: 'Points Zwanga', route: '/wallet' },
+    { icon: 'wallet-outline', label: 'Jetons Zwanga', route: '/wallet' },
     { icon: 'lock-closed-outline', label: 'Sécurité', route: '/security' },
   ];
 

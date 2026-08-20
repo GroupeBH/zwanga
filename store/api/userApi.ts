@@ -1,6 +1,6 @@
 import { API_BASE_URL } from '../../config/env';
 import { getRefreshToken, storeTokens } from '../../services/tokenStorage';
-import type { FavoriteLocation, KycDocument, ProfileStats, ProfileSummary, User, UserRole, Vehicle } from '../../types';
+import type { FavoriteLocation, KycDocument, ProfileStats, ProfileSummary, TripRequestVehicleType, User, UserRole, Vehicle } from '../../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
@@ -16,6 +16,7 @@ const buildFullName = (user: ServerUser) => {
 const mapServerVehicle = (vehicle: any): Vehicle => ({
   id: vehicle.id,
   ownerId: vehicle.ownerId,
+  type: (vehicle.type ?? 'car') as TripRequestVehicleType,
   brand: vehicle.brand ?? '',
   model: vehicle.model ?? '',
   color: vehicle.color ?? '',

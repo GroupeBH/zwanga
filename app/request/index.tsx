@@ -11,11 +11,12 @@ import { trackEvent } from '@/services/analytics';
 import { useGeocodeMutation } from '@/store/api/googleMapsApi';
 import {
   useCreateTripRequestMutation,
+  useGetTripRequestVehicleOptionsMutation,
   useLazyGetMyTripRequestsQuery,
-  useRecommendTripRequestPriceMutation,
+  type TripRequestVehiclePriceOption,
 } from '@/store/api/tripRequestApi';
 import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
-import type { FavoriteLocation, TripPaymentMode } from '@/types';
+import type { FavoriteLocation, TripPaymentMode, TripRequestVehicleType } from '@/types';
 import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
 import {
   buildManualGeocodeQuery,
@@ -76,6 +77,14 @@ const MAX_REQUEST_SEATS = 2;
 const MIN_REQUEST_PRICE = 500;
 const REQUEST_PRICE_STEP = 500;
 const TIME_PRESET_SYNC_INTERVAL_MS = 30000;
+const TRIP_REQUEST_VEHICLE_ICONS: Record<
+  TripRequestVehicleType,
+  keyof typeof Ionicons.glyphMap
+> = {
+  car: 'car-sport',
+  motorcycle_2_wheels: 'bicycle',
+  motorcycle_3_wheels: 'car-outline',
+};
 const DEFAULT_REQUEST_REGION: Region = {
   latitude: -4.441931,
   longitude: 15.266293,
@@ -311,7 +320,10 @@ export default function RequestTripScreen() {
   const { data: favoriteLocations = [] } = useGetFavoriteLocationsQuery();
   const [createTripRequest, { isLoading: isCreating }] = useCreateTripRequestMutation();
   const [getMyTripRequests] = useLazyGetMyTripRequestsQuery();
-  const [recommendTripRequestPrice, { isLoading: isPriceLoading }] = useRecommendTripRequestPriceMutation();
+  const [
+    getTripRequestVehicleOptions,
+    { isLoading: isPriceLoading, isError: isVehicleOptionsError },
+  ] = useGetTripRequestVehicleOptionsMutation();
   const [geocodeManualAddress] = useGeocodeMutation();
   const [initialWindow] = useState(() => buildPresetWindow('now'));
   const [departureLocation, setDepartureLocation] = useState<MapLocationSelection | null>(null);
@@ -332,6 +344,12 @@ export default function RequestTripScreen() {
   const [flexibilityMinutes, setFlexibilityMinutes] = useState(initialWindow.flex);
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
   const [numberOfSeats, setNumberOfSeats] = useState(MIN_REQUEST_SEATS);
+  const [hasSpecifiedNumberOfSeats, setHasSpecifiedNumberOfSeats] = useState(false);
+  const [selectedVehicleType, setSelectedVehicleType] =
+    useState<TripRequestVehicleType>('car');
+  const [vehicleOptions, setVehicleOptions] = useState<TripRequestVehiclePriceOption[]>([]);
+  const [vehiclePricingMultiplier, setVehiclePricingMultiplier] = useState(1);
+  const [vehicleOptionsRetry, setVehicleOptionsRetry] = useState(0);
   const [maxPricePerSeat, setMaxPricePerSeat] = useState('');
   const [hasEditedBudget, setHasEditedBudget] = useState(false);
   const [requestPaymentMode, setRequestPaymentMode] =
@@ -344,7 +362,6 @@ export default function RequestTripScreen() {
   const [requestFormStep, setRequestFormStep] = useState<RequestFormStep>('route');
   const [routeCoordinates, setRouteCoordinates] = useState<LatLng[]>([]);
   const [routeDistanceMeters, setRouteDistanceMeters] = useState<number | null>(null);
-  const [recommendedPricePerSeat, setRecommendedPricePerSeat] = useState<number | null>(null);
   const [isRouteLoading, setIsRouteLoading] = useState(false);
   const [hasAppliedRoutePrefill, setHasAppliedRoutePrefill] = useState(false);
   const [createdRequestId, setCreatedRequestId] = useState<string | null>(null);
@@ -538,6 +555,11 @@ export default function RequestTripScreen() {
     if (flexibilityMinutes === 0) return `${formatDateLabel(departureDateMin)} à ${formatTimeLabel(departureDateMin)}`;
     return `${formatDateLabel(departureDateMin)} entre ${formatTimeLabel(departureDateMin)} et ${formatTimeLabel(departureDateMax)}`;
   }, [departureDateMax, departureDateMin, flexibilityMinutes]);
+  const selectedVehicleOption = useMemo(
+    () => vehicleOptions.find((option) => option.vehicleType === selectedVehicleType),
+    [selectedVehicleType, vehicleOptions],
+  );
+  const recommendedPricePerSeat = selectedVehicleOption?.recommendedPricePerSeat ?? null;
   const budgetValue = maxPricePerSeat.trim()
     ? clampRequestPrice(Number.parseFloat(maxPricePerSeat))
     : recommendedPricePerSeat ?? 0;
@@ -741,45 +763,43 @@ export default function RequestTripScreen() {
   useEffect(() => {
     if (!hasDepartureAddress || !hasArrivalAddress) {
       setRouteDistanceMeters(null);
-      setRecommendedPricePerSeat(null);
-      if (!hasEditedBudget) {
-        setMaxPricePerSeat('');
-      }
+      setVehicleOptions([]);
+      setVehiclePricingMultiplier(1);
       return;
     }
 
     let isCurrent = true;
-    recommendTripRequestPrice({
+    setVehicleOptions([]);
+    getTripRequestVehicleOptions({
       departureLocation: departureAddress,
       departureReference: departureReference.trim() || undefined,
       departureCoordinates: getLocationCoordinates(departureLocation),
       arrivalLocation: arrivalAddress,
       arrivalReference: arrivalReference.trim() || undefined,
       arrivalCoordinates: getLocationCoordinates(arrivalLocation),
-      numberOfSeats,
+      ...(hasSpecifiedNumberOfSeats ? { numberOfSeats } : {}),
     })
       .unwrap()
       .then((recommendation) => {
         if (!isCurrent) return;
         setRouteDistanceMeters(recommendation.distanceMeters);
-        setRecommendedPricePerSeat(recommendation.recommendedPricePerSeat);
-
-        if (!hasEditedBudget) {
-          setMaxPricePerSeat(
-            recommendation.recommendedPricePerSeat === null
-              ? ''
-              : String(recommendation.recommendedPricePerSeat),
+        setVehicleOptions(recommendation.options);
+        setVehiclePricingMultiplier(recommendation.weatherImpact.priceMultiplier);
+        setSelectedVehicleType((currentVehicleType) => {
+          const currentOption = recommendation.options.find(
+            (option) => option.vehicleType === currentVehicleType,
           );
-        }
+          return currentOption?.availableForRequestedSeats
+            ? currentVehicleType
+            : recommendation.options.find((option) => option.availableForRequestedSeats)?.vehicleType ?? currentVehicleType;
+        });
       })
       .catch((error) => {
         if (!isCurrent) return;
-        console.warn('Impossible de recuperer le prix recommande', error);
+        console.warn('Impossible de recuperer les options de vehicule', error);
         setRouteDistanceMeters(null);
-        setRecommendedPricePerSeat(null);
-        if (!hasEditedBudget) {
-          setMaxPricePerSeat('');
-        }
+        setVehicleOptions([]);
+        setVehiclePricingMultiplier(1);
       });
 
     return () => {
@@ -794,10 +814,18 @@ export default function RequestTripScreen() {
     departureReference,
     hasArrivalAddress,
     hasDepartureAddress,
-    hasEditedBudget,
     numberOfSeats,
-    recommendTripRequestPrice,
+    hasSpecifiedNumberOfSeats,
+    getTripRequestVehicleOptions,
+    vehicleOptionsRetry,
   ]);
+
+  useEffect(() => {
+    if (hasEditedBudget) return;
+    setMaxPricePerSeat(
+      recommendedPricePerSeat === null ? '' : String(recommendedPricePerSeat),
+    );
+  }, [hasEditedBudget, recommendedPricePerSeat]);
 
   const primaryLabel =
     requestFormStep === 'route'
@@ -819,6 +847,11 @@ export default function RequestTripScreen() {
   const updateBudget = (value: number) => {
     setHasEditedBudget(true);
     setMaxPricePerSeat(String(clampRequestPrice(value)));
+  };
+
+  const selectVehicleOption = (option: TripRequestVehiclePriceOption) => {
+    if (!option.availableForRequestedSeats) return;
+    setSelectedVehicleType(option.vehicleType);
   };
 
   const openCustomPicker = (mode: 'date' | 'time') => {
@@ -1001,6 +1034,14 @@ export default function RequestTripScreen() {
       });
       return;
     }
+    if (!selectedVehicleOption?.availableForRequestedSeats) {
+      showDialog({
+        title: 'Vehicule requis',
+        message: 'Choisissez un type de vehicule disponible avant d\'envoyer la demande.',
+        variant: 'warning',
+      });
+      return;
+    }
     createRequestInFlightRef.current = true;
     const submissionStartedAt = Date.now();
 
@@ -1031,13 +1072,16 @@ export default function RequestTripScreen() {
         arrivalCoordinates,
         departureDateMin: departureWindow.min.toISOString(),
         departureDateMax: departureWindow.max.toISOString(),
-        numberOfSeats,
+        ...(hasSpecifiedNumberOfSeats ? { numberOfSeats } : {}),
+        vehicleType: selectedVehicleType,
         ...(parsedBudget !== undefined ? { maxPricePerSeat: parsedBudget } : {}),
         paymentMode: requestPaymentMode,
         description: requestNotes || undefined,
       }).unwrap();
       void trackEvent('trip_request_created', {
         seats: numberOfSeats,
+        seat_count_specified: hasSpecifiedNumberOfSeats,
+        vehicle_type: selectedVehicleType,
         max_price_per_seat: parsedBudget ?? null,
         payment_mode: requestPaymentMode,
         has_description: Boolean(description.trim()),
@@ -1123,7 +1167,10 @@ export default function RequestTripScreen() {
   const isManualAddressGeocoding =
     addressInputMode === 'manual' &&
     (departureManualGeocodeStatus === 'searching' || arrivalManualGeocodeStatus === 'searching');
-  const primaryButtonDisabled = isCreating || isManualAddressGeocoding;
+  const primaryButtonDisabled =
+    isCreating ||
+    isManualAddressGeocoding ||
+    (requestFormStep === 'details' && (isPriceLoading || !selectedVehicleOption?.availableForRequestedSeats));
   const primaryIconName =
     !hasDepartureAddress || !hasArrivalAddress || requestFormStep === 'route'
       ? 'arrow-forward'
@@ -1430,19 +1477,107 @@ export default function RequestTripScreen() {
               </View>
 
               <View style={styles.offerSheet}>
-                <View style={styles.rideTypeCard}>
-                  <View style={styles.rideTypeIcon}>
-                    <Ionicons name="car-sport" size={28} color={Colors.gray[900]} />
+                <View style={styles.vehicleChoiceBlock}>
+                  <View style={styles.vehicleChoiceHeader}>
+                    <View style={styles.vehicleChoiceHeaderCopy}>
+                      <Text style={styles.vehicleChoiceTitle}>Choisissez votre véhicule</Text>
+                      <Text style={styles.vehicleChoiceSubtitle}>
+                        Prix estimés par place{routeDistanceLabel ? ` pour ${routeDistanceLabel}` : ''}
+                      </Text>
+                    </View>
+                    {vehiclePricingMultiplier > 1 ? (
+                      <View style={styles.weatherPriceBadge}>
+                        <Ionicons name="rainy-outline" size={13} color={Colors.primaryDark} />
+                        <Text style={styles.weatherPriceBadgeText}>x{vehiclePricingMultiplier.toFixed(1)}</Text>
+                      </View>
+                    ) : null}
                   </View>
-                  <View style={styles.rideTypeCopy}>
-                    <Text style={styles.rideTypeTitle}>Course</Text>
-                    <Text style={styles.rideTypeMeta}>
-                      {numberOfSeats} personne{numberOfSeats > 1 ? 's' : ''} • {routeDistanceLabel || 'Prix abordables'}
-                    </Text>
+
+                  {isPriceLoading && vehicleOptions.length === 0 ? (
+                    <View style={styles.vehicleChoiceLoading}>
+                      <ActivityIndicator color={Colors.primary} size="small" />
+                      <Text style={styles.vehicleChoiceLoadingText}>Calcul des tarifs en cours…</Text>
+                    </View>
+                  ) : null}
+
+                  {!isPriceLoading && isVehicleOptionsError && vehicleOptions.length === 0 ? (
+                    <View style={styles.vehicleChoiceError}>
+                      <View style={styles.vehicleChoiceErrorCopy}>
+                        <Ionicons name="alert-circle-outline" size={18} color={Colors.danger} />
+                        <Text style={styles.vehicleChoiceErrorText}>Tarifs indisponibles pour le moment.</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.vehicleChoiceRetry}
+                        onPress={() => setVehicleOptionsRetry((value) => value + 1)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.vehicleChoiceRetryText}>Réessayer</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
+
+                  <View style={styles.vehicleChoiceOptionsRow}>
+                    {vehicleOptions.map((option) => {
+                      const selected = option.vehicleType === selectedVehicleType;
+                      const unavailable = !option.availableForRequestedSeats;
+                      const priceLabel = unavailable
+                        ? 'Indisponible'
+                        : option.recommendedPricePerSeat === null
+                          ? 'À confirmer'
+                          : formatCdfPrice(option.recommendedPricePerSeat);
+
+                      return (
+                        <TouchableOpacity
+                          key={option.vehicleType}
+                          style={[
+                            styles.vehicleChoiceOption,
+                            selected && styles.vehicleChoiceOptionSelected,
+                            unavailable && styles.vehicleChoiceOptionDisabled,
+                          ]}
+                          onPress={() => selectVehicleOption(option)}
+                          disabled={unavailable}
+                          accessibilityRole="radio"
+                          accessibilityState={{ checked: selected, disabled: unavailable }}
+                          activeOpacity={0.82}
+                        >
+                          <Ionicons
+                            name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                            size={18}
+                            color={unavailable ? Colors.gray[300] : selected ? Colors.primary : Colors.gray[300]}
+                            style={styles.vehicleChoiceSelection}
+                          />
+                          <View style={[styles.vehicleChoiceIcon, selected && styles.vehicleChoiceIconSelected]}>
+                            <Ionicons
+                              name={TRIP_REQUEST_VEHICLE_ICONS[option.vehicleType]}
+                              size={21}
+                              color={unavailable ? Colors.gray[400] : selected ? Colors.primary : Colors.gray[700]}
+                            />
+                          </View>
+                          <View style={styles.vehicleChoiceCopy}>
+                            <Text
+                              style={[styles.vehicleChoiceName, unavailable && styles.vehicleChoiceTextDisabled]}
+                              numberOfLines={2}
+                            >
+                              {option.displayName}
+                            </Text>
+                          </View>
+                          <View style={styles.vehicleChoicePrice}>
+                            <Text
+                              style={[styles.vehicleChoicePriceValue, unavailable && styles.vehicleChoiceTextDisabled]}
+                              numberOfLines={1}
+                              adjustsFontSizeToFit
+                              minimumFontScale={0.78}
+                            >
+                              {priceLabel}
+                            </Text>
+                            <Text style={[styles.vehicleChoicePriceUnit, unavailable && styles.vehicleChoiceTextDisabled]}>
+                              {unavailable ? `${numberOfSeats} places` : 'par place'}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
-                  <TouchableOpacity style={styles.rideTypeEdit} onPress={() => setRequestFormStep('route')}>
-                    <Ionicons name="create-outline" size={16} color={Colors.gray[700]} />
-                  </TouchableOpacity>
                 </View>
 
                 <View style={styles.offerPriceControl}>
@@ -1456,7 +1591,9 @@ export default function RequestTripScreen() {
                   </TouchableOpacity>
                   <View style={styles.offerPriceCenter}>
                     <Text style={styles.offerPriceValue}>{budgetLabel}</Text>
-                    <Text style={styles.offerPriceHint}>Prix recommandé par place</Text>
+                    <Text style={styles.offerPriceHint}>
+                      {hasEditedBudget ? 'Votre budget maximum par place' : 'Prix recommandé par place'}
+                    </Text>
                   </View>
                   <TouchableOpacity
                     style={styles.offerPriceButton}
@@ -1470,7 +1607,11 @@ export default function RequestTripScreen() {
                 <View style={styles.offerOptionsRow}>
                   <View style={styles.offerOptionCopy}>
                     <Ionicons name="people" size={17} color={Colors.primary} />
-                    <Text style={styles.offerOptionText}>{numberOfSeats} place{numberOfSeats > 1 ? 's' : ''}</Text>
+                    <Text style={styles.offerOptionText}>
+                      {hasSpecifiedNumberOfSeats
+                        ? `${numberOfSeats} place${numberOfSeats > 1 ? 's' : ''}`
+                        : '1 place par défaut · facultatif'}
+                    </Text>
                   </View>
                   <View style={styles.counterCompact}>
                     <TouchableOpacity
@@ -1478,7 +1619,10 @@ export default function RequestTripScreen() {
                         styles.counterBtnCompact,
                         numberOfSeats <= MIN_REQUEST_SEATS && styles.counterBtnCompactDisabled,
                       ]}
-                      onPress={() => setNumberOfSeats((value) => clampRequestSeats(value - 1))}
+                      onPress={() => {
+                        setHasSpecifiedNumberOfSeats(true);
+                        setNumberOfSeats((value) => clampRequestSeats(value - 1));
+                      }}
                       disabled={numberOfSeats <= MIN_REQUEST_SEATS}
                       activeOpacity={0.75}
                     >
@@ -1494,7 +1638,10 @@ export default function RequestTripScreen() {
                         styles.counterBtnCompact,
                         numberOfSeats >= MAX_REQUEST_SEATS && styles.counterBtnCompactDisabled,
                       ]}
-                      onPress={() => setNumberOfSeats((value) => clampRequestSeats(value + 1))}
+                      onPress={() => {
+                        setHasSpecifiedNumberOfSeats(true);
+                        setNumberOfSeats((value) => clampRequestSeats(value + 1));
+                      }}
                       disabled={numberOfSeats >= MAX_REQUEST_SEATS}
                       activeOpacity={0.75}
                     >
@@ -1774,12 +1921,33 @@ const styles = StyleSheet.create({
   offerRouteDivider: { height: 1, backgroundColor: Colors.gray[100], marginLeft: 26 },
   offerRouteText: { flex: 1, fontSize: FontSizes.base, fontWeight: FontWeights.semibold, color: Colors.gray[900] },
   offerSheet: { marginTop: -18, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, backgroundColor: Colors.white, paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: Spacing.lg, gap: Spacing.sm },
-  rideTypeCard: { minHeight: 72, borderRadius: BorderRadius.lg, backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[100], flexDirection: 'row', alignItems: 'center', padding: Spacing.sm, gap: Spacing.md },
-  rideTypeIcon: { width: 48, height: 48, borderRadius: BorderRadius.md, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
-  rideTypeCopy: { flex: 1, minWidth: 0 },
-  rideTypeTitle: { fontSize: FontSizes.lg, fontWeight: FontWeights.bold, color: Colors.gray[900] },
-  rideTypeMeta: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[600] },
-  rideTypeEdit: { width: 38, height: 38, borderRadius: BorderRadius.full, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
+  vehicleChoiceBlock: { gap: Spacing.sm },
+  vehicleChoiceHeader: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },
+  vehicleChoiceHeaderCopy: { flex: 1, minWidth: 0 },
+  vehicleChoiceTitle: { fontSize: FontSizes.lg, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  vehicleChoiceSubtitle: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[600] },
+  weatherPriceBadge: { minHeight: 30, borderRadius: BorderRadius.full, backgroundColor: Colors.primary + '10', flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: Spacing.sm },
+  weatherPriceBadgeText: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.primaryDark },
+  vehicleChoiceLoading: { minHeight: 72, borderRadius: BorderRadius.lg, backgroundColor: Colors.gray[50], flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm },
+  vehicleChoiceLoadingText: { fontSize: FontSizes.sm, fontWeight: FontWeights.semibold, color: Colors.gray[600] },
+  vehicleChoiceError: { minHeight: 72, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.danger + '30', backgroundColor: Colors.danger + '08', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm, paddingHorizontal: Spacing.md },
+  vehicleChoiceErrorCopy: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  vehicleChoiceErrorText: { flex: 1, fontSize: FontSizes.sm, color: Colors.gray[700] },
+  vehicleChoiceRetry: { minHeight: 36, borderRadius: BorderRadius.full, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.md },
+  vehicleChoiceRetryText: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.primary },
+  vehicleChoiceOptionsRow: { flexDirection: 'row', alignItems: 'stretch', gap: 6 },
+  vehicleChoiceOption: { position: 'relative', flex: 1, minWidth: 0, minHeight: 124, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, alignItems: 'center', paddingHorizontal: 6, paddingVertical: Spacing.sm },
+  vehicleChoiceOptionSelected: { borderColor: Colors.primary, backgroundColor: Colors.primary + '08' },
+  vehicleChoiceOptionDisabled: { backgroundColor: Colors.gray[50], borderColor: Colors.gray[100], opacity: 0.72 },
+  vehicleChoiceSelection: { position: 'absolute', top: 6, right: 6 },
+  vehicleChoiceIcon: { width: 38, height: 38, borderRadius: BorderRadius.md, backgroundColor: Colors.gray[100], alignItems: 'center', justifyContent: 'center' },
+  vehicleChoiceIconSelected: { backgroundColor: Colors.primary + '12' },
+  vehicleChoiceCopy: { minHeight: 34, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  vehicleChoiceName: { fontSize: FontSizes.xs, lineHeight: 15, fontWeight: FontWeights.bold, color: Colors.gray[900], textAlign: 'center' },
+  vehicleChoicePrice: { width: '100%', alignItems: 'center', marginTop: 'auto' },
+  vehicleChoicePriceValue: { width: '100%', fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[900], textAlign: 'center' },
+  vehicleChoicePriceUnit: { marginTop: 1, fontSize: 10, color: Colors.gray[500] },
+  vehicleChoiceTextDisabled: { color: Colors.gray[400] },
   offerPriceControl: { minHeight: 88, borderRadius: BorderRadius.lg, backgroundColor: '#F7F8FA', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.md },
   offerPriceButton: { width: 50, height: 50, borderRadius: BorderRadius.full, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 3 },
   offerPriceButtonDisabled: { backgroundColor: Colors.gray[100] },

@@ -1,8 +1,9 @@
 import { baseApi } from './baseApi';
-import type { Vehicle } from '../../types';
+import type { TripRequestVehicleType, Vehicle } from '../../types';
 import type { BaseEndpointBuilder } from './types';
 
 type CreateVehiclePayload = {
+  type: TripRequestVehicleType;
   brand: string;
   model: string;
   color: string;

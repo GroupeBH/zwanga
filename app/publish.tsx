@@ -4,6 +4,7 @@ import LocationPickerModal, { MapLocationSelection } from '@/components/Location
 import { VehicleFormModal } from '@/components/VehicleFormModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { getRegisteredVehicleTypeLabel } from '@/constants/vehicleTypes';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackEvent } from '@/services/analytics';
@@ -11,7 +12,7 @@ import { useGeocodeMutation } from '@/store/api/googleMapsApi';
 import { useCreateRecurringTripMutation, useCreateTripMutation } from '@/store/api/tripApi';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useUploadKycMutation } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
-import type { Vehicle } from '@/types';
+import type { TripRequestVehicleType, Vehicle } from '@/types';
 import {
   createBecomeDriverAction,
   createSubscribeToZwangaProAction,
@@ -377,6 +378,7 @@ export default function PublishScreen() {
 
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [showVehicleForm, setShowVehicleForm] = useState(false);
+  const [vehicleType, setVehicleType] = useState<TripRequestVehicleType | null>(null);
   const [vehicleBrand, setVehicleBrand] = useState('');
   const [vehicleModel, setVehicleModel] = useState('');
   const [vehicleColor, setVehicleColor] = useState('');
@@ -441,6 +443,7 @@ export default function PublishScreen() {
     setSelectedVehicleId(null);
     setCreatedVehicle(null);
     setShowVehicleForm(false);
+    setVehicleType(null);
     setVehicleBrand('');
     setVehicleModel('');
     setVehicleColor('');
@@ -451,6 +454,7 @@ export default function PublishScreen() {
   };
 
   const resetVehicleForm = () => {
+    setVehicleType(null);
     setVehicleBrand('');
     setVehicleModel('');
     setVehicleColor('');
@@ -1104,8 +1108,8 @@ export default function PublishScreen() {
   }, [mode, isRecurringTrip, recurringWeekdays.length, departureDateTime]);
 
   const handleCreateVehicle = async () => {
-    if (!vehicleBrand.trim() || !vehicleModel.trim() || !vehicleColor.trim() || !vehicleLicensePlate.trim()) {
-      setVehicleFormError('Veuillez remplir tous les champs du véhicule.');
+    if (!vehicleType || !vehicleBrand.trim() || !vehicleModel.trim() || !vehicleColor.trim() || !vehicleLicensePlate.trim()) {
+      setVehicleFormError('Veuillez choisir le type et remplir tous les champs du véhicule.');
       return;
     }
 
@@ -1113,6 +1117,7 @@ export default function PublishScreen() {
 
     try {
       const newVehicle = await createVehicle({
+        type: vehicleType,
         brand: vehicleBrand.trim(),
         model: vehicleModel.trim(),
         color: vehicleColor.trim(),
@@ -2169,7 +2174,7 @@ export default function PublishScreen() {
                             </Text>
                           </View>
                           <Text style={styles.vehicleCardDetails} numberOfLines={1}>
-                            {vehicle.color || 'Couleur non precisée'}
+                            {getRegisteredVehicleTypeLabel(vehicle.type)} • {vehicle.color || 'Couleur non précisée'}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -2807,10 +2812,15 @@ export default function PublishScreen() {
       <VehicleFormModal
         visible={showVehicleForm}
         {...vehicleModalCopy}
+        vehicleType={vehicleType}
         brand={vehicleBrand}
         model={vehicleModel}
         color={vehicleColor}
         licensePlate={vehicleLicensePlate}
+        onVehicleTypeChange={(value) => {
+          setVehicleType(value);
+          setVehicleFormError(null);
+        }}
         onBrandChange={(value) => {
           setVehicleBrand(value);
           setVehicleFormError(null);

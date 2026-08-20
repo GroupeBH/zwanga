@@ -64,7 +64,7 @@ const statusMeta: Record<
 const purposeLabels: Record<string, string> = {
   subscription_pro: 'Abonnement Pro',
   trip_booking: 'Réservation trajet',
-  wallet_top_up: 'Recharge points',
+  wallet_top_up: 'Recharge de jetons',
   driver_payout: 'Paiement chauffeur',
   generic: 'Paiement',
 };
