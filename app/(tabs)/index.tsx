@@ -97,12 +97,6 @@ const HOME_COLORS = {
   success: '#0EAD65',
 };
 
-const TRIP_REQUEST_MARKER_COLORS = {
-  male: HOME_COLORS.navy,
-  female: '#EC4899',
-  neutral: HOME_COLORS.navy,
-} as const;
-
 const vehicleLabel: Record<Trip['vehicleType'], string> = {
   car: 'Voiture',
   moto: 'Moto',
@@ -133,7 +127,7 @@ const androidTripMarkerImages: Record<Trip['vehicleType'], ImageRequireSource> =
   tricycle: require('@/assets/images/map-markers/trip-marker-tricycle-v2.png'),
 };
 
-const androidTripRequestMarkerImages = {
+const tripRequestMarkerImages = {
   male: require('@/assets/images/map-markers/trip-request-marker-male.png'),
   female: require('@/assets/images/map-markers/trip-request-marker-female.png'),
   neutral: require('@/assets/images/map-markers/trip-request-marker-neutral.png'),
@@ -181,10 +175,6 @@ type TripVehicleMapMarkerProps = {
   isSelected: boolean;
   onReady?: () => void;
   trip: Trip;
-};
-
-type TripRequestMapMarkerProps = {
-  gender?: TripRequest['passengerGender'];
 };
 
 type HomeSheetMode = 'trips' | 'requests';
@@ -369,18 +359,10 @@ function getTripMarkerImage(trip: Trip, isSelected: boolean) {
 
 function getTripRequestMarkerImage(gender?: TripRequest['passengerGender']): ImageRequireSource {
   if (gender === 'male' || gender === 'female') {
-    return androidTripRequestMarkerImages[gender];
+    return tripRequestMarkerImages[gender];
   }
 
-  return androidTripRequestMarkerImages.neutral;
-}
-
-function getTripRequestMarkerColor(gender?: TripRequest['passengerGender']) {
-  if (gender === 'male' || gender === 'female') {
-    return TRIP_REQUEST_MARKER_COLORS[gender];
-  }
-
-  return TRIP_REQUEST_MARKER_COLORS.neutral;
+  return tripRequestMarkerImages.neutral;
 }
 
 
@@ -602,27 +584,6 @@ function TripVehicleMapMarker({ isSelected, onReady, trip }: TripVehicleMapMarke
           resizeMode="contain"
           onLoadEnd={onReady}
         />
-      </View>
-    </View>
-  );
-}
-
-function TripRequestMapMarker({ gender }: TripRequestMapMarkerProps) {
-  const genderIcon: keyof typeof Ionicons.glyphMap =
-    gender === 'female' ? 'woman' : gender === 'male' ? 'man' : 'person';
-  const markerColor = getTripRequestMarkerColor(gender);
-
-  return (
-    <View collapsable={false} style={styles.tripRequestMarkerFrame}>
-      <View style={[styles.tripRequestMarkerTip, { borderTopColor: markerColor }]} />
-      <View
-        collapsable={false}
-        style={[styles.tripRequestMarkerBody, { backgroundColor: markerColor }]}
-      >
-        <Ionicons name={genderIcon} size={22} color={Colors.white} />
-      </View>
-      <View collapsable={false} style={styles.tripRequestMarkerBadge}>
-        <Ionicons name="document-text" size={9} color={Colors.white} />
       </View>
     </View>
   );
@@ -2310,16 +2271,14 @@ export default function HomeScreen() {
               identifier={`trip-request-${request.id}`}
               coordinate={coordinate}
               anchor={TRIP_REQUEST_MARKER_ANCHOR}
-              image={IS_ANDROID ? getTripRequestMarkerImage(request.passengerGender) : undefined}
+              image={getTripRequestMarkerImage(request.passengerGender)}
               title={request.passengerName || 'Demande de trajet'}
               description={`${placeName(request.departure)} → ${placeName(request.arrival)}`}
               onPress={() => router.push(getTripRequestDetailHref(request.id))}
               tappable
               tracksViewChanges={false}
               zIndex={6}
-            >
-              {!IS_ANDROID ? <TripRequestMapMarker gender={request.passengerGender} /> : null}
-            </Marker>
+            />
           );
         })}
         {ongoingDriverTrip && visibleDriverPassengerMarkers.map((passenger) => {
@@ -3117,62 +3076,6 @@ const styles = StyleSheet.create({
   tripVehicleMarkerImageSelected: {
     width: IS_ANDROID ? 62 : 64,
     height: IS_ANDROID ? 62 : 64,
-  },
-  tripRequestMarkerFrame: {
-    width: 60,
-    height: 58,
-    alignItems: 'center',
-    position: 'relative',
-  },
-  tripRequestMarkerBody: {
-    position: 'absolute',
-    top: 8,
-    left: 10,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: HOME_COLORS.navy,
-    borderWidth: 3,
-    borderColor: Colors.white,
-    ...Platform.select({
-      ios: {
-        shadowColor: Colors.black,
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.2,
-        shadowRadius: 5,
-      },
-    }),
-    zIndex: 2,
-  },
-  tripRequestMarkerBadge: {
-    position: 'absolute',
-    top: 3,
-    right: 2,
-    width: 17,
-    height: 17,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.primary,
-    borderWidth: 2,
-    borderColor: Colors.white,
-    zIndex: 3,
-  },
-  tripRequestMarkerTip: {
-    position: 'absolute',
-    top: 46,
-    left: 24,
-    width: 0,
-    height: 0,
-    borderLeftWidth: 6,
-    borderRightWidth: 6,
-    borderTopWidth: 8,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderTopColor: HOME_COLORS.navy,
-    zIndex: 1,
   },
   userLocationMarkerFrame: {
     width: 64,
