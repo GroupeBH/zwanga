@@ -483,6 +483,8 @@ export default function ProfileScreen() {
     const role = currentUser?.role;
     return role === 'driver' || role === 'both' || Boolean(currentUser?.isDriver);
   }, [currentUser?.isDriver, currentUser?.role]);
+  const displaysDriverRole =
+    currentUser?.role === 'driver' || currentUser?.role === 'both';
 
   const { data: subscriptionPlans = [] } = useGetSubscriptionPlansQuery();
   const {
@@ -2687,12 +2689,12 @@ export default function ProfileScreen() {
               <View style={styles.userRoleRow}>
                 <View style={styles.userRolePill}>
                   <Ionicons
-                    name={isDriver ? 'car-outline' : 'person-outline'}
+                    name={displaysDriverRole ? 'car-outline' : 'person-outline'}
                     size={12}
                     color={Colors.primaryDark}
                   />
                   <Text style={styles.userRolePillText}>
-                    {isDriver ? 'Conducteur' : 'Passager'}
+                    {displaysDriverRole ? 'Conducteur' : 'Passager'}
                   </Text>
                 </View>
                 {isPremiumActive ? (

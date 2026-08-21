@@ -13,6 +13,7 @@ import type {
   VehicleType,
 } from '../../types';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
+import type { BookingAutoProgressPayload } from '@/services/trackingSocket';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 
@@ -856,7 +857,12 @@ export const tripApi = baseApi.injectEndpoints({
 
     // Mettre à jour la position du conducteur
     updateDriverLocation: builder.mutation<
-      { tripId: string; coordinates: [number, number]; updatedAt: string },
+      {
+        tripId: string;
+        coordinates: [number, number];
+        updatedAt: string;
+        autoProgress?: BookingAutoProgressPayload;
+      },
       {
         tripId: string;
         coordinates: [number, number];
@@ -871,8 +877,17 @@ export const tripApi = baseApi.injectEndpoints({
         method: 'PUT',
         body: { coordinates, accuracy, speed, heading, recordedAt },
       }),
-      invalidatesTags: (_result, _error, { tripId }) => [
+      invalidatesTags: (result, _error, { tripId }) => [
         { type: 'Trip', id: tripId },
+        ...(result?.autoProgress?.events.length
+          ? [
+              { type: 'Trip' as const, id: 'LIST' },
+              { type: 'Booking' as const, id: 'LIST' },
+              ...result.autoProgress.events
+                .filter((event) => Boolean(event.bookingId))
+                .map((event) => ({ type: 'Booking' as const, id: event.bookingId! })),
+            ]
+          : []),
       ],
     }),
 
