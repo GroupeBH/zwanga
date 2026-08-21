@@ -15,6 +15,7 @@ import { baseApi } from './baseApi';
 import type { ServerTrip } from './tripApi';
 import { mapServerTripToClient } from './tripApi';
 import type { BaseEndpointBuilder } from './types';
+import type { BookingAutoProgressPayload } from '@/services/trackingSocket';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 
 type ServerUser = {
@@ -41,6 +42,14 @@ type ServerBooking = {
   rejectionReason?: string | null;
   acceptedAt?: string | null;
   cancelledAt?: string | null;
+  noShowDetectedAt?: string | null;
+  noShowReason?: string | null;
+  noShowDriverDistanceMeters?: number | null;
+  boardingUncertainDetectedAt?: string | null;
+  boardingUncertainReason?: string | null;
+  boardingUncertainDriverDistanceMeters?: number | null;
+  pickupDetectionMethod?: string | null;
+  dropoffDetectionMethod?: string | null;
   createdAt: string;
   updatedAt: string;
   passenger?: ServerUser | null;
@@ -129,28 +138,7 @@ type UpdatePassengerLocationResponse = {
   bookingId: string;
   coordinates: [number, number];
   updatedAt: string;
-  autoProgress?: {
-    tripId: string;
-    events: Array<{
-      type:
-        | 'driver_near_pickup'
-        | 'driver_arrived_pickup'
-        | 'parties_nearby'
-        | 'passenger_ready_pickup'
-        | 'pickup_confirmed'
-        | 'passenger_near_destination'
-        | 'dropoff_confirmed'
-        | 'driver_near_destination'
-        | 'driver_arrived_destination';
-      bookingId?: string;
-      tripId: string;
-      passengerId?: string;
-      distanceMeters?: number;
-      detectedAt?: string;
-      expiresAt?: string;
-      pickupWaitSeconds?: number;
-    }>;
-  };
+  autoProgress?: BookingAutoProgressPayload;
 };
 
 const formatPassengerName = (passenger?: ServerUser | null) => {
@@ -304,6 +292,15 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
   rejectionReason: booking.rejectionReason ?? undefined,
   acceptedAt: booking.acceptedAt ?? undefined,
   cancelledAt: booking.cancelledAt ?? undefined,
+  noShowDetectedAt: booking.noShowDetectedAt ?? undefined,
+  noShowReason: booking.noShowReason ?? undefined,
+  noShowDriverDistanceMeters: booking.noShowDriverDistanceMeters ?? undefined,
+  boardingUncertainDetectedAt: booking.boardingUncertainDetectedAt ?? undefined,
+  boardingUncertainReason: booking.boardingUncertainReason ?? undefined,
+  boardingUncertainDriverDistanceMeters:
+    booking.boardingUncertainDriverDistanceMeters ?? undefined,
+  pickupDetectionMethod: booking.pickupDetectionMethod ?? undefined,
+  dropoffDetectionMethod: booking.dropoffDetectionMethod ?? undefined,
   createdAt: booking.createdAt,
   updatedAt: booking.updatedAt,
   trip: booking.trip ? mapServerTripToClient(booking.trip) : undefined,

@@ -10,6 +10,11 @@ import {
 import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import {
+  DRIVER_LOCATION_BACKEND_UPDATE_INTERVAL_MS,
+  DRIVER_PICKUP_ARRIVAL_DISTANCE_KM,
+  PASSENGER_READY_DISTANCE_KM,
+} from '@/constants/rideProgress';
+import {
   trackingSocket,
   type BookingAutoProgressPayload,
   type PassengerLocationPayload,
@@ -22,8 +27,6 @@ import {
 import {
   useAcceptBookingMutation,
   useConfirmPassengerTripInterruptionMutation,
-  useConfirmPickupMutation,
-  useConfirmDropoffMutation,
   useGetTripBookingsQuery,
   useRejectPassengerTripInterruptionMutation,
   useRejectBookingMutation,
@@ -187,11 +190,8 @@ const SPEECH_MIN_INTERVAL_MS = 2500;
 const MAX_LIVE_PASSENGER_MARKERS = Platform.OS === 'ios' ? 10 : 16;
 const USE_ANDROID_NAVIGATION_MARKER_IMAGES = Platform.OS === 'android';
 const ANDROID_PIN_MARKER_ANCHOR = { x: 0.5, y: 0.88 };
-const DRIVER_PICKUP_ARRIVAL_DISTANCE_KM = 0.05;
-const PASSENGER_READY_DISTANCE_KM = 0.005;
 const DRIVER_DROPOFF_APPROACH_DISTANCE_KM = 0.04;
 const DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS = 3000;
-const DRIVER_LOCATION_BACKEND_UPDATE_INTERVAL_MS = 3000;
 const FRESH_DRIVER_LOCATION_MAX_AGE_MS = LOCATION_FRESHNESS_MS;
 const OFF_ROUTE_DISTANCE_KM = ROUTE_DEVIATION_THRESHOLD_METERS / 1000;
 const DRIVER_REROUTE_DEVIATION_THRESHOLD_METERS = 55;
@@ -634,8 +634,6 @@ export default function NavigationScreen() {
   );
   const [getDirections] = useGetDirectionsMutation();
   const [acceptBooking, { isLoading: isAcceptingBooking }] = useAcceptBookingMutation();
-  const [confirmPickup] = useConfirmPickupMutation();
-  const [confirmDropoff] = useConfirmDropoffMutation();
   const [rejectBooking, { isLoading: isRejectingBooking }] = useRejectBookingMutation();
   const [completeTrip] = useCompleteTripMutation();
   const [pauseTrip, { isLoading: isPausingTrip }] = usePauseTripMutation();
@@ -983,8 +981,6 @@ export default function NavigationScreen() {
   const presentedWaypointIdsRef = useRef<Set<string>>(new Set());
   const presentedPickupNoticeKeysRef = useRef<Set<string>>(new Set());
   const highestPickupNoticePriorityRef = useRef<Map<string, number>>(new Map());
-  const autoConfirmingPickupBookingIdsRef = useRef<Set<string>>(new Set());
-  const autoConfirmingDropoffBookingIdsRef = useRef<Set<string>>(new Set());
   const skippedPickupBookingIdsRef = useRef<ReadonlySet<string>>(new Set());
   const pickupClosestDistanceMetersRef = useRef<Map<string, number>>(new Map());
   const tripDestinationNearSinceMsRef = useRef<number | null>(null);
@@ -1278,8 +1274,6 @@ export default function NavigationScreen() {
     setPickupNoticeCountdown(null);
     presentedPickupNoticeKeysRef.current.clear();
     highestPickupNoticePriorityRef.current.clear();
-    autoConfirmingPickupBookingIdsRef.current.clear();
-    autoConfirmingDropoffBookingIdsRef.current.clear();
     offRouteSampleCountRef.current = 0;
     lastOffRouteRerouteAtRef.current = 0;
     isReroutingRef.current = false;
@@ -1423,43 +1417,6 @@ export default function NavigationScreen() {
     [bookings],
   );
 
-  const persistLocalPickupConfirmation = useCallback(
-    (event: BookingAutoProgressEvent, waypoint?: Waypoint | null) => {
-      if (!event.bookingId) {
-        return;
-      }
-
-      const booking =
-        waypoint?.booking ?? bookings?.find((item) => item.id === event.bookingId);
-      const alreadyPickedUp = hasBookingPickupCompleted(booking);
-      const looksLocallyDetected =
-        Boolean(event.detectedAt) || typeof event.distanceMeters === 'number';
-
-      if (
-        alreadyPickedUp ||
-        !looksLocallyDetected ||
-        autoConfirmingPickupBookingIdsRef.current.has(event.bookingId)
-      ) {
-        return;
-      }
-
-      autoConfirmingPickupBookingIdsRef.current.add(event.bookingId);
-      void confirmPickup(event.bookingId)
-        .unwrap()
-        .then(() => {
-          refetchBookings();
-          refetchTrip();
-        })
-        .catch((error) => {
-          console.warn('[Navigation] Confirmation pickup automatique non persistee:', error);
-        })
-        .finally(() => {
-          autoConfirmingPickupBookingIdsRef.current.delete(event.bookingId!);
-        });
-    },
-    [bookings, confirmPickup, refetchBookings, refetchTrip],
-  );
-
   const presentPassengerBoardedNotice = useCallback(
     (event: BookingAutoProgressEvent, waypoint?: Waypoint | null) => {
       if (!isMountedRef.current || event.type !== 'pickup_confirmed' || !event.bookingId) {
@@ -1472,7 +1429,6 @@ export default function NavigationScreen() {
       }
 
       presentedPassengerBoardedKeysRef.current.add(key);
-      persistLocalPickupConfirmation(event, waypoint);
       const passengerName = getPassengerNameForBooking(event.bookingId, waypoint);
       setPickupNotice((current) =>
         current?.waypoint.booking.id === event.bookingId ? null : current,
@@ -1494,46 +1450,7 @@ export default function NavigationScreen() {
         });
       });
     },
-    [getPassengerNameForBooking, persistLocalPickupConfirmation, showDialog],
-  );
-
-  const persistLocalDropoffConfirmation = useCallback(
-    (event: BookingAutoProgressEvent, waypoint?: Waypoint | null) => {
-      if (!event.bookingId) {
-        return;
-      }
-
-      const booking =
-        waypoint?.booking ?? bookings?.find((item) => item.id === event.bookingId);
-      const alreadyDroppedOff = hasBookingDropoffCompleted(booking);
-      const wasPickedUp = hasBookingPickupCompleted(booking);
-      const looksLocallyDetected =
-        Boolean(event.detectedAt) || typeof event.distanceMeters === 'number';
-
-      if (
-        alreadyDroppedOff ||
-        !wasPickedUp ||
-        !looksLocallyDetected ||
-        autoConfirmingDropoffBookingIdsRef.current.has(event.bookingId)
-      ) {
-        return;
-      }
-
-      autoConfirmingDropoffBookingIdsRef.current.add(event.bookingId);
-      void confirmDropoff(event.bookingId)
-        .unwrap()
-        .then(() => {
-          refetchBookings();
-          refetchTrip();
-        })
-        .catch((error) => {
-          console.warn('[Navigation] Confirmation dropoff automatique non persistee:', error);
-        })
-        .finally(() => {
-          autoConfirmingDropoffBookingIdsRef.current.delete(event.bookingId!);
-        });
-    },
-    [bookings, confirmDropoff, refetchBookings, refetchTrip],
+    [getPassengerNameForBooking, showDialog],
   );
 
   const presentPassengerDestinationNotice = useCallback(
@@ -1548,7 +1465,6 @@ export default function NavigationScreen() {
       }
 
       presentedPassengerDestinationKeysRef.current.add(key);
-      persistLocalDropoffConfirmation(event, waypoint);
       const passengerName = getPassengerNameForBooking(event.bookingId, waypoint);
 
       showDialog({
@@ -1566,7 +1482,7 @@ export default function NavigationScreen() {
         });
       });
     },
-    [getPassengerNameForBooking, persistLocalDropoffConfirmation, showDialog],
+    [getPassengerNameForBooking, showDialog],
   );
 
   const presentPassengerDestinationApproachNotice = useCallback(
@@ -1769,51 +1685,11 @@ export default function NavigationScreen() {
     );
   }, [activeNavigationDestination?.kind, tripArrivalCoordinate, tripDepartureCoordinate]);
 
-  const reconcileAcceptedBookingsAtTripDestination = useCallback(async () => {
-    const acceptedBookings = (bookingsRef.current ?? []).filter(
-      (booking) => booking.status === 'accepted',
-    );
-
-    if (acceptedBookings.length === 0) {
-      return true;
-    }
-
-    let didPersistProgress = false;
-    let hasPersistenceFailure = false;
-
-    for (const booking of acceptedBookings) {
-      try {
-        if (!hasBookingPickupCompleted(booking)) {
-          await confirmPickup(booking.id).unwrap();
-          didPersistProgress = true;
-        }
-
-        if (!hasBookingDropoffCompleted(booking)) {
-          await confirmDropoff(booking.id).unwrap();
-          didPersistProgress = true;
-        }
-      } catch (error) {
-        hasPersistenceFailure = true;
-        console.warn('[Navigation] Reconciliation reservation avant fin impossible:', {
-          bookingId: booking.id,
-          error,
-        });
-      }
-    }
-
-    if (didPersistProgress) {
-      await Promise.all([refetchBookings(), refetchTrip()]);
-    }
-
-    return !hasPersistenceFailure;
-  }, [confirmDropoff, confirmPickup, refetchBookings, refetchTrip]);
-
   const tryCompleteTripFromNavigation = useCallback(
     (
       distanceMeters?: number,
       options: {
         completedWhileAppInactive?: boolean;
-        reconcileBookings?: boolean;
       } = {},
     ) => {
       if (!tripId || autoCompletingTripRef.current || trip?.status !== 'ongoing') {
@@ -1821,24 +1697,6 @@ export default function NavigationScreen() {
       }
 
       const complete = async () => {
-        const acceptedBookings = (bookingsRef.current ?? []).filter(
-          (booking) => booking.status === 'accepted',
-        );
-        const hasUnfinishedBooking = acceptedBookings.some(
-          (booking) => !hasBookingDropoffCompleted(booking),
-        );
-
-        if (hasUnfinishedBooking && !options.reconcileBookings) {
-          return false;
-        }
-
-        if (hasUnfinishedBooking) {
-          const didReconcile = await reconcileAcceptedBookingsAtTripDestination();
-          if (!didReconcile) {
-            return false;
-          }
-        }
-
         await completeTrip(tripId).unwrap();
         return true;
       };
@@ -1873,7 +1731,6 @@ export default function NavigationScreen() {
     [
       completeTrip,
       presentTripDestinationNotice,
-      reconcileAcceptedBookingsAtTripDestination,
       refetchBookings,
       refetchTrip,
       trip?.status,
@@ -2083,7 +1940,6 @@ export default function NavigationScreen() {
       if (completionDistanceMeters !== null) {
         tryCompleteTripFromNavigation(completionDistanceMeters, {
           completedWhileAppInactive: completedDuringInactiveCandidateRef.current,
-          reconcileBookings: true,
         });
       }
     } catch (error) {
@@ -2229,6 +2085,40 @@ export default function NavigationScreen() {
             return;
           }
 
+          if (event.type === 'passenger_no_show') {
+            const passengerName = getPassengerNameForBooking(event.bookingId);
+            const currentNotice = pickupNoticeRef.current;
+            if (currentNotice?.waypoint.booking.id === event.bookingId) {
+              pickupNoticeRef.current = null;
+              setPickupNotice(null);
+              setPickupNoticeCountdown(null);
+            }
+            showDialog({
+              variant: 'info',
+              icon: 'person-remove',
+              title: 'Passager non embarque',
+              message: `${passengerName} n'a pas ete detecte a bord apres le delai d'attente. La reservation est cloturee sans paiement.`,
+            });
+            return;
+          }
+
+          if (event.type === 'passenger_boarding_uncertain') {
+            const passengerName = getPassengerNameForBooking(event.bookingId);
+            const currentNotice = pickupNoticeRef.current;
+            if (currentNotice?.waypoint.booking.id === event.bookingId) {
+              pickupNoticeRef.current = null;
+              setPickupNotice(null);
+              setPickupNoticeCountdown(null);
+            }
+            showDialog({
+              variant: 'warning',
+              icon: 'help-circle',
+              title: 'Embarquement non confirme',
+              message: `Le trajet est arrive a destination sans preuve GPS suffisante de l'embarquement de ${passengerName}. La reservation est cloturee sans paiement.`,
+            });
+            return;
+          }
+
           if (
             event.type === 'driver_arrived_pickup' ||
             event.type === 'parties_nearby' ||
@@ -2339,6 +2229,7 @@ export default function NavigationScreen() {
   }, [
     isTripOngoing,
     isKinshasaNavigationTrip,
+    getPassengerNameForBooking,
     presentPassengerBoardedNotice,
     presentPassengerDestinationApproachNotice,
     presentPassengerDestinationNotice,
@@ -2346,6 +2237,7 @@ export default function NavigationScreen() {
     presentTripDestinationNotice,
     refetchBookings,
     refetchTrip,
+    showDialog,
     tripId,
   ]);
   // Créer les waypoints à partir des bookings acceptés
@@ -3715,9 +3607,7 @@ export default function NavigationScreen() {
         destinationAutoComplete.shouldComplete ||
         destinationPassage.shouldComplete
       ) {
-        tryCompleteTripFromNavigation(roundedTripEndDistanceMeters, {
-          reconcileBookings: true,
-        });
+        tryCompleteTripFromNavigation(roundedTripEndDistanceMeters);
       }
     }
 
@@ -5385,7 +5275,7 @@ export default function NavigationScreen() {
               Autorisation de localisation en arrière-plan
             </Text>
             <Text style={styles.backgroundDisclosureText}>
-              Zwanga collecte votre position même quand l'application est en arrière-plan pendant un trajet actif.
+              {"Zwanga collecte votre position même quand l'application est en arrière-plan pendant un trajet actif."}
             </Text>
             <View style={styles.backgroundDisclosureList}>
               <Text style={styles.backgroundDisclosureItem}>
@@ -5399,7 +5289,7 @@ export default function NavigationScreen() {
               </Text>
             </View>
             <Text style={styles.backgroundDisclosureFootnote}>
-              Vous pouvez continuer sans cette autorisation. Dans ce cas, le suivi fonctionne uniquement quand l'application est ouverte.
+              {"Vous pouvez continuer sans cette autorisation. Dans ce cas, le suivi fonctionne uniquement quand l'application est ouverte."}
             </Text>
             <View style={styles.backgroundDisclosureActions}>
               <TouchableOpacity
@@ -5519,6 +5409,9 @@ export default function NavigationScreen() {
                   : 'Arrivee detectee'}
               </Text>
             </View>
+            <Text style={styles.waypointModalWaitingText}>
+              L&apos;embarquement est validé automatiquement lorsque les deux téléphones se déplacent ensemble.
+            </Text>
             <View style={styles.waypointModalActions}>
               <TouchableOpacity
                 style={styles.waypointModalSecondaryButton}

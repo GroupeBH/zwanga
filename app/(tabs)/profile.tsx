@@ -16,7 +16,7 @@ import {
 } from '@/store/api/subscriptionApi';
 import { useGetMyDriverOffersQuery, useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useSendPhoneVerificationOtpMutation, useUpdatePinMutation, useUpdatePinWithOtpMutation, useUpdateUserMutation, useUploadKycMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
-import { useCreateVehicleMutation, useDeleteVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
+import { useCreateVehicleMutation, useDeleteVehicleMutation, useGetVehiclesQuery, useUpdateVehicleMutation } from '@/store/api/vehicleApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { performLogout } from '@/store/slices/authSlice';
@@ -392,6 +392,8 @@ export default function ProfileScreen() {
   const { showDialog } = useDialog();
   const [refreshing, setRefreshing] = useState(false);
   const [vehicleModalVisible, setVehicleModalVisible] = useState(false);
+  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
+  const [vehicleFormError, setVehicleFormError] = useState<string | null>(null);
   const [vehicleType, setVehicleType] = useState<TripRequestVehicleType | null>(null);
   const [vehicleBrand, setVehicleBrand] = useState('');
   const [vehicleModel, setVehicleModel] = useState('');
@@ -452,6 +454,7 @@ export default function ProfileScreen() {
     refetch: refetchVehicles,
   } = useGetVehiclesQuery();
   const [createVehicle, { isLoading: creatingVehicle }] = useCreateVehicleMutation();
+  const [updateVehicle, { isLoading: updatingVehicle }] = useUpdateVehicleMutation();
   const [deleteVehicle, { isLoading: deletingVehicle }] = useDeleteVehicleMutation();
   const [uploadKyc, { isLoading: uploadingKyc }] = useUploadKycMutation();
   const [updatePin, { isLoading: isUpdatingPin }] = useUpdatePinMutation();
@@ -480,6 +483,8 @@ export default function ProfileScreen() {
     const role = currentUser?.role;
     return role === 'driver' || role === 'both' || Boolean(currentUser?.isDriver);
   }, [currentUser?.isDriver, currentUser?.role]);
+  const displaysDriverRole =
+    currentUser?.role === 'driver' || currentUser?.role === 'both';
 
   const { data: subscriptionPlans = [] } = useGetSubscriptionPlansQuery();
   const {
@@ -862,6 +867,8 @@ export default function ProfileScreen() {
   };
 
   const resetVehicleForm = useCallback(() => {
+    setEditingVehicleId(null);
+    setVehicleFormError(null);
     setVehicleType(null);
     setVehicleBrand('');
     setVehicleModel('');
@@ -874,26 +881,51 @@ export default function ProfileScreen() {
     resetVehicleForm();
   }, [resetVehicleForm]);
 
-  const vehicleModalCopy = {
-    title: 'Ajouter un v\u00e9hicule',
-    subtitle: 'Indiquez les d\u00e9tails exacts de votre v\u00e9hicule pour rassurer vos passagers.',
-  };
+  const openCreateVehicleModal = useCallback(() => {
+    resetVehicleForm();
+    setVehicleModalVisible(true);
+  }, [resetVehicleForm]);
+
+  const openEditVehicleModal = useCallback((vehicle: Vehicle) => {
+    setEditingVehicleId(vehicle.id);
+    setVehicleFormError(null);
+    setVehicleType(vehicle.type);
+    setVehicleBrand(vehicle.brand);
+    setVehicleModel(vehicle.model);
+    setVehicleColor(vehicle.color);
+    setVehiclePlate(vehicle.licensePlate);
+    setVehicleModalVisible(true);
+  }, []);
+
+  const vehicleModalCopy = editingVehicleId
+    ? {
+        title: 'Modifier le v\u00e9hicule',
+        subtitle: 'Mettez à jour les informations visibles par vos passagers.',
+      }
+    : {
+        title: 'Ajouter un v\u00e9hicule',
+        subtitle: 'Indiquez les d\u00e9tails exacts de votre v\u00e9hicule pour rassurer vos passagers.',
+      };
 
   // Handlers optimisés pour éviter les re-renders
   const handleVehicleBrandChange = useCallback((text: string) => {
     setVehicleBrand(text);
+    setVehicleFormError(null);
   }, []);
 
   const handleVehicleModelChange = useCallback((text: string) => {
     setVehicleModel(text);
+    setVehicleFormError(null);
   }, []);
 
   const handleVehicleColorChange = useCallback((text: string) => {
     setVehicleColor(text);
+    setVehicleFormError(null);
   }, []);
 
   const handleVehiclePlateChange = useCallback((text: string) => {
     setVehiclePlate(text);
+    setVehicleFormError(null);
   }, []);
 
   const resetKycForm = () => {
@@ -908,49 +940,62 @@ export default function ProfileScreen() {
     }
   }, [kycModalVisible]);
 
-  const handleAddVehicle = async () => {
+  const handleSaveVehicle = async () => {
     if (!vehicleType || !vehicleBrand.trim() || !vehicleModel.trim() || !vehicleColor.trim() || !vehiclePlate.trim()) {
-      showDialog({
-        variant: 'warning',
-        title: 'Champs requis',
-        message: 'Merci de choisir le type et de renseigner la marque, le modèle, la couleur et la plaque.',
-      });
+      setVehicleFormError(
+        'Choisissez le type et renseignez la marque, le modèle, la couleur et la plaque.',
+      );
       return;
     }
 
+    setVehicleFormError(null);
+    const isEditing = editingVehicleId !== null;
+
     try {
-      await createVehicle({
+      const vehicleData = {
         type: vehicleType,
         brand: vehicleBrand.trim(),
         model: vehicleModel.trim(),
         color: vehicleColor.trim(),
         licensePlate: vehiclePlate.trim(),
-      }).unwrap();
+      };
+
+      if (editingVehicleId) {
+        await updateVehicle({ id: editingVehicleId, data: vehicleData }).unwrap();
+      } else {
+        await createVehicle(vehicleData).unwrap();
+      }
+
       closeVehicleModal();
       void Promise.allSettled([refetchVehicles(), refetchProfile()]);
       showDialog({
         variant: 'success',
-        title: 'V\u00e9hicule ajout\u00e9',
-        message: 'Votre v\u00e9hicule est maintenant disponible dans votre profil.',
+        title: isEditing ? 'Véhicule modifié' : 'V\u00e9hicule ajout\u00e9',
+        message: isEditing
+          ? 'Les informations du véhicule ont été mises à jour.'
+          : 'Votre v\u00e9hicule est maintenant disponible dans votre profil.',
       });
     } catch (error: any) {
       const message = getApiErrorMessage(
         error,
-        'Impossible d\'ajouter le véhicule pour le moment.',
+        isEditing
+          ? 'Impossible de modifier le véhicule pour le moment.'
+          : 'Impossible d\'ajouter le véhicule pour le moment.',
       );
       const isDriverError = isDriverRequiredError(error);
-      
-      showDialog({
-        variant: 'danger',
-        title: 'Erreur',
-        message,
-        actions: isDriverError
-          ? [
-              { label: 'Fermer', variant: 'ghost' },
-              createBecomeDriverAction(router),
-            ]
-          : undefined,
-      });
+
+      setVehicleFormError(message);
+      if (isDriverError) {
+        showDialog({
+          variant: 'danger',
+          title: 'Action requise',
+          message,
+          actions: [
+            { label: 'Fermer', variant: 'ghost' },
+            createBecomeDriverAction(router),
+          ],
+        });
+      }
     }
   };
 
@@ -1067,10 +1112,7 @@ export default function ProfileScreen() {
           {
             label: 'Ajouter un véhicule',
             variant: 'primary',
-            onPress: () => {
-              resetVehicleForm();
-              setVehicleModalVisible(true);
-            },
+            onPress: openCreateVehicleModal,
           },
         ],
       });
@@ -1078,8 +1120,7 @@ export default function ProfileScreen() {
     }
 
     if (!hasVehicle) {
-      resetVehicleForm();
-      setVehicleModalVisible(true);
+      openCreateVehicleModal();
       return;
     }
 
@@ -2648,12 +2689,12 @@ export default function ProfileScreen() {
               <View style={styles.userRoleRow}>
                 <View style={styles.userRolePill}>
                   <Ionicons
-                    name={isDriver ? 'car-outline' : 'person-outline'}
+                    name={displaysDriverRole ? 'car-outline' : 'person-outline'}
                     size={12}
                     color={Colors.primaryDark}
                   />
                   <Text style={styles.userRolePillText}>
-                    {isDriver ? 'Conducteur' : 'Passager'}
+                    {displaysDriverRole ? 'Conducteur' : 'Passager'}
                   </Text>
                 </View>
                 {isPremiumActive ? (
@@ -3145,10 +3186,9 @@ export default function ProfileScreen() {
             <Text style={styles.sectionHeaderTitle}>Mes véhicules</Text>
             <TouchableOpacity
               style={styles.vehicleAddButton}
-              onPress={() => {
-                resetVehicleForm();
-                setVehicleModalVisible(true);
-              }}
+              accessibilityRole="button"
+              accessibilityLabel="Ajouter un véhicule"
+              onPress={openCreateVehicleModal}
             >
               <Ionicons name="add" size={18} color={Colors.white} />
             </TouchableOpacity>
@@ -3184,18 +3224,32 @@ export default function ProfileScreen() {
                     </Text>
                   </View>
                 </View>
-                <TouchableOpacity
-                  style={styles.vehicleDeleteButton}
-                  onPress={() => handleDeleteVehicle(vehicle)}
-                  disabled={deletingVehicle}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  {deletingVehicle ? (
-                    <ActivityIndicator size="small" color={Colors.danger} />
-                  ) : (
-                    <Ionicons name="trash-outline" size={20} color={Colors.danger} />
-                  )}
-                </TouchableOpacity>
+                <View style={styles.vehicleActions}>
+                  <TouchableOpacity
+                    style={styles.vehicleEditButton}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Modifier ${vehicle.brand} ${vehicle.model}`}
+                    onPress={() => openEditVehicleModal(vehicle)}
+                    disabled={updatingVehicle || deletingVehicle}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="pencil-outline" size={19} color={Colors.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.vehicleDeleteButton}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Supprimer ${vehicle.brand} ${vehicle.model}`}
+                    onPress={() => handleDeleteVehicle(vehicle)}
+                    disabled={deletingVehicle || updatingVehicle}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    {deletingVehicle ? (
+                      <ActivityIndicator size="small" color={Colors.danger} />
+                    ) : (
+                      <Ionicons name="trash-outline" size={19} color={Colors.danger} />
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
             ))
           ) : (
@@ -3260,20 +3314,24 @@ export default function ProfileScreen() {
       <VehicleFormModal
         visible={vehicleModalVisible}
         {...vehicleModalCopy}
-        submitLabel="Ajouter"
+        submitLabel={editingVehicleId ? 'Enregistrer' : 'Ajouter'}
         vehicleType={vehicleType}
         brand={vehicleBrand}
         model={vehicleModel}
         color={vehicleColor}
         licensePlate={vehiclePlate}
-        onVehicleTypeChange={setVehicleType}
+        onVehicleTypeChange={(value) => {
+          setVehicleType(value);
+          setVehicleFormError(null);
+        }}
         onBrandChange={handleVehicleBrandChange}
         onModelChange={handleVehicleModelChange}
         onColorChange={handleVehicleColorChange}
         onLicensePlateChange={handleVehiclePlateChange}
         onClose={closeVehicleModal}
-        onSubmit={handleAddVehicle}
-        submitting={creatingVehicle}
+        onSubmit={handleSaveVehicle}
+        submitting={creatingVehicle || updatingVehicle}
+        errorMessage={vehicleFormError}
       />
 
       <KycWizardModal
@@ -4561,9 +4619,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  vehicleDeleteButton: {
-    padding: Spacing.sm,
+  vehicleActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
     marginLeft: Spacing.md,
+  },
+  vehicleEditButton: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary + '10',
+  },
+  vehicleDeleteButton: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: BorderRadius.md,
     backgroundColor: Colors.danger + '10',
   },

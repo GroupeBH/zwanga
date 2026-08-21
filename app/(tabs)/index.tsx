@@ -174,7 +174,9 @@ const bookingStatusMeta: Record<
   rejected: { label: 'Réservation refusée', color: Colors.danger, bg: Colors.danger + '16', icon: 'close-circle-outline' },
   cancelled: { label: 'Réservation annulée', color: Colors.danger, bg: Colors.danger + '16', icon: 'close-circle-outline' },
   completed: { label: 'Réservation terminée', color: Colors.success, bg: Colors.success + '16', icon: 'flag-outline' },
+  no_show: { label: 'Passager non embarqué', color: Colors.info, bg: Colors.info + '16', icon: 'person-remove-outline' },
   expired: { label: 'Réservation expirée', color: Colors.gray[500], bg: Colors.gray[200], icon: 'time-outline' },
+  boarding_uncertain: { label: 'Embarquement non confirme', color: Colors.warning, bg: Colors.warning + '16', icon: 'help-circle-outline' },
 };
 const userLocationMarkerImage: ImageRequireSource = require('@/assets/images/map-markers/user-location-marker.png');
 
@@ -229,10 +231,12 @@ const HOME_AUTO_PROGRESS_PRIORITY: Record<HomeAutoProgressEvent['type'], number>
   parties_nearby: 2,
   passenger_ready_pickup: 3,
   pickup_confirmed: 4,
-  passenger_near_destination: 5,
-  dropoff_confirmed: 6,
-  driver_near_destination: 7,
-  driver_arrived_destination: 8,
+  passenger_no_show: 5,
+  passenger_boarding_uncertain: 6,
+  passenger_near_destination: 7,
+  dropoff_confirmed: 8,
+  driver_near_destination: 9,
+  driver_arrived_destination: 10,
 };
 
 const EMPTY_HOME_TRIPS: Trip[] = [];
@@ -1693,7 +1697,7 @@ export default function HomeScreen() {
           const dialogByType: Record<
             HomeAutoProgressEvent['type'],
             {
-              variant: 'info' | 'success';
+              variant: 'info' | 'success' | 'warning';
               icon: keyof typeof Ionicons.glyphMap;
               title: string;
               message: string;
@@ -1734,6 +1738,22 @@ export default function HomeScreen() {
               message: isHomeDriverTracking
                 ? `${passengerName} a ete embarque.`
                 : 'Votre prise en charge est confirmee.',
+            },
+            passenger_no_show: {
+              variant: 'info',
+              icon: 'person-remove',
+              title: isHomeDriverTracking ? 'Passager non embarque' : 'Non-embarquement detecte',
+              message: isHomeDriverTracking
+                ? `${passengerName} n'a pas ete embarque. La reservation est cloturee sans paiement.`
+                : "Votre embarquement n'a pas ete detecte. La reservation est cloturee sans paiement.",
+            },
+            passenger_boarding_uncertain: {
+              variant: 'warning',
+              icon: 'help-circle',
+              title: 'Embarquement non confirme',
+              message: isHomeDriverTracking
+                ? `Le trajet est arrive a destination sans preuve GPS suffisante de l'embarquement de ${passengerName}. Aucun paiement n'est effectue.`
+                : "Le trajet est arrive a destination sans preuve GPS suffisante de votre embarquement. Aucun paiement n'est effectue.",
             },
             passenger_near_destination: {
               variant: 'info',

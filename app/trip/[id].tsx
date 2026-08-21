@@ -142,7 +142,7 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
         {
           id: 'electronic' as const,
           label: 'Paiement electronique',
-          description: 'Recevoir une demande Mobile Money apres acceptation',
+          description: "Regler par Mobile Money uniquement apres l'arrivee",
           icon: 'card-outline' as const,
           selection: 'checkbox' as const,
         },
@@ -151,7 +151,7 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
   {
     id: 'points',
     label: 'Jetons Zwanga',
-    description: 'Utiliser votre solde de jetons',
+    description: "Debiter vos jetons uniquement apres l'arrivee",
     icon: 'wallet-outline',
     selection: 'radio',
   },
@@ -184,10 +184,12 @@ const TRIP_DETAIL_AUTO_PROGRESS_PRIORITY: Record<TripDetailAutoProgressEvent['ty
   parties_nearby: 2,
   passenger_ready_pickup: 3,
   pickup_confirmed: 4,
-  passenger_near_destination: 5,
-  dropoff_confirmed: 6,
-  driver_near_destination: 7,
-  driver_arrived_destination: 8,
+  passenger_no_show: 5,
+  passenger_boarding_uncertain: 6,
+  passenger_near_destination: 7,
+  dropoff_confirmed: 8,
+  driver_near_destination: 9,
+  driver_arrived_destination: 10,
 };
 const formatTripPaymentPhone = (value?: string | null) => {
   const digits = (value ?? '').replace(/\D/g, '');
@@ -283,6 +285,16 @@ const BOOKING_STATUS_CONFIG: Record<
     label: 'Annulée',
     color: Colors.gray[600],
     background: 'rgba(156, 163, 175, 0.2)',
+  },
+  no_show: {
+    label: 'Non embarque',
+    color: Colors.danger,
+    background: 'rgba(239, 68, 68, 0.12)',
+  },
+  boarding_uncertain: {
+    label: 'Embarquement non confirme',
+    color: Colors.warning,
+    background: 'rgba(245, 158, 11, 0.14)',
   },
   completed: {
     label: 'Terminée',
@@ -1226,6 +1238,22 @@ export default function TripDetailsScreen() {
             ? `${passengerName} a \u00e9t\u00e9 embarqu\u00e9. Vous pouvez continuer vers sa destination.`
             : 'Votre prise en charge est confirm\u00e9e. Vous \u00eates maintenant en route vers votre destination.',
         },
+        passenger_no_show: {
+          variant: 'info',
+          icon: 'person-remove',
+          title: isTripDriver ? 'Passager non embarqu\u00e9' : 'Non-embarquement d\u00e9tect\u00e9',
+          message: isTripDriver
+            ? `${passengerName} n'a pas \u00e9t\u00e9 embarqu\u00e9. La r\u00e9servation est cl\u00f4tur\u00e9e sans paiement.`
+            : "Votre embarquement n'a pas \u00e9t\u00e9 d\u00e9tect\u00e9. Aucun paiement n'est effectu\u00e9.",
+        },
+        passenger_boarding_uncertain: {
+          variant: 'warning',
+          icon: 'help-circle',
+          title: 'Embarquement non confirme',
+          message: isTripDriver
+            ? `Le trajet est arrive a destination sans preuve GPS suffisante de l'embarquement de ${passengerName}. La reservation est cloturee sans paiement.`
+            : "Le trajet est arrive a destination sans preuve GPS suffisante de votre embarquement. Aucun paiement n'est effectue.",
+        },
         passenger_near_destination: {
           variant: 'info',
           icon: 'flag',
@@ -1724,6 +1752,19 @@ export default function TripDetailsScreen() {
       return;
     }
 
+    if (
+      booking.status !== 'completed' &&
+      !booking.droppedOff &&
+      !booking.droppedOffConfirmedByPassenger
+    ) {
+      showDialog({
+        variant: 'info',
+        title: "Paiement a l'arrivee",
+        message: "Le paiement sera disponible apres votre arrivee a destination.",
+      });
+      return;
+    }
+
     const phone = formatTripPaymentPhone(user?.phone);
     if (!phone || !DRC_PAYMENT_PHONE_REGEX.test(phone)) {
       showDialog({
@@ -1742,7 +1783,9 @@ export default function TripDetailsScreen() {
         phone,
       }).unwrap();
 
-      await openExternalUrlSafely(response.payment.paymentUrl, { logLabel: 'TripBookingPayment' });
+      if (response.payment.paymentUrl) {
+        await openExternalUrlSafely(response.payment.paymentUrl, { logLabel: 'TripBookingPayment' });
+      }
 
       showDialog({
         variant:
@@ -2183,7 +2226,9 @@ export default function TripDetailsScreen() {
   const canPayActiveBooking = Boolean(
       activeBooking &&
       ELECTRONIC_PAYMENTS_ENABLED &&
-      activeBooking.status === 'accepted' &&
+      (activeBooking.status === 'completed' ||
+        activeBooking.droppedOff ||
+        activeBooking.droppedOffConfirmedByPassenger) &&
       activeBooking.paymentMode === 'electronic' &&
       activeBookingPaymentAmount > 0 &&
       activeBooking.paymentStatus !== 'succeeded' &&

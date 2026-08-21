@@ -568,6 +568,9 @@ export const tripRequestApi = baseApi.injectEndpoints({
         { type: 'TripRequest', id },
         tripRequestListTag,
         myTripRequestsListTag,
+        tripListTag,
+        myTripsListTag,
+        bookingListTag,
       ],
     }),
 

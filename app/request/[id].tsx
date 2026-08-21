@@ -3,7 +3,7 @@ import LocationPickerModal, { MapLocationSelection } from '@/components/Location
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
-import { useStartTripMutation } from '@/store/api/tripApi';
+import { useGetTripByIdQuery, useStartTripMutation } from '@/store/api/tripApi';
 import {
   useAcceptDriverOfferMutation,
   useAcceptTripRequestMutation,
@@ -260,6 +260,12 @@ export default function TripRequestDetailsScreen() {
     refetchOnFocus: true,
     refetchOnReconnect: true,
   });
+  const { data: assignedTrip } = useGetTripByIdQuery(tripRequest?.tripId || '', {
+    skip: !tripRequest?.tripId,
+    pollingInterval: tripRequest?.status === 'driver_selected' ? 15000 : 0,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
 
   useEffect(() => {
     if (isCreateRouteAlias) {
@@ -272,7 +278,7 @@ export default function TripRequestDetailsScreen() {
     if (tripRequest?.status === 'pending' || tripRequest?.status === 'offers_received') {
       setPollingInterval(30000); // 30 secondes pour les demandes actives
     } else if (tripRequest?.status === 'driver_selected') {
-      setPollingInterval(60000); // 60 secondes si driver sélectionné
+      setPollingInterval(15000); // Suivre rapidement le démarrage pour masquer l'annulation
     } else {
       setPollingInterval(0); // Pas de polling si annulé ou expiré
     }
@@ -487,6 +493,21 @@ export default function TripRequestDetailsScreen() {
     // Ne peut modifier que si le statut est 'pending' ou 'offers_received'
     return tripRequest.status === 'pending' || tripRequest.status === 'offers_received';
   }, [isOwner, tripRequest]);
+
+  const canCancel = useMemo(() => {
+    if (!isOwner || !tripRequest) return false;
+
+    const isActiveRequest =
+      tripRequest.status === 'pending' ||
+      tripRequest.status === 'offers_received' ||
+      tripRequest.status === 'driver_selected';
+    if (!isActiveRequest) return false;
+
+    return (
+      !tripRequest.tripId ||
+      (assignedTrip?.status === 'upcoming' && !assignedTrip.startedAt)
+    );
+  }, [assignedTrip?.startedAt, assignedTrip?.status, isOwner, tripRequest]);
 
   const hasExistingOffer = useMemo(() => {
     if (!tripRequest?.offers || !currentUser) return false;
@@ -1488,7 +1509,10 @@ export default function TripRequestDetailsScreen() {
 
     showDialog({
       title: 'Annuler la demande',
-      message: 'Êtes-vous sûr de vouloir annuler cette demande ?',
+      message:
+        tripRequest?.status === 'driver_selected'
+          ? 'Un conducteur a déjà accepté cette demande. Voulez-vous vraiment annuler la demande, la réservation et le trajet associé ?'
+          : 'Êtes-vous sûr de vouloir annuler cette demande ?',
       variant: 'danger',
       actions: [
         { label: 'Non', variant: 'secondary' },
@@ -1922,7 +1946,7 @@ export default function TripRequestDetailsScreen() {
               </View>
             )}
 
-            {tripRequest.status === 'pending' && (
+            {(canEdit || canCancel) && (
               <View style={styles.ownerHeroActions}>
                 {canEdit && (
                   <Pressable
@@ -1936,27 +1960,29 @@ export default function TripRequestDetailsScreen() {
                     <Text style={styles.ownerHeroGhostButtonText}>Modifier</Text>
                   </Pressable>
                 )}
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.ownerHeroGhostButton,
-                    styles.ownerHeroGhostButtonDanger,
-                    pressed && styles.ownerHeroButtonPressed,
-                    isCancelling && styles.ownerHeroButtonDisabled,
-                  ]}
-                  onPress={handleCancelRequest}
-                  disabled={isCancelling}
-                >
-                  {isCancelling ? (
-                    <ActivityIndicator size="small" color={Colors.danger} />
-                  ) : (
-                    <>
-                      <Ionicons name="close-circle-outline" size={16} color={Colors.danger} />
-                      <Text style={[styles.ownerHeroGhostButtonText, styles.ownerHeroGhostButtonTextDanger]}>
-                        Annuler
-                      </Text>
-                    </>
-                  )}
-                </Pressable>
+                {canCancel && (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.ownerHeroGhostButton,
+                      styles.ownerHeroGhostButtonDanger,
+                      pressed && styles.ownerHeroButtonPressed,
+                      isCancelling && styles.ownerHeroButtonDisabled,
+                    ]}
+                    onPress={handleCancelRequest}
+                    disabled={isCancelling}
+                  >
+                    {isCancelling ? (
+                      <ActivityIndicator size="small" color={Colors.danger} />
+                    ) : (
+                      <>
+                        <Ionicons name="close-circle-outline" size={16} color={Colors.danger} />
+                        <Text style={[styles.ownerHeroGhostButtonText, styles.ownerHeroGhostButtonTextDanger]}>
+                          Annuler
+                        </Text>
+                      </>
+                    )}
+                  </Pressable>
+                )}
               </View>
             )}
           </Animated.View>

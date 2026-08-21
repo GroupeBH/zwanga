@@ -7,7 +7,15 @@ export type TripRequestVehicleType =
   | 'motorcycle_3_wheels';
 export type TripStatus = 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
 export type RecurringTripStatus = 'active' | 'paused';
-export type BookingStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'completed' | 'expired';
+export type BookingStatus =
+  | 'pending'
+  | 'accepted'
+  | 'rejected'
+  | 'cancelled'
+  | 'no_show'
+  | 'boarding_uncertain'
+  | 'completed'
+  | 'expired';
 export type TripInterruptionReason =
   | 'emergency'
   | 'health'
@@ -241,6 +249,7 @@ export interface Trip {
   progress?: number;
   currentLocation?: GeoPoint | null;
   lastLocationUpdateAt?: string | null;
+  startedAt?: string | null;
   completedAt?: string | null; // ISO string date - Date de complétion du trajet
   vehicleId?: string | null; // ID du véhicule associé
   description?: string | null; // Description du trajet
@@ -304,6 +313,14 @@ export interface Booking {
   rejectionReason?: string;
   acceptedAt?: string;
   cancelledAt?: string;
+  noShowDetectedAt?: string | null;
+  noShowReason?: string | null;
+  noShowDriverDistanceMeters?: number | null;
+  boardingUncertainDetectedAt?: string | null;
+  boardingUncertainReason?: string | null;
+  boardingUncertainDriverDistanceMeters?: number | null;
+  pickupDetectionMethod?: string | null;
+  dropoffDetectionMethod?: string | null;
   createdAt: string;
   updatedAt: string;
   trip?: Trip;

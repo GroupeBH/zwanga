@@ -1,4 +1,5 @@
 import { DialogProvider } from '@/components/ui/DialogProvider';
+import { ActiveRideLocationCoordinator } from '@/components/ActiveRideLocationCoordinator';
 import { Colors } from '@/constants/styles';
 import { IdentityProvider } from '@/contexts/IdentityContext';
 import { TutorialProvider } from '@/contexts/TutorialContext';
@@ -43,6 +44,7 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
           </View>
         ) : (
           <View style={styles.appContent}>
+            <ActiveRideLocationCoordinator />
             <NotificationHandler />
             <AuthGuard>
               <DialogProvider>

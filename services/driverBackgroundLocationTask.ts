@@ -4,6 +4,10 @@ import { Platform } from 'react-native';
 
 import { API_BASE_URL } from '@/config/env';
 import {
+  ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS,
+  ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS,
+} from '@/constants/rideProgress';
+import {
   clearActiveDriverBackgroundTripId,
   getActiveDriverBackgroundTripSession,
   setActiveDriverBackgroundTripId,
@@ -24,7 +28,6 @@ import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 
 export const DRIVER_BACKGROUND_LOCATION_TASK = 'zwanga-driver-background-location';
 
-const BACKGROUND_LOCATION_MIN_SEND_INTERVAL_MS = 4_000;
 const BACKGROUND_LOCATION_FETCH_TIMEOUT_MS = 18_000;
 const BACKGROUND_PERMISSION_RETRY_COOLDOWN_MS = 10 * 60_000;
 
@@ -41,14 +44,6 @@ type StartDriverBackgroundLocationTrackingOptions = {
   autoCompleteDistanceMeters?: number;
   autoCompleteDwellMs?: number;
   requestMissingPermissions?: boolean;
-};
-
-type BackgroundTripBooking = {
-  status?: string | null;
-  droppedOff?: boolean | null;
-  droppedOffAt?: string | null;
-  droppedOffConfirmedByPassenger?: boolean | null;
-  droppedOffConfirmedAt?: string | null;
 };
 
 const normalizeApiBaseUrl = () =>
@@ -103,6 +98,34 @@ const stopRegisteredDriverBackgroundLocationTask = async () => {
   }
 };
 
+const normalizeErrorMessage = (value: unknown) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+const readResponseMessage = async (response: Response) => {
+  try {
+    const payload = (await response.json()) as { message?: string | string[] };
+    return Array.isArray(payload?.message)
+      ? payload.message.join(' ')
+      : payload?.message ?? '';
+  } catch {
+    return '';
+  }
+};
+
+const isTerminalDriverTrackingResponse = (status: number, message: string) => {
+  if (status === 401 || status === 403 || status === 404) return true;
+  if (status !== 400) return false;
+
+  const normalizedMessage = normalizeErrorMessage(message);
+  return (
+    normalizedMessage.includes('plus en cours') ||
+    normalizedMessage.includes('suivi en temps reel est arrete')
+  );
+};
+
 async function putDriverLocation(tripId: string, location: Location.LocationObject) {
   const coordinate = normalizeTripMapCoordinate(
     location.coords.latitude,
@@ -114,7 +137,10 @@ async function putDriverLocation(tripId: string, location: Location.LocationObje
   }
 
   const now = Date.now();
-  if (now - lastBackgroundLocationSentAt < BACKGROUND_LOCATION_MIN_SEND_INTERVAL_MS) {
+  if (
+    now - lastBackgroundLocationSentAt <
+    ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS
+  ) {
     return false;
   }
 
@@ -155,6 +181,8 @@ async function putDriverLocation(tripId: string, location: Location.LocationObje
   try {
     let accessToken = await getValidAccessToken();
     if (!accessToken) {
+      await clearActiveDriverBackgroundTripId(tripId);
+      await stopRegisteredDriverBackgroundLocationTask();
       return false;
     }
 
@@ -168,6 +196,11 @@ async function putDriverLocation(tripId: string, location: Location.LocationObje
     }
 
     if (!response.ok) {
+      const responseMessage = await readResponseMessage(response);
+      if (isTerminalDriverTrackingResponse(response.status, responseMessage)) {
+        await clearActiveDriverBackgroundTripId(tripId);
+        await stopRegisteredDriverBackgroundLocationTask();
+      }
       console.warn('[DriverBackgroundLocation] Position non envoyee:', {
         status: response.status,
         tripId,
@@ -228,72 +261,6 @@ async function completeTripFromBackground(tripId: string) {
   } finally {
     clearTimeout(timeout);
   }
-}
-
-async function getTripBookingsFromBackground(tripId: string) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), BACKGROUND_LOCATION_FETCH_TIMEOUT_MS);
-
-  const send = async (accessToken: string | null) =>
-    fetch(`${normalizeApiBaseUrl()}/bookings/trip/${tripId}`, {
-      method: 'GET',
-      signal: controller.signal,
-      headers: {
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      },
-    });
-
-  try {
-    let accessToken = await getValidAccessToken();
-    if (!accessToken) {
-      return null;
-    }
-
-    let response = await send(accessToken);
-    if (response.status === 401) {
-      const refreshed = await handle401Error();
-      if (refreshed) {
-        accessToken = await getValidAccessToken();
-        response = await send(accessToken);
-      }
-    }
-
-    if (!response.ok) {
-      console.warn('[DriverBackgroundLocation] Reservations non verifiees:', {
-        status: response.status,
-        tripId,
-      });
-      return null;
-    }
-
-    const payload = await response.json();
-    return Array.isArray(payload) ? (payload as BackgroundTripBooking[]) : null;
-  } catch (error) {
-    console.warn('[DriverBackgroundLocation] Verification reservations impossible:', error);
-    return null;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-const hasBookingDropoffCompleted = (booking: BackgroundTripBooking) =>
-  Boolean(
-    booking.status === 'completed' ||
-      booking.droppedOff ||
-      booking.droppedOffConfirmedByPassenger ||
-      booking.droppedOffAt ||
-      booking.droppedOffConfirmedAt,
-  );
-
-async function hasUnfinishedAcceptedBookingFromBackground(tripId: string) {
-  const bookings = await getTripBookingsFromBackground(tripId);
-  if (!bookings) {
-    return true;
-  }
-
-  return bookings.some(
-    (booking) => booking.status === 'accepted' && !hasBookingDropoffCompleted(booking),
-  );
 }
 
 const isLocationAccurateEnoughForTripEnd = (location: Location.LocationObject) => {
@@ -362,13 +329,6 @@ async function evaluateBackgroundTripEnd(
     previousDriverCoordinate = driverCoordinate;
 
     if (!evaluation.shouldComplete && !passage.shouldComplete) {
-      continue;
-    }
-
-    if (await hasUnfinishedAcceptedBookingFromBackground(tripId)) {
-      console.log('[DriverBackgroundLocation] Finalisation differee: depose passager inachevee', {
-        tripId,
-      });
       continue;
     }
 
@@ -534,8 +494,8 @@ export async function startDriverBackgroundLocationTracking(
 
     await Location.startLocationUpdatesAsync(DRIVER_BACKGROUND_LOCATION_TASK, {
       accuracy: Location.Accuracy.High,
-      timeInterval: 5_000,
-      distanceInterval: 10,
+      timeInterval: ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS,
+      distanceInterval: ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS,
       pausesUpdatesAutomatically: false,
       showsBackgroundLocationIndicator: true,
       activityType: Location.ActivityType.AutomotiveNavigation,
@@ -544,6 +504,7 @@ export async function startDriverBackgroundLocationTracking(
             notificationTitle: 'Trajet Zwanga en cours',
             notificationBody: 'Votre position est partagee pendant le trajet.',
             notificationColor: '#FF6B35',
+            killServiceOnDestroy: false,
           }
         : undefined,
     });

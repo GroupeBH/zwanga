@@ -7,6 +7,15 @@ import {
   VehicleTrackingMarker,
 } from '@/components/TrackingMapMarkers';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { ELECTRONIC_PAYMENTS_ENABLED } from '@/constants/paymentFeatures';
+import {
+  BOARDING_LOCATION_MAX_AGE_MS,
+  BOARDING_MAX_ACCEPTED_GPS_ACCURACY_METERS,
+  DRIVER_NEAR_PICKUP_DISTANCE_KM,
+  PASSENGER_LOCATION_DISTANCE_INTERVAL_METERS,
+  PASSENGER_LOCATION_SEND_INTERVAL_MS,
+  PASSENGER_READY_DISTANCE_KM,
+} from '@/constants/rideProgress';
 import {
   trackingSocket,
   type BookingAutoProgressPayload,
@@ -14,11 +23,19 @@ import {
 } from '@/services/trackingSocket';
 import { displayNotification } from '@/services/pushNotifications';
 import {
+  startPassengerBackgroundLocationTracking,
+  stopPassengerBackgroundLocationTracking,
+} from '@/services/passengerBackgroundLocationTask';
+import {
   useCancelBookingMutation,
   useGetBookingByIdQuery,
+  useInitiateBookingPaymentMutation,
   useRequestPassengerTripInterruptionMutation,
+  useUpdateBookingPaymentModeMutation,
   useUpdatePassengerLocationMutation,
 } from '@/store/api/bookingApi';
+import { useAppSelector } from '@/store/hooks';
+import { selectUser } from '@/store/selectors';
 import { TravelMode, useGetDirectionsMutation } from '@/store/api/googleMapsApi';
 import {
   useConfirmDriverTripInterruptionMutation,
@@ -34,8 +51,6 @@ import {
 } from '@/utils/tripCoordinates';
 import { calculateDistance, getRouteAlignedPosition } from '@/utils/routeHelpers';
 import {
-  LOCATION_FRESHNESS_MS,
-  MAX_ACCEPTABLE_GPS_ACCURACY_METERS,
   MAX_PLAUSIBLE_LOCATION_JUMP_METERS,
   calculatePolylineDistanceMeters,
   isPlausibleLocationUpdate,
@@ -44,6 +59,7 @@ import {
 } from '@/utils/navigation/routeProgress';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
 import { shareTrip } from '@/utils/shareHelpers';
+import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 import {
   getTripInterruptionReasonLabel,
   isPendingTripInterruption,
@@ -74,8 +90,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 const MAX_PASSENGER_ROUTE_POINTS = Platform.OS === 'ios' ? 180 : 250;
 const IS_ANDROID = Platform.OS === 'android';
 const PASSENGER_NAVIGATION_MAP_PROVIDER = IS_ANDROID ? PROVIDER_GOOGLE : undefined;
-const DRIVER_NEAR_PICKUP_DISTANCE_KM = 0.2;
-const PASSENGER_READY_PICKUP_DISTANCE_KM = 0.005;
 
 type BookingAutoProgressEvent = BookingAutoProgressPayload['events'][number];
 type PassengerPickupNoticeType = 'driver_near_pickup' | 'driver_arrived_pickup' | 'parties_nearby';
@@ -90,6 +104,16 @@ const PASSENGER_PICKUP_NOTICE_PRIORITY: Record<PassengerPickupNoticeType, number
   driver_near_pickup: 0,
   driver_arrived_pickup: 1,
   parties_nearby: 2,
+};
+const DRC_PAYMENT_PHONE_REGEX = /^\+243\d{9}$/;
+
+const formatPaymentPhone = (value?: string | null) => {
+  const digits = (value ?? '').replace(/\D/g, '');
+  if (!digits) return undefined;
+  if (digits.startsWith('243') && digits.length === 12) return `+${digits}`;
+  if (digits.startsWith('0') && digits.length === 10) return `+243${digits.slice(1)}`;
+  if (digits.length === 9) return `+243${digits}`;
+  return value?.trim();
 };
 
 interface PassengerPickupNotice {
@@ -186,6 +210,35 @@ function formatDurationSeconds(durationSeconds: number) {
   return hours > 0 ? `${hours}h ${minutes}min` : `${minutes} min`;
 }
 
+function normalizePaymentAmount(value?: number | string | null) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount >= 0 ? amount : null;
+}
+
+function formatArrivalPaymentAmount(
+  amount: number,
+  paymentMode?: 'electronic' | 'cash' | 'points' | null,
+  currency?: string | null,
+) {
+  const decimals = Number.isInteger(amount) ? 0 : 2;
+  const [integerPart, decimalPart] = amount.toFixed(decimals).split('.');
+  const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const formattedAmount = decimalPart
+    ? `${formattedInteger},${decimalPart}`
+    : formattedInteger;
+
+  if (paymentMode === 'points') {
+    return `${formattedAmount} jetons`;
+  }
+
+  const normalizedCurrency = currency?.trim().toUpperCase() || 'CDF';
+  return `${formattedAmount} ${normalizedCurrency === 'CDF' ? 'FC' : normalizedCurrency}`;
+}
+
 export default function PassengerNavigationScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -193,6 +246,7 @@ export default function PassengerNavigationScreen() {
   const insets = useSafeAreaInsets();
   const bookingId = typeof id === 'string' ? id : '';
   const isFocused = useIsFocused();
+  const user = useAppSelector(selectUser);
 
   // Recuperer la reservation et le trajet
   const { data: booking, isLoading: bookingLoading, refetch: refetchBooking } = useGetBookingByIdQuery(bookingId, { 
@@ -213,6 +267,10 @@ export default function PassengerNavigationScreen() {
 
   const [updatePassengerLocation] = useUpdatePassengerLocationMutation();
   const [cancelBooking, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
+  const [initiateBookingPayment, { isLoading: isInitiatingBookingPayment }] =
+    useInitiateBookingPaymentMutation();
+  const [updateBookingPaymentMode, { isLoading: isSettlingPointsPayment }] =
+    useUpdateBookingPaymentModeMutation();
   const [requestPassengerTripInterruption, { isLoading: isRequestingPassengerInterruption }] =
     useRequestPassengerTripInterruptionMutation();
   const [confirmDriverTripInterruption, { isLoading: isConfirmingDriverInterruption }] =
@@ -253,6 +311,8 @@ export default function PassengerNavigationScreen() {
   const hasPresentedDestinationApproachNoticeRef = useRef(false);
   const hasPresentedTripDestinationApproachNoticeRef = useRef(false);
   const hasPresentedTripCompletedNoticeRef = useRef(false);
+  const hasPresentedNoShowNoticeRef = useRef(false);
+  const hasPresentedBoardingUncertainNoticeRef = useRef(false);
   const hasObservedPickupStateRef = useRef(false);
   const previousPickupStateRef = useRef(false);
   const passengerLocationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
@@ -548,6 +608,54 @@ export default function PassengerNavigationScreen() {
     });
   }, []);
 
+  const presentNoShowNotice = useCallback(() => {
+    if (!isMountedRef.current || hasPresentedNoShowNoticeRef.current) return;
+
+    hasPresentedNoShowNoticeRef.current = true;
+    setPickupNotice(null);
+    setPickupNoticeCountdown(null);
+    void Speech.stop();
+    showDialog({
+      variant: 'info',
+      icon: 'person-remove',
+      title: 'Non-embarquement detecte',
+      message:
+        "Le conducteur s'est eloigne du point de rendez-vous sans que votre prise en charge soit detectee. Aucun paiement n'a ete effectue. Le partage de position reste actif pendant le trajet : si vous rejoignez le vehicule plus tard, Zwanga pourra valider automatiquement votre embarquement.",
+      actions: [
+        {
+          label: 'Continuer le suivi',
+          variant: 'primary',
+        },
+      ],
+    });
+  }, [showDialog]);
+
+  const presentBoardingUncertainNotice = useCallback(() => {
+    if (!isMountedRef.current || hasPresentedBoardingUncertainNoticeRef.current) return;
+
+    hasPresentedBoardingUncertainNoticeRef.current = true;
+    passengerLocationSubscriptionRef.current?.remove();
+    passengerLocationSubscriptionRef.current = null;
+    setPickupNotice(null);
+    setPickupNoticeCountdown(null);
+    void stopPassengerBackgroundLocationTracking(bookingId);
+    void Speech.stop();
+    showDialog({
+      variant: 'warning',
+      icon: 'help-circle',
+      title: 'Embarquement non confirme',
+      message:
+        "Le trajet est arrive a destination sans preuve GPS suffisante de votre embarquement. La reservation est cloturee et aucun paiement n'a ete effectue.",
+      actions: [
+        {
+          label: 'Retour',
+          variant: 'primary',
+          onPress: navigateBackSafely,
+        },
+      ],
+    });
+  }, [bookingId, navigateBackSafely, showDialog]);
+
   const presentPickupNotice = useCallback((event: BookingAutoProgressEvent) => {
     if (
       !isMountedRef.current ||
@@ -600,7 +708,6 @@ export default function PassengerNavigationScreen() {
       expiresAt: event.expiresAt,
       pickupWaitSeconds: event.pickupWaitSeconds,
     });
-
     const speech =
       event.type === 'driver_near_pickup'
         ? 'Le conducteur sera bient\u00f4t l\u00e0. Pr\u00e9parez-vous \u00e0 rejoindre le point de r\u00e9cup\u00e9ration.'
@@ -765,6 +872,8 @@ export default function PassengerNavigationScreen() {
     hasPresentedDestinationApproachNoticeRef.current = false;
     hasPresentedTripDestinationApproachNoticeRef.current = false;
     hasPresentedTripCompletedNoticeRef.current = false;
+    hasPresentedNoShowNoticeRef.current = false;
+    hasPresentedBoardingUncertainNoticeRef.current = false;
     hasObservedPickupStateRef.current = false;
     previousPickupStateRef.current = false;
     lastAcceptedDriverCoordinateRef.current = null;
@@ -1124,6 +1233,12 @@ export default function PassengerNavigationScreen() {
         if (event.type === 'pickup_confirmed') {
           presentBoardedNotice();
         }
+        if (event.type === 'passenger_no_show') {
+          presentNoShowNotice();
+        }
+        if (event.type === 'passenger_boarding_uncertain') {
+          presentBoardingUncertainNotice();
+        }
         if (event.type === 'passenger_near_destination') {
           presentDestinationApproachNotice(event);
         }
@@ -1163,7 +1278,9 @@ export default function PassengerNavigationScreen() {
     presentDestinationApproachNotice,
     presentArrivalModal,
     presentBoardedNotice,
+    presentBoardingUncertainNotice,
     presentPickupNotice,
+    presentNoShowNotice,
     presentTripDestinationNotice,
     refetchBooking,
     refetchTrip,
@@ -1171,16 +1288,19 @@ export default function PassengerNavigationScreen() {
   ]);
 
   useEffect(() => {
-    if (!booking?.id || booking.status !== 'accepted' || !isTripOngoing || booking.droppedOff) {
+    const canShareLocation =
+      booking?.status === 'accepted' || booking?.status === 'no_show';
+    if (!booking?.id || !canShareLocation || !isTripOngoing || booking.droppedOff) {
       passengerLocationSubscriptionRef.current?.remove();
       passengerLocationSubscriptionRef.current = null;
+      if (booking?.id) {
+        void stopPassengerBackgroundLocationTracking(booking.id);
+      }
       return;
     }
 
     let isCancelled = false;
     let lastSentAt = 0;
-    const SEND_INTERVAL_MS = 8000;
-
     const sendLocation = async (location: Location.LocationObject) => {
       if (isCancelled || !isMountedRef.current) return;
       const coordinate = normalizeTripMapCoordinate(
@@ -1207,14 +1327,14 @@ export default function PassengerNavigationScreen() {
       const acceptedTimestamp = Number.isFinite(locationTimestamp)
         ? locationTimestamp
         : Date.now();
-      if (Date.now() - acceptedTimestamp > LOCATION_FRESHNESS_MS) {
+      if (Date.now() - acceptedTimestamp > BOARDING_LOCATION_MAX_AGE_MS) {
         return;
       }
 
       if (
         lastAcceptedPassengerCoordinateRef.current &&
         typeof location.coords.accuracy === 'number' &&
-        location.coords.accuracy > MAX_ACCEPTABLE_GPS_ACCURACY_METERS
+        location.coords.accuracy > BOARDING_MAX_ACCEPTED_GPS_ACCURACY_METERS
       ) {
         return;
       }
@@ -1237,7 +1357,7 @@ export default function PassengerNavigationScreen() {
       setPassengerLocation(coordinate);
 
       const now = Date.now();
-      if (now - lastSentAt < SEND_INTERVAL_MS) return;
+      if (now - lastSentAt < PASSENGER_LOCATION_SEND_INTERVAL_MS) return;
       lastSentAt = now;
       const metadata = {
         ...(typeof location.coords.accuracy === 'number' &&
@@ -1297,6 +1417,12 @@ export default function PassengerNavigationScreen() {
             if (event.type === 'pickup_confirmed') {
               presentBoardedNotice();
             }
+            if (event.type === 'passenger_no_show') {
+              presentNoShowNotice();
+            }
+            if (event.type === 'passenger_boarding_uncertain') {
+              presentBoardingUncertainNotice();
+            }
             if (event.type === 'passenger_near_destination') {
               presentDestinationApproachNotice(event as BookingAutoProgressEvent);
             }
@@ -1330,10 +1456,14 @@ export default function PassengerNavigationScreen() {
           return;
         }
 
+        void startPassengerBackgroundLocationTracking(booking.id, {
+          requestMissingPermissions: true,
+        });
+
         let initialLocation: Location.LocationObject | null = null;
         try {
           initialLocation = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
+            accuracy: Location.Accuracy.High,
           });
         } catch {
           initialLocation = await Location.getLastKnownPositionAsync({});
@@ -1346,9 +1476,9 @@ export default function PassengerNavigationScreen() {
         if (isCancelled || !isMountedRef.current) return;
         const subscription = await Location.watchPositionAsync(
           {
-            accuracy: Location.Accuracy.Balanced,
-            timeInterval: SEND_INTERVAL_MS,
-            distanceInterval: 10,
+            accuracy: Location.Accuracy.High,
+            timeInterval: PASSENGER_LOCATION_SEND_INTERVAL_MS,
+            distanceInterval: PASSENGER_LOCATION_DISTANCE_INTERVAL_METERS,
           },
           (location) => {
             void sendLocation(location);
@@ -1373,7 +1503,7 @@ export default function PassengerNavigationScreen() {
       void trackingSocket.resumeBoardingDetection(tripId).catch((error) => {
         console.warn('[PassengerNavigation] Reprise detection embarquement impossible:', error);
       });
-      void Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+      void Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
         .then(sendLocation)
         .catch((error) => {
           console.warn('[PassengerNavigation] Position de reprise indisponible:', error);
@@ -1395,7 +1525,9 @@ export default function PassengerNavigationScreen() {
     presentDestinationApproachNotice,
     presentArrivalModal,
     presentBoardedNotice,
+    presentBoardingUncertainNotice,
     presentPickupNotice,
+    presentNoShowNotice,
     presentTripDestinationNotice,
     refetchBooking,
     refetchTrip,
@@ -1432,6 +1564,15 @@ export default function PassengerNavigationScreen() {
       presentArrivalModal();
     }
   }, [booking?.droppedOff, booking?.droppedOffConfirmedByPassenger, presentArrivalModal]);
+
+  useEffect(() => {
+    if (booking?.status === 'no_show') {
+      presentNoShowNotice();
+    }
+    if (booking?.status === 'boarding_uncertain') {
+      presentBoardingUncertainNotice();
+    }
+  }, [booking?.status, presentBoardingUncertainNotice, presentNoShowNotice]);
 
   const routeAlignedDriver = useMemo(
     () =>
@@ -1476,7 +1617,7 @@ export default function PassengerNavigationScreen() {
       });
     }
 
-    if (distanceToDriverKm <= PASSENGER_READY_PICKUP_DISTANCE_KM) {
+    if (distanceToDriverKm <= PASSENGER_READY_DISTANCE_KM) {
       presentPickupNotice({
         type: 'parties_nearby',
         bookingId: booking.id,
@@ -1642,6 +1783,84 @@ export default function PassengerNavigationScreen() {
     router.replace(`/rate/${tripId}`);
   }, [booking?.droppedOff, booking?.droppedOffConfirmedByPassenger, router, tripId]);
 
+  const handleSettleArrivalPayment = useCallback(async () => {
+    if (!booking?.id || (!booking.droppedOff && booking.status !== 'completed')) {
+      return;
+    }
+
+    try {
+      if (booking.paymentMode === 'points') {
+        await updateBookingPaymentMode({
+          bookingId: booking.id,
+          paymentMode: 'points',
+        }).unwrap();
+        await refetchBooking();
+        showDialog({
+          variant: 'success',
+          icon: 'wallet',
+          title: 'Paiement confirme',
+          message: 'Le paiement en jetons a ete effectue apres votre arrivee.',
+        });
+        return;
+      }
+
+      if (booking.paymentMode !== 'electronic' || !ELECTRONIC_PAYMENTS_ENABLED) {
+        return;
+      }
+
+      const phone = formatPaymentPhone(user?.phone);
+      if (!phone || !DRC_PAYMENT_PHONE_REGEX.test(phone)) {
+        showDialog({
+          variant: 'warning',
+          icon: 'phone-portrait',
+          title: 'Numero Mobile Money requis',
+          message:
+            'Ajoutez un numero congolais valide dans votre profil avant de lancer le paiement.',
+        });
+        return;
+      }
+
+      const response = await initiateBookingPayment({
+        bookingId: booking.id,
+        method: 'mobile_money',
+        phone,
+      }).unwrap();
+      if (response.payment.paymentUrl) {
+        await openExternalUrlSafely(response.payment.paymentUrl, {
+          logLabel: 'PassengerArrivalPayment',
+        });
+      }
+      await refetchBooking();
+      showDialog({
+        variant: response.payment.status === 'succeeded' ? 'success' : 'info',
+        icon: 'card',
+        title:
+          response.payment.status === 'succeeded'
+            ? 'Paiement confirme'
+            : 'Paiement lance',
+        message:
+          response.payment.message ??
+          'Confirmez la demande de paiement sur votre telephone.',
+      });
+    } catch (error: any) {
+      const message =
+        error?.data?.message ?? error?.error ?? 'Impossible de regler la course.';
+      showDialog({
+        variant: 'danger',
+        icon: 'alert-circle',
+        title: 'Paiement impossible',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    }
+  }, [
+    booking,
+    initiateBookingPayment,
+    refetchBooking,
+    showDialog,
+    updateBookingPaymentMode,
+    user?.phone,
+  ]);
+
   const handleCancelPassengerTrip = useCallback(async () => {
     if (!booking?.id) return;
 
@@ -1649,6 +1868,7 @@ export default function PassengerNavigationScreen() {
       await cancelBooking(booking.id).unwrap();
       passengerLocationSubscriptionRef.current?.remove();
       passengerLocationSubscriptionRef.current = null;
+      void stopPassengerBackgroundLocationTracking(booking.id);
       setPickupNotice(null);
       setPickupNoticeCountdown(null);
       setArrivalModalVisible(false);
@@ -1904,6 +2124,48 @@ export default function PassengerNavigationScreen() {
       trip?.status !== 'completed' &&
       trip?.status !== 'cancelled',
   );
+  const arrivalPaymentAmount = normalizePaymentAmount(booking?.paymentAmount);
+  const hasKnownArrivalPaymentAmount = arrivalPaymentAmount !== null;
+  const isArrivalPaymentSettled =
+    booking?.paymentMode === 'cash' ||
+    booking?.paymentStatus === 'succeeded' ||
+    booking?.paymentStatus === 'not_required' ||
+    arrivalPaymentAmount === 0;
+  const canSettleArrivalPayment = Boolean(
+    hasPassengerDroppedOff &&
+      !isArrivalPaymentSettled &&
+      (booking?.paymentMode === 'points' ||
+        (booking?.paymentMode === 'electronic' && ELECTRONIC_PAYMENTS_ENABLED)),
+  );
+  const arrivalPaymentButtonLabel =
+    booking?.paymentMode === 'points'
+      ? hasKnownArrivalPaymentAmount
+        ? `Payer ${formatArrivalPaymentAmount(arrivalPaymentAmount, 'points')}`
+        : 'Payer en jetons'
+      : 'Payer avec FlexPay';
+  const arrivalPaymentAmountLabel = hasKnownArrivalPaymentAmount
+    ? formatArrivalPaymentAmount(
+        arrivalPaymentAmount,
+        booking?.paymentMode,
+        booking?.paymentCurrency,
+      )
+    : 'Synchronisation...';
+  const arrivalPaymentModeLabel =
+    booking?.paymentMode === 'electronic'
+      ? 'Mobile Money via FlexPay'
+      : booking?.paymentMode === 'points'
+        ? 'Jetons Zwanga'
+        : 'Espèces au conducteur';
+  const arrivalPaymentStatusLabel =
+    booking?.paymentStatus === 'succeeded'
+      ? 'Paiement confirmé'
+      : booking?.paymentStatus === 'initiated'
+        ? 'Paiement FlexPay en cours'
+        : booking?.paymentMode === 'cash'
+          ? 'À remettre au conducteur'
+          : arrivalPaymentAmount === 0 || booking?.paymentStatus === 'not_required'
+            ? 'Aucun paiement requis'
+            : 'À payer maintenant';
 
   const pickupNoticeDistanceMeters =
     typeof pickupNotice?.distanceMeters === 'number' && Number.isFinite(pickupNotice.distanceMeters)
@@ -2387,7 +2649,9 @@ export default function PassengerNavigationScreen() {
             {!booking.pickedUp && (
               <View style={styles.completedBadge}>
                 <Ionicons name="locate" size={24} color={Colors.primary} />
-                <Text style={styles.completedText}>En attente de la prise en charge</Text>
+                <Text style={styles.completedText}>
+                  Détection automatique de la prise en charge
+                </Text>
               </View>
             )}
 
@@ -2424,7 +2688,7 @@ export default function PassengerNavigationScreen() {
                 <Ionicons name="hourglass-outline" size={22} color={Colors.warning} />
                 <View style={styles.interruptionStatusCopy}>
                   <Text style={styles.interruptionStatusTitle}>
-                    Demande d'interruption envoyee
+                    Demande d&apos;interruption envoyee
                   </Text>
                   <Text style={styles.interruptionStatusText}>
                     En attente de confirmation du conducteur.
@@ -2596,7 +2860,7 @@ export default function PassengerNavigationScreen() {
               </View>
             )}
             <Text style={styles.arrivalModalHint}>
-              Aucune validation n&apos;est nécessaire. Le suivi GPS met à jour la prise en charge automatiquement.
+              Gardez la localisation active : l&apos;embarquement sera confirmé automatiquement pendant le déplacement.
             </Text>
             <View style={styles.arrivalModalActions}>
               <TouchableOpacity
@@ -2629,7 +2893,7 @@ export default function PassengerNavigationScreen() {
             </View>
             <Text style={styles.arrivalModalTitle}>Vous êtes arrivé</Text>
             <Text style={styles.arrivalModalText}>
-              L&apos;arrivee a destination se confirme automatiquement par GPS.
+              L&apos;arrivee est confirmee. Le paiement choisi devient disponible maintenant.
             </Text>
             <View style={styles.arrivalModalAddressRow}>
               <Ionicons name="location" size={18} color={Colors.primary} />
@@ -2641,9 +2905,46 @@ export default function PassengerNavigationScreen() {
               <Ionicons name="locate" size={18} color={Colors.success} />
               <Text style={styles.arrivalModalGpsStatusText}>Arrivée détectée par GPS</Text>
             </View>
+            <View style={styles.arrivalPaymentSummary}>
+              <View style={styles.arrivalPaymentAmountRow}>
+                <View>
+                  <Text style={styles.arrivalPaymentLabel}>
+                    {isArrivalPaymentSettled ? 'Montant du trajet' : 'Montant à payer'}
+                  </Text>
+                  <Text style={styles.arrivalPaymentAmount}>{arrivalPaymentAmountLabel}</Text>
+                </View>
+                <View style={styles.arrivalPaymentStatusBadge}>
+                  <Text style={styles.arrivalPaymentStatusText}>
+                    {arrivalPaymentStatusLabel}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.arrivalPaymentMethodRow}>
+                <Ionicons
+                  name={
+                    booking.paymentMode === 'electronic'
+                      ? 'phone-portrait-outline'
+                      : booking.paymentMode === 'points'
+                        ? 'wallet-outline'
+                        : 'cash-outline'
+                  }
+                  size={17}
+                  color={Colors.primary}
+                />
+                <Text style={styles.arrivalPaymentMethodText}>
+                  {arrivalPaymentModeLabel}
+                </Text>
+              </View>
+            </View>
             <Text style={styles.arrivalModalHint}>
-              {booking.droppedOff || booking.droppedOffConfirmedByPassenger
-                ? 'Vous pouvez noter le conducteur.'
+              {canSettleArrivalPayment
+                ? booking.paymentMode === 'points'
+                  ? 'Confirmez maintenant le debit de vos jetons.'
+                  : 'Reglez maintenant la course avec Mobile Money.'
+                : booking.paymentMode === 'cash' && hasPassengerDroppedOff
+                  ? 'Reglez la course en especes au conducteur, puis vous pourrez le noter.'
+                : booking.droppedOff || booking.droppedOffConfirmedByPassenger
+                  ? 'Le paiement est regle. Vous pouvez noter le conducteur.'
                 : 'Synchronisation en cours. Vous pourrez noter le conducteur apres confirmation.'}
             </Text>
             <View style={styles.arrivalModalActions}>
@@ -2653,7 +2954,33 @@ export default function PassengerNavigationScreen() {
               >
                 <Text style={styles.arrivalModalLaterButtonText}>Fermer</Text>
               </TouchableOpacity>
-              {(booking.droppedOff || booking.droppedOffConfirmedByPassenger) && (
+              {canSettleArrivalPayment ? (
+                <TouchableOpacity
+                  style={[
+                    styles.arrivalModalFinishButton,
+                    booking.paymentMode === 'electronic' && styles.arrivalFlexPayButton,
+                    (isInitiatingBookingPayment || isSettlingPointsPayment) &&
+                      styles.arrivalModalFinishButtonDisabled,
+                  ]}
+                  onPress={() => void handleSettleArrivalPayment()}
+                  disabled={isInitiatingBookingPayment || isSettlingPointsPayment}
+                >
+                  {isInitiatingBookingPayment || isSettlingPointsPayment ? (
+                    <ActivityIndicator size="small" color={Colors.white} />
+                  ) : (
+                    <Ionicons
+                      name={booking.paymentMode === 'points' ? 'wallet' : 'card'}
+                      size={20}
+                      color={Colors.white}
+                    />
+                  )}
+                  <Text style={styles.arrivalModalFinishButtonText}>
+                    {isInitiatingBookingPayment || isSettlingPointsPayment
+                      ? 'Paiement...'
+                      : arrivalPaymentButtonLabel}
+                  </Text>
+                </TouchableOpacity>
+              ) : (booking.droppedOff || booking.droppedOffConfirmedByPassenger) && (
                 <TouchableOpacity
                   style={styles.arrivalModalFinishButton}
                   onPress={handleRateDriver}
@@ -3287,6 +3614,57 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.xs,
     textAlign: 'center',
   },
+  arrivalPaymentSummary: {
+    width: '100%',
+    marginTop: Spacing.md,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary + '24',
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.primary + '08',
+  },
+  arrivalPaymentAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+  },
+  arrivalPaymentLabel: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.medium,
+  },
+  arrivalPaymentAmount: {
+    marginTop: 2,
+    color: Colors.gray[900],
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+  },
+  arrivalPaymentStatusBadge: {
+    maxWidth: '48%',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.white,
+  },
+  arrivalPaymentStatusText: {
+    color: Colors.primary,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+    textAlign: 'center',
+  },
+  arrivalPaymentMethodRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  arrivalPaymentMethodText: {
+    flex: 1,
+    color: Colors.gray[700],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
   arrivalModalActions: {
     width: '100%',
     marginTop: Spacing.lg,
@@ -3317,6 +3695,12 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
     borderRadius: BorderRadius.lg,
     backgroundColor: Colors.success,
+  },
+  arrivalFlexPayButton: {
+    backgroundColor: Colors.primary,
+  },
+  arrivalModalFinishButtonDisabled: {
+    opacity: 0.65,
   },
   arrivalModalFinishButtonText: {
     color: Colors.white,

@@ -74,6 +74,16 @@ const BOOKING_STATUS_CONFIG: Record<
     color: Colors.gray[600],
     background: 'rgba(156, 163, 175, 0.2)',
   },
+  no_show: {
+    label: 'Non embarque',
+    color: Colors.danger,
+    background: 'rgba(239, 68, 68, 0.12)',
+  },
+  boarding_uncertain: {
+    label: 'Embarquement non confirme',
+    color: Colors.warning,
+    background: 'rgba(245, 158, 11, 0.14)',
+  },
   completed: {
     label: 'Terminée',
     color: Colors.gray[600],
@@ -106,10 +116,12 @@ const MANAGE_AUTO_PROGRESS_PRIORITY: Record<ManageAutoProgressEvent['type'], num
   parties_nearby: 2,
   passenger_ready_pickup: 3,
   pickup_confirmed: 4,
-  passenger_near_destination: 5,
-  dropoff_confirmed: 6,
-  driver_near_destination: 7,
-  driver_arrived_destination: 8,
+  passenger_no_show: 5,
+  passenger_boarding_uncertain: 6,
+  passenger_near_destination: 7,
+  dropoff_confirmed: 8,
+  driver_near_destination: 9,
+  driver_arrived_destination: 10,
 };
 
 export default function ManageTripScreen() {
@@ -304,7 +316,7 @@ export default function ManageTripScreen() {
           const dialogByType: Record<
             ManageAutoProgressEvent['type'],
             {
-              variant: 'info' | 'success';
+              variant: 'info' | 'success' | 'warning';
               icon: keyof typeof Ionicons.glyphMap;
               title: string;
               message: string;
@@ -339,6 +351,18 @@ export default function ManageTripScreen() {
               icon: 'checkmark-circle',
               title: 'Passager embarque',
               message: `${passengerName} a été embarqué. Vous pouvez continuer vers sa destination.`,
+            },
+            passenger_no_show: {
+              variant: 'info',
+              icon: 'person-remove',
+              title: 'Passager non embarque',
+              message: `${passengerName} n'a pas ete detecte a bord. La reservation est cloturee sans paiement.`,
+            },
+            passenger_boarding_uncertain: {
+              variant: 'warning',
+              icon: 'help-circle',
+              title: 'Embarquement non confirme',
+              message: `Le trajet est arrive a destination sans preuve GPS suffisante de l'embarquement de ${passengerName}. La reservation est cloturee sans paiement.`,
             },
             passenger_near_destination: {
               variant: 'info',
@@ -1301,7 +1325,7 @@ export default function ManageTripScreen() {
           >
             <Ionicons name="settings-outline" size={16} color={Colors.primary} />
             <Text style={styles.securitySecondaryButtonText}>
-              Ajouter ou gérer mes contacts d'urgence
+              {"Ajouter ou gérer mes contacts d'urgence"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1470,7 +1494,7 @@ export default function ManageTripScreen() {
           <View style={[styles.bookingModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
             <Text style={styles.bookingModalTitle}>Modifier le trajet</Text>
             <Text style={styles.bookingModalDescription}>
-              Mettez à jour l'adresse de depart et/ou d'arrivée.
+              {"Mettez à jour l'adresse de depart et/ou d'arrivée."}
             </Text>
 
             <Text style={styles.editRouteLabel}>Adresse de départ</Text>
@@ -1486,7 +1510,7 @@ export default function ManageTripScreen() {
               editable={!isSavingRoute}
             />
 
-            <Text style={styles.editRouteLabel}>Adresse d'arrivée</Text>
+            <Text style={styles.editRouteLabel}>{"Adresse d'arrivée"}</Text>
             <TextInput
               style={styles.editRouteInput}
               placeholder="Ex: rond-point Victoire"
