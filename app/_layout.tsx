@@ -14,6 +14,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 // Importer les handlers de fond pour qu'ils soient enregistres au demarrage
 import '@/services/backgroundNotificationTask';
 import '@/services/driverBackgroundLocationTask';
+import '@/services/passengerBackgroundLocationTask';
 import '@/services/notifeeBackgroundHandler';
 import '@/services/notifeeForegroundService';
 

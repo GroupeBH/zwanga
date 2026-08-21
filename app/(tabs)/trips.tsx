@@ -260,7 +260,7 @@ export default function TripsScreen() {
   const upcomingBookings = useMemo(() => {
     const now = new Date();
     return (myBookings ?? []).filter((booking) => {
-      if (booking.status === 'completed' || booking.status === 'rejected' || booking.status === 'cancelled') {
+      if (booking.status === 'completed' || booking.status === 'rejected' || booking.status === 'cancelled' || booking.status === 'no_show' || booking.status === 'boarding_uncertain') {
         return false;
       }
       if (booking.trip?.status === 'ongoing') {
@@ -285,7 +285,7 @@ export default function TripsScreen() {
   const completedBookingsList = useMemo(() => {
     const now = new Date();
     return (myBookings ?? []).filter((booking) => {
-      if (booking.status === 'completed' || booking.status === 'rejected' || booking.status === 'cancelled') {
+      if (booking.status === 'completed' || booking.status === 'rejected' || booking.status === 'cancelled' || booking.status === 'no_show' || booking.status === 'boarding_uncertain') {
         return true;
       }
       if (booking.trip?.status === 'ongoing') {
@@ -1077,6 +1077,10 @@ export default function TripsScreen() {
                         return { bgColor: 'rgba(156, 163, 175, 0.1)', textColor: Colors.gray[600], label: 'Annulée' };
                       case 'completed':
                         return { bgColor: 'rgba(46, 204, 113, 0.1)', textColor: Colors.success, label: 'Terminée' };
+                      case 'no_show':
+                        return { bgColor: 'rgba(59, 130, 246, 0.1)', textColor: Colors.info, label: 'Non embarqué' };
+                      case 'boarding_uncertain':
+                        return { bgColor: 'rgba(245, 158, 11, 0.1)', textColor: Colors.warning, label: 'Embarquement non confirme' };
                       default:
                         return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: booking.status };
                     }

@@ -6,6 +6,7 @@ import {
   ELECTRONIC_PAYMENTS_ENABLED,
 } from '@/constants/paymentFeatures';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { REGISTERED_VEHICLE_TYPE_OPTIONS } from '@/constants/vehicleTypes';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackEvent } from '@/services/analytics';
 import { useGeocodeMutation } from '@/store/api/googleMapsApi';
@@ -77,14 +78,6 @@ const MAX_REQUEST_SEATS = 2;
 const MIN_REQUEST_PRICE = 500;
 const REQUEST_PRICE_STEP = 500;
 const TIME_PRESET_SYNC_INTERVAL_MS = 30000;
-const TRIP_REQUEST_VEHICLE_ICONS: Record<
-  TripRequestVehicleType,
-  keyof typeof Ionicons.glyphMap
-> = {
-  car: 'car-sport',
-  motorcycle_2_wheels: 'bicycle',
-  motorcycle_3_wheels: 'car-outline',
-};
 const DEFAULT_REQUEST_REGION: Region = {
   latitude: -4.441931,
   longitude: 15.266293,
@@ -348,7 +341,6 @@ export default function RequestTripScreen() {
   const [selectedVehicleType, setSelectedVehicleType] =
     useState<TripRequestVehicleType>('car');
   const [vehicleOptions, setVehicleOptions] = useState<TripRequestVehiclePriceOption[]>([]);
-  const [vehiclePricingMultiplier, setVehiclePricingMultiplier] = useState(1);
   const [vehicleOptionsRetry, setVehicleOptionsRetry] = useState(0);
   const [maxPricePerSeat, setMaxPricePerSeat] = useState('');
   const [hasEditedBudget, setHasEditedBudget] = useState(false);
@@ -509,11 +501,6 @@ export default function RequestTripScreen() {
   const arrivalAddress = getLocationText(arrivalLocation, arrivalManualAddress);
   const hasDepartureAddress = departureAddress.length > 0;
   const hasArrivalAddress = arrivalAddress.length > 0;
-  const routeSummary = useMemo(() => {
-    if (hasDepartureAddress && hasArrivalAddress) return `${departureAddress} \u2192 ${arrivalAddress}`;
-    if (hasDepartureAddress) return `D\u00E9part : ${departureAddress}`;
-    return 'Choisissez votre d\u00E9part et votre destination';
-  }, [arrivalAddress, departureAddress, hasArrivalAddress, hasDepartureAddress]);
   const renderManualGeocodeStatus = (status: ManualGeocodeStatus) => {
     if (status === 'idle') {
       return null;
@@ -555,6 +542,10 @@ export default function RequestTripScreen() {
     if (flexibilityMinutes === 0) return `${formatDateLabel(departureDateMin)} à ${formatTimeLabel(departureDateMin)}`;
     return `${formatDateLabel(departureDateMin)} entre ${formatTimeLabel(departureDateMin)} et ${formatTimeLabel(departureDateMax)}`;
   }, [departureDateMax, departureDateMin, flexibilityMinutes]);
+  const departureTimeRangeLabel = flexibilityMinutes === 0
+    ? formatTimeLabel(departureDateMin)
+    : `${formatTimeLabel(departureDateMin)} – ${formatTimeLabel(departureDateMax)}`;
+  const selectedTimePreset = TIME_PRESETS.find((preset) => preset.id === timePreset) ?? TIME_PRESETS[0];
   const selectedVehicleOption = useMemo(
     () => vehicleOptions.find((option) => option.vehicleType === selectedVehicleType),
     [selectedVehicleType, vehicleOptions],
@@ -764,7 +755,6 @@ export default function RequestTripScreen() {
     if (!hasDepartureAddress || !hasArrivalAddress) {
       setRouteDistanceMeters(null);
       setVehicleOptions([]);
-      setVehiclePricingMultiplier(1);
       return;
     }
 
@@ -784,7 +774,6 @@ export default function RequestTripScreen() {
         if (!isCurrent) return;
         setRouteDistanceMeters(recommendation.distanceMeters);
         setVehicleOptions(recommendation.options);
-        setVehiclePricingMultiplier(recommendation.weatherImpact.priceMultiplier);
         setSelectedVehicleType((currentVehicleType) => {
           const currentOption = recommendation.options.find(
             (option) => option.vehicleType === currentVehicleType,
@@ -799,7 +788,6 @@ export default function RequestTripScreen() {
         console.warn('Impossible de recuperer les options de vehicule', error);
         setRouteDistanceMeters(null);
         setVehicleOptions([]);
-        setVehiclePricingMultiplier(1);
       });
 
     return () => {
@@ -847,11 +835,6 @@ export default function RequestTripScreen() {
   const updateBudget = (value: number) => {
     setHasEditedBudget(true);
     setMaxPricePerSeat(String(clampRequestPrice(value)));
-  };
-
-  const selectVehicleOption = (option: TripRequestVehiclePriceOption) => {
-    if (!option.availableForRequestedSeats) return;
-    setSelectedVehicleType(option.vehicleType);
   };
 
   const openCustomPicker = (mode: 'date' | 'time') => {
@@ -1197,7 +1180,7 @@ export default function RequestTripScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.headerButton}>
           <Ionicons name="chevron-back" size={24} color={Colors.gray[900]} />
@@ -1303,6 +1286,65 @@ export default function RequestTripScreen() {
                 </View>
               </View>
 
+              <View style={styles.routeVehicleChoice}>
+                <View style={styles.routeVehicleChoiceHeader}>
+                  <Text style={styles.routeVehicleChoiceTitle}>Type de véhicule</Text>
+                  <Text style={styles.routeVehicleChoiceSubtitle}>
+                    Choisissez le véhicule souhaité pour ce trajet
+                  </Text>
+                </View>
+                <View style={styles.routeVehicleChoiceRow}>
+                  {REGISTERED_VEHICLE_TYPE_OPTIONS.map((option) => {
+                    const selected = selectedVehicleType === option.id;
+
+                    return (
+                      <TouchableOpacity
+                        key={option.id}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: selected }}
+                        accessibilityLabel={option.label}
+                        activeOpacity={0.82}
+                        style={[
+                          styles.routeVehicleChoiceOption,
+                          selected && styles.routeVehicleChoiceOptionSelected,
+                        ]}
+                        onPress={() => setSelectedVehicleType(option.id)}
+                      >
+                        <View
+                          style={[
+                            styles.routeVehicleChoiceIcon,
+                            selected && styles.routeVehicleChoiceIconSelected,
+                          ]}
+                        >
+                          <Ionicons
+                            name={option.icon}
+                            size={21}
+                            color={selected ? Colors.primary : Colors.gray[500]}
+                          />
+                        </View>
+                        <Text
+                          style={[
+                            styles.routeVehicleChoiceLabel,
+                            selected && styles.routeVehicleChoiceLabelSelected,
+                          ]}
+                          numberOfLines={2}
+                        >
+                          {option.label}
+                        </Text>
+                        {selected ? (
+                          <Ionicons
+                            name="checkmark-circle"
+                            size={17}
+                            color={Colors.primary}
+                            style={styles.routeVehicleChoiceCheck}
+                          />
+                        ) : null}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
               <View style={styles.routeQuickRow}>
                 <TouchableOpacity
                   style={styles.routeQuickButton}
@@ -1333,14 +1375,20 @@ export default function RequestTripScreen() {
                 </TouchableOpacity>
               </View>
 
-              {(favoriteSuggestions.length > 0 || showQuickLandmarks) && (
-                <View style={styles.routeSuggestions}>
-                  <View style={styles.suggestionsHeader}>
-                    <Text style={styles.suggestionsTitle}>Lieux rapides</Text>
-                    <TouchableOpacity onPress={() => setShowQuickLandmarks((value) => !value)}>
-                      <Text style={styles.suggestionsToggle}>{showQuickLandmarks ? 'Masquer' : 'Afficher'}</Text>
-                    </TouchableOpacity>
-                  </View>
+              <View style={styles.routeSuggestions}>
+                <View style={styles.suggestionsHeader}>
+                  <Text style={styles.suggestionsTitle}>Lieux rapides</Text>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={showQuickLandmarks ? 'Masquer les lieux rapides' : 'Afficher les lieux rapides'}
+                    style={styles.suggestionsToggleButton}
+                    onPress={() => setShowQuickLandmarks((value) => !value)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={styles.suggestionsToggle}>{showQuickLandmarks ? 'Masquer' : 'Afficher'}</Text>
+                  </TouchableOpacity>
+                </View>
+                {showQuickLandmarks ? (
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
@@ -1368,25 +1416,24 @@ export default function RequestTripScreen() {
                         </Text>
                       </TouchableOpacity>
                     ))}
-                    {showQuickLandmarks &&
-                      POPULAR_PLACES.map((place) => (
-                        <TouchableOpacity
-                          key={place.name}
-                          style={styles.suggestionChip}
-                          onPress={() => applyManualPlaceToNextSlot(`${place.name}, ${place.commune}`)}
-                          activeOpacity={0.86}
-                        >
-                          <View style={styles.suggestionIcon}>
-                            <Ionicons name="location" size={14} color={Colors.primary} />
-                          </View>
-                          <Text style={styles.suggestionText} numberOfLines={1}>
-                            {place.name}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
+                    {POPULAR_PLACES.map((place) => (
+                      <TouchableOpacity
+                        key={place.name}
+                        style={styles.suggestionChip}
+                        onPress={() => applyManualPlaceToNextSlot(`${place.name}, ${place.commune}`)}
+                        activeOpacity={0.86}
+                      >
+                        <View style={styles.suggestionIcon}>
+                          <Ionicons name="location" size={14} color={Colors.primary} />
+                        </View>
+                        <Text style={styles.suggestionText} numberOfLines={1}>
+                          {place.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
                   </ScrollView>
-                </View>
-              )}
+                ) : null}
+              </View>
             </Animated.View>
           )}
 
@@ -1477,108 +1524,114 @@ export default function RequestTripScreen() {
               </View>
 
               <View style={styles.offerSheet}>
-                <View style={styles.vehicleChoiceBlock}>
-                  <View style={styles.vehicleChoiceHeader}>
-                    <View style={styles.vehicleChoiceHeaderCopy}>
-                      <Text style={styles.vehicleChoiceTitle}>Choisissez votre véhicule</Text>
-                      <Text style={styles.vehicleChoiceSubtitle}>
-                        Prix estimés par place{routeDistanceLabel ? ` pour ${routeDistanceLabel}` : ''}
-                      </Text>
+                <View style={styles.offerTimeBlock}>
+                  <View style={styles.offerTimeHeader}>
+                    <View style={styles.offerTimeHeaderIcon}>
+                      <Ionicons name="time" size={22} color={Colors.white} />
                     </View>
-                    {vehiclePricingMultiplier > 1 ? (
-                      <View style={styles.weatherPriceBadge}>
-                        <Ionicons name="rainy-outline" size={13} color={Colors.primaryDark} />
-                        <Text style={styles.weatherPriceBadgeText}>x{vehiclePricingMultiplier.toFixed(1)}</Text>
-                      </View>
-                    ) : null}
+                    <View style={styles.offerTimeHeaderCopy}>
+                      <Text style={styles.offerTimeTitle}>Heure de départ</Text>
+                      <Text style={styles.offerTimeSubtitle}>Quand souhaitez-vous partir ?</Text>
+                    </View>
                   </View>
 
-                  {isPriceLoading && vehicleOptions.length === 0 ? (
-                    <View style={styles.vehicleChoiceLoading}>
-                      <ActivityIndicator color={Colors.primary} size="small" />
-                      <Text style={styles.vehicleChoiceLoadingText}>Calcul des tarifs en cours…</Text>
-                    </View>
-                  ) : null}
-
-                  {!isPriceLoading && isVehicleOptionsError && vehicleOptions.length === 0 ? (
-                    <View style={styles.vehicleChoiceError}>
-                      <View style={styles.vehicleChoiceErrorCopy}>
-                        <Ionicons name="alert-circle-outline" size={18} color={Colors.danger} />
-                        <Text style={styles.vehicleChoiceErrorText}>Tarifs indisponibles pour le moment.</Text>
-                      </View>
-                      <TouchableOpacity
-                        style={styles.vehicleChoiceRetry}
-                        onPress={() => setVehicleOptionsRetry((value) => value + 1)}
-                        activeOpacity={0.8}
+                  <View
+                    style={styles.offerTimeSummary}
+                    accessibilityLabel={`Départ ${timeSummary}`}
+                  >
+                    <View style={styles.offerTimeSummaryCopy}>
+                      <Text style={styles.offerTimeDate} numberOfLines={1}>
+                        {formatDateLabel(departureDateMin)}
+                      </Text>
+                      <Text
+                        style={styles.offerTimeValue}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.82}
                       >
-                        <Text style={styles.vehicleChoiceRetryText}>Réessayer</Text>
-                      </TouchableOpacity>
+                        {departureTimeRangeLabel}
+                      </Text>
                     </View>
-                  ) : null}
+                    <View style={styles.offerTimePresetBadge}>
+                      <Ionicons name={selectedTimePreset.icon} size={14} color={Colors.primaryDark} />
+                      <Text style={styles.offerTimePresetBadgeText} numberOfLines={2}>
+                        {selectedTimePreset.label}
+                      </Text>
+                    </View>
+                  </View>
 
-                  <View style={styles.vehicleChoiceOptionsRow}>
-                    {vehicleOptions.map((option) => {
-                      const selected = option.vehicleType === selectedVehicleType;
-                      const unavailable = !option.availableForRequestedSeats;
-                      const priceLabel = unavailable
-                        ? 'Indisponible'
-                        : option.recommendedPricePerSeat === null
-                          ? 'À confirmer'
-                          : formatCdfPrice(option.recommendedPricePerSeat);
-
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.offerPresetScroll}
+                  >
+                    {TIME_PRESETS.map((preset) => {
+                      const active = timePreset === preset.id;
                       return (
                         <TouchableOpacity
-                          key={option.vehicleType}
-                          style={[
-                            styles.vehicleChoiceOption,
-                            selected && styles.vehicleChoiceOptionSelected,
-                            unavailable && styles.vehicleChoiceOptionDisabled,
-                          ]}
-                          onPress={() => selectVehicleOption(option)}
-                          disabled={unavailable}
-                          accessibilityRole="radio"
-                          accessibilityState={{ checked: selected, disabled: unavailable }}
+                          key={preset.id}
+                          style={[styles.offerPreset, active && styles.offerPresetActive]}
+                          onPress={() => applyPreset(preset.id)}
                           activeOpacity={0.82}
                         >
-                          <Ionicons
-                            name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-                            size={18}
-                            color={unavailable ? Colors.gray[300] : selected ? Colors.primary : Colors.gray[300]}
-                            style={styles.vehicleChoiceSelection}
-                          />
-                          <View style={[styles.vehicleChoiceIcon, selected && styles.vehicleChoiceIconSelected]}>
-                            <Ionicons
-                              name={TRIP_REQUEST_VEHICLE_ICONS[option.vehicleType]}
-                              size={21}
-                              color={unavailable ? Colors.gray[400] : selected ? Colors.primary : Colors.gray[700]}
-                            />
-                          </View>
-                          <View style={styles.vehicleChoiceCopy}>
-                            <Text
-                              style={[styles.vehicleChoiceName, unavailable && styles.vehicleChoiceTextDisabled]}
-                              numberOfLines={2}
-                            >
-                              {option.displayName}
-                            </Text>
-                          </View>
-                          <View style={styles.vehicleChoicePrice}>
-                            <Text
-                              style={[styles.vehicleChoicePriceValue, unavailable && styles.vehicleChoiceTextDisabled]}
-                              numberOfLines={1}
-                              adjustsFontSizeToFit
-                              minimumFontScale={0.78}
-                            >
-                              {priceLabel}
-                            </Text>
-                            <Text style={[styles.vehicleChoicePriceUnit, unavailable && styles.vehicleChoiceTextDisabled]}>
-                              {unavailable ? `${numberOfSeats} places` : 'par place'}
-                            </Text>
-                          </View>
+                          <Ionicons name={preset.icon} size={15} color={active ? Colors.white : Colors.gray[600]} />
+                          <Text style={[styles.offerPresetText, active && styles.offerPresetTextActive]} numberOfLines={1}>
+                            {preset.label}
+                          </Text>
                         </TouchableOpacity>
                       );
                     })}
-                  </View>
+                  </ScrollView>
+
+                  {timePreset === 'custom' && (
+                    <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.customWrap}>
+                      <TouchableOpacity style={styles.inputLike} onPress={() => openCustomPicker('date')}>
+                        <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
+                        <Text style={styles.inputLikeText}>{formatDateLabel(departureDateMin)}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.inputLike} onPress={() => openCustomPicker('time')}>
+                        <Ionicons name="time-outline" size={18} color={Colors.primary} />
+                        <Text style={styles.inputLikeText}>{formatTimeLabel(departureDateMin)}</Text>
+                      </TouchableOpacity>
+                      <View style={styles.chipRow}>
+                        {FLEX_OPTIONS.map((option) => (
+                          <TouchableOpacity
+                            key={option}
+                            style={[styles.chip, flexibilityMinutes === option && styles.flexChipActive]}
+                            onPress={() => setFlexibilityMinutes(option)}
+                          >
+                            <Text style={[styles.chipText, flexibilityMinutes === option && styles.flexChipTextActive]}>
+                              {option === 0 ? 'Exact' : option === 60 ? '1 h' : option === 120 ? '2 h' : `${option} min`}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </Animated.View>
+                  )}
                 </View>
+
+                {isPriceLoading && vehicleOptions.length === 0 ? (
+                  <View style={styles.vehicleChoiceLoading}>
+                    <ActivityIndicator color={Colors.primary} size="small" />
+                    <Text style={styles.vehicleChoiceLoadingText}>Calcul du tarif en cours…</Text>
+                  </View>
+                ) : null}
+
+                {!isPriceLoading && isVehicleOptionsError && vehicleOptions.length === 0 ? (
+                  <View style={styles.vehicleChoiceError}>
+                    <View style={styles.vehicleChoiceErrorCopy}>
+                      <Ionicons name="alert-circle-outline" size={18} color={Colors.danger} />
+                      <Text style={styles.vehicleChoiceErrorText}>Tarif indisponible pour le moment.</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.vehicleChoiceRetry}
+                      onPress={() => setVehicleOptionsRetry((value) => value + 1)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.vehicleChoiceRetryText}>Réessayer</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
 
                 <View style={styles.offerPriceControl}>
                   <TouchableOpacity
@@ -1687,57 +1740,6 @@ export default function RequestTripScreen() {
                   })}
                 </View>
 
-                <View style={styles.offerTimeBlock}>
-                  <Text style={styles.offerSectionLabel}>Départ</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.offerPresetScroll}>
-                    {TIME_PRESETS.map((preset) => {
-                      const active = timePreset === preset.id;
-                      return (
-                        <TouchableOpacity
-                          key={preset.id}
-                          style={[styles.offerPreset, active && styles.offerPresetActive]}
-                          onPress={() => applyPreset(preset.id)}
-                          activeOpacity={0.82}
-                        >
-                          <Ionicons name={preset.icon} size={15} color={active ? Colors.white : Colors.gray[600]} />
-                          <Text style={[styles.offerPresetText, active && styles.offerPresetTextActive]} numberOfLines={1}>
-                            {preset.label}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
-                  <View style={styles.offerTimeSummary}>
-                    <Ionicons name="time-outline" size={17} color={Colors.primary} />
-                    <Text style={styles.offerTimeText} numberOfLines={2}>{timeSummary}</Text>
-                  </View>
-                  {timePreset === 'custom' && (
-                    <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.customWrap}>
-                      <TouchableOpacity style={styles.inputLike} onPress={() => openCustomPicker('date')}>
-                        <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
-                        <Text style={styles.inputLikeText}>{formatDateLabel(departureDateMin)}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.inputLike} onPress={() => openCustomPicker('time')}>
-                        <Ionicons name="time-outline" size={18} color={Colors.primary} />
-                        <Text style={styles.inputLikeText}>{formatTimeLabel(departureDateMin)}</Text>
-                      </TouchableOpacity>
-                      <View style={styles.chipRow}>
-                        {FLEX_OPTIONS.map((option) => (
-                          <TouchableOpacity
-                            key={option}
-                            style={[styles.chip, flexibilityMinutes === option && styles.flexChipActive]}
-                            onPress={() => setFlexibilityMinutes(option)}
-                          >
-                            <Text style={[styles.chipText, flexibilityMinutes === option && styles.flexChipTextActive]}>
-                              {option === 0 ? 'Exact' : option === 60 ? '1 h' : option === 120 ? '2 h' : `${option} min`}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </Animated.View>
-                  )}
-                </View>
-
                 <View style={styles.offerPreferenceRow}>
                   <View style={styles.offerPreferenceIcon}>
                     <Ionicons name="send" size={18} color={Colors.primary} />
@@ -1778,17 +1780,13 @@ export default function RequestTripScreen() {
       </KeyboardAvoidingView>
 
       {requestFormStep === 'route' && (
-        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
-          <Text style={styles.footerTitle} numberOfLines={1}>{routeSummary}</Text>
-          <Text style={styles.footerText} numberOfLines={1}>{timeSummary}</Text>
-          <View style={styles.footerActions}>
-            {renderPrimaryButton(false)}
-          </View>
-        </View>
+        <SafeAreaView edges={['bottom']} style={styles.footer}>
+          {renderPrimaryButton(false)}
+        </SafeAreaView>
       )}
 
       {requestFormStep === 'details' && !submissionRecoveryMessage && !createdRequestId && (
-        <View style={[styles.offerStickyFooter, { paddingBottom: Math.max(insets.bottom, 16) + 14 }]}>
+        <SafeAreaView edges={['bottom']} style={styles.offerStickyFooter}>
           {submissionError ? (
             <View style={styles.submissionErrorBanner}>
               <Ionicons name="alert-circle" size={18} color={Colors.danger} />
@@ -1810,7 +1808,7 @@ export default function RequestTripScreen() {
               </>
             )}
           </TouchableOpacity>
-        </View>
+        </SafeAreaView>
       )}
 
       {createdRequestId || submissionRecoveryMessage ? (
@@ -1891,7 +1889,7 @@ const styles = StyleSheet.create({
   mapLocateButtonText: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   routeStatusBadge: { position: 'absolute', left: Spacing.lg, bottom: Spacing.lg, minHeight: 38, borderRadius: BorderRadius.full, paddingHorizontal: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, backgroundColor: Colors.white, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 4 },
   routeStatusText: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[800] },
-  routeSetup: { backgroundColor: Colors.white, borderRadius: BorderRadius.lg, padding: Spacing.lg, gap: Spacing.lg, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
+  routeSetup: { backgroundColor: Colors.white, borderRadius: BorderRadius.lg, padding: Spacing.lg, paddingBottom: Spacing.xxl, gap: Spacing.lg, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 20, elevation: 5 },
   routeSetupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   routeSetupTitle: { fontSize: FontSizes.xl, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   routeSetupSwap: { width: 42, height: 42, borderRadius: BorderRadius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.primary + '12' },
@@ -1908,6 +1906,18 @@ const styles = StyleSheet.create({
   routeManualWrap: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.md, gap: Spacing.xs },
   routeManualInput: { minHeight: 46, borderRadius: BorderRadius.sm, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: Spacing.md, fontSize: FontSizes.base, color: Colors.gray[900] },
   routeStackDivider: { height: 1, backgroundColor: Colors.gray[100], marginLeft: 66 },
+  routeVehicleChoice: { gap: Spacing.sm },
+  routeVehicleChoiceHeader: { gap: 2 },
+  routeVehicleChoiceTitle: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  routeVehicleChoiceSubtitle: { fontSize: FontSizes.xs, color: Colors.gray[500] },
+  routeVehicleChoiceRow: { flexDirection: 'row', alignItems: 'stretch', gap: 6 },
+  routeVehicleChoiceOption: { position: 'relative', flex: 1, minWidth: 0, minHeight: 92, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 5, paddingVertical: Spacing.sm },
+  routeVehicleChoiceOptionSelected: { borderColor: Colors.primary, backgroundColor: Colors.primary + '0D' },
+  routeVehicleChoiceIcon: { width: 36, height: 36, borderRadius: BorderRadius.full, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
+  routeVehicleChoiceIconSelected: { backgroundColor: Colors.primary + '16' },
+  routeVehicleChoiceLabel: { minHeight: 30, fontSize: FontSizes.xs, lineHeight: 15, fontWeight: FontWeights.bold, color: Colors.gray[700], textAlign: 'center' },
+  routeVehicleChoiceLabelSelected: { color: Colors.primaryDark },
+  routeVehicleChoiceCheck: { position: 'absolute', top: 6, right: 6 },
   routeQuickRow: { flexDirection: 'row', gap: Spacing.sm },
   routeQuickButton: { flex: 1, minHeight: 48, borderRadius: BorderRadius.full, backgroundColor: Colors.primary + '10', borderWidth: 1, borderColor: Colors.primary + '20', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.xs },
   routeQuickText: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.primary },
@@ -1921,13 +1931,6 @@ const styles = StyleSheet.create({
   offerRouteDivider: { height: 1, backgroundColor: Colors.gray[100], marginLeft: 26 },
   offerRouteText: { flex: 1, fontSize: FontSizes.base, fontWeight: FontWeights.semibold, color: Colors.gray[900] },
   offerSheet: { marginTop: -18, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, backgroundColor: Colors.white, paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: Spacing.lg, gap: Spacing.sm },
-  vehicleChoiceBlock: { gap: Spacing.sm },
-  vehicleChoiceHeader: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },
-  vehicleChoiceHeaderCopy: { flex: 1, minWidth: 0 },
-  vehicleChoiceTitle: { fontSize: FontSizes.lg, fontWeight: FontWeights.bold, color: Colors.gray[900] },
-  vehicleChoiceSubtitle: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[600] },
-  weatherPriceBadge: { minHeight: 30, borderRadius: BorderRadius.full, backgroundColor: Colors.primary + '10', flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: Spacing.sm },
-  weatherPriceBadgeText: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.primaryDark },
   vehicleChoiceLoading: { minHeight: 72, borderRadius: BorderRadius.lg, backgroundColor: Colors.gray[50], flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm },
   vehicleChoiceLoadingText: { fontSize: FontSizes.sm, fontWeight: FontWeights.semibold, color: Colors.gray[600] },
   vehicleChoiceError: { minHeight: 72, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.danger + '30', backgroundColor: Colors.danger + '08', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm, paddingHorizontal: Spacing.md },
@@ -1935,19 +1938,6 @@ const styles = StyleSheet.create({
   vehicleChoiceErrorText: { flex: 1, fontSize: FontSizes.sm, color: Colors.gray[700] },
   vehicleChoiceRetry: { minHeight: 36, borderRadius: BorderRadius.full, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.md },
   vehicleChoiceRetryText: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.primary },
-  vehicleChoiceOptionsRow: { flexDirection: 'row', alignItems: 'stretch', gap: 6 },
-  vehicleChoiceOption: { position: 'relative', flex: 1, minWidth: 0, minHeight: 124, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, alignItems: 'center', paddingHorizontal: 6, paddingVertical: Spacing.sm },
-  vehicleChoiceOptionSelected: { borderColor: Colors.primary, backgroundColor: Colors.primary + '08' },
-  vehicleChoiceOptionDisabled: { backgroundColor: Colors.gray[50], borderColor: Colors.gray[100], opacity: 0.72 },
-  vehicleChoiceSelection: { position: 'absolute', top: 6, right: 6 },
-  vehicleChoiceIcon: { width: 38, height: 38, borderRadius: BorderRadius.md, backgroundColor: Colors.gray[100], alignItems: 'center', justifyContent: 'center' },
-  vehicleChoiceIconSelected: { backgroundColor: Colors.primary + '12' },
-  vehicleChoiceCopy: { minHeight: 34, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
-  vehicleChoiceName: { fontSize: FontSizes.xs, lineHeight: 15, fontWeight: FontWeights.bold, color: Colors.gray[900], textAlign: 'center' },
-  vehicleChoicePrice: { width: '100%', alignItems: 'center', marginTop: 'auto' },
-  vehicleChoicePriceValue: { width: '100%', fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[900], textAlign: 'center' },
-  vehicleChoicePriceUnit: { marginTop: 1, fontSize: 10, color: Colors.gray[500] },
-  vehicleChoiceTextDisabled: { color: Colors.gray[400] },
   offerPriceControl: { minHeight: 88, borderRadius: BorderRadius.lg, backgroundColor: '#F7F8FA', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.md },
   offerPriceButton: { width: 50, height: 50, borderRadius: BorderRadius.full, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 3 },
   offerPriceButtonDisabled: { backgroundColor: Colors.gray[100] },
@@ -1963,22 +1953,31 @@ const styles = StyleSheet.create({
   offerPaymentCopy: { flex: 1, minWidth: 0 },
   offerPaymentTitle: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   offerPaymentText: { marginTop: 2, fontSize: 12, color: Colors.gray[500] },
-  offerTimeBlock: { gap: Spacing.sm },
+  offerTimeBlock: { gap: Spacing.md, marginBottom: Spacing.sm, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.primary + '24', backgroundColor: '#FFF7F2', padding: Spacing.lg },
+  offerTimeHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  offerTimeHeaderIcon: { width: 44, height: 44, borderRadius: BorderRadius.full, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 3 },
+  offerTimeHeaderCopy: { flex: 1, minWidth: 0 },
+  offerTimeTitle: { fontSize: FontSizes.lg, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  offerTimeSubtitle: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[600] },
   offerSectionLabel: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   offerPresetScroll: { gap: Spacing.sm, paddingRight: Spacing.lg },
-  offerPreset: { minHeight: 40, borderRadius: BorderRadius.full, backgroundColor: Colors.gray[100], paddingHorizontal: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  offerPresetActive: { backgroundColor: Colors.primary },
+  offerPreset: { minHeight: 40, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  offerPresetActive: { borderColor: Colors.primary, backgroundColor: Colors.primary },
   offerPresetText: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[700] },
   offerPresetTextActive: { color: Colors.white },
-  offerTimeSummary: { minHeight: 42, borderRadius: BorderRadius.md, backgroundColor: Colors.primary + '0D', flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.md },
-  offerTimeText: { flex: 1, fontSize: FontSizes.sm, fontWeight: FontWeights.semibold, color: Colors.gray[900], lineHeight: 19 },
+  offerTimeSummary: { minHeight: 96, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.primary + '20', backgroundColor: Colors.white, flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md },
+  offerTimeSummaryCopy: { flex: 1, minWidth: 0 },
+  offerTimeDate: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[600], textTransform: 'capitalize' },
+  offerTimeValue: { marginTop: 3, fontSize: 28, lineHeight: 32, fontWeight: FontWeights.bold, color: Colors.primaryDark, letterSpacing: -0.5 },
+  offerTimePresetBadge: { maxWidth: 104, minHeight: 34, borderRadius: BorderRadius.full, backgroundColor: Colors.primary + '12', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: Spacing.sm },
+  offerTimePresetBadgeText: { flexShrink: 1, fontSize: 11, lineHeight: 13, fontWeight: FontWeights.bold, color: Colors.primaryDark, textAlign: 'center' },
   offerPreferenceRow: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: Spacing.md, borderRadius: BorderRadius.lg, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[100], paddingHorizontal: Spacing.md },
   offerPreferenceIcon: { width: 42, height: 42, borderRadius: BorderRadius.full, backgroundColor: Colors.primary + '12', alignItems: 'center', justifyContent: 'center' },
   offerPreferenceCopy: { flex: 1, minWidth: 0 },
   offerPreferenceTitle: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   offerPreferenceText: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[600] },
   offerSubmitButton: { minHeight: 58, borderRadius: BorderRadius.lg, backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, shadowColor: Colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.24, shadowRadius: 14, elevation: 6 },
-  offerStickyFooter: { backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 14, elevation: 10 },
+  offerStickyFooter: { backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, paddingBottom: Spacing.sm, shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 14, elevation: 10 },
   offerSubmitText: { color: Colors.white, fontSize: FontSizes.lg, fontWeight: FontWeights.bold },
   offerNoteToggle: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.xs },
   offerNoteToggleText: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[700] },
@@ -2015,8 +2014,9 @@ const styles = StyleSheet.create({
   quickActionButton: { flex: 1, minHeight: 42, borderRadius: BorderRadius.full, backgroundColor: `${Colors.primary}0F`, borderWidth: 1, borderColor: `${Colors.primary}22`, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.xs, paddingHorizontal: Spacing.sm },
   quickActionText: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.primary },
   suggestionsSection: { gap: Spacing.sm },
-  suggestionsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  suggestionsHeader: { minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   suggestionsTitle: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  suggestionsToggleButton: { minHeight: 40, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.sm },
   suggestionsToggle: { fontSize: FontSizes.sm, fontWeight: FontWeights.semibold, color: Colors.primary },
   suggestionsScroll: { gap: Spacing.sm, paddingRight: Spacing.xl },
   suggestionChip: { maxWidth: 170, minHeight: 42, borderRadius: BorderRadius.full, backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[200], paddingLeft: 6, paddingRight: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
@@ -2112,11 +2112,8 @@ const styles = StyleSheet.create({
   summary: { backgroundColor: Colors.white, borderRadius: BorderRadius.sm, padding: Spacing.md, gap: 2 },
   summaryTitle: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   summaryText: { fontSize: 13, color: Colors.gray[600], lineHeight: 18 },
-  footer: { backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, gap: 2, shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 8 },
+  footer: { backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingHorizontal: Spacing.lg, paddingTop: Spacing.xs, paddingBottom: Spacing.sm, shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 8 },
   footerCompact: { paddingTop: Spacing.sm },
-  footerTitle: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
-  footerText: { fontSize: FontSizes.sm, color: Colors.gray[500] },
-  footerActions: { marginTop: Spacing.sm },
   footerActionsRow: { marginTop: 0, flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   footerSecondaryButton: { minWidth: 108, minHeight: 52, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.md },
   footerSecondaryButtonText: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[700] },

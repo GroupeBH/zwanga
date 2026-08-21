@@ -109,6 +109,7 @@ export type ServerTrip = {
   bookings?: ServerBooking[];
   currentLocation?: GeoPoint | null;
   lastLocationUpdateAt?: string | null;
+  startedAt?: string | null;
   completedAt?: string | null;
   driverSafetyEmergencyContactIds?: string[];
   recurringTemplateId?: string | null;
@@ -221,6 +222,8 @@ const mapBookingStatus = (status?: string): BookingStatus | undefined => {
     case 'accepted':
     case 'rejected':
     case 'cancelled':
+    case 'no_show':
+    case 'boarding_uncertain':
     case 'completed':
     case 'expired':
       return normalizedStatus as BookingStatus;
@@ -433,6 +436,7 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     passengers: mapPassengers(trip.bookings),
     currentLocation: trip.currentLocation ?? null,
     lastLocationUpdateAt: trip.lastLocationUpdateAt ?? null,
+    startedAt: trip.startedAt ?? null,
     completedAt: trip.completedAt ?? null,
     vehicleId: trip.vehicleId ?? null,
     description: trip.description ?? null,

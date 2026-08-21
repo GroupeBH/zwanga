@@ -2,14 +2,13 @@ import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constan
 import { REGISTERED_VEHICLE_TYPE_OPTIONS } from '@/constants/vehicleTypes';
 import type { TripRequestVehicleType } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -39,11 +38,10 @@ type VehicleFormModalProps = {
   onSubmit: () => void;
 };
 
-const DEFAULT_TITLE = 'Ajouter un v\u00e9hicule';
+const DEFAULT_TITLE = 'Ajouter un véhicule';
 const DEFAULT_SUBTITLE =
-  'Indiquez les d\u00e9tails exacts de votre v\u00e9hicule pour rassurer vos passagers.';
+  'Indiquez les détails exacts de votre véhicule pour rassurer vos passagers.';
 const DEFAULT_SUBMIT_LABEL = 'Enregistrer';
-const MODEL_LABEL = 'Mod\u00e8le';
 
 export function VehicleFormModal({
   visible,
@@ -66,18 +64,16 @@ export function VehicleFormModal({
   onSubmit,
 }: VehicleFormModalProps) {
   const insets = useSafeAreaInsets();
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const modelInputRef = useRef<TextInput>(null);
+  const colorInputRef = useRef<TextInput>(null);
+  const licensePlateInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-    const showSubscription = Keyboard.addListener(showEvent, (event) => {
-      setKeyboardHeight(event.endCoordinates.height);
-    });
-    const hideSubscription = Keyboard.addListener(hideEvent, () => {
-      setKeyboardHeight(0);
-    });
+    const showSubscription = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSubscription = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
 
     return () => {
       showSubscription.remove();
@@ -85,16 +81,27 @@ export function VehicleFormModal({
     };
   }, []);
 
-  const keyboardOffset = Platform.OS === 'android' ? Math.max(keyboardHeight - insets.bottom, 0) : 0;
-  const contentBottomPadding = Math.max(insets.bottom, 16) + Spacing.xl + keyboardOffset;
+  useEffect(() => {
+    if (!visible) {
+      setKeyboardVisible(false);
+    }
+  }, [visible]);
+
   const handleClose = () => {
     if (!submitting) {
+      Keyboard.dismiss();
       onClose();
     }
   };
 
   return (
-    <Modal transparent animationType="slide" visible={visible} onRequestClose={handleClose}>
+    <Modal
+      transparent
+      statusBarTranslucent
+      animationType="slide"
+      visible={visible}
+      onRequestClose={handleClose}
+    >
       <View style={styles.overlay}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={handleClose} />
 
@@ -103,33 +110,46 @@ export function VehicleFormModal({
           keyboardVerticalOffset={0}
           style={styles.keyboardAvoiding}
         >
-          <View style={[styles.card, keyboardOffset > 0 && { marginBottom: keyboardOffset }]}>
-            <SafeAreaView edges={['bottom']} style={styles.safeArea}>
-              <View style={styles.header}>
-                <TouchableOpacity style={styles.closeButton} onPress={handleClose} disabled={submitting}>
+          <View style={[styles.card, keyboardVisible && styles.cardWithKeyboard]}>
+            <SafeAreaView edges={keyboardVisible ? [] : ['bottom']} style={styles.safeArea}>
+              <View style={[styles.header, keyboardVisible && styles.headerWithKeyboard]}>
+                <View style={[styles.badge, keyboardVisible && styles.badgeWithKeyboard]}>
+                  <Ionicons
+                    name="car-sport-outline"
+                    size={keyboardVisible ? 20 : 24}
+                    color={Colors.white}
+                  />
+                </View>
+                <View style={styles.headerCopy}>
+                  <Text
+                    style={[styles.title, keyboardVisible && styles.titleWithKeyboard]}
+                    numberOfLines={1}
+                  >
+                    {title}
+                  </Text>
+                  {!keyboardVisible ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+                </View>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Fermer le formulaire"
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  style={styles.closeButton}
+                  onPress={handleClose}
+                  disabled={submitting}
+                >
                   <Ionicons name="close" size={24} color={Colors.gray[500]} />
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.hero}>
-                <View style={styles.badge}>
-                  <Ionicons name="car" size={28} color={Colors.white} />
-                </View>
-                <Text style={styles.title}>{title}</Text>
-                <Text style={styles.subtitle}>{subtitle}</Text>
-              </View>
-
-              <ScrollView
-                style={styles.scrollView}
-                contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-                scrollIndicatorInsets={{ bottom: contentBottomPadding }}
-                bounces={false}
+              <View
+                style={[
+                  styles.content,
+                  keyboardVisible && styles.contentWithKeyboard,
+                  { paddingBottom: keyboardVisible ? Spacing.sm : Math.max(insets.bottom, Spacing.lg) },
+                ]}
               >
                 <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Type de véhicule</Text>
+                  <Text style={styles.sectionLabel}>Type de véhicule</Text>
                   <View style={styles.vehicleTypeList}>
                     {REGISTERED_VEHICLE_TYPE_OPTIONS.map((option) => {
                       const selected = vehicleType === option.id;
@@ -188,70 +208,92 @@ export function VehicleFormModal({
                   </View>
                 </View>
 
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Marque</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Toyota"
-                    placeholderTextColor={Colors.gray[400]}
-                    value={brand}
-                    onChangeText={onBrandChange}
-                    autoCapitalize="words"
-                    returnKeyType="next"
-                  />
-                </View>
+                <View style={styles.fieldsGrid}>
+                  <View style={styles.fieldCell}>
+                    <Text style={styles.label}>Marque</Text>
+                    <TextInput
+                      accessibilityLabel="Marque du véhicule"
+                      style={[styles.input, keyboardVisible && styles.inputWithKeyboard]}
+                      placeholder="Toyota"
+                      placeholderTextColor={Colors.gray[400]}
+                      value={brand}
+                      onChangeText={onBrandChange}
+                      onFocus={() => setKeyboardVisible(true)}
+                      autoCapitalize="words"
+                      returnKeyType="next"
+                      onSubmitEditing={() => modelInputRef.current?.focus()}
+                      blurOnSubmit={false}
+                    />
+                  </View>
 
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>{MODEL_LABEL}</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Corolla"
-                    placeholderTextColor={Colors.gray[400]}
-                    value={model}
-                    onChangeText={onModelChange}
-                    autoCapitalize="words"
-                    returnKeyType="next"
-                  />
-                </View>
+                  <View style={styles.fieldCell}>
+                    <Text style={styles.label}>Modèle</Text>
+                    <TextInput
+                      ref={modelInputRef}
+                      accessibilityLabel="Modèle du véhicule"
+                      style={[styles.input, keyboardVisible && styles.inputWithKeyboard]}
+                      placeholder="Corolla"
+                      placeholderTextColor={Colors.gray[400]}
+                      value={model}
+                      onChangeText={onModelChange}
+                      onFocus={() => setKeyboardVisible(true)}
+                      autoCapitalize="words"
+                      returnKeyType="next"
+                      onSubmitEditing={() => colorInputRef.current?.focus()}
+                      blurOnSubmit={false}
+                    />
+                  </View>
 
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Couleur</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Bleu"
-                    placeholderTextColor={Colors.gray[400]}
-                    value={color}
-                    onChangeText={onColorChange}
-                    autoCapitalize="words"
-                    returnKeyType="next"
-                  />
-                </View>
+                  <View style={styles.fieldCell}>
+                    <Text style={styles.label}>Couleur</Text>
+                    <TextInput
+                      ref={colorInputRef}
+                      accessibilityLabel="Couleur du véhicule"
+                      style={[styles.input, keyboardVisible && styles.inputWithKeyboard]}
+                      placeholder="Bleu"
+                      placeholderTextColor={Colors.gray[400]}
+                      value={color}
+                      onChangeText={onColorChange}
+                      onFocus={() => setKeyboardVisible(true)}
+                      autoCapitalize="words"
+                      returnKeyType="next"
+                      onSubmitEditing={() => licensePlateInputRef.current?.focus()}
+                      blurOnSubmit={false}
+                    />
+                  </View>
 
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Plaque d&apos;immatriculation</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="ABC-1234"
-                    placeholderTextColor={Colors.gray[400]}
-                    value={licensePlate}
-                    onChangeText={onLicensePlateChange}
-                    autoCapitalize="characters"
-                    autoCorrect={false}
-                    returnKeyType="done"
-                  />
+                  <View style={styles.fieldCell}>
+                    <Text style={styles.label}>Immatriculation</Text>
+                    <TextInput
+                      ref={licensePlateInputRef}
+                      accessibilityLabel="Plaque d'immatriculation"
+                      style={[styles.input, keyboardVisible && styles.inputWithKeyboard]}
+                      placeholder="ABC-1234"
+                      placeholderTextColor={Colors.gray[400]}
+                      value={licensePlate}
+                      onChangeText={onLicensePlateChange}
+                      onFocus={() => setKeyboardVisible(true)}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      returnKeyType="done"
+                      onSubmitEditing={Keyboard.dismiss}
+                    />
+                  </View>
                 </View>
 
                 {errorMessage ? (
                   <View style={styles.errorBanner} accessibilityRole="alert">
-                    <Ionicons name="alert-circle" size={20} color={Colors.danger} />
-                    <Text style={styles.errorText}>{errorMessage}</Text>
+                    <Ionicons name="alert-circle" size={18} color={Colors.danger} />
+                    <Text style={styles.errorText} numberOfLines={2}>
+                      {errorMessage}
+                    </Text>
                   </View>
                 ) : null}
 
                 <View style={styles.actions}>
                   <TouchableOpacity
                     style={[styles.actionButton, styles.secondaryButton]}
-                    onPress={onClose}
+                    onPress={handleClose}
                     disabled={submitting}
                   >
                     <Text style={styles.secondaryButtonText}>Annuler</Text>
@@ -272,7 +314,7 @@ export function VehicleFormModal({
                     )}
                   </TouchableOpacity>
                 </View>
-              </ScrollView>
+              </View>
             </SafeAreaView>
           </View>
         </KeyboardAvoidingView>
@@ -295,64 +337,93 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   card: {
+    width: '100%',
+    minHeight: '70%',
+    maxHeight: '96%',
     backgroundColor: Colors.white,
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
-    width: '100%',
-    maxHeight: '92%',
-    minHeight: 360,
     shadowColor: Colors.black,
     shadowOpacity: 0.12,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: -5 },
     elevation: 16,
   },
+  cardWithKeyboard: {
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
+  },
   safeArea: {
     width: '100%',
   },
   header: {
-    alignItems: 'flex-end',
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
-  },
-  closeButton: {
-    padding: 4,
-  },
-  hero: {
+    minHeight: 88,
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.lg,
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
+  },
+  headerWithKeyboard: {
+    minHeight: 56,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.xs,
   },
   badge: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: Spacing.md,
+  },
+  badgeWithKeyboard: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  headerCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   title: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    marginBottom: 4,
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+  },
+  titleWithKeyboard: {
+    fontSize: FontSizes.lg,
   },
   subtitle: {
-    fontSize: FontSizes.sm,
     color: Colors.gray[500],
-    textAlign: 'center',
-    lineHeight: 20,
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+    marginTop: 2,
   },
-  scrollView: {
-    maxHeight: '100%',
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.gray[50],
   },
   content: {
-    paddingHorizontal: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.xs,
     gap: Spacing.md,
   },
+  contentWithKeyboard: {
+    gap: Spacing.sm,
+  },
   inputGroup: {
-    gap: 4,
+    gap: 6,
+  },
+  sectionLabel: {
+    color: Colors.gray[700],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
   },
   vehicleTypeList: {
     flexDirection: 'row',
@@ -430,19 +501,36 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: Colors.primary,
   },
+  fieldsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  fieldCell: {
+    width: '48%',
+    flexGrow: 1,
+    flexBasis: '46%',
+    gap: 4,
+  },
   label: {
-    fontSize: 12,
-    fontWeight: FontWeights.bold,
     color: Colors.gray[700],
+    fontSize: 11,
+    fontWeight: FontWeights.bold,
   },
   input: {
+    minHeight: 48,
     backgroundColor: Colors.gray[50],
     borderWidth: 1,
     borderColor: Colors.gray[200],
     borderRadius: BorderRadius.lg,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: FontSizes.base,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+  },
+  inputWithKeyboard: {
+    minHeight: 42,
+    paddingVertical: 7,
   },
   errorBanner: {
     flexDirection: 'row',
@@ -452,22 +540,23 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(239, 68, 68, 0.08)',
     borderWidth: 1,
     borderColor: 'rgba(239, 68, 68, 0.24)',
-    padding: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
   },
   errorText: {
     flex: 1,
     color: Colors.danger,
-    fontSize: FontSizes.sm,
-    lineHeight: 20,
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
   },
   actions: {
     flexDirection: 'row',
     gap: Spacing.md,
-    marginTop: Spacing.sm,
+    paddingTop: Spacing.lg,
   },
   actionButton: {
     flex: 1,
-    minHeight: 52,
+    minHeight: 48,
     borderRadius: BorderRadius.xl,
     alignItems: 'center',
     justifyContent: 'center',

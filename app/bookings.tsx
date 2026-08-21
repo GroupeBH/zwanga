@@ -52,6 +52,16 @@ const STATUS_CONFIG: Record<
     color: Colors.gray[600],
     background: 'rgba(156, 163, 175, 0.2)',
   },
+  no_show: {
+    label: 'Non embarque',
+    color: Colors.danger,
+    background: 'rgba(239, 68, 68, 0.12)',
+  },
+  boarding_uncertain: {
+    label: 'Embarquement non confirme',
+    color: Colors.warning,
+    background: 'rgba(245, 158, 11, 0.14)',
+  },
   completed: {
     label: 'Terminée',
     color: Colors.gray[600],
@@ -86,7 +96,7 @@ export default function BookingsScreen() {
       const now = new Date();
       return (bookings ?? []).filter((booking) => {
         // Les réservations rejetées, annulées ou complétées ne sont pas actives
-        if (booking.status === 'rejected' || booking.status === 'cancelled' || booking.status === 'completed') {
+        if (booking.status === 'rejected' || booking.status === 'cancelled' || booking.status === 'no_show' || booking.status === 'boarding_uncertain' || booking.status === 'completed') {
           return false;
         }
         
@@ -114,7 +124,7 @@ export default function BookingsScreen() {
       const now = new Date();
       return (bookings ?? []).filter((booking) => {
         // Les réservations rejetées, annulées ou complétées sont dans l'historique
-        if (booking.status === 'rejected' || booking.status === 'cancelled' || booking.status === 'completed') {
+        if (booking.status === 'rejected' || booking.status === 'cancelled' || booking.status === 'no_show' || booking.status === 'boarding_uncertain' || booking.status === 'completed') {
           return true;
         }
         
