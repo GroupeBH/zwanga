@@ -58,14 +58,14 @@ const LEDGER_META: Record<
   { label: string; icon: keyof typeof Ionicons.glyphMap; color: string }
 > = {
   top_up: { label: 'Recharge', icon: 'add-circle-outline', color: Colors.successDark },
-  loyalty_reward: { label: 'Fidelite', icon: 'sparkles-outline', color: Colors.secondaryDark },
+  loyalty_reward: { label: 'Fidélité', icon: 'sparkles-outline', color: Colors.secondaryDark },
   booking_payment: { label: 'Trajet paye', icon: 'car-outline', color: Colors.danger },
   booking_refund: { label: 'Remboursement', icon: 'return-down-back-outline', color: Colors.success },
   booking_fare_adjustment: { label: 'Ajustement trajet', icon: 'swap-horizontal-outline', color: Colors.infoDark },
   subscription_payment: { label: 'Abonnement', icon: 'shield-checkmark-outline', color: Colors.danger },
   subscription_reward: { label: 'Bonus abonnement', icon: 'gift-outline', color: Colors.successDark },
-  transfer_out: { label: 'Partage envoye', icon: 'arrow-up-circle-outline', color: Colors.danger },
-  transfer_in: { label: 'Partage recu', icon: 'arrow-down-circle-outline', color: Colors.successDark },
+  transfer_out: { label: 'Partage envoyé', icon: 'arrow-up-circle-outline', color: Colors.danger },
+  transfer_in: { label: 'Partage reçu', icon: 'arrow-down-circle-outline', color: Colors.successDark },
 };
 
 const formatWalletAmount = (amount?: number | string | null, currency?: string | null) => {
@@ -194,8 +194,8 @@ export default function WalletScreen() {
       setTopUpPhone(DRC_PAYMENT_PHONE_PREFIX);
       showDialog({
         variant: 'warning',
-        title: 'Numero requis',
-        message: 'Entrez un numero Mobile Money congolais, par exemple +243891234567.',
+        title: 'Numéro requis',
+        message: 'Entrez un numéro Mobile Money congolais, par exemple +243891234567.',
       });
       return;
     }
@@ -216,7 +216,7 @@ export default function WalletScreen() {
 
       showDialog({
         variant: 'success',
-        title: 'Recharge lancee',
+        title: 'Recharge lancée',
         message:
           response.payment.message ||
           (openedPaymentPage
@@ -252,8 +252,8 @@ export default function WalletScreen() {
     } catch (error) {
       showDialog({
         variant: 'danger',
-        title: 'Verification impossible',
-        message: getApiErrorMessage(error, 'Impossible de verifier cette recharge.'),
+        title: 'Vérification impossible',
+        message: getApiErrorMessage(error, 'Impossible de vérifier cette recharge.'),
       });
     }
   };
@@ -276,7 +276,7 @@ export default function WalletScreen() {
       showDialog({
         variant: 'warning',
         title: 'Destinataire requis',
-        message: 'Utilisez le telephone +243, un email ou un identifiant utilisateur valide.',
+        message: 'Utilisez le téléphone +243, un email ou un identifiant utilisateur valide.',
       });
       return;
     }
@@ -301,7 +301,7 @@ export default function WalletScreen() {
       showDialog({
         variant: 'success',
         title: 'Jetons partages',
-        message: `${formatWalletAmount(response.amount, response.currency)} envoyes a ${recipientName}.`,
+        message: `${formatWalletAmount(response.amount, response.currency)} envoyés à ${recipientName}.`,
       });
     } catch (error) {
       showDialog({
@@ -352,7 +352,7 @@ export default function WalletScreen() {
         </TouchableOpacity>
         <View style={styles.headerText}>
           <Text style={styles.headerTitle}>Jetons Zwanga</Text>
-          <Text style={styles.headerSubtitle}>Recharge, fidelite et partage</Text>
+          <Text style={styles.headerSubtitle}>Recharge, fidélité et partage</Text>
         </View>
         <TouchableOpacity onPress={refreshAll} style={styles.headerButton}>
           {isRefreshing ? (
@@ -388,7 +388,7 @@ export default function WalletScreen() {
               </Text>
             )}
             <Text style={styles.balanceHint}>
-              Les jetons achetes et les jetons de fidelite sont utilisables pour vos trajets et abonnements.
+              Les jetons achetés et les jetons de fidélité sont utilisables pour vos trajets et abonnements.
             </Text>
           </View>
 
@@ -506,7 +506,7 @@ export default function WalletScreen() {
                   ) : (
                     <>
                       <Ionicons name="sync-outline" size={18} color={Colors.primary} />
-                      <Text style={styles.secondaryButtonText}>Verifier la recharge</Text>
+                      <Text style={styles.secondaryButtonText}>Vérifier la recharge</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -527,7 +527,7 @@ export default function WalletScreen() {
                 autoCapitalize="none"
                 keyboardType="default"
                 onChangeText={setTransferRecipient}
-                placeholder="Telephone, email ou ID utilisateur"
+                placeholder="Téléphone, email ou ID utilisateur"
                 placeholderTextColor={Colors.gray[400]}
                 style={styles.input}
                 value={transferRecipient}

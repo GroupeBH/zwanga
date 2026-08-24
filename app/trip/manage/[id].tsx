@@ -75,12 +75,12 @@ const BOOKING_STATUS_CONFIG: Record<
     background: 'rgba(156, 163, 175, 0.2)',
   },
   no_show: {
-    label: 'Non embarque',
+    label: 'Non embarqué',
     color: Colors.danger,
     background: 'rgba(239, 68, 68, 0.12)',
   },
   boarding_uncertain: {
-    label: 'Embarquement non confirme',
+    label: 'Embarquement non confirmé',
     color: Colors.warning,
     background: 'rgba(245, 158, 11, 0.14)',
   },
@@ -326,13 +326,13 @@ export default function ManageTripScreen() {
               variant: 'info',
               icon: 'car-sport',
               title: 'Conducteur proche',
-              message: `Vous approchez du point de récuperation de ${passengerName}.${distanceText}`,
+              message: `Vous approchez du point de récupération de ${passengerName}.${distanceText}`,
             },
             driver_arrived_pickup: {
               variant: 'info',
               icon: 'location',
-              title: 'Point de recuperation atteint',
-              message: `Vous êtes arrivé au point de récuperation de ${passengerName}. Le passager est notifié.`,
+              title: 'Point de récupération atteint',
+              message: `Vous êtes arrivé au point de récupération de ${passengerName}. Le passager est notifié.`,
             },
             parties_nearby: {
               variant: 'success',
@@ -344,25 +344,25 @@ export default function ManageTripScreen() {
               variant: 'success',
               icon: 'hand-left',
               title: "Le passager s'est signalé",
-              message: `${passengerName} indique qu'il est au point de récuperation.`,
+              message: `${passengerName} indique qu'il est au point de récupération.`,
             },
             pickup_confirmed: {
               variant: 'success',
               icon: 'checkmark-circle',
-              title: 'Passager embarque',
+              title: 'Passager embarqué',
               message: `${passengerName} a été embarqué. Vous pouvez continuer vers sa destination.`,
             },
             passenger_no_show: {
               variant: 'info',
               icon: 'person-remove',
-              title: 'Passager non embarque',
-              message: `${passengerName} n'a pas ete detecte a bord. La reservation est cloturee sans paiement.`,
+              title: 'Passager non embarqué',
+              message: `${passengerName} n'a pas été détecté à bord. La réservation est clôturée sans paiement.`,
             },
             passenger_boarding_uncertain: {
               variant: 'warning',
               icon: 'help-circle',
-              title: 'Embarquement non confirme',
-              message: `Le trajet est arrive a destination sans preuve GPS suffisante de l'embarquement de ${passengerName}. La reservation est cloturee sans paiement.`,
+              title: 'Embarquement non confirmé',
+              message: `Le trajet est arrivé à destination sans preuve GPS suffisante de l'embarquement de ${passengerName}. La réservation est clôturée sans paiement.`,
             },
             passenger_near_destination: {
               variant: 'info',
@@ -383,13 +383,13 @@ export default function ManageTripScreen() {
                 ? 'Destination finale atteinte'
                 : 'Destination finale proche',
               message: isTripDestinationReachedZone
-                ? `Le point d'arrivée du trajet est atteint. Le trajet sera terminé automatiquement dans 10 minutes si le vehicule reste sur place.${distanceText}`
+                ? `Le point d'arrivée du trajet est atteint. Le trajet sera terminé automatiquement dans 10 minutes si le véhicule reste sur place.${distanceText}`
                 : `Le point d'arrivée du trajet est presque atteint.${distanceText}`,
             },
             driver_arrived_destination: {
               variant: 'success',
               icon: 'flag',
-              title: 'Trajet termine',
+              title: 'Trajet terminé',
               message: `Vous avez atteint la destination finale.${distanceText}`,
             },
           };
@@ -497,7 +497,7 @@ export default function ManageTripScreen() {
     const nextArrival = editArrivalAddress.trim();
 
     if (!nextDeparture || !nextArrival) {
-      setEditRouteError('Renseignez les adresses de depart et d arrivee.');
+      setEditRouteError("Renseignez les adresses de départ et d'arrivée.");
       return;
     }
 
@@ -546,7 +546,7 @@ export default function ManageTripScreen() {
       if (!coordinates) {
         setIsResolvingRoute(false);
         setEditRouteError(
-          'Impossible de localiser cette adresse d\'arrivée. Verifiez le texte puis réessayez.',
+          'Impossible de localiser cette adresse d\'arrivée. Vérifiez le texte puis réessayez.',
         );
         return;
       }
@@ -736,7 +736,7 @@ export default function ManageTripScreen() {
         trip_id: trip.id,
         source_screen: 'trip_manage',
       });
-      showFeedback('success', 'Le trajet a ete interrompu avec succes.');
+      showFeedback('success', 'Le trajet a été interrompu avec succès.');
       refreshAll();
     } catch (error: any) {
       const message =
@@ -812,7 +812,7 @@ export default function ManageTripScreen() {
       variant: 'warning',
       title: 'Demander une interruption',
       message:
-        'Cette interruption devra etre confirmee par tous les passagers a bord avant de prendre effet.',
+        'Cette interruption devra être confirmée par tous les passagers à bord avant de prendre effet.',
       actions: [
         { label: 'Annuler', variant: 'ghost' },
         {
@@ -1069,7 +1069,7 @@ export default function ManageTripScreen() {
             <View style={styles.timeContainer}>
               <Ionicons name="time-outline" size={20} color={Colors.gray[600]} />
               <Text style={styles.timeText} numberOfLines={2}>
-                Depart {formatDateTime(trip.departureTime)}
+                Départ {formatDateTime(trip.departureTime)}
               </Text>
             </View>
             <View style={[styles.statusBadge, { backgroundColor: statusColor(trip.status).color + '20' }]}>
@@ -1301,9 +1301,9 @@ export default function ManageTripScreen() {
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
             <View>
-              <Text style={styles.sectionTitle}>Securite du trajet</Text>
+              <Text style={styles.sectionTitle}>Sécurité du trajet</Text>
               <Text style={styles.sectionSubtitle}>
-                Choisissez clairement les proches a notifier pour ce trajet.
+                Choisissez clairement les proches à notifier pour ce trajet.
               </Text>
             </View>
             <View style={styles.sectionIconBadge}>
@@ -1494,7 +1494,7 @@ export default function ManageTripScreen() {
           <View style={[styles.bookingModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
             <Text style={styles.bookingModalTitle}>Modifier le trajet</Text>
             <Text style={styles.bookingModalDescription}>
-              {"Mettez à jour l'adresse de depart et/ou d'arrivée."}
+              {"Mettez à jour l'adresse de départ et/ou d'arrivée."}
             </Text>
 
             <Text style={styles.editRouteLabel}>Adresse de départ</Text>

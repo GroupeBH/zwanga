@@ -120,8 +120,8 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
       if (ongoingTrip?.trip) {
         startOngoingTripTracking({
           tripId: ongoingTrip.trip.id,
-          departure: ongoingTrip.trip.departure?.name ?? ongoingTrip.trip.departure?.address ?? 'Depart',
-          arrival: ongoingTrip.trip.arrival?.name ?? ongoingTrip.trip.arrival?.address ?? 'Arrivee',
+          departure: ongoingTrip.trip.departure?.name ?? ongoingTrip.trip.departure?.address ?? 'Départ',
+          arrival: ongoingTrip.trip.arrival?.name ?? ongoingTrip.trip.arrival?.address ?? 'Arrivée',
           role: ongoingTrip.role,
           departureTime: ongoingTrip.trip.departureTime,
         });
@@ -270,7 +270,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
                 <View style={styles.timeRow}>
                   <Ionicons name="time-outline" size={14} color={Colors.gray[500]} style={styles.routeIcon} />
                   <Text style={styles.timeText}>
-                    Depart {formatDateTime(trip.departureTime)}
+                    Départ {formatDateTime(trip.departureTime)}
                   </Text>
                 </View>
               )}

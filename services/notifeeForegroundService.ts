@@ -1,9 +1,9 @@
 /**
  * Enregistrement du foreground service Notifee (Android)
- * Necessaire quand on utilise `android.asForegroundService`
+ * Nécessaire quand on utilise `android.asForegroundService`
  */
 
-// Types Notifee (charges dynamiquement pour eviter les crashs si non dispo)
+// Types Notifee (chargés dynamiquement pour éviter les plantages si indisponibles)
 type NotifeeModule = typeof import('@notifee/react-native');
 type NotifeeDefault = NotifeeModule['default'];
 

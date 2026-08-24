@@ -280,7 +280,7 @@ export default function DriverDetailsScreen() {
             <Text style={styles.sectionTitle}>AVIS ({reviewCount})</Text>
             {reviewCount === 0 ? (
               <Text style={styles.emptyReviewsText}>
-                Pas encore d'avis pour ce conducteur
+                Pas encore d’avis pour ce conducteur
               </Text>
             ) : (
               <View style={styles.reviewsList}>

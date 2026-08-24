@@ -3,7 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 
 /**
  * Service de gestion des tokens JWT avec SecureStore
- * + cache memoire pour limiter les lectures/dechiffrements repetes.
+ * + cache mémoire pour limiter les lectures et déchiffrements répétés.
  */
 
 type SecureStoreKeyConfig = {
@@ -47,7 +47,7 @@ const readSecureItem = async (key: string, label: string): Promise<string | null
     if (error?.message?.includes('Invalid key') || error?.message?.includes('not found')) {
       return null;
     }
-    console.error(`Erreur lors de la recuperation de ${label}:`, error);
+    console.error(`Erreur lors de la récupération de ${label}:`, error);
     return null;
   }
 };
@@ -94,7 +94,7 @@ const hydrateFcmCache = async (): Promise<string | null> => {
 };
 
 /**
- * Stocke l'access token de maniere securisee
+ * Stocke le jeton d'accès de manière sécurisée
  */
 export async function storeAccessToken(token: string): Promise<void> {
   try {
@@ -108,7 +108,7 @@ export async function storeAccessToken(token: string): Promise<void> {
 }
 
 /**
- * Recupere l'access token depuis le stockage securise
+ * Récupère le jeton d'accès depuis le stockage sécurisé
  */
 export async function getAccessToken(): Promise<string | null> {
   const { accessToken } = await hydrateTokensCache();
@@ -116,7 +116,7 @@ export async function getAccessToken(): Promise<string | null> {
 }
 
 /**
- * Stocke le refresh token de maniere securisee
+ * Stocke le jeton d'actualisation de manière sécurisée
  */
 export async function storeRefreshToken(token: string): Promise<void> {
   try {
@@ -130,7 +130,7 @@ export async function storeRefreshToken(token: string): Promise<void> {
 }
 
 /**
- * Recupere le refresh token depuis le stockage securise
+ * Récupère le jeton d'actualisation depuis le stockage sécurisé
  */
 export async function getRefreshToken(): Promise<string | null> {
   const { refreshToken } = await hydrateTokensCache();
@@ -156,19 +156,19 @@ export async function storeTokens(accessToken: string, refreshToken: string): Pr
 }
 
 /**
- * Recupere les deux tokens (access et refresh)
+ * Récupère les deux jetons (accès et actualisation)
  */
 export async function getTokens(): Promise<TokenPair> {
   try {
     return await hydrateTokensCache();
   } catch (error: any) {
-    console.error('Erreur lors de la recuperation des tokens:', error);
+    console.error('Erreur lors de la récupération des tokens:', error);
     return { accessToken: null, refreshToken: null };
   }
 }
 
 /**
- * Supprime l'access token du stockage securise
+ * Supprime le jeton d'accès du stockage sécurisé
  */
 export async function removeAccessToken(): Promise<void> {
   try {
@@ -184,7 +184,7 @@ export async function removeAccessToken(): Promise<void> {
 }
 
 /**
- * Supprime le refresh token du stockage securise
+ * Supprime le jeton d'actualisation du stockage sécurisé
  */
 export async function removeRefreshToken(): Promise<void> {
   try {
@@ -200,7 +200,7 @@ export async function removeRefreshToken(): Promise<void> {
 }
 
 /**
- * Supprime tous les tokens du stockage securise
+ * Supprime tous les jetons du stockage sécurisé
  * Vide completement le SecureStore (access token, refresh token, FCM token)
  */
 export async function clearTokens(): Promise<void> {
@@ -210,7 +210,7 @@ export async function clearTokens(): Promise<void> {
       removeRefreshToken(),
       removeFcmToken(),
     ]);
-    console.log('Tous les tokens ont ete supprimes du SecureStore');
+    console.log('Tous les jetons ont été supprimés du SecureStore');
   } catch (error) {
     console.error('Erreur lors de la suppression des tokens:', error);
   } finally {
@@ -222,7 +222,7 @@ export async function clearTokens(): Promise<void> {
 }
 
 /**
- * Stocke le token FCM pour eviter les requetes reseaux inutiles
+ * Stocke le jeton FCM pour éviter les requêtes réseau inutiles
  */
 export async function storeFcmToken(token: string): Promise<void> {
   try {
@@ -235,14 +235,14 @@ export async function storeFcmToken(token: string): Promise<void> {
 }
 
 /**
- * Recupere le token FCM sauvegarde
+ * Récupère le jeton FCM sauvegardé
  */
 export async function getStoredFcmToken(): Promise<string | null> {
   return hydrateFcmCache();
 }
 
 /**
- * Supprime le token FCM sauvegarde
+ * Supprime le jeton FCM sauvegardé
  */
 export async function removeFcmToken(): Promise<void> {
   try {

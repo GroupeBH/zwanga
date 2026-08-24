@@ -523,7 +523,7 @@ export function KycWizardModal({
         {isNativeCameraOpening ? (
           <View style={styles.cameraFallback}>
             <ActivityIndicator color={Colors.white} />
-            <Text style={styles.cameraFallbackText}>Ouverture de la camÃ©ra du tÃ©lÃ©phone...</Text>
+            <Text style={styles.cameraFallbackText}>Ouverture de la caméra du téléphone...</Text>
           </View>
         ) : (
           <CameraView
@@ -541,7 +541,7 @@ export function KycWizardModal({
             {!isCameraReady && !isNativeCameraOpening && (
               <View pointerEvents="none" style={styles.cameraPreparing}>
                 <ActivityIndicator color={Colors.white} />
-                <Text style={styles.cameraPreparingText}>PrÃ©paration de la camÃ©ra...</Text>
+                <Text style={styles.cameraPreparingText}>Préparation de la caméra...</Text>
               </View>
             )}
             <View

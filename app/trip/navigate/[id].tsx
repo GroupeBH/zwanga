@@ -309,7 +309,7 @@ const fitMapToSafeCoordinates = (
       animated,
     });
   } catch (error) {
-    console.warn('[Navigation] Ajustement carte ignore pour eviter un crash:', {
+    console.warn('[Navigation] Ajustement de la carte ignoré pour éviter un plantage :', {
       context: logContext,
       error,
     });
@@ -512,7 +512,7 @@ const getTripLocationLabel = (
 ) => (location?.address || location?.name || fallback).trim();
 
 const getBookingPickupLabel = (booking: Booking | null | undefined, trip?: Trip | null) => {
-  const tripLabel = getTripLocationLabel(trip?.departure, 'Point de récuperation');
+  const tripLabel = getTripLocationLabel(trip?.departure, 'Point de récupération');
   const bookingLabel = (booking?.passengerOrigin || booking?.passengerOriginReference || '').trim();
   const hasPassengerCoordinate = Boolean(
     normalizeTripMapCoordinate(
@@ -1564,8 +1564,8 @@ export default function NavigationScreen() {
           icon: 'flag',
           title: isAutoCompleteZone ? 'Zone de destination atteinte' : 'Destination finale proche',
           message: isAutoCompleteZone
-            ? `Le vehicule est à moins de ${DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS} m du point d'arrivée. Le trajet sera terminé automatiquement après 10 minutes si le vehicule reste dans cette zone.${distanceText}`
-            : `Le point d'arrivee du trajet est presque atteint.${distanceText}`,
+            ? `Le véhicule est à moins de ${DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS} m du point d'arrivée. Le trajet sera terminé automatiquement après 10 minutes si le véhicule reste dans cette zone.${distanceText}`
+            : `Le point d'arrivée du trajet est presque atteint.${distanceText}`,
         });
 
         void Speech.stop().finally(() => {
@@ -1808,7 +1808,7 @@ export default function NavigationScreen() {
           });
         }
       } catch (error) {
-        console.warn('[Navigation] Position REST conducteur indisponible au retour app:', error);
+        console.warn('[Navigation] Position REST du conducteur indisponible au retour dans l’app :', error);
       }
 
       let location: Location.LocationObject | null = null;
@@ -1933,7 +1933,7 @@ export default function NavigationScreen() {
         })
           .unwrap()
           .catch((error) => {
-            console.warn('[Navigation] Position REST retour app non envoyee:', error);
+            console.warn('[Navigation] Position REST retour app non envoyée:', error);
           });
       }
 
@@ -1943,7 +1943,7 @@ export default function NavigationScreen() {
         });
       }
     } catch (error) {
-      console.warn('[Navigation] Verification REST de fin de trajet impossible:', error);
+      console.warn('[Navigation] Vérification REST de fin de trajet impossible:', error);
     } finally {
       if (appStateRef.current === 'active') {
         completedDuringInactiveCandidateRef.current = false;
@@ -1982,7 +1982,7 @@ export default function NavigationScreen() {
         void checkTripCompletionFromRestOnForeground();
         if (tripId) {
           void trackingSocket.resumeBoardingDetection(tripId).catch((error) => {
-            console.warn('[Navigation] Reprise detection embarquement impossible:', error);
+            console.warn('[Navigation] Reprise détection embarquement impossible:', error);
           });
         }
       }
@@ -2036,7 +2036,7 @@ export default function NavigationScreen() {
     return () => clearInterval(interval);
   }, [pickupNotice?.expiresAt]);
 
-  // Connexion WebSocket pour le tracking temps reel
+  // Connexion WebSocket pour le tracking temps réel
   useEffect(() => {
     if (!tripId || !isTripOngoing) {
       setIsSocketConnected(false);
@@ -2046,14 +2046,14 @@ export default function NavigationScreen() {
     let isCancelled = false;
     setLivePassengerLocations({});
 
-    // Rejoindre la room du trip pour le tracking temps reel
+    // Rejoindre la room du trip pour le tracking temps réel
     trackingSocket
       .joinTrip(tripId)
       .then(() => {
         if (!isMountedRef.current || isCancelled) return;
         setIsSocketConnected(true);
         void trackingSocket.requestPassengerLocations(tripId);
-        console.log('[Navigation] Connecte au tracking temps reel');
+        console.log('[Navigation] Connecté au suivi en temps réel');
       })
       .catch((error) => {
         if (!isMountedRef.current || isCancelled) return;
@@ -2061,7 +2061,7 @@ export default function NavigationScreen() {
         console.warn('[Navigation] Connexion tracking impossible:', error);
       });
 
-    // Ecouter les erreurs WebSocket
+    // Écouter les erreurs WebSocket
     const unsubscribeError = trackingSocket.subscribeToErrors((message) => {
       if (!isMountedRef.current || isCancelled) return;
       setIsSocketConnected(false);
@@ -2096,8 +2096,8 @@ export default function NavigationScreen() {
             showDialog({
               variant: 'info',
               icon: 'person-remove',
-              title: 'Passager non embarque',
-              message: `${passengerName} n'a pas ete detecte a bord apres le delai d'attente. La reservation est cloturee sans paiement.`,
+              title: 'Passager non embarqué',
+              message: `${passengerName} n'a pas été détecté à bord après le délai d'attente. La réservation est clôturée sans paiement.`,
             });
             return;
           }
@@ -2113,8 +2113,8 @@ export default function NavigationScreen() {
             showDialog({
               variant: 'warning',
               icon: 'help-circle',
-              title: 'Embarquement non confirme',
-              message: `Le trajet est arrive a destination sans preuve GPS suffisante de l'embarquement de ${passengerName}. La reservation est cloturee sans paiement.`,
+              title: 'Embarquement non confirmé',
+              message: `Le trajet est arrivé à destination sans preuve GPS suffisante de l'embarquement de ${passengerName}. La réservation est clôturée sans paiement.`,
             });
             return;
           }
@@ -2216,7 +2216,7 @@ export default function NavigationScreen() {
 
     return () => {
       isCancelled = true;
-      // Quitter la room et se deconnecter proprement
+      // Quitter le canal et se déconnecter proprement
       trackingSocket.leaveTrip(tripId);
       unsubscribeError();
       unsubscribeAutoProgress();
@@ -2224,7 +2224,7 @@ export default function NavigationScreen() {
       clearInterval(passengerLocationsRefreshInterval);
       currentLocationRef.current = null;
 
-      console.log('[Navigation] Deconnecte et memoire nettoyee');
+      console.log('[Navigation] Déconnecté et mémoire nettoyée');
     };
   }, [
     isTripOngoing,
@@ -2482,7 +2482,7 @@ export default function NavigationScreen() {
         location.coords.longitude,
       );
       if (!coordinate) {
-        console.warn('[Navigation] Position conducteur non envoyee car invalide:', {
+        console.warn('[Navigation] Position conducteur non envoyée car invalide:', {
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
         });
@@ -2521,12 +2521,12 @@ export default function NavigationScreen() {
       void trackingSocket
         .updateDriverLocation(tripId, coordinates, metadata)
         .catch((error) => {
-          console.warn('[Navigation] Position conducteur socket non envoyee:', error);
+          console.warn('[Navigation] Position conducteur socket non envoyée:', error);
           void updateDriverLocation({ tripId, coordinates, ...metadata })
             .unwrap()
             .catch((fallbackError) => {
               console.warn(
-                '[Navigation] Position conducteur REST non envoyee:',
+                '[Navigation] Position conducteur REST non envoyée:',
                 fallbackError,
               );
             });
@@ -2580,15 +2580,15 @@ export default function NavigationScreen() {
               const { status: requestedBackgroundStatus } = await Location.requestBackgroundPermissionsAsync();
               if (!isMountedRef.current) return;
               if (requestedBackgroundStatus !== 'granted') {
-                console.log('Permission de localisation en arriere-plan non accordee - mode premier plan uniquement');
+                console.log('Permission de localisation en arrière-plan non accordee - mode premier plan uniquement');
               }
             } else {
-              console.log('Disclosure arriere-plan refusee par l utilisateur - mode premier plan uniquement');
+              console.log('Autorisation d’arrière-plan refusée par l’utilisateur : mode premier plan uniquement');
             }
           }
         } catch (bgError) {
-          // La permission de localisation en arriere-plan n est pas disponible/configuree
-          console.log('Localisation en arriere-plan non disponible:', bgError);
+          // La permission de localisation en arrière-plan n'est pas disponible/configuree
+          console.log('Localisation en arrière-plan non disponible:', bgError);
         }
 
         const hasServicesEnabled = await Location.hasServicesEnabledAsync();
@@ -2662,8 +2662,8 @@ export default function NavigationScreen() {
       let lastStateUpdateTime = 0;
       let lastBackendUpdateTime = 0;
       let lastStepCheckTime = 0;
-      const STATE_UPDATE_INTERVAL = DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS; // Mise a jour du state toutes les 3 secondes
-      const BACKEND_UPDATE_INTERVAL = DRIVER_LOCATION_BACKEND_UPDATE_INTERVAL_MS; // Mise a jour WebSocket toutes les 3 secondes
+      const STATE_UPDATE_INTERVAL = DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS; // Mise à jour du state toutes les 3 secondes
+      const BACKEND_UPDATE_INTERVAL = DRIVER_LOCATION_BACKEND_UPDATE_INTERVAL_MS; // Mise à jour WebSocket toutes les 3 secondes
       const STEP_CHECK_INTERVAL = 5000; // Vérification étapes toutes les 5 secondes
 
       // S'abonner aux mises à jour de localisation (fréquence réduite pour stabilité)
@@ -2671,14 +2671,14 @@ export default function NavigationScreen() {
         {
           accuracy: Location.Accuracy.High, // Équilibre entre précision et batterie
           timeInterval: DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS, // GPS update toutes les 3 secondes
-          distanceInterval: 5, // Ou tous les 5 metres
+          distanceInterval: 5, // Ou tous les 5 mètres
         },
         (newLocation) => {
           if (!isMountedRef.current) return;
           const now = Date.now();
           const normalizedLocation = normalizeDriverLocationObject(newLocation);
           if (!normalizedLocation) {
-            console.warn('[Navigation] Position conducteur ignoree car invalide:', {
+            console.warn('[Navigation] Position du conducteur ignorée car invalide :', {
               latitude: newLocation.coords.latitude,
               longitude: newLocation.coords.longitude,
             });
@@ -2715,7 +2715,7 @@ export default function NavigationScreen() {
               maxJumpMeters: MAX_PLAUSIBLE_LOCATION_JUMP_METERS,
             })
           ) {
-            console.warn('[Navigation] Position conducteur ignoree: saut GPS incoherent');
+            console.warn('[Navigation] Position du conducteur ignorée : saut GPS incohérent');
             return;
           }
 
@@ -3073,7 +3073,7 @@ export default function NavigationScreen() {
     const signatureChanged = routeSignatureRef.current !== routeSignature;
     
     // Ne fetch que si:
-    // 1. On a un trip avec depart/arrivee publies
+    // 1. On a un trip avec départ/arrivée publies
     // 2. ET (le route n'a jamais été fetch OU les waypoints ont changé)
     // 3. ET au moins 30 secondes se sont écoulées depuis le dernier fetch
     if (!signatureChanged && routeFetchedRef.current) {
@@ -3122,7 +3122,7 @@ export default function NavigationScreen() {
     const safeRouteOrigin = getSafeMapCoordinate(routeOrigin);
     const safeRouteDestination = getSafeMapCoordinate(routeDestination);
     if (!safeRouteOrigin || !safeRouteDestination) {
-      console.warn('[DriverNavigation] Directions ignorees: coordonnees invalides', {
+      console.warn('[DriverNavigation] Directions ignorees: coordonnées invalides', {
         tripId,
         origin: routeOrigin,
         destination: routeDestination,
@@ -3381,7 +3381,7 @@ export default function NavigationScreen() {
         };
         const distanceToWaypoint = calculateDistance(currentCoords, waypointCoords);
 
-        // Si on est a moins de 50 metres du waypoint, notifier le conducteur.
+        // Si on est à moins de 50 mètres du point de passage, notifier le conducteur.
         if (distanceToWaypoint < DRIVER_PICKUP_ARRIVAL_DISTANCE_KM) {
           if (!announcedWaypointIdsRef.current.has(nextWaypoint.id)) {
             announcedWaypointIdsRef.current.add(nextWaypoint.id);
@@ -3649,7 +3649,7 @@ export default function NavigationScreen() {
         routeFetchedRef.current = false;
         await Promise.all([refetchBookings(), refetchTrip()]);
         void speakNavigationMessage(
-          `${booking.passengerName || 'Passager'} accepte. Recalcul de l'itineraire.`,
+          `${booking.passengerName || 'Passager'} accepte. Recalcul de l'itinéraire.`,
           { force: true },
         );
       } catch (error: any) {
@@ -3687,7 +3687,7 @@ export default function NavigationScreen() {
           title: 'Refus impossible',
           message: getBookingActionErrorMessage(
             error,
-            'Impossible de refuser cette reservation pour le moment.',
+            'Impossible de refuser cette réservation pour le moment.',
           ),
         });
       } finally {
@@ -3705,7 +3705,7 @@ export default function NavigationScreen() {
         variant: 'warning',
         icon: 'walk-outline',
         title: "Confirmer l'arrivée à destination",
-        message: `${booking.passengerName || 'Ce passager'} demande a descendre avant sa destination. Confirmer l'interruption de sa participation ?`,
+        message: `${booking.passengerName || 'Ce passager'} demande à descendre avant sa destination. Confirmer l'interruption de sa participation ?`,
         actions: [
           { label: 'Annuler', variant: 'ghost' },
           {
@@ -3721,7 +3721,7 @@ export default function NavigationScreen() {
                 showDialog({
                   variant: 'success',
                   icon: 'checkmark-circle',
-                  title: 'Descente confirmee',
+                  title: 'Descente confirmée',
                   message: 'La participation du passager est interrompue.',
                 });
               } catch (error: any) {
@@ -3948,12 +3948,12 @@ export default function NavigationScreen() {
       showDialog({
         variant: 'success',
         icon: 'play-circle',
-        title: 'Trajet redemarre',
+        title: 'Trajet redémarré',
         message: 'La navigation va reprendre depuis votre position actuelle.',
       });
     } catch (error: any) {
       const message =
-        error?.data?.message ?? error?.error ?? 'Impossible de redemarrer ce trajet.';
+        error?.data?.message ?? error?.error ?? 'Impossible de redémarrer ce trajet.';
       showDialog({
         variant: 'danger',
         icon: 'alert-circle',
@@ -4073,7 +4073,7 @@ export default function NavigationScreen() {
     if (activeDriverInterruptionRequest) {
       showDialog({
         title: 'Interruption en attente',
-        message: `${activeDriverInterruptionConfirmedCount}/${activeDriverInterruptionRequiredCount} passager(s) ont confirme.`,
+        message: `${activeDriverInterruptionConfirmedCount}/${activeDriverInterruptionRequiredCount} passager(s) ont confirmé.`,
         variant: 'info',
         icon: 'hourglass-outline',
         actions: [
@@ -4297,8 +4297,8 @@ export default function NavigationScreen() {
     tripId && trip?.status !== 'completed' && trip?.status !== 'cancelled',
   );
   const isRestartOverlayActionLoading = isRestartingTrip || isTripFetching;
-  const tripDepartureLabel = (trip?.departure?.address || trip?.departure?.name || 'Depart du trajet').trim();
-  const tripArrivalLabel = (trip?.arrival?.address || trip?.arrival?.name || 'Arrivee du trajet').trim();
+  const tripDepartureLabel = (trip?.departure?.address || trip?.departure?.name || 'Départ du trajet').trim();
+  const tripArrivalLabel = (trip?.arrival?.address || trip?.arrival?.name || 'Arrivée du trajet').trim();
   const currentNavigationWaypoint =
     waypoints.length > 0 && currentWaypointIndex < waypoints.length
       ? waypoints[currentWaypointIndex]
@@ -4585,7 +4585,7 @@ export default function NavigationScreen() {
             anchor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? ANDROID_PIN_MARKER_ANCHOR : { x: 0.5, y: 0.5 }}
             image={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? androidNavigationMarkerImages.departure : undefined}
             pinColor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? undefined : Colors.primary}
-            title="Depart"
+            title="Départ"
             description={tripDepartureLabel}
             tracksViewChanges={false}
             zIndex={8}
@@ -4622,7 +4622,7 @@ export default function NavigationScreen() {
                   ? Colors.secondary
                   : Colors.success
             }
-            title={`${currentNavigationWaypoint.type === 'pickup' ? 'Lieu de prise en charge' : 'Point d arrivee'} ${currentNavigationWaypoint.passenger.name}`}
+            title={`${currentNavigationWaypoint.type === 'pickup' ? 'Lieu de prise en charge' : "Point d'arrivée"} ${currentNavigationWaypoint.passenger.name}`}
             description={currentNavigationWaypoint.address}
             tracksViewChanges={false}
             zIndex={26}
@@ -4657,7 +4657,7 @@ export default function NavigationScreen() {
             anchor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? ANDROID_PIN_MARKER_ANCHOR : { x: 0.5, y: 1 }}
             image={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? androidNavigationMarkerImages.destination : undefined}
             pinColor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? undefined : Colors.success}
-            title="Arrivee"
+            title="Arrivée"
             description={tripArrivalLabel}
             tracksViewChanges={!USE_ANDROID_NAVIGATION_MARKER_IMAGES && destinationTracksViewChanges}
             zIndex={18}
@@ -4743,11 +4743,11 @@ export default function NavigationScreen() {
             </View>
             <Text style={styles.preStartTitle}>
               {trip?.status === 'upcoming'
-                ? 'Trajet pas encore demarre'
+                ? 'Trajet pas encore démarré'
                 : trip?.status === 'completed'
-                  ? 'Trajet termine'
+                  ? 'Trajet terminé'
                   : trip?.status === 'cancelled'
-                    ? 'Trajet annule'
+                    ? 'Trajet annulé'
                     : 'Navigation en pause'}
             </Text>
             <Text style={styles.preStartText}>
@@ -4863,7 +4863,7 @@ export default function NavigationScreen() {
             >
               <View style={styles.nextWaypointInfo}>
                 <Text style={styles.nextWaypointType}>
-                  {waypoints[currentWaypointIndex].type === 'pickup' ? 'Lieu de prise en charge' : 'Point d arrivee'}
+                  {waypoints[currentWaypointIndex].type === 'pickup' ? 'Lieu de prise en charge' : "Point d'arrivée"}
                 </Text>
                 <Text style={styles.nextWaypointName} numberOfLines={1}>
                   {waypoints[currentWaypointIndex].passenger.name}
@@ -4918,7 +4918,7 @@ export default function NavigationScreen() {
                 </View>
                 <View style={styles.pendingBookingTitleWrap}>
                   <Text style={styles.pendingBookingEyebrow}>
-                    Nouvelle reservation
+                    Nouvelle réservation
                     {pendingBookingQueueCount > 0 ? ` +${pendingBookingQueueCount}` : ''}
                   </Text>
                   <Text style={styles.pendingBookingTitle} numberOfLines={1}>
@@ -4963,7 +4963,7 @@ export default function NavigationScreen() {
                     disabled={isAcceptingBooking || isRejectingBooking || isProcessingPendingBooking}
                     activeOpacity={0.85}
                     accessibilityRole="button"
-                    accessibilityLabel="Refuser la reservation"
+                    accessibilityLabel="Refuser la réservation"
                   >
                     {isProcessingPendingBooking && isRejectingBooking ? (
                       <ActivityIndicator size="small" color={Colors.danger} />
@@ -4984,7 +4984,7 @@ export default function NavigationScreen() {
                     disabled={isAcceptingBooking || isRejectingBooking || isProcessingPendingBooking}
                     activeOpacity={0.85}
                     accessibilityRole="button"
-                    accessibilityLabel="Accepter la reservation"
+                    accessibilityLabel="Accepter la réservation"
                   >
                     {isProcessingPendingBooking && isAcceptingBooking ? (
                       <ActivityIndicator size="small" color={Colors.white} />
@@ -5091,7 +5091,7 @@ export default function NavigationScreen() {
                   Interruption demandee
                 </Text>
                 <Text style={styles.driverInterruptionStatusText}>
-                  {activeDriverInterruptionConfirmedCount}/{activeDriverInterruptionRequiredCount} passager(s) ont confirme.
+                  {activeDriverInterruptionConfirmedCount}/{activeDriverInterruptionRequiredCount} passager(s) ont confirmé.
                 </Text>
               </View>
             </View>
@@ -5216,7 +5216,7 @@ export default function NavigationScreen() {
             style={styles.floatingButton}
             onPress={fitVehicleAndPassengers}
             accessibilityRole="button"
-            accessibilityLabel="Voir le vehicule et les passagers"
+            accessibilityLabel="Voir le véhicule et les passagers"
           >
             <Ionicons name="people" size={22} color={Colors.primary} />
           </TouchableOpacity>
@@ -5259,7 +5259,7 @@ export default function NavigationScreen() {
       </View>
       )}
 
-      {/* Disclosure localisation arriere-plan */}
+      {/* Disclosure localisation arrière-plan */}
       <Modal
         visible={backgroundDisclosureVisible}
         transparent
@@ -5378,19 +5378,19 @@ export default function NavigationScreen() {
             <View style={[styles.waypointModalIcon, { backgroundColor: Colors.success }]}>
               <Ionicons name="flag" size={32} color={Colors.white} />
             </View>
-            <Text style={styles.waypointModalTitle}>Trajet termine</Text>
+            <Text style={styles.waypointModalTitle}>Trajet terminé</Text>
             <Text style={styles.waypointModalPassenger}>
               {trip?.arrival?.name ?? 'Destination finale'}
             </Text>
             <View style={styles.waypointModalAddressContainer}>
               <Ionicons name="location" size={18} color={Colors.gray[500]} />
               <Text style={styles.waypointModalAddress}>
-                {trip?.arrival?.address ?? trip?.arrival?.name ?? 'Arrivee du trajet'}
+                {trip?.arrival?.address ?? trip?.arrival?.name ?? 'Arrivée du trajet'}
               </Text>
             </View>
             <Text style={styles.waypointModalWaitingText}>
               {tripEndNotice?.completedWhileAppInactive
-                ? "Le trajet s'est terminé pendant que le téléphone était en veille ou hors de l'application. Il est maintenant cloturé. Vous pouvez noter les passagers."
+                ? "Le trajet s'est terminé pendant que le téléphone était en veille ou hors de l'application. Il est maintenant clôturé. Vous pouvez noter les passagers."
                 : 'Vous avez atteint la destination finale. Le trajet est terminé automatiquement. Vous pouvez noter les passagers.'}
             </Text>
             <View
@@ -5405,8 +5405,8 @@ export default function NavigationScreen() {
               <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
               <Text style={[styles.waypointGpsStatusText, { color: Colors.success }]}>
                 {tripEndNotice?.distanceMeters !== undefined
-                  ? `Arrivee detectee a ${Math.max(1, Math.round(tripEndNotice.distanceMeters))} m`
-                  : 'Arrivee detectee'}
+                  ? `Arrivée détectée a ${Math.max(1, Math.round(tripEndNotice.distanceMeters))} m`
+                  : 'Arrivée détectée'}
               </Text>
             </View>
             <Text style={styles.waypointModalWaitingText}>
@@ -5572,7 +5572,7 @@ export default function NavigationScreen() {
               <Text style={styles.waypointModalWaitingText}>
                 {activeWaypoint.type === 'pickup'
                   ? `Vous êtes arrivé au point de récupération de ${activeWaypoint.passenger.name || 'ce passager'}.`
-                  : `Nous sommes arrivés au point de destination de ${activeWaypoint.passenger.name || 'ce passager'}. La depose se confirme automatiquement.`}
+                  : `Nous sommes arrivés au point de destination de ${activeWaypoint.passenger.name || 'ce passager'}. La dépose se confirme automatiquement.`}
               </Text>
             )}
 
@@ -5605,12 +5605,12 @@ export default function NavigationScreen() {
                     },
                   ]}
                 >
-                  Confirmation automatique active
+                  Confirmation automatique activée
                 </Text>
               </View>
             )}
 
-            {/* Fermeture du detail */}
+            {/* Fermeture du détail */}
             <View style={styles.waypointModalActions}>
               <TouchableOpacity
                 style={styles.waypointModalSecondaryButton}

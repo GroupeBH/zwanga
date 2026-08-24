@@ -70,7 +70,7 @@ function ArrivalTimeBlock({ trip }: { trip: Trip }) {
 
   return (
     <View style={styles.timeContainer}>
-      <Text style={styles.routeDateLabel}>Arrivee estimee</Text>
+      <Text style={styles.routeDateLabel}>Arrivée estimee</Text>
       <Text style={styles.routeTime}>{arrivalDateTimeDisplay}</Text>
     </View>
   );
@@ -411,7 +411,7 @@ export default function TripsScreen() {
     const departureSelection =
       departureCoordinate
         ? {
-            title: trip.departure?.name || 'Depart',
+            title: trip.departure?.name || 'Départ',
             address:
               trip.departure?.address ||
               `${departureCoordinate.latitude.toFixed(5)}, ${departureCoordinate.longitude.toFixed(5)}`,
@@ -422,7 +422,7 @@ export default function TripsScreen() {
     const arrivalSelection =
       arrivalCoordinate
         ? {
-            title: trip.arrival?.name || 'Arrivee',
+            title: trip.arrival?.name || 'Arrivée',
             address:
               trip.arrival?.address ||
               `${arrivalCoordinate.latitude.toFixed(5)}, ${arrivalCoordinate.longitude.toFixed(5)}`,
@@ -493,12 +493,12 @@ export default function TripsScreen() {
         : getLocationText(editArrivalSelection, '');
 
     if (!departureAddress || !arrivalAddress) {
-      showFeedback('error', 'Indiquez un depart et une arrivee avant de continuer.');
+      showFeedback('error', 'Indiquez un départ et une arrivée avant de continuer.');
       return;
     }
 
     if (departureAddress.toLowerCase() === arrivalAddress.toLowerCase()) {
-      showFeedback('error', 'Le depart et l arrivee doivent etre differents.');
+      showFeedback('error', "Le départ et l'arrivée doivent être différents.");
       return;
     }
 
@@ -539,25 +539,25 @@ export default function TripsScreen() {
 
   const editDepartureDisplay = useMemo(() => {
     if (editRouteMode === 'manual') {
-      return editDepartureManualAddress.trim() || 'Renseigner le depart';
+      return editDepartureManualAddress.trim() || 'Renseigner le départ';
     }
     return (
       editDepartureSelection?.title ||
       editDepartureSelection?.address ||
       editDepartureManualAddress.trim() ||
-      'Choisir le point de depart'
+      'Choisir le point de départ'
     );
   }, [editDepartureManualAddress, editDepartureSelection, editRouteMode]);
 
   const editArrivalDisplay = useMemo(() => {
     if (editRouteMode === 'manual') {
-      return editArrivalManualAddress.trim() || 'Renseigner l arrivee';
+      return editArrivalManualAddress.trim() || "Renseigner l'arrivée";
     }
     return (
       editArrivalSelection?.title ||
       editArrivalSelection?.address ||
       editArrivalManualAddress.trim() ||
-      'Choisir le point d arrivee'
+      "Choisir le point d'arrivée"
     );
   }, [editArrivalManualAddress, editArrivalSelection, editRouteMode]);
 
@@ -594,7 +594,7 @@ export default function TripsScreen() {
     const seatsValue = parseInt(editSeats, 10);
     const priceValue = parseFloat(editPrice);
     if (Number.isNaN(seatsValue) || Number.isNaN(priceValue) || seatsValue <= 0 || priceValue < 0) {
-      showFeedback('error', 'Veuillez verifier le nombre de places et le prix.');
+      showFeedback('error', 'Veuillez vérifier le nombre de places et le prix.');
       return;
     }
 
@@ -608,12 +608,12 @@ export default function TripsScreen() {
         : getLocationText(editArrivalSelection, '');
 
     if (!departureAddress || !arrivalAddress) {
-      showFeedback('error', 'Indiquez un depart et une arrivee avant d enregistrer.');
+      showFeedback('error', 'Indiquez un départ et une arrivée avant d’enregistrer.');
       return;
     }
 
     if (departureAddress.toLowerCase() === arrivalAddress.toLowerCase()) {
-      showFeedback('error', 'Le depart et l arrivee doivent etre differents.');
+      showFeedback('error', "Le départ et l'arrivée doivent être différents.");
       return;
     }
 
@@ -676,7 +676,7 @@ export default function TripsScreen() {
         id: editingTrip.id,
         updates,
       }).unwrap();
-      showFeedback('success', 'Le trajet a ete mis a jour.');
+      showFeedback('success', 'Le trajet a été mis à jour.');
       closeEditModal();
     } catch (error: any) {
       const message =
@@ -706,7 +706,7 @@ export default function TripsScreen() {
       return false;
     }
 
-    // Verifier si la date de depart est passee pour les trajets non demarres.
+    // Vérifier si la date de départ est passée pour les trajets non démarrés.
     if (trip.status !== 'ongoing' && trip.departureTime) {
       const departureDate = new Date(trip.departureTime);
       const now = new Date();
@@ -991,7 +991,7 @@ export default function TripsScreen() {
                       <Ionicons name="location" size={16} color={Colors.success} />
                       <Text style={styles.routeText}>{trip.departure.name}</Text>
                       <View style={styles.timeContainer}>
-                        <Text style={styles.routeDateLabel}>Depart</Text>
+                        <Text style={styles.routeDateLabel}>Départ</Text>
                         <Text style={styles.routeTime}>{formatDateTime(trip.departureTime)}</Text>
                       </View>
                     </View>
@@ -1080,7 +1080,7 @@ export default function TripsScreen() {
                       case 'no_show':
                         return { bgColor: 'rgba(59, 130, 246, 0.1)', textColor: Colors.info, label: 'Non embarqué' };
                       case 'boarding_uncertain':
-                        return { bgColor: 'rgba(245, 158, 11, 0.1)', textColor: Colors.warning, label: 'Embarquement non confirme' };
+                        return { bgColor: 'rgba(245, 158, 11, 0.1)', textColor: Colors.warning, label: 'Embarquement non confirmé' };
                       default:
                         return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: booking.status };
                     }
@@ -1129,7 +1129,7 @@ export default function TripsScreen() {
                           <Ionicons name="location" size={16} color={Colors.success} />
                           <Text style={styles.routeText}>{trip.departure.name}</Text>
                           <View style={styles.timeContainer}>
-                            <Text style={styles.routeDateLabel}>Depart</Text>
+                            <Text style={styles.routeDateLabel}>Départ</Text>
                             <Text style={styles.routeTime}>{formatDateTime(trip.departureTime)}</Text>
                           </View>
                         </View>
@@ -1229,7 +1229,7 @@ export default function TripsScreen() {
             <View style={styles.modalStepIndicator}>
               <View style={[styles.modalStepPill, editStep === 1 && styles.modalStepPillActive]}>
                 <Text style={[styles.modalStepText, editStep === 1 && styles.modalStepTextActive]}>
-                  1. Itineraire
+                  1. Itinéraire
                 </Text>
               </View>
               <View style={[styles.modalStepPill, editStep === 2 && styles.modalStepPillActive]}>
@@ -1305,7 +1305,7 @@ export default function TripsScreen() {
 
               {editRouteMode === 'manual' ? (
                 <>
-                  <Text style={styles.modalLabel}>Adresse de depart</Text>
+                  <Text style={styles.modalLabel}>Adresse de départ</Text>
                   <TextInput
                     style={[styles.modalInput, styles.modalRouteInput]}
                     placeholder="Ex: avenue Kasa-Vubu, Bandal"
@@ -1314,7 +1314,7 @@ export default function TripsScreen() {
                     onChangeText={setEditDepartureManualAddress}
                     returnKeyType="next"
                   />
-                  <Text style={styles.modalLabel}>Adresse d arrivee</Text>
+                  <Text style={styles.modalLabel}>Adresse d’arrivée</Text>
                   <TextInput
                     style={[styles.modalInput, styles.modalRouteInput]}
                     placeholder="Ex: rond-point Victoire"
@@ -1335,7 +1335,7 @@ export default function TripsScreen() {
                       <Ionicons name="location" size={15} color={Colors.success} />
                     </View>
                     <View style={styles.modalRoutePointContent}>
-                      <Text style={styles.modalRoutePointLabel}>Depart</Text>
+                      <Text style={styles.modalRoutePointLabel}>Départ</Text>
                       <Text style={styles.modalRoutePointValue} numberOfLines={2}>
                         {editDepartureDisplay}
                       </Text>
@@ -1351,7 +1351,7 @@ export default function TripsScreen() {
                       <Ionicons name="navigate" size={15} color={Colors.primary} />
                     </View>
                     <View style={styles.modalRoutePointContent}>
-                      <Text style={styles.modalRoutePointLabel}>Arrivee</Text>
+                      <Text style={styles.modalRoutePointLabel}>Arrivée</Text>
                       <Text style={styles.modalRoutePointValue} numberOfLines={2}>
                         {editArrivalDisplay}
                       </Text>
@@ -1518,7 +1518,7 @@ export default function TripsScreen() {
 
       <LocationPickerModal
         visible={editRoutePickerTarget !== null}
-        title={editRoutePickerTarget === 'departure' ? 'Choisir le depart' : 'Choisir l arrivee'}
+        title={editRoutePickerTarget === 'departure' ? 'Choisir le départ' : "Choisir l'arrivée"}
         initialLocation={
           editRoutePickerTarget === 'departure' ? editDepartureSelection : editArrivalSelection
         }

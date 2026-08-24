@@ -65,12 +65,12 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
     id: 'points',
     icon: 'wallet-outline',
     title: 'Jetons Zwanga',
-    description: 'Utilisez vos jetons et completez si necessaire',
+    description: 'Utilisez vos jetons et complétez si nécessaire',
   },
   {
     id: 'cash',
     icon: 'cash-outline',
-    title: 'Especes',
+    title: 'Espèces',
     description: 'Remettez le montant au conducteur',
   },
 ];
@@ -275,7 +275,7 @@ export function PassengerArrivalPaymentCoordinator() {
         return true;
       }
 
-      setStatusMessage('Les jetons sont en cours de verification. Le modal restera ouvert.');
+      setStatusMessage('Les jetons sont en cours de vérification. Le modal restera ouvert.');
       return false;
     },
     [acknowledgeBooking, refetchBookings, refetchWallet, updatePaymentMode],
@@ -304,7 +304,7 @@ export function PassengerArrivalPaymentCoordinator() {
         setStoredState(parsed && typeof parsed === 'object' ? parsed : {});
       })
       .catch((error) => {
-        console.warn('[PassengerArrivalPayment] Etat local illisible:', error);
+        console.warn('[PassengerArrivalPayment] État local illisible:', error);
         if (!cancelled) setStoredState({});
       })
       .finally(() => {
@@ -351,7 +351,7 @@ export function PassengerArrivalPaymentCoordinator() {
 
           if (response.payment.status === 'succeeded') {
             persistBookingState(bookingId, { walletTopUpOrderNumber: null });
-            setStatusMessage('Recharge confirmee. Paiement de la course en cours...');
+            setStatusMessage('Recharge confirmée. Paiement de la course en cours...');
             await refetchWallet();
             await settleWithPoints(bookingId);
             return;
@@ -359,12 +359,12 @@ export function PassengerArrivalPaymentCoordinator() {
 
           if (response.payment.status === 'failed' || response.payment.status === 'cancelled') {
             persistBookingState(bookingId, { walletTopUpOrderNumber: null });
-            setPaymentError(response.payment.message ?? 'La recharge des jetons a echoue.');
+            setPaymentError(response.payment.message ?? 'La recharge des jetons a échoué.');
             return;
           }
 
           setStatusMessage(
-            response.payment.message ?? 'Confirmez le complement Mobile Money sur votre telephone.',
+            response.payment.message ?? 'Confirmez le complément Mobile Money sur votre téléphone.',
           );
           return;
         }
@@ -381,16 +381,16 @@ export function PassengerArrivalPaymentCoordinator() {
 
           if (response.payment.status === 'failed' || response.payment.status === 'cancelled') {
             persistBookingState(bookingId, { bookingPaymentOrderNumber: null });
-            setPaymentError(response.payment.message ?? 'Le paiement Mobile Money a echoue.');
+            setPaymentError(response.payment.message ?? 'Le paiement Mobile Money a échoué.');
             return;
           }
 
           setStatusMessage(
-            response.payment.message ?? 'Confirmez le paiement Mobile Money sur votre telephone.',
+            response.payment.message ?? 'Confirmez le paiement Mobile Money sur votre téléphone.',
           );
         }
       } catch (error) {
-        console.warn('[PassengerArrivalPayment] Verification du paiement impossible:', error);
+        console.warn('[PassengerArrivalPayment] Vérification du paiement impossible:', error);
       } finally {
         paymentCheckInFlightRef.current = false;
         if (!cancelled) setIsCheckingPayment(false);
@@ -449,13 +449,13 @@ export function PassengerArrivalPaymentCoordinator() {
         const phone = formatPaymentPhone(user?.phone);
         if (!phone || !DRC_PAYMENT_PHONE_REGEX.test(phone)) {
           setPaymentError(
-            'Un numero congolais valide est necessaire dans votre profil pour payer le complement.',
+            'Un numéro congolais valide est nécessaire dans votre profil pour payer le complément.',
           );
           return;
         }
 
         setStatusMessage(
-          `Recharge de ${formatPoints(missingPoints)} pour completer le paiement...`,
+          `Recharge de ${formatPoints(missingPoints)} pour compléter le paiement...`,
         );
         const response = await initiateWalletTopUp({
           amount: missingPoints,
@@ -482,7 +482,7 @@ export function PassengerArrivalPaymentCoordinator() {
 
         setStatusMessage(
           response.payment.message ??
-            `Confirmez le complement de ${formatMoney(moneyComplement, paymentCurrency)} sur votre telephone.`,
+            `Confirmez le complément de ${formatMoney(moneyComplement, paymentCurrency)} sur votre téléphone.`,
         );
         return;
       }
@@ -491,7 +491,7 @@ export function PassengerArrivalPaymentCoordinator() {
       const phone = formatPaymentPhone(user?.phone);
       if (!phone || !DRC_PAYMENT_PHONE_REGEX.test(phone)) {
         setPaymentError(
-          'Un numero congolais valide est necessaire dans votre profil pour Mobile Money.',
+          'Un numéro congolais valide est nécessaire dans votre profil pour Mobile Money.',
         );
         return;
       }
@@ -526,10 +526,10 @@ export function PassengerArrivalPaymentCoordinator() {
       }
 
       setStatusMessage(
-        response.payment.message ?? 'Confirmez le paiement Mobile Money sur votre telephone.',
+        response.payment.message ?? 'Confirmez le paiement Mobile Money sur votre téléphone.',
       );
     } catch (error: any) {
-      const message = error?.data?.message ?? error?.error ?? 'Le paiement n a pas pu etre effectue.';
+      const message = error?.data?.message ?? error?.error ?? "Le paiement n'a pas pu être effectué.";
       setPaymentError(Array.isArray(message) ? message.join('\n') : String(message));
     }
   }, [
@@ -593,7 +593,7 @@ export function PassengerArrivalPaymentCoordinator() {
                 <Ionicons name="flag" size={28} color={Colors.white} />
               </View>
               <View style={styles.headerCopy}>
-                <Text style={styles.eyebrow}>ARRIVEE CONFIRMEE</Text>
+                <Text style={styles.eyebrow}>ARRIVÉE CONFIRMÉE</Text>
                 <Text style={styles.title}>Vous êtes arrivé</Text>
               </View>
             </View>
@@ -611,7 +611,7 @@ export function PassengerArrivalPaymentCoordinator() {
                   : formatMoney(paymentAmount, paymentCurrency)}
               </Text>
               <Text style={styles.amountHint}>
-                Choisissez comment regler ce trajet. Cette fenetre restera ouverte jusqu a votre action.
+                Choisissez comment régler ce trajet. Cette fenêtre restera ouverte jusqu’à votre action.
               </Text>
             </View>
 
@@ -619,8 +619,8 @@ export function PassengerArrivalPaymentCoordinator() {
               <View style={styles.successBox}>
                 <Ionicons name="checkmark-circle" size={22} color={Colors.successDark} />
                 <View style={styles.successCopy}>
-                  <Text style={styles.successTitle}>Paiement deja confirme</Text>
-                  <Text style={styles.successText}>Vous pouvez terminer ce recapitulatif.</Text>
+                  <Text style={styles.successTitle}>Paiement déjà confirmé</Text>
+                  <Text style={styles.successText}>Vous pouvez terminer ce récapitulatif.</Text>
                 </View>
               </View>
             ) : (
@@ -645,7 +645,7 @@ export function PassengerArrivalPaymentCoordinator() {
                         Vos jetons couvrent {pointsCoveragePercentage} % du trajet
                       </Text>
                       <Text style={styles.pointsRecommendationText}>
-                        Utilisez-les et ne payez que le complement restant.
+                        Utilisez-les et ne payez que le complément restant.
                       </Text>
                     </View>
                     <View style={styles.pointsRecommendationAction}>
@@ -696,7 +696,7 @@ export function PassengerArrivalPaymentCoordinator() {
                           </View>
                           <Text style={styles.optionDescription}>
                             {isRecommended
-                              ? `${pointsCoveragePercentage} % du montant deja couvert`
+                              ? `${pointsCoveragePercentage} % du montant déjà couvert`
                               : option.description}
                           </Text>
                         </View>
@@ -737,14 +737,14 @@ export function PassengerArrivalPaymentCoordinator() {
                   </Text>
                 </View>
                 <View style={styles.breakdownRow}>
-                  <Text style={styles.breakdownLabel}>Complement Mobile Money</Text>
+                  <Text style={styles.breakdownLabel}>Complément Mobile Money</Text>
                   <Text style={[styles.breakdownValue, moneyComplement > 0 && styles.complementValue]}>
                     {formatMoney(moneyComplement, paymentCurrency)}
                   </Text>
                 </View>
                 {moneyComplement > 0 && (
                   <Text style={styles.pointsHint}>
-                    Seul le complement achetera les jetons manquants. Vos jetons actuels seront ensuite ajoutes pour regler la totalite du trajet.
+                    Seul le complément achètera les jetons manquants. Vos jetons actuels seront ensuite ajoutés pour régler la totalité du trajet.
                   </Text>
                 )}
               </View>
@@ -792,7 +792,7 @@ export function PassengerArrivalPaymentCoordinator() {
               />
             )}
             <Text style={styles.payButtonText}>
-              {isBusy || hasPendingProviderPayment ? 'Verification...' : actionLabel}
+              {isBusy || hasPendingProviderPayment ? 'Vérification...' : actionLabel}
             </Text>
           </TouchableOpacity>
         </View>

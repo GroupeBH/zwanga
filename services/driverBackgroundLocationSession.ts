@@ -138,7 +138,7 @@ export async function updateActiveDriverBackgroundTripSession(
     await AsyncStorage.setItem(ACTIVE_DRIVER_TRIP_ID_KEY, JSON.stringify(nextSession));
     return nextSession;
   } catch (error) {
-    console.warn('[DriverBackgroundLocationSession] Mise a jour impossible:', error);
+    console.warn('[DriverBackgroundLocationSession] Mise à jour impossible:', error);
     return null;
   }
 }

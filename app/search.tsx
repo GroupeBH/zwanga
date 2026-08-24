@@ -251,7 +251,7 @@ function SearchResultCard({ trip, onPress }: SearchResultCardProps) {
             {trip.description || `${vehicleLabel[trip.vehicleType || 'car']} • ${seatsLabel}`}
           </Text>
           <Text style={styles.arrivalEstimateText} numberOfLines={1}>
-            Arrivee estimee {arrivalDateTime}
+            Arrivée estimee {arrivalDateTime}
           </Text>
         </View>
       </View>

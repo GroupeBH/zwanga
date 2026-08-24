@@ -53,12 +53,12 @@ const STATUS_CONFIG: Record<
     background: 'rgba(156, 163, 175, 0.2)',
   },
   no_show: {
-    label: 'Non embarque',
+    label: 'Non embarqué',
     color: Colors.danger,
     background: 'rgba(239, 68, 68, 0.12)',
   },
   boarding_uncertain: {
-    label: 'Embarquement non confirme',
+    label: 'Embarquement non confirmé',
     color: Colors.warning,
     background: 'rgba(245, 158, 11, 0.14)',
   },
@@ -238,7 +238,7 @@ export default function BookingsScreen() {
                   {trip?.departure?.name ?? 'Trajet'} → {trip?.arrival?.name ?? ''}
                 </Text>
                 <Text style={styles.bookingSubtitle} numberOfLines={1} ellipsizeMode="tail">
-                  {trip ? `${formatDateTime(trip.departureTime)} -> arrivee estimee ${arrivalTimeDisplay}` : ''}
+                  {trip ? `${formatDateTime(trip.departureTime)} -> arrivée estimee ${arrivalTimeDisplay}` : ''}
                 </Text>
               </View>
             </View>
@@ -270,7 +270,7 @@ export default function BookingsScreen() {
               <View style={styles.confirmationBanner}>
                 <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
                 <Text style={styles.confirmationBannerText}>
-                  Prise en charge detectee. Synchronisation en cours.
+                  Prise en charge détectée. Synchronisation en cours.
                 </Text>
               </View>
             )}
@@ -278,7 +278,7 @@ export default function BookingsScreen() {
               <View style={styles.confirmationBanner}>
                 <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
                 <Text style={styles.confirmationBannerText}>
-                  Arrivee detectee. Finalisation en cours.
+                  Arrivée détectée. Finalisation en cours.
                 </Text>
               </View>
             )}
@@ -299,15 +299,15 @@ export default function BookingsScreen() {
           {activeTab === 'active' && !isExpired && booking.status === 'accepted' && booking.pickedUp && !booking.pickedUpConfirmedByPassenger && (
             <View style={[styles.linkButton, styles.confirmButton]}>
               <Ionicons name="checkmark-circle" size={16} color={Colors.white} />
-              <Text style={[styles.linkButtonText, styles.confirmButtonText]}>A bord</Text>
+              <Text style={[styles.linkButtonText, styles.confirmButtonText]}>À bord</Text>
             </View>
           )}
 
-          {/* Statut d'arrivee automatique */}
+          {/* Statut d'arrivée automatique */}
           {activeTab === 'active' && !isExpired && booking.status === 'accepted' && booking.pickedUp && booking.pickedUpConfirmedByPassenger && !booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
             <View style={[styles.linkButton, styles.confirmButton]}>
               <Ionicons name="flag" size={16} color={Colors.white} />
-              <Text style={[styles.linkButtonText, styles.confirmButtonText]}>Arrivee en cours</Text>
+              <Text style={[styles.linkButtonText, styles.confirmButtonText]}>Arrivée en cours</Text>
             </View>
           )}
 

@@ -656,10 +656,10 @@ export default function PublishScreen() {
 
     const isReady = isConfirmed;
     const message = isReady
-      ? `${label} confirme sur la carte`
+      ? `${label} confirmé sur la carte`
       : hasGpsSuggestion
-        ? `${label} trouve, verifiez le point sur la carte`
-        : `${label} a confirmer sur la carte`;
+        ? `${label} trouvé, vérifiez le point sur la carte`
+        : `${label} à confirmer sur la carte`;
 
     return (
       <View style={styles.gpsStatus}>
@@ -1082,7 +1082,7 @@ export default function PublishScreen() {
       })
       .catch((error) => {
         if (!isCurrent) return;
-        console.warn("Impossible de calculer l'itineraire de publication", error);
+        console.warn("Impossible de calculer l'itinéraire de publication", error);
         setRouteCoordinates([]);
       })
       .finally(() => {
@@ -1169,8 +1169,8 @@ export default function PublishScreen() {
       variant: 'warning',
       title: 'Point sur la carte requis',
       message: isDeparture
-        ? 'Confirmez le point de depart sur la carte pour eviter une position approximative.'
-        : 'Confirmez la destination sur la carte pour eviter une position approximative.',
+        ? 'Confirmez le point de départ sur la carte pour éviter une position approximative.'
+        : 'Confirmez la destination sur la carte pour éviter une position approximative.',
       actions: [
         { label: 'Plus tard', variant: 'ghost' },
         {
@@ -1207,7 +1207,7 @@ export default function PublishScreen() {
         showDialog({
           variant: 'warning',
           title: 'Informations manquantes',
-          message: 'Merci de renseigner la date et l heure de depart.',
+          message: 'Merci de renseigner la date et l heure de départ.',
         });
         return;
       }
@@ -1226,7 +1226,7 @@ export default function PublishScreen() {
           showDialog({
             variant: 'warning',
             title: 'Date de fin invalide',
-            message: 'La date de fin doit etre posterieure au debut.',
+            message: 'La date de fin doit être posterieure au debut.',
           });
           return;
         }
@@ -1236,8 +1236,8 @@ export default function PublishScreen() {
       if (!selectedVehicleId) {
         showDialog({
           variant: 'warning',
-          title: 'Vehicule requis',
-          message: 'Veuillez selectionner un vehicule pour continuer.',
+          title: 'Véhicule requis',
+          message: 'Veuillez sélectionner un véhicule pour continuer.',
         });
         return;
       }
@@ -1247,7 +1247,7 @@ export default function PublishScreen() {
         showDialog({
           variant: 'warning',
           title: 'Informations manquantes',
-          message: 'Merci de renseigner le prix ou de selectionner Gratuit.',
+          message: 'Merci de renseigner le prix ou de sélectionner Gratuit.',
         });
         return;
       }
@@ -1287,8 +1287,8 @@ export default function PublishScreen() {
     ) {
       showDialog({
         variant: 'warning',
-        title: 'Verification requise',
-        message: 'Veuillez verifier les valeurs numeriques et la date de depart.',
+        title: 'Vérification requise',
+        message: 'Veuillez vérifier les valeurs numériques et la date de départ.',
       });
       return;
     }
@@ -1316,8 +1316,8 @@ export default function PublishScreen() {
     if (!selectedVehicleId) {
       showDialog({
         variant: 'warning',
-        title: 'Vehicule requis',
-        message: 'Veuillez selectionner un vehicule pour publier votre trajet.',
+        title: 'Véhicule requis',
+        message: 'Veuillez sélectionner un véhicule pour publier votre trajet.',
       });
       return;
     }
@@ -1389,7 +1389,7 @@ export default function PublishScreen() {
       const message =
         error?.data?.message ??
         error?.error ??
-        'Impossible de publier le trajet pour le moment. Veuillez reessayer.';
+        'Impossible de publier le trajet pour le moment. Veuillez réessayer.';
 
       const isDriverError = isDriverRequiredError(error);
       const isQuotaError = isDailyPublicationLimitError(error);
@@ -2090,7 +2090,7 @@ export default function PublishScreen() {
 
               {activeVehicles.length > 0 && selectedVehicleId && (
                 <Text style={styles.vehicleDefaultHint}>
-                  Un véhicule actif est dejà selectionné par défaut.
+                  Un véhicule actif est déjà sélectionné par défaut.
                 </Text>
               )}
               {vehicleCreationMessage ? (
@@ -2165,7 +2165,7 @@ export default function PublishScreen() {
                             </View>
                           </View>
                           <Text style={styles.vehicleCardBrand} numberOfLines={1}>
-                            {vehicleName || 'Vehicule'}
+                            {vehicleName || 'Véhicule'}
                           </Text>
                           <View style={styles.vehiclePlatePill}>
                             <Ionicons name="card-outline" size={13} color={Colors.gray[500]} />
@@ -2451,7 +2451,7 @@ export default function PublishScreen() {
                           <Text style={styles.confirmDetailLabel}>Répétition</Text>
                         </View>
                         <Text style={styles.confirmDetailValue}>
-                          {recurringDaysSummary || 'A definir'}
+                          {recurringDaysSummary || 'À définir'}
                         </Text>
                       </View>
                       <View style={styles.confirmDetailRow}>
@@ -2732,7 +2732,7 @@ export default function PublishScreen() {
                   } as any);
                 }}
               >
-                <Text style={styles.driverModalButtonPrimaryText}>Dévenir conducteur</Text>
+                <Text style={styles.driverModalButtonPrimaryText}>Devenir conducteur</Text>
               </TouchableOpacity>
             </View>
           </Animated.View>

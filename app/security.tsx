@@ -268,7 +268,7 @@ export default function SecurityScreen() {
                   <Ionicons name="shield-checkmark-outline" size={22} color={Colors.primary} />
                 </View>
                 <View style={styles.quickStartHeaderCopy}>
-                  <Text style={styles.quickStartTitle}>Protection trajet en 3 etapes</Text>
+                  <Text style={styles.quickStartTitle}>Protection trajet en 3 étapes</Text>
                   <Text style={styles.quickStartSubtitle}>
                     Ajoutez vos proches ici, puis choisissez qui notifier pendant le trajet.
                   </Text>
@@ -281,7 +281,7 @@ export default function SecurityScreen() {
                     <Text style={styles.quickStartStepBulletText}>1</Text>
                   </View>
                   <Text style={styles.quickStartStepText}>
-                    Ajoutez vos contacts d urgence dans cette page.
+                    Ajoutez vos contacts d’urgence sur cette page.
                   </Text>
                 </View>
                 <View style={styles.quickStartStepRow}>
@@ -289,7 +289,7 @@ export default function SecurityScreen() {
                     <Text style={styles.quickStartStepBulletText}>2</Text>
                   </View>
                   <Text style={styles.quickStartStepText}>
-                    Pendant un trajet, choisissez simplement ceux a notifier.
+                    Pendant un trajet, choisissez simplement ceux à notifier.
                   </Text>
                 </View>
                 <View style={styles.quickStartStepRow}>
@@ -297,7 +297,7 @@ export default function SecurityScreen() {
                     <Text style={styles.quickStartStepBulletText}>3</Text>
                   </View>
                   <Text style={styles.quickStartStepText}>
-                    Le backend gere ensuite les notifications automatiques selon les etapes du trajet.
+                    Le backend gère ensuite les notifications automatiques selon les étapes du trajet.
                   </Text>
                 </View>
               </View>
@@ -311,8 +311,8 @@ export default function SecurityScreen() {
                   <Ionicons name="add-circle" size={18} color={Colors.white} />
                   <Text style={styles.quickStartButtonText}>
                     {contacts.length === 0
-                      ? 'Ajouter mon premier contact d urgence'
-                      : 'Ajouter un autre contact d urgence'}
+                      ? 'Ajouter mon premier contact d’urgence'
+                      : 'Ajouter un autre contact d’urgence'}
                   </Text>
                 </TouchableOpacity>
               ) : (
@@ -334,9 +334,9 @@ export default function SecurityScreen() {
           <Animated.View entering={FadeInDown.delay(120)} style={styles.section}>
             <View style={styles.sectionHeader}>
               <View>
-                <Text style={styles.sectionTitle}>Contacts d urgence</Text>
+                <Text style={styles.sectionTitle}>Contacts d’urgence</Text>
                 <Text style={styles.sectionSubtitle}>
-                  Selectionnables ensuite pendant le suivi d un trajet ({remainingContacts} place(s) restante(s))
+                  Sélectionnables ensuite pendant le suivi d’un trajet ({remainingContacts} place(s) restante(s))
                 </Text>
               </View>
             </View>
@@ -345,9 +345,9 @@ export default function SecurityScreen() {
               {contacts.length === 0 ? (
                 <View style={styles.emptyState}>
                   <Ionicons name="people-outline" size={48} color={Colors.gray[400]} />
-                  <Text style={styles.emptyText}>Aucun contact d urgence</Text>
+                  <Text style={styles.emptyText}>Aucun contact d’urgence</Text>
                   <Text style={styles.emptySubtext}>
-                    Commencez par ajouter au moins 1 proche. Vous pourrez ensuite le selectionner sur chaque trajet.
+                    Commencez par ajouter au moins 1 proche. Vous pourrez ensuite le sélectionner sur chaque trajet.
                   </Text>
                   <TouchableOpacity
                     style={styles.emptyPrimaryButton}
@@ -355,7 +355,7 @@ export default function SecurityScreen() {
                     disabled={loading}
                   >
                     <Ionicons name="add-circle" size={18} color={Colors.white} />
-                    <Text style={styles.emptyPrimaryButtonText}>Ajouter un contact d urgence</Text>
+                    <Text style={styles.emptyPrimaryButtonText}>Ajouter un contact d’urgence</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -402,7 +402,7 @@ export default function SecurityScreen() {
                   disabled={loading}
                 >
                   <Ionicons name="add-circle-outline" size={20} color={Colors.primary} />
-                  <Text style={styles.addButtonText}>Ajouter un contact d urgence</Text>
+                  <Text style={styles.addButtonText}>Ajouter un contact d’urgence</Text>
                 </TouchableOpacity>
               )}
 
@@ -421,10 +421,10 @@ export default function SecurityScreen() {
           <Animated.View entering={FadeInDown.delay(200)} style={styles.section}>
             <View style={styles.infoCard}>
               <Ionicons name="shield-checkmark-outline" size={24} color={Colors.primary} />
-              <Text style={styles.infoTitle}>Pourquoi ajouter des contacts d urgence ?</Text>
+              <Text style={styles.infoTitle}>Pourquoi ajouter des contacts d’urgence ?</Text>
               <Text style={styles.infoText}>
-                Les proches ajoutes ici sont proposes quand vous choisissez qui notifier sur un trajet.
-                Une fois selectionnes, le backend gere automatiquement les notifications de securite.
+                Les proches ajoutés ici sont proposés quand vous choisissez qui notifier sur un trajet.
+                Une fois sélectionnés, le backend gere automatiquement les notifications de sécurité.
               </Text>
             </View>
           </Animated.View>

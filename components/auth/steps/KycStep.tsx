@@ -25,7 +25,7 @@ export function KycStep({
         <View style={[styles.logoContainer, { backgroundColor: Colors.info + '15' }]}>
           <Ionicons name="shield-checkmark" size={48} color={Colors.info} />
         </View>
-        <Text style={styles.heroTitle}>Vérification d'identité requise</Text>
+        <Text style={styles.heroTitle}>Vérification d’identité requise</Text>
         <Text style={styles.heroSubtitle}>
           Pour devenir conducteur, vous devez vérifier votre identité.
         </Text>
@@ -34,7 +34,7 @@ export function KycStep({
       <View style={styles.kycBenefitsContainer}>
         <View style={styles.benefitRow}>
           <Ionicons name="checkbox" size={24} color={Colors.success} style={{ marginBottom: 2 }} />
-          <Text style={styles.benefitText}>Badge "Vérifié" sur votre profil</Text>
+          <Text style={styles.benefitText}>Badge « Vérifié » sur votre profil</Text>
         </View>
         <View style={styles.benefitRow}>
           <Ionicons name="flash" size={24} color={Colors.warning} style={{ marginBottom: 2 }} />

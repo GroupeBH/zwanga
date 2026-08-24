@@ -173,7 +173,7 @@ class TrackingSocketClient {
       const handleConnectError = (error: Error) =>
         finish(() => reject(error));
       const handleDisconnect = (reason: string) =>
-        finish(() => reject(new Error(reason || 'Tracking deconnecte')));
+        finish(() => reject(new Error(reason || 'Suivi déconnecté')));
 
       timeout = setTimeout(() => {
         finish(() => reject(new Error('Connexion tracking expiree')));
@@ -215,14 +215,14 @@ class TrackingSocketClient {
       this.socket = socket;
 
       socket.on('connect', () => {
-        console.log('[TrackingSocket] connecte');
+        console.log('[TrackingSocket] connecté');
         this.tripJoinCounts.forEach((_count, tripId) => {
           socket.emit('join_trip', { tripId });
         });
       });
 
       socket.on('disconnect', () => {
-        console.log('[TrackingSocket] deconnecte');
+        console.log('[TrackingSocket] déconnecté');
       });
 
       socket.on('driver_location', (payload: DriverLocationPayload) => {

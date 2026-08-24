@@ -202,7 +202,7 @@ export default function PassengerNavigationScreen() {
   const bookingId = typeof id === 'string' ? id : '';
   const isFocused = useIsFocused();
 
-  // Recuperer la reservation et le trajet
+  // Récupérer la réservation et le trajet
   const { data: booking, isLoading: bookingLoading, refetch: refetchBooking } = useGetBookingByIdQuery(bookingId, { 
     skip: !bookingId,
     pollingInterval: 30000, // Polling leger pour sync
@@ -361,8 +361,8 @@ export default function PassengerNavigationScreen() {
     };
   }, [navigateBackSafely]);
 
-  // Coordonnees importantes
-  // Le point de recuperation peut etre personnalise par le passager
+  // Coordonnées importantes
+  // Le point de récupération peut être personnalisé par le passager
   const tripDepartureCoordinate = useMemo(
     () => normalizeTripMapCoordinate(trip?.departure?.lat, trip?.departure?.lng),
     [trip?.departure?.lat, trip?.departure?.lng],
@@ -551,7 +551,7 @@ export default function PassengerNavigationScreen() {
     void Speech.stop().finally(() => {
       if (!isMountedRef.current) return;
       Speech.speak(
-        "Vous etes arrive a votre destination. L'arrivee se confirme automatiquement.",
+        "Vous êtes arrivé à votre destination. L'arrivée se confirme automatiquement.",
         { language: 'fr-FR', rate: 0.95 },
       );
     });
@@ -567,9 +567,9 @@ export default function PassengerNavigationScreen() {
     showDialog({
       variant: 'info',
       icon: 'person-remove',
-      title: 'Non-embarquement detecte',
+      title: 'Non-embarquement détecté',
       message:
-        "Le conducteur s'est eloigne du point de rendez-vous sans que votre prise en charge soit detectee. Aucun paiement n'a ete effectue. Le partage de position reste actif pendant le trajet : si vous rejoignez le vehicule plus tard, Zwanga pourra valider automatiquement votre embarquement.",
+        "Le conducteur s'est éloigné du point de rendez-vous sans que votre prise en charge soit détectée. Aucun paiement n'a été effectué. Le partage de position reste actif pendant le trajet : si vous rejoignez le véhicule plus tard, Zwanga pourra valider automatiquement votre embarquement.",
       actions: [
         {
           label: 'Continuer le suivi',
@@ -592,9 +592,9 @@ export default function PassengerNavigationScreen() {
     showDialog({
       variant: 'warning',
       icon: 'help-circle',
-      title: 'Embarquement non confirme',
+      title: 'Embarquement non confirmé',
       message:
-        "Le trajet est arrive a destination sans preuve GPS suffisante de votre embarquement. La reservation est cloturee et aucun paiement n'a ete effectue.",
+        "Le trajet est arrivé à destination sans preuve GPS suffisante de votre embarquement. La réservation est clôturée et aucun paiement n'a été effectué.",
       actions: [
         {
           label: 'Retour',
@@ -714,18 +714,18 @@ export default function PassengerNavigationScreen() {
       typeof event.distanceMeters === 'number' && Number.isFinite(event.distanceMeters)
         ? Math.max(1, Math.round(event.distanceMeters))
         : null;
-    const distanceText = roundedDistance ? ` Distance detectee: ${roundedDistance} m.` : '';
+    const distanceText = roundedDistance ? ` Distance détectée: ${roundedDistance} m.` : '';
 
     showDialog({
       variant: 'info',
       icon: 'flag',
-      title: 'Votre arrivee approche',
-      message: `Votre point d'arrivee va etre atteint.${distanceText}`,
+      title: 'Votre arrivée approche',
+      message: `Votre point d'arrivée va être atteint.${distanceText}`,
     });
 
     void Speech.stop().finally(() => {
       if (!isMountedRef.current) return;
-      Speech.speak("Votre point d'arrivee va etre atteint.", {
+      Speech.speak("Votre point d'arrivée va être atteint.", {
         language: 'fr-FR',
         rate: 0.95,
       });
@@ -758,32 +758,32 @@ export default function PassengerNavigationScreen() {
       typeof event.distanceMeters === 'number' && Number.isFinite(event.distanceMeters)
         ? Math.max(1, Math.round(event.distanceMeters))
         : null;
-    const distanceText = roundedDistance ? ` Distance detectee: ${roundedDistance} m.` : '';
+    const distanceText = roundedDistance ? ` Distance détectée: ${roundedDistance} m.` : '';
     const isReachedZone = !isCompleted && roundedDistance !== null && roundedDistance <= 10;
 
     showDialog({
       variant: isCompleted ? 'success' : 'info',
       icon: 'flag',
       title: isCompleted
-        ? 'Trajet termine'
+        ? 'Trajet terminé'
         : isReachedZone
           ? 'Destination finale atteinte'
           : 'Destination finale proche',
       message: isCompleted
-        ? `Le trajet est termine automatiquement.${distanceText}`
+        ? `Le trajet est terminé automatiquement.${distanceText}`
         : isReachedZone
-          ? `Le point d'arrivee du trajet est atteint. Le trajet sera termine automatiquement dans 10 minutes si le vehicule reste sur place.${distanceText}`
-          : `Le point d'arrivee du trajet est presque atteint.${distanceText}`,
+          ? `Le point d'arrivée du trajet est atteint. Le trajet sera terminé automatiquement dans 10 minutes si le véhicule reste sur place.${distanceText}`
+          : `Le point d'arrivée du trajet est presque atteint.${distanceText}`,
     });
 
     void Speech.stop().finally(() => {
       if (!isMountedRef.current) return;
       Speech.speak(
         isCompleted
-          ? 'Le trajet est termine automatiquement.'
+          ? 'Le trajet est terminé automatiquement.'
           : isReachedZone
-            ? "Le point d'arrivee du trajet est atteint."
-            : "Le point d'arrivee du trajet est presque atteint.",
+            ? "Le point d'arrivée du trajet est atteint."
+            : "Le point d'arrivée du trajet est presque atteint.",
         {
           language: 'fr-FR',
           rate: 0.95,
@@ -986,7 +986,7 @@ export default function PassengerNavigationScreen() {
     }
   }, [driverLocation, driverLocationSnapshot, lastUpdate]);
 
-  // Fonction pour recuperer la route
+  // Fonction pour récupérer la route
   const fetchRoute = useCallback(async () => {
     if (!routeOriginCoordinate || !activePassengerDestination || !isMountedRef.current) return;
     if (isTripOngoing && !driverLocation && !hasPassengerPickedUp) return;
@@ -1004,7 +1004,7 @@ export default function PassengerNavigationScreen() {
       routeFetchedRef.current = true;
     };
     
-    // Eviter les appels trop frequents (minimum 30s entre les appels)
+    // Éviter les appels trop fréquents (minimum 30 s entre les appels)
     const now = Date.now();
     if (now - lastRouteFetchRef.current < 30000 && routeFetchedRef.current) return;
     lastRouteFetchRef.current = now;
@@ -1091,7 +1091,7 @@ export default function PassengerNavigationScreen() {
     routeOriginCoordinate,
   ]);
   
-  // Recuperer la route au chargement
+  // Récupérer la route au chargement
   useEffect(() => {
     if (routeSignatureRef.current !== passengerRouteSignature) {
       routeSignatureRef.current = passengerRouteSignature;
@@ -1129,7 +1129,7 @@ export default function PassengerNavigationScreen() {
         console.warn('[PassengerNavigation] Connexion tracking impossible:', error);
       });
 
-    // Ecouter les mises a jour de position du conducteur
+    // Écouter les mises à jour de position du conducteur
     const unsubscribeLocation = trackingSocket.subscribeToDriverLocation((payload: DriverLocationPayload) => {
       if (!isMountedRef.current) return;
       if (payload.tripId === tripId && payload.coordinates) {
@@ -1151,7 +1151,7 @@ export default function PassengerNavigationScreen() {
             maxJumpMeters: MAX_PLAUSIBLE_LOCATION_JUMP_METERS,
           })
         ) {
-          console.warn('[PassengerNavigation] Position conducteur ignoree: saut GPS incoherent');
+          console.warn('[PassengerNavigation] Position du conducteur ignorée : saut GPS incohérent');
           return;
         }
 
@@ -1201,7 +1201,7 @@ export default function PassengerNavigationScreen() {
       }
     });
 
-    // Ecouter les erreurs
+    // Écouter les erreurs
     const unsubscribeError = trackingSocket.subscribeToErrors((message) => {
       if (!isMountedRef.current || isCancelled) return;
       console.warn('[PassengerNavigation] Erreur tracking:', message);
@@ -1263,7 +1263,7 @@ export default function PassengerNavigationScreen() {
         return;
       }
       if (isKinshasaTrip && !isCoordinateInKinshasaBounds(coordinate)) {
-        console.warn('[PassengerNavigation] Position passager hors Kinshasa non envoyee:', {
+        console.warn('[PassengerNavigation] Position passager hors Kinshasa non envoyée:', {
           bookingId: booking.id,
           tripId,
           coordinate,
@@ -1333,7 +1333,7 @@ export default function PassengerNavigationScreen() {
         ], metadata);
         return;
       } catch (socketError) {
-        console.warn('[PassengerNavigation] Envoi temps reel indisponible, fallback REST:', socketError);
+        console.warn('[PassengerNavigation] Envoi temps réel indisponible, fallback REST:', socketError);
       }
 
       try {
@@ -1387,7 +1387,7 @@ export default function PassengerNavigationScreen() {
           }
         }
       } catch (error) {
-        console.warn('[PassengerNavigation] Position passager non envoyee:', error);
+        console.warn('[PassengerNavigation] Position passager non envoyée:', error);
       }
     };
 
@@ -1399,7 +1399,7 @@ export default function PassengerNavigationScreen() {
             variant: 'warning',
             title: 'Localisation requise',
             message:
-              'Activez la localisation pour permettre la confirmation automatique de la prise en charge et de l arrivee.',
+              "Activez la localisation pour permettre la confirmation automatique de la prise en charge et de l'arrivée.",
           });
           return;
         }
@@ -1449,7 +1449,7 @@ export default function PassengerNavigationScreen() {
       if (nextState !== 'active' || isCancelled) return;
 
       void trackingSocket.resumeBoardingDetection(tripId).catch((error) => {
-        console.warn('[PassengerNavigation] Reprise detection embarquement impossible:', error);
+        console.warn('[PassengerNavigation] Reprise détection embarquement impossible:', error);
       });
       void Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
         .then(sendLocation)
@@ -1739,8 +1739,8 @@ export default function PassengerNavigationScreen() {
 
       showDialog({
         variant: 'success',
-        title: 'Trajet annule',
-        message: 'Votre participation a ete annulee.',
+        title: 'Trajet annulé',
+        message: 'Votre participation a été annulée.',
         actions: [
           {
             label: 'Retour',
@@ -1776,7 +1776,7 @@ export default function PassengerNavigationScreen() {
       variant: 'warning',
       title: 'Annuler ce trajet',
       message:
-        'Voulez-vous vraiment annuler votre participation a ce trajet ? Le conducteur sera informe.',
+        'Voulez-vous vraiment annuler votre participation à ce trajet ? Le conducteur sera informé.',
       actions: [
         { label: 'Garder', variant: 'ghost' },
         {
@@ -1840,14 +1840,14 @@ export default function PassengerNavigationScreen() {
           reason,
           note:
             reason === 'emergency'
-              ? 'Le passager demande a descendre avant sa destination pour urgence.'
-              : 'Le passager demande a descendre avant sa destination.',
+              ? 'Le passager demande à descendre avant sa destination en raison d’une urgence.'
+              : 'Le passager demande à descendre avant sa destination.',
           coordinates: passengerLocation,
         }).unwrap();
         await Promise.all([refetchBooking(), refetchTrip()]);
         showDialog({
           variant: 'success',
-          title: 'Demande envoyee',
+          title: 'Demande envoyée',
           message: 'Le conducteur doit confirmer avant que votre trajet soit interrompu.',
         });
       } catch (error: any) {
@@ -1909,8 +1909,8 @@ export default function PassengerNavigationScreen() {
       await Promise.all([refetchBooking(), refetchTrip()]);
       showDialog({
         variant: 'success',
-        title: 'Interruption confirmee',
-        message: 'Votre confirmation a ete envoyee au conducteur.',
+        title: 'Interruption confirmée',
+        message: 'Votre confirmation a été envoyée au conducteur.',
       });
     } catch (error: any) {
       const message =
@@ -1944,8 +1944,8 @@ export default function PassengerNavigationScreen() {
       await Promise.all([refetchBooking(), refetchTrip()]);
       showDialog({
         variant: 'info',
-        title: 'Reponse envoyee',
-        message: 'Votre refus a ete transmis au conducteur.',
+        title: 'Réponse envoyée',
+        message: 'Votre refus a été transmis au conducteur.',
       });
     } catch (error: any) {
       const message =
@@ -1967,7 +1967,7 @@ export default function PassengerNavigationScreen() {
     tripId,
   ]);
 
-  // Etat du trajet pour le passager
+  // État du trajet pour le passager
   const tripStatus = useMemo(() => {
     if (!booking || !trip) return 'loading';
     if (trip.status !== 'ongoing') return 'not_started';
@@ -2112,7 +2112,7 @@ export default function PassengerNavigationScreen() {
       <View style={styles.errorContainer}>
         <StatusBar barStyle="dark-content" />
         <Ionicons name="alert-circle" size={64} color={Colors.danger} />
-        <Text style={styles.errorText}>Reservation introuvable</Text>
+        <Text style={styles.errorText}>Réservation introuvable</Text>
         <TouchableOpacity style={styles.backButton} onPress={navigateBackSafely}>
           <Text style={styles.backButtonText}>Retour</Text>
         </TouchableOpacity>
@@ -2182,7 +2182,7 @@ export default function PassengerNavigationScreen() {
           </Marker>
         )}
 
-        {/* Point de recuperation */}
+        {/* Point de récupération */}
         {pickupCoordinate && !booking.pickedUp && (
           <Marker
             ref={pickupMarkerRef}
@@ -2200,7 +2200,7 @@ export default function PassengerNavigationScreen() {
           </Marker>
         )}
 
-        {/* Point d'arrivee */}
+        {/* Point d'arrivée */}
         {dropoffCoordinate && (
           <Marker
             ref={dropoffMarkerRef}
@@ -2296,7 +2296,7 @@ export default function PassengerNavigationScreen() {
                 activeRouteSegment === 'pickup' && styles.segmentToggleTextActive,
               ]}
             >
-              Recup.
+              Récup.
             </Text>
           </TouchableOpacity>
         </View>
@@ -2367,11 +2367,11 @@ export default function PassengerNavigationScreen() {
         
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>
-            {tripStatus === 'waiting_pickup' ? 'En attente de recuperation' : 
-             tripStatus === 'pickup_confirmation_needed' ? 'Recuperation detectee' :
+            {tripStatus === 'waiting_pickup' ? 'En attente de récupération' :
+             tripStatus === 'pickup_confirmation_needed' ? 'Récupération détectée' :
              tripStatus === 'in_transit' ? 'En route' :
-             tripStatus === 'awaiting_dropoff_confirmation' ? 'Arrivee detectee' :
-             tripStatus === 'completed' ? 'Arrive' : 'Suivi du trajet'}
+             tripStatus === 'awaiting_dropoff_confirmation' ? 'Arrivée détectée' :
+             tripStatus === 'completed' ? 'Arrivé' : 'Suivi du trajet'}
           </Text>
           {isSocketConnected && (
             <View style={styles.liveIndicator}>
@@ -2446,14 +2446,14 @@ export default function PassengerNavigationScreen() {
         {isLoadingRoute && !displayedRouteDistance && (
           <View style={styles.routeLoadingRow}>
             <ActivityIndicator size="small" color={Colors.primary} />
-            <Text style={styles.routeLoadingText}>Chargement de l&apos;itineraire...</Text>
+            <Text style={styles.routeLoadingText}>Chargement de l&apos;itinéraire...</Text>
           </View>
         )}
 
         <View style={styles.statusRow}>
           {lastUpdate && (
             <Text style={styles.lastUpdateText}>
-              Position mise a jour : {lastUpdate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              Position mise à jour : {lastUpdate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </Text>
           )}
           {!driverLocation && tripStatus !== 'not_started' && (
@@ -2461,7 +2461,7 @@ export default function PassengerNavigationScreen() {
           )}
         </View>
 
-        {/* Etat automatique du trajet */}
+        {/* État automatique du trajet */}
         {trip.status === 'ongoing' && (
           <View style={styles.actionButtons}>
             {!booking.pickedUp && (
@@ -2483,21 +2483,21 @@ export default function PassengerNavigationScreen() {
             {booking.pickedUp && booking.pickedUpConfirmedByPassenger && !booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
               <View style={styles.completedBadge}>
                 <Ionicons name="navigate" size={24} color={Colors.primary} />
-                <Text style={styles.completedText}>Arrivee en cours au point de depose</Text>
+                <Text style={styles.completedText}>Arrivée en cours au point de dépose</Text>
               </View>
             )}
 
             {booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
               <View style={styles.completedBadge}>
                 <Ionicons name="hourglass" size={24} color={Colors.secondary} />
-                <Text style={styles.completedText}>Finalisation de l arrivee</Text>
+                <Text style={styles.completedText}>Finalisation de l’arrivée</Text>
               </View>
             )}
 
             {booking.droppedOff && (
               <View style={styles.completedBadge}>
                 <Ionicons name="checkmark-done" size={24} color={Colors.success} />
-                <Text style={styles.completedText}>Trajet termine</Text>
+                <Text style={styles.completedText}>Trajet terminé</Text>
               </View>
             )}
 
@@ -2506,7 +2506,7 @@ export default function PassengerNavigationScreen() {
                 <Ionicons name="hourglass-outline" size={22} color={Colors.warning} />
                 <View style={styles.interruptionStatusCopy}>
                   <Text style={styles.interruptionStatusTitle}>
-                    Demande d&apos;interruption envoyee
+                    Demande d&apos;interruption envoyée
                   </Text>
                   <Text style={styles.interruptionStatusText}>
                     En attente de confirmation du conducteur.
@@ -2555,7 +2555,7 @@ export default function PassengerNavigationScreen() {
 
                 {hasRespondedToDriverInterruption ? (
                   <Text style={styles.driverInterruptionResponseText}>
-                    Reponse envoyee: {driverInterruptionConfirmation?.status === 'confirmed' ? 'confirmee' : 'refusee'}.
+                    Réponse envoyée : {driverInterruptionConfirmation?.status === 'confirmed' ? 'confirmée' : 'refusée'}.
                   </Text>
                 ) : canRespondToDriverInterruption ? (
                   <View style={styles.driverInterruptionActions}>
@@ -2586,7 +2586,7 @@ export default function PassengerNavigationScreen() {
                   </View>
                 ) : (
                   <Text style={styles.driverInterruptionResponseText}>
-                    Aucune confirmation requise pour votre reservation.
+                    Aucune confirmation requise pour votre réservation.
                   </Text>
                 )}
               </View>
@@ -2619,7 +2619,7 @@ export default function PassengerNavigationScreen() {
         {trip.status !== 'ongoing' && (
           <View style={styles.notStartedBadge}>
             <Ionicons name="time" size={20} color={Colors.secondary} />
-            <Text style={styles.notStartedText}>Le trajet n&apos;a pas encore demarre</Text>
+            <Text style={styles.notStartedText}>Le trajet n&apos;a pas encore démarré</Text>
           </View>
         )}
       </Animated.View>
