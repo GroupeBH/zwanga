@@ -32,6 +32,7 @@ import {
   useRejectBookingMutation,
 } from '@/store/api/bookingApi';
 import { TravelMode, useGetDirectionsMutation } from '@/store/api/googleMapsApi';
+import { useCreateTripShareLinkMutation } from '@/store/api/trackingApi';
 import {
   useCancelDriverTripInterruptionMutation,
   useCompleteTripMutation,
@@ -652,6 +653,8 @@ export default function NavigationScreen() {
   const [startTrip, { isLoading: isRestartingTrip }] = useStartTripMutation();
   const [updateDriverLocation] = useUpdateDriverLocationMutation();
   const [getDriverLocationSnapshot] = useLazyGetDriverLocationQuery();
+  const [createTripShareLink, { isLoading: isCreatingTripShareLink }] =
+    useCreateTripShareLinkMutation();
   const tripDepartureCoordinate = useMemo(
     () =>
       getTripLocationCoordinate({
@@ -4156,19 +4159,28 @@ export default function NavigationScreen() {
     if (!tripId) return;
 
     try {
-      await shareTrip(
+      const response = await createTripShareLink({
         tripId,
+        message: 'Voici le lien pour suivre mon trajet Zwanga en temps réel.',
+      }).unwrap();
+      await shareTrip(
+        response.publicUrl,
         trip?.departure?.name ?? trip?.departure?.address,
         trip?.arrival?.name ?? trip?.arrival?.address,
       );
     } catch (error: any) {
+      const backendMessage = error?.data?.message;
+      const message = Array.isArray(backendMessage)
+        ? backendMessage.join('\n')
+        : backendMessage || error?.message || 'Impossible de créer le lien web de suivi.';
       showDialog({
         variant: 'danger',
         title: 'Partage impossible',
-        message: error?.message || 'Impossible de partager le trajet pour le moment.',
+        message,
       });
     }
   }, [
+    createTripShareLink,
     showDialog,
     trip?.arrival?.address,
     trip?.arrival?.name,
@@ -5202,12 +5214,20 @@ export default function NavigationScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.floatingButton}
+          style={[
+            styles.floatingButton,
+            isCreatingTripShareLink && styles.floatingButtonDisabled,
+          ]}
           onPress={() => void handleShareTrip()}
+          disabled={isCreatingTripShareLink}
           accessibilityRole="button"
           accessibilityLabel="Partager le trajet"
         >
-          <Ionicons name="share-social-outline" size={22} color={Colors.primary} />
+          {isCreatingTripShareLink ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <Ionicons name="share-social-outline" size={22} color={Colors.primary} />
+          )}
         </TouchableOpacity>
 
         {/* Bouton recalculer l'itinéraire */}
