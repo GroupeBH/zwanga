@@ -3,6 +3,19 @@ import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 
 const PUBLIC_TRACKING_URL_PATTERN = /^https?:\/\/[^\s]+$/i;
 
+function appendPublicUrlOnce(message: string, publicUrl?: string): string {
+  if (!publicUrl) {
+    return message;
+  }
+
+  const normalizedUrl = normalizePublicTrackingUrl(publicUrl);
+  if (message.includes(normalizedUrl)) {
+    return message;
+  }
+
+  return `${message.trimEnd()}\n\n${normalizedUrl}`;
+}
+
 /**
  * Refuse les deep links mobiles et les chemins relatifs : le suivi partagé doit
  * toujours pouvoir s'ouvrir dans un navigateur sans installer l'application.
@@ -52,8 +65,9 @@ export async function shareTrip(
     const message = generateTripShareMessage(url, departureName, arrivalName);
     
     const result = await Share.share({
-      message: message,
-      url: Platform.OS === 'ios' ? url : undefined, // iOS utilise url, Android utilise message
+      // Le lien est déjà inclus dans le message. Ajouter aussi la propriété
+      // `url` sur iOS le duplique dans certaines applications, dont WhatsApp.
+      message,
       title: 'Partager le trajet',
     });
 
@@ -186,6 +200,6 @@ export async function shareTripViaEmail(input: {
 
   await Share.share({
     title: input.subject,
-    message: input.fallbackUrl ? `${input.body}\n\n${input.fallbackUrl}` : input.body,
+    message: appendPublicUrlOnce(input.body, input.fallbackUrl),
   });
 }

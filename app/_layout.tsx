@@ -55,6 +55,7 @@ export default function RootLayout() {
             <Stack.Screen name="request-details/[id]" options={{ headerShown: false }} />
             <Stack.Screen name="search" options={{ headerShown: false, presentation: modalPresentation }} />
             <Stack.Screen name="wallet" options={{ headerShown: false }} />
+            <Stack.Screen name="referrals" options={{ headerShown: false }} />
             <Stack.Screen name="payment-history" options={{ headerShown: false }} />
             <Stack.Screen name="subscriptions/payment" options={{ headerShown: false }} />
             <Stack.Screen name="notifications" options={{ headerShown: false }} />

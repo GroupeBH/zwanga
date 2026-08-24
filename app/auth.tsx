@@ -140,8 +140,10 @@ export default function AuthScreen() {
   const dispatch = useAppDispatch();
   const { showDialog } = useDialog();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
-  const { mode: initialModeParam } = useLocalSearchParams<{ mode?: string }>();
-  const initialMode: AuthMode = initialModeParam === 'signup' ? 'signup' : 'login';
+  const { mode: initialModeParam, referralCode: initialReferralCode } =
+    useLocalSearchParams<{ mode?: string; referralCode?: string }>();
+  const initialMode: AuthMode =
+    initialModeParam === 'signup' || initialReferralCode ? 'signup' : 'login';
   
   // ============ STATE ============
   const [mode, setMode] = useState<AuthMode>(initialMode);
@@ -176,6 +178,9 @@ export default function AuthScreen() {
   const [gender, setGender] = useState<UserGender | null>(null);
   const [role, setRole] = useState<'driver' | 'passenger'>('passenger');
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
+  const [referralCode, setReferralCode] = useState(
+    (initialReferralCode ?? '').replace(/[^a-z0-9]/gi, '').toUpperCase(),
+  );
 
   // Vehicle State
   const [vehicleType, setVehicleType] = useState<VehicleType | null>(null);
@@ -998,6 +1003,7 @@ export default function AuthScreen() {
               role,
               isDriver: requiresVehicle,
               vehicle: signupVehicle,
+              referralCode: referralCode.trim() || undefined,
             }).unwrap()
           : await googleMobile({
               idToken: googleIdToken,
@@ -1006,6 +1012,7 @@ export default function AuthScreen() {
               role,
               isDriver: requiresVehicle,
               vehicle: signupVehicle,
+              referralCode: referralCode.trim() || undefined,
             }).unwrap();
         await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
         
@@ -1047,6 +1054,7 @@ export default function AuthScreen() {
       if (gender) formData.append('gender', gender);
       formData.append('role', role);
       formData.append('isDriver', JSON.stringify(requiresVehicle));
+      if (referralCode.trim()) formData.append('referralCode', referralCode.trim());
 
       if (requiresVehicle) {
         formData.append('vehicle[type]', vehicleType!);
@@ -1219,6 +1227,7 @@ export default function AuthScreen() {
               showNameFields={!isAppleSignupFlow}
               profilePicture={profilePicture}
               gender={gender}
+              referralCode={referralCode}
               role={role}
               vehicleType={vehicleType}
               vehicleBrand={vehicleBrand}
@@ -1229,6 +1238,7 @@ export default function AuthScreen() {
               onLastNameChange={setLastName}
               onSelectProfilePicture={handleSelectProfilePicture}
               onGenderChange={setGender}
+              onReferralCodeChange={setReferralCode}
               onRoleChange={setRole}
               onVehicleTypeChange={setVehicleType}
               onOpenVehicleModal={() => setVehicleModalVisible(true)}

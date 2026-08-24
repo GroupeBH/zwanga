@@ -116,6 +116,7 @@ export default function SettingsScreen() {
     },
     { icon: 'receipt-outline', label: 'Historique paiements', route: '/payment-history' },
     { icon: 'wallet-outline', label: 'Jetons Zwanga', route: '/wallet' },
+    { icon: 'gift-outline', label: 'Parrainage et gains', route: '/referrals' },
     { icon: 'lock-closed-outline', label: 'Sécurité', route: '/security' },
   ];
 
