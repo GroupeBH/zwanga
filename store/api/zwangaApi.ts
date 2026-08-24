@@ -32,6 +32,7 @@ import './walletApi';
 import './driverSettlementsApi';
 import './trackingApi';
 import './paymentApi';
+import './referralApi';
 
 // Import de la base API
 export { baseApi as zwangaApi };
@@ -223,3 +224,14 @@ export {
   useGetPaymentHistoryQuery,
   useLazyGetPaymentDetailsQuery,
 } from './paymentApi';
+
+export {
+  useValidateReferralCodeMutation,
+  useGetMyReferralSummaryQuery,
+  useGetMyReferralsQuery,
+  useGetMyReferralRewardsQuery,
+  useGetMyReferralLedgerQuery,
+  useGetMyReferralWithdrawalsQuery,
+  useRequestReferralWithdrawalMutation,
+  useLazyCheckReferralWithdrawalStatusQuery,
+} from './referralApi';

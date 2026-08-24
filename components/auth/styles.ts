@@ -696,6 +696,20 @@ export const authStyles = StyleSheet.create({
   genderSelection: {
     marginTop: Spacing.sm,
   },
+  referralFieldBlock: {
+    marginTop: Spacing.sm,
+  },
+  referralInputWrapper: {
+    height: 48,
+    marginBottom: 4,
+    borderRadius: 14,
+    paddingHorizontal: Spacing.md,
+  },
+  referralHint: {
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+  },
 
   // Roles
   sectionLabel: {

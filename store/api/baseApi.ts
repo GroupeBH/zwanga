@@ -127,6 +127,7 @@ export const baseApi = createApi({
     'DriverSettlement',
     'TripShareLink',
     'PaymentHistory',
+    'Referral',
   ],
   endpoints: () => ({}),
 });

@@ -110,6 +110,7 @@ export const authApi = baseApi.injectEndpoints({
     // Google mobile (login ou signup)
     googleMobile: builder.mutation<AuthResponse, {
       idToken: string;
+      referralCode?: string;
       phone?: string;
       gender?: UserGender;
       role?: 'driver' | 'passenger';
@@ -162,6 +163,7 @@ export const authApi = baseApi.injectEndpoints({
     // Apple mobile (login ou signup)
     appleMobile: builder.mutation<AuthResponse, {
       idToken: string;
+      referralCode?: string;
       phone?: string;
       nonce?: string;
       gender?: UserGender;
@@ -175,7 +177,7 @@ export const authApi = baseApi.injectEndpoints({
         licensePlate: string;
       };
     }>({
-      query: ({ idToken, phone, nonce, gender, role, isDriver, vehicle }) => ({
+      query: ({ idToken, phone, nonce, gender, role, isDriver, vehicle, referralCode }) => ({
         url: '/auth/apple/mobile',
         method: 'POST',
         body: {
@@ -186,6 +188,7 @@ export const authApi = baseApi.injectEndpoints({
           ...(role ? { role } : {}),
           ...(typeof isDriver === 'boolean' ? { isDriver } : {}),
           ...(vehicle ? { vehicle } : {}),
+          ...(referralCode ? { referralCode } : {}),
         },
       }),
       async onQueryStarted(_arg, { dispatch, queryFulfilled }) {

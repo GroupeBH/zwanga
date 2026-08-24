@@ -16,6 +16,7 @@ interface ProfileStepProps {
   showNameFields?: boolean;
   profilePicture: string | null;
   gender: UserGender | null;
+  referralCode: string;
   role: 'driver' | 'passenger';
   vehicleType: VehicleType | null;
   vehicleBrand: string;
@@ -26,6 +27,7 @@ interface ProfileStepProps {
   onLastNameChange: (name: string) => void;
   onSelectProfilePicture: () => void;
   onGenderChange: (gender: UserGender) => void;
+  onReferralCodeChange: (code: string) => void;
   onRoleChange: (role: 'driver' | 'passenger') => void;
   onVehicleTypeChange: (type: VehicleType) => void;
   onOpenVehicleModal: () => void;
@@ -38,6 +40,7 @@ export function ProfileStep({
   showNameFields = true,
   profilePicture,
   gender,
+  referralCode,
   role,
   vehicleType,
   vehicleBrand,
@@ -48,6 +51,7 @@ export function ProfileStep({
   onLastNameChange,
   onSelectProfilePicture,
   onGenderChange,
+  onReferralCodeChange,
   onRoleChange,
   onVehicleTypeChange,
   onOpenVehicleModal,
@@ -111,6 +115,24 @@ export function ProfileStep({
           onChange={onGenderChange}
           allowedGenders={SIGNUP_GENDERS}
         />
+      </View>
+
+      <View style={styles.referralFieldBlock}>
+        <Text style={styles.profileSectionLabel}>Code de parrainage (optionnel)</Text>
+        <View style={[styles.inputWrapper, styles.referralInputWrapper]}>
+          <Ionicons name="gift-outline" size={18} color={Colors.primary} style={styles.profileInputIcon} />
+          <TextInput
+            style={styles.input}
+            placeholder="Ex. ZW7K9M2P4Q"
+            placeholderTextColor={Colors.gray[400]}
+            value={referralCode}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            maxLength={16}
+            onChangeText={(value) => onReferralCodeChange(value.replace(/[^a-z0-9]/gi, '').toUpperCase())}
+          />
+        </View>
+        <Text style={styles.referralHint}>Le code est lie une seule fois, a la creation du compte.</Text>
       </View>
 
       <View style={styles.roleSelection}>

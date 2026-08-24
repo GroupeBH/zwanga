@@ -392,6 +392,17 @@ export default function WalletScreen() {
             </Text>
           </View>
 
+          <TouchableOpacity style={styles.referralBanner} onPress={() => router.push('/referrals')}>
+            <View style={styles.referralBannerIcon}>
+              <Ionicons name="gift-outline" size={21} color={Colors.primary} />
+            </View>
+            <View style={styles.referralBannerText}>
+              <Text style={styles.referralBannerTitle}>Jetons de parrainage</Text>
+              <Text style={styles.referralBannerHint}>Consultez vos commissions de 5 % et retirez vos gains.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+          </TouchableOpacity>
+
           <View style={styles.tabs}>
             <TouchableOpacity
               activeOpacity={0.85}
@@ -665,6 +676,28 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     lineHeight: 20,
   },
+  referralBanner: {
+    minHeight: 76,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.primary + '24',
+    backgroundColor: Colors.white,
+    padding: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  referralBannerIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: Colors.primary + '10',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  referralBannerText: { flex: 1, minWidth: 0 },
+  referralBannerTitle: { color: Colors.gray[900], fontSize: FontSizes.sm, fontWeight: FontWeights.bold },
+  referralBannerHint: { color: Colors.gray[500], fontSize: FontSizes.xs, lineHeight: 17, marginTop: 3 },
   tabs: {
     minHeight: 48,
     flexDirection: 'row',

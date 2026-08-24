@@ -2,12 +2,14 @@ import { Colors, Spacing } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import * as Contacts from 'expo-contacts';
 import { useRouter } from 'expo-router';
+import { useGetMyReferralSummaryQuery } from '@/store/api/referralApi';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
     Linking,
     Platform,
+    Share,
     StyleSheet,
     Text,
     TextInput,
@@ -23,6 +25,7 @@ export default function InviteScreen() {
     const [isLoading, setIsLoading] = useState(true);
     const [permissionStatus, setPermissionStatus] = useState<Contacts.PermissionStatus | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const { data: referralSummary } = useGetMyReferralSummaryQuery();
 
     useEffect(() => {
         (async () => {
@@ -73,7 +76,9 @@ export default function InviteScreen() {
         // But for "send" intent, usually mostly clean digits works. 
 
         // Invitation text
-        const message = "Salut ! Je t'invite à me rejoindre sur Zwanga pour faciliter tes déplacements. Télécharge l'app ici : https://play.google.com/store/apps/details?id=com.zwanga";
+        const message = referralSummary
+            ? `Salut ! Rejoins-moi sur Zwanga avec mon code ${referralSummary.code}. Inscris-toi ici : ${referralSummary.shareLink}`
+            : "Salut ! Je t'invite à me rejoindre sur Zwanga pour faciliter tes déplacements. Télécharge l'app ici : https://play.google.com/store/apps/details?id=com.zwanga";
 
         const url = `whatsapp://send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`;
 
@@ -129,6 +134,22 @@ export default function InviteScreen() {
                 <View style={{ width: 40 }} />
             </View>
 
+            {referralSummary && (
+                <View style={styles.referralCard}>
+                    <View style={styles.referralCopy}>
+                        <Text style={styles.referralEyebrow}>VOTRE CODE DE PARRAINAGE</Text>
+                        <Text selectable style={styles.referralCode}>{referralSummary.code}</Text>
+                        <Text style={styles.referralHint}>5 % des paiements FlexPay eligibles pendant un an.</Text>
+                    </View>
+                    <TouchableOpacity
+                        style={styles.shareButton}
+                        onPress={() => Share.share({ message: `Rejoins-moi sur Zwanga avec mon code ${referralSummary.code} : ${referralSummary.shareLink}` })}
+                    >
+                        <Ionicons name="share-social-outline" size={20} color={Colors.white} />
+                    </TouchableOpacity>
+                </View>
+            )}
+
             <View style={styles.searchContainer}>
                 <Ionicons name="search" size={20} color={Colors.gray[500]} style={styles.searchIcon} />
                 <TextInput
@@ -181,6 +202,13 @@ const styles = StyleSheet.create({
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] },
     backButton: { padding: 4, borderRadius: 20 },
     headerTitle: { fontSize: 18, fontWeight: '700', color: Colors.gray[900] },
+
+    referralCard: { marginHorizontal: Spacing.lg, marginTop: Spacing.lg, borderRadius: 16, backgroundColor: Colors.primary, padding: Spacing.lg, flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+    referralCopy: { flex: 1 },
+    referralEyebrow: { color: '#FFE1D6', fontSize: 10, fontWeight: '700', letterSpacing: 1 },
+    referralCode: { color: Colors.white, fontSize: 24, fontWeight: '800', letterSpacing: 1.5, marginTop: 3 },
+    referralHint: { color: '#FFF4EF', fontSize: 12, marginTop: 4 },
+    shareButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.primaryDark, alignItems: 'center', justifyContent: 'center' },
 
     searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.gray[100], margin: Spacing.lg, paddingHorizontal: Spacing.md, borderRadius: 12, height: 48 },
     searchIcon: { marginRight: 8 },

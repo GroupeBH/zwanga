@@ -47,11 +47,7 @@ import Animated, {
 } from '@/utils/reanimated';
 import { getRouteInfo, type RouteInfo } from '@/utils/routeApi';
 import { isPointOnRoute, splitRouteByProgress } from '@/utils/routeHelpers';
-import {
-  shareTrackingLinkViaWhatsApp,
-  shareTrip,
-  shareTripViaEmail,
-} from '@/utils/shareHelpers';
+import { shareTrip } from '@/utils/shareHelpers';
 import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerAndroid, type DateTimePickerEvent } from '@react-native-community/datetimepicker';
@@ -947,7 +943,6 @@ export default function TripDetailsScreen() {
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [contactModalVisible, setContactModalVisible] = useState(false);
-  const [shareModalVisible, setShareModalVisible] = useState(false);
   const [securityModalVisible, setSecurityModalVisible] = useState(false);
   const securityModalTransitionRef = useRef(false);
   const securityModalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1746,6 +1741,47 @@ export default function TripDetailsScreen() {
       });
     }
   };
+
+  const handleShareTrip = useCallback(async () => {
+    if (!trip?.id || isCreatingTripShareLink) {
+      return;
+    }
+
+    try {
+      const response = await createTripShareLink({
+        tripId: trip.id,
+        bookingId: activeBooking?.id,
+        message: 'Voici le lien pour suivre mon trajet Zwanga en temps réel.',
+      }).unwrap();
+
+      await shareTrip(
+        response.publicUrl,
+        trip.departure?.name ?? trip.departure?.address,
+        trip.arrival?.name ?? trip.arrival?.address,
+      );
+    } catch (error: any) {
+      const backendMessage = error?.data?.message;
+      const message = Array.isArray(backendMessage)
+        ? backendMessage.join('\n')
+        : backendMessage || error?.message || 'Impossible de créer le lien web de suivi.';
+
+      showDialog({
+        variant: 'danger',
+        title: 'Partage impossible',
+        message,
+      });
+    }
+  }, [
+    activeBooking?.id,
+    createTripShareLink,
+    isCreatingTripShareLink,
+    showDialog,
+    trip?.arrival?.address,
+    trip?.arrival?.name,
+    trip?.departure?.address,
+    trip?.departure?.name,
+    trip?.id,
+  ]);
 
   const startElectronicPaymentForBooking = async (booking: Booking) => {
     if (!ELECTRONIC_PAYMENTS_ENABLED) {
@@ -2587,11 +2623,21 @@ export default function TripDetailsScreen() {
               />
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => setShareModalVisible(true)}
-              style={styles.shareButton}
+              onPress={() => void handleShareTrip()}
+              style={[
+                styles.shareButton,
+                isCreatingTripShareLink && styles.shareButtonDisabled,
+              ]}
+              disabled={isCreatingTripShareLink}
               activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Partager le trajet"
             >
-              <Ionicons name="share-outline" size={24} color={Colors.primary} />
+              {isCreatingTripShareLink ? (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              ) : (
+                <Ionicons name="share-outline" size={24} color={Colors.primary} />
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -4067,201 +4113,6 @@ export default function TripDetailsScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Share Modal */}
-      <Modal
-        visible={shareModalVisible}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setShareModalVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.contactModalOverlay}
-          activeOpacity={1}
-          onPress={() => setShareModalVisible(false)}
-        >
-          <Animated.View entering={FadeInDown} style={[styles.contactModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]} onStartShouldSetResponder={() => true}>
-            <View style={styles.contactModalHeader}>
-              <View style={styles.contactModalIconWrapper}>
-                <View style={styles.contactModalIconBadge}>
-                  <Ionicons name="share-social" size={32} color={Colors.primary} />
-                </View>
-              </View>
-              <Text style={styles.contactModalTitle}>Partager le trajet</Text>
-              <Text style={styles.contactModalSubtitle}>
-                Partagez le lien pour permettre à vos contacts de suivre votre trajet en temps réel
-              </Text>
-            </View>
-
-            <View style={styles.contactModalActions}>
-              <TouchableOpacity
-                style={[
-                  styles.contactModalButton,
-                  styles.contactModalButtonCall,
-                  isCreatingTripShareLink && styles.contactModalButtonDisabled,
-                ]}
-                disabled={isCreatingTripShareLink}
-                onPress={async () => {
-                  if (!trip?.id) {
-                    showDialog({
-                      variant: 'danger',
-                      title: 'Erreur',
-                      message: 'Impossible de partager le trajet: identifiant manquant',
-                    });
-                    return;
-                  }
-                  try {
-                    const response = await createTripShareLink({
-                      tripId: trip.id,
-                      bookingId: activeBooking?.id,
-                      message: 'Voici le lien pour suivre mon trajet Zwanga en temps réel.',
-                    }).unwrap();
-                    setShareModalVisible(false);
-                    await shareTrip(
-                      response.publicUrl,
-                      trip?.departure?.name,
-                      trip?.arrival?.name
-                    );
-                  } catch (error: any) {
-                    const backendMessage = error?.data?.message;
-                    const message = Array.isArray(backendMessage)
-                      ? backendMessage.join('\n')
-                      : backendMessage || error?.message || 'Impossible de créer le lien web de suivi';
-                    showDialog({
-                      variant: 'danger',
-                      title: 'Erreur',
-                      message,
-                    });
-                  }
-                }}
-              >
-                <View style={styles.contactModalButtonIcon}>
-                  <Ionicons name="share-outline" size={24} color={Colors.primary} />
-                </View>
-                <View style={styles.contactModalButtonContent}>
-                  <Text style={styles.contactModalButtonTitle}>Partager</Text>
-                  <Text style={styles.contactModalButtonSubtitle}>Partager via l&apos;application de votre choix</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.contactModalButton,
-                  styles.contactModalButtonEmail,
-                  isCreatingTripShareLink && styles.contactModalButtonDisabled,
-                ]}
-                disabled={isCreatingTripShareLink}
-                onPress={async () => {
-                  if (!trip?.id) {
-                    showDialog({
-                      variant: 'danger',
-                      title: 'Erreur',
-                      message: 'Impossible de partager le trajet: identifiant manquant',
-                    });
-                    return;
-                  }
-                  try {
-                    const response = await createTripShareLink({
-                      tripId: trip.id,
-                      bookingId: activeBooking?.id,
-                      message: 'Voici le lien pour suivre mon trajet Zwanga en temps réel.',
-                    }).unwrap();
-                    setShareModalVisible(false);
-                    await shareTripViaEmail({
-                      mailtoUrl: response.email.mailtoUrl,
-                      subject: response.email.subject,
-                      body: response.email.body,
-                      fallbackUrl: response.publicUrl,
-                    });
-                  } catch (error: any) {
-                    const backendMessage = error?.data?.message;
-                    const message = Array.isArray(backendMessage)
-                      ? backendMessage.join('\n')
-                      : backendMessage || error?.message || 'Impossible de créer le lien de suivi';
-                    showDialog({
-                      variant: 'danger',
-                      title: 'Erreur',
-                      message,
-                    });
-                  }
-                }}
-              >
-                <View style={styles.contactModalButtonIcon}>
-                  <Ionicons name="mail-outline" size={24} color="#2563EB" />
-                </View>
-                <View style={styles.contactModalButtonContent}>
-                  <Text style={styles.contactModalButtonTitle}>Email</Text>
-                  <Text style={styles.contactModalButtonSubtitle}>Envoyer un lien web de suivi en direct</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.contactModalButton,
-                  styles.contactModalButtonWhatsApp,
-                  isCreatingTripShareLink && styles.contactModalButtonDisabled,
-                ]}
-                disabled={isCreatingTripShareLink}
-                onPress={async () => {
-                  if (!trip?.id) {
-                    showDialog({
-                      variant: 'danger',
-                      title: 'Erreur',
-                      message: 'Impossible de partager le trajet: identifiant manquant',
-                    });
-                    return;
-                  }
-                  try {
-                    const response = await createTripShareLink({
-                      tripId: trip.id,
-                      bookingId: activeBooking?.id,
-                      message: 'Voici le lien pour suivre mon trajet Zwanga en temps réel.',
-                    }).unwrap();
-                    const route =
-                      trip.departure.name && trip.arrival.name
-                        ? `${trip.departure.name} -> ${trip.arrival.name}`
-                        : 'mon trajet';
-                    setShareModalVisible(false);
-                    await shareTrackingLinkViaWhatsApp({
-                      fallbackTitle: 'Partager le suivi Zwanga',
-                      message: [
-                        `Suivez ${route} en temps réel sur Zwanga :`,
-                        response.publicUrl,
-                      ].join('\n'),
-                    });
-                  } catch (error: any) {
-                    const backendMessage = error?.data?.message;
-                    const message = Array.isArray(backendMessage)
-                      ? backendMessage.join('\n')
-                      : backendMessage || error?.message || 'Impossible de partager via WhatsApp';
-                    showDialog({
-                      variant: 'danger',
-                      title: 'Erreur',
-                      message,
-                    });
-                  }
-                }}
-              >
-                <View style={styles.contactModalButtonIcon}>
-                  <Ionicons name="logo-whatsapp" size={24} color="#25D366" />
-                </View>
-                <View style={styles.contactModalButtonContent}>
-                  <Text style={styles.contactModalButtonTitle}>WhatsApp</Text>
-                  <Text style={styles.contactModalButtonSubtitle}>Partager directement sur WhatsApp</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={styles.contactModalCancelButton}
-              onPress={() => setShareModalVisible(false)}
-            >
-              <Text style={styles.contactModalCancelText}>Annuler</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        </TouchableOpacity>
-      </Modal>
       <Modal
         transparent={Platform.OS === 'android'}
         animationType="slide"
@@ -6716,20 +6567,9 @@ const styles = StyleSheet.create({
     borderColor: Colors.gray[100],
     backgroundColor: Colors.gray[50],
   },
-  contactModalButtonCall: {
-    borderColor: Colors.success + '20',
-    backgroundColor: Colors.success + '05',
-  },
   contactModalButtonWhatsApp: {
     borderColor: '#25D366' + '20',
     backgroundColor: '#25D366' + '05',
-  },
-  contactModalButtonEmail: {
-    borderColor: '#2563EB' + '20',
-    backgroundColor: '#2563EB' + '05',
-  },
-  contactModalButtonDisabled: {
-    opacity: 0.6,
   },
   contactModalButtonIcon: {
     width: 48,
