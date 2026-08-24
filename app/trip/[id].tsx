@@ -142,7 +142,7 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
         {
           id: 'electronic' as const,
           label: 'Paiement electronique',
-          description: "Regler par Mobile Money uniquement apres l'arrivee",
+          description: "Régler par Mobile Money uniquement après l'arrivée",
           icon: 'card-outline' as const,
           selection: 'checkbox' as const,
         },
@@ -151,21 +151,21 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
   {
     id: 'points',
     label: 'Jetons Zwanga',
-    description: "Debiter vos jetons uniquement apres l'arrivee",
+    description: "Debiter vos jetons uniquement après l'arrivée",
     icon: 'wallet-outline',
     selection: 'radio',
   },
   {
     id: 'cash',
-    label: "Paiement a l'arrivee",
-    description: 'Reglez directement aupres du conducteur',
+    label: "Paiement à l'arrivée",
+    description: 'Réglez directement auprès du conducteur',
     icon: 'cash-outline',
     selection: 'radio',
   },
 ];
 const getTripPaymentModeLabel = (mode?: TripPaymentMode | null) =>
   TRIP_PAYMENT_MODE_OPTIONS.find((option) => option.id === mode)?.label ??
-  "Paiement a l'arrivee";
+  "Paiement à l'arrivée";
 const getTripPaymentSelectionIcon = (
   option: (typeof TRIP_PAYMENT_MODE_OPTIONS)[number],
   selected: boolean,
@@ -287,12 +287,12 @@ const BOOKING_STATUS_CONFIG: Record<
     background: 'rgba(156, 163, 175, 0.2)',
   },
   no_show: {
-    label: 'Non embarque',
+    label: 'Non embarqué',
     color: Colors.danger,
     background: 'rgba(239, 68, 68, 0.12)',
   },
   boarding_uncertain: {
-    label: 'Embarquement non confirme',
+    label: 'Embarquement non confirmé',
     color: Colors.warning,
     background: 'rgba(245, 158, 11, 0.14)',
   },
@@ -517,7 +517,7 @@ export default function TripDetailsScreen() {
     const departureSelection =
       Number.isFinite(departureLat) && Number.isFinite(departureLng)
         ? {
-            title: trip.departure?.name || 'Depart',
+            title: trip.departure?.name || 'Départ',
             address:
               trip.departure?.address || `${departureLat.toFixed(5)}, ${departureLng.toFixed(5)}`,
             latitude: departureLat,
@@ -527,7 +527,7 @@ export default function TripDetailsScreen() {
     const arrivalSelection =
       Number.isFinite(arrivalLat) && Number.isFinite(arrivalLng)
         ? {
-            title: trip.arrival?.name || 'Arrivee',
+            title: trip.arrival?.name || 'Arrivée',
             address: trip.arrival?.address || `${arrivalLat.toFixed(5)}, ${arrivalLng.toFixed(5)}`,
             latitude: arrivalLat,
             longitude: arrivalLng,
@@ -592,7 +592,7 @@ export default function TripDetailsScreen() {
       showDialog({
         variant: 'warning',
         title: 'Modification indisponible',
-        message: 'Ce trajet ne peut plus etre modifie.',
+        message: 'Ce trajet ne peut plus être modifié.',
       });
       return;
     }
@@ -671,7 +671,7 @@ export default function TripDetailsScreen() {
       showDialog({
         variant: 'warning',
         title: 'Adresses requises',
-        message: 'Indiquez un depart et une arrivee avant de continuer.',
+        message: 'Indiquez un départ et une arrivée avant de continuer.',
       });
       return;
     }
@@ -680,7 +680,7 @@ export default function TripDetailsScreen() {
       showDialog({
         variant: 'warning',
         title: 'Trajet invalide',
-        message: 'Le depart et l arrivee doivent etre differents.',
+        message: "Le départ et l'arrivée doivent être différents.",
       });
       return;
     }
@@ -721,7 +721,7 @@ export default function TripDetailsScreen() {
       showDialog({
         variant: 'danger',
         title: 'Erreur',
-        message: 'Veuillez verifier le nombre de places et le prix.',
+        message: 'Veuillez vérifier le nombre de places et le prix.',
       });
       return;
     }
@@ -739,7 +739,7 @@ export default function TripDetailsScreen() {
       showDialog({
         variant: 'warning',
         title: 'Adresses requises',
-        message: "Indiquez un depart et une arrivee avant d'enregistrer.",
+        message: "Indiquez un départ et une arrivée avant d'enregistrer.",
       });
       return;
     }
@@ -748,7 +748,7 @@ export default function TripDetailsScreen() {
       showDialog({
         variant: 'warning',
         title: 'Trajet invalide',
-        message: "Le depart et l'arrivée doivent être differents.",
+        message: "Le départ et l'arrivée doivent être différents.",
       });
       return;
     }
@@ -766,8 +766,8 @@ export default function TripDetailsScreen() {
         if (!selection) {
           showDialog({
             variant: 'warning',
-            title: 'Depart introuvable',
-            message: 'Impossible de localiser cette adresse de depart. Verifiez le texte ou choisissez le point sur la carte.',
+            title: 'Départ introuvable',
+            message: 'Impossible de localiser cette adresse de départ. Vérifiez le texte ou choisissez le point sur la carte.',
           });
           return;
         }
@@ -780,8 +780,8 @@ export default function TripDetailsScreen() {
         if (!selection) {
           showDialog({
             variant: 'warning',
-            title: 'Arrivee introuvable',
-            message: "Impossible de localiser cette adresse d'arrivée. Verifiez le texte ou choisissez le point sur la carte.",
+            title: 'Arrivée introuvable',
+            message: "Impossible de localiser cette adresse d'arrivée. Vérifiez le texte ou choisissez le point sur la carte.",
           });
           return;
         }
@@ -847,7 +847,7 @@ export default function TripDetailsScreen() {
         id: trip.id,
         updates,
       }).unwrap();
-      showDialog({ variant: 'success', title: 'Succes', message: 'Le trajet a été mis à jour.' });
+      showDialog({ variant: 'success', title: 'Succès', message: 'Le trajet a été mis à jour.' });
       closeEditModal();
       refetchTrip();
     } catch (error: any) {
@@ -869,25 +869,25 @@ export default function TripDetailsScreen() {
 
   const editDepartureDisplay = useMemo(() => {
     if (editRouteMode === 'manual') {
-      return editDepartureManualAddress.trim() || 'Renseigner le depart';
+      return editDepartureManualAddress.trim() || 'Renseigner le départ';
     }
     return (
       editDepartureSelection?.title ||
       editDepartureSelection?.address ||
       editDepartureManualAddress.trim() ||
-      'Choisir le point de depart'
+      'Choisir le point de départ'
     );
   }, [editDepartureManualAddress, editDepartureSelection, editRouteMode]);
 
   const editArrivalDisplay = useMemo(() => {
     if (editRouteMode === 'manual') {
-      return editArrivalManualAddress.trim() || 'Renseigner l arrivee';
+      return editArrivalManualAddress.trim() || "Renseigner l'arrivée";
     }
     return (
       editArrivalSelection?.title ||
       editArrivalSelection?.address ||
       editArrivalManualAddress.trim() ||
-      'Choisir le point d arrivee'
+      "Choisir le point d'arrivée"
     );
   }, [editArrivalManualAddress, editArrivalSelection, editRouteMode]);
 
@@ -1128,8 +1128,8 @@ export default function TripDetailsScreen() {
         const isTripCompletedEvent = event.type === 'driver_arrived_destination';
         const distanceText = roundedDistance
           ? isTripCompletedEvent
-            ? ` Arrivee detectee a ${roundedDistance} m.`
-            : ` Distance detectee: ${roundedDistance} m.`
+            ? ` Arrivée détectée a ${roundedDistance} m.`
+            : ` Distance détectée: ${roundedDistance} m.`
           : '';
         const isReachedZone =
           !isTripCompletedEvent && roundedDistance !== null && roundedDistance <= 10;
@@ -1139,15 +1139,15 @@ export default function TripDetailsScreen() {
           variant: isTripCompletedEvent ? 'success' : 'info',
           icon: 'flag',
           title: isTripCompletedEvent
-            ? 'Trajet termine'
+            ? 'Trajet terminé'
             : isReachedZone
               ? 'Destination finale atteinte'
               : 'Destination finale proche',
           message: isTripCompletedEvent
             ? `Vous avez atteint la destination finale.${distanceText}`
             : isReachedZone
-              ? `Le point d'arrivee du trajet est atteint. Le trajet sera termine automatiquement dans 10 minutes si le vehicule reste sur place.${distanceText}`
-              : `Le point d'arrivee du trajet est presque atteint.${distanceText}`,
+              ? `Le point d'arrivée du trajet est atteint. Le trajet sera terminé automatiquement dans 10 minutes si le véhicule reste sur place.${distanceText}`
+              : `Le point d'arrivée du trajet est presque atteint.${distanceText}`,
         });
         return;
       }
@@ -1188,7 +1188,7 @@ export default function TripDetailsScreen() {
         typeof event.distanceMeters === 'number' && Number.isFinite(event.distanceMeters)
           ? Math.max(10, Math.round(event.distanceMeters / 10) * 10)
           : null;
-      const distanceText = roundedDistance ? ` Distance detectee: environ ${roundedDistance} m.` : '';
+      const distanceText = roundedDistance ? ` Distance détectée: environ ${roundedDistance} m.` : '';
 
       const dialogByType: Record<
         Exclude<
@@ -1249,18 +1249,18 @@ export default function TripDetailsScreen() {
         passenger_boarding_uncertain: {
           variant: 'warning',
           icon: 'help-circle',
-          title: 'Embarquement non confirme',
+          title: 'Embarquement non confirmé',
           message: isTripDriver
-            ? `Le trajet est arrive a destination sans preuve GPS suffisante de l'embarquement de ${passengerName}. La reservation est cloturee sans paiement.`
-            : "Le trajet est arrive a destination sans preuve GPS suffisante de votre embarquement. Aucun paiement n'est effectue.",
+            ? `Le trajet est arrivé à destination sans preuve GPS suffisante de l'embarquement de ${passengerName}. La réservation est clôturée sans paiement.`
+            : "Le trajet est arrivé à destination sans preuve GPS suffisante de votre embarquement. Aucun paiement n'est effectué.",
         },
         passenger_near_destination: {
           variant: 'info',
           icon: 'flag',
-          title: isTripDriver ? 'Destination passager proche' : 'Votre arrivee approche',
+          title: isTripDriver ? 'Destination passager proche' : 'Votre arrivée approche',
           message: isTripDriver
-            ? `Le point d'arrivee de ${passengerName} va etre atteint.${distanceText}`
-            : `Votre point d'arrivee va etre atteint.${distanceText}`,
+            ? `Le point d'arrivée de ${passengerName} va être atteint.${distanceText}`
+            : `Votre point d'arrivée va être atteint.${distanceText}`,
         },
         dropoff_confirmed: {
           variant: 'success',
@@ -1474,7 +1474,7 @@ export default function TripDetailsScreen() {
   const tripSecurityRole: 'driver' | 'passenger' = isTripDriver ? 'driver' : 'passenger';
   const tripSecurityBookingId = isTripDriver ? undefined : (activeBooking?.id ?? bookingForTrip?.id);
   const tripVehicleIdentity = useMemo(() => {
-    if (!trip) return 'Informations vehicule indisponibles.';
+    if (!trip) return 'Informations véhicule indisponibles.';
     if (trip.vehicle) {
       const parts = [`${trip.vehicle.brand} ${trip.vehicle.model}`.trim()];
       if (trip.vehicle.color) {
@@ -1485,7 +1485,7 @@ export default function TripDetailsScreen() {
       }
       return parts.filter(Boolean).join(' • ');
     }
-    return trip.vehicleInfo || 'Informations vehicule indisponibles.';
+    return trip.vehicleInfo || 'Informations véhicule indisponibles.';
   }, [trip]);
   const showPassengerVehicleReminder =
     !isTripDriver &&
@@ -1493,12 +1493,12 @@ export default function TripDetailsScreen() {
   const showDriverVehicleReminder = isTripDriver && (trip?.status === 'upcoming' || trip?.status === 'ongoing');
   const showPassengerSecurityAccess = !isTripDriver;
   const passengerSecurityQuickHint = !activeBooking
-    ? "Choisissez les proches a prevenir une fois votre reservation creee."
+    ? "Choisissez les proches à prévenir une fois votre réservation créée."
     : activeBooking.status === 'pending'
-      ? "Votre reservation est en attente. Vous pourrez choisir vos proches apres acceptation."
+      ? "Votre réservation est en attente. Vous pourrez choisir vos proches après acceptation."
       : activeBooking.status === 'accepted'
-        ? 'Avant de monter, choisissez les proches a prevenir pendant le trajet.'
-        : 'Vous pouvez ajuster les proches a prevenir.';
+        ? 'Avant de monter, choisissez les proches à prévenir pendant le trajet.'
+        : 'Vous pouvez ajuster les proches à prévenir.';
   const passengerSecurityButtonLabel = canAccessTripSecurity
     ? 'Choisir mes proches'
     : 'Connectez-vous';
@@ -1567,7 +1567,7 @@ export default function TripDetailsScreen() {
       showDialog({
         variant: 'info',
         title: 'Securité indisponible',
-        message: 'Connectez-vous pour gerer vos proches et le suivi securité.',
+        message: 'Connectez-vous pour gérer vos proches et le suivi de sécurité.',
       });
       return;
     }
@@ -1602,7 +1602,7 @@ export default function TripDetailsScreen() {
       showDialog({
         variant: 'info',
         title: 'Connexion requise',
-        message: "Connectez-vous pour gerer vos contacts d'urgence.",
+        message: "Connectez-vous pour gérer vos contacts d'urgence.",
       });
       return;
     }
@@ -1759,8 +1759,8 @@ export default function TripDetailsScreen() {
     ) {
       showDialog({
         variant: 'info',
-        title: "Paiement a l'arrivee",
-        message: "Le paiement sera disponible apres votre arrivee a destination.",
+        title: "Paiement à l'arrivée",
+        message: "Le paiement sera disponible après votre arrivée à destination.",
       });
       return;
     }
@@ -1769,9 +1769,9 @@ export default function TripDetailsScreen() {
     if (!phone || !DRC_PAYMENT_PHONE_REGEX.test(phone)) {
       showDialog({
         variant: 'warning',
-        title: 'Numero Mobile Money requis',
+        title: 'Numéro Mobile Money requis',
         message:
-          'Ajoutez un numero congolais valide dans votre profil avant de lancer le paiement FlexPay.',
+          'Ajoutez un numéro congolais valide dans votre profil avant de lancer le paiement FlexPay.',
       });
       return;
     }
@@ -1792,11 +1792,11 @@ export default function TripDetailsScreen() {
           response.payment.status === 'succeeded' ? 'success' : 'info',
         title:
           response.payment.status === 'succeeded'
-            ? 'Paiement confirme'
+            ? 'Paiement confirmé'
             : 'Paiement lance',
         message:
           response.payment.message ??
-          'Confirmez la demande FlexPay sur votre telephone.',
+          'Confirmez la demande FlexPay sur votre téléphone.',
       });
       refreshBookingLists();
       return response;
@@ -1868,7 +1868,7 @@ export default function TripDetailsScreen() {
     }
     const seatsValue = parseInt(bookingSeats, 10);
     if (Number.isNaN(seatsValue) || seatsValue <= 0) {
-      setBookingModalError('Veuillez indiquer un nombre de places valides.');
+      setBookingModalError('Veuillez indiquer un nombre de places valide.');
       return;
     }
     // Vérifier si le nombre de places dépasse les places disponibles
@@ -1898,7 +1898,7 @@ export default function TripDetailsScreen() {
       if (!selection) {
         setIsValidatingDestination(false);
         setBookingModalError(
-          'Impossible de localiser ce point de depart. Verifiez le texte ou choisissez-le sur la carte.',
+          'Impossible de localiser ce point de départ. Vérifiez le texte ou choisissez-le sur la carte.',
         );
         return;
       }
@@ -1914,7 +1914,7 @@ export default function TripDetailsScreen() {
       if (!selection) {
         setIsValidatingDestination(false);
         setBookingModalError(
-          "Impossible de localiser ce point d'arrivee. Verifiez le texte ou choisissez-le sur la carte.",
+          "Impossible de localiser ce point d'arrivée. Vérifiez le texte ou choisissez-le sur la carte.",
         );
         return;
       }
@@ -1944,7 +1944,7 @@ export default function TripDetailsScreen() {
       !isCoordinateInKinshasaBounds(resolvedPassengerOrigin)
     ) {
       setBookingModalError(
-        'Le point de prise en charge detecte est hors Kinshasa. Choisissez-le sur la carte ou precisez la commune.',
+        'Le point de prise en charge detecté est hors Kinshasa. Choisissez-le sur la carte ou precisez la commune.',
       );
       return;
     }
@@ -1955,7 +1955,7 @@ export default function TripDetailsScreen() {
       !isCoordinateInKinshasaBounds(resolvedPassengerDestination)
     ) {
       setBookingModalError(
-        "La destination detectee est hors Kinshasa. Choisissez-la sur la carte ou precisez la commune.",
+        "La destination detectée est hors Kinshasa. Choisissez-la sur la carte ou precisez la commune.",
       );
       return;
     }
@@ -2488,8 +2488,8 @@ export default function TripDetailsScreen() {
 
   const hasRenderableTripMap = trip?.status !== 'ongoing' && hasValidRouteEndpoints;
   const canRenderTripMap = hasRenderableTripMap && isDetailMapReady;
-  const tripDepartureName = trip?.departure?.name || trip?.departure?.address || 'Depart';
-  const tripArrivalName = trip?.arrival?.name || trip?.arrival?.address || 'Arrivee';
+  const tripDepartureName = trip?.departure?.name || trip?.departure?.address || 'Départ';
+  const tripArrivalName = trip?.arrival?.name || trip?.arrival?.address || 'Arrivée';
   const tripDepartureAddress = trip?.departure?.address || tripDepartureName;
   const tripArrivalAddress = trip?.arrival?.address || tripArrivalName;
   const tripDepartureTimeLabel = trip?.departureTime ? formatDateTime(trip.departureTime) : '--:--';
@@ -2515,7 +2515,7 @@ export default function TripDetailsScreen() {
     ? [trip.vehicle.color, trip.vehicle.licensePlate].filter(Boolean).join(' • ')
     : trip?.vehicleInfo && trip.vehicleInfo !== 'Informations véhicule fournies par le conducteur'
       ? trip.vehicleInfo
-      : 'Vehicule confirme apres reservation';
+      : 'Véhicule confirmé après réservation';
   const headerFloatingOffset = Math.max(insets.top, 12) + 10;
 
   // Early return AFTER all hooks to avoid hook order violation
@@ -2651,7 +2651,7 @@ export default function TripDetailsScreen() {
                   anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
                   image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.departure : undefined}
                   pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.success}
-                  title="Depart"
+                  title="Départ"
                   description={trip?.departure?.address}
                   tracksViewChanges={false}
                 >
@@ -2667,7 +2667,7 @@ export default function TripDetailsScreen() {
                   anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
                   image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.arrival : undefined}
                   pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.primary}
-                  title="Arrivee"
+                  title="Arrivée"
                   description={trip?.arrival?.address}
                   tracksViewChanges={false}
                 >
@@ -2701,7 +2701,7 @@ export default function TripDetailsScreen() {
 
               <View style={styles.mapOverlay}>
                 <View>
-                  <Text style={styles.mapOverlayLabel}>DEPART</Text>
+                  <Text style={styles.mapOverlayLabel}>DÉPART</Text>
                   <Text style={styles.mapOverlayValue}>{tripDepartureTimeLabel}</Text>
                 </View>
                 <View style={styles.mapOverlayDivider} />
@@ -2750,7 +2750,7 @@ export default function TripDetailsScreen() {
                     anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
                     image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.departure : undefined}
                     pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.success}
-                    title="Depart"
+                    title="Départ"
                     description={trip?.departure?.address}
                     tracksViewChanges={false}
                   >
@@ -2774,7 +2774,7 @@ export default function TripDetailsScreen() {
                     anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
                     image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.arrival : undefined}
                     pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.primary}
-                    title="Arrivee"
+                    title="Arrivée"
                     description={trip?.arrival?.address}
                     tracksViewChanges={false}
                   >
@@ -2863,7 +2863,7 @@ export default function TripDetailsScreen() {
                   <Ionicons name="time-outline" size={16} color={Colors.primary} />
                 </View>
                 <View>
-                  <Text style={styles.tripQuickFactLabel}>Depart</Text>
+                  <Text style={styles.tripQuickFactLabel}>Départ</Text>
                   <Text style={styles.tripQuickFactValue}>{tripDepartureTimeLabel}</Text>
                 </View>
               </View>
@@ -2872,7 +2872,7 @@ export default function TripDetailsScreen() {
                   <Ionicons name="flag-outline" size={16} color={Colors.success} />
                 </View>
                 <View>
-                  <Text style={styles.tripQuickFactLabel}>Arrivee estimee</Text>
+                  <Text style={styles.tripQuickFactLabel}>Arrivée estimee</Text>
                   <Text style={styles.tripQuickFactValue}>{tripArrivalTimeLabel}</Text>
                 </View>
               </View>
@@ -2906,7 +2906,7 @@ export default function TripDetailsScreen() {
                   <View style={[styles.tripInlineProgressFill, { width: `${progress}%` }]} />
                 </View>
                 <Text style={styles.tripInlineProgressEta}>
-                  Arrivee estimee: {estimatedArrivalTime ? formatDateTime(estimatedArrivalTime.toISOString()) : tripArrivalTimeLabel}
+                  Arrivée estimee: {estimatedArrivalTime ? formatDateTime(estimatedArrivalTime.toISOString()) : tripArrivalTimeLabel}
                 </Text>
               </View>
             )}
@@ -2920,7 +2920,7 @@ export default function TripDetailsScreen() {
               <View style={styles.tripCompactRouteCopy}>
                 <View style={styles.tripCompactStop}>
                   <View style={styles.tripCompactStopTop}>
-                    <Text style={[styles.tripCompactStopLabel, styles.tripCompactDepartureLabel]}>Depart</Text>
+                    <Text style={[styles.tripCompactStopLabel, styles.tripCompactDepartureLabel]}>Départ</Text>
                     <Text style={styles.tripCompactStopTime}>{tripDepartureTimeLabel}</Text>
                   </View>
                   <Text style={styles.tripCompactStopName} numberOfLines={1}>{tripDepartureName}</Text>
@@ -2928,7 +2928,7 @@ export default function TripDetailsScreen() {
                 </View>
                 <View style={styles.tripCompactStop}>
                   <View style={styles.tripCompactStopTop}>
-                    <Text style={[styles.tripCompactStopLabel, styles.tripCompactArrivalLabel]}>Arrivee estimee</Text>
+                    <Text style={[styles.tripCompactStopLabel, styles.tripCompactArrivalLabel]}>Arrivée estimee</Text>
                     <Text style={styles.tripCompactStopTime}>{tripArrivalTimeLabel}</Text>
                   </View>
                   <Text style={styles.tripCompactStopName} numberOfLines={1}>{tripArrivalName}</Text>
@@ -2983,7 +2983,7 @@ export default function TripDetailsScreen() {
                   />
                 </View>
                 <View style={styles.tripVehicleCompactCopy}>
-                  <Text style={styles.tripDriverCompactLabel}>Vehicule</Text>
+                  <Text style={styles.tripDriverCompactLabel}>Véhicule</Text>
                   <Text style={styles.tripVehicleCompactName} numberOfLines={1}>{tripVehicleLabel}</Text>
                   <Text style={styles.tripVehicleCompactMeta} numberOfLines={1}>{tripVehicleMetaLabel}</Text>
                 </View>
@@ -3055,7 +3055,7 @@ export default function TripDetailsScreen() {
                   <Ionicons name="shield-checkmark-outline" size={20} color={Colors.primary} />
                 </View>
                 <View style={styles.passengerSecurityHeaderCopy}>
-                  <Text style={styles.passengerSecurityTitle}>PROCHES A PREVENIR</Text>
+                  <Text style={styles.passengerSecurityTitle}>PROCHES À PRÉVENIR</Text>
                   <Text style={styles.passengerSecuritySubtitle}>
                     Simple et modifiable avant le départ.
                   </Text>
@@ -3097,7 +3097,7 @@ export default function TripDetailsScreen() {
               >
                 <Ionicons name="people-outline" size={16} color={Colors.primary} />
                 <Text style={styles.passengerSecuritySecondaryButtonText}>
-                  Ajouter ou gerer mes contacts d urgence
+                  Ajouter ou gérer mes contacts d’urgence
                 </Text>
               </TouchableOpacity>
             </View>
@@ -3161,13 +3161,13 @@ export default function TripDetailsScreen() {
             <View style={[styles.sectionCard, styles.securityReminderCard]}>
               <View style={styles.securityReminderHeader}>
                 <Ionicons name="shield-checkmark" size={20} color={Colors.secondary} />
-                <Text style={styles.securityReminderTitle}>Verification avant embarquement</Text>
+                <Text style={styles.securityReminderTitle}>Vérification avant embarquement</Text>
               </View>
               <Text style={styles.securityReminderText}>
-                Avant de monter, verifiez que le vehicule devant vous correspond exactement a celui du trajet.
+                Avant de monter, vérifiez que le véhicule devant vous correspond exactement à celui du trajet.
               </Text>
               <View style={styles.securityReminderVehicleBox}>
-                <Text style={styles.securityReminderVehicleLabel}>Vehicule attendu</Text>
+                <Text style={styles.securityReminderVehicleLabel}>Véhicule attendu</Text>
                 <Text style={styles.securityReminderVehicleValue}>{tripVehicleIdentity}</Text>
               </View>
             </View>
@@ -3179,13 +3179,13 @@ export default function TripDetailsScreen() {
             <View style={[styles.sectionCard, styles.securityReminderCard]}>
               <View style={styles.securityReminderHeader}>
                 <Ionicons name="car-sport" size={20} color={Colors.primary} />
-                <Text style={styles.securityReminderTitle}>Rappel securite conducteur</Text>
+                <Text style={styles.securityReminderTitle}>Rappel sécurité conducteur</Text>
               </View>
               <Text style={styles.securityReminderText}>
-                Assurez-vous de conduire le vehicule indique ci-dessous. Si vous changez de vehicule, mettez a jour le trajet avant de recuperer un passager.
+                Assurez-vous de conduire le véhicule indiqué ci-dessous. Si vous changez de véhicule, mettez à jour le trajet avant de récupérer un passager.
               </Text>
               <View style={styles.securityReminderVehicleBox}>
-                <Text style={styles.securityReminderVehicleLabel}>Vehicule declare</Text>
+                <Text style={styles.securityReminderVehicleLabel}>Véhicule déclaré</Text>
                 <Text style={styles.securityReminderVehicleValue}>{tripVehicleIdentity}</Text>
               </View>
               <TouchableOpacity
@@ -3295,7 +3295,7 @@ export default function TripDetailsScreen() {
                             <View style={styles.confirmationBanner}>
                               <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
                               <Text style={styles.confirmationBannerText}>
-                                Prise en charge detectee
+                                Prise en charge détectée
                               </Text>
                             </View>
                           )}
@@ -3303,7 +3303,7 @@ export default function TripDetailsScreen() {
                             <View style={styles.confirmationBanner}>
                               <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
                               <Text style={styles.confirmationBannerText}>
-                                Arrivee detectee. Finalisation automatique en cours.
+                                Arrivée détectée. Finalisation automatique en cours.
                               </Text>
                             </View>
                           )}
@@ -3336,7 +3336,7 @@ export default function TripDetailsScreen() {
                           >
                             <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
                             <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>
-                              A bord
+                              À bord
                             </Text>
                           </View>
                         )}
@@ -3346,7 +3346,7 @@ export default function TripDetailsScreen() {
                             style={[styles.bookingActionButton, styles.bookingActionPrimary, styles.bookingActionConfirm]}
                           >
                             <Ionicons name="flag" size={19} color={Colors.white} />
-                            <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Arrivee en cours</Text>
+                            <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Arrivée en cours</Text>
 
                           </View>
                         )}
@@ -3528,7 +3528,7 @@ export default function TripDetailsScreen() {
             ) : (
               <View style={styles.securityModalLoading}>
                 <ActivityIndicator size="small" color={Colors.primary} />
-                <Text style={styles.securityModalLoadingText}>Chargement securite...</Text>
+                <Text style={styles.securityModalLoadingText}>Chargement sécurité...</Text>
               </View>
             )}
             </View>
@@ -4150,7 +4150,7 @@ export default function TripDetailsScreen() {
                     const response = await createTripShareLink({
                       tripId: trip.id,
                       bookingId: activeBooking?.id,
-                      message: 'Voici le lien pour suivre mon trajet Zwanga en temps reel.',
+                      message: 'Voici le lien pour suivre mon trajet Zwanga en temps réel.',
                     }).unwrap();
                     setShareModalVisible(false);
                     await shareTripViaEmail({
@@ -4211,7 +4211,7 @@ export default function TripDetailsScreen() {
                     await shareTrackingLinkViaWhatsApp({
                       fallbackTitle: 'Partager le suivi Zwanga',
                       message: [
-                        `Suivez ${route} en temps reel sur Zwanga :`,
+                        `Suivez ${route} en temps réel sur Zwanga :`,
                         response.publicUrl,
                       ].join('\n'),
                     });
@@ -4297,7 +4297,7 @@ export default function TripDetailsScreen() {
             <View style={styles.editStepIndicator}>
               <View style={[styles.editStepPill, editStep === 1 && styles.editStepPillActive]}>
                 <Text style={[styles.editStepText, editStep === 1 && styles.editStepTextActive]}>
-                  1. Itineraire
+                  1. Itinéraire
                 </Text>
               </View>
               <View style={[styles.editStepPill, editStep === 2 && styles.editStepPillActive]}>
@@ -4598,7 +4598,7 @@ export default function TripDetailsScreen() {
 
       <LocationPickerModal
         visible={editRoutePickerTarget !== null}
-        title={editRoutePickerTarget === 'departure' ? 'Choisir le depart' : 'Choisir l arrivee'}
+        title={editRoutePickerTarget === 'departure' ? 'Choisir le départ' : "Choisir l'arrivée"}
         initialLocation={
           editRoutePickerTarget === 'departure' ? editDepartureSelection : editArrivalSelection
         }

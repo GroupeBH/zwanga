@@ -1,5 +1,6 @@
 import { DialogProvider } from '@/components/ui/DialogProvider';
 import { ActiveRideLocationCoordinator } from '@/components/ActiveRideLocationCoordinator';
+import { PassengerArrivalPaymentCoordinator } from '@/components/PassengerArrivalPaymentCoordinator';
 import { Colors } from '@/constants/styles';
 import { IdentityProvider } from '@/contexts/IdentityContext';
 import { TutorialProvider } from '@/contexts/TutorialContext';
@@ -48,6 +49,7 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
             <NotificationHandler />
             <AuthGuard>
               <DialogProvider>
+                <PassengerArrivalPaymentCoordinator />
                 <TutorialProvider>
                   <IdentityProvider>{children}</IdentityProvider>
                 </TutorialProvider>

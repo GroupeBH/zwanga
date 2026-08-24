@@ -130,13 +130,13 @@ function TripSecurityPanel({
 
   const passengerBlockingReason = useMemo(() => {
     if (role !== 'passenger') return null;
-    if (!bookingId) return 'Reservez le trajet pour choisir les proches a prevenir.';
-    if (!booking) return 'Chargement de votre reservation...';
+    if (!bookingId) return 'Reservez le trajet pour choisir les proches à prévenir.';
+    if (!booking) return 'Chargement de votre réservation...';
     if (booking.status === 'pending') {
-      return 'Vous pourrez choisir vos proches des que le conducteur accepte.';
+      return 'Vous pourrez choisir vos proches dès que le conducteur acceptera.';
     }
     if (booking.status !== 'accepted') {
-      return "Cette reservation n'est plus modifiable.";
+      return "Cette réservation n'est plus modifiable.";
     }
     return null;
   }, [role, bookingId, booking]);
@@ -202,7 +202,7 @@ function TripSecurityPanel({
       showDialog({
         variant: 'warning',
           title: 'Choisissez un proche',
-          message: 'Selectionnez au moins une personne a prevenir.',
+          message: 'Sélectionnez au moins une personne à prévenir.',
       });
       return;
     }
@@ -225,8 +225,8 @@ function TripSecurityPanel({
         if (!bookingId || !booking || booking.status !== 'accepted') {
           showDialog({
             variant: 'info',
-            title: 'Reservation pas encore prete',
-            message: 'Vous pourrez choisir vos proches apres acceptation.',
+            title: 'Réservation pas encore prête',
+            message: 'Vous pourrez choisir vos proches après acceptation.',
           });
           return;
         }
@@ -272,7 +272,7 @@ function TripSecurityPanel({
     <View style={[styles.card, compact && styles.cardCompact]}>
       {compact ? (
         <Text style={styles.compactIntro}>
-          Choisissez les personnes a prevenir pendant ce trajet.
+          Choisissez les personnes à prévenir pendant ce trajet.
         </Text>
       ) : (
         <View style={styles.headerRow}>
@@ -280,11 +280,11 @@ function TripSecurityPanel({
             <Ionicons name="shield-checkmark-outline" size={18} color={Colors.primary} />
           </View>
           <View style={styles.headerCopy}>
-            <Text style={styles.title}>Proches a prevenir</Text>
+            <Text style={styles.title}>Proches à prévenir</Text>
             <Text style={styles.subtitle}>
               {role === 'driver'
-                ? 'Choisissez les proches a prevenir pour ce trajet conducteur.'
-                : 'Choisissez les proches a prevenir pour cette reservation passager.'}
+                ? 'Choisissez les proches à prévenir pour ce trajet conducteur.'
+                : 'Choisissez les proches à prévenir pour cette réservation passager.'}
             </Text>
           </View>
         </View>

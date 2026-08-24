@@ -442,7 +442,7 @@ export default function LocationPickerModal({
       const currentCoordinate = getValidRdcCoordinate(position.coords.latitude, position.coords.longitude);
 
       if (!currentCoordinate) {
-        console.warn('[LocationPickerModal] Position utilisateur hors RDC ignoree:', {
+        console.warn('[LocationPickerModal] Position de l’utilisateur hors RDC ignorée :', {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
         });

@@ -131,17 +131,17 @@ const getPaymentDetailRows = (payment: PaymentHistoryItem) => {
     { label: 'Montant', value: formatAmount(payment.amount, payment.currency) },
     { label: 'Statut', value: meta?.label ?? payment.status },
     { label: 'Type', value: purposeLabels[payment.purpose] || payment.purpose },
-    { label: 'Methode', value: methodLabels[payment.method] ?? payment.method },
+    { label: 'Méthode', value: methodLabels[payment.method] ?? payment.method },
     { label: 'Prestataire', value: payment.provider },
-    { label: 'Reference Zwanga', value: payment.reference },
+    { label: 'Référence Zwanga', value: payment.reference },
     { label: 'Commande FlexPay', value: formatValue(payment.orderNumber) },
-    { label: 'Reference operateur', value: formatValue(payment.providerReference) },
+    { label: 'Référence opérateur', value: formatValue(payment.providerReference) },
     { label: 'Code statut', value: formatValue(payment.statusCode) },
-    { label: 'Telephone', value: formatValue(payment.phone) },
+    { label: 'Téléphone', value: formatValue(payment.phone) },
     { label: 'Message', value: formatValue(payment.message) },
-    { label: 'Cree le', value: formatDate(payment.createdAt) },
-    { label: 'Mis a jour le', value: formatDate(payment.updatedAt) },
-    { label: 'Valide le', value: formatDate(payment.paidAt) },
+    { label: 'Créé le', value: formatDate(payment.createdAt) },
+    { label: 'Mis à jour le', value: formatDate(payment.updatedAt) },
+    { label: 'Validé le', value: formatDate(payment.paidAt) },
     { label: 'Identifiant', value: payment.id },
   ];
 };
@@ -222,9 +222,9 @@ const buildPaymentPdfBase64 = (payment: PaymentHistoryItem) => {
   operations.push('0 0 0 rg');
   addText(58, y, 20, 'F2', 'ZWANGA');
   y -= 26;
-  addText(58, y, 16, 'F2', 'Detail du paiement');
+  addText(58, y, 16, 'F2', 'Détail du paiement');
   y -= 18;
-  addText(58, y, 10, 'F1', `Genere le ${formatDate(new Date().toISOString())}`);
+  addText(58, y, 10, 'F1', `Généré le ${formatDate(new Date().toISOString())}`);
   y -= 42;
 
   rows.forEach((row) => {
@@ -240,7 +240,7 @@ const buildPaymentPdfBase64 = (payment: PaymentHistoryItem) => {
     y -= Math.max(24, valueLines.length * 14 + 8);
   });
 
-  addText(58, 58, 9, 'F1', 'Document genere depuis l application Zwanga.');
+  addText(58, 58, 9, 'F1', 'Document généré depuis l’application Zwanga.');
 
   const stream = operations.join('\n');
   const objects = [
@@ -307,11 +307,11 @@ export default function PaymentHistoryScreen() {
     } catch (error: any) {
       showDialog({
         variant: 'danger',
-        title: 'Detail indisponible',
+        title: 'Détail indisponible',
         message:
           error?.data?.message ||
           error?.message ||
-          'Impossible de charger le detail du paiement pour le moment.',
+          'Impossible de charger le détail du paiement pour le moment.',
       });
     } finally {
       setLoadingDetailsPaymentId(null);
@@ -364,8 +364,8 @@ export default function PaymentHistoryScreen() {
         title: `Détail paiement ${details.reference}`,
         message:
           Platform.OS === 'android'
-            ? `Detail du paiement ${details.reference}\n${sharedUri}`
-            : `Detail du paiement ${details.reference}`,
+            ? `Détail du paiement ${details.reference}\n${sharedUri}`
+            : `Détail du paiement ${details.reference}`,
         url: Platform.OS === 'ios' ? sharedUri : undefined,
       });
       if (!shouldCloseDetailBeforeShare && selectedPayment?.id === details.id) {
@@ -404,7 +404,7 @@ export default function PaymentHistoryScreen() {
           onPress={() => handleOpenPaymentDetails(payment)}
           disabled={isLoadingDetails}
           activeOpacity={0.75}
-          accessibilityLabel="Voir le detail du paiement"
+          accessibilityLabel="Voir le détail du paiement"
         >
           <View style={styles.paymentTopLine}>
             <Text style={styles.paymentTitle} numberOfLines={1}>
@@ -436,7 +436,7 @@ export default function PaymentHistoryScreen() {
               <ActivityIndicator size="small" color={Colors.gray[500]} />
             ) : (
               <>
-                <Text style={styles.paymentDetailHintText}>Voir le detail</Text>
+                <Text style={styles.paymentDetailHintText}>Voir le détail</Text>
                 <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
               </>
             )}
@@ -542,7 +542,7 @@ export default function PaymentHistoryScreen() {
             <View style={styles.detailSheet}>
               <View style={styles.detailHeader}>
                 <View style={styles.detailHeaderText}>
-                  <Text style={styles.detailTitle}>Detail du paiement</Text>
+                  <Text style={styles.detailTitle}>Détail du paiement</Text>
                   <Text style={styles.detailSubtitle} numberOfLines={1}>
                     {selectedPayment.reference}
                   </Text>
@@ -550,7 +550,7 @@ export default function PaymentHistoryScreen() {
                 <TouchableOpacity
                   style={styles.detailCloseButton}
                   onPress={() => setSelectedPayment(null)}
-                  accessibilityLabel="Fermer le detail du paiement"
+                  accessibilityLabel="Fermer le détail du paiement"
                 >
                   <Ionicons name="close" size={22} color={Colors.gray[700]} />
                 </TouchableOpacity>

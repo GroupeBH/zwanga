@@ -240,7 +240,7 @@ export default function PassengerDetailsScreen() {
             <Text style={styles.sectionTitle}>AVIS ({reviewCount})</Text>
             {reviewCount === 0 ? (
               <Text style={styles.emptyReviewsText}>
-                Pas encore d'avis pour ce passager
+                Pas encore d’avis pour ce passager
               </Text>
             ) : (
               <View style={styles.reviewsList}>

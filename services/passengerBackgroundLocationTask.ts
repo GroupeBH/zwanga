@@ -155,7 +155,7 @@ async function putPassengerLocation(
         await AsyncStorage.removeItem(ACTIVE_BOOKING_KEY);
         await stopRegisteredTask();
       }
-      console.warn('[PassengerBackgroundLocation] Position non envoyee:', {
+      console.warn('[PassengerBackgroundLocation] Position non envoyée :', {
         bookingId,
         status: response.status,
       });
@@ -246,7 +246,7 @@ export async function startPassengerBackgroundLocationTracking(
     }
     if (backgroundStatus !== Location.PermissionStatus.GRANTED) {
       lastBackgroundPermissionDeniedAt = Date.now();
-      console.warn('[PassengerBackgroundLocation] Permission arriere-plan refusee');
+      console.warn('[PassengerBackgroundLocation] Permission d’arrière-plan refusée');
       return false;
     }
 
@@ -270,7 +270,7 @@ export async function startPassengerBackgroundLocationTracking(
           ? {
               notificationTitle: 'Course Zwanga en cours',
               notificationBody:
-                'Votre position est partagee pour detecter la prise en charge et l arrivee.',
+                'Votre position est partagée pour détecter la prise en charge et l’arrivée.',
               notificationColor: '#FF6B35',
               killServiceOnDestroy: false,
             }

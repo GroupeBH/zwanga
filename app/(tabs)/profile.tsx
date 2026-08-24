@@ -222,7 +222,7 @@ const getSubscriptionPaymentFailureMessage = (message?: string | null) => {
     normalizedMessage.includes('annul') ||
     normalizedMessage.includes('cancel')
   ) {
-    return 'Paiement annule. Aucun montant confirme; vous pouvez reessayer.';
+    return 'Paiement annulé. Aucun montant confirmé; vous pouvez réessayer.';
   }
 
   if (
@@ -231,14 +231,14 @@ const getSubscriptionPaymentFailureMessage = (message?: string | null) => {
     normalizedMessage.includes('refuse') ||
     normalizedMessage.includes('rejet')
   ) {
-    return 'Paiement refuse par l operateur. Aucun montant confirme.';
+    return "Paiement refusé par l'opérateur. Aucun montant confirmé.";
   }
 
   if (
     normalizedMessage.includes('solde insuffisant') ||
     normalizedMessage.includes('insufficient')
   ) {
-    return 'Paiement echoue: solde insuffisant.';
+    return 'Paiement échoué : solde insuffisant.';
   }
 
   if (
@@ -253,10 +253,10 @@ const getSubscriptionPaymentFailureMessage = (message?: string | null) => {
     normalizedMessage.includes('failed') ||
     normalizedMessage.includes('failure')
   ) {
-    return 'Paiement non abouti. Aucun montant confirme; vous pouvez relancer une nouvelle tentative.';
+    return 'Paiement non abouti. Aucun montant confirmé ; vous pouvez relancer une nouvelle tentative.';
   }
 
-  return message || 'Le paiement a echoue. Vous pouvez reessayer ou choisir un autre moyen de paiement.';
+  return message || 'Le paiement a échoué. Vous pouvez réessayer ou choisir un autre moyen de paiement.';
 };
 
 const isTerminalFailedSubscriptionPaymentStatus = (status?: string | null) => {
@@ -368,7 +368,7 @@ const buildStoredSubscriptionPaymentFromHistory = (
   return {
     channel,
     createdAt: payment.createdAt,
-    message: payment.message || 'Tentative recente retrouvee cote Zwanga.',
+    message: payment.message || 'Tentative récente retrouvée côté Zwanga.',
     orderNumber: payment.orderNumber,
     paymentMethod: payment.method === 'card' ? 'card' : 'mobile_money',
     paymentUrl: payment.paymentUrl,
@@ -562,49 +562,49 @@ export default function ProfileScreen() {
       ? [
           {
             key: 'preparing',
-            title: 'Reference creee',
-            description: 'Zwanga garde une reference unique pour eviter un double paiement.',
+            title: 'Référence créée',
+            description: 'Zwanga garde une référence unique pour éviter un double paiement.',
             icon: 'lock-closed-outline',
           },
           {
             key: 'card',
             title: 'Page carte',
-            description: 'Finalisez le paiement dans la page securisee FlexPay.',
+            description: 'Finalisez le paiement dans la page sécurisée FlexPay.',
             icon: 'card-outline',
           },
           {
             key: 'activation',
             title: 'Activation Zwanga',
-            description: 'Nous activons l abonnement des que FlexPay confirme.',
+            description: "Nous activons l'abonnement dès que FlexPay confirme.",
             icon: 'shield-checkmark-outline',
           },
         ]
       : [
           {
             key: 'preparing',
-            title: 'Reference creee',
-            description: 'Zwanga garde une reference unique pour eviter un double paiement.',
+            title: 'Référence créée',
+            description: 'Zwanga garde une référence unique pour éviter un double paiement.',
             icon: 'lock-closed-outline',
           },
           {
             key: 'phone',
-            title: 'Confirmation telephone',
+            title: 'Confirmation téléphone',
             description: 'Validez la demande Mobile Money avec votre PIN.',
             icon: 'phone-portrait-outline',
           },
           {
             key: 'operator',
-            title: 'Retour operateur',
+            title: 'Retour opérateur',
             description:
               subscriptionPaymentAutoCheckAttempt > 0
-                ? `Verification automatique ${subscriptionPaymentAutoCheckAttempt}/${SUBSCRIPTION_MOBILE_MONEY_AUTO_CHECK_MAX_ATTEMPTS}.`
-                : 'Nous attendons le retour de l operateur.',
+                ? `Vérification automatique ${subscriptionPaymentAutoCheckAttempt}/${SUBSCRIPTION_MOBILE_MONEY_AUTO_CHECK_MAX_ATTEMPTS}.`
+                : "Nous attendons le retour de l'opérateur.",
             icon: 'radio-outline',
           },
           {
             key: 'activation',
             title: 'Activation Zwanga',
-            description: 'Nous activons l abonnement des que FlexPay confirme.',
+            description: "Nous activons l'abonnement dès que FlexPay confirme.",
             icon: 'shield-checkmark-outline',
           },
         ];
@@ -655,7 +655,7 @@ export default function ProfileScreen() {
         icon: 'refresh-outline' as keyof typeof Ionicons.glyphMap,
         message:
           subscriptionPaymentMessage ||
-          'Nous synchronisons l abonnement depuis Zwanga. La reference FlexPay reste en memoire sans relancer de verification externe.',
+          "Nous synchronisons l'abonnement depuis Zwanga. La référence FlexPay reste en mémoire sans relancer de vérification externe.",
         showActivity: true,
         title: 'Synchronisation abonnement',
       };
@@ -666,9 +666,9 @@ export default function ProfileScreen() {
         icon: 'close-circle-outline' as keyof typeof Ionicons.glyphMap,
         message:
           subscriptionPaymentMessage ||
-          'Le paiement n a pas ete confirme. Vous pouvez reessayer avec le meme moyen ou en choisir un autre.',
+          "Le paiement n'a pas été confirmé. Vous pouvez réessayer avec le même moyen ou en choisir un autre.",
         showActivity: false,
-        title: 'Paiement non confirme',
+        title: 'Paiement non confirmé',
       };
     }
 
@@ -677,9 +677,9 @@ export default function ProfileScreen() {
         icon: 'lock-closed-outline' as keyof typeof Ionicons.glyphMap,
         message:
           subscriptionPaymentMessage ||
-          'Creation d une reference securisee FlexPay. Cette etape est limitee pour ne pas bloquer l app trop longtemps.',
+          'Création d’une référence sécurisée FlexPay. Cette étape est limitée pour ne pas bloquer l’app trop longtemps.',
         showActivity: true,
-        title: 'Preparation du paiement',
+        title: 'Préparation du paiement',
       };
     }
 
@@ -688,9 +688,9 @@ export default function ProfileScreen() {
         icon: 'sync-outline' as keyof typeof Ionicons.glyphMap,
         message:
           subscriptionPaymentMessage ||
-          'Verification du statut chez FlexPay. Si le paiement est confirme, l abonnement sera active automatiquement.',
+          "Vérification du statut chez FlexPay. Si le paiement est confirmé, l'abonnement sera activé automatiquement.",
         showActivity: true,
-        title: 'Verification FlexPay',
+        title: 'Vérification FlexPay',
       };
     }
 
@@ -699,7 +699,7 @@ export default function ProfileScreen() {
         icon: 'time-outline' as keyof typeof Ionicons.glyphMap,
         message:
           subscriptionPaymentMessage ||
-          `Suivi automatique en cours (${subscriptionPaymentAutoCheckAttempt}/${SUBSCRIPTION_MOBILE_MONEY_AUTO_CHECK_MAX_ATTEMPTS}). Vous pouvez fermer ce modal; la reference reste gardee.`,
+          `Suivi automatique en cours (${subscriptionPaymentAutoCheckAttempt}/${SUBSCRIPTION_MOBILE_MONEY_AUTO_CHECK_MAX_ATTEMPTS}). Vous pouvez fermer cette fenêtre ; la référence reste gardée.`,
         showActivity: true,
         title: 'Suivi du paiement',
       };
@@ -710,7 +710,7 @@ export default function ProfileScreen() {
         icon: 'time-outline' as keyof typeof Ionicons.glyphMap,
         message:
           subscriptionPaymentMessage ||
-          'Le paiement est encore en traitement. Zwanga garde la reference et reprendra la verification au retour dans l app.',
+          'Le paiement est encore en traitement. Zwanga garde la référence et reprendra la vérification au retour dans l’app.',
         showActivity: false,
         title: 'Toujours en traitement',
       };
@@ -721,7 +721,7 @@ export default function ProfileScreen() {
         icon: 'information-circle-outline' as keyof typeof Ionicons.glyphMap,
         message:
           subscriptionPaymentMessage ||
-          'Votre abonnement n est pas encore actif. Une tentative existe deja; actualisez le statut avant toute nouvelle tentative.',
+          "Votre abonnement n'est pas encore actif. Une tentative existe déjà ; actualisez le statut avant toute nouvelle tentative.",
         showActivity: false,
         title: 'Abonnement non actif',
       };
@@ -1306,7 +1306,7 @@ export default function ProfileScreen() {
       setSubscriptionPaymentMessage(
         options?.pendingMessage ||
           response.payment.message ||
-          'Paiement en attente chez FlexPay. Confirmez sur votre telephone ou terminez la page carte; nous continuons la verification.',
+          'Paiement en attente chez FlexPay. Confirmez sur votre téléphone ou terminez la page de paiement par carte ; nous continuons la vérification.',
       );
       return 'pending' as SubscriptionPaymentCheckOutcome;
     } catch (error: any) {
@@ -1314,15 +1314,15 @@ export default function ProfileScreen() {
         setSubscriptionPaymentStage(options.pendingStage ?? 'operator_confirmation');
         setSubscriptionPaymentMessage(
           options.silentErrorMessage ||
-            'La verification prend plus de temps que prevu. Ne relancez pas le paiement; la reference reste gardee.',
+            'La vérification prend plus de temps que prévu. Ne relancez pas le paiement ; la référence reste gardée.',
         );
         return 'error' as SubscriptionPaymentCheckOutcome;
       }
 
       showDialog({
         variant: 'danger',
-        title: 'Verification impossible',
-        message: getApiMessage(error, 'Impossible de verifier ce paiement pour le moment.'),
+        title: 'Vérification impossible',
+        message: getApiMessage(error, 'Impossible de vérifier ce paiement pour le moment.'),
       });
       return 'error' as SubscriptionPaymentCheckOutcome;
     }
@@ -1350,7 +1350,7 @@ export default function ProfileScreen() {
     setSubscriptionPaymentStage(isSubscriptionCardPayment ? 'zwanga_activation' : 'phone_confirmation');
     setSubscriptionPaymentMessage(
       initialMessage ||
-        'Demande envoyee a FlexPay. Confirmez sur votre telephone; nous actualisons quelques instants sans bloquer l app.',
+        'Demande envoyée à FlexPay. Confirmez sur votre téléphone ; nous actualisons le statut quelques instants sans bloquer l’app.',
     );
 
     void (async () => {
@@ -1386,11 +1386,11 @@ export default function ProfileScreen() {
           pendingStage: isSubscriptionCardPayment ? 'zwanga_activation' : 'operator_confirmation',
           pendingMessage:
             attempt === 1
-              ? 'Verification rapide en cours. Si la demande est sur votre telephone, confirmez-la avec votre PIN Mobile Money.'
-              : 'Paiement toujours en traitement. Nous continuons les actualisations automatiques; inutile de relancer le paiement.',
+              ? 'Vérification rapide en cours. Si la demande est sur votre téléphone, confirmez-la avec votre PIN Mobile Money.'
+              : 'Paiement toujours en traitement. Nous continuons les actualisations automatiques ; inutile de relancer le paiement.',
           suppressErrorDialog: true,
           silentErrorMessage:
-            'La verification prend plus de temps que prevu. Nous gardons la reference et continuons le suivi.',
+            'La vérification prend plus de temps que prévu. Nous gardons la référence et continuons le suivi.',
         });
 
         if (
@@ -1415,7 +1415,7 @@ export default function ProfileScreen() {
         setIsSubscriptionPaymentAutoChecking(false);
         setSubscriptionPaymentStage('waiting_long');
         setSubscriptionPaymentMessage(
-          'Le paiement est encore en traitement. Ne payez pas une deuxieme fois; la reference reste gardee et Zwanga reprendra la verification.',
+          'Le paiement est encore en traitement. Ne payez pas une deuxième fois ; la référence reste gardée et Zwanga reprendra la vérification.',
         );
       }
     })();
@@ -1431,7 +1431,7 @@ export default function ProfileScreen() {
 
     if (result.type !== 'success') {
       if (orderNumber) {
-        const pendingMessage = 'Retour dans l app detecte. Nous verifions le statut carte chez FlexPay.';
+        const pendingMessage = "Retour dans l'app détecté. Nous vérifions le statut du paiement par carte chez FlexPay.";
         setSubscriptionPaymentStage('zwanga_activation');
         setSubscriptionPaymentMessage(pendingMessage);
         const outcome = await checkSubscriptionPaymentByOrderNumber(orderNumber, {
@@ -1440,7 +1440,7 @@ export default function ProfileScreen() {
           pendingMessage,
           suppressErrorDialog: true,
           silentErrorMessage:
-            'Retour detecte, mais la verification prend plus de temps que prevu. La reference reste gardee.',
+            'Retour détecté, mais la vérification prend plus de temps que prévu. La référence reste gardée.',
         });
 
         if (outcome === 'pending' || outcome === 'error') {
@@ -1450,7 +1450,7 @@ export default function ProfileScreen() {
       }
 
       setSubscriptionPaymentMessage(
-        'Le paiement carte a ete ferme avant le retour FlexPay. Vous pouvez rouvrir la page ou verifier le statut.',
+        'Le paiement par carte a été fermé avant le retour FlexPay. Vous pouvez rouvrir la page ou vérifier le statut.',
       );
       return;
     }
@@ -1458,14 +1458,14 @@ export default function ProfileScreen() {
     const paymentResult = getCardPaymentResultFromUrl(result.url);
     if (paymentResult === 'cancel') {
       if (orderNumber) {
-        const pendingMessage = 'Retour carte recu. Verification FlexPay avant toute nouvelle tentative.';
+        const pendingMessage = 'Retour carte reçu. Vérification FlexPay avant toute nouvelle tentative.';
         const outcome = await checkSubscriptionPaymentByOrderNumber(orderNumber, {
           checkingStage: 'zwanga_activation',
           pendingStage: 'zwanga_activation',
           pendingMessage,
           suppressErrorDialog: true,
           silentErrorMessage:
-            'Retour carte recu, mais la verification prend plus de temps que prevu. La reference reste gardee.',
+            'Retour de paiement par carte reçu, mais la vérification prend plus de temps que prévu. La référence reste gardée.',
         });
         if (outcome === 'pending' || outcome === 'error') {
           startSubscriptionPaymentAutoCheck(orderNumber, pendingMessage);
@@ -1474,20 +1474,20 @@ export default function ProfileScreen() {
       }
 
       setSubscriptionPaymentStage('failed');
-      setSubscriptionPaymentMessage('Paiement carte annule. Vous pouvez relancer le paiement.');
+      setSubscriptionPaymentMessage('Paiement par carte annulé. Vous pouvez relancer le paiement.');
       return;
     }
 
     if (paymentResult === 'decline') {
       if (orderNumber) {
-        const pendingMessage = 'Retour carte recu. Verification FlexPay avant toute nouvelle tentative.';
+        const pendingMessage = 'Retour carte reçu. Vérification FlexPay avant toute nouvelle tentative.';
         const outcome = await checkSubscriptionPaymentByOrderNumber(orderNumber, {
           checkingStage: 'zwanga_activation',
           pendingStage: 'zwanga_activation',
           pendingMessage,
           suppressErrorDialog: true,
           silentErrorMessage:
-            'Retour carte recu, mais la verification prend plus de temps que prevu. La reference reste gardee.',
+            'Retour de paiement par carte reçu, mais la vérification prend plus de temps que prévu. La référence reste gardée.',
         });
         if (outcome === 'pending' || outcome === 'error') {
           startSubscriptionPaymentAutoCheck(orderNumber, pendingMessage);
@@ -1496,13 +1496,13 @@ export default function ProfileScreen() {
       }
 
       setSubscriptionPaymentStage('failed');
-      setSubscriptionPaymentMessage('Paiement carte refuse. Verifiez votre carte ou essayez un autre moyen.');
+      setSubscriptionPaymentMessage('Paiement par carte refusé. Vérifiez votre carte ou essayez un autre moyen.');
       return;
     }
 
     if (!orderNumber) {
       setSubscriptionPaymentMessage(
-        'Retour du paiement carte recu, mais la reference FlexPay est manquante. Revenez dans un instant et verifiez le statut.',
+        'Retour du paiement par carte reçu, mais la référence FlexPay est manquante. Revenez dans un instant et vérifiez le statut.',
       );
       return;
     }
@@ -1514,15 +1514,15 @@ export default function ProfileScreen() {
         pendingStage: 'zwanga_activation',
         pendingMessage:
           paymentResult === 'success'
-            ? 'Paiement carte valide cote FlexPay, activation en cours.'
-            : 'Retour carte recu. Verification FlexPay en cours avant activation.',
+            ? 'Paiement par carte validé côté FlexPay, activation en cours.'
+            : 'Retour carte reçu. Vérification FlexPay en cours avant activation.',
       },
     );
 
     if (outcome === 'pending' || outcome === 'error') {
       startSubscriptionPaymentAutoCheck(
         orderNumber,
-        'Retour carte recu. Nous verifions automatiquement l activation.',
+        "Retour de paiement par carte reçu. Nous vérifions automatiquement l'activation.",
       );
     }
   }, [checkSubscriptionPaymentByOrderNumber, startSubscriptionPaymentAutoCheck]);
@@ -1535,7 +1535,7 @@ export default function ProfileScreen() {
     );
     setSubscriptionPaymentMessage(
       storedPayment.message ||
-        'Abonnement non actif. Une tentative existe deja; nous gardons cette reference avant toute nouvelle tentative.',
+        'Abonnement non actif. Une tentative existe déjà ; nous gardons cette référence avant toute nouvelle tentative.',
     );
     setSubscriptionModalStep('payment');
   }, []);
@@ -1659,12 +1659,12 @@ export default function ProfileScreen() {
           setSubscriptionModalStep('payment');
           setSubscriptionPaymentMessage(
             message ||
-              'Reference paiement retrouvee cote Zwanga. Evitez de relancer; le suivi automatique reprend.',
+              'Référence de paiement retrouvée côté Zwanga. Évitez de relancer le paiement ; le suivi automatique reprend.',
           );
           startSubscriptionPaymentAutoCheck(
             restoredPayment.orderNumber,
             message ||
-              'Reference paiement retrouvee cote Zwanga. Nous reprenons le suivi automatique.',
+              'Référence de paiement retrouvée côté Zwanga. Nous reprenons le suivi automatique.',
           );
           return;
         }
@@ -1672,7 +1672,7 @@ export default function ProfileScreen() {
         await refreshSubscriptionFromBackend({
           pendingMessage:
             message ||
-            'Paiement encore en traitement cote Zwanga. Evitez de relancer immediatement.',
+            'Paiement encore en traitement côté Zwanga. Évitez de relancer immédiatement.',
         });
       })();
     }, SUBSCRIPTION_DEFERRED_BACKEND_SYNC_DELAY_MS);
@@ -1712,7 +1712,7 @@ export default function ProfileScreen() {
 
     const pendingMessage =
       options?.pendingMessage ||
-      'Un paiement existe deja. Nous verifions cette reference avant toute nouvelle tentative pour eviter un double debit.';
+      'Un paiement existe déjà. Nous vérifions cette référence avant toute nouvelle tentative pour éviter un double débit.';
 
     if (paymentToResume) {
       applyStoredSubscriptionPayment(paymentToResume);
@@ -1731,7 +1731,7 @@ export default function ProfileScreen() {
       pendingMessage,
       suppressErrorDialog: true,
       silentErrorMessage:
-        'Paiement deja lance. La verification prend plus de temps que prevu; la reference reste gardee.',
+        'Paiement déjà lancé. La vérification prend plus de temps que prévu ; la référence reste gardée.',
     });
 
     if (outcome === 'success' || outcome === 'failed') {
@@ -1814,7 +1814,7 @@ export default function ProfileScreen() {
         await resumeExistingSubscriptionPayment(null, {
           openCardPayment: isSubscriptionCardPayment,
           pendingMessage:
-            'Paiement deja lance. Nous verifions cette reference avant de rouvrir ou relancer le paiement.',
+            'Paiement déjà lancé. Nous vérifions cette référence avant de rouvrir ou relancer le paiement.',
         });
         return;
       }
@@ -1829,7 +1829,7 @@ export default function ProfileScreen() {
       await resumeExistingSubscriptionPayment(storedPayment, {
         openCardPayment: storedPayment.paymentMethod === 'card',
         pendingMessage:
-          'Paiement deja lance. Nous verifions cette reference avant de rouvrir ou relancer le paiement.',
+          'Paiement déjà lancé. Nous vérifions cette référence avant de rouvrir ou relancer le paiement.',
       });
       return;
     }
@@ -1840,8 +1840,8 @@ export default function ProfileScreen() {
     if (!isSubscriptionCardPayment && !phone) {
       showDialog({
         variant: 'warning',
-        title: 'Numero requis',
-        message: 'Entrez le numero Mobile Money qui recevra la demande de paiement.',
+        title: 'Numéro requis',
+        message: 'Entrez le numéro Mobile Money qui recevra la demande de paiement.',
       });
       return;
     }
@@ -1849,8 +1849,8 @@ export default function ProfileScreen() {
     if (!isSubscriptionCardPayment && !isValidCongolesePaymentPhone(phone)) {
       showDialog({
         variant: 'warning',
-        title: 'Numero invalide',
-        message: 'Le numero Mobile Money doit commencer par +243, par exemple +243891234567.',
+        title: 'Numéro invalide',
+        message: 'Le numéro Mobile Money doit commencer par +243, par exemple +243891234567.',
       });
       return;
     }
@@ -1860,7 +1860,7 @@ export default function ProfileScreen() {
       setSubscriptionPaymentStage('preparing');
       setSubscriptionPaymentAutoCheckAttempt(0);
       setSubscriptionPaymentMessage(
-        'Preparation du paiement avec FlexPay. Patientez quelques secondes; la reference sera gardee des qu elle revient.',
+        'Préparation du paiement avec FlexPay. Patientez quelques secondes ; la référence sera gardée dès qu’elle sera disponible.',
       );
       if (!isSubscriptionCardPayment) {
         setSubscriptionPhone(phone);
@@ -1911,7 +1911,7 @@ export default function ProfileScreen() {
       if (response.payment.paymentUrl) {
         setSubscriptionPaymentStage('card_redirect');
         setSubscriptionPaymentMessage(
-          'Page carte FlexPay ouverte. Finalisez le paiement; au retour, l app actualisera l abonnement sans relancer le paiement.',
+          'Page de paiement par carte FlexPay ouverte. Finalisez le paiement ; au retour, l’app actualisera l’abonnement sans le relancer.',
         );
         if (cardRedirectUrls) {
           await openCardPaymentUrl(
@@ -1928,7 +1928,7 @@ export default function ProfileScreen() {
       if (!isSubscriptionCardPayment && response.payment.orderNumber) {
         const pendingMessage =
           response.payment.message ||
-          'Demande envoyee sur votre telephone. Confirmez avec votre PIN Mobile Money; Zwanga activera l abonnement des que FlexPay confirme.';
+          'Demande envoyée sur votre téléphone. Confirmez avec votre PIN Mobile Money ; Zwanga activera l’abonnement dès que FlexPay confirme.';
         setSubscriptionPaymentStage('phone_confirmation');
         setSubscriptionPaymentMessage(pendingMessage);
         startSubscriptionPaymentAutoCheck(response.payment.orderNumber, pendingMessage);
@@ -1938,12 +1938,12 @@ export default function ProfileScreen() {
       setSubscriptionPaymentStage(response.payment.orderNumber ? 'operator_confirmation' : 'preparing');
       setSubscriptionPaymentMessage(
         response.payment.message ||
-          'Demande de paiement creee. Confirmez sur votre telephone; la reference reste disponible pour le suivi.',
+          'Demande de paiement créée. Confirmez sur votre téléphone ; la référence reste disponible pour le suivi.',
       );
     } catch (error: any) {
       if (isNetworkOrTimeoutError(error)) {
         const pendingMessage =
-          'Le lancement prend plus de temps que prevu. Ne relancez pas le paiement; nous verifions Zwanga dans quelques secondes.';
+          'Le lancement prend plus de temps que prévu. Ne relancez pas le paiement ; nous vérifions son statut dans quelques secondes.';
         setSubscriptionModalStep('payment');
         setSubscriptionPaymentStage('operator_confirmation');
         setSubscriptionPaymentMessage(pendingMessage);
@@ -1958,7 +1958,7 @@ export default function ProfileScreen() {
           variant: 'info',
           title: 'Paiement en traitement',
           message:
-            'La reponse met du temps a revenir. Evitez de payer une deuxieme fois; ouvrez ce modal dans quelques instants, le suivi reprendra.',
+            'La réponse met du temps à revenir. Évitez de payer une deuxième fois ; ouvrez cette fenêtre dans quelques instants, le suivi reprendra.',
         });
         return;
       }
@@ -1978,7 +1978,7 @@ export default function ProfileScreen() {
       showDialog({
         variant: 'warning',
         title: 'Paiement introuvable',
-        message: 'Lancez d abord le paiement avant d actualiser son statut.',
+        message: 'Lancez d’abord le paiement avant d’actualiser son statut.',
       });
       return;
     }
@@ -1988,12 +1988,12 @@ export default function ProfileScreen() {
       checkingStage: isSubscriptionCardPayment ? 'zwanga_activation' : 'operator_confirmation',
       pendingStage: isSubscriptionCardPayment ? 'zwanga_activation' : 'operator_confirmation',
       pendingMessage:
-        'Actualisation lancee. Si le paiement est confirme, Zwanga activera l abonnement automatiquement.',
+        "Actualisation lancée. Si le paiement est confirmé, Zwanga activera l'abonnement automatiquement.",
     });
     if (outcome === 'pending' || outcome === 'error') {
       startSubscriptionPaymentAutoCheck(
         orderNumber,
-        'Nous continuons le suivi automatique de cette reference.',
+        'Nous continuons le suivi automatique de cette référence.',
       );
     }
   };
@@ -2031,7 +2031,7 @@ export default function ProfileScreen() {
       applyStoredSubscriptionPayment(storedPayment);
       await refreshSubscriptionFromBackend({
         pendingMessage:
-          'Paiement precedent retrouve. Nous actualisons l abonnement depuis Zwanga. Evitez de relancer un paiement.',
+          "Paiement précédent retrouvé. Nous actualisons l'abonnement depuis Zwanga. Évitez de relancer un paiement.",
       });
     })().finally(() => {
       if (!cancelled) {
@@ -2092,14 +2092,14 @@ export default function ProfileScreen() {
 
       if (subscriptionPaymentOrderNumber) {
         const pendingMessage =
-          'Retour dans l app detecte. Nous actualisons cette reference sans relancer de paiement.';
+          'Retour dans l’app détecté. Nous actualisons cette référence sans relancer de paiement.';
         void checkSubscriptionPaymentByOrderNumber(subscriptionPaymentOrderNumber, {
           checkingStage: isSubscriptionCardPayment ? 'zwanga_activation' : 'operator_confirmation',
           pendingStage: isSubscriptionCardPayment ? 'zwanga_activation' : 'operator_confirmation',
           pendingMessage,
           suppressErrorDialog: true,
           silentErrorMessage:
-            'Retour dans l app detecte. La verification prend plus de temps que prevu; nous gardons la reference.',
+            'Retour dans l’app détecté. La vérification prend plus de temps que prévu ; nous gardons la référence.',
         }).then((outcome) => {
           if (
             subscriptionPaymentMountedRef.current &&
@@ -2513,12 +2513,12 @@ export default function ProfileScreen() {
   const driverBookingsCount = stats?.bookingsAsDriver ?? 0;
   const hasVehicle = vehicleList.length > 0;
   const kycStatusLabel = isKycApproved
-    ? 'Verifiee'
+    ? 'Vérifiée'
     : isKycPending
       ? 'En revue'
       : isKycRejected
-        ? 'A corriger'
-        : 'A verifier';
+        ? 'À corriger'
+        : 'À vérifier';
   const kycStatusColor = isKycApproved
     ? Colors.success
     : isKycPending
@@ -2529,14 +2529,14 @@ export default function ProfileScreen() {
   const driverStatusItems = [
     {
       icon: 'shield-checkmark-outline' as keyof typeof Ionicons.glyphMap,
-      label: 'Identite',
+      label: 'Identité',
       value: kycStatusLabel,
       color: kycStatusColor,
     },
     {
       icon: 'car-outline' as keyof typeof Ionicons.glyphMap,
-      label: 'Vehicule',
-      value: hasVehicle ? `${vehicleList.length} ajoute${vehicleList.length > 1 ? 's' : ''}` : 'A ajouter',
+      label: 'Véhicule',
+      value: hasVehicle ? `${vehicleList.length} ajouté${vehicleList.length > 1 ? 's' : ''}` : 'À ajouter',
       color: hasVehicle ? Colors.success : Colors.warning,
     },
     {
@@ -2550,7 +2550,7 @@ export default function ProfileScreen() {
   ];
   const priorityCta = needsDriverOnboarding
     ? {
-        label: 'Completer conducteur',
+        label: 'Compléter le profil conducteur',
         icon: 'car-sport-outline' as keyof typeof Ionicons.glyphMap,
         onPress: handleStartDriverOnboarding,
       }
@@ -2916,7 +2916,7 @@ export default function ProfileScreen() {
                   <Text style={styles.proSubtitle} numberOfLines={2}>
                     {!needsDriverOnboarding
                       ? '5 trajets par jour inclus, abonnement pour publier sans blocage.'
-                      : 'Completez votre profil conducteur avant de publier des trajets.'}
+                      : 'Complétez votre profil conducteur avant de publier des trajets.'}
                   </Text>
                 </View>
               </View>
@@ -3619,7 +3619,7 @@ export default function ProfileScreen() {
                     subscriptionModalStep === 'method' && styles.subscriptionStepTextActive,
                   ]}
                 >
-                  1. Methode
+                  1. Méthode
                 </Text>
               </View>
               <View
@@ -3741,7 +3741,7 @@ export default function ProfileScreen() {
                       entering={FadeInDown.duration(300)}
                       style={styles.subscriptionPhoneSection}
                     >
-                      <Text style={styles.subscriptionSectionLabel}>Numero Mobile Money</Text>
+                      <Text style={styles.subscriptionSectionLabel}>Numéro Mobile Money</Text>
                       <View style={styles.subscriptionPhoneInputWrapper}>
                         <Ionicons name="call-outline" size={18} color={Colors.gray[500]} />
                         <TextInput
@@ -3763,7 +3763,7 @@ export default function ProfileScreen() {
                     <View style={styles.subscriptionSummaryCard}>
                       <Text style={styles.subscriptionSummaryPrice}>{proPriceLabel}</Text>
                       <Text style={styles.subscriptionSummaryText}>
-                        {"Le paiement carte s'ouvrira dans une page securisee."}
+                        {"Le paiement carte s'ouvrira dans une page sécurisée."}
                       </Text>
                     </View>
                   )}
@@ -3853,7 +3853,7 @@ export default function ProfileScreen() {
                         ) : null}
                         {subscriptionPaymentOrderNumber ? (
                           <Text style={styles.subscriptionPendingReference}>
-                            Reference {subscriptionPaymentOrderNumber}
+                            Référence {subscriptionPaymentOrderNumber}
                           </Text>
                         ) : null}
                       </View>
@@ -3887,7 +3887,7 @@ export default function ProfileScreen() {
                     </Text>
                     {subscriptionPaymentOrderNumber ? (
                       <Text style={styles.subscriptionFooterStatusReference}>
-                        Reference {subscriptionPaymentOrderNumber}
+                        Référence {subscriptionPaymentOrderNumber}
                       </Text>
                     ) : null}
                   </View>

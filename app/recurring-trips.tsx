@@ -289,7 +289,7 @@ export default function RecurringTripsScreen() {
                     </Text>
                   </View>
                   <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>Jusqu'au</Text>
+                    <Text style={styles.detailLabel}>Jusqu’au</Text>
                     <Text style={styles.detailValue}>{formatDateLabel(template.endDate)}</Text>
                   </View>
                 </View>

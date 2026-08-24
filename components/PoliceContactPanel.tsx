@@ -114,7 +114,7 @@ export function PoliceContactPanel({ compact = false, presentation = 'full' }: P
         <View style={styles.headerText}>
           <Text style={styles.title}>Contacter la police</Text>
           <Text style={styles.subtitle}>
-            {"En cas de danger immediat, appelez directement l'un de ces numeros."}
+            {"En cas de danger immédiat, appelez directement l'un de ces numéros."}
           </Text>
         </View>
       </View>

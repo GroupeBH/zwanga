@@ -202,14 +202,14 @@ const getPaymentFailureMessage = (message?: string | null) => {
     normalizedMessage.includes('refuse') ||
     normalizedMessage.includes('rejet')
   ) {
-    return 'Paiement refuse par l operateur. Aucun montant confirme.';
+    return "Paiement refusé par l'opérateur. Aucun montant confirmé.";
   }
 
   if (
     normalizedMessage.includes('solde insuffisant') ||
     normalizedMessage.includes('insufficient')
   ) {
-    return 'Paiement echoue: solde insuffisant.';
+    return 'Paiement échoué : solde insuffisant.';
   }
 
   if (
@@ -224,7 +224,7 @@ const getPaymentFailureMessage = (message?: string | null) => {
     normalizedMessage.includes('failed') ||
     normalizedMessage.includes('failure')
   ) {
-    return 'Paiement non abouti. Aucun montant confirme; vous pouvez relancer une nouvelle tentative.';
+    return 'Paiement non abouti. Aucun montant confirmé; vous pouvez relancer une nouvelle tentative.';
   }
 
   return message || 'Le paiement a échoué. Vous pouvez réessayer ou choisir un autre moyen.';
@@ -344,7 +344,7 @@ const buildStoredPaymentFromHistory = (
   return {
     channel,
     createdAt: payment.createdAt,
-    message: payment.message || 'Paiement retrouve cote Zwanga.',
+    message: payment.message || 'Paiement retrouvé côté Zwanga.',
     orderNumber: payment.orderNumber,
     paymentMethod: payment.method === 'card' ? 'card' : 'mobile_money',
     paymentUrl: payment.paymentUrl,
@@ -460,13 +460,13 @@ export default function SubscriptionPaymentScreen() {
           {
             key: 'wallet',
             title: 'Solde',
-            description: 'Zwanga verifie et debite votre solde de jetons.',
+            description: 'Zwanga vérifie et débite votre solde de jetons.',
             icon: 'wallet-outline' as keyof typeof Ionicons.glyphMap,
           },
           {
             key: 'activation',
             title: 'Activation',
-            description: "L'abonnement est active des que le debit de jetons est confirme.",
+            description: "L'abonnement est activé dès que le débit de jetons est confirmé.",
             icon: 'shield-checkmark-outline' as keyof typeof Ionicons.glyphMap,
           },
         ]
@@ -510,11 +510,11 @@ export default function SubscriptionPaymentScreen() {
           },
           {
             key: 'operator',
-            title: 'Operateur',
+            title: 'Opérateur',
             description:
               autoCheckAttempt > 0
                 ? `Vérification automatique ${autoCheckAttempt}/${AUTO_CHECK_MAX_ATTEMPTS}.`
-                : "Nous attendons le retour de l'operateur.",
+                : "Nous attendons le retour de l'opérateur.",
             icon: 'radio-outline' as keyof typeof Ionicons.glyphMap,
           },
           {
@@ -591,12 +591,12 @@ export default function SubscriptionPaymentScreen() {
         icon: isPointsPayment
           ? ('wallet-outline' as keyof typeof Ionicons.glyphMap)
           : ('lock-closed-outline' as keyof typeof Ionicons.glyphMap),
-        title: isPointsPayment ? 'Debit de jetons' : 'Reference en preparation',
+        title: isPointsPayment ? 'Débit de jetons' : 'Référence en préparation',
         text:
           message ||
           (isPointsPayment
-            ? "Verification du solde et activation de l'abonnement."
-            : "Aucun debit n'est lance ici. Zwanga cree seulement une reference securisee."),
+            ? "Vérification du solde et activation de l'abonnement."
+            : "Aucun débit n'est lancé ici. Zwanga crée seulement une référence sécurisée."),
         activity: false,
         color: Colors.primary,
       };
@@ -662,7 +662,7 @@ export default function SubscriptionPaymentScreen() {
               ? 'Rouvrir le paiement'
               : 'Actualiser le statut'
           : stage === 'failed'
-            ? 'Reessayer'
+            ? 'Réessayer'
             : isPointsPayment
               ? 'Payer avec jetons'
               : isCardPayment
@@ -691,7 +691,7 @@ export default function SubscriptionPaymentScreen() {
     setOrderNumber(null);
     setPaymentUrl(null);
     setStage('success');
-    setMessage('Votre abonnement est deja actif.');
+    setMessage('Votre abonnement est déjà actif.');
     setAutoCheckAttempt(0);
     void clearStoredPayment();
   }, [clearStoredPayment, isPremiumActive, stopAutoCheck]);
@@ -750,12 +750,12 @@ export default function SubscriptionPaymentScreen() {
       setStage('success');
       setOrderNumber(null);
       setPaymentUrl(null);
-      setMessage(`Abonnement conducteur active. ${subscriptionRewardTokens} jetons credites.`);
+      setMessage(`Abonnement conducteur activé. ${subscriptionRewardTokens} jetons crédités.`);
       setAutoCheckAttempt(0);
       showDialog({
         variant: 'success',
         title: 'Abonnement actif',
-        message: `Votre abonnement conducteur est actif et ${subscriptionRewardTokens} jetons ont ete credites.`,
+        message: `Votre abonnement conducteur est actif et ${subscriptionRewardTokens} jetons ont été crédités.`,
       });
       return true;
     },
@@ -799,7 +799,7 @@ export default function SubscriptionPaymentScreen() {
       } catch (error: any) {
         if (options?.suppressErrorDialog) {
           setStage(options.pendingStage ?? 'operator_confirmation');
-          setMessage('La verification prend plus de temps que prévu. La reference reste gardée.');
+          setMessage('La vérification prend plus de temps que prévu. La référence reste gardée.');
           return 'error';
         }
 
@@ -911,7 +911,7 @@ export default function SubscriptionPaymentScreen() {
           if (outcome === 'pending' || outcome === 'error') startAutoCheck(nextOrderNumber, pendingMessage);
           return;
         }
-        setMessage('Le paiement carte a été fermé avant le retour FlexPay.');
+        setMessage('Le paiement par carte a été fermé avant le retour FlexPay.');
         return;
       }
 
@@ -928,13 +928,13 @@ export default function SubscriptionPaymentScreen() {
 
       if (!nextOrderNumber) {
 
-        setMessage('Retour carte recu, mais la reference FlexPay est manquante.');
+        setMessage('Retour carte reçu, mais la référence FlexPay est manquante.');
         return;
       }
 
       const pendingMessage =
         paymentResult === 'success'
-          ? 'Paiement carte valide cote FlexPay, activation en cours.'
+          ? 'Paiement carte validé côté FlexPay, activation en cours.'
           : 'Retour carte reçu. Vérification du statut avant toute nouvelle tentative.';
       const outcome = await checkPaymentByOrderNumber(nextOrderNumber, {
         checkingStage: 'zwanga_activation',
@@ -1002,7 +1002,7 @@ export default function SubscriptionPaymentScreen() {
       showDialog({
         variant: 'warning',
         title: 'Compte conducteur requis',
-        message: 'Activez votre profil conducteur avant de souscrire a Zwanga Pro.',
+        message: 'Activez votre profil conducteur avant de souscrire à Zwanga Pro.',
       });
       return;
     }
@@ -1065,13 +1065,13 @@ export default function SubscriptionPaymentScreen() {
         setPaymentUrl(null);
         setStage('preparing');
         setAutoCheckAttempt(0);
-        setMessage("Debit du solde de jetons Zwanga en cours.");
+        setMessage("Débit du solde de jetons Zwanga en cours.");
 
         const response = await subscribeToProWithPoints().unwrap();
         if (await finishPayment(response)) return;
 
         setStage('failed');
-        setMessage(response.payment.message || "Le paiement par jetons n'a pas ete confirme.");
+        setMessage(response.payment.message || "Le paiement par jetons n'a pas été confirmé.");
       } catch (error: any) {
         setStage('failed');
         showDialog({
@@ -1100,8 +1100,8 @@ export default function SubscriptionPaymentScreen() {
     if (method === 'mobile_money' && !isValidCongolesePaymentPhone(formattedPhone)) {
       showDialog({
         variant: 'warning',
-        title: 'Numero invalide',
-        message: 'Le numero Mobile Money doit commencer par +243, par exemple +243891234567.',
+        title: 'Numéro invalide',
+        message: 'Le numéro Mobile Money doit commencer par +243, par exemple +243891234567.',
       });
       return;
     }
@@ -1315,10 +1315,10 @@ export default function SubscriptionPaymentScreen() {
           setMessage(
             normalizedStatus === 'cancel'
               ? 'Paiement carte annulé.'
-              : 'Paiement carte refusé. Verifiez votre carte ou essayez un autre moyen.',
+              : 'Paiement carte refusé. Vérifiez votre carte ou essayez un autre moyen.',
           );
         } else {
-          setMessage('Retour carte reçu. Actualisez le statut avant de rélancer un paiement.');
+          setMessage('Retour carte reçu. Actualisez le statut avant de relancer un paiement.');
         }
         return;
       }

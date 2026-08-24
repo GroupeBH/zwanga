@@ -70,7 +70,7 @@ const isDriverBackgroundLocationTaskRegistered = async () => {
 
     return await TaskManager.isTaskRegisteredAsync(DRIVER_BACKGROUND_LOCATION_TASK);
   } catch (error) {
-    console.warn('[DriverBackgroundLocation] Verification task impossible:', error);
+    console.warn('[DriverBackgroundLocation] Vérification task impossible:', error);
     return false;
   }
 };
@@ -83,7 +83,7 @@ const hasStartedDriverBackgroundLocationUpdates = async () => {
 
     return await Location.hasStartedLocationUpdatesAsync(DRIVER_BACKGROUND_LOCATION_TASK);
   } catch (error) {
-    console.warn('[DriverBackgroundLocation] Etat task localisation inconnu:', error);
+    console.warn('[DriverBackgroundLocation] État task localisation inconnu:', error);
     return isDriverBackgroundLocationTaskRegistered();
   }
 };
@@ -201,7 +201,7 @@ async function putDriverLocation(tripId: string, location: Location.LocationObje
         await clearActiveDriverBackgroundTripId(tripId);
         await stopRegisteredDriverBackgroundLocationTask();
       }
-      console.warn('[DriverBackgroundLocation] Position non envoyee:', {
+      console.warn('[DriverBackgroundLocation] Position non envoyée:', {
         status: response.status,
         tripId,
       });
@@ -247,7 +247,7 @@ async function completeTripFromBackground(tripId: string) {
     }
 
     if (!response.ok) {
-      console.warn('[DriverBackgroundLocation] Trajet non finalise en arriere-plan:', {
+      console.warn('[DriverBackgroundLocation] Trajet non finalise en arrière-plan:', {
         status: response.status,
         tripId,
       });
@@ -307,7 +307,7 @@ async function evaluateBackgroundTripEnd(
       continue;
     }
 
-    const evaluation = evaluateDestinationAutoComplete({
+    const évaluation = evaluateDestinationAutoComplete({
       destinationCoordinate: session.arrivalCoordinate,
       driverCoordinate,
       nearDestinationSinceMs,
@@ -324,17 +324,17 @@ async function evaluateBackgroundTripEnd(
       parallelDistanceThresholdMeters: DRIVER_TRIP_END_PARALLEL_COMPLETE_DISTANCE_METERS,
     });
 
-    nearDestinationSinceMs = evaluation.nearDestinationSinceMs;
-    lastDistanceMeters = passage.distanceMeters ?? evaluation.distanceMeters;
+    nearDestinationSinceMs = évaluation.nearDestinationSinceMs;
+    lastDistanceMeters = passage.distanceMeters ?? évaluation.distanceMeters;
     previousDriverCoordinate = driverCoordinate;
 
-    if (!evaluation.shouldComplete && !passage.shouldComplete) {
+    if (!évaluation.shouldComplete && !passage.shouldComplete) {
       continue;
     }
 
     const completed = await completeTripFromBackground(tripId);
     if (completed) {
-      console.log('[DriverBackgroundLocation] Trajet finalise en arriere-plan:', {
+      console.log('[DriverBackgroundLocation] Trajet finalise en arrière-plan:', {
         tripId,
         distanceMeters: lastDistanceMeters,
       });
@@ -398,7 +398,7 @@ const defineDriverBackgroundLocationTask = () => {
         await putDriverLocation(tripId, latestLocation);
         await evaluateBackgroundTripEnd(tripId, locations);
       } catch (taskError) {
-        console.warn('[DriverBackgroundLocation] Task ignoree apres erreur:', taskError);
+        console.warn('[DriverBackgroundLocation] Tâche ignorée après une erreur :', taskError);
       }
     });
   } catch (error) {
@@ -432,7 +432,7 @@ export async function startDriverBackgroundLocationTracking(
     }
 
     if (foregroundStatus !== Location.PermissionStatus.GRANTED) {
-      console.warn('[DriverBackgroundLocation] Permission premier plan refusee');
+      console.warn('[DriverBackgroundLocation] Permission de premier plan refusée');
       return false;
     }
 
@@ -456,7 +456,7 @@ export async function startDriverBackgroundLocationTracking(
 
     if (backgroundStatus !== Location.PermissionStatus.GRANTED) {
       lastBackgroundPermissionDeniedAt = Date.now();
-      console.warn('[DriverBackgroundLocation] Permission arriere-plan refusee');
+      console.warn('[DriverBackgroundLocation] Permission d’arrière-plan refusée');
       return false;
     }
 
@@ -502,7 +502,7 @@ export async function startDriverBackgroundLocationTracking(
       foregroundService: Platform.OS === 'android'
         ? {
             notificationTitle: 'Trajet Zwanga en cours',
-            notificationBody: 'Votre position est partagee pendant le trajet.',
+            notificationBody: 'Votre position est partagée pendant le trajet.',
             notificationColor: '#FF6B35',
             killServiceOnDestroy: false,
           }
@@ -512,7 +512,7 @@ export async function startDriverBackgroundLocationTracking(
     return true;
   } catch (error) {
     await clearActiveDriverBackgroundTripId(tripId).catch(() => undefined);
-    console.warn('[DriverBackgroundLocation] Demarrage ignore apres erreur:', error);
+    console.warn('[DriverBackgroundLocation] Demarrage ignore après erreur:', error);
     return false;
   }
 }
@@ -546,6 +546,6 @@ export async function stopDriverBackgroundLocationTracking(tripId?: string | nul
 
     await stopRegisteredDriverBackgroundLocationTask();
   } catch (error) {
-    console.warn('[DriverBackgroundLocation] Stop ignore apres erreur:', error);
+    console.warn('[DriverBackgroundLocation] Stop ignore après erreur:', error);
   }
 }

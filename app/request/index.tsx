@@ -118,7 +118,7 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
   {
     id: 'cash',
     label: "Paiement à l'arrivée",
-    description: 'Reglez directement auprès du conducteur',
+    description: 'Réglez directement auprès du conducteur',
     icon: 'cash-outline',
   },
 ];
@@ -529,9 +529,9 @@ export default function RequestTripScreen() {
           ]}
         >
           {isSearching
-            ? 'Recherche des coordonnees...'
+            ? 'Recherche des coordonnées...'
             : isFound
-              ? 'Coordonnees trouvees'
+              ? 'Coordonnées trouvées'
               : 'Adresse introuvable'}
         </Text>
       </View>
@@ -734,7 +734,7 @@ export default function RequestTripScreen() {
       })
       .catch((error) => {
         if (!isCurrent) return;
-        console.warn('Impossible de calculer l itineraire de demande', error);
+        console.warn('Impossible de calculer l itinéraire de demande', error);
         setRouteCoordinates([]);
       })
       .finally(() => {
@@ -785,7 +785,7 @@ export default function RequestTripScreen() {
       })
       .catch((error) => {
         if (!isCurrent) return;
-        console.warn('Impossible de recuperer les options de vehicule', error);
+        console.warn('Impossible de récupérer les options de véhicule', error);
         setRouteDistanceMeters(null);
         setVehicleOptions([]);
       });
@@ -1019,8 +1019,8 @@ export default function RequestTripScreen() {
     }
     if (!selectedVehicleOption?.availableForRequestedSeats) {
       showDialog({
-        title: 'Vehicule requis',
-        message: 'Choisissez un type de vehicule disponible avant d\'envoyer la demande.',
+        title: 'Véhicule requis',
+        message: 'Choisissez un type de véhicule disponible avant d\'envoyer la demande.',
         variant: 'warning',
       });
       return;
@@ -1043,7 +1043,7 @@ export default function RequestTripScreen() {
       const requestNotes = [
         description.trim(),
         preferBudgetOffers && parsedBudget !== undefined
-          ? `Preference: offres jusqu'a ${formatCdfPrice(parsedBudget)} par place.`
+          ? `Préférence : offres jusqu'à ${formatCdfPrice(parsedBudget)} par place.`
           : '',
       ].filter(Boolean).join('\n');
       const createdRequest = await createTripRequest({

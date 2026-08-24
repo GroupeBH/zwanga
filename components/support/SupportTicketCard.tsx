@@ -31,7 +31,7 @@ export function SupportTicketCard({ ticket }: { ticket: SupportTicketSummary }) 
         <View style={styles.ticketMetaItem}>
           <Ionicons name="time-outline" size={14} color={Colors.gray[500]} />
           <Text style={styles.ticketMetaText}>
-            Mis a jour {formatSupportDate(ticket.updatedAt)}
+            Mis à jour {formatSupportDate(ticket.updatedAt)}
           </Text>
         </View>
       </View>

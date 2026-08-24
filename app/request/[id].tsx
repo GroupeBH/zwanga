@@ -639,7 +639,7 @@ export default function TripRequestDetailsScreen() {
         })
         .catch((requestError) => {
           if (!isCurrent) return;
-          console.warn('Impossible de recuperer les tarifs pour la modification', requestError);
+          console.warn('Impossible de récupérer les tarifs pour la modification', requestError);
           setEditVehicleOptions([]);
           setEditVehiclePriceMultiplier(1);
         });

@@ -25,7 +25,7 @@ type ReasonOption = {
 const REASONS: ReasonOption[] = [
   { id: 'inappropriate_behavior', label: 'Comportement inapproprie', icon: 'alert-circle' },
   { id: 'harassment', label: 'Harcelement', icon: 'warning' },
-  { id: 'safety_concern', label: 'Probleme de securite', icon: 'shield' },
+  { id: 'safety_concern', label: 'Problème de sécurité', icon: 'shield' },
   { id: 'fraud', label: 'Fraude', icon: 'cash' },
   { id: 'other', label: 'Autre', icon: 'ellipsis-horizontal-circle' },
 ];
@@ -54,7 +54,7 @@ export default function ReportScreen() {
     if (!tripId || !reportedUserId || !reason) {
       showDialog({
         title: 'Informations manquantes',
-        message: 'Impossible de preparer le signalement pour ce trajet.',
+        message: 'Impossible de préparer le signalement pour ce trajet.',
         variant: 'danger',
       });
       return;
@@ -64,7 +64,7 @@ export default function ReportScreen() {
     if (cleanDescription.length < 10) {
       showDialog({
         title: 'Description requise',
-        message: 'Merci de decrire le probleme avec au moins 10 caracteres.',
+        message: 'Merci de decrire le problème avec au moins 10 caracteres.',
         variant: 'warning',
       });
       return;
@@ -80,8 +80,8 @@ export default function ReportScreen() {
       }).unwrap();
 
       showDialog({
-        title: 'Signalement envoye',
-        message: 'Merci. Votre signalement a ete transmis a notre equipe.',
+        title: 'Signalement envoyé',
+        message: 'Merci. Votre signalement a été transmis à notre équipe.',
         variant: 'success',
         actions: [{ label: 'Retour', variant: 'primary', onPress: () => router.back() }],
       });
@@ -89,7 +89,7 @@ export default function ReportScreen() {
       const message =
         error?.data?.message ??
         error?.error ??
-        'Impossible d envoyer le signalement pour le moment.';
+        'Impossible d’envoyer le signalement pour le moment.';
       showDialog({
         title: 'Erreur',
         message: Array.isArray(message) ? message.join('\n') : message,
@@ -104,7 +104,7 @@ export default function ReportScreen() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={24} color={Colors.gray[900]} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Signaler un probleme</Text>
+        <Text style={styles.headerTitle}>Signaler un problème</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -145,7 +145,7 @@ export default function ReportScreen() {
           multiline
           value={description}
           onChangeText={setDescription}
-          placeholder="Expliquez ce qui s est passe..."
+          placeholder="Expliquez ce qui s’est passé..."
           placeholderTextColor={Colors.gray[400]}
           textAlignVertical="top"
           maxLength={600}
