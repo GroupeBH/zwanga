@@ -1914,7 +1914,7 @@ export default function TripDetailsScreen() {
       if (!selection) {
         setIsValidatingDestination(false);
         setBookingModalError(
-          "Impossible de localiser ce point d'arrivee. Verifiez le texte ou choisissez-le sur la carte.",
+          "Impossible de localiser ce point d'arrivée. Verifiez le texte ou choisissez-le sur la carte.",
         );
         return;
       }
@@ -1944,7 +1944,7 @@ export default function TripDetailsScreen() {
       !isCoordinateInKinshasaBounds(resolvedPassengerOrigin)
     ) {
       setBookingModalError(
-        'Le point de prise en charge detecte est hors Kinshasa. Choisissez-le sur la carte ou precisez la commune.',
+        'Le point de prise en charge detecté est hors Kinshasa. Choisissez-le sur la carte ou precisez la commune.',
       );
       return;
     }
@@ -1955,7 +1955,7 @@ export default function TripDetailsScreen() {
       !isCoordinateInKinshasaBounds(resolvedPassengerDestination)
     ) {
       setBookingModalError(
-        "La destination detectee est hors Kinshasa. Choisissez-la sur la carte ou precisez la commune.",
+        "La destination detectée est hors Kinshasa. Choisissez-la sur la carte ou precisez la commune.",
       );
       return;
     }

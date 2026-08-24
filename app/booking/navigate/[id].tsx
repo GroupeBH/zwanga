@@ -7,7 +7,6 @@ import {
   VehicleTrackingMarker,
 } from '@/components/TrackingMapMarkers';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { ELECTRONIC_PAYMENTS_ENABLED } from '@/constants/paymentFeatures';
 import {
   BOARDING_LOCATION_MAX_AGE_MS,
   BOARDING_MAX_ACCEPTED_GPS_ACCURACY_METERS,
@@ -29,13 +28,9 @@ import {
 import {
   useCancelBookingMutation,
   useGetBookingByIdQuery,
-  useInitiateBookingPaymentMutation,
   useRequestPassengerTripInterruptionMutation,
-  useUpdateBookingPaymentModeMutation,
   useUpdatePassengerLocationMutation,
 } from '@/store/api/bookingApi';
-import { useAppSelector } from '@/store/hooks';
-import { selectUser } from '@/store/selectors';
 import { TravelMode, useGetDirectionsMutation } from '@/store/api/googleMapsApi';
 import {
   useConfirmDriverTripInterruptionMutation,
@@ -59,7 +54,6 @@ import {
 } from '@/utils/navigation/routeProgress';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
 import { shareTrip } from '@/utils/shareHelpers';
-import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 import {
   getTripInterruptionReasonLabel,
   isPendingTripInterruption,
@@ -104,16 +98,6 @@ const PASSENGER_PICKUP_NOTICE_PRIORITY: Record<PassengerPickupNoticeType, number
   driver_near_pickup: 0,
   driver_arrived_pickup: 1,
   parties_nearby: 2,
-};
-const DRC_PAYMENT_PHONE_REGEX = /^\+243\d{9}$/;
-
-const formatPaymentPhone = (value?: string | null) => {
-  const digits = (value ?? '').replace(/\D/g, '');
-  if (!digits) return undefined;
-  if (digits.startsWith('243') && digits.length === 12) return `+${digits}`;
-  if (digits.startsWith('0') && digits.length === 10) return `+243${digits.slice(1)}`;
-  if (digits.length === 9) return `+243${digits}`;
-  return value?.trim();
 };
 
 interface PassengerPickupNotice {
@@ -210,35 +194,6 @@ function formatDurationSeconds(durationSeconds: number) {
   return hours > 0 ? `${hours}h ${minutes}min` : `${minutes} min`;
 }
 
-function normalizePaymentAmount(value?: number | string | null) {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
-
-  const amount = Number(value);
-  return Number.isFinite(amount) && amount >= 0 ? amount : null;
-}
-
-function formatArrivalPaymentAmount(
-  amount: number,
-  paymentMode?: 'electronic' | 'cash' | 'points' | null,
-  currency?: string | null,
-) {
-  const decimals = Number.isInteger(amount) ? 0 : 2;
-  const [integerPart, decimalPart] = amount.toFixed(decimals).split('.');
-  const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-  const formattedAmount = decimalPart
-    ? `${formattedInteger},${decimalPart}`
-    : formattedInteger;
-
-  if (paymentMode === 'points') {
-    return `${formattedAmount} jetons`;
-  }
-
-  const normalizedCurrency = currency?.trim().toUpperCase() || 'CDF';
-  return `${formattedAmount} ${normalizedCurrency === 'CDF' ? 'FC' : normalizedCurrency}`;
-}
-
 export default function PassengerNavigationScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -246,7 +201,6 @@ export default function PassengerNavigationScreen() {
   const insets = useSafeAreaInsets();
   const bookingId = typeof id === 'string' ? id : '';
   const isFocused = useIsFocused();
-  const user = useAppSelector(selectUser);
 
   // Recuperer la reservation et le trajet
   const { data: booking, isLoading: bookingLoading, refetch: refetchBooking } = useGetBookingByIdQuery(bookingId, { 
@@ -267,10 +221,6 @@ export default function PassengerNavigationScreen() {
 
   const [updatePassengerLocation] = useUpdatePassengerLocationMutation();
   const [cancelBooking, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
-  const [initiateBookingPayment, { isLoading: isInitiatingBookingPayment }] =
-    useInitiateBookingPaymentMutation();
-  const [updateBookingPaymentMode, { isLoading: isSettlingPointsPayment }] =
-    useUpdateBookingPaymentModeMutation();
   const [requestPassengerTripInterruption, { isLoading: isRequestingPassengerInterruption }] =
     useRequestPassengerTripInterruptionMutation();
   const [confirmDriverTripInterruption, { isLoading: isConfirmingDriverInterruption }] =
@@ -296,7 +246,6 @@ export default function PassengerNavigationScreen() {
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
   const [activeRouteSegment, setActiveRouteSegment] = useState<RouteSegmentFocus>('route');
-  const [arrivalModalVisible, setArrivalModalVisible] = useState(false);
   const [pickupNotice, setPickupNotice] = useState<PassengerPickupNotice | null>(null);
   const [pickupNoticeCountdown, setPickupNoticeCountdown] = useState<number | null>(null);
   const [isNavigationMapReady, setIsNavigationMapReady] = useState(IS_ANDROID);
@@ -598,7 +547,7 @@ export default function PassengerNavigationScreen() {
     if (!isMountedRef.current || hasPresentedArrivalModalRef.current) return;
 
     hasPresentedArrivalModalRef.current = true;
-    setArrivalModalVisible(true);
+    void refetchBooking();
     void Speech.stop().finally(() => {
       if (!isMountedRef.current) return;
       Speech.speak(
@@ -606,7 +555,7 @@ export default function PassengerNavigationScreen() {
         { language: 'fr-FR', rate: 0.95 },
       );
     });
-  }, []);
+  }, [refetchBooking]);
 
   const presentNoShowNotice = useCallback(() => {
     if (!isMountedRef.current || hasPresentedNoShowNoticeRef.current) return;
@@ -885,7 +834,6 @@ export default function PassengerNavigationScreen() {
     lastRouteFetchRef.current = 0;
     presentedPickupNoticeKeysRef.current.clear();
     highestPickupNoticePriorityRef.current.clear();
-    setArrivalModalVisible(false);
     setPickupNotice(null);
     setPickupNoticeCountdown(null);
     setLoadedMarkerKeys(new Set());
@@ -1775,92 +1723,6 @@ export default function PassengerNavigationScreen() {
     tripId,
   ]);
 
-  const handleRateDriver = useCallback(() => {
-    if (!booking?.droppedOff && !booking?.droppedOffConfirmedByPassenger) return;
-
-    setArrivalModalVisible(false);
-    void Speech.stop();
-    router.replace(`/rate/${tripId}`);
-  }, [booking?.droppedOff, booking?.droppedOffConfirmedByPassenger, router, tripId]);
-
-  const handleSettleArrivalPayment = useCallback(async () => {
-    if (!booking?.id || (!booking.droppedOff && booking.status !== 'completed')) {
-      return;
-    }
-
-    try {
-      if (booking.paymentMode === 'points') {
-        await updateBookingPaymentMode({
-          bookingId: booking.id,
-          paymentMode: 'points',
-        }).unwrap();
-        await refetchBooking();
-        showDialog({
-          variant: 'success',
-          icon: 'wallet',
-          title: 'Paiement confirme',
-          message: 'Le paiement en jetons a ete effectue apres votre arrivee.',
-        });
-        return;
-      }
-
-      if (booking.paymentMode !== 'electronic' || !ELECTRONIC_PAYMENTS_ENABLED) {
-        return;
-      }
-
-      const phone = formatPaymentPhone(user?.phone);
-      if (!phone || !DRC_PAYMENT_PHONE_REGEX.test(phone)) {
-        showDialog({
-          variant: 'warning',
-          icon: 'phone-portrait',
-          title: 'Numero Mobile Money requis',
-          message:
-            'Ajoutez un numero congolais valide dans votre profil avant de lancer le paiement.',
-        });
-        return;
-      }
-
-      const response = await initiateBookingPayment({
-        bookingId: booking.id,
-        method: 'mobile_money',
-        phone,
-      }).unwrap();
-      if (response.payment.paymentUrl) {
-        await openExternalUrlSafely(response.payment.paymentUrl, {
-          logLabel: 'PassengerArrivalPayment',
-        });
-      }
-      await refetchBooking();
-      showDialog({
-        variant: response.payment.status === 'succeeded' ? 'success' : 'info',
-        icon: 'card',
-        title:
-          response.payment.status === 'succeeded'
-            ? 'Paiement confirme'
-            : 'Paiement lance',
-        message:
-          response.payment.message ??
-          'Confirmez la demande de paiement sur votre telephone.',
-      });
-    } catch (error: any) {
-      const message =
-        error?.data?.message ?? error?.error ?? 'Impossible de regler la course.';
-      showDialog({
-        variant: 'danger',
-        icon: 'alert-circle',
-        title: 'Paiement impossible',
-        message: Array.isArray(message) ? message.join('\n') : message,
-      });
-    }
-  }, [
-    booking,
-    initiateBookingPayment,
-    refetchBooking,
-    showDialog,
-    updateBookingPaymentMode,
-    user?.phone,
-  ]);
-
   const handleCancelPassengerTrip = useCallback(async () => {
     if (!booking?.id) return;
 
@@ -1871,7 +1733,6 @@ export default function PassengerNavigationScreen() {
       void stopPassengerBackgroundLocationTracking(booking.id);
       setPickupNotice(null);
       setPickupNoticeCountdown(null);
-      setArrivalModalVisible(false);
       void Speech.stop();
       refetchBooking();
       refetchTrip();
@@ -2124,49 +1985,6 @@ export default function PassengerNavigationScreen() {
       trip?.status !== 'completed' &&
       trip?.status !== 'cancelled',
   );
-  const arrivalPaymentAmount = normalizePaymentAmount(booking?.paymentAmount);
-  const hasKnownArrivalPaymentAmount = arrivalPaymentAmount !== null;
-  const isArrivalPaymentSettled =
-    booking?.paymentMode === 'cash' ||
-    booking?.paymentStatus === 'succeeded' ||
-    booking?.paymentStatus === 'not_required' ||
-    arrivalPaymentAmount === 0;
-  const canSettleArrivalPayment = Boolean(
-    hasPassengerDroppedOff &&
-      !isArrivalPaymentSettled &&
-      (booking?.paymentMode === 'points' ||
-        (booking?.paymentMode === 'electronic' && ELECTRONIC_PAYMENTS_ENABLED)),
-  );
-  const arrivalPaymentButtonLabel =
-    booking?.paymentMode === 'points'
-      ? hasKnownArrivalPaymentAmount
-        ? `Payer ${formatArrivalPaymentAmount(arrivalPaymentAmount, 'points')}`
-        : 'Payer en jetons'
-      : 'Payer avec FlexPay';
-  const arrivalPaymentAmountLabel = hasKnownArrivalPaymentAmount
-    ? formatArrivalPaymentAmount(
-        arrivalPaymentAmount,
-        booking?.paymentMode,
-        booking?.paymentCurrency,
-      )
-    : 'Synchronisation...';
-  const arrivalPaymentModeLabel =
-    booking?.paymentMode === 'electronic'
-      ? 'Mobile Money via FlexPay'
-      : booking?.paymentMode === 'points'
-        ? 'Jetons Zwanga'
-        : 'Espèces au conducteur';
-  const arrivalPaymentStatusLabel =
-    booking?.paymentStatus === 'succeeded'
-      ? 'Paiement confirmé'
-      : booking?.paymentStatus === 'initiated'
-        ? 'Paiement FlexPay en cours'
-        : booking?.paymentMode === 'cash'
-          ? 'À remettre au conducteur'
-          : arrivalPaymentAmount === 0 || booking?.paymentStatus === 'not_required'
-            ? 'Aucun paiement requis'
-            : 'À payer maintenant';
-
   const pickupNoticeDistanceMeters =
     typeof pickupNotice?.distanceMeters === 'number' && Number.isFinite(pickupNotice.distanceMeters)
       ? Math.max(10, Math.round(pickupNotice.distanceMeters / 10) * 10)
@@ -2808,7 +2626,7 @@ export default function PassengerNavigationScreen() {
       )}
 
       <Modal
-        visible={Boolean(pickupNotice) && !arrivalModalVisible}
+        visible={Boolean(pickupNotice) && !hasPassengerDroppedOff}
         transparent
         animationType="slide"
         onRequestClose={() => setPickupNotice(null)}
@@ -2869,126 +2687,6 @@ export default function PassengerNavigationScreen() {
               >
                 <Text style={styles.arrivalModalLaterButtonText}>Fermer</Text>
               </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={arrivalModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setArrivalModalVisible(false)}
-      >
-        <View style={styles.arrivalModalOverlay}>
-          <View
-            style={[
-              styles.arrivalModalContent,
-              { paddingBottom: Math.max(insets.bottom, Spacing.lg) + Spacing.md },
-            ]}
-          >
-            <View style={styles.arrivalModalHandle} />
-            <View style={styles.arrivalModalIcon}>
-              <Ionicons name="flag" size={30} color={Colors.white} />
-            </View>
-            <Text style={styles.arrivalModalTitle}>Vous êtes arrivé</Text>
-            <Text style={styles.arrivalModalText}>
-              L&apos;arrivee est confirmee. Le paiement choisi devient disponible maintenant.
-            </Text>
-            <View style={styles.arrivalModalAddressRow}>
-              <Ionicons name="location" size={18} color={Colors.primary} />
-              <Text style={styles.arrivalModalAddress} numberOfLines={2}>
-                {booking.passengerDestination || trip.arrival.address}
-              </Text>
-            </View>
-            <View style={styles.arrivalModalGpsStatus}>
-              <Ionicons name="locate" size={18} color={Colors.success} />
-              <Text style={styles.arrivalModalGpsStatusText}>Arrivée détectée par GPS</Text>
-            </View>
-            <View style={styles.arrivalPaymentSummary}>
-              <View style={styles.arrivalPaymentAmountRow}>
-                <View>
-                  <Text style={styles.arrivalPaymentLabel}>
-                    {isArrivalPaymentSettled ? 'Montant du trajet' : 'Montant à payer'}
-                  </Text>
-                  <Text style={styles.arrivalPaymentAmount}>{arrivalPaymentAmountLabel}</Text>
-                </View>
-                <View style={styles.arrivalPaymentStatusBadge}>
-                  <Text style={styles.arrivalPaymentStatusText}>
-                    {arrivalPaymentStatusLabel}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.arrivalPaymentMethodRow}>
-                <Ionicons
-                  name={
-                    booking.paymentMode === 'electronic'
-                      ? 'phone-portrait-outline'
-                      : booking.paymentMode === 'points'
-                        ? 'wallet-outline'
-                        : 'cash-outline'
-                  }
-                  size={17}
-                  color={Colors.primary}
-                />
-                <Text style={styles.arrivalPaymentMethodText}>
-                  {arrivalPaymentModeLabel}
-                </Text>
-              </View>
-            </View>
-            <Text style={styles.arrivalModalHint}>
-              {canSettleArrivalPayment
-                ? booking.paymentMode === 'points'
-                  ? 'Confirmez maintenant le debit de vos jetons.'
-                  : 'Reglez maintenant la course avec Mobile Money.'
-                : booking.paymentMode === 'cash' && hasPassengerDroppedOff
-                  ? 'Reglez la course en especes au conducteur, puis vous pourrez le noter.'
-                : booking.droppedOff || booking.droppedOffConfirmedByPassenger
-                  ? 'Le paiement est regle. Vous pouvez noter le conducteur.'
-                : 'Synchronisation en cours. Vous pourrez noter le conducteur apres confirmation.'}
-            </Text>
-            <View style={styles.arrivalModalActions}>
-              <TouchableOpacity
-                style={styles.arrivalModalLaterButton}
-                onPress={() => setArrivalModalVisible(false)}
-              >
-                <Text style={styles.arrivalModalLaterButtonText}>Fermer</Text>
-              </TouchableOpacity>
-              {canSettleArrivalPayment ? (
-                <TouchableOpacity
-                  style={[
-                    styles.arrivalModalFinishButton,
-                    booking.paymentMode === 'electronic' && styles.arrivalFlexPayButton,
-                    (isInitiatingBookingPayment || isSettlingPointsPayment) &&
-                      styles.arrivalModalFinishButtonDisabled,
-                  ]}
-                  onPress={() => void handleSettleArrivalPayment()}
-                  disabled={isInitiatingBookingPayment || isSettlingPointsPayment}
-                >
-                  {isInitiatingBookingPayment || isSettlingPointsPayment ? (
-                    <ActivityIndicator size="small" color={Colors.white} />
-                  ) : (
-                    <Ionicons
-                      name={booking.paymentMode === 'points' ? 'wallet' : 'card'}
-                      size={20}
-                      color={Colors.white}
-                    />
-                  )}
-                  <Text style={styles.arrivalModalFinishButtonText}>
-                    {isInitiatingBookingPayment || isSettlingPointsPayment
-                      ? 'Paiement...'
-                      : arrivalPaymentButtonLabel}
-                  </Text>
-                </TouchableOpacity>
-              ) : (booking.droppedOff || booking.droppedOffConfirmedByPassenger) && (
-                <TouchableOpacity
-                  style={styles.arrivalModalFinishButton}
-                  onPress={handleRateDriver}
-                >
-                  <Ionicons name="star" size={20} color={Colors.white} />
-                  <Text style={styles.arrivalModalFinishButtonText}>Noter</Text>
-                </TouchableOpacity>
-              )}
             </View>
           </View>
         </View>
@@ -3614,57 +3312,6 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.xs,
     textAlign: 'center',
   },
-  arrivalPaymentSummary: {
-    width: '100%',
-    marginTop: Spacing.md,
-    padding: Spacing.md,
-    gap: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.primary + '24',
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.primary + '08',
-  },
-  arrivalPaymentAmountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.sm,
-  },
-  arrivalPaymentLabel: {
-    color: Colors.gray[600],
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.medium,
-  },
-  arrivalPaymentAmount: {
-    marginTop: 2,
-    color: Colors.gray[900],
-    fontSize: FontSizes.xl,
-    fontWeight: FontWeights.bold,
-  },
-  arrivalPaymentStatusBadge: {
-    maxWidth: '48%',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.white,
-  },
-  arrivalPaymentStatusText: {
-    color: Colors.primary,
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.semibold,
-    textAlign: 'center',
-  },
-  arrivalPaymentMethodRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  arrivalPaymentMethodText: {
-    flex: 1,
-    color: Colors.gray[700],
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-  },
   arrivalModalActions: {
     width: '100%',
     marginTop: Spacing.lg,
@@ -3685,26 +3332,5 @@ const styles = StyleSheet.create({
     color: Colors.gray[700],
     fontSize: FontSizes.base,
     fontWeight: FontWeights.semibold,
-  },
-  arrivalModalFinishButton: {
-    flex: 1,
-    height: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.success,
-  },
-  arrivalFlexPayButton: {
-    backgroundColor: Colors.primary,
-  },
-  arrivalModalFinishButtonDisabled: {
-    opacity: 0.65,
-  },
-  arrivalModalFinishButtonText: {
-    color: Colors.white,
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
   },
 });
