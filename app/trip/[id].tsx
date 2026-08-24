@@ -4094,9 +4094,13 @@ export default function TripDetailsScreen() {
 
             <View style={styles.contactModalActions}>
               <TouchableOpacity
-                style={[styles.contactModalButton, styles.contactModalButtonCall]}
+                style={[
+                  styles.contactModalButton,
+                  styles.contactModalButtonCall,
+                  isCreatingTripShareLink && styles.contactModalButtonDisabled,
+                ]}
+                disabled={isCreatingTripShareLink}
                 onPress={async () => {
-                  setShareModalVisible(false);
                   if (!trip?.id) {
                     showDialog({
                       variant: 'danger',
@@ -4106,16 +4110,26 @@ export default function TripDetailsScreen() {
                     return;
                   }
                   try {
+                    const response = await createTripShareLink({
+                      tripId: trip.id,
+                      bookingId: activeBooking?.id,
+                      message: 'Voici le lien pour suivre mon trajet Zwanga en temps réel.',
+                    }).unwrap();
+                    setShareModalVisible(false);
                     await shareTrip(
-                      trip.id,
+                      response.publicUrl,
                       trip?.departure?.name,
                       trip?.arrival?.name
                     );
                   } catch (error: any) {
+                    const backendMessage = error?.data?.message;
+                    const message = Array.isArray(backendMessage)
+                      ? backendMessage.join('\n')
+                      : backendMessage || error?.message || 'Impossible de créer le lien web de suivi';
                     showDialog({
                       variant: 'danger',
                       title: 'Erreur',
-                      message: error?.message || 'Impossible de partager le trajet',
+                      message,
                     });
                   }
                 }}
