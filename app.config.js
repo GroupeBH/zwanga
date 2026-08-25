@@ -44,7 +44,7 @@ module.exports = {
   expo: {
     name: 'zwanga',
     slug: 'zwanga-app',
-    version: '1.0.8',
+    version: '1.0.9',
     // Do not lock orientation. Google Play flags portrait-only apps as less
     // compatible with tablets, foldables, Chromebooks, and large screens.
     orientation: 'default',
@@ -56,7 +56,7 @@ module.exports = {
 
     ios: {
       bundleIdentifier: "com.biso.zwanga",
-      buildNumber: "44",
+      buildNumber: "45",
       supportsTablet: true,
       usesAppleSignIn: true,
       ...(HAS_CHOTTULINK
@@ -85,7 +85,7 @@ module.exports = {
     android: {
       googleServicesFile: './google-services.json',
       package: 'com.zwanga',
-      versionCode: 6,
+      versionCode: 7,
       config: {
         googleMaps: {
           apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
