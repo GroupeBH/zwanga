@@ -7,6 +7,7 @@ import { getRegisteredVehicleTypeLabel } from '@/constants/vehicleTypes';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
 import { useGetPaymentHistoryQuery } from '@/store/api/paymentApi';
+import { useGetMyReferralSummaryQuery } from '@/store/api/referralApi';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
 import {
   useGetPremiumOverviewQuery,
@@ -65,6 +66,12 @@ const formatSubscriptionEndDate = (value?: string | null) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+const formatReferralTokens = (value?: number | string | null) => {
+  const numericValue = Number(value ?? 0);
+  if (!Number.isFinite(numericValue)) return '0';
+  return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(numericValue);
 };
 
 const getPlanLabel = (plan?: SubscriptionPlan | null) => {
@@ -443,6 +450,10 @@ export default function ProfileScreen() {
     isLoading: profileLoading,
     refetch: refetchProfile,
   } = useGetProfileSummaryQuery();
+  const {
+    data: referralSummary,
+    refetch: refetchReferralSummary,
+  } = useGetMyReferralSummaryQuery();
   const {
     data: kycStatus,
     isLoading: kycLoading,
@@ -855,6 +866,7 @@ export default function ProfileScreen() {
         Promise.resolve(refetchProfile()),
         Promise.resolve(refetchVehicles()),
         Promise.resolve(refetchKycStatus()),
+        Promise.resolve(refetchReferralSummary()),
       ];
       if (isDriver) {
         refreshTasks.push(Promise.resolve(refetchPremiumOverview()));
@@ -1041,7 +1053,7 @@ export default function ProfileScreen() {
     });
   }, [deleteVehicle, refetchVehicles, router, showDialog]);
 
-  const handleOpenKycModal = () => {
+  const handleOpenKycModal = useCallback(() => {
     if (isKycApproved) {
       showDialog({
         variant: 'info',
@@ -1055,7 +1067,7 @@ export default function ProfileScreen() {
       return;
     }
     setKycModalVisible(true);
-  };
+  }, [isKycApproved, router, showDialog]);
 
   const handleCloseKycModal = () => {
     if (kycSubmitting || uploadingKyc) {
@@ -1064,7 +1076,7 @@ export default function ProfileScreen() {
     setKycModalVisible(false);
   };
 
-  const handleBecomeDriver = async () => {
+  const handleBecomeDriver = useCallback(async () => {
     try {
       const formData = new FormData();
       // Mettre à jour le rôle vers "driver"
@@ -1096,9 +1108,9 @@ export default function ProfileScreen() {
         message: error?.data?.message || 'Impossible d\'activer le compte conducteur. Veuillez réessayer.',
       });
     }
-  };
+  }, [router, showDialog, updateUser]);
 
-  const handleStartDriverOnboarding = () => {
+  const handleStartDriverOnboarding = useCallback(() => {
     const hasVehicle = vehicleList.length > 0;
     const hasKyc = isKycApproved;
 
@@ -1130,7 +1142,14 @@ export default function ProfileScreen() {
     }
 
     void handleBecomeDriver();
-  };
+  }, [
+    handleBecomeDriver,
+    handleOpenKycModal,
+    isKycApproved,
+    openCreateVehicleModal,
+    showDialog,
+    vehicleList.length,
+  ]);
 
   const openExternalUrl = async (url: string) => {
     try {
@@ -2709,6 +2728,36 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.mainActionsContainer}>
+          <Animated.View entering={FadeInDown.delay(80)}>
+            <TouchableOpacity
+              activeOpacity={0.88}
+              onPress={() => router.push('/referrals' as any)}
+              style={styles.referralAccessCard}
+              accessibilityRole="button"
+              accessibilityLabel="Ouvrir mon espace de parrainage"
+            >
+              <LinearGradient
+                colors={[Colors.primary, Colors.primaryDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.referralAccessGradient}
+              >
+                <View style={styles.referralAccessIcon}>
+                  <Ionicons name="gift-outline" size={24} color={Colors.white} />
+                </View>
+                <View style={styles.referralAccessContent}>
+                  <Text style={styles.referralAccessTitle}>Invitez et gagnez</Text>
+                  <Text numberOfLines={2} style={styles.referralAccessMeta}>
+                    {referralSummary
+                      ? `${referralSummary.referralCount} filleul${referralSummary.referralCount > 1 ? 's' : ''} · ${formatReferralTokens(referralSummary.balances.availableTokens)} jetons disponibles`
+                      : 'Partagez votre lien et suivez les gains de vos filleuls'}
+                  </Text>
+                </View>
+                <Ionicons name="arrow-forward-circle" size={27} color={Colors.white} />
+              </LinearGradient>
+            </TouchableOpacity>
+          </Animated.View>
+
           <Animated.View entering={FadeInDown.delay(120)} style={styles.profileOverviewPanel}>
             <View style={styles.profileOverviewHeader}>
               <View style={styles.profileOverviewTitleBlock}>
@@ -4134,6 +4183,45 @@ const styles = StyleSheet.create({
     marginTop: -Spacing.xs,
     gap: Spacing.md,
     marginBottom: Spacing.xl,
+  },
+  referralAccessCard: {
+    borderRadius: BorderRadius.lg,
+    overflow: 'hidden',
+    ...CommonStyles.shadowSm,
+  },
+  referralAccessGradient: {
+    minHeight: 94,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  referralAccessIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.28)',
+  },
+  referralAccessContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  referralAccessTitle: {
+    color: Colors.white,
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+  },
+  referralAccessMeta: {
+    marginTop: 4,
+    color: '#FFF4EF',
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.medium,
+    lineHeight: 17,
   },
   profileOverviewPanel: {
     backgroundColor: Colors.white,

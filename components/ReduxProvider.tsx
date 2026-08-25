@@ -11,6 +11,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Provider } from 'react-redux';
 import { AuthGuard } from './AuthGuard';
 import { NotificationHandler } from './NotificationHandler';
+import { ReferralAttributionHandler } from './ReferralAttributionHandler';
 
 interface ReduxProviderProps {
   children: React.ReactNode;
@@ -45,6 +46,7 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
           </View>
         ) : (
           <View style={styles.appContent}>
+            <ReferralAttributionHandler />
             <ActiveRideLocationCoordinator />
             <NotificationHandler />
             <AuthGuard>

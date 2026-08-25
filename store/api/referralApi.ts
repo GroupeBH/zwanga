@@ -23,6 +23,16 @@ export const referralApi = baseApi.injectEndpoints({
         body: { code },
       }),
     }),
+    resolveReferralAttribution: builder.mutation<
+      { valid: boolean; referrer: { firstName: string } },
+      string
+    >({
+      query: (referralToken) => ({
+        url: '/referrals/resolve-attribution',
+        method: 'POST',
+        body: { referralToken },
+      }),
+    }),
     getMyReferralSummary: builder.query<ReferralSummary, void>({
       query: () => '/referrals/me',
       providesTags: [referralTag],
@@ -64,6 +74,7 @@ export const referralApi = baseApi.injectEndpoints({
 
 export const {
   useValidateReferralCodeMutation,
+  useResolveReferralAttributionMutation,
   useGetMyReferralSummaryQuery,
   useGetMyReferralsQuery,
   useGetMyReferralRewardsQuery,

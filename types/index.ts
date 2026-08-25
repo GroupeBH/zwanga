@@ -527,6 +527,15 @@ export interface ReferredUserSummary {
   referredAt: string | null;
   qualifiedAt: string | null;
   rewardWindowEndsAt: string | null;
+  earnings: {
+    rewardCount: number;
+    earnedTokens: number;
+    pendingTokens: number;
+    releasedTokens: number;
+    reversedTokens: number;
+    earnedAmount: number;
+    currency: string;
+  };
 }
 
 export interface ReferralReward {
