@@ -16,7 +16,8 @@ interface ProfileStepProps {
   showNameFields?: boolean;
   profilePicture: string | null;
   gender: UserGender | null;
-  referralCode: string;
+  hasReferralAttribution: boolean;
+  referrerFirstName?: string;
   role: 'driver' | 'passenger';
   vehicleType: VehicleType | null;
   vehicleBrand: string;
@@ -27,7 +28,6 @@ interface ProfileStepProps {
   onLastNameChange: (name: string) => void;
   onSelectProfilePicture: () => void;
   onGenderChange: (gender: UserGender) => void;
-  onReferralCodeChange: (code: string) => void;
   onRoleChange: (role: 'driver' | 'passenger') => void;
   onVehicleTypeChange: (type: VehicleType) => void;
   onOpenVehicleModal: () => void;
@@ -40,7 +40,8 @@ export function ProfileStep({
   showNameFields = true,
   profilePicture,
   gender,
-  referralCode,
+  hasReferralAttribution,
+  referrerFirstName,
   role,
   vehicleType,
   vehicleBrand,
@@ -51,7 +52,6 @@ export function ProfileStep({
   onLastNameChange,
   onSelectProfilePicture,
   onGenderChange,
-  onReferralCodeChange,
   onRoleChange,
   onVehicleTypeChange,
   onOpenVehicleModal,
@@ -117,23 +117,22 @@ export function ProfileStep({
         />
       </View>
 
-      <View style={styles.referralFieldBlock}>
-        <Text style={styles.profileSectionLabel}>Code de parrainage (optionnel)</Text>
-        <View style={[styles.inputWrapper, styles.referralInputWrapper]}>
-          <Ionicons name="gift-outline" size={18} color={Colors.primary} style={styles.profileInputIcon} />
-          <TextInput
-            style={styles.input}
-            placeholder="Ex. ZW7K9M2P4Q"
-            placeholderTextColor={Colors.gray[400]}
-            value={referralCode}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            maxLength={16}
-            onChangeText={(value) => onReferralCodeChange(value.replace(/[^a-z0-9]/gi, '').toUpperCase())}
-          />
+      {hasReferralAttribution && (
+        <View style={styles.referralApplied}>
+          <View style={styles.referralAppliedIcon}>
+            <Ionicons name="gift-outline" size={18} color={Colors.primary} />
+          </View>
+          <View style={styles.referralAppliedCopy}>
+            <Text style={styles.referralAppliedTitle}>Invitation prise en compte</Text>
+            <Text style={styles.referralAppliedHint}>
+              {referrerFirstName
+                ? `${referrerFirstName} sera automatiquement enregistre comme votre parrain.`
+                : 'Votre parrain sera automatiquement enregistre a la creation du compte.'}
+            </Text>
+          </View>
+          <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
         </View>
-        <Text style={styles.referralHint}>Le code est lie une seule fois, a la creation du compte.</Text>
-      </View>
+      )}
 
       <View style={styles.roleSelection}>
         <Text style={styles.profileSectionLabel}>Statut</Text>

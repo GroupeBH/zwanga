@@ -20,6 +20,14 @@ export interface AuthResponse {
   user?: User; // Optionnel car le backend peut ne pas le retourner
 }
 
+export interface ReferralRegistrationAttributionPayload {
+  referralCode?: string;
+  referralToken?: string;
+  referralProvider?: 'chottulink' | 'branch';
+  referralReferringLink?: string;
+  referralCapturedAt?: string;
+}
+
 /**
  * API d'authentification
  * Gère la connexion, l'inscription, la vérification téléphone et KYC
@@ -108,9 +116,8 @@ export const authApi = baseApi.injectEndpoints({
     }),
 
     // Google mobile (login ou signup)
-    googleMobile: builder.mutation<AuthResponse, {
+    googleMobile: builder.mutation<AuthResponse, ReferralRegistrationAttributionPayload & {
       idToken: string;
-      referralCode?: string;
       phone?: string;
       gender?: UserGender;
       role?: 'driver' | 'passenger';
@@ -161,9 +168,8 @@ export const authApi = baseApi.injectEndpoints({
     }),
 
     // Apple mobile (login ou signup)
-    appleMobile: builder.mutation<AuthResponse, {
+    appleMobile: builder.mutation<AuthResponse, ReferralRegistrationAttributionPayload & {
       idToken: string;
-      referralCode?: string;
       phone?: string;
       nonce?: string;
       gender?: UserGender;
@@ -177,7 +183,20 @@ export const authApi = baseApi.injectEndpoints({
         licensePlate: string;
       };
     }>({
-      query: ({ idToken, phone, nonce, gender, role, isDriver, vehicle, referralCode }) => ({
+      query: ({
+        idToken,
+        phone,
+        nonce,
+        gender,
+        role,
+        isDriver,
+        vehicle,
+        referralCode,
+        referralToken,
+        referralProvider,
+        referralReferringLink,
+        referralCapturedAt,
+      }) => ({
         url: '/auth/apple/mobile',
         method: 'POST',
         body: {
@@ -189,6 +208,10 @@ export const authApi = baseApi.injectEndpoints({
           ...(typeof isDriver === 'boolean' ? { isDriver } : {}),
           ...(vehicle ? { vehicle } : {}),
           ...(referralCode ? { referralCode } : {}),
+          ...(referralToken ? { referralToken } : {}),
+          ...(referralProvider ? { referralProvider } : {}),
+          ...(referralReferringLink ? { referralReferringLink } : {}),
+          ...(referralCapturedAt ? { referralCapturedAt } : {}),
         },
       }),
       async onQueryStarted(_arg, { dispatch, queryFulfilled }) {

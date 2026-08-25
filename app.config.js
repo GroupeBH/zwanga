@@ -33,6 +33,12 @@ const META_CLIENT_TOKEN =
 const META_DISPLAY_NAME =
   process.env.EXPO_PUBLIC_META_DISPLAY_NAME || process.env.META_DISPLAY_NAME || 'Zwanga';
 const HAS_META_APP_EVENTS = Boolean(META_APP_ID && META_CLIENT_TOKEN);
+const CHOTTULINK_MOBILE_API_KEY =
+  process.env.CHOTTULINK_MOBILE_API_KEY || '';
+const CHOTTULINK_DOMAIN = process.env.CHOTTULINK_DOMAIN || '';
+const HAS_CHOTTULINK = Boolean(
+  CHOTTULINK_MOBILE_API_KEY && CHOTTULINK_DOMAIN,
+);
 
 module.exports = {
   expo: {
@@ -53,6 +59,11 @@ module.exports = {
       buildNumber: "44",
       supportsTablet: true,
       usesAppleSignIn: true,
+      ...(HAS_CHOTTULINK
+        ? {
+            associatedDomains: [`applinks:${CHOTTULINK_DOMAIN}`],
+          }
+        : {}),
       googleServicesFile: './GoogleService-Info.plist',
       config: {
         googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
@@ -88,6 +99,18 @@ module.exports = {
       },
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
+      ...(HAS_CHOTTULINK
+        ? {
+            intentFilters: [
+              {
+                action: 'VIEW',
+                autoVerify: true,
+                category: ['BROWSABLE', 'DEFAULT'],
+                data: [{ scheme: 'https', host: CHOTTULINK_DOMAIN }],
+              },
+            ],
+          }
+        : {}),
       // Explicitly block ACTIVITY_RECOGNITION permission
       // We only use Accelerometer for device stability detection, not activity recognition
       // Block FOREGROUND_SERVICE_MEDIA_PLAYBACK as we don't use audio playback in foreground
@@ -103,6 +126,7 @@ module.exports = {
         'FOREGROUND_SERVICE',
         'FOREGROUND_SERVICE_LOCATION',
         'com.google.android.gms.permission.AD_ID',
+        'com.android.vending.INSTALL_REFERRER',
       ],
     },
 
@@ -147,6 +171,9 @@ module.exports = {
       EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME: GOOGLE_IOS_URL_SCHEME,
       EXPO_PUBLIC_META_APP_ID: META_APP_ID,
       EXPO_PUBLIC_META_ENABLED: HAS_META_APP_EVENTS,
+      EXPO_PUBLIC_CHOTTULINK_ENABLED: HAS_CHOTTULINK,
+      EXPO_PUBLIC_CHOTTULINK_MOBILE_API_KEY: CHOTTULINK_MOBILE_API_KEY,
+      EXPO_PUBLIC_CHOTTULINK_DOMAIN: CHOTTULINK_DOMAIN,
 
       secureStoreKeys: {
         access: process.env.EXPO_PUBLIC_SECURESTORE_ACCESS_KEY,
@@ -156,6 +183,7 @@ module.exports = {
 
     plugins: [
       'expo-router',
+      'expo-dev-client',
       'expo-apple-authentication',
       '@react-native-firebase/app',
       'expo-maps',

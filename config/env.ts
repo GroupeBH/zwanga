@@ -11,6 +11,9 @@ interface EnvConfig {
   apiUrl: string;
   env: 'development' | 'staging' | 'production';
   enableSignupOtp: boolean;
+  chottuLinkEnabled: boolean;
+  chottuLinkMobileApiKey: string;
+  chottuLinkDomain: string;
 }
 
 const DEFAULT_API_URL = 'https://zwanga-api.onrender.com/api/v1';
@@ -67,11 +70,23 @@ function getEnvConfig(): EnvConfig {
     process.env.EXPO_PUBLIC_ENABLE_SIGNUP_OTP ??
     'false';
   const enableSignupOtp = String(rawEnableSignupOtp).toLowerCase() === 'true';
+  const chottuLinkEnabled =
+    String(extra.EXPO_PUBLIC_CHOTTULINK_ENABLED ?? 'false').toLowerCase() ===
+    'true';
+  const chottuLinkMobileApiKey = String(
+    extra.EXPO_PUBLIC_CHOTTULINK_MOBILE_API_KEY ?? '',
+  ).trim();
+  const chottuLinkDomain = String(
+    extra.EXPO_PUBLIC_CHOTTULINK_DOMAIN ?? '',
+  ).trim();
   
   return {
     apiUrl,
     env,
     enableSignupOtp,
+    chottuLinkEnabled,
+    chottuLinkMobileApiKey,
+    chottuLinkDomain,
   };
 }
 
@@ -92,6 +107,11 @@ export const isProduction = envConfig.env === 'production';
  * false => bypass OTP pour l'inscription classique et Google.
  */
 export const isSignupOtpVerificationEnabled = envConfig.enableSignupOtp;
+export const chottuLinkReferralConfig = {
+  enabled: envConfig.chottuLinkEnabled,
+  mobileApiKey: envConfig.chottuLinkMobileApiKey,
+  domain: envConfig.chottuLinkDomain,
+};
 
 /**
  * URL de base de l'API

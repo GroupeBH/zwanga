@@ -10,6 +10,11 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated } from '@/store/selectors';
 import { saveTokensAndUpdateState } from '@/store/slices/authSlice';
 import type { UserGender } from '@/types';
+import {
+  clearPendingReferralAttribution,
+  getPendingReferralAttribution,
+  type PendingReferralAttribution,
+} from '@/utils/referralAttribution';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -140,10 +145,22 @@ export default function AuthScreen() {
   const dispatch = useAppDispatch();
   const { showDialog } = useDialog();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
-  const { mode: initialModeParam, referralCode: initialReferralCode } =
-    useLocalSearchParams<{ mode?: string; referralCode?: string }>();
+  const {
+    mode: initialModeParam,
+    referralCode: initialReferralCode,
+    referralToken: initialReferralToken,
+  } = useLocalSearchParams<{
+    mode?: string;
+    referralCode?: string;
+    referralToken?: string;
+  }>();
   const initialMode: AuthMode =
-    initialModeParam === 'signup' || initialReferralCode ? 'signup' : 'login';
+    initialModeParam === 'signup' || initialReferralCode || initialReferralToken
+      ? 'signup'
+      : 'login';
+  const legacyReferralCode = (initialReferralCode ?? '')
+    .replace(/[^a-z0-9]/gi, '')
+    .toUpperCase();
   
   // ============ STATE ============
   const [mode, setMode] = useState<AuthMode>(initialMode);
@@ -178,9 +195,8 @@ export default function AuthScreen() {
   const [gender, setGender] = useState<UserGender | null>(null);
   const [role, setRole] = useState<'driver' | 'passenger'>('passenger');
   const [profilePicture, setProfilePicture] = useState<string | null>(null);
-  const [referralCode, setReferralCode] = useState(
-    (initialReferralCode ?? '').replace(/[^a-z0-9]/gi, '').toUpperCase(),
-  );
+  const [referralAttribution, setReferralAttribution] =
+    useState<PendingReferralAttribution | null>(null);
 
   // Vehicle State
   const [vehicleType, setVehicleType] = useState<VehicleType | null>(null);
@@ -294,6 +310,18 @@ export default function AuthScreen() {
   );
 
   useEffect(() => cancelPendingFocus, [cancelPendingFocus]);
+
+  useEffect(() => {
+    let active = true;
+    void getPendingReferralAttribution().then((pending) => {
+      if (!active) return;
+      setReferralAttribution(pending);
+      if (pending) setMode('signup');
+    });
+    return () => {
+      active = false;
+    };
+  }, [initialReferralToken]);
 
   useEffect(() => {
     if (step === 'sms') {
@@ -444,6 +472,7 @@ export default function AuthScreen() {
       setGoogleLastName(result.familyName || null);
       setGoogleEmail(result.email || null);
       await googleMobile({ idToken: result.idToken }).unwrap();
+      await clearPendingReferralAttribution();
       await trackEvent('login_success', { method: 'google' });
     } catch (error: any) {
       console.error('Google login error:', error);
@@ -509,6 +538,7 @@ export default function AuthScreen() {
         idToken: result.identityToken,
         nonce: result.nonce,
       }).unwrap();
+      await clearPendingReferralAttribution();
       await trackEvent('login_success', { method: 'apple' });
     } catch (error: any) {
       console.error('Apple login error:', error);
@@ -740,6 +770,7 @@ export default function AuthScreen() {
     if (mode === 'login') {
       try {
         const result = await login({ phone, pin }).unwrap();
+        await clearPendingReferralAttribution();
         await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
         await trackEvent('login_success', { method: 'phone' });
       } catch (error: any) {
@@ -846,6 +877,7 @@ export default function AuthScreen() {
     }
     try {
       const result = await login({ phone, newPin: resetNewPin }).unwrap();
+      await clearPendingReferralAttribution();
       await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
       await trackEvent('login_success', { method: 'pin_reset' });
       showDialog({ variant: 'success', title: 'PIN réinitialisé', message: 'Vous êtes maintenant connecté.' });
@@ -972,6 +1004,17 @@ export default function AuthScreen() {
   // Final Registration
   const handleFinalRegister = async () => {
     try {
+      const pendingAttribution = await getPendingReferralAttribution();
+      const referralSignupPayload = pendingAttribution
+        ? {
+            referralToken: pendingAttribution.token,
+            referralProvider: pendingAttribution.provider,
+            referralReferringLink: pendingAttribution.referringLink,
+            referralCapturedAt: pendingAttribution.capturedAt,
+          }
+        : legacyReferralCode
+          ? { referralCode: legacyReferralCode }
+          : {};
       const requiresVehicle = role === 'driver';
       if (requiresVehicle && !vehicleType) {
         showDialog({
@@ -1003,7 +1046,7 @@ export default function AuthScreen() {
               role,
               isDriver: requiresVehicle,
               vehicle: signupVehicle,
-              referralCode: referralCode.trim() || undefined,
+              ...referralSignupPayload,
             }).unwrap()
           : await googleMobile({
               idToken: googleIdToken,
@@ -1012,8 +1055,9 @@ export default function AuthScreen() {
               role,
               isDriver: requiresVehicle,
               vehicle: signupVehicle,
-              referralCode: referralCode.trim() || undefined,
+              ...referralSignupPayload,
             }).unwrap();
+        await clearPendingReferralAttribution();
         await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
         
         if (requiresVehicle && kycFiles) {
@@ -1054,7 +1098,9 @@ export default function AuthScreen() {
       if (gender) formData.append('gender', gender);
       formData.append('role', role);
       formData.append('isDriver', JSON.stringify(requiresVehicle));
-      if (referralCode.trim()) formData.append('referralCode', referralCode.trim());
+      Object.entries(referralSignupPayload).forEach(([key, value]) => {
+        if (value) formData.append(key, value);
+      });
 
       if (requiresVehicle) {
         formData.append('vehicle[type]', vehicleType!);
@@ -1070,6 +1116,7 @@ export default function AuthScreen() {
       }
 
       const result = await register(formData).unwrap();
+      await clearPendingReferralAttribution();
       await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
 
       if (requiresVehicle && kycFiles) {
@@ -1227,7 +1274,8 @@ export default function AuthScreen() {
               showNameFields={!isAppleSignupFlow}
               profilePicture={profilePicture}
               gender={gender}
-              referralCode={referralCode}
+              hasReferralAttribution={Boolean(referralAttribution || legacyReferralCode)}
+              referrerFirstName={referralAttribution?.referrerFirstName}
               role={role}
               vehicleType={vehicleType}
               vehicleBrand={vehicleBrand}
@@ -1238,7 +1286,6 @@ export default function AuthScreen() {
               onLastNameChange={setLastName}
               onSelectProfilePicture={handleSelectProfilePicture}
               onGenderChange={setGender}
-              onReferralCodeChange={setReferralCode}
               onRoleChange={setRole}
               onVehicleTypeChange={setVehicleType}
               onOpenVehicleModal={() => setVehicleModalVisible(true)}

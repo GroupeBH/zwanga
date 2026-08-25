@@ -1,15 +1,20 @@
+import { useDialog } from '@/components/ui/DialogProvider';
 import { Colors, Spacing } from '@/constants/styles';
+import { useGetMyReferralSummaryQuery } from '@/store/api/referralApi';
+import {
+    buildReferralShareMessage,
+    normalizeReferralShareLink,
+    shareReferralLink,
+} from '@/utils/shareReferralLink';
 import { Ionicons } from '@expo/vector-icons';
 import * as Contacts from 'expo-contacts';
 import { useRouter } from 'expo-router';
-import { useGetMyReferralSummaryQuery } from '@/store/api/referralApi';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
     Linking,
     Platform,
-    Share,
     StyleSheet,
     Text,
     TextInput,
@@ -20,12 +25,48 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function InviteScreen() {
     const router = useRouter();
+    const { showDialog } = useDialog();
     const [contacts, setContacts] = useState<Contacts.Contact[]>([]);
     const [filteredContacts, setFilteredContacts] = useState<Contacts.Contact[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [permissionStatus, setPermissionStatus] = useState<Contacts.PermissionStatus | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const { data: referralSummary } = useGetMyReferralSummaryQuery();
+    const [isSharing, setIsSharing] = useState(false);
+    const {
+        data: referralSummary,
+        isFetching: isReferralFetching,
+        refetch: refetchReferralSummary,
+    } = useGetMyReferralSummaryQuery();
+
+    const getReferralLink = async () => {
+        const existingLink = normalizeReferralShareLink(referralSummary?.shareLink);
+        if (existingLink) return existingLink;
+        const refreshed = await refetchReferralSummary().unwrap();
+        const refreshedLink = normalizeReferralShareLink(refreshed.shareLink);
+        if (!refreshedLink) {
+            throw new Error("Le lien d'invitation n'est pas encore disponible.");
+        }
+        return refreshedLink;
+    };
+
+    const handleShare = async () => {
+        if (isSharing) return;
+        setIsSharing(true);
+        try {
+            await shareReferralLink(await getReferralLink());
+        } catch (error) {
+            showDialog({
+                variant: 'danger',
+                title: 'Partage indisponible',
+                message:
+                    error instanceof Error
+                        ? error.message
+                        : "Impossible de preparer le lien d'invitation.",
+            });
+        } finally {
+            setIsSharing(false);
+        }
+    };
 
     useEffect(() => {
         (async () => {
@@ -75,14 +116,9 @@ export default function InviteScreen() {
         // Actually whatsapp uses international format without + or 00. 
         // But for "send" intent, usually mostly clean digits works. 
 
-        // Invitation text
-        const message = referralSummary
-            ? `Salut ! Rejoins-moi sur Zwanga avec mon code ${referralSummary.code}. Inscris-toi ici : ${referralSummary.shareLink}`
-            : "Salut ! Je t'invite à me rejoindre sur Zwanga pour faciliter tes déplacements. Télécharge l'app ici : https://play.google.com/store/apps/details?id=com.zwanga";
-
-        const url = `whatsapp://send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`;
-
         try {
+            const message = `Salut ! ${buildReferralShareMessage(await getReferralLink())}`;
+            const url = `whatsapp://send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`;
             const supported = await Linking.canOpenURL(url);
             if (supported) {
                 await Linking.openURL(url);
@@ -91,8 +127,15 @@ export default function InviteScreen() {
                 const smsUrl = `sms:${phoneNumber}${Platform.OS === 'ios' ? '&' : '?'}body=${encodeURIComponent(message)}`;
                 await Linking.openURL(smsUrl);
             }
-        } catch (err) {
-            console.error('An error occurred', err);
+        } catch (error) {
+            showDialog({
+                variant: 'danger',
+                title: 'Invitation impossible',
+                message:
+                    error instanceof Error
+                        ? error.message
+                        : "Impossible de preparer le lien d'invitation.",
+            });
         }
     };
 
@@ -119,6 +162,18 @@ export default function InviteScreen() {
                     <TouchableOpacity style={styles.permissionButton} onPress={Linking.openSettings}>
                         <Text style={styles.permissionButtonText}>Ouvrir les paramètres</Text>
                     </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.permissionShareButton}
+                        onPress={handleShare}
+                        disabled={isSharing || isReferralFetching}
+                    >
+                        {isSharing || isReferralFetching ? (
+                            <ActivityIndicator size="small" color={Colors.primary} />
+                        ) : (
+                            <Ionicons name="share-social-outline" size={20} color={Colors.primary} />
+                        )}
+                        <Text style={styles.permissionShareButtonText}>Partager sans les contacts</Text>
+                    </TouchableOpacity>
                 </View>
             </SafeAreaView>
         );
@@ -134,21 +189,26 @@ export default function InviteScreen() {
                 <View style={{ width: 40 }} />
             </View>
 
-            {referralSummary && (
-                <View style={styles.referralCard}>
-                    <View style={styles.referralCopy}>
-                        <Text style={styles.referralEyebrow}>VOTRE CODE DE PARRAINAGE</Text>
-                        <Text selectable style={styles.referralCode}>{referralSummary.code}</Text>
-                        <Text style={styles.referralHint}>5 % des paiements FlexPay eligibles pendant un an.</Text>
-                    </View>
-                    <TouchableOpacity
-                        style={styles.shareButton}
-                        onPress={() => Share.share({ message: `Rejoins-moi sur Zwanga avec mon code ${referralSummary.code} : ${referralSummary.shareLink}` })}
-                    >
-                        <Ionicons name="share-social-outline" size={20} color={Colors.white} />
-                    </TouchableOpacity>
+            <View style={styles.referralCard}>
+                <View style={styles.referralCopy}>
+                    <Text style={styles.referralEyebrow}>VOTRE LIEN PERSONNEL</Text>
+                    <Text style={styles.referralLinkTitle}>Invitation automatique</Text>
+                    <Text style={styles.referralHint}>Aucun code a saisir apres l’installation.</Text>
                 </View>
-            )}
+                <TouchableOpacity
+                    style={[styles.shareButton, (isSharing || isReferralFetching) && styles.disabled]}
+                    onPress={handleShare}
+                    disabled={isSharing || isReferralFetching}
+                    accessibilityRole="button"
+                    accessibilityLabel="Partager mon lien de parrainage"
+                >
+                    {isSharing || isReferralFetching ? (
+                        <ActivityIndicator size="small" color={Colors.white} />
+                    ) : (
+                        <Ionicons name="share-social-outline" size={20} color={Colors.white} />
+                    )}
+                </TouchableOpacity>
+            </View>
 
             <View style={styles.searchContainer}>
                 <Ionicons name="search" size={20} color={Colors.gray[500]} style={styles.searchIcon} />
@@ -206,7 +266,7 @@ const styles = StyleSheet.create({
     referralCard: { marginHorizontal: Spacing.lg, marginTop: Spacing.lg, borderRadius: 16, backgroundColor: Colors.primary, padding: Spacing.lg, flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
     referralCopy: { flex: 1 },
     referralEyebrow: { color: '#FFE1D6', fontSize: 10, fontWeight: '700', letterSpacing: 1 },
-    referralCode: { color: Colors.white, fontSize: 24, fontWeight: '800', letterSpacing: 1.5, marginTop: 3 },
+    referralLinkTitle: { color: Colors.white, fontSize: 18, fontWeight: '800', marginTop: 3 },
     referralHint: { color: '#FFF4EF', fontSize: 12, marginTop: 4 },
     shareButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.primaryDark, alignItems: 'center', justifyContent: 'center' },
 
@@ -230,6 +290,9 @@ const styles = StyleSheet.create({
     permissionText: { textAlign: 'center', color: Colors.gray[600], lineHeight: 22 },
     permissionButton: { backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24 },
     permissionButtonText: { color: 'white', fontWeight: '600' },
+    permissionShareButton: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
+    permissionShareButtonText: { color: Colors.primary, fontWeight: '700' },
+    disabled: { opacity: 0.6 },
 
     emptyContainer: { alignItems: 'center', marginTop: 32 },
     emptyText: { color: Colors.gray[500] },

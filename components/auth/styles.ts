@@ -696,19 +696,39 @@ export const authStyles = StyleSheet.create({
   genderSelection: {
     marginTop: Spacing.sm,
   },
-  referralFieldBlock: {
+  referralApplied: {
     marginTop: Spacing.sm,
-  },
-  referralInputWrapper: {
-    height: 48,
-    marginBottom: 4,
-    borderRadius: 14,
     paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: `${Colors.success}40`,
+    backgroundColor: `${Colors.success}0D`,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
   },
-  referralHint: {
+  referralAppliedIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: `${Colors.primary}14`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  referralAppliedCopy: {
+    flex: 1,
+  },
+  referralAppliedTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: '700',
+  },
+  referralAppliedHint: {
     color: Colors.gray[500],
     fontSize: FontSizes.xs,
     lineHeight: 17,
+    marginTop: 2,
   },
 
   // Roles

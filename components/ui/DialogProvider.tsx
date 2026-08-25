@@ -3,10 +3,19 @@ import React, {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
-import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Modal,
+  Platform,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 
@@ -30,6 +39,11 @@ interface DialogOptions {
 
 interface DialogState extends DialogOptions {
   visible: boolean;
+}
+
+interface PendingDialogAction {
+  action: DialogAction;
+  dialog: DialogState | null;
 }
 
 interface DialogContextValue {
@@ -68,6 +82,7 @@ const VARIANT_CONFIG: Record<
 export function DialogProvider({ children }: { children: ReactNode }) {
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [runningActionLabel, setRunningActionLabel] = useState<string | null>(null);
+  const pendingDismissActionRef = useRef<PendingDialogAction | null>(null);
 
   const hideDialog = useCallback(() => {
     setDialog(null);
@@ -98,26 +113,15 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const currentVariant = dialog?.variant ?? 'info';
   const variantStyle = VARIANT_CONFIG[currentVariant];
 
-  const handleActionPress = async (action: DialogAction) => {
-    if (runningActionLabel) return;
-
-    if (!action.onPress) {
-      hideDialog();
-      return;
-    }
-
-    const activeDialog = dialog;
+  const runDialogAction = useCallback(async ({ action, dialog: sourceDialog }: PendingDialogAction) => {
     setRunningActionLabel(action.label);
 
     try {
-      await action.onPress();
-      if (action.autoClose !== false) {
-        setDialog((currentDialog) => (currentDialog === activeDialog ? null : currentDialog));
-      }
+      await action.onPress?.();
     } catch (error) {
       console.error(`[DialogProvider] Action failed: ${action.label}`, error);
       setDialog((currentDialog) =>
-        currentDialog === activeDialog
+        !currentDialog || currentDialog === sourceDialog
           ? {
               visible: true,
               variant: 'danger',
@@ -132,6 +136,44 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     } finally {
       setRunningActionLabel(null);
     }
+  }, []);
+
+  const handleModalDismiss = useCallback(() => {
+    const pendingAction = pendingDismissActionRef.current;
+    if (!pendingAction) return;
+
+    pendingDismissActionRef.current = null;
+    void runDialogAction(pendingAction);
+  }, [runDialogAction]);
+
+  const handleActionPress = (action: DialogAction) => {
+    if (runningActionLabel) return;
+
+    if (!action.onPress) {
+      hideDialog();
+      return;
+    }
+
+    const pendingAction = { action, dialog };
+
+    if (action.autoClose === false) {
+      void runDialogAction(pendingAction);
+      return;
+    }
+
+    setRunningActionLabel(action.label);
+
+    if (Platform.OS === 'ios') {
+      // iOS must finish dismissing the current native modal before another
+      // modal or screen is presented. Otherwise, an invisible modal layer can
+      // remain above the app and block every touch on the underlying screen.
+      pendingDismissActionRef.current = pendingAction;
+      setDialog(null);
+      return;
+    }
+
+    setDialog(null);
+    void runDialogAction(pendingAction);
   };
 
   const getActionLoaderColor = (action: DialogAction) => {
@@ -149,7 +191,13 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   return (
     <DialogContext.Provider value={value}>
       {children}
-      <Modal visible={dialog?.visible ?? false} transparent animationType="fade" onRequestClose={hideDialog}>
+      <Modal
+        visible={dialog?.visible ?? false}
+        transparent
+        animationType="fade"
+        onDismiss={handleModalDismiss}
+        onRequestClose={hideDialog}
+      >
         <View style={styles.overlay}>
           <View style={styles.card}>
             <View style={[styles.iconWrapper, { backgroundColor: variantStyle.background }]}>

@@ -1,12 +1,14 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import {
+  useGetMyReferralsQuery,
   useGetMyReferralRewardsQuery,
   useGetMyReferralSummaryQuery,
   useGetMyReferralWithdrawalsQuery,
   useRequestReferralWithdrawalMutation,
 } from '@/store/api/referralApi';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
+import { shareReferralLink } from '@/utils/shareReferralLink';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
@@ -15,7 +17,6 @@ import {
   Keyboard,
   RefreshControl,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -50,12 +51,18 @@ export default function ReferralsScreen() {
   const router = useRouter();
   const { showDialog } = useDialog();
   const [withdrawalTokens, setWithdrawalTokens] = useState('');
+  const [isSharing, setIsSharing] = useState(false);
   const {
     data: summary,
     isLoading,
     isFetching: isSummaryFetching,
     refetch: refetchSummary,
   } = useGetMyReferralSummaryQuery();
+  const {
+    data: referrals = [],
+    isFetching: isReferralsFetching,
+    refetch: refetchReferrals,
+  } = useGetMyReferralsQuery();
   const {
     data: rewards = [],
     isFetching: isRewardsFetching,
@@ -71,23 +78,39 @@ export default function ReferralsScreen() {
 
   const recentRewards = useMemo(() => rewards.slice(0, 8), [rewards]);
   const recentWithdrawals = useMemo(() => withdrawals.slice(0, 5), [withdrawals]);
-  const refreshing = isSummaryFetching || isRewardsFetching || isWithdrawalsFetching;
+  const refreshing =
+    isSummaryFetching ||
+    isReferralsFetching ||
+    isRewardsFetching ||
+    isWithdrawalsFetching;
 
   const refreshAll = async () => {
     await Promise.allSettled([
       refetchSummary(),
+      refetchReferrals(),
       refetchRewards(),
       refetchWithdrawals(),
     ]);
   };
 
   const handleShare = async () => {
-    if (!summary) return;
-    await Share.share({
-      message:
-        `Rejoins-moi sur Zwanga avec mon code ${summary.code}. ` +
-        `Inscris-toi ici : ${summary.shareLink}`,
-    });
+    if (isSharing) return;
+    setIsSharing(true);
+    try {
+      const currentSummary = summary ?? (await refetchSummary().unwrap());
+      await shareReferralLink(currentSummary.shareLink);
+    } catch (error) {
+      showDialog({
+        variant: 'danger',
+        title: 'Partage indisponible',
+        message: getApiErrorMessage(
+          error,
+          "Le lien d'invitation n'est pas encore disponible. Verifiez votre connexion puis reessayez.",
+        ),
+      });
+    } finally {
+      setIsSharing(false);
+    }
   };
 
   const handleWithdrawal = async () => {
@@ -175,16 +198,26 @@ export default function ReferralsScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.hero}>
-            <Text style={styles.eyebrow}>VOTRE CODE</Text>
-            <Text selectable style={styles.code}>{summary?.code ?? '—'}</Text>
+            <Text style={styles.eyebrow}>VOTRE LIEN PERSONNEL</Text>
+            <Text style={styles.linkReady}>Pret a etre partage</Text>
             <Text style={styles.heroText}>
-              Gagnez 5 % de chaque abonnement et trajet paye par FlexPay par vos filleuls,
-              pendant un an a partir de leur premier paiement eligible.
+              Votre ami n’a aucun code a saisir. Le lien reconnait automatiquement
+              votre invitation apres son installation et son inscription.
             </Text>
             <View style={styles.heroActions}>
-              <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
-                <Ionicons name="share-social-outline" size={18} color={Colors.white} />
-                <Text style={styles.shareButtonText}>Partager mon code</Text>
+              <TouchableOpacity
+                style={[styles.shareButton, isSharing && styles.disabled]}
+                disabled={isSharing}
+                onPress={handleShare}
+              >
+                {isSharing ? (
+                  <ActivityIndicator size="small" color={Colors.white} />
+                ) : (
+                  <Ionicons name="share-social-outline" size={18} color={Colors.white} />
+                )}
+                <Text style={styles.shareButtonText}>
+                  {isSharing ? 'Preparation...' : 'Partager mon lien'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.contactsButton} onPress={() => router.push('/invite')}>
                 <Ionicons name="people-outline" size={18} color={Colors.primary} />
@@ -218,6 +251,51 @@ export default function ReferralsScreen() {
                 <Text style={styles.statLabel}>Filleuls</Text>
               </View>
             </View>
+          </View>
+
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Mes filleuls</Text>
+            <Text style={styles.counter}>{referrals.length}</Text>
+          </View>
+          <View style={styles.listPanel}>
+            {referrals.length === 0 ? (
+              <View style={styles.empty}>
+                <Ionicons name="people-outline" size={26} color={Colors.gray[400]} />
+                <Text style={styles.emptyText}>Aucun filleul pour le moment.</Text>
+              </View>
+            ) : (
+              referrals.map((referral) => (
+                <View key={referral.userId} style={styles.listItem}>
+                  <View style={styles.listIcon}>
+                    <Ionicons name="person-outline" size={18} color={Colors.primary} />
+                  </View>
+                  <View style={styles.listBody}>
+                    <Text style={styles.listTitle}>
+                      {referral.firstName} {referral.lastNameInitial}
+                    </Text>
+                    <Text style={styles.listMeta}>
+                      {referral.qualifiedAt
+                        ? `Actif · gains jusqu'au ${formatDate(referral.rewardWindowEndsAt)}`
+                        : `Inscrit le ${formatDate(referral.referredAt)} · aucun paiement eligible`}
+                    </Text>
+                    {referral.earnings.pendingTokens > 0 && (
+                      <Text style={styles.pendingEarning}>
+                        {formatNumber(referral.earnings.pendingTokens)} jetons en attente
+                      </Text>
+                    )}
+                  </View>
+                  <View style={styles.earningSummary}>
+                    <Text style={styles.positiveAmount}>
+                      +{formatNumber(referral.earnings.earnedTokens)} jetons
+                    </Text>
+                    <Text style={styles.earningAmount}>
+                      {formatNumber(referral.earnings.earnedAmount)}{' '}
+                      {referral.earnings.currency} cumules
+                    </Text>
+                  </View>
+                </View>
+              ))
+            )}
           </View>
 
           <View style={styles.panel}>
@@ -287,9 +365,11 @@ export default function ReferralsScreen() {
                     />
                   </View>
                   <View style={styles.listBody}>
-                    <Text style={styles.listTitle}>{rewardLabel(reward.sourceType)}</Text>
+                    <Text style={styles.listTitle}>
+                      {reward.referredUser.firstName} {reward.referredUser.lastNameInitial}
+                    </Text>
                     <Text style={styles.listMeta}>
-                      {formatDate(reward.createdAt)} · {reward.status === 'pending' ? `disponible le ${formatDate(reward.holdUntil)}` : reward.status}
+                      {rewardLabel(reward.sourceType)} · {formatDate(reward.createdAt)} · {reward.status === 'pending' ? `disponible le ${formatDate(reward.holdUntil)}` : reward.status}
                     </Text>
                   </View>
                   <Text style={styles.positiveAmount}>+{formatNumber(reward.rewardTokens)}</Text>
@@ -334,10 +414,13 @@ const styles = StyleSheet.create({
   content: { padding: Spacing.lg, gap: Spacing.lg, paddingBottom: 44 },
   hero: { backgroundColor: Colors.primary, borderRadius: BorderRadius.xl, padding: Spacing.xl, overflow: 'hidden' },
   eyebrow: { color: '#FFE1D6', fontSize: FontSizes.xs, fontWeight: FontWeights.bold, letterSpacing: 1.4 },
-  code: { color: Colors.white, fontSize: FontSizes.xxxl, fontWeight: FontWeights.bold, letterSpacing: 2, marginTop: 5 },
+  linkReady: { color: Colors.white, fontSize: FontSizes.xxl, fontWeight: FontWeights.bold, marginTop: 5 },
   heroText: { color: '#FFF4EF', fontSize: FontSizes.sm, lineHeight: 20, marginTop: Spacing.sm },
   heroActions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.lg },
   shareButton: { flex: 1, minHeight: 46, borderRadius: BorderRadius.md, backgroundColor: Colors.primaryDark, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm },
+  earningSummary: { alignItems: 'flex-end', marginLeft: Spacing.sm },
+  earningAmount: { marginTop: 3, fontSize: FontSizes.xs, color: Colors.gray[500] },
+  pendingEarning: { marginTop: 3, fontSize: FontSizes.xs, color: Colors.warningDark },
   shareButtonText: { color: Colors.white, fontSize: FontSizes.sm, fontWeight: FontWeights.bold },
   contactsButton: { width: 48, borderRadius: BorderRadius.md, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
   balancePanel: { backgroundColor: Colors.white, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.gray[200], overflow: 'hidden' },
