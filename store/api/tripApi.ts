@@ -508,6 +508,7 @@ const cleanObject = <T extends Record<string, unknown>>(value: T): Partial<T> =>
 const tripListTag = { type: 'Trip' as const, id: 'LIST' };
 const myTripsListTag = { type: 'MyTrips' as const, id: 'LIST' };
 const recurringTripListTag = { type: 'RecurringTrip' as const, id: 'LIST' };
+const bookingListTag = { type: 'Booking' as const, id: 'LIST' };
 
 /**
  * API trajets
@@ -748,6 +749,7 @@ export const tripApi = baseApi.injectEndpoints({
         { type: 'MyTrips', id },
         tripListTag,
         myTripsListTag,
+        bookingListTag,
       ],
     }),
 
@@ -763,6 +765,7 @@ export const tripApi = baseApi.injectEndpoints({
         { type: 'MyTrips', id },
         tripListTag,
         myTripsListTag,
+        bookingListTag,
       ],
     }),
 
