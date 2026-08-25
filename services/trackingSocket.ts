@@ -3,6 +3,14 @@ import { getValidAccessToken } from '@/services/tokenRefresh';
 import { io, Socket } from 'socket.io-client';
 
 const SOCKET_CONNECT_TIMEOUT_MS = 8000;
+const SOCKET_LOCATION_ACK_TIMEOUT_MS = 2500;
+
+type LocationUpdateAcknowledgement = {
+  success?: boolean;
+  ok?: boolean;
+  message?: string;
+  error?: string;
+};
 
 export interface DriverLocationPayload {
   tripId: string;
@@ -355,11 +363,35 @@ class TrackingSocketClient {
   ) {
     if (!tripId || !bookingId || !coordinates) return;
     const socket = await this.connect();
-    socket.emit('passenger_location_update', {
+    const payload = {
       tripId,
       bookingId,
       coordinates,
       ...metadata,
+    };
+
+    await new Promise<void>((resolve, reject) => {
+      socket.timeout(SOCKET_LOCATION_ACK_TIMEOUT_MS).emit(
+        'passenger_location_update',
+        payload,
+        (error: Error | null, acknowledgement?: LocationUpdateAcknowledgement) => {
+          if (error) {
+            reject(new Error('Confirmation WebSocket de la position passager expiree'));
+            return;
+          }
+          if (acknowledgement?.success === false || acknowledgement?.ok === false) {
+            reject(
+              new Error(
+                acknowledgement.error ||
+                  acknowledgement.message ||
+                  'Position passager refusee par le serveur',
+              ),
+            );
+            return;
+          }
+          resolve();
+        },
+      );
     });
   }
 

@@ -193,6 +193,7 @@ module.exports = {
           locationAlwaysAndWhenInUsePermission: 'Zwanga utilise votre position pour la navigation GPS même en arrière-plan.',
           locationAlwaysPermission: 'Zwanga a besoin de votre position en arrière-plan pour continuer la navigation.',
           locationWhenInUsePermission: 'Zwanga utilise votre position pour afficher les trajets à proximité et la navigation.',
+          isIosBackgroundLocationEnabled: true,
           isAndroidBackgroundLocationEnabled: true,
           isAndroidForegroundServiceEnabled: true,
         },
