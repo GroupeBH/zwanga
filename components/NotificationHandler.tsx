@@ -8,31 +8,44 @@ import { selectIsAuthenticated } from '@/store/selectors';
 import { getTripUrl, handleNotificationNavigation } from '@/utils/notificationNavigation';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import * as Notifications from 'expo-notifications';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { InteractionManager, Linking } from 'react-native';
 
 export function NotificationHandler() {
   const router = useRouter();
+  const pathname = usePathname();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const { data: currentUser } = useGetCurrentUserQuery(undefined, {
     skip: !isAuthenticated,
   });
   const currentUserRef = useRef(currentUser);
+  const pathnameRef = useRef(pathname);
 
   useEffect(() => {
     currentUserRef.current = currentUser;
   }, [currentUser]);
 
   useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
+
+  useEffect(() => {
     Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-      }),
+      handleNotification: async (notification) => {
+        const type = notification.request.content.data?.type;
+        const tripRevenueModalAlreadyOwnsForeground =
+          type === 'driver_trip_revenue' &&
+          pathnameRef.current.startsWith('/trip/navigate/');
+
+        return {
+          shouldShowAlert: !tripRevenueModalAlreadyOwnsForeground,
+          shouldPlaySound: !tripRevenueModalAlreadyOwnsForeground,
+          shouldSetBadge: !tripRevenueModalAlreadyOwnsForeground,
+          shouldShowBanner: !tripRevenueModalAlreadyOwnsForeground,
+          shouldShowList: !tripRevenueModalAlreadyOwnsForeground,
+        };
+      },
     });
 
     const startupTask = InteractionManager.runAfterInteractions(() => {

@@ -7,6 +7,7 @@ import { getRegisteredVehicleTypeLabel } from '@/constants/vehicleTypes';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
 import { useGetPaymentHistoryQuery } from '@/store/api/paymentApi';
+import { useGetMyDriverSettlementQuery } from '@/store/api/driverSettlementsApi';
 import { useGetMyReferralSummaryQuery } from '@/store/api/referralApi';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
 import {
@@ -16,12 +17,33 @@ import {
   useSubscribeToProMutation,
 } from '@/store/api/subscriptionApi';
 import { useGetMyDriverOffersQuery, useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
-import { useGetKycStatusQuery, useGetProfileSummaryQuery, useSendPhoneVerificationOtpMutation, useUpdatePinMutation, useUpdatePinWithOtpMutation, useUpdateUserMutation, useUploadKycMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
-import { useCreateVehicleMutation, useDeleteVehicleMutation, useGetVehiclesQuery, useUpdateVehicleMutation } from '@/store/api/vehicleApi';
+import {
+  useGetKycStatusQuery,
+  useGetProfileSummaryQuery,
+  useSendPhoneVerificationOtpMutation,
+  useUpdatePinMutation,
+  useUpdatePinWithOtpMutation,
+  useUpdateUserMutation,
+  useUploadKycMutation,
+  useVerifyPhoneOtpMutation,
+} from '@/store/api/userApi';
+import {
+  useCreateVehicleMutation,
+  useDeleteVehicleMutation,
+  useGetVehiclesQuery,
+  useUpdateVehicleMutation,
+} from '@/store/api/vehicleApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { performLogout } from '@/store/slices/authSlice';
-import type { PaymentHistoryItem, SubscriptionPaymentMethod, SubscriptionPaymentResponse, SubscriptionPlan, TripRequestVehicleType, Vehicle } from '@/types';
+import type {
+  PaymentHistoryItem,
+  SubscriptionPaymentMethod,
+  SubscriptionPaymentResponse,
+  SubscriptionPlan,
+  TripRequestVehicleType,
+  Vehicle,
+} from '@/types';
 import { createBecomeDriverAction, getApiErrorMessage, isDriverRequiredError } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -55,9 +77,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 const formatSubscriptionAmount = (amount?: number | string, currency?: string) => {
   const numericAmount = Number(amount);
   if (!Number.isFinite(numericAmount)) return `5000 ${currency || 'CDF'}`;
-  const formatted = numericAmount % 1 === 0
-    ? Math.round(numericAmount).toString()
-    : numericAmount.toFixed(2);
+  const formatted = numericAmount % 1 === 0 ? Math.round(numericAmount).toString() : numericAmount.toFixed(2);
   return `${formatted} ${currency || 'CDF'}`;
 };
 
@@ -65,7 +85,11 @@ const formatSubscriptionEndDate = (value?: string | null) => {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+  return date.toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 };
 
 const formatReferralTokens = (value?: number | string | null) => {
@@ -140,10 +164,30 @@ const SUBSCRIPTION_PAYMENT_OPTIONS: {
   hint: string;
   icon: keyof typeof Ionicons.glyphMap;
 }[] = [
-  { id: 'mpesa', label: 'M-Pesa', hint: 'Paiement Mobile Money', icon: 'phone-portrait-outline' },
-  { id: 'airtel', label: 'Airtel Money', hint: 'Paiement Mobile Money', icon: 'phone-portrait-outline' },
-  { id: 'orange', label: 'Orange Money', hint: 'Paiement Mobile Money', icon: 'phone-portrait-outline' },
-  { id: 'card', label: 'Carte', hint: 'Visa ou Mastercard', icon: 'card-outline' },
+  {
+    id: 'mpesa',
+    label: 'M-Pesa',
+    hint: 'Paiement Mobile Money',
+    icon: 'phone-portrait-outline',
+  },
+  {
+    id: 'airtel',
+    label: 'Airtel Money',
+    hint: 'Paiement Mobile Money',
+    icon: 'phone-portrait-outline',
+  },
+  {
+    id: 'orange',
+    label: 'Orange Money',
+    hint: 'Paiement Mobile Money',
+    icon: 'phone-portrait-outline',
+  },
+  {
+    id: 'card',
+    label: 'Carte',
+    hint: 'Visa ou Mastercard',
+    icon: 'card-outline',
+  },
 ];
 
 const DRC_MOBILE_MONEY_PREFIX = '+243';
@@ -188,8 +232,7 @@ const getApiMessage = (error: any, fallback: string) => {
   return getApiErrorMessage(error, fallback);
 };
 
-const isNetworkOrTimeoutError = (error: any) =>
-  error?.status === 'FETCH_ERROR' || error?.status === 'TIMEOUT_ERROR';
+const isNetworkOrTimeoutError = (error: any) => error?.status === 'FETCH_ERROR' || error?.status === 'TIMEOUT_ERROR';
 
 const isSubscriptionPaymentComplete = (response?: SubscriptionPaymentResponse | null) =>
   response?.subscription?.status === 'active' || response?.payment?.status === 'succeeded';
@@ -225,10 +268,7 @@ const isDeclinedSubscriptionPaymentMessage = (message?: string | null) => {
 
 const getSubscriptionPaymentFailureMessage = (message?: string | null) => {
   const normalizedMessage = normalizeSubscriptionPaymentMessage(message);
-  if (
-    normalizedMessage.includes('annul') ||
-    normalizedMessage.includes('cancel')
-  ) {
+  if (normalizedMessage.includes('annul') || normalizedMessage.includes('cancel')) {
     return 'Paiement annulé. Aucun montant confirmé; vous pouvez réessayer.';
   }
 
@@ -241,10 +281,7 @@ const getSubscriptionPaymentFailureMessage = (message?: string | null) => {
     return "Paiement refusé par l'opérateur. Aucun montant confirmé.";
   }
 
-  if (
-    normalizedMessage.includes('solde insuffisant') ||
-    normalizedMessage.includes('insufficient')
-  ) {
+  if (normalizedMessage.includes('solde insuffisant') || normalizedMessage.includes('insufficient')) {
     return 'Paiement échoué : solde insuffisant.';
   }
 
@@ -299,9 +336,8 @@ const getCardPaymentResultFromUrl = (url?: string | null): SubscriptionCardPayme
 const getSubscriptionPendingPaymentKey = (userId?: string | null) =>
   userId ? `zwanga:subscription:pending-payment:${userId}` : null;
 
-const getSubscriptionPaymentMethodForChannel = (
-  channel: SubscriptionPaymentChannel,
-): SubscriptionPaymentMethod => (channel === 'card' ? 'card' : 'mobile_money');
+const getSubscriptionPaymentMethodForChannel = (channel: SubscriptionPaymentChannel): SubscriptionPaymentMethod =>
+  channel === 'card' ? 'card' : 'mobile_money';
 
 const isSubscriptionPaymentChannel = (value: unknown): value is SubscriptionPaymentChannel =>
   value === 'mpesa' || value === 'airtel' || value === 'orange' || value === 'card';
@@ -359,9 +395,11 @@ const isRecentPendingSubscriptionPayment = (payment: PaymentHistoryItem) => {
 const getMostRecentPendingSubscriptionPayment = (payments?: PaymentHistoryItem[] | null) => {
   if (!payments?.length) return null;
 
-  return payments
-    .filter(isRecentPendingSubscriptionPayment)
-    .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0] ?? null;
+  return (
+    payments
+      .filter(isRecentPendingSubscriptionPayment)
+      .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0] ?? null
+  );
 };
 
 const buildStoredSubscriptionPaymentFromHistory = (
@@ -428,8 +466,7 @@ export default function ProfileScreen() {
   const [subscriptionPhone, setSubscriptionPhone] = useState('');
   const [subscriptionPaymentOrderNumber, setSubscriptionPaymentOrderNumber] = useState<string | null>(null);
   const [subscriptionPaymentMessage, setSubscriptionPaymentMessage] = useState<string | null>(null);
-  const [subscriptionPaymentStage, setSubscriptionPaymentStage] =
-    useState<SubscriptionPaymentStage>('idle');
+  const [subscriptionPaymentStage, setSubscriptionPaymentStage] = useState<SubscriptionPaymentStage>('idle');
   const [subscriptionPaymentAutoCheckAttempt, setSubscriptionPaymentAutoCheckAttempt] = useState(0);
   const [isSubscriptionPaymentAutoChecking, setIsSubscriptionPaymentAutoChecking] = useState(false);
   const [isRestoringSubscriptionPayment, setIsRestoringSubscriptionPayment] = useState(false);
@@ -445,25 +482,10 @@ export default function ProfileScreen() {
   const otpInputRefs = useRef<(TextInput | null)[]>([]);
   const pinInputRef = useRef<TextInput | null>(null);
   const pinConfirmInputRef = useRef<TextInput | null>(null);
-  const {
-    data: profileSummary,
-    isLoading: profileLoading,
-    refetch: refetchProfile,
-  } = useGetProfileSummaryQuery();
-  const {
-    data: referralSummary,
-    refetch: refetchReferralSummary,
-  } = useGetMyReferralSummaryQuery();
-  const {
-    data: kycStatus,
-    isLoading: kycLoading,
-    refetch: refetchKycStatus,
-  } = useGetKycStatusQuery();
-  const {
-    data: vehicles,
-    isLoading: vehiclesLoading,
-    refetch: refetchVehicles,
-  } = useGetVehiclesQuery();
+  const { data: profileSummary, isLoading: profileLoading, refetch: refetchProfile } = useGetProfileSummaryQuery();
+  const { data: referralSummary, refetch: refetchReferralSummary } = useGetMyReferralSummaryQuery();
+  const { data: kycStatus, isLoading: kycLoading, refetch: refetchKycStatus } = useGetKycStatusQuery();
+  const { data: vehicles, isLoading: vehiclesLoading, refetch: refetchVehicles } = useGetVehiclesQuery();
   const [createVehicle, { isLoading: creatingVehicle }] = useCreateVehicleMutation();
   const [updateVehicle, { isLoading: updatingVehicle }] = useUpdateVehicleMutation();
   const [deleteVehicle, { isLoading: deletingVehicle }] = useDeleteVehicleMutation();
@@ -474,10 +496,8 @@ export default function ProfileScreen() {
   const [sendPhoneVerificationOtp] = useSendPhoneVerificationOtpMutation();
   const [verifyPhoneOtp] = useVerifyPhoneOtpMutation();
   const [subscribeToPro, { isLoading: isSubscribingPro }] = useSubscribeToProMutation();
-  const [
-    checkSubscriptionPaymentStatus,
-    { isFetching: isCheckingSubscriptionPayment },
-  ] = useLazyCheckSubscriptionPaymentStatusQuery();
+  const [checkSubscriptionPaymentStatus, { isFetching: isCheckingSubscriptionPayment }] =
+    useLazyCheckSubscriptionPaymentStatusQuery();
   const { data: myTripRequests = [] } = useGetMyTripRequestsQuery();
   const { data: myDriverOffers = [] } = useGetMyDriverOffersQuery();
 
@@ -494,8 +514,7 @@ export default function ProfileScreen() {
     const role = currentUser?.role;
     return role === 'driver' || role === 'both' || Boolean(currentUser?.isDriver);
   }, [currentUser?.isDriver, currentUser?.role]);
-  const displaysDriverRole =
-    currentUser?.role === 'driver' || currentUser?.role === 'both';
+  const displaysDriverRole = currentUser?.role === 'driver' || currentUser?.role === 'both';
 
   const { data: subscriptionPlans = [] } = useGetSubscriptionPlansQuery();
   const {
@@ -503,10 +522,14 @@ export default function ProfileScreen() {
     isFetching: premiumOverviewFetching,
     refetch: refetchPremiumOverview,
   } = useGetPremiumOverviewQuery(undefined, { skip: !isDriver });
-  const {
-    data: paymentHistory,
-    refetch: refetchPaymentHistory,
-  } = useGetPaymentHistoryQuery(undefined, { skip: !isDriver });
+  const { data: paymentHistory, refetch: refetchPaymentHistory } = useGetPaymentHistoryQuery(undefined, {
+    skip: !isDriver,
+  });
+  const { data: driverSettlement, refetch: refetchDriverSettlement } = useGetMyDriverSettlementQuery(undefined, {
+    skip: !isDriver,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
   const recentPendingSubscriptionPayment = useMemo(
     () => getMostRecentPendingSubscriptionPayment(paymentHistory),
     [paymentHistory],
@@ -551,12 +574,8 @@ export default function ProfileScreen() {
   const proPriceLabel = formatSubscriptionAmount(proPlan?.amount, proPlan?.currency);
   const proEndDateLabel = formatSubscriptionEndDate(premiumOverview?.endDate);
   const isSubscriptionPaymentBlocking =
-    isSubscribingPro ||
-    isCheckingSubscriptionPayment ||
-    isRestoringSubscriptionPayment;
-  const proBusy =
-    premiumOverviewFetching ||
-    isSubscriptionPaymentBlocking;
+    isSubscribingPro || isCheckingSubscriptionPayment || isRestoringSubscriptionPayment;
+  const proBusy = premiumOverviewFetching || isSubscriptionPaymentBlocking;
   const isSubscriptionCardPayment = selectedSubscriptionPaymentChannel === 'card';
   const selectedSubscriptionPaymentOption = useMemo(
     () =>
@@ -751,9 +770,7 @@ export default function ProfileScreen() {
   ]);
   const shouldShowPaymentStatusPanel = Boolean(subscriptionPaymentStatus);
   const subscriptionModalKeyboardOffset =
-    Platform.OS === 'android' && subscriptionModalVisible
-      ? Math.max(subscriptionKeyboardHeight - insets.bottom, 0)
-      : 0;
+    Platform.OS === 'android' && subscriptionModalVisible ? Math.max(subscriptionKeyboardHeight - insets.bottom, 0) : 0;
   const subscriptionModalCardKeyboardStyle =
     Platform.OS === 'android' && subscriptionModalKeyboardOffset > 0
       ? {
@@ -761,8 +778,7 @@ export default function ProfileScreen() {
           maxHeight: '74%' as const,
         }
       : null;
-  const { shouldShow: shouldShowProfileGuide, complete: completeProfileGuide } =
-    useTutorialGuide('profile_screen');
+  const { shouldShow: shouldShowProfileGuide, complete: completeProfileGuide } = useTutorialGuide('profile_screen');
   const [profileGuideVisible, setProfileGuideVisible] = useState(false);
 
   useEffect(() => {
@@ -795,14 +811,17 @@ export default function ProfileScreen() {
     prefilledSubscriptionPhoneRef.current = true;
   }, [currentUser?.phone]);
 
-  useEffect(() => () => {
-    subscriptionPaymentMountedRef.current = false;
-    subscriptionPaymentPollingRunIdRef.current += 1;
-    if (subscriptionDeferredSyncTimerRef.current) {
-      clearTimeout(subscriptionDeferredSyncTimerRef.current);
-      subscriptionDeferredSyncTimerRef.current = null;
-    }
-  }, []);
+  useEffect(
+    () => () => {
+      subscriptionPaymentMountedRef.current = false;
+      subscriptionPaymentPollingRunIdRef.current += 1;
+      if (subscriptionDeferredSyncTimerRef.current) {
+        clearTimeout(subscriptionDeferredSyncTimerRef.current);
+        subscriptionDeferredSyncTimerRef.current = null;
+      }
+    },
+    [],
+  );
 
   const handleDismissProfileGuide = () => {
     setProfileGuideVisible(false);
@@ -813,15 +832,18 @@ export default function ProfileScreen() {
   const tripRequestsStats = useMemo(() => {
     const totalRequests = myTripRequests.length;
     const activeRequests = myTripRequests.filter(
-      (req) => req.status === 'pending' || req.status === 'offers_received'
+      (req) => req.status === 'pending' || req.status === 'offers_received',
     ).length;
     const requestsWithOffers = myTripRequests.filter(
-      (req) => req.status === 'offers_received' && (req.offers?.length || 0) > 0
+      (req) => req.status === 'offers_received' && (req.offers?.length || 0) > 0,
     ).length;
-    const completedRequests = myTripRequests.filter(
-      (req) => req.status === 'driver_selected'
-    ).length;
-    return { totalRequests, activeRequests, requestsWithOffers, completedRequests };
+    const completedRequests = myTripRequests.filter((req) => req.status === 'driver_selected').length;
+    return {
+      totalRequests,
+      activeRequests,
+      requestsWithOffers,
+      completedRequests,
+    };
   }, [myTripRequests]);
 
   // Calculer les statistiques détaillées pour les offres
@@ -871,6 +893,7 @@ export default function ProfileScreen() {
       if (isDriver) {
         refreshTasks.push(Promise.resolve(refetchPremiumOverview()));
         refreshTasks.push(Promise.resolve(refetchPaymentHistory()));
+        refreshTasks.push(Promise.resolve(refetchDriverSettlement()));
       }
       await Promise.all(refreshTasks);
     } finally {
@@ -954,9 +977,7 @@ export default function ProfileScreen() {
 
   const handleSaveVehicle = async () => {
     if (!vehicleType || !vehicleBrand.trim() || !vehicleModel.trim() || !vehicleColor.trim() || !vehiclePlate.trim()) {
-      setVehicleFormError(
-        'Choisissez le type et renseignez la marque, le modèle, la couleur et la plaque.',
-      );
+      setVehicleFormError('Choisissez le type et renseignez la marque, le modèle, la couleur et la plaque.');
       return;
     }
 
@@ -973,7 +994,10 @@ export default function ProfileScreen() {
       };
 
       if (editingVehicleId) {
-        await updateVehicle({ id: editingVehicleId, data: vehicleData }).unwrap();
+        await updateVehicle({
+          id: editingVehicleId,
+          data: vehicleData,
+        }).unwrap();
       } else {
         await createVehicle(vehicleData).unwrap();
       }
@@ -992,7 +1016,7 @@ export default function ProfileScreen() {
         error,
         isEditing
           ? 'Impossible de modifier le véhicule pour le moment.'
-          : 'Impossible d\'ajouter le véhicule pour le moment.',
+          : "Impossible d'ajouter le véhicule pour le moment.",
       );
       const isDriverError = isDriverRequiredError(error);
 
@@ -1002,56 +1026,53 @@ export default function ProfileScreen() {
           variant: 'danger',
           title: 'Action requise',
           message,
-          actions: [
-            { label: 'Fermer', variant: 'ghost' },
-            createBecomeDriverAction(router),
-          ],
+          actions: [{ label: 'Fermer', variant: 'ghost' }, createBecomeDriverAction(router)],
         });
       }
     }
   };
 
-  const handleDeleteVehicle = useCallback((vehicle: Vehicle) => {
-    showDialog({
-      variant: 'warning',
-      title: 'Supprimer le véhicule',
-      message: `Êtes-vous sûr de vouloir supprimer ${vehicle.brand} ${vehicle.model} (${vehicle.licensePlate}) ? Cette action est irréversible.`,
-      actions: [
-        { label: 'Annuler', variant: 'ghost' },
-        {
-          label: 'Supprimer',
-          variant: 'primary',
-          onPress: async () => {
-            try {
-              await deleteVehicle(vehicle.id).unwrap();
-              await refetchVehicles();
-              showDialog({
-                variant: 'success',
-                title: 'Véhicule supprimé',
-                message: 'Le véhicule a été supprimé avec succès.',
-              });
-            } catch (error: any) {
-              const message =
-                error?.data?.message ?? error?.error ?? 'Impossible de supprimer le véhicule pour le moment.';
-              const isDriverError = isDriverRequiredError(error);
-              
-              showDialog({
-                variant: 'danger',
-                title: 'Erreur',
-                message: Array.isArray(message) ? message.join('\n') : message,
-                actions: isDriverError
-                  ? [
-                      { label: 'Fermer', variant: 'ghost' },
-                      createBecomeDriverAction(router),
-                    ]
-                  : undefined,
-              });
-            }
+  const handleDeleteVehicle = useCallback(
+    (vehicle: Vehicle) => {
+      showDialog({
+        variant: 'warning',
+        title: 'Supprimer le véhicule',
+        message: `Êtes-vous sûr de vouloir supprimer ${vehicle.brand} ${vehicle.model} (${vehicle.licensePlate}) ? Cette action est irréversible.`,
+        actions: [
+          { label: 'Annuler', variant: 'ghost' },
+          {
+            label: 'Supprimer',
+            variant: 'primary',
+            onPress: async () => {
+              try {
+                await deleteVehicle(vehicle.id).unwrap();
+                await refetchVehicles();
+                showDialog({
+                  variant: 'success',
+                  title: 'Véhicule supprimé',
+                  message: 'Le véhicule a été supprimé avec succès.',
+                });
+              } catch (error: any) {
+                const message =
+                  error?.data?.message ?? error?.error ?? 'Impossible de supprimer le véhicule pour le moment.';
+                const isDriverError = isDriverRequiredError(error);
+
+                showDialog({
+                  variant: 'danger',
+                  title: 'Erreur',
+                  message: Array.isArray(message) ? message.join('\n') : message,
+                  actions: isDriverError
+                    ? [{ label: 'Fermer', variant: 'ghost' }, createBecomeDriverAction(router)]
+                    : undefined,
+                });
+              }
+            },
           },
-        },
-      ],
-    });
-  }, [deleteVehicle, refetchVehicles, router, showDialog]);
+        ],
+      });
+    },
+    [deleteVehicle, refetchVehicles, router, showDialog],
+  );
 
   const handleOpenKycModal = useCallback(() => {
     if (isKycApproved) {
@@ -1061,7 +1082,11 @@ export default function ProfileScreen() {
         message: 'Vos documents sont déjà vérifiés. Contactez notre support si vous devez les modifier.',
         actions: [
           { label: 'Plus tard', variant: 'ghost' },
-          { label: 'Support', variant: 'primary', onPress: () => router.push('/support') },
+          {
+            label: 'Support',
+            variant: 'primary',
+            onPress: () => router.push('/support'),
+          },
         ],
       });
       return;
@@ -1081,13 +1106,14 @@ export default function ProfileScreen() {
       const formData = new FormData();
       // Mettre à jour le rôle vers "driver"
       formData.append('role', 'driver');
-      
+
       await updateUser(formData).unwrap();
-      
+
       showDialog({
         variant: 'success',
         title: 'Félicitations ! 🎉',
-        message: 'Votre compte conducteur a été activé avec succès. Vous pouvez maintenant publier des trajets et gagner de l\'argent.',
+        message:
+          "Votre compte conducteur a été activé avec succès. Vous pouvez maintenant publier des trajets et gagner de l'argent.",
         actions: [
           {
             label: 'Publier un trajet',
@@ -1101,11 +1127,11 @@ export default function ProfileScreen() {
         ],
       });
     } catch (error: any) {
-      console.error('Erreur lors de l\'activation du compte conducteur:', error);
+      console.error("Erreur lors de l'activation du compte conducteur:", error);
       showDialog({
         variant: 'danger',
         title: 'Erreur',
-        message: error?.data?.message || 'Impossible d\'activer le compte conducteur. Veuillez réessayer.',
+        message: error?.data?.message || "Impossible d'activer le compte conducteur. Veuillez réessayer.",
       });
     }
   }, [router, showDialog, updateUser]);
@@ -1118,7 +1144,8 @@ export default function ProfileScreen() {
       showDialog({
         variant: 'info',
         title: 'Devenir conducteur',
-        message: 'Pour devenir conducteur, vous devez :\n\n1. Ajouter un véhicule\n2. Compléter la vérification d\'identité (KYC)\n\nSouhaitez-vous commencer par ajouter un véhicule ?',
+        message:
+          "Pour devenir conducteur, vous devez :\n\n1. Ajouter un véhicule\n2. Compléter la vérification d'identité (KYC)\n\nSouhaitez-vous commencer par ajouter un véhicule ?",
         actions: [
           { label: 'Plus tard', variant: 'ghost' },
           {
@@ -1142,14 +1169,7 @@ export default function ProfileScreen() {
     }
 
     void handleBecomeDriver();
-  }, [
-    handleBecomeDriver,
-    handleOpenKycModal,
-    isKycApproved,
-    openCreateVehicleModal,
-    showDialog,
-    vehicleList.length,
-  ]);
+  }, [handleBecomeDriver, handleOpenKycModal, isKycApproved, openCreateVehicleModal, showDialog, vehicleList.length]);
 
   const openExternalUrl = async (url: string) => {
     try {
@@ -1171,11 +1191,7 @@ export default function ProfileScreen() {
   };
 
   const closeSubscriptionModal = () => {
-    if (
-      isSubscribingPro ||
-      isCheckingSubscriptionPayment ||
-      isRestoringSubscriptionPayment
-    ) {
+    if (isSubscribingPro || isCheckingSubscriptionPayment || isRestoringSubscriptionPayment) {
       return;
     }
     Keyboard.dismiss();
@@ -1226,10 +1242,7 @@ export default function ProfileScreen() {
         return null;
       }
 
-      if (
-        !recentPendingSubscriptionOrderNumber ||
-        storedPayment.orderNumber !== recentPendingSubscriptionOrderNumber
-      ) {
+      if (!recentPendingSubscriptionOrderNumber || storedPayment.orderNumber !== recentPendingSubscriptionOrderNumber) {
         await AsyncStorage.removeItem(subscriptionPaymentStorageKey);
         return null;
       }
@@ -1239,319 +1252,303 @@ export default function ProfileScreen() {
       console.warn('[Profile] Failed to read pending subscription payment:', error);
       return null;
     }
-  }, [
-    currentUser?.id,
-    paymentHistoryLoaded,
-    recentPendingSubscriptionOrderNumber,
-    subscriptionPaymentStorageKey,
-  ]);
+  }, [currentUser?.id, paymentHistoryLoaded, recentPendingSubscriptionOrderNumber, subscriptionPaymentStorageKey]);
 
-  const persistStoredSubscriptionPayment = useCallback(async (
-    payment: Omit<StoredSubscriptionPayment, 'createdAt' | 'userId'>,
-  ) => {
-    if (!subscriptionPaymentStorageKey || !currentUser?.id || !payment.orderNumber) {
-      return;
-    }
+  const persistStoredSubscriptionPayment = useCallback(
+    async (payment: Omit<StoredSubscriptionPayment, 'createdAt' | 'userId'>) => {
+      if (!subscriptionPaymentStorageKey || !currentUser?.id || !payment.orderNumber) {
+        return;
+      }
 
-    const storedPayment: StoredSubscriptionPayment = {
-      ...payment,
-      createdAt: new Date().toISOString(),
-      userId: currentUser.id,
-    };
+      const storedPayment: StoredSubscriptionPayment = {
+        ...payment,
+        createdAt: new Date().toISOString(),
+        userId: currentUser.id,
+      };
 
-    try {
-      await AsyncStorage.setItem(subscriptionPaymentStorageKey, JSON.stringify(storedPayment));
-    } catch (error) {
-      console.warn('[Profile] Failed to store pending subscription payment:', error);
-    }
-  }, [currentUser?.id, subscriptionPaymentStorageKey]);
-
-  const finishSubscriptionPayment = useCallback(async (response: SubscriptionPaymentResponse) => {
-    if (!isSubscriptionPaymentComplete(response)) {
-      return false;
-    }
-
-    stopSubscriptionPaymentAutoCheck();
-    await clearStoredSubscriptionPayment();
-    await Promise.allSettled([
-      Promise.resolve(refetchPremiumOverview()),
-      Promise.resolve(refetchProfile()),
-    ]);
-    setSubscriptionPaymentStage('success');
-    setSubscriptionPaymentAutoCheckAttempt(0);
-    setSubscriptionModalVisible(false);
-    setSubscriptionModalStep('method');
-    setSubscriptionPaymentOrderNumber(null);
-    setSubscriptionPaymentMessage(null);
-    setSubscriptionPaymentStage('idle');
-    showDialog({
-      variant: 'success',
-      title: 'Abonnement actif',
-      message: 'Votre abonnement conducteur est actif. Vous pouvez publier plus de 5 trajets par jour.',
-    });
-    return true;
-  }, [clearStoredSubscriptionPayment, refetchPremiumOverview, refetchProfile, showDialog, stopSubscriptionPaymentAutoCheck]);
-
-  const checkSubscriptionPaymentByOrderNumber = useCallback(async (
-    orderNumber: string,
-    options?: {
-      checkingStage?: SubscriptionPaymentStage;
-      pendingMessage?: string;
-      pendingStage?: SubscriptionPaymentStage;
-      suppressErrorDialog?: boolean;
-      silentErrorMessage?: string;
+      try {
+        await AsyncStorage.setItem(subscriptionPaymentStorageKey, JSON.stringify(storedPayment));
+      } catch (error) {
+        console.warn('[Profile] Failed to store pending subscription payment:', error);
+      }
     },
-  ) => {
-    try {
-      setSubscriptionPaymentOrderNumber(orderNumber);
-      setSubscriptionPaymentStage(options?.checkingStage ?? 'zwanga_activation');
-      const response = await checkSubscriptionPaymentStatus(orderNumber).unwrap();
-      if (await finishSubscriptionPayment(response)) {
-        return 'success' as SubscriptionPaymentCheckOutcome;
+    [currentUser?.id, subscriptionPaymentStorageKey],
+  );
+
+  const finishSubscriptionPayment = useCallback(
+    async (response: SubscriptionPaymentResponse) => {
+      if (!isSubscriptionPaymentComplete(response)) {
+        return false;
       }
 
-      if (isSubscriptionPaymentFailed(response)) {
-        stopSubscriptionPaymentAutoCheck();
-        await clearStoredSubscriptionPayment();
-        setSubscriptionPaymentOrderNumber(null);
-        setSubscriptionPaymentStage('failed');
-        setSubscriptionPaymentMessage(
-          getSubscriptionPaymentFailureMessage(response.payment.message),
-        );
-        return 'failed' as SubscriptionPaymentCheckOutcome;
-      }
+      stopSubscriptionPaymentAutoCheck();
+      await clearStoredSubscriptionPayment();
+      await Promise.allSettled([Promise.resolve(refetchPremiumOverview()), Promise.resolve(refetchProfile())]);
+      setSubscriptionPaymentStage('success');
+      setSubscriptionPaymentAutoCheckAttempt(0);
+      setSubscriptionModalVisible(false);
+      setSubscriptionModalStep('method');
+      setSubscriptionPaymentOrderNumber(null);
+      setSubscriptionPaymentMessage(null);
+      setSubscriptionPaymentStage('idle');
+      showDialog({
+        variant: 'success',
+        title: 'Abonnement actif',
+        message: 'Votre abonnement conducteur est actif. Vous pouvez publier plus de 5 trajets par jour.',
+      });
+      return true;
+    },
+    [
+      clearStoredSubscriptionPayment,
+      refetchPremiumOverview,
+      refetchProfile,
+      showDialog,
+      stopSubscriptionPaymentAutoCheck,
+    ],
+  );
 
-      setSubscriptionPaymentStage(options?.pendingStage ?? 'operator_confirmation');
-      setSubscriptionPaymentMessage(
-        options?.pendingMessage ||
-          response.payment.message ||
-          'Paiement en attente chez FlexPay. Confirmez sur votre téléphone ou terminez la page de paiement par carte ; nous continuons la vérification.',
-      );
-      return 'pending' as SubscriptionPaymentCheckOutcome;
-    } catch (error: any) {
-      if (options?.suppressErrorDialog) {
-        setSubscriptionPaymentStage(options.pendingStage ?? 'operator_confirmation');
+  const checkSubscriptionPaymentByOrderNumber = useCallback(
+    async (
+      orderNumber: string,
+      options?: {
+        checkingStage?: SubscriptionPaymentStage;
+        pendingMessage?: string;
+        pendingStage?: SubscriptionPaymentStage;
+        suppressErrorDialog?: boolean;
+        silentErrorMessage?: string;
+      },
+    ) => {
+      try {
+        setSubscriptionPaymentOrderNumber(orderNumber);
+        setSubscriptionPaymentStage(options?.checkingStage ?? 'zwanga_activation');
+        const response = await checkSubscriptionPaymentStatus(orderNumber).unwrap();
+        if (await finishSubscriptionPayment(response)) {
+          return 'success' as SubscriptionPaymentCheckOutcome;
+        }
+
+        if (isSubscriptionPaymentFailed(response)) {
+          stopSubscriptionPaymentAutoCheck();
+          await clearStoredSubscriptionPayment();
+          setSubscriptionPaymentOrderNumber(null);
+          setSubscriptionPaymentStage('failed');
+          setSubscriptionPaymentMessage(getSubscriptionPaymentFailureMessage(response.payment.message));
+          return 'failed' as SubscriptionPaymentCheckOutcome;
+        }
+
+        setSubscriptionPaymentStage(options?.pendingStage ?? 'operator_confirmation');
         setSubscriptionPaymentMessage(
-          options.silentErrorMessage ||
-            'La vérification prend plus de temps que prévu. Ne relancez pas le paiement ; la référence reste gardée.',
+          options?.pendingMessage ||
+            response.payment.message ||
+            'Paiement en attente chez FlexPay. Confirmez sur votre téléphone ou terminez la page de paiement par carte ; nous continuons la vérification.',
         );
+        return 'pending' as SubscriptionPaymentCheckOutcome;
+      } catch (error: any) {
+        if (options?.suppressErrorDialog) {
+          setSubscriptionPaymentStage(options.pendingStage ?? 'operator_confirmation');
+          setSubscriptionPaymentMessage(
+            options.silentErrorMessage ||
+              'La vérification prend plus de temps que prévu. Ne relancez pas le paiement ; la référence reste gardée.',
+          );
+          return 'error' as SubscriptionPaymentCheckOutcome;
+        }
+
+        showDialog({
+          variant: 'danger',
+          title: 'Vérification impossible',
+          message: getApiMessage(error, 'Impossible de vérifier ce paiement pour le moment.'),
+        });
         return 'error' as SubscriptionPaymentCheckOutcome;
       }
+    },
+    [
+      checkSubscriptionPaymentStatus,
+      clearStoredSubscriptionPayment,
+      finishSubscriptionPayment,
+      showDialog,
+      stopSubscriptionPaymentAutoCheck,
+      subscriptionPaymentOrderNumber,
+    ],
+  );
 
-      showDialog({
-        variant: 'danger',
-        title: 'Vérification impossible',
-        message: getApiMessage(error, 'Impossible de vérifier ce paiement pour le moment.'),
-      });
-      return 'error' as SubscriptionPaymentCheckOutcome;
-    }
-  }, [
-    checkSubscriptionPaymentStatus,
-    clearStoredSubscriptionPayment,
-    finishSubscriptionPayment,
-    showDialog,
-    stopSubscriptionPaymentAutoCheck,
-    subscriptionPaymentOrderNumber,
-  ]);
+  const startSubscriptionPaymentAutoCheck = useCallback(
+    (orderNumber: string, initialMessage?: string | null) => {
+      if (!orderNumber) {
+        return;
+      }
 
-  const startSubscriptionPaymentAutoCheck = useCallback((
-    orderNumber: string,
-    initialMessage?: string | null,
-  ) => {
-    if (!orderNumber) {
-      return;
-    }
+      const runId = subscriptionPaymentPollingRunIdRef.current + 1;
+      subscriptionPaymentPollingRunIdRef.current = runId;
+      setIsSubscriptionPaymentAutoChecking(true);
+      setSubscriptionPaymentAutoCheckAttempt(0);
+      setSubscriptionPaymentStage(isSubscriptionCardPayment ? 'zwanga_activation' : 'phone_confirmation');
+      setSubscriptionPaymentMessage(
+        initialMessage ||
+          'Demande envoyée à FlexPay. Confirmez sur votre téléphone ; nous actualisons le statut quelques instants sans bloquer l’app.',
+      );
 
-    const runId = subscriptionPaymentPollingRunIdRef.current + 1;
-    subscriptionPaymentPollingRunIdRef.current = runId;
-    setIsSubscriptionPaymentAutoChecking(true);
-    setSubscriptionPaymentAutoCheckAttempt(0);
-    setSubscriptionPaymentStage(isSubscriptionCardPayment ? 'zwanga_activation' : 'phone_confirmation');
-    setSubscriptionPaymentMessage(
-      initialMessage ||
-        'Demande envoyée à FlexPay. Confirmez sur votre téléphone ; nous actualisons le statut quelques instants sans bloquer l’app.',
-    );
+      void (async () => {
+        const deadline = Date.now() + SUBSCRIPTION_MOBILE_MONEY_AUTO_CHECK_TIMEOUT_MS;
+        let attempt = 0;
+        let nextDelay = SUBSCRIPTION_MOBILE_MONEY_AUTO_CHECK_INITIAL_DELAY_MS;
 
-    void (async () => {
-      const deadline = Date.now() + SUBSCRIPTION_MOBILE_MONEY_AUTO_CHECK_TIMEOUT_MS;
-      let attempt = 0;
-      let nextDelay = SUBSCRIPTION_MOBILE_MONEY_AUTO_CHECK_INITIAL_DELAY_MS;
+        while (subscriptionPaymentMountedRef.current && subscriptionPaymentPollingRunIdRef.current === runId) {
+          const remainingMs = deadline - Date.now();
+          if (remainingMs <= 0 || attempt >= SUBSCRIPTION_MOBILE_MONEY_AUTO_CHECK_MAX_ATTEMPTS) {
+            break;
+          }
 
-      while (
-        subscriptionPaymentMountedRef.current &&
-        subscriptionPaymentPollingRunIdRef.current === runId
-      ) {
-        const remainingMs = deadline - Date.now();
-        if (remainingMs <= 0 || attempt >= SUBSCRIPTION_MOBILE_MONEY_AUTO_CHECK_MAX_ATTEMPTS) {
-          break;
+          await wait(Math.min(nextDelay, remainingMs));
+
+          if (!subscriptionPaymentMountedRef.current || subscriptionPaymentPollingRunIdRef.current !== runId) {
+            return;
+          }
+
+          attempt += 1;
+          setSubscriptionPaymentAutoCheckAttempt(attempt);
+          setSubscriptionPaymentStage(isSubscriptionCardPayment ? 'zwanga_activation' : 'operator_confirmation');
+          const outcome = await checkSubscriptionPaymentByOrderNumber(orderNumber, {
+            checkingStage: isSubscriptionCardPayment ? 'zwanga_activation' : 'operator_confirmation',
+            pendingStage: isSubscriptionCardPayment ? 'zwanga_activation' : 'operator_confirmation',
+            pendingMessage:
+              attempt === 1
+                ? 'Vérification rapide en cours. Si la demande est sur votre téléphone, confirmez-la avec votre PIN Mobile Money.'
+                : 'Paiement toujours en traitement. Nous continuons les actualisations automatiques ; inutile de relancer le paiement.',
+            suppressErrorDialog: true,
+            silentErrorMessage:
+              'La vérification prend plus de temps que prévu. Nous gardons la référence et continuons le suivi.',
+          });
+
+          if (!subscriptionPaymentMountedRef.current || subscriptionPaymentPollingRunIdRef.current !== runId) {
+            return;
+          }
+
+          if (outcome === 'success' || outcome === 'failed') {
+            setIsSubscriptionPaymentAutoChecking(false);
+            return;
+          }
+
+          nextDelay = SUBSCRIPTION_MOBILE_MONEY_AUTO_CHECK_INTERVAL_MS;
         }
 
-        await wait(Math.min(nextDelay, remainingMs));
-
-        if (
-          !subscriptionPaymentMountedRef.current ||
-          subscriptionPaymentPollingRunIdRef.current !== runId
-        ) {
-          return;
-        }
-
-        attempt += 1;
-        setSubscriptionPaymentAutoCheckAttempt(attempt);
-        setSubscriptionPaymentStage(
-          isSubscriptionCardPayment ? 'zwanga_activation' : 'operator_confirmation',
-        );
-        const outcome = await checkSubscriptionPaymentByOrderNumber(orderNumber, {
-          checkingStage: isSubscriptionCardPayment ? 'zwanga_activation' : 'operator_confirmation',
-          pendingStage: isSubscriptionCardPayment ? 'zwanga_activation' : 'operator_confirmation',
-          pendingMessage:
-            attempt === 1
-              ? 'Vérification rapide en cours. Si la demande est sur votre téléphone, confirmez-la avec votre PIN Mobile Money.'
-              : 'Paiement toujours en traitement. Nous continuons les actualisations automatiques ; inutile de relancer le paiement.',
-          suppressErrorDialog: true,
-          silentErrorMessage:
-            'La vérification prend plus de temps que prévu. Nous gardons la référence et continuons le suivi.',
-        });
-
-        if (
-          !subscriptionPaymentMountedRef.current ||
-          subscriptionPaymentPollingRunIdRef.current !== runId
-        ) {
-          return;
-        }
-
-        if (outcome === 'success' || outcome === 'failed') {
+        if (subscriptionPaymentMountedRef.current && subscriptionPaymentPollingRunIdRef.current === runId) {
           setIsSubscriptionPaymentAutoChecking(false);
+          setSubscriptionPaymentStage('waiting_long');
+          setSubscriptionPaymentMessage(
+            'Le paiement est encore en traitement. Ne payez pas une deuxième fois ; la référence reste gardée et Zwanga reprendra la vérification.',
+          );
+        }
+      })();
+    },
+    [checkSubscriptionPaymentByOrderNumber, isSubscriptionCardPayment],
+  );
+
+  const openCardPaymentUrl = useCallback(
+    async (paymentUrl: string, orderNumber: string | null, returnUrl: string) => {
+      setSubscriptionPaymentStage('card_redirect');
+      const result = await WebBrowser.openAuthSessionAsync(paymentUrl, returnUrl);
+
+      if (result.type !== 'success') {
+        if (orderNumber) {
+          const pendingMessage =
+            "Retour dans l'app détecté. Nous vérifions le statut du paiement par carte chez FlexPay.";
+          setSubscriptionPaymentStage('zwanga_activation');
+          setSubscriptionPaymentMessage(pendingMessage);
+          const outcome = await checkSubscriptionPaymentByOrderNumber(orderNumber, {
+            checkingStage: 'zwanga_activation',
+            pendingStage: 'zwanga_activation',
+            pendingMessage,
+            suppressErrorDialog: true,
+            silentErrorMessage:
+              'Retour détecté, mais la vérification prend plus de temps que prévu. La référence reste gardée.',
+          });
+
+          if (outcome === 'pending' || outcome === 'error') {
+            startSubscriptionPaymentAutoCheck(orderNumber, pendingMessage);
+          }
           return;
         }
 
-        nextDelay = SUBSCRIPTION_MOBILE_MONEY_AUTO_CHECK_INTERVAL_MS;
-      }
-
-      if (
-        subscriptionPaymentMountedRef.current &&
-        subscriptionPaymentPollingRunIdRef.current === runId
-      ) {
-        setIsSubscriptionPaymentAutoChecking(false);
-        setSubscriptionPaymentStage('waiting_long');
         setSubscriptionPaymentMessage(
-          'Le paiement est encore en traitement. Ne payez pas une deuxième fois ; la référence reste gardée et Zwanga reprendra la vérification.',
+          'Le paiement par carte a été fermé avant le retour FlexPay. Vous pouvez rouvrir la page ou vérifier le statut.',
         );
-      }
-    })();
-  }, [checkSubscriptionPaymentByOrderNumber, isSubscriptionCardPayment]);
-
-  const openCardPaymentUrl = useCallback(async (
-    paymentUrl: string,
-    orderNumber: string | null,
-    returnUrl: string,
-  ) => {
-    setSubscriptionPaymentStage('card_redirect');
-    const result = await WebBrowser.openAuthSessionAsync(paymentUrl, returnUrl);
-
-    if (result.type !== 'success') {
-      if (orderNumber) {
-        const pendingMessage = "Retour dans l'app détecté. Nous vérifions le statut du paiement par carte chez FlexPay.";
-        setSubscriptionPaymentStage('zwanga_activation');
-        setSubscriptionPaymentMessage(pendingMessage);
-        const outcome = await checkSubscriptionPaymentByOrderNumber(orderNumber, {
-          checkingStage: 'zwanga_activation',
-          pendingStage: 'zwanga_activation',
-          pendingMessage,
-          suppressErrorDialog: true,
-          silentErrorMessage:
-            'Retour détecté, mais la vérification prend plus de temps que prévu. La référence reste gardée.',
-        });
-
-        if (outcome === 'pending' || outcome === 'error') {
-          startSubscriptionPaymentAutoCheck(orderNumber, pendingMessage);
-        }
         return;
       }
 
-      setSubscriptionPaymentMessage(
-        'Le paiement par carte a été fermé avant le retour FlexPay. Vous pouvez rouvrir la page ou vérifier le statut.',
-      );
-      return;
-    }
-
-    const paymentResult = getCardPaymentResultFromUrl(result.url);
-    if (paymentResult === 'cancel') {
-      if (orderNumber) {
-        const pendingMessage = 'Retour carte reçu. Vérification FlexPay avant toute nouvelle tentative.';
-        const outcome = await checkSubscriptionPaymentByOrderNumber(orderNumber, {
-          checkingStage: 'zwanga_activation',
-          pendingStage: 'zwanga_activation',
-          pendingMessage,
-          suppressErrorDialog: true,
-          silentErrorMessage:
-            'Retour de paiement par carte reçu, mais la vérification prend plus de temps que prévu. La référence reste gardée.',
-        });
-        if (outcome === 'pending' || outcome === 'error') {
-          startSubscriptionPaymentAutoCheck(orderNumber, pendingMessage);
+      const paymentResult = getCardPaymentResultFromUrl(result.url);
+      if (paymentResult === 'cancel') {
+        if (orderNumber) {
+          const pendingMessage = 'Retour carte reçu. Vérification FlexPay avant toute nouvelle tentative.';
+          const outcome = await checkSubscriptionPaymentByOrderNumber(orderNumber, {
+            checkingStage: 'zwanga_activation',
+            pendingStage: 'zwanga_activation',
+            pendingMessage,
+            suppressErrorDialog: true,
+            silentErrorMessage:
+              'Retour de paiement par carte reçu, mais la vérification prend plus de temps que prévu. La référence reste gardée.',
+          });
+          if (outcome === 'pending' || outcome === 'error') {
+            startSubscriptionPaymentAutoCheck(orderNumber, pendingMessage);
+          }
+          return;
         }
+
+        setSubscriptionPaymentStage('failed');
+        setSubscriptionPaymentMessage('Paiement par carte annulé. Vous pouvez relancer le paiement.');
         return;
       }
 
-      setSubscriptionPaymentStage('failed');
-      setSubscriptionPaymentMessage('Paiement par carte annulé. Vous pouvez relancer le paiement.');
-      return;
-    }
-
-    if (paymentResult === 'decline') {
-      if (orderNumber) {
-        const pendingMessage = 'Retour carte reçu. Vérification FlexPay avant toute nouvelle tentative.';
-        const outcome = await checkSubscriptionPaymentByOrderNumber(orderNumber, {
-          checkingStage: 'zwanga_activation',
-          pendingStage: 'zwanga_activation',
-          pendingMessage,
-          suppressErrorDialog: true,
-          silentErrorMessage:
-            'Retour de paiement par carte reçu, mais la vérification prend plus de temps que prévu. La référence reste gardée.',
-        });
-        if (outcome === 'pending' || outcome === 'error') {
-          startSubscriptionPaymentAutoCheck(orderNumber, pendingMessage);
+      if (paymentResult === 'decline') {
+        if (orderNumber) {
+          const pendingMessage = 'Retour carte reçu. Vérification FlexPay avant toute nouvelle tentative.';
+          const outcome = await checkSubscriptionPaymentByOrderNumber(orderNumber, {
+            checkingStage: 'zwanga_activation',
+            pendingStage: 'zwanga_activation',
+            pendingMessage,
+            suppressErrorDialog: true,
+            silentErrorMessage:
+              'Retour de paiement par carte reçu, mais la vérification prend plus de temps que prévu. La référence reste gardée.',
+          });
+          if (outcome === 'pending' || outcome === 'error') {
+            startSubscriptionPaymentAutoCheck(orderNumber, pendingMessage);
+          }
+          return;
         }
+
+        setSubscriptionPaymentStage('failed');
+        setSubscriptionPaymentMessage('Paiement par carte refusé. Vérifiez votre carte ou essayez un autre moyen.');
         return;
       }
 
-      setSubscriptionPaymentStage('failed');
-      setSubscriptionPaymentMessage('Paiement par carte refusé. Vérifiez votre carte ou essayez un autre moyen.');
-      return;
-    }
+      if (!orderNumber) {
+        setSubscriptionPaymentMessage(
+          'Retour du paiement par carte reçu, mais la référence FlexPay est manquante. Revenez dans un instant et vérifiez le statut.',
+        );
+        return;
+      }
 
-    if (!orderNumber) {
-      setSubscriptionPaymentMessage(
-        'Retour du paiement par carte reçu, mais la référence FlexPay est manquante. Revenez dans un instant et vérifiez le statut.',
-      );
-      return;
-    }
-
-    const outcome = await checkSubscriptionPaymentByOrderNumber(
-      orderNumber,
-      {
+      const outcome = await checkSubscriptionPaymentByOrderNumber(orderNumber, {
         checkingStage: 'zwanga_activation',
         pendingStage: 'zwanga_activation',
         pendingMessage:
           paymentResult === 'success'
             ? 'Paiement par carte validé côté FlexPay, activation en cours.'
             : 'Retour carte reçu. Vérification FlexPay en cours avant activation.',
-      },
-    );
+      });
 
-    if (outcome === 'pending' || outcome === 'error') {
-      startSubscriptionPaymentAutoCheck(
-        orderNumber,
-        "Retour de paiement par carte reçu. Nous vérifions automatiquement l'activation.",
-      );
-    }
-  }, [checkSubscriptionPaymentByOrderNumber, startSubscriptionPaymentAutoCheck]);
+      if (outcome === 'pending' || outcome === 'error') {
+        startSubscriptionPaymentAutoCheck(
+          orderNumber,
+          "Retour de paiement par carte reçu. Nous vérifions automatiquement l'activation.",
+        );
+      }
+    },
+    [checkSubscriptionPaymentByOrderNumber, startSubscriptionPaymentAutoCheck],
+  );
 
   const applyStoredSubscriptionPayment = useCallback((storedPayment: StoredSubscriptionPayment) => {
     setSelectedSubscriptionPaymentChannel(storedPayment.channel);
     setSubscriptionPaymentOrderNumber(storedPayment.orderNumber);
-    setSubscriptionPaymentStage(
-      storedPayment.paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation',
-    );
+    setSubscriptionPaymentStage(storedPayment.paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation');
     setSubscriptionPaymentMessage(
       storedPayment.message ||
         'Abonnement non actif. Une tentative existe déjà ; nous gardons cette référence avant toute nouvelle tentative.',
@@ -1559,147 +1556,139 @@ export default function ProfileScreen() {
     setSubscriptionModalStep('payment');
   }, []);
 
-  const refreshSubscriptionFromBackend = useCallback(async (
-    options?: {
-      closeModalOnActive?: boolean;
-      pendingMessage?: string | null;
-      showSuccessDialog?: boolean;
-    },
-  ) => {
-    if (!isDriver) {
+  const refreshSubscriptionFromBackend = useCallback(
+    async (options?: { closeModalOnActive?: boolean; pendingMessage?: string | null; showSuccessDialog?: boolean }) => {
+      if (!isDriver) {
+        return false;
+      }
+
+      const [overviewResult] = await Promise.allSettled([
+        refetchPremiumOverview().unwrap(),
+        Promise.resolve(refetchProfile()),
+        Promise.resolve(refetchPaymentHistory()),
+      ]);
+
+      const overview = overviewResult.status === 'fulfilled' ? overviewResult.value : null;
+      if (overview?.isPremium || overview?.isActive) {
+        stopSubscriptionPaymentAutoCheck();
+        await clearStoredSubscriptionPayment();
+        setSubscriptionPaymentOrderNumber(null);
+        setSubscriptionPaymentMessage(null);
+        setSubscriptionPaymentStage('idle');
+        setSubscriptionPaymentAutoCheckAttempt(0);
+        setSubscriptionModalStep('method');
+        if (options?.closeModalOnActive) {
+          setSubscriptionModalVisible(false);
+        }
+        if (options?.showSuccessDialog) {
+          showDialog({
+            variant: 'success',
+            title: 'Abonnement actif',
+            message: 'Votre abonnement conducteur est actif. Vous pouvez publier plus de 5 trajets par jour.',
+          });
+        }
+        return true;
+      }
+
+      if (options?.pendingMessage) {
+        setSubscriptionPaymentStage(subscriptionPaymentOrderNumber ? 'operator_confirmation' : 'idle');
+        setSubscriptionPaymentMessage(options.pendingMessage);
+      }
       return false;
-    }
+    },
+    [
+      clearStoredSubscriptionPayment,
+      isDriver,
+      refetchPremiumOverview,
+      refetchPaymentHistory,
+      refetchProfile,
+      showDialog,
+      stopSubscriptionPaymentAutoCheck,
+    ],
+  );
 
-    const [overviewResult] = await Promise.allSettled([
-      refetchPremiumOverview().unwrap(),
-      Promise.resolve(refetchProfile()),
-      Promise.resolve(refetchPaymentHistory()),
-    ]);
-
-    const overview = overviewResult.status === 'fulfilled' ? overviewResult.value : null;
-    if (overview?.isPremium || overview?.isActive) {
-      stopSubscriptionPaymentAutoCheck();
-      await clearStoredSubscriptionPayment();
-      setSubscriptionPaymentOrderNumber(null);
-      setSubscriptionPaymentMessage(null);
-      setSubscriptionPaymentStage('idle');
-      setSubscriptionPaymentAutoCheckAttempt(0);
-      setSubscriptionModalStep('method');
-      if (options?.closeModalOnActive) {
-        setSubscriptionModalVisible(false);
-      }
-      if (options?.showSuccessDialog) {
-        showDialog({
-          variant: 'success',
-          title: 'Abonnement actif',
-          message: 'Votre abonnement conducteur est actif. Vous pouvez publier plus de 5 trajets par jour.',
-        });
-      }
-      return true;
-    }
-
-    if (options?.pendingMessage) {
-      setSubscriptionPaymentStage(subscriptionPaymentOrderNumber ? 'operator_confirmation' : 'idle');
-      setSubscriptionPaymentMessage(options.pendingMessage);
-    }
-    return false;
-  }, [
-    clearStoredSubscriptionPayment,
-    isDriver,
-    refetchPremiumOverview,
-    refetchPaymentHistory,
-    refetchProfile,
-    showDialog,
-    stopSubscriptionPaymentAutoCheck,
-  ]);
-
-  const restoreRecentPendingSubscriptionPayment = useCallback(async (
-    message?: string | null,
-  ) => {
-    if (!currentUser?.id) {
-      return null;
-    }
-
-    try {
-      const latestPaymentHistory = await refetchPaymentHistory().unwrap();
-      const latestPendingPayment = getMostRecentPendingSubscriptionPayment(latestPaymentHistory);
-      const storedPayment = latestPendingPayment
-        ? buildStoredSubscriptionPaymentFromHistory(
-            latestPendingPayment,
-            currentUser.id,
-            selectedSubscriptionPaymentChannel,
-          )
-        : null;
-
-      if (!storedPayment) {
+  const restoreRecentPendingSubscriptionPayment = useCallback(
+    async (message?: string | null) => {
+      if (!currentUser?.id) {
         return null;
       }
 
-      applyStoredSubscriptionPayment(storedPayment);
-      if (message) {
-        setSubscriptionPaymentMessage(message);
+      try {
+        const latestPaymentHistory = await refetchPaymentHistory().unwrap();
+        const latestPendingPayment = getMostRecentPendingSubscriptionPayment(latestPaymentHistory);
+        const storedPayment = latestPendingPayment
+          ? buildStoredSubscriptionPaymentFromHistory(
+              latestPendingPayment,
+              currentUser.id,
+              selectedSubscriptionPaymentChannel,
+            )
+          : null;
+
+        if (!storedPayment) {
+          return null;
+        }
+
+        applyStoredSubscriptionPayment(storedPayment);
+        if (message) {
+          setSubscriptionPaymentMessage(message);
+        }
+        await persistStoredSubscriptionPayment({
+          channel: storedPayment.channel,
+          message: message || storedPayment.message,
+          orderNumber: storedPayment.orderNumber,
+          paymentMethod: storedPayment.paymentMethod,
+          paymentUrl: storedPayment.paymentUrl,
+        });
+
+        return storedPayment;
+      } catch {
+        return null;
       }
-      await persistStoredSubscriptionPayment({
-        channel: storedPayment.channel,
-        message: message || storedPayment.message,
-        orderNumber: storedPayment.orderNumber,
-        paymentMethod: storedPayment.paymentMethod,
-        paymentUrl: storedPayment.paymentUrl,
-      });
+    },
+    [
+      applyStoredSubscriptionPayment,
+      currentUser?.id,
+      persistStoredSubscriptionPayment,
+      refetchPaymentHistory,
+      selectedSubscriptionPaymentChannel,
+    ],
+  );
 
-      return storedPayment;
-    } catch {
-      return null;
-    }
-  }, [
-    applyStoredSubscriptionPayment,
-    currentUser?.id,
-    persistStoredSubscriptionPayment,
-    refetchPaymentHistory,
-    selectedSubscriptionPaymentChannel,
-  ]);
-
-  const scheduleDeferredSubscriptionSync = useCallback((
-    message?: string | null,
-  ) => {
-    if (subscriptionDeferredSyncTimerRef.current) {
-      clearTimeout(subscriptionDeferredSyncTimerRef.current);
-    }
-
-    subscriptionDeferredSyncTimerRef.current = setTimeout(() => {
-      subscriptionDeferredSyncTimerRef.current = null;
-      if (!subscriptionPaymentMountedRef.current) {
-        return;
+  const scheduleDeferredSubscriptionSync = useCallback(
+    (message?: string | null) => {
+      if (subscriptionDeferredSyncTimerRef.current) {
+        clearTimeout(subscriptionDeferredSyncTimerRef.current);
       }
 
-      void (async () => {
-        const restoredPayment = await restoreRecentPendingSubscriptionPayment(message);
-        if (restoredPayment?.orderNumber) {
-          setSubscriptionModalStep('payment');
-          setSubscriptionPaymentMessage(
-            message ||
-              'Référence de paiement retrouvée côté Zwanga. Évitez de relancer le paiement ; le suivi automatique reprend.',
-          );
-          startSubscriptionPaymentAutoCheck(
-            restoredPayment.orderNumber,
-            message ||
-              'Référence de paiement retrouvée côté Zwanga. Nous reprenons le suivi automatique.',
-          );
+      subscriptionDeferredSyncTimerRef.current = setTimeout(() => {
+        subscriptionDeferredSyncTimerRef.current = null;
+        if (!subscriptionPaymentMountedRef.current) {
           return;
         }
 
-        await refreshSubscriptionFromBackend({
-          pendingMessage:
-            message ||
-            'Paiement encore en traitement côté Zwanga. Évitez de relancer immédiatement.',
-        });
-      })();
-    }, SUBSCRIPTION_DEFERRED_BACKEND_SYNC_DELAY_MS);
-  }, [
-    refreshSubscriptionFromBackend,
-    restoreRecentPendingSubscriptionPayment,
-    startSubscriptionPaymentAutoCheck,
-  ]);
+        void (async () => {
+          const restoredPayment = await restoreRecentPendingSubscriptionPayment(message);
+          if (restoredPayment?.orderNumber) {
+            setSubscriptionModalStep('payment');
+            setSubscriptionPaymentMessage(
+              message ||
+                'Référence de paiement retrouvée côté Zwanga. Évitez de relancer le paiement ; le suivi automatique reprend.',
+            );
+            startSubscriptionPaymentAutoCheck(
+              restoredPayment.orderNumber,
+              message || 'Référence de paiement retrouvée côté Zwanga. Nous reprenons le suivi automatique.',
+            );
+            return;
+          }
+
+          await refreshSubscriptionFromBackend({
+            pendingMessage: message || 'Paiement encore en traitement côté Zwanga. Évitez de relancer immédiatement.',
+          });
+        })();
+      }, SUBSCRIPTION_DEFERRED_BACKEND_SYNC_DELAY_MS);
+    },
+    [refreshSubscriptionFromBackend, restoreRecentPendingSubscriptionPayment, startSubscriptionPaymentAutoCheck],
+  );
 
   const closeIfPremiumAlreadyActive = useCallback(async () => {
     if (!isDriver) {
@@ -1716,67 +1705,70 @@ export default function ProfileScreen() {
     }
   }, [isDriver, refreshSubscriptionFromBackend]);
 
-  const resumeExistingSubscriptionPayment = useCallback(async (
-    storedPayment?: StoredSubscriptionPayment | null,
-    options?: {
-      openCardPayment?: boolean;
-      pendingMessage?: string;
+  const resumeExistingSubscriptionPayment = useCallback(
+    async (
+      storedPayment?: StoredSubscriptionPayment | null,
+      options?: {
+        openCardPayment?: boolean;
+        pendingMessage?: string;
+      },
+    ) => {
+      const paymentToResume = storedPayment ?? (await readStoredSubscriptionPayment());
+      const orderNumber = paymentToResume?.orderNumber ?? subscriptionPaymentOrderNumber;
+      if (!orderNumber) {
+        return null;
+      }
+
+      const pendingMessage =
+        options?.pendingMessage ||
+        'Un paiement existe déjà. Nous vérifions cette référence avant toute nouvelle tentative pour éviter un double débit.';
+
+      if (paymentToResume) {
+        applyStoredSubscriptionPayment(paymentToResume);
+      }
+      setSubscriptionModalVisible(true);
+      setSubscriptionModalStep('payment');
+      setSubscriptionPaymentOrderNumber(orderNumber);
+      setSubscriptionPaymentStage(
+        paymentToResume?.paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation',
+      );
+      setSubscriptionPaymentMessage(pendingMessage);
+
+      const outcome = await checkSubscriptionPaymentByOrderNumber(orderNumber, {
+        checkingStage: paymentToResume?.paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation',
+        pendingStage: paymentToResume?.paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation',
+        pendingMessage,
+        suppressErrorDialog: true,
+        silentErrorMessage:
+          'Paiement déjà lancé. La vérification prend plus de temps que prévu ; la référence reste gardée.',
+      });
+
+      if (outcome === 'success' || outcome === 'failed') {
+        return outcome;
+      }
+
+      if (options?.openCardPayment && paymentToResume?.paymentMethod === 'card' && paymentToResume.paymentUrl) {
+        const cardRedirectUrls = createCardPaymentRedirectUrls();
+        await openCardPaymentUrl(paymentToResume.paymentUrl, orderNumber, cardRedirectUrls.returnUrl);
+        return outcome;
+      }
+
+      if (!isSubscriptionPaymentAutoChecking) {
+        startSubscriptionPaymentAutoCheck(orderNumber, pendingMessage);
+      }
+
+      return outcome;
     },
-  ) => {
-    const paymentToResume = storedPayment ?? await readStoredSubscriptionPayment();
-    const orderNumber = paymentToResume?.orderNumber ?? subscriptionPaymentOrderNumber;
-    if (!orderNumber) {
-      return null;
-    }
-
-    const pendingMessage =
-      options?.pendingMessage ||
-      'Un paiement existe déjà. Nous vérifions cette référence avant toute nouvelle tentative pour éviter un double débit.';
-
-    if (paymentToResume) {
-      applyStoredSubscriptionPayment(paymentToResume);
-    }
-    setSubscriptionModalVisible(true);
-    setSubscriptionModalStep('payment');
-    setSubscriptionPaymentOrderNumber(orderNumber);
-    setSubscriptionPaymentStage(
-      paymentToResume?.paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation',
-    );
-    setSubscriptionPaymentMessage(pendingMessage);
-
-    const outcome = await checkSubscriptionPaymentByOrderNumber(orderNumber, {
-      checkingStage: paymentToResume?.paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation',
-      pendingStage: paymentToResume?.paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation',
-      pendingMessage,
-      suppressErrorDialog: true,
-      silentErrorMessage:
-        'Paiement déjà lancé. La vérification prend plus de temps que prévu ; la référence reste gardée.',
-    });
-
-    if (outcome === 'success' || outcome === 'failed') {
-      return outcome;
-    }
-
-    if (options?.openCardPayment && paymentToResume?.paymentMethod === 'card' && paymentToResume.paymentUrl) {
-      const cardRedirectUrls = createCardPaymentRedirectUrls();
-      await openCardPaymentUrl(paymentToResume.paymentUrl, orderNumber, cardRedirectUrls.returnUrl);
-      return outcome;
-    }
-
-    if (!isSubscriptionPaymentAutoChecking) {
-      startSubscriptionPaymentAutoCheck(orderNumber, pendingMessage);
-    }
-
-    return outcome;
-  }, [
-    applyStoredSubscriptionPayment,
-    checkSubscriptionPaymentByOrderNumber,
-    isSubscriptionPaymentAutoChecking,
-    openCardPaymentUrl,
-    readStoredSubscriptionPayment,
-    startSubscriptionPaymentAutoCheck,
-    subscriptionPaymentOrderNumber,
-  ]);
+    [
+      applyStoredSubscriptionPayment,
+      checkSubscriptionPaymentByOrderNumber,
+      isSubscriptionPaymentAutoChecking,
+      openCardPaymentUrl,
+      readStoredSubscriptionPayment,
+      startSubscriptionPaymentAutoCheck,
+      subscriptionPaymentOrderNumber,
+    ],
+  );
 
   const handleSubscribePro = async () => {
     if (needsDriverOnboarding) {
@@ -1847,8 +1839,7 @@ export default function ProfileScreen() {
     if (storedPayment) {
       await resumeExistingSubscriptionPayment(storedPayment, {
         openCardPayment: storedPayment.paymentMethod === 'card',
-        pendingMessage:
-          'Paiement déjà lancé. Nous vérifions cette référence avant de rouvrir ou relancer le paiement.',
+        pendingMessage: 'Paiement déjà lancé. Nous vérifions cette référence avant de rouvrir ou relancer le paiement.',
       });
       return;
     }
@@ -1889,9 +1880,7 @@ export default function ProfileScreen() {
         return;
       }
 
-      const cardRedirectUrls = isSubscriptionCardPayment
-        ? createCardPaymentRedirectUrls()
-        : null;
+      const cardRedirectUrls = isSubscriptionCardPayment ? createCardPaymentRedirectUrls() : null;
       const response = await subscribeToPro({
         paymentMethod,
         phone: isSubscriptionCardPayment ? undefined : phone,
@@ -2010,10 +1999,7 @@ export default function ProfileScreen() {
         "Actualisation lancée. Si le paiement est confirmé, Zwanga activera l'abonnement automatiquement.",
     });
     if (outcome === 'pending' || outcome === 'error') {
-      startSubscriptionPaymentAutoCheck(
-        orderNumber,
-        'Nous continuons le suivi automatique de cette référence.',
-      );
+      startSubscriptionPaymentAutoCheck(orderNumber, 'Nous continuons le suivi automatique de cette référence.');
     }
   };
 
@@ -2110,8 +2096,7 @@ export default function ProfileScreen() {
       }
 
       if (subscriptionPaymentOrderNumber) {
-        const pendingMessage =
-          'Retour dans l’app détecté. Nous actualisons cette référence sans relancer de paiement.';
+        const pendingMessage = 'Retour dans l’app détecté. Nous actualisons cette référence sans relancer de paiement.';
         void checkSubscriptionPaymentByOrderNumber(subscriptionPaymentOrderNumber, {
           checkingStage: isSubscriptionCardPayment ? 'zwanga_activation' : 'operator_confirmation',
           pendingStage: isSubscriptionCardPayment ? 'zwanga_activation' : 'operator_confirmation',
@@ -2156,7 +2141,10 @@ export default function ProfileScreen() {
     if (isDriver) {
       router.replace(
         paymentStatus
-          ? { pathname: '/subscriptions/payment', params: { paymentStatus: String(paymentStatus) } }
+          ? {
+              pathname: '/subscriptions/payment',
+              params: { paymentStatus: String(paymentStatus) },
+            }
           : ({ pathname: '/subscriptions/payment' } as any),
       );
     }
@@ -2234,7 +2222,7 @@ export default function ProfileScreen() {
       showDialog({
         variant: 'warning',
         title: 'Documents requis',
-        message: 'Merci de fournir le recto de votre pièce ainsi qu\'un selfie.',
+        message: "Merci de fournir le recto de votre pièce ainsi qu'un selfie.",
       });
       return;
     }
@@ -2243,19 +2231,20 @@ export default function ProfileScreen() {
       const formData = buildKycFormData({ front, selfie });
       const result = await uploadKyc(formData).unwrap();
       setKycModalVisible(false);
-      
+
       // Refetch immédiatement pour obtenir le statut mis à jour
       await Promise.all([refetchKycStatus(), refetchProfile()]);
-      
+
       // Vérifier le statut retourné par le backend
       const kycStatusAfterUpload = result?.status;
-      
+
       if (kycStatusAfterUpload === 'approved') {
         // KYC approuvé immédiatement (validation automatique réussie)
         showDialog({
           variant: 'success',
           title: 'KYC validé avec succès !',
-          message: 'Votre identité a été vérifiée automatiquement. Vous pouvez maintenant accéder à toutes les fonctionnalités de l\'application.',
+          message:
+            "Votre identité a été vérifiée automatiquement. Vous pouvez maintenant accéder à toutes les fonctionnalités de l'application.",
         });
       } else if (kycStatusAfterUpload === 'rejected') {
         // KYC rejeté (validation automatique échouée)
@@ -2270,13 +2259,15 @@ export default function ProfileScreen() {
         showDialog({
           variant: 'success',
           title: 'Documents envoyés',
-          message: 'Vos documents sont en cours de vérification. Nous vous informerons dès que la vérification sera terminée.',
+          message:
+            'Vos documents sont en cours de vérification. Nous vous informerons dès que la vérification sera terminée.',
         });
       }
     } catch (error: any) {
       // Gérer les erreurs détaillées du backend
-      let errorMessage = error?.data?.message ?? error?.error ?? 'Impossible de soumettre les documents pour le moment.';
-      
+      let errorMessage =
+        error?.data?.message ?? error?.error ?? 'Impossible de soumettre les documents pour le moment.';
+
       // Si le message est une chaîne, la traiter directement
       if (typeof errorMessage === 'string') {
         // Le backend peut retourner des messages multi-lignes avec des détails
@@ -2284,7 +2275,7 @@ export default function ProfileScreen() {
       } else if (Array.isArray(errorMessage)) {
         errorMessage = errorMessage.join('\n');
       }
-      
+
       showDialog({
         variant: 'danger',
         title: 'Erreur KYC',
@@ -2308,11 +2299,15 @@ export default function ProfileScreen() {
   }, [isKycApproved, kycModalVisible]);
 
   const badges = [
-    ...(currentUser?.role === 'driver'
-      ? [{ icon: 'car', color: Colors.primary, label: 'Conducteur' }]
-      : []),
+    ...(currentUser?.role === 'driver' ? [{ icon: 'car', color: Colors.primary, label: 'Conducteur' }] : []),
     ...(isKycApproved
-      ? [{ icon: 'shield-checkmark', color: Colors.success, label: 'KYC validé' }]
+      ? [
+          {
+            icon: 'shield-checkmark',
+            color: Colors.success,
+            label: 'KYC validé',
+          },
+        ]
       : []),
   ];
 
@@ -2336,11 +2331,14 @@ export default function ProfileScreen() {
     setPinStep('otp');
     setOldPin('');
     setOtpCode(['', '', '', '', '']);
-    
+
     // Envoyer automatiquement l'OTP
     try {
       setIsSendingOtp(true);
-      await sendPhoneVerificationOtp({ phone: currentUser?.phone || '', context: 'update' }).unwrap();
+      await sendPhoneVerificationOtp({
+        phone: currentUser?.phone || '',
+        context: 'update',
+      }).unwrap();
       showDialog({
         variant: 'success',
         title: 'Code envoyé',
@@ -2353,7 +2351,7 @@ export default function ProfileScreen() {
       showDialog({
         variant: 'danger',
         title: 'Erreur',
-        message: error?.data?.message || 'Erreur lors de l\'envoi du code',
+        message: error?.data?.message || "Erreur lors de l'envoi du code",
       });
     } finally {
       setIsSendingOtp(false);
@@ -2399,12 +2397,19 @@ export default function ProfileScreen() {
   const handleVerifyOtpForPinChange = async () => {
     const code = otpCode.join('');
     if (code.length !== 5) {
-      showDialog({ variant: 'danger', title: 'Code incomplet', message: 'Veuillez entrer le code complet (5 chiffres)' });
+      showDialog({
+        variant: 'danger',
+        title: 'Code incomplet',
+        message: 'Veuillez entrer le code complet (5 chiffres)',
+      });
       return;
     }
 
     try {
-      await verifyPhoneOtp({ phone: currentUser?.phone || '', otp: code }).unwrap();
+      await verifyPhoneOtp({
+        phone: currentUser?.phone || '',
+        otp: code,
+      }).unwrap();
       setPinStep('newPin');
       setTimeout(() => {
         pinInputRef.current?.focus();
@@ -2426,7 +2431,11 @@ export default function ProfileScreen() {
 
   const handleVerifyOldPin = () => {
     if (oldPin.length !== 4) {
-      showDialog({ variant: 'danger', title: 'PIN incomplet', message: 'Veuillez entrer votre code PIN actuel (4 chiffres)' });
+      showDialog({
+        variant: 'danger',
+        title: 'PIN incomplet',
+        message: 'Veuillez entrer votre code PIN actuel (4 chiffres)',
+      });
       return;
     }
     // Passer à l'étape de saisie du nouveau PIN
@@ -2449,24 +2458,40 @@ export default function ProfileScreen() {
 
   const handleUpdatePin = async () => {
     if (newPin.length !== 4) {
-      showDialog({ variant: 'danger', title: 'PIN incomplet', message: 'Veuillez entrer un PIN à 4 chiffres' });
+      showDialog({
+        variant: 'danger',
+        title: 'PIN incomplet',
+        message: 'Veuillez entrer un PIN à 4 chiffres',
+      });
       return;
     }
-    
+
     if (newPinConfirm.length !== 4) {
-      showDialog({ variant: 'danger', title: 'Confirmation incomplète', message: 'Veuillez confirmer votre PIN' });
+      showDialog({
+        variant: 'danger',
+        title: 'Confirmation incomplète',
+        message: 'Veuillez confirmer votre PIN',
+      });
       return;
     }
-    
+
     if (newPin !== newPinConfirm) {
-      showDialog({ variant: 'danger', title: 'PIN non correspondant', message: 'Les deux codes PIN ne correspondent pas' });
+      showDialog({
+        variant: 'danger',
+        title: 'PIN non correspondant',
+        message: 'Les deux codes PIN ne correspondent pas',
+      });
       setNewPinConfirm('');
       pinConfirmInputRef.current?.focus();
       return;
     }
 
     if (!forgotPinMode && oldPin === newPin) {
-      showDialog({ variant: 'danger', title: 'PIN identique', message: 'Le nouveau PIN doit être différent de l\'ancien PIN' });
+      showDialog({
+        variant: 'danger',
+        title: 'PIN identique',
+        message: "Le nouveau PIN doit être différent de l'ancien PIN",
+      });
       return;
     }
 
@@ -2483,7 +2508,7 @@ export default function ProfileScreen() {
           newPin: newPin,
         }).unwrap();
       }
-      
+
       setPinModalVisible(false);
       setPinStep('oldPin');
       setForgotPinMode(false);
@@ -2491,7 +2516,7 @@ export default function ProfileScreen() {
       setNewPin('');
       setNewPinConfirm('');
       setOtpCode(['', '', '', '', '']);
-      
+
       showDialog({
         variant: 'success',
         title: 'PIN modifié',
@@ -2516,9 +2541,7 @@ export default function ProfileScreen() {
 
   // Calculer les compteurs pour les demandes de trajet
   const tripRequestsCount = useMemo(() => {
-    const activeRequests = myTripRequests.filter(
-      (req) => req.status === 'pending' || req.status === 'offers_received'
-    );
+    const activeRequests = myTripRequests.filter((req) => req.status === 'pending' || req.status === 'offers_received');
     return activeRequests.length;
   }, [myTripRequests]);
 
@@ -2606,6 +2629,16 @@ export default function ProfileScreen() {
       meta: 'Solde et partage',
       onPress: () => router.push('/wallet' as any),
     },
+    ...(isDriver
+      ? [
+          {
+            icon: 'cash-outline' as keyof typeof Ionicons.glyphMap,
+            label: 'Revenus',
+            meta: `${formatReferralTokens(driverSettlement?.availableBalance)} ${driverSettlement?.currency ?? 'CDF'} disponibles`,
+            onPress: () => router.push('/driver-earnings' as any),
+          },
+        ]
+      : []),
     {
       icon: 'person-outline' as keyof typeof Ionicons.glyphMap,
       label: 'Infos',
@@ -2615,8 +2648,17 @@ export default function ProfileScreen() {
   ];
 
   const menuItems = [
-    { icon: 'lock-closed-outline', label: 'Modifier le code PIN', route: null, onPress: handleOpenPinModal },
-    { icon: 'star-outline', label: 'Lieux favoris', route: '/favorite-locations' },
+    {
+      icon: 'lock-closed-outline',
+      label: 'Modifier le code PIN',
+      route: null,
+      onPress: handleOpenPinModal,
+    },
+    {
+      icon: 'star-outline',
+      label: 'Lieux favoris',
+      route: '/favorite-locations',
+    },
     ...(isDriver
       ? [
           {
@@ -2628,7 +2670,11 @@ export default function ProfileScreen() {
           },
         ]
       : []),
-    { icon: 'notifications-outline', label: 'Notifications', route: '/notifications' },
+    {
+      icon: 'notifications-outline',
+      label: 'Notifications',
+      route: '/notifications',
+    },
     { icon: 'help-circle-outline', label: 'Aide & Support', route: '/support' },
   ];
 
@@ -2668,7 +2714,9 @@ export default function ProfileScreen() {
               <View style={styles.avatarWrapper}>
                 {currentUser?.profilePicture || user?.avatar ? (
                   <Image
-                    source={{ uri: currentUser?.profilePicture ?? user?.avatar ?? undefined }}
+                    source={{
+                      uri: currentUser?.profilePicture ?? user?.avatar ?? undefined,
+                    }}
                     style={styles.avatarImage}
                   />
                 ) : (
@@ -2687,11 +2735,7 @@ export default function ProfileScreen() {
                   <Ionicons name="checkmark-sharp" size={14} color={Colors.white} />
                 </View>
               )}
-              <TouchableOpacity 
-                style={styles.cameraBadge}
-                onPress={changeProfilePhoto}
-                disabled={isUploading}
-              >
+              <TouchableOpacity style={styles.cameraBadge} onPress={changeProfilePhoto} disabled={isUploading}>
                 <Ionicons name="camera" size={14} color={Colors.white} />
               </TouchableOpacity>
             </TouchableOpacity>
@@ -2712,9 +2756,7 @@ export default function ProfileScreen() {
                     size={12}
                     color={Colors.primaryDark}
                   />
-                  <Text style={styles.userRolePillText}>
-                    {displaysDriverRole ? 'Conducteur' : 'Passager'}
-                  </Text>
+                  <Text style={styles.userRolePillText}>{displaysDriverRole ? 'Conducteur' : 'Passager'}</Text>
                 </View>
                 {isPremiumActive ? (
                   <View style={styles.userRolePill}>
@@ -2770,10 +2812,7 @@ export default function ProfileScreen() {
                 activeOpacity={0.85}
                 disabled={isPriorityCtaBusy}
                 onPress={priorityCta.onPress}
-                style={[
-                  styles.profileOverviewCta,
-                  isPriorityCtaBusy && styles.profileOverviewCtaDisabled,
-                ]}
+                style={[styles.profileOverviewCta, isPriorityCtaBusy && styles.profileOverviewCtaDisabled]}
               >
                 {isPriorityCtaBusy ? (
                   <ActivityIndicator size="small" color={Colors.white} />
@@ -2838,204 +2877,205 @@ export default function ProfileScreen() {
 
           {false && (
             <>
-          <TouchableOpacity
-            style={[styles.mainActionCard, { borderColor: Colors.primary + '30' }]}
-            onPress={() => router.push('/bookings')}
-          >
-            <View style={[styles.mainActionIcon, { backgroundColor: Colors.primary + '15' }]}>
-              <Ionicons name="calendar" size={24} color={Colors.primary} />
-            </View>
-            <View style={styles.mainActionContent}>
-              <Text style={styles.mainActionTitle}>Réservations</Text>
-              <Text style={styles.mainActionSubtitle} numberOfLines={1}>
-                {stats?.bookingsAsPassenger ?? 0} Passager · {stats?.bookingsAsDriver ?? 0} Conducteur
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.mainActionCard, { borderColor: Colors.warning + '30' }]}
-            onPress={() => router.push('/my-requests')}
-          >
-            <View style={[styles.mainActionIcon, { backgroundColor: Colors.warning + '15' }]}>
-              <Ionicons name="document-text" size={24} color={Colors.warning} />
-            </View>
-            <View style={styles.mainActionContent}>
-              <Text style={styles.mainActionTitle}>Mes Demandes</Text>
-              <Text style={styles.mainActionSubtitle} numberOfLines={1}>
-                {tripRequestsStats.activeRequests} actives · {tripRequestsStats.requestsWithOffers} offres
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
-          </TouchableOpacity>
-
-
-          {/* Section "Devenir conducteur" pour les passagers */}
-          {needsDriverOnboarding && (
-            <Animated.View entering={FadeInDown.delay(200)}>
               <TouchableOpacity
-                style={styles.becomeDriverCard}
-                disabled={isUpdatingUser}
-                onPress={handleStartDriverOnboarding}
-                activeOpacity={0.8}
+                style={[styles.mainActionCard, { borderColor: Colors.primary + '30' }]}
+                onPress={() => router.push('/bookings')}
               >
-                <LinearGradient
-                  colors={[Colors.secondary, '#F59E0B']}
-                  style={styles.becomeDriverGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  <View style={styles.becomeDriverContent}>
-                    <View style={styles.becomeDriverIconContainer}>
-                      <Ionicons name="car-sport" size={32} color={Colors.white} />
-                    </View>
-                    <View style={styles.becomeDriverTextContainer}>
-                      <Text style={styles.becomeDriverTitle}>Devenir conducteur</Text>
-                      <Text style={styles.becomeDriverSubtitle}>
-                        {"Gagnez de l'argent en proposant des trajets"}
-                      </Text>
-                      <View style={styles.becomeDriverProgress}>
-                        <View style={styles.becomeDriverProgressItem}>
-                          <Ionicons
-                            name={vehicleList.length > 0 ? 'checkmark-circle' : 'ellipse-outline'}
-                            size={16}
-                            color={vehicleList.length > 0 ? Colors.white : 'rgba(255,255,255,0.6)'}
-                          />
-                          <Text
-                            style={[
-                              styles.becomeDriverProgressText,
-                              vehicleList.length > 0 && styles.becomeDriverProgressTextCompleted,
-                            ]}
-                          >
-                            Véhicule
-                          </Text>
+                <View style={[styles.mainActionIcon, { backgroundColor: Colors.primary + '15' }]}>
+                  <Ionicons name="calendar" size={24} color={Colors.primary} />
+                </View>
+                <View style={styles.mainActionContent}>
+                  <Text style={styles.mainActionTitle}>Réservations</Text>
+                  <Text style={styles.mainActionSubtitle} numberOfLines={1}>
+                    {stats?.bookingsAsPassenger ?? 0} Passager · {stats?.bookingsAsDriver ?? 0} Conducteur
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.mainActionCard, { borderColor: Colors.warning + '30' }]}
+                onPress={() => router.push('/my-requests')}
+              >
+                <View style={[styles.mainActionIcon, { backgroundColor: Colors.warning + '15' }]}>
+                  <Ionicons name="document-text" size={24} color={Colors.warning} />
+                </View>
+                <View style={styles.mainActionContent}>
+                  <Text style={styles.mainActionTitle}>Mes Demandes</Text>
+                  <Text style={styles.mainActionSubtitle} numberOfLines={1}>
+                    {tripRequestsStats.activeRequests} actives · {tripRequestsStats.requestsWithOffers} offres
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={Colors.gray[300]} />
+              </TouchableOpacity>
+
+              {/* Section "Devenir conducteur" pour les passagers */}
+              {needsDriverOnboarding && (
+                <Animated.View entering={FadeInDown.delay(200)}>
+                  <TouchableOpacity
+                    style={styles.becomeDriverCard}
+                    disabled={isUpdatingUser}
+                    onPress={handleStartDriverOnboarding}
+                    activeOpacity={0.8}
+                  >
+                    <LinearGradient
+                      colors={[Colors.secondary, '#F59E0B']}
+                      style={styles.becomeDriverGradient}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    >
+                      <View style={styles.becomeDriverContent}>
+                        <View style={styles.becomeDriverIconContainer}>
+                          <Ionicons name="car-sport" size={32} color={Colors.white} />
                         </View>
-                        <View style={styles.becomeDriverProgressItem}>
-                          <Ionicons
-                            name={isKycApproved ? 'checkmark-circle' : 'ellipse-outline'}
-                            size={16}
-                            color={isKycApproved ? Colors.white : 'rgba(255,255,255,0.6)'}
-                          />
-                          <Text
-                            style={[
-                              styles.becomeDriverProgressText,
-                              isKycApproved && styles.becomeDriverProgressTextCompleted,
-                            ]}
-                          >
-                            KYC
+                        <View style={styles.becomeDriverTextContainer}>
+                          <Text style={styles.becomeDriverTitle}>Devenir conducteur</Text>
+                          <Text style={styles.becomeDriverSubtitle}>
+                            {"Gagnez de l'argent en proposant des trajets"}
                           </Text>
+                          <View style={styles.becomeDriverProgress}>
+                            <View style={styles.becomeDriverProgressItem}>
+                              <Ionicons
+                                name={vehicleList.length > 0 ? 'checkmark-circle' : 'ellipse-outline'}
+                                size={16}
+                                color={vehicleList.length > 0 ? Colors.white : 'rgba(255,255,255,0.6)'}
+                              />
+                              <Text
+                                style={[
+                                  styles.becomeDriverProgressText,
+                                  vehicleList.length > 0 && styles.becomeDriverProgressTextCompleted,
+                                ]}
+                              >
+                                Véhicule
+                              </Text>
+                            </View>
+                            <View style={styles.becomeDriverProgressItem}>
+                              <Ionicons
+                                name={isKycApproved ? 'checkmark-circle' : 'ellipse-outline'}
+                                size={16}
+                                color={isKycApproved ? Colors.white : 'rgba(255,255,255,0.6)'}
+                              />
+                              <Text
+                                style={[
+                                  styles.becomeDriverProgressText,
+                                  isKycApproved && styles.becomeDriverProgressTextCompleted,
+                                ]}
+                              >
+                                KYC
+                              </Text>
+                            </View>
+                          </View>
                         </View>
                       </View>
-                    </View>
-                  </View>
-                  {isUpdatingUser ? (
-                    <ActivityIndicator size="small" color={Colors.white} style={styles.becomeDriverArrow} />
-                  ) : (
-                    <Ionicons name="arrow-forward-circle" size={24} color={Colors.white} style={styles.becomeDriverArrow} />
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-            </Animated.View>
-          )}
-
+                      {isUpdatingUser ? (
+                        <ActivityIndicator size="small" color={Colors.white} style={styles.becomeDriverArrow} />
+                      ) : (
+                        <Ionicons
+                          name="arrow-forward-circle"
+                          size={24}
+                          color={Colors.white}
+                          style={styles.becomeDriverArrow}
+                        />
+                      )}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </Animated.View>
+              )}
             </>
           )}
 
           {shouldShowProDetailsCard && (
             <Animated.View entering={FadeInDown.delay(260)}>
-            <View style={[styles.proCard, isPremiumActive && styles.proCardActive]}>
-              <View style={styles.proHeader}>
-                <View style={[styles.proIcon, isPremiumActive && styles.proIconActive]}>
-                  <Ionicons
-                    name={isPremiumActive ? 'shield-checkmark' : 'sparkles-outline'}
-                    size={22}
-                    color={isPremiumActive ? Colors.white : Colors.primary}
-                  />
-                </View>
-                <View style={styles.proTitleContent}>
-                  <View style={styles.proTitleRow}>
-                    <Text style={styles.proTitle}>Zwanga Pro</Text>
-                    {isPremiumActive && (
-                      <View style={styles.proBadge}>
-                        <Text style={styles.proBadgeText}>Actif</Text>
-                      </View>
-                    )}
+              <View style={[styles.proCard, isPremiumActive && styles.proCardActive]}>
+                <View style={styles.proHeader}>
+                  <View style={[styles.proIcon, isPremiumActive && styles.proIconActive]}>
+                    <Ionicons
+                      name={isPremiumActive ? 'shield-checkmark' : 'sparkles-outline'}
+                      size={22}
+                      color={isPremiumActive ? Colors.white : Colors.primary}
+                    />
                   </View>
-                  <Text style={styles.proSubtitle} numberOfLines={2}>
-                    {!needsDriverOnboarding
-                      ? '5 trajets par jour inclus, abonnement pour publier sans blocage.'
-                      : 'Complétez votre profil conducteur avant de publier des trajets.'}
+                  <View style={styles.proTitleContent}>
+                    <View style={styles.proTitleRow}>
+                      <Text style={styles.proTitle}>Zwanga Pro</Text>
+                      {isPremiumActive && (
+                        <View style={styles.proBadge}>
+                          <Text style={styles.proBadgeText}>Actif</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.proSubtitle} numberOfLines={2}>
+                      {!needsDriverOnboarding
+                        ? '5 trajets par jour inclus, abonnement pour publier sans blocage.'
+                        : 'Complétez votre profil conducteur avant de publier des trajets.'}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.proBenefitRow}>
+                  <View style={styles.proBenefitPill}>
+                    <Ionicons name="ribbon-outline" size={14} color={Colors.primary} />
+                    <Text style={styles.proBenefitText}>{proPriceLabel}/mois</Text>
+                  </View>
+                  <View style={styles.proBenefitPill}>
+                    <Ionicons name="trending-up-outline" size={14} color={Colors.info} />
+                    <Text style={styles.proBenefitText}>Plus de 5 trajets/jour</Text>
+                  </View>
+                </View>
+
+                {!needsDriverOnboarding && premiumOverview?.documentFundingEnabled && (
+                  <Text style={styles.proFundingText} numberOfLines={2}>
+                    {"Financement documents jusqu'à "}
+                    {formatSubscriptionAmount(
+                      premiumOverview.documentFundingLimit ?? undefined,
+                      premiumOverview.documentFundingCurrency,
+                    )}
+                    {'.'}
                   </Text>
-                </View>
+                )}
+
+                {needsDriverOnboarding ? (
+                  <TouchableOpacity
+                    style={styles.proPrimaryButton}
+                    onPress={handleStartDriverOnboarding}
+                    disabled={isUpdatingUser}
+                    activeOpacity={0.85}
+                  >
+                    {isUpdatingUser ? (
+                      <ActivityIndicator color={Colors.white} />
+                    ) : (
+                      <>
+                        <Text style={styles.proPrimaryButtonText}>Devenir conducteur</Text>
+                        <Ionicons name="arrow-forward" size={16} color={Colors.white} />
+                      </>
+                    )}
+                  </TouchableOpacity>
+                ) : isPremiumActive ? (
+                  <View style={styles.proActivePanel}>
+                    <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
+                    <Text style={styles.proActiveText} numberOfLines={2}>
+                      Pack {getPlanLabel(premiumOverview?.plan)} actif
+                      {proEndDateLabel ? ` jusqu'au ${proEndDateLabel}` : ''}
+                    </Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.proSecondaryButton}
+                    onPress={handleSubscribePro}
+                    disabled={proBusy}
+                    activeOpacity={0.85}
+                  >
+                    {proBusy ? (
+                      <ActivityIndicator color={Colors.primary} />
+                    ) : (
+                      <>
+                        <Text style={styles.proSecondaryButtonText}>{"S'abonner \u00e0 Zwanga Pro"}</Text>
+                        <Text style={styles.proSecondaryPrice}>{proPriceLabel}</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
               </View>
-
-              <View style={styles.proBenefitRow}>
-                <View style={styles.proBenefitPill}>
-                  <Ionicons name="ribbon-outline" size={14} color={Colors.primary} />
-                  <Text style={styles.proBenefitText}>{proPriceLabel}/mois</Text>
-                </View>
-                <View style={styles.proBenefitPill}>
-                  <Ionicons name="trending-up-outline" size={14} color={Colors.info} />
-                  <Text style={styles.proBenefitText}>Plus de 5 trajets/jour</Text>
-                </View>
-              </View>
-
-              {!needsDriverOnboarding && premiumOverview?.documentFundingEnabled && (
-                <Text style={styles.proFundingText} numberOfLines={2}>
-                  {"Financement documents jusqu'à "}
-                  {formatSubscriptionAmount(
-                    premiumOverview.documentFundingLimit ?? undefined,
-                    premiumOverview.documentFundingCurrency,
-                  )}
-                  {'.'}
-                </Text>
-              )}
-
-              {needsDriverOnboarding ? (
-                <TouchableOpacity
-                  style={styles.proPrimaryButton}
-                  onPress={handleStartDriverOnboarding}
-                  disabled={isUpdatingUser}
-                  activeOpacity={0.85}
-                >
-                  {isUpdatingUser ? (
-                    <ActivityIndicator color={Colors.white} />
-                  ) : (
-                    <>
-                      <Text style={styles.proPrimaryButtonText}>Devenir conducteur</Text>
-                      <Ionicons name="arrow-forward" size={16} color={Colors.white} />
-                    </>
-                  )}
-                </TouchableOpacity>
-              ) : isPremiumActive ? (
-                <View style={styles.proActivePanel}>
-                  <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
-                  <Text style={styles.proActiveText} numberOfLines={2}>
-                    Pack {getPlanLabel(premiumOverview?.plan)} actif
-                    {proEndDateLabel ? ` jusqu'au ${proEndDateLabel}` : ''}
-                  </Text>
-                </View>
-              ) : (
-                <TouchableOpacity
-                  style={styles.proSecondaryButton}
-                  onPress={handleSubscribePro}
-                  disabled={proBusy}
-                  activeOpacity={0.85}
-                >
-                  {proBusy ? (
-                    <ActivityIndicator color={Colors.primary} />
-                  ) : (
-                    <>
-                      <Text style={styles.proSecondaryButtonText}>
-                        {"S'abonner \u00e0 Zwanga Pro"}
-                      </Text>
-                      <Text style={styles.proSecondaryPrice}>{proPriceLabel}</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              )}
-            </View>
             </Animated.View>
           )}
 
@@ -3075,39 +3115,39 @@ export default function ProfileScreen() {
 
         {false && (
           <>
-        <View style={styles.section}>
-          <Text style={styles.sectionHeaderTitle}>Activité</Text>
-          <View style={styles.statsGrid}>
-            {derivedStats.map((stat, index) => (
-              <View key={stat.label} style={styles.statGridItem}>
-                <Text style={[styles.statGridValue, { color: stat.color }]}>{stat.value}</Text>
-                <Text style={styles.statGridLabel}>{stat.label}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {badges.length > 0 && (
-          <View style={styles.badgesContainer}>
-            <View style={styles.badgesCard}>
-              <Text style={styles.badgesTitle}>Badges</Text>
-              <View style={styles.badgesList}>
-                {badges.map((badge, index) => (
-                  <Animated.View
-                    key={`${badge.label}-${index}`}
-                    entering={FadeInDown.delay(index * 100)}
-                    style={styles.badgeItem}
-                  >
-                    <View style={[styles.badgeIcon, { backgroundColor: badge.color + '20' }]}>
-                      <Ionicons name={badge.icon as any} size={32} color={badge.color} />
-                    </View>
-                    <Text style={styles.badgeLabel}>{badge.label}</Text>
-                  </Animated.View>
+            <View style={styles.section}>
+              <Text style={styles.sectionHeaderTitle}>Activité</Text>
+              <View style={styles.statsGrid}>
+                {derivedStats.map((stat, index) => (
+                  <View key={stat.label} style={styles.statGridItem}>
+                    <Text style={[styles.statGridValue, { color: stat.color }]}>{stat.value}</Text>
+                    <Text style={styles.statGridLabel}>{stat.label}</Text>
+                  </View>
                 ))}
               </View>
             </View>
-          </View>
-        )}
+
+            {badges.length > 0 && (
+              <View style={styles.badgesContainer}>
+                <View style={styles.badgesCard}>
+                  <Text style={styles.badgesTitle}>Badges</Text>
+                  <View style={styles.badgesList}>
+                    {badges.map((badge, index) => (
+                      <Animated.View
+                        key={`${badge.label}-${index}`}
+                        entering={FadeInDown.delay(index * 100)}
+                        style={styles.badgeItem}
+                      >
+                        <View style={[styles.badgeIcon, { backgroundColor: badge.color + '20' }]}>
+                          <Ionicons name={badge.icon as any} size={32} color={badge.color} />
+                        </View>
+                        <Text style={styles.badgeLabel}>{badge.label}</Text>
+                      </Animated.View>
+                    ))}
+                  </View>
+                </View>
+              </View>
+            )}
           </>
         )}
 
@@ -3125,12 +3165,7 @@ export default function ProfileScreen() {
                 onPress={() => setReviewsModalVisible(true)}
                 disabled={reviewCount === 0}
               >
-                <Text
-                  style={[
-                    styles.reviewsLinkText,
-                    reviewCount === 0 && styles.reviewsLinkTextDisabled,
-                  ]}
-                >
+                <Text style={[styles.reviewsLinkText, reviewCount === 0 && styles.reviewsLinkTextDisabled]}>
                   Voir tout
                 </Text>
               </TouchableOpacity>
@@ -3145,18 +3180,14 @@ export default function ProfileScreen() {
                   <View style={styles.reviewItemHeader}>
                     <View>
                       <Text style={styles.reviewAuthor}>{review.fromUserName ?? 'Utilisateur'}</Text>
-                      <Text style={styles.reviewDate}>
-                        {new Date(review.createdAt).toLocaleDateString('fr-FR')}
-                      </Text>
+                      <Text style={styles.reviewDate}>{new Date(review.createdAt).toLocaleDateString('fr-FR')}</Text>
                     </View>
                     <View style={styles.reviewRating}>
                       <Ionicons name="star" size={16} color={Colors.secondary} />
                       <Text style={styles.reviewRatingText}>{review.rating.toFixed(1)}</Text>
                     </View>
                   </View>
-                  {review.comment ? (
-                    <Text style={styles.reviewComment}>{review.comment}</Text>
-                  ) : null}
+                  {review.comment ? <Text style={styles.reviewComment}>{review.comment}</Text> : null}
                 </View>
               ))
             )}
@@ -3164,70 +3195,65 @@ export default function ProfileScreen() {
         </View>
 
         {false && (
-        <View style={styles.kycContainer}>
-          <View style={styles.kycCard}>
-            <View style={styles.kycHeader}>
-              <View style={styles.kycHeaderLeft}>
-                <Ionicons name="shield-checkmark" size={20} color={Colors.primary} />
-                <Text style={styles.kycTitle}>Statut KYC</Text>
+          <View style={styles.kycContainer}>
+            <View style={styles.kycCard}>
+              <View style={styles.kycHeader}>
+                <View style={styles.kycHeaderLeft}>
+                  <Ionicons name="shield-checkmark" size={20} color={Colors.primary} />
+                  <Text style={styles.kycTitle}>Statut KYC</Text>
+                </View>
+                {kycLoading && <ActivityIndicator size="small" color={Colors.primary} />}
               </View>
-              {kycLoading && <ActivityIndicator size="small" color={Colors.primary} />}
+              <Text
+                style={[
+                  styles.kycStatusText,
+                  isKycApproved && styles.kycStatusApproved,
+                  isKycPending && styles.kycStatusPending,
+                ]}
+              >
+                {isKycApproved
+                  ? 'Vérifié'
+                  : isKycPending
+                    ? 'En cours de vérification'
+                    : isKycRejected
+                      ? 'Rejeté'
+                      : 'Non vérifié'}
+              </Text>
+              {isKycRejected && kycStatus?.rejectionReason ? (
+                <View style={styles.kycRejectionContainer}>
+                  <Text style={styles.kycRejectionTitle}>Motif du rejet :</Text>
+                  <Text style={styles.kycRejectionText}>{kycStatus?.rejectionReason}</Text>
+                </View>
+              ) : null}
+              <Text style={styles.kycHelperText}>
+                {isKycApproved
+                  ? 'Vos documents sont validés. Contactez le support pour toute mise à jour.'
+                  : isKycPending
+                    ? 'Nous vérifions vos documents. Vous pouvez les actualiser en cas de changement.'
+                    : 'Ajoutez vos documents officiels pour confirmer votre identité.'}
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.kycButton,
+                  isKycActionDisabled && styles.kycButtonDisabled,
+                  isKycApproved && styles.kycButtonLocked,
+                ]}
+                onPress={handleOpenKycModal}
+                disabled={isKycActionDisabled}
+              >
+                {isKycBusy ? (
+                  <ActivityIndicator color={Colors.primary} size="small" />
+                ) : (
+                  <>
+                    <Text style={[styles.kycButtonText, isKycApproved && styles.kycButtonTextMuted]}>
+                      {isKycApproved ? 'Documents vérifiés' : 'Soumettre mes documents'}
+                    </Text>
+                    {!isKycApproved && <Ionicons name="chevron-forward" size={18} color={Colors.primary} />}
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
-            <Text
-              style={[
-                styles.kycStatusText,
-                isKycApproved && styles.kycStatusApproved,
-                isKycPending && styles.kycStatusPending,
-              ]}
-            >
-              {isKycApproved
-                ? 'Vérifié'
-                : isKycPending
-                  ? 'En cours de vérification'
-                  : isKycRejected
-                    ? 'Rejeté'
-                    : 'Non vérifié'}
-            </Text>
-            {isKycRejected && kycStatus?.rejectionReason ? (
-              <View style={styles.kycRejectionContainer}>
-                <Text style={styles.kycRejectionTitle}>Motif du rejet :</Text>
-                <Text style={styles.kycRejectionText}>{kycStatus?.rejectionReason}</Text>
-              </View>
-            ) : null}
-            <Text style={styles.kycHelperText}>
-              {isKycApproved
-                ? 'Vos documents sont validés. Contactez le support pour toute mise à jour.'
-                : isKycPending
-                  ? 'Nous vérifions vos documents. Vous pouvez les actualiser en cas de changement.'
-                  : 'Ajoutez vos documents officiels pour confirmer votre identité.'}
-            </Text>
-            <TouchableOpacity
-              style={[
-                styles.kycButton,
-                isKycActionDisabled && styles.kycButtonDisabled,
-                isKycApproved && styles.kycButtonLocked,
-              ]}
-              onPress={handleOpenKycModal}
-              disabled={isKycActionDisabled}
-            >
-              {isKycBusy ? (
-                <ActivityIndicator color={Colors.primary} size="small" />
-              ) : (
-                <>
-                  <Text
-                    style={[
-                      styles.kycButtonText,
-                      isKycApproved && styles.kycButtonTextMuted,
-                    ]}
-                  >
-                    {isKycApproved ? 'Documents vérifiés' : 'Soumettre mes documents'}
-                  </Text>
-                  {!isKycApproved && <Ionicons name="chevron-forward" size={18} color={Colors.primary} />}
-                </>
-              )}
-            </TouchableOpacity>
           </View>
-        </View>
         )}
 
         <View style={styles.vehiclesContainer}>
@@ -3260,13 +3286,17 @@ export default function ProfileScreen() {
                   <View
                     style={[
                       styles.vehicleStatus,
-                      { backgroundColor: vehicle.isActive ? Colors.success + '20' : Colors.gray[200] },
+                      {
+                        backgroundColor: vehicle.isActive ? Colors.success + '20' : Colors.gray[200],
+                      },
                     ]}
                   >
                     <Text
                       style={[
                         styles.vehicleStatusText,
-                        { color: vehicle.isActive ? Colors.success : Colors.gray[600] },
+                        {
+                          color: vehicle.isActive ? Colors.success : Colors.gray[600],
+                        },
                       ]}
                     >
                       {vehicle.isActive ? 'Actif' : 'Inactif'}
@@ -3313,10 +3343,7 @@ export default function ProfileScreen() {
             {menuItems.map((item, index) => (
               <TouchableOpacity
                 key={index}
-                style={[
-                  styles.menuItem,
-                  index !== menuItems.length - 1 && styles.menuItemBorder,
-                ]}
+                style={[styles.menuItem, index !== menuItems.length - 1 && styles.menuItemBorder]}
                 onPress={() => {
                   if ((item as any).onPress) {
                     (item as any).onPress();
@@ -3334,7 +3361,9 @@ export default function ProfileScreen() {
                     <View
                       style={[
                         styles.menuBadge,
-                        { backgroundColor: (item as any).badgeColor || Colors.primary },
+                        {
+                          backgroundColor: (item as any).badgeColor || Colors.primary,
+                        },
                       ]}
                     >
                       <Text style={styles.menuBadgeText}>{(item as any).badge}</Text>
@@ -3348,10 +3377,7 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.logoutContainer}>
-          <TouchableOpacity
-            style={styles.logoutButton}
-            onPress={handleLogout}
-          >
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <View style={styles.logoutButtonContent}>
               <Ionicons name="log-out-outline" size={20} color={Colors.danger} />
               <Text style={styles.logoutText}>Déconnexion</Text>
@@ -3401,7 +3427,10 @@ export default function ProfileScreen() {
         onRequestClose={() => setReviewsModalVisible(false)}
       >
         <View style={styles.reviewsModalOverlay}>
-          <Animated.View entering={FadeInDown} style={[styles.reviewsModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
+          <Animated.View
+            entering={FadeInDown}
+            style={[styles.reviewsModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}
+          >
             <View style={styles.reviewsModalHeader}>
               <Text style={styles.reviewsModalTitle}>Tous les avis</Text>
               <TouchableOpacity onPress={() => setReviewsModalVisible(false)}>
@@ -3414,27 +3443,21 @@ export default function ProfileScreen() {
               contentContainerStyle={{ paddingBottom: Spacing.xl }}
             >
               {(reviews ?? []).length === 0 ? (
-                <Text style={styles.reviewsEmptyText}>
-                  {"Vous n'avez pas encore reçu d'avis."}
-                </Text>
+                <Text style={styles.reviewsEmptyText}>{"Vous n'avez pas encore reçu d'avis."}</Text>
               ) : (
                 reviews?.map((review) => (
                   <View key={review.id} style={styles.reviewItem}>
                     <View style={styles.reviewItemHeader}>
                       <View>
                         <Text style={styles.reviewAuthor}>{review.fromUserName ?? 'Utilisateur'}</Text>
-                        <Text style={styles.reviewDate}>
-                          {new Date(review.createdAt).toLocaleDateString('fr-FR')}
-                        </Text>
+                        <Text style={styles.reviewDate}>{new Date(review.createdAt).toLocaleDateString('fr-FR')}</Text>
                       </View>
                       <View style={styles.reviewRating}>
                         <Ionicons name="star" size={16} color={Colors.secondary} />
                         <Text style={styles.reviewRatingText}>{review.rating.toFixed(1)}</Text>
                       </View>
                     </View>
-                    {review.comment ? (
-                      <Text style={styles.reviewComment}>{review.comment}</Text>
-                    ) : null}
+                    {review.comment ? <Text style={styles.reviewComment}>{review.comment}</Text> : null}
                   </View>
                 ))
               )}
@@ -3443,11 +3466,13 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
-      <Modal visible={pinModalVisible} transparent animationType="fade" onRequestClose={() => setPinModalVisible(false)}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.pinModalOverlay}
-        >
+      <Modal
+        visible={pinModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPinModalVisible(false)}
+      >
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.pinModalOverlay}>
           <Animated.View entering={FadeInDown} style={styles.pinModalCard}>
             <View style={styles.pinModalHeader}>
               <Text style={styles.pinModalTitle}>Modifier le code PIN</Text>
@@ -3461,134 +3486,147 @@ export default function ProfileScreen() {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
-            {pinStep === 'oldPin' ? (
-              <>
-                <Text style={styles.pinModalSubtitle}>
-                  Entrez votre mot de passe PIN actuel pour confirmer votre identité
-                </Text>
-                <View style={styles.formSection}>
-                  <Text style={styles.inputLabel}>Mot de passe PIN actuel</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
-                    <TextInput
-                      ref={oldPinInputRef}
-                      style={styles.input}
-                      keyboardType="number-pad"
-                      maxLength={4}
-                      secureTextEntry
-                      value={oldPin}
-                      onChangeText={handleOldPinChange}
-                      placeholder="Entrez votre PIN actuel (4 chiffres)"
-                      placeholderTextColor={Colors.gray[400]}
-                    />
-                  </View>
-                </View>
-                <TouchableOpacity
-                  style={[styles.pinModalButton, oldPin.length === 4 ? styles.pinModalButtonActive : styles.pinModalButtonDisabled]}
-                  onPress={handleVerifyOldPin}
-                  disabled={oldPin.length !== 4}
-                >
-                  <Text style={styles.pinModalButtonText}>Continuer</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.pinModalForgotButton}
-                  onPress={handleForgotPin}
-                >
-                  <Text style={styles.pinModalForgotText}>{"J'ai oublié mon PIN"}</Text>
-                </TouchableOpacity>
-              </>
-            ) : pinStep === 'otp' ? (
-              <>
-                <Text style={styles.pinModalSubtitle}>
-                  Un code de vérification a été envoyé au <Text style={{ fontWeight: 'bold' }}>{currentUser?.phone}</Text>
-                </Text>
-                <View style={styles.formSection}>
-                  <Text style={styles.inputLabel}>Code de vérification (OTP)</Text>
-                  <Text style={styles.inputLabelSmall}>5 chiffres reçus par SMS</Text>
-                  <View style={styles.smsCodeContainer}>
-                    {otpCode.map((digit, index) => (
+              {pinStep === 'oldPin' ? (
+                <>
+                  <Text style={styles.pinModalSubtitle}>
+                    Entrez votre mot de passe PIN actuel pour confirmer votre identité
+                  </Text>
+                  <View style={styles.formSection}>
+                    <Text style={styles.inputLabel}>Mot de passe PIN actuel</Text>
+                    <View style={styles.inputWrapper}>
+                      <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
                       <TextInput
-                        key={`otp-${index}`}
-                        ref={(ref) => { otpInputRefs.current[index] = ref; }}
-                        style={[styles.smsInput, digit ? styles.smsInputFilled : null]}
+                        ref={oldPinInputRef}
+                        style={styles.input}
                         keyboardType="number-pad"
-                        maxLength={1}
-                        value={digit}
-                        onChangeText={(text) => handleOtpInputChange(text, index)}
-                        onKeyPress={(e) => handleOtpKeyPress(e, index)}
+                        maxLength={4}
+                        secureTextEntry
+                        value={oldPin}
+                        onChangeText={handleOldPinChange}
+                        placeholder="Entrez votre PIN actuel (4 chiffres)"
+                        placeholderTextColor={Colors.gray[400]}
                       />
-                    ))}
+                    </View>
                   </View>
-                </View>
-                <TouchableOpacity
-                  style={[styles.pinModalButton, otpCode.join('').length === 5 ? styles.pinModalButtonActive : styles.pinModalButtonDisabled]}
-                  onPress={handleVerifyOtpForPinChange}
-                  disabled={otpCode.join('').length !== 5}
-                >
-                  <Text style={styles.pinModalButtonText}>Vérifier</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.pinModalResendButton}
-                  onPress={handleForgotPin}
-                  disabled={isSendingOtp}
-                >
-                  {isSendingOtp ? (
-                    <ActivityIndicator size="small" color={Colors.primary} />
-                  ) : (
-                    <Text style={styles.pinModalResendText}>Renvoyer le code</Text>
-                  )}
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={styles.pinModalSubtitle}>Créez un nouveau mot de passe PIN à 4 chiffres</Text>
-                <View style={styles.formSection}>
-                  <Text style={styles.inputLabel}>Nouveau mot de passe PIN</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
-                    <TextInput
-                      ref={pinInputRef}
-                      style={styles.input}
-                      keyboardType="number-pad"
-                      maxLength={4}
-                      secureTextEntry
-                      value={newPin}
-                      onChangeText={handleNewPinChange}
-                      placeholder="Créez un nouveau PIN (4 chiffres)"
-                      placeholderTextColor={Colors.gray[400]}
-                    />
+                  <TouchableOpacity
+                    style={[
+                      styles.pinModalButton,
+                      oldPin.length === 4 ? styles.pinModalButtonActive : styles.pinModalButtonDisabled,
+                    ]}
+                    onPress={handleVerifyOldPin}
+                    disabled={oldPin.length !== 4}
+                  >
+                    <Text style={styles.pinModalButtonText}>Continuer</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.pinModalForgotButton} onPress={handleForgotPin}>
+                    <Text style={styles.pinModalForgotText}>{"J'ai oublié mon PIN"}</Text>
+                  </TouchableOpacity>
+                </>
+              ) : pinStep === 'otp' ? (
+                <>
+                  <Text style={styles.pinModalSubtitle}>
+                    Un code de vérification a été envoyé au{' '}
+                    <Text style={{ fontWeight: 'bold' }}>{currentUser?.phone}</Text>
+                  </Text>
+                  <View style={styles.formSection}>
+                    <Text style={styles.inputLabel}>Code de vérification (OTP)</Text>
+                    <Text style={styles.inputLabelSmall}>5 chiffres reçus par SMS</Text>
+                    <View style={styles.smsCodeContainer}>
+                      {otpCode.map((digit, index) => (
+                        <TextInput
+                          key={`otp-${index}`}
+                          ref={(ref) => {
+                            otpInputRefs.current[index] = ref;
+                          }}
+                          style={[styles.smsInput, digit ? styles.smsInputFilled : null]}
+                          keyboardType="number-pad"
+                          maxLength={1}
+                          value={digit}
+                          onChangeText={(text) => handleOtpInputChange(text, index)}
+                          onKeyPress={(e) => handleOtpKeyPress(e, index)}
+                        />
+                      ))}
+                    </View>
                   </View>
-                </View>
-                <View style={styles.formSection}>
-                  <Text style={styles.inputLabel}>Confirmer le nouveau mot de passe PIN</Text>
-                  <View style={styles.inputWrapper}>
-                    <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
-                    <TextInput
-                      ref={pinConfirmInputRef}
-                      style={styles.input}
-                      keyboardType="number-pad"
-                      maxLength={4}
-                      secureTextEntry
-                      value={newPinConfirm}
-                      onChangeText={handleNewPinConfirmChange}
-                      placeholder="Confirmez votre nouveau PIN (4 chiffres)"
-                      placeholderTextColor={Colors.gray[400]}
-                    />
+                  <TouchableOpacity
+                    style={[
+                      styles.pinModalButton,
+                      otpCode.join('').length === 5 ? styles.pinModalButtonActive : styles.pinModalButtonDisabled,
+                    ]}
+                    onPress={handleVerifyOtpForPinChange}
+                    disabled={otpCode.join('').length !== 5}
+                  >
+                    <Text style={styles.pinModalButtonText}>Vérifier</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.pinModalResendButton}
+                    onPress={handleForgotPin}
+                    disabled={isSendingOtp}
+                  >
+                    {isSendingOtp ? (
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                    ) : (
+                      <Text style={styles.pinModalResendText}>Renvoyer le code</Text>
+                    )}
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.pinModalSubtitle}>Créez un nouveau mot de passe PIN à 4 chiffres</Text>
+                  <View style={styles.formSection}>
+                    <Text style={styles.inputLabel}>Nouveau mot de passe PIN</Text>
+                    <View style={styles.inputWrapper}>
+                      <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+                      <TextInput
+                        ref={pinInputRef}
+                        style={styles.input}
+                        keyboardType="number-pad"
+                        maxLength={4}
+                        secureTextEntry
+                        value={newPin}
+                        onChangeText={handleNewPinChange}
+                        placeholder="Créez un nouveau PIN (4 chiffres)"
+                        placeholderTextColor={Colors.gray[400]}
+                      />
+                    </View>
                   </View>
-                </View>
-                <TouchableOpacity
-                  style={[styles.pinModalButton, newPin.length === 4 && newPinConfirm.length === 4 ? styles.pinModalButtonActive : styles.pinModalButtonDisabled]}
-                  onPress={handleUpdatePin}
-                  disabled={newPin.length !== 4 || newPinConfirm.length !== 4 || isUpdatingPin || isUpdatingPinWithOtp}
-                >
-                  {isUpdatingPin ? (
-                    <ActivityIndicator color={Colors.white} />
-                  ) : (
-                    <Text style={styles.pinModalButtonText}>Modifier le PIN</Text>
-                  )}
-                </TouchableOpacity>
-              </>
-            )}
+                  <View style={styles.formSection}>
+                    <Text style={styles.inputLabel}>Confirmer le nouveau mot de passe PIN</Text>
+                    <View style={styles.inputWrapper}>
+                      <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+                      <TextInput
+                        ref={pinConfirmInputRef}
+                        style={styles.input}
+                        keyboardType="number-pad"
+                        maxLength={4}
+                        secureTextEntry
+                        value={newPinConfirm}
+                        onChangeText={handleNewPinConfirmChange}
+                        placeholder="Confirmez votre nouveau PIN (4 chiffres)"
+                        placeholderTextColor={Colors.gray[400]}
+                      />
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.pinModalButton,
+                      newPin.length === 4 && newPinConfirm.length === 4
+                        ? styles.pinModalButtonActive
+                        : styles.pinModalButtonDisabled,
+                    ]}
+                    onPress={handleUpdatePin}
+                    disabled={
+                      newPin.length !== 4 || newPinConfirm.length !== 4 || isUpdatingPin || isUpdatingPinWithOtp
+                    }
+                  >
+                    {isUpdatingPin ? (
+                      <ActivityIndicator color={Colors.white} />
+                    ) : (
+                      <Text style={styles.pinModalButtonText}>Modifier le PIN</Text>
+                    )}
+                  </TouchableOpacity>
+                </>
+              )}
             </ScrollView>
           </Animated.View>
         </KeyboardAvoidingView>
@@ -3697,83 +3735,79 @@ export default function ProfileScreen() {
             >
               {subscriptionModalStep === 'method' ? (
                 <>
-              <Text style={styles.subscriptionSectionLabel}>Moyen de paiement</Text>
-              <View style={styles.subscriptionPaymentGrid}>
-                {SUBSCRIPTION_PAYMENT_OPTIONS.map((option) => {
-                  const isSelected = selectedSubscriptionPaymentChannel === option.id;
-                  return (
-                    <TouchableOpacity
-                      key={option.id}
-                      style={[
-                        styles.subscriptionPaymentOption,
-                        isSelected && styles.subscriptionPaymentOptionActive,
-                        subscriptionPaymentOrderNumber && styles.subscriptionButtonDisabled,
-                      ]}
-                      disabled={proBusy}
-                      onPress={() => {
-                        if (subscriptionPaymentOrderNumber) {
-                          setSubscriptionModalStep('payment');
-                          return;
-                        }
-                        setSelectedSubscriptionPaymentChannel(option.id);
-                      }}
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons
-                        name={option.icon}
-                        size={20}
-                        color={isSelected ? Colors.primary : Colors.gray[600]}
-                      />
-                      <View style={styles.subscriptionPaymentOptionText}>
-                        <Text style={styles.subscriptionPaymentOptionLabel}>{option.label}</Text>
-                        <Text style={styles.subscriptionPaymentOptionHint}>{option.hint}</Text>
-                      </View>
-                      {isSelected && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />}
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              {false && (
-                <View style={[styles.subscriptionPendingPanel, { marginTop: Spacing.md }]}>
-                  <Ionicons name="time-outline" size={18} color={Colors.warningDark} />
-                  <View style={styles.subscriptionPendingTextContent}>
-                    <Text style={styles.subscriptionPendingTitle}>Statut du paiement</Text>
-                    {subscriptionPaymentMessage ? (
-                      <Text style={styles.subscriptionPendingText}>{subscriptionPaymentMessage}</Text>
-                    ) : null}
-                    {subscriptionPaymentOrderNumber ? (
-                      <Text style={styles.subscriptionPendingReference}>
-                        Référence {subscriptionPaymentOrderNumber}
-                      </Text>
-                    ) : null}
+                  <Text style={styles.subscriptionSectionLabel}>Moyen de paiement</Text>
+                  <View style={styles.subscriptionPaymentGrid}>
+                    {SUBSCRIPTION_PAYMENT_OPTIONS.map((option) => {
+                      const isSelected = selectedSubscriptionPaymentChannel === option.id;
+                      return (
+                        <TouchableOpacity
+                          key={option.id}
+                          style={[
+                            styles.subscriptionPaymentOption,
+                            isSelected && styles.subscriptionPaymentOptionActive,
+                            subscriptionPaymentOrderNumber && styles.subscriptionButtonDisabled,
+                          ]}
+                          disabled={proBusy}
+                          onPress={() => {
+                            if (subscriptionPaymentOrderNumber) {
+                              setSubscriptionModalStep('payment');
+                              return;
+                            }
+                            setSelectedSubscriptionPaymentChannel(option.id);
+                          }}
+                          activeOpacity={0.85}
+                        >
+                          <Ionicons
+                            name={option.icon}
+                            size={20}
+                            color={isSelected ? Colors.primary : Colors.gray[600]}
+                          />
+                          <View style={styles.subscriptionPaymentOptionText}>
+                            <Text style={styles.subscriptionPaymentOptionLabel}>{option.label}</Text>
+                            <Text style={styles.subscriptionPaymentOptionHint}>{option.hint}</Text>
+                          </View>
+                          {isSelected && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />}
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
-                </View>
-              )}
 
-              <View style={[styles.subscriptionSummaryCard, { marginTop: Spacing.lg }]}>
-                <Text style={styles.subscriptionSummaryPrice}>{proPriceLabel}</Text>
-                <Text style={styles.subscriptionSummaryText}>
-                  {"Le quota gratuit reste à 5 trajets par jour. L'abonnement débloque les publications supplémentaires dès validation du paiement."}
-                </Text>
-              </View>
+                  {false && (
+                    <View style={[styles.subscriptionPendingPanel, { marginTop: Spacing.md }]}>
+                      <Ionicons name="time-outline" size={18} color={Colors.warningDark} />
+                      <View style={styles.subscriptionPendingTextContent}>
+                        <Text style={styles.subscriptionPendingTitle}>Statut du paiement</Text>
+                        {subscriptionPaymentMessage ? (
+                          <Text style={styles.subscriptionPendingText}>{subscriptionPaymentMessage}</Text>
+                        ) : null}
+                        {subscriptionPaymentOrderNumber ? (
+                          <Text style={styles.subscriptionPendingReference}>
+                            Référence {subscriptionPaymentOrderNumber}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  )}
+
+                  <View style={[styles.subscriptionSummaryCard, { marginTop: Spacing.lg }]}>
+                    <Text style={styles.subscriptionSummaryPrice}>{proPriceLabel}</Text>
+                    <Text style={styles.subscriptionSummaryText}>
+                      {
+                        "Le quota gratuit reste à 5 trajets par jour. L'abonnement débloque les publications supplémentaires dès validation du paiement."
+                      }
+                    </Text>
+                  </View>
                 </>
               ) : (
                 <>
                   <Text style={styles.subscriptionSectionLabel}>Paiement</Text>
                   <View style={styles.subscriptionSelectedMethodCard}>
-                    <Ionicons
-                      name={selectedSubscriptionPaymentOption.icon}
-                      size={20}
-                      color={Colors.primary}
-                    />
+                    <Ionicons name={selectedSubscriptionPaymentOption.icon} size={20} color={Colors.primary} />
                     <View style={styles.subscriptionPaymentOptionText}>
                       <Text style={styles.subscriptionPaymentOptionLabel}>
                         {selectedSubscriptionPaymentOption.label}
                       </Text>
-                      <Text style={styles.subscriptionPaymentOptionHint}>
-                        {selectedSubscriptionPaymentOption.hint}
-                      </Text>
+                      <Text style={styles.subscriptionPaymentOptionHint}>{selectedSubscriptionPaymentOption.hint}</Text>
                     </View>
                     <TouchableOpacity
                       onPress={handleBackToSubscriptionMethod}
@@ -3832,11 +3866,7 @@ export default function ProfileScreen() {
                                   ? Colors.primary
                                   : Colors.gray[300];
                         const iconName =
-                          step.status === 'done'
-                            ? 'checkmark'
-                            : step.status === 'error'
-                              ? 'close'
-                              : step.icon;
+                          step.status === 'done' ? 'checkmark' : step.status === 'error' ? 'close' : step.icon;
 
                         return (
                           <View key={step.key} style={styles.subscriptionProgressRow}>
@@ -3845,8 +3875,7 @@ export default function ProfileScreen() {
                                 style={[
                                   styles.subscriptionProgressDot,
                                   {
-                                    backgroundColor:
-                                      step.status === 'waiting' ? Colors.white : progressColor,
+                                    backgroundColor: step.status === 'waiting' ? Colors.white : progressColor,
                                     borderColor: progressColor,
                                   },
                                 ]}
@@ -3877,14 +3906,14 @@ export default function ProfileScreen() {
                               <Text
                                 style={[
                                   styles.subscriptionProgressTitle,
-                                  step.status !== 'waiting' && { color: Colors.gray[900] },
+                                  step.status !== 'waiting' && {
+                                    color: Colors.gray[900],
+                                  },
                                 ]}
                               >
                                 {step.title}
                               </Text>
-                              <Text style={styles.subscriptionProgressDescription}>
-                                {step.description}
-                              </Text>
+                              <Text style={styles.subscriptionProgressDescription}>{step.description}</Text>
                             </View>
                           </View>
                         );
@@ -3920,20 +3949,12 @@ export default function ProfileScreen() {
                     {subscriptionPaymentStatus.showActivity ? (
                       <ActivityIndicator size="small" color={Colors.primary} />
                     ) : (
-                      <Ionicons
-                        name={subscriptionPaymentStatus.icon}
-                        size={18}
-                        color={Colors.primary}
-                      />
+                      <Ionicons name={subscriptionPaymentStatus.icon} size={18} color={Colors.primary} />
                     )}
                   </View>
                   <View style={styles.subscriptionFooterStatusContent}>
-                    <Text style={styles.subscriptionFooterStatusTitle}>
-                      {subscriptionPaymentStatus.title}
-                    </Text>
-                    <Text style={styles.subscriptionFooterStatusText}>
-                      {subscriptionPaymentStatus.message}
-                    </Text>
+                    <Text style={styles.subscriptionFooterStatusTitle}>{subscriptionPaymentStatus.title}</Text>
+                    <Text style={styles.subscriptionFooterStatusText}>{subscriptionPaymentStatus.message}</Text>
                     {subscriptionPaymentOrderNumber ? (
                       <Text style={styles.subscriptionFooterStatusReference}>
                         Référence {subscriptionPaymentOrderNumber}
@@ -3965,11 +3986,8 @@ export default function ProfileScreen() {
                   disabled={proBusy}
                   activeOpacity={0.85}
                 >
-                  {subscriptionModalStep === 'payment' && (
-                    isSubscribingPro ||
-                    isCheckingSubscriptionPayment ||
-                    isRestoringSubscriptionPayment
-                  ) ? (
+                  {subscriptionModalStep === 'payment' &&
+                  (isSubscribingPro || isCheckingSubscriptionPayment || isRestoringSubscriptionPayment) ? (
                     <ActivityIndicator color={Colors.white} />
                   ) : (
                     <Text style={styles.subscriptionPrimaryButtonText}>
@@ -3986,21 +4004,23 @@ export default function ProfileScreen() {
                   )}
                 </TouchableOpacity>
 
-                {false && subscriptionModalStep === 'payment' && subscriptionPaymentOrderNumber && !isSubscriptionPaymentAutoChecking && (
-                  <TouchableOpacity
-                    style={[styles.subscriptionSecondaryButton, proBusy && styles.subscriptionButtonDisabled]}
-                    onPress={handleCheckSubscriptionPayment}
-                    disabled={proBusy}
-                    activeOpacity={0.85}
-                  >
-                    {isCheckingSubscriptionPayment ? (
-                      <ActivityIndicator color={Colors.primary} />
-                    ) : (
-                      <Text style={styles.subscriptionSecondaryButtonText}>Actualiser le statut</Text>
-                    )}
-                  </TouchableOpacity>
-                )}
-
+                {false &&
+                  subscriptionModalStep === 'payment' &&
+                  subscriptionPaymentOrderNumber &&
+                  !isSubscriptionPaymentAutoChecking && (
+                    <TouchableOpacity
+                      style={[styles.subscriptionSecondaryButton, proBusy && styles.subscriptionButtonDisabled]}
+                      onPress={handleCheckSubscriptionPayment}
+                      disabled={proBusy}
+                      activeOpacity={0.85}
+                    >
+                      {isCheckingSubscriptionPayment ? (
+                        <ActivityIndicator color={Colors.primary} />
+                      ) : (
+                        <Text style={styles.subscriptionSecondaryButtonText}>Actualiser le statut</Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
               </View>
             </View>
           </Animated.View>

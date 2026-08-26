@@ -50,6 +50,16 @@ const notificationTypeConfig: Record<
     color: Colors.info,
     background: Colors.info + '18',
   },
+  driver_trip_revenue: {
+    icon: 'wallet-outline',
+    color: Colors.successDark,
+    background: Colors.success + '18',
+  },
+  driver_booking_earning_confirmed: {
+    icon: 'checkmark-circle-outline',
+    color: Colors.successDark,
+    background: Colors.success + '18',
+  },
   warning: {
     icon: 'warning-outline',
     color: Colors.danger,
@@ -801,4 +811,3 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
   },
 });
-

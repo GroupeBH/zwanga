@@ -33,6 +33,7 @@ import {
 } from '@/store/api/bookingApi';
 import { TravelMode, useGetDirectionsMutation } from '@/store/api/googleMapsApi';
 import { useCreateTripShareLinkMutation } from '@/store/api/trackingApi';
+import { useLazyGetDriverTripRevenueSummaryQuery } from '@/store/api/driverSettlementsApi';
 import {
   useCancelDriverTripInterruptionMutation,
   useCompleteTripMutation,
@@ -43,7 +44,12 @@ import {
   useStartTripMutation,
   useUpdateDriverLocationMutation,
 } from '@/store/api/tripApi';
-import type { Booking, Trip, TripInterruptionReason } from '@/types';
+import type {
+  Booking,
+  DriverTripRevenueSummary,
+  Trip,
+  TripInterruptionReason,
+} from '@/types';
 import {
   areTripMapCoordinatesSame,
   getTripLocationCoordinate,
@@ -175,9 +181,12 @@ interface PickupNotice {
 }
 
 interface TripEndNotice {
+  tripId: string;
   completedWhileAppInactive?: boolean;
   distanceMeters?: number;
   detectedAt?: string;
+  revenueSummary?: DriverTripRevenueSummary;
+  revenueSummaryUnavailable?: boolean;
 }
 
 type LivePassengerLocation = {
@@ -465,6 +474,12 @@ const formatNavigationEta = (durationInSeconds: number | null | undefined) => {
   });
 };
 
+const formatTripRevenueAmount = (amount: number, currency: string) =>
+  `${Number(amount || 0).toLocaleString('fr-FR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })} ${currency}`;
+
 const formatPendingBookingPayment = (booking: Booking, tripPrice?: number): string => {
   if (booking.paymentMode === 'cash') {
     return 'Cash';
@@ -637,6 +652,7 @@ export default function NavigationScreen() {
   const [acceptBooking, { isLoading: isAcceptingBooking }] = useAcceptBookingMutation();
   const [rejectBooking, { isLoading: isRejectingBooking }] = useRejectBookingMutation();
   const [completeTrip] = useCompleteTripMutation();
+  const [getDriverTripRevenueSummary] = useLazyGetDriverTripRevenueSummaryQuery();
   const [pauseTrip, { isLoading: isPausingTrip }] = usePauseTripMutation();
   const [requestDriverTripInterruption, { isLoading: isRequestingDriverInterruption }] =
     useRequestDriverTripInterruptionMutation();
@@ -1587,12 +1603,49 @@ export default function NavigationScreen() {
       }
 
       const notice: TripEndNotice = {
+        tripId: event.tripId,
         completedWhileAppInactive: options.completedWhileAppInactive,
         distanceMeters: event.distanceMeters,
         detectedAt: event.detectedAt,
+        revenueSummary: event.revenueSummary,
       };
       tripEndNoticeRef.current = notice;
       setTripEndNotice(notice);
+
+      if (!event.revenueSummary) {
+        void getDriverTripRevenueSummary(event.tripId)
+          .unwrap()
+          .then((revenueSummary) => {
+            if (
+              !isMountedRef.current ||
+              tripEndNoticeRef.current?.tripId !== event.tripId
+            ) {
+              return;
+            }
+            const hydratedNotice = {
+              ...tripEndNoticeRef.current,
+              revenueSummary,
+              revenueSummaryUnavailable: false,
+            };
+            tripEndNoticeRef.current = hydratedNotice;
+            setTripEndNotice(hydratedNotice);
+          })
+          .catch((error) => {
+            console.warn('[Navigation] Résumé financier du trajet indisponible:', error);
+            if (
+              !isMountedRef.current ||
+              tripEndNoticeRef.current?.tripId !== event.tripId
+            ) {
+              return;
+            }
+            const unavailableNotice = {
+              ...tripEndNoticeRef.current,
+              revenueSummaryUnavailable: true,
+            };
+            tripEndNoticeRef.current = unavailableNotice;
+            setTripEndNotice(unavailableNotice);
+          });
+      }
 
       void Speech.stop().finally(() => {
         if (!isMountedRef.current) return;
@@ -1607,7 +1660,7 @@ export default function NavigationScreen() {
         );
       });
     },
-    [showDialog],
+    [getDriverTripRevenueSummary, showDialog],
   );
 
   const resolveCompletedTripDistanceMeters = useCallback(
@@ -5413,6 +5466,79 @@ export default function NavigationScreen() {
                 ? "Le trajet s'est terminé pendant que le téléphone était en veille ou hors de l'application. Il est maintenant clôturé. Vous pouvez noter les passagers."
                 : 'Vous avez atteint la destination finale. Le trajet est terminé automatiquement. Vous pouvez noter les passagers.'}
             </Text>
+            {tripEndNotice?.revenueSummary ? (
+              <View style={styles.tripRevenueSummary}>
+                {tripEndNotice.revenueSummary.confirmedAmount > 0 ? (
+                  <View style={styles.tripRevenueRow}>
+                    <View style={[styles.tripRevenueIcon, { backgroundColor: Colors.success + '18' }]}>
+                      <Ionicons name="wallet-outline" size={20} color={Colors.successDark} />
+                    </View>
+                    <View style={styles.tripRevenueCopy}>
+                      <Text style={styles.tripRevenueLabel}>Gain ajouté</Text>
+                      <Text style={styles.tripRevenueHint}>Disponible dans vos gains conducteur</Text>
+                    </View>
+                    <Text style={[styles.tripRevenueAmount, { color: Colors.successDark }]}>
+                      {formatTripRevenueAmount(
+                        tripEndNotice.revenueSummary.confirmedAmount,
+                        tripEndNotice.revenueSummary.currency,
+                      )}
+                    </Text>
+                  </View>
+                ) : null}
+                {tripEndNotice.revenueSummary.cashToCollectAmount > 0 ? (
+                  <View style={styles.tripRevenueRow}>
+                    <View style={[styles.tripRevenueIcon, { backgroundColor: Colors.warning + '18' }]}>
+                      <Ionicons name="cash-outline" size={20} color={Colors.warningDark} />
+                    </View>
+                    <View style={styles.tripRevenueCopy}>
+                      <Text style={styles.tripRevenueLabel}>À encaisser en liquide</Text>
+                      <Text style={styles.tripRevenueHint}>À recevoir directement du passager</Text>
+                    </View>
+                    <Text style={[styles.tripRevenueAmount, { color: Colors.warningDark }]}>
+                      {formatTripRevenueAmount(
+                        tripEndNotice.revenueSummary.cashToCollectAmount,
+                        tripEndNotice.revenueSummary.currency,
+                      )}
+                    </Text>
+                  </View>
+                ) : null}
+                {tripEndNotice.revenueSummary.electronicPendingAmount > 0 ? (
+                  <View style={styles.tripRevenueRow}>
+                    <View style={[styles.tripRevenueIcon, { backgroundColor: Colors.info + '18' }]}>
+                      <Ionicons name="time-outline" size={20} color={Colors.infoDark} />
+                    </View>
+                    <View style={styles.tripRevenueCopy}>
+                      <Text style={styles.tripRevenueLabel}>Paiement électronique attendu</Text>
+                      <Text style={styles.tripRevenueHint}>Ajouté après confirmation FlexPay</Text>
+                    </View>
+                    <Text style={[styles.tripRevenueAmount, { color: Colors.infoDark }]}>
+                      {formatTripRevenueAmount(
+                        tripEndNotice.revenueSummary.electronicPendingAmount,
+                        tripEndNotice.revenueSummary.currency,
+                      )}
+                    </Text>
+                  </View>
+                ) : null}
+                {tripEndNotice.revenueSummary.totalExpectedAmount <= 0 ? (
+                  <View style={styles.tripRevenueEmpty}>
+                    <Ionicons name="checkmark-circle-outline" size={20} color={Colors.gray[500]} />
+                    <Text style={styles.tripRevenueHint}>Aucun montant à encaisser pour ce trajet.</Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : tripEndNotice?.revenueSummaryUnavailable ? (
+              <View style={styles.tripRevenueLoading}>
+                <Ionicons name="cloud-offline-outline" size={18} color={Colors.gray[500]} />
+                <Text style={styles.tripRevenueHint}>
+                  Le détail du gain reste disponible dans l&apos;espace conducteur.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.tripRevenueLoading}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+                <Text style={styles.tripRevenueHint}>Calcul du montant du trajet…</Text>
+              </View>
+            )}
             <View
               style={[
                 styles.waypointGpsStatus,
@@ -6984,6 +7110,67 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.semibold,
     textAlign: 'center',
+  },
+  tripRevenueSummary: {
+    alignSelf: 'stretch',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.gray[200],
+    marginBottom: Spacing.lg,
+  },
+  tripRevenueRow: {
+    minHeight: 68,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.gray[200],
+  },
+  tripRevenueIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tripRevenueCopy: {
+    flex: 1,
+  },
+  tripRevenueLabel: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  tripRevenueHint: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+  },
+  tripRevenueAmount: {
+    maxWidth: '34%',
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    textAlign: 'right',
+  },
+  tripRevenueEmpty: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+  },
+  tripRevenueLoading: {
+    alignSelf: 'stretch',
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.gray[200],
+    marginBottom: Spacing.lg,
   },
   waypointGpsStatus: {
     width: '100%',

@@ -1,6 +1,7 @@
 import { API_BASE_URL } from '@/config/env';
 import { getValidAccessToken } from '@/services/tokenRefresh';
 import { io, Socket } from 'socket.io-client';
+import type { DriverTripRevenueSummary } from '@/types';
 
 const SOCKET_CONNECT_TIMEOUT_MS = 8000;
 const SOCKET_LOCATION_ACK_TIMEOUT_MS = 2500;
@@ -86,6 +87,7 @@ export interface BookingAutoProgressEvent {
   noShowReason?: string;
   boardingUncertainReason?: string;
   detectionMethod?: string;
+  revenueSummary?: DriverTripRevenueSummary;
 }
 
 export interface BookingAutoProgressPayload {

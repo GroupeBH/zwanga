@@ -2,6 +2,7 @@ import type {
   DriverEarning,
   DriverPayout,
   DriverSettlementSummary,
+  DriverTripRevenueSummary,
 } from '../../types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
@@ -9,6 +10,7 @@ import type { BaseEndpointBuilder } from './types';
 type RequestDriverPayoutPayload = {
   amount: number;
   phone?: string;
+  idempotencyKey: string;
 };
 
 const settlementTag = { type: 'DriverSettlement' as const, id: 'ME' };
@@ -23,6 +25,14 @@ export const driverSettlementsApi = baseApi.injectEndpoints({
     getMyDriverEarnings: builder.query<DriverEarning[], void>({
       query: () => '/driver-settlements/earnings',
       providesTags: [settlementTag],
+    }),
+    getDriverTripRevenueSummary: builder.query<DriverTripRevenueSummary, string>({
+      query: (tripId) =>
+        `/driver-settlements/trips/${encodeURIComponent(tripId)}/revenue-summary`,
+      providesTags: (_result, _error, tripId) => [
+        settlementTag,
+        { type: 'DriverSettlement' as const, id: `TRIP-${tripId}` },
+      ],
     }),
     getMyDriverPayouts: builder.query<DriverPayout[], void>({
       query: () => '/driver-settlements/payouts',
@@ -46,6 +56,7 @@ export const driverSettlementsApi = baseApi.injectEndpoints({
 export const {
   useGetMyDriverSettlementQuery,
   useGetMyDriverEarningsQuery,
+  useLazyGetDriverTripRevenueSummaryQuery,
   useGetMyDriverPayoutsQuery,
   useRequestDriverPayoutMutation,
   useLazyCheckDriverPayoutStatusQuery,
