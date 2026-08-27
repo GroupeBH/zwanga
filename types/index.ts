@@ -495,6 +495,10 @@ export interface ReferralSummary {
   shareLink: string;
   referralCount: number;
   rewardCount: number;
+  attribution: {
+    hasReferrer: boolean;
+    referredAt: string | null;
+  };
   balances: {
     pendingTokens: number;
     availableTokens: number;
@@ -621,11 +625,14 @@ export interface DriverEarning {
 export interface DriverPayout {
   id: string;
   driverId: string;
+  idempotencyKey: string;
   amount: number | string;
   currency: string;
   phone: string;
   status: DriverPayoutStatus;
   paymentTransactionId?: string | null;
+  orderNumber?: string | null;
+  paymentMessage?: string | null;
   requestedAt?: string | null;
   processedAt?: string | null;
   failureReason?: string | null;
@@ -639,6 +646,21 @@ export interface DriverSettlementSummary {
   paidBalance: number;
   currency: string;
   commissionRate: number;
+  kycApproved: boolean;
+  payoutPhone: string | null;
+  minimumPayoutAmount: number;
+}
+
+export interface DriverTripRevenueSummary {
+  tripId: string;
+  currency: string;
+  commissionRate: number;
+  confirmedAmount: number;
+  cashToCollectAmount: number;
+  electronicPendingAmount: number;
+  totalExpectedAmount: number;
+  completedBookings: number;
+  generatedAt: string;
 }
 
 export interface BasicUserInfo {

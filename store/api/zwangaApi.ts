@@ -228,6 +228,7 @@ export {
 export {
   useValidateReferralCodeMutation,
   useResolveReferralAttributionMutation,
+  useAttachMyReferralAttributionMutation,
   useGetMyReferralSummaryQuery,
   useGetMyReferralsQuery,
   useGetMyReferralRewardsQuery,

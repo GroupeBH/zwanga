@@ -82,6 +82,8 @@ export const isDriverNotification = (type: string): boolean => {
     'driver_reminder',
     'booking_pending', // Une nouvelle réservation pour le conducteur
     'trip_starting_soon',
+    'driver_trip_revenue',
+    'driver_booking_earning_confirmed',
   ];
   return driverTypes.includes(type);
 };
@@ -203,7 +205,21 @@ export const handleNotificationNavigation = (
         }
       }
 
+      // Ouvrir directement le tableau de parrainage.
+      if (type === 'referral_new_referral') {
+        router.push('/referrals' as any);
+        return;
+      }
+
       // Gérer les notifications explicitement pour conducteurs
+      if (
+        type === 'driver_trip_revenue' ||
+        type === 'driver_booking_earning_confirmed'
+      ) {
+        router.push('/driver-earnings' as any);
+        return;
+      }
+
       if (isDriverNotification(type) && tripId) {
         router.push(`/trip/manage/${tripId}`);
         return;

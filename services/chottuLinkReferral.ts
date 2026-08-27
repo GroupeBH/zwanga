@@ -23,10 +23,17 @@ export interface ChottuLinkReferralPayload {
   token: string;
   capturedAt: string;
   referringLink?: string;
+  isDeferred: boolean;
 }
 
 const loadChottuLink = (): ChottuLinkModule | null => {
   if (!chottuLinkReferralConfig.enabled) return null;
+  if (!NativeModules.ChottulinkSdk) {
+    console.warn(
+      '[ChottuLink] Module natif indisponible dans cette version de l application.',
+    );
+    return null;
+  }
   try {
     // Chargement conditionnel requis pour garder Expo Go utilisable sans module natif.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -74,6 +81,7 @@ export const extractChottuLinkReferral = (
     return {
       token,
       capturedAt: normalizeCapturedAt(event.metadata?.resolvedAt),
+      isDeferred: event.metadata?.isDeferred === true,
       ...(referringLink ? { referringLink } : {}),
     };
   } catch {
@@ -111,6 +119,32 @@ export const subscribeToChottuLinkReferrals = (
     (error) => console.warn('[ChottuLink] Erreur de lien:', error),
   );
 
+  let cachedAttributionRetry: ReturnType<typeof setTimeout> | null = null;
+  const deliverCachedAttribution = async () => {
+    try {
+      const attribution = await chottuLink.getAttributionData();
+      if (!attribution?.isAttributed || !attribution.matchFound) return;
+      const destination =
+        attribution.destinationWithUtm ?? attribution.destinationUrl;
+      if (!destination) return;
+      const referral = extractChottuLinkReferral({
+        url: destination,
+        metadata: {
+          shortLinkRaw:
+            attribution.clickedShortUrl ?? attribution.shortUrl ?? undefined,
+          resolvedAt: new Date().toISOString(),
+          isDeferred: true,
+        },
+      });
+      if (referral) onReferral(referral);
+    } catch (error) {
+      console.warn(
+        "[ChottuLink] Attribution d'installation indisponible:",
+        error,
+      );
+    }
+  };
+
   try {
     chottuLink.initializeChottuLink(
       chottuLinkReferralConfig.mobileApiKey,
@@ -118,6 +152,14 @@ export const subscribeToChottuLinkReferrals = (
   } catch (error) {
     console.warn('[ChottuLink] Initialisation impossible:', error);
   }
+
+  // The native SDK may already have cached an install attribution before the
+  // JavaScript event listener is ready. Read it immediately, then once more
+  // after initialization has had time to finish.
+  void deliverCachedAttribution();
+  cachedAttributionRetry = setTimeout(() => {
+    void deliverCachedAttribution();
+  }, 1500);
 
   void Linking.getInitialURL().then((url) => {
     if (url) handleIncomingChottuLink(url);
@@ -127,6 +169,7 @@ export const subscribeToChottuLinkReferrals = (
   });
 
   return () => {
+    if (cachedAttributionRetry) clearTimeout(cachedAttributionRetry);
     resolvedSubscription.remove();
     errorSubscription.remove();
     linkingSubscription.remove();

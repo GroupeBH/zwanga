@@ -33,3 +33,23 @@ export const shareReferralLink = async (value?: string | null) => {
       : undefined,
   );
 };
+
+export const copyReferralLink = async (value?: string | null) => {
+  const shareLink = normalizeReferralShareLink(value);
+  if (!shareLink) {
+    throw new Error("Le lien d'invitation n'est pas encore disponible.");
+  }
+
+  // Loading the module only when the user copies keeps Expo Router route
+  // discovery working with a development client that predates this module.
+  try {
+    const Clipboard = await import('expo-clipboard');
+    await Clipboard.setStringAsync(shareLink);
+  } catch (error) {
+    console.warn('[referrals] Presse-papiers natif indisponible:', error);
+    throw new Error(
+      "La copie n'est pas disponible dans cette version de l'application. Reinstallez l'application puis reessayez.",
+    );
+  }
+  return shareLink;
+};

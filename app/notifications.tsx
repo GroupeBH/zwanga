@@ -50,6 +50,16 @@ const notificationTypeConfig: Record<
     color: Colors.info,
     background: Colors.info + '18',
   },
+  driver_trip_revenue: {
+    icon: 'wallet-outline',
+    color: Colors.successDark,
+    background: Colors.success + '18',
+  },
+  driver_booking_earning_confirmed: {
+    icon: 'checkmark-circle-outline',
+    color: Colors.successDark,
+    background: Colors.success + '18',
+  },
   warning: {
     icon: 'warning-outline',
     color: Colors.danger,
@@ -414,7 +424,8 @@ export default function NotificationsScreen() {
                   tripId || 
                   bookingId || 
                   conversationId || 
-                  requestId
+                  requestId ||
+                  type === 'referral_new_referral'
                 );
 
                 if (canNavigate) {
@@ -429,7 +440,9 @@ export default function NotificationsScreen() {
                             
                             // Naviguer selon le type et les IDs disponibles
                             // Priorité 1 : Types spécifiques
-                            if (type === 'trip_manage' && tripId) {
+                            if (type === 'referral_new_referral') {
+                              router.push('/referrals');
+                            } else if (type === 'trip_manage' && tripId) {
                               router.push(`/trip/manage/${tripId}`);
                             } else if ((type === 'message' || type === 'chat') && conversationId) {
                               router.push({
@@ -801,4 +814,3 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
   },
 });
-

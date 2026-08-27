@@ -60,11 +60,23 @@ type ServerBooking = {
   passengerOriginPoint?: { type: string; coordinates: [number, number] } | null;
   passengerDestination?: string | null;
   passengerDestinationReference?: string | null;
-  passengerDestinationCoordinates?: { latitude: number; longitude: number } | null;
-  passengerDestinationPoint?: { type: string; coordinates: [number, number] } | null;
+  passengerDestinationCoordinates?: {
+    latitude: number;
+    longitude: number;
+  } | null;
+  passengerDestinationPoint?: {
+    type: string;
+    coordinates: [number, number];
+  } | null;
   passengerLocationCoordinates?: { latitude: number; longitude: number } | null;
-  passengerLocationPoint?: { type: string; coordinates: [number, number] } | null;
-  passengerCurrentLocation?: { type: string; coordinates: [number, number] } | null;
+  passengerLocationPoint?: {
+    type: string;
+    coordinates: [number, number];
+  } | null;
+  passengerCurrentLocation?: {
+    type: string;
+    coordinates: [number, number];
+  } | null;
   passengerLocationUpdatedAt?: string | null;
   passengerLastLocationUpdateAt?: string | null;
   pickedUp?: boolean;
@@ -242,10 +254,10 @@ const mapDriverInterruptionRequest = (
       passengerName: confirmation.passengerName ?? formatPassengerName(confirmation.passenger),
       status:
         mapTripInterruptionStatus(confirmation.status) === 'confirmed'
-          ? 'confirmed' as const
+          ? ('confirmed' as const)
           : mapTripInterruptionStatus(confirmation.status) === 'rejected'
-            ? 'rejected' as const
-            : 'pending' as const,
+            ? ('rejected' as const)
+            : ('pending' as const),
       confirmedAt: confirmation.confirmedAt ?? null,
       rejectedAt: confirmation.rejectedAt ?? null,
     }));
@@ -263,10 +275,10 @@ const mapDriverInterruptionRequest = (
     rejectedAt: request.rejectedAt ?? null,
     cancelledAt: request.cancelledAt ?? null,
     completedAt: request.completedAt ?? null,
-    requiredPassengerCount:
-      Number(request.requiredPassengerCount ?? confirmations.length) || confirmations.length,
+    requiredPassengerCount: Number(request.requiredPassengerCount ?? confirmations.length) || confirmations.length,
     confirmedPassengerCount:
-      Number(request.confirmedPassengerCount ?? confirmations.filter((item) => item.status === 'confirmed').length) || 0,
+      Number(request.confirmedPassengerCount ?? confirmations.filter((item) => item.status === 'confirmed').length) ||
+      0,
     rejectedPassengerCount:
       Number(request.rejectedPassengerCount ?? confirmations.filter((item) => item.status === 'rejected').length) || 0,
     confirmations,
@@ -297,8 +309,7 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
   noShowDriverDistanceMeters: booking.noShowDriverDistanceMeters ?? undefined,
   boardingUncertainDetectedAt: booking.boardingUncertainDetectedAt ?? undefined,
   boardingUncertainReason: booking.boardingUncertainReason ?? undefined,
-  boardingUncertainDriverDistanceMeters:
-    booking.boardingUncertainDriverDistanceMeters ?? undefined,
+  boardingUncertainDriverDistanceMeters: booking.boardingUncertainDriverDistanceMeters ?? undefined,
   pickupDetectionMethod: booking.pickupDetectionMethod ?? undefined,
   dropoffDetectionMethod: booking.dropoffDetectionMethod ?? undefined,
   createdAt: booking.createdAt,
@@ -306,10 +317,7 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
   trip: booking.trip ? mapServerTripToClient(booking.trip) : undefined,
   passengerOrigin: booking.passengerOrigin ?? undefined,
   passengerOriginReference: booking.passengerOriginReference ?? undefined,
-  passengerOriginCoordinates: mapBookingCoordinates(
-    booking.passengerOriginPoint,
-    booking.passengerOriginCoordinates,
-  ),
+  passengerOriginCoordinates: mapBookingCoordinates(booking.passengerOriginPoint, booking.passengerOriginCoordinates),
   passengerDestination: booking.passengerDestination ?? undefined,
   passengerDestinationReference: booking.passengerDestinationReference ?? undefined,
   passengerDestinationCoordinates: mapBookingCoordinates(
@@ -320,8 +328,7 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
     booking.passengerCurrentLocation ?? booking.passengerLocationPoint,
     booking.passengerLocationCoordinates,
   ),
-  passengerLocationUpdatedAt:
-    booking.passengerLocationUpdatedAt ?? booking.passengerLastLocationUpdateAt ?? undefined,
+  passengerLocationUpdatedAt: booking.passengerLocationUpdatedAt ?? booking.passengerLastLocationUpdateAt ?? undefined,
   pickedUp: booking.pickedUp ?? false,
   pickedUpAt: booking.pickedUpAt ?? undefined,
   pickedUpConfirmedByPassenger: booking.pickedUpConfirmedByPassenger ?? false,
@@ -331,13 +338,10 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
   droppedOffAt: booking.droppedOffAt ?? undefined,
   droppedOffConfirmedByPassenger: booking.droppedOffConfirmedByPassenger ?? false,
   droppedOffConfirmedAt: booking.droppedOffConfirmedAt ?? undefined,
-  passengerDestinationApproachNotifiedAt:
-    booking.passengerDestinationApproachNotifiedAt ?? undefined,
+  passengerDestinationApproachNotifiedAt: booking.passengerDestinationApproachNotifiedAt ?? undefined,
   safetyEmergencyContactIds: booking.safetyEmergencyContactIds ?? [],
   interruptionRequest: mapPassengerInterruptionRequest(
-    booking.interruptionRequest ??
-      booking.activeInterruptionRequest ??
-      booking.currentInterruptionRequest,
+    booking.interruptionRequest ?? booking.activeInterruptionRequest ?? booking.currentInterruptionRequest,
   ),
   tripInterruptionRequest: mapDriverInterruptionRequest(
     booking.tripInterruptionRequest ?? booking.activeTripInterruptionRequest,
@@ -347,6 +351,8 @@ const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
 const bookingListTag = { type: 'Booking' as const, id: 'LIST' };
 const tripListTag = { type: 'Trip' as const, id: 'LIST' };
 const myTripsListTag = { type: 'MyTrips' as const, id: 'LIST' };
+const walletTag = { type: 'Wallet' as const, id: 'ME' };
+const driverSettlementTag = { type: 'DriverSettlement' as const, id: 'ME' };
 
 export const bookingApi = baseApi.injectEndpoints({
   overrideExisting: true,
@@ -361,7 +367,10 @@ export const bookingApi = baseApi.injectEndpoints({
         passengerOriginCoordinates?: { latitude: number; longitude: number };
         passengerDestination?: string;
         passengerDestinationReference?: string;
-        passengerDestinationCoordinates?: { latitude: number; longitude: number };
+        passengerDestinationCoordinates?: {
+          latitude: number;
+          longitude: number;
+        };
         paymentMode?: TripPaymentMode;
       }
     >({
@@ -380,24 +389,16 @@ export const bookingApi = baseApi.injectEndpoints({
     }),
     getMyBookings: builder.query<Booking[], void>({
       query: () => '/bookings/my-bookings',
-      transformResponse: (response: ServerBooking[]) =>
-        response.map((booking) => mapServerBookingToClient(booking)),
+      transformResponse: (response: ServerBooking[]) => response.map((booking) => mapServerBookingToClient(booking)),
       providesTags: (result) =>
-        result
-          ? [...result.map(({ id }) => ({ type: 'Booking' as const, id })), bookingListTag]
-          : [bookingListTag],
+        result ? [...result.map(({ id }) => ({ type: 'Booking' as const, id })), bookingListTag] : [bookingListTag],
     }),
     getTripBookings: builder.query<Booking[], string>({
       query: (tripId: string) => `/bookings/trip/${tripId}`,
-      transformResponse: (response: ServerBooking[]) =>
-        response.map((booking) => mapServerBookingToClient(booking)),
+      transformResponse: (response: ServerBooking[]) => response.map((booking) => mapServerBookingToClient(booking)),
       providesTags: (result: Booking[] | undefined, _error: unknown, arg: string) =>
         result
-          ? [
-              ...result.map(({ id }) => ({ type: 'Booking' as const, id })),
-              { type: 'Trip', id: arg },
-              bookingListTag,
-            ]
+          ? [...result.map(({ id }) => ({ type: 'Booking' as const, id })), { type: 'Trip', id: arg }, bookingListTag]
           : [{ type: 'Trip', id: arg }, bookingListTag],
     }),
     initiateBookingPayment: builder.mutation<
@@ -416,15 +417,9 @@ export const bookingApi = baseApi.injectEndpoints({
         method: 'POST',
         body,
       }),
-      invalidatesTags: (_result, _error, { bookingId }) => [
-        { type: 'Booking', id: bookingId },
-        bookingListTag,
-      ],
+      invalidatesTags: (_result, _error, { bookingId }) => [{ type: 'Booking', id: bookingId }, bookingListTag],
     }),
-    updateBookingPaymentMode: builder.mutation<
-      Booking,
-      { bookingId: string; paymentMode: TripPaymentMode }
-    >({
+    updateBookingPaymentMode: builder.mutation<Booking, { bookingId: string; paymentMode: TripPaymentMode }>({
       query: ({ bookingId, paymentMode }) => ({
         url: `/bookings/${bookingId}/payment-mode`,
         method: 'PUT',
@@ -434,26 +429,21 @@ export const bookingApi = baseApi.injectEndpoints({
       invalidatesTags: (result, _error, { bookingId }) => [
         { type: 'Booking', id: result?.id ?? bookingId },
         bookingListTag,
+        walletTag,
+        driverSettlementTag,
       ],
     }),
     checkBookingPaymentStatus: builder.query<BookingPaymentResponse, string>({
       query: (orderNumber) => `/bookings/payments/${orderNumber}/status`,
       providesTags: (result) =>
-        result?.booking?.id
-          ? [{ type: 'Booking', id: result.booking.id }, bookingListTag]
-          : [bookingListTag],
+        result?.booking?.id ? [{ type: 'Booking', id: result.booking.id }, bookingListTag] : [bookingListTag],
     }),
     getBookingById: builder.query<Booking, string>({
       query: (id: string) => `/bookings/${id}`,
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
-      providesTags: (_result: Booking | undefined, _error: unknown, id: string) => [
-        { type: 'Booking', id },
-      ],
+      providesTags: (_result: Booking | undefined, _error: unknown, id: string) => [{ type: 'Booking', id }],
     }),
-    updateBookingStatus: builder.mutation<
-      Booking,
-      { id: string; status: BookingStatus; rejectionReason?: string }
-    >({
+    updateBookingStatus: builder.mutation<Booking, { id: string; status: BookingStatus; rejectionReason?: string }>({
       query: ({ id, ...body }: { id: string; status: BookingStatus; rejectionReason?: string }) => ({
         url: `/bookings/${id}/status`,
         method: 'PUT',
@@ -462,12 +452,7 @@ export const bookingApi = baseApi.injectEndpoints({
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
       invalidatesTags: (result) =>
         result
-          ? [
-              { type: 'Booking', id: result.id },
-              { type: 'Trip', id: result.tripId },
-              bookingListTag,
-              tripListTag,
-            ]
+          ? [{ type: 'Booking', id: result.id }, { type: 'Trip', id: result.tripId }, bookingListTag, tripListTag]
           : [bookingListTag, tripListTag],
     }),
     cancelBooking: builder.mutation<void, string>({
@@ -536,10 +521,7 @@ export const bookingApi = baseApi.injectEndpoints({
         method: 'POST',
         body: { emergencyContactIds },
       }),
-      invalidatesTags: (_result, _error, { bookingId }) => [
-        { type: 'Booking', id: bookingId },
-        bookingListTag,
-      ],
+      invalidatesTags: (_result, _error, { bookingId }) => [{ type: 'Booking', id: bookingId }, bookingListTag],
     }),
 
     // Confirmer la récupération du passager (par le driver)
@@ -603,10 +585,7 @@ export const bookingApi = baseApi.injectEndpoints({
     }),
 
     // Signaler l'arrivée du passager (par le passager)
-    confirmDropoffByPassenger: builder.mutation<
-      Booking,
-      string | { id: string; paymentMode?: TripPaymentMode }
-    >({
+    confirmDropoffByPassenger: builder.mutation<Booking, string | { id: string; paymentMode?: TripPaymentMode }>({
       query: (arg: string | { id: string; paymentMode?: TripPaymentMode }) => {
         const id = typeof arg === 'string' ? arg : arg.id;
         const paymentMode = typeof arg === 'string' ? undefined : arg.paymentMode;
@@ -681,10 +660,7 @@ export const bookingApi = baseApi.injectEndpoints({
         myTripsListTag,
       ],
     }),
-    rejectPassengerTripInterruption: builder.mutation<
-      Booking,
-      { bookingId: string; reason?: string }
-    >({
+    rejectPassengerTripInterruption: builder.mutation<Booking, { bookingId: string; reason?: string }>({
       query: ({ bookingId, reason }) => ({
         url: `/bookings/${bookingId}/interruption-request/reject`,
         method: 'PUT',
@@ -711,15 +687,7 @@ export const bookingApi = baseApi.injectEndpoints({
         recordedAt?: string;
       }
     >({
-      query: ({
-        bookingId,
-        latitude,
-        longitude,
-        accuracy,
-        speed,
-        heading,
-        recordedAt,
-      }) => ({
+      query: ({ bookingId, latitude, longitude, accuracy, speed, heading, recordedAt }) => ({
         url: `/bookings/${bookingId}/passenger-location`,
         method: 'PUT',
         body: {
