@@ -46,17 +46,17 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
           </View>
         ) : (
           <View style={styles.appContent}>
-            <ReferralAttributionHandler />
-            <ActiveRideLocationCoordinator />
-            <NotificationHandler />
-            <AuthGuard>
-              <DialogProvider>
+            <DialogProvider>
+              <ReferralAttributionHandler />
+              <ActiveRideLocationCoordinator />
+              <NotificationHandler />
+              <AuthGuard>
                 <PassengerArrivalPaymentCoordinator />
                 <TutorialProvider>
                   <IdentityProvider>{children}</IdentityProvider>
                 </TutorialProvider>
-              </DialogProvider>
-            </AuthGuard>
+              </AuthGuard>
+            </DialogProvider>
           </View>
         )}
       </View>

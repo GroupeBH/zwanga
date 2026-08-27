@@ -483,7 +483,12 @@ export default function ProfileScreen() {
   const pinInputRef = useRef<TextInput | null>(null);
   const pinConfirmInputRef = useRef<TextInput | null>(null);
   const { data: profileSummary, isLoading: profileLoading, refetch: refetchProfile } = useGetProfileSummaryQuery();
-  const { data: referralSummary, refetch: refetchReferralSummary } = useGetMyReferralSummaryQuery();
+  const { data: referralSummary, refetch: refetchReferralSummary } =
+    useGetMyReferralSummaryQuery(undefined, {
+      refetchOnFocus: true,
+      refetchOnReconnect: true,
+      refetchOnMountOrArgChange: true,
+    });
   const { data: kycStatus, isLoading: kycLoading, refetch: refetchKycStatus } = useGetKycStatusQuery();
   const { data: vehicles, isLoading: vehiclesLoading, refetch: refetchVehicles } = useGetVehiclesQuery();
   const [createVehicle, { isLoading: creatingVehicle }] = useCreateVehicleMutation();

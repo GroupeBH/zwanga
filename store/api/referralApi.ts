@@ -10,6 +10,20 @@ import type { BaseEndpointBuilder } from './types';
 
 const referralTag = { type: 'Referral' as const, id: 'ME' };
 
+interface AttachReferralAttributionPayload {
+  referralToken: string;
+  referralProvider: 'chottulink';
+  referralReferringLink?: string;
+  referralCapturedAt: string;
+}
+
+interface AttachReferralAttributionResult {
+  attached: true;
+  newlyAttached: boolean;
+  referredAt: string;
+  referrer: { firstName: string };
+}
+
 export const referralApi = baseApi.injectEndpoints({
   overrideExisting: true,
   endpoints: (builder: BaseEndpointBuilder) => ({
@@ -32,6 +46,17 @@ export const referralApi = baseApi.injectEndpoints({
         method: 'POST',
         body: { referralToken },
       }),
+    }),
+    attachMyReferralAttribution: builder.mutation<
+      AttachReferralAttributionResult,
+      AttachReferralAttributionPayload
+    >({
+      query: (body) => ({
+        url: '/referrals/me/attribution',
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: [referralTag],
     }),
     getMyReferralSummary: builder.query<ReferralSummary, void>({
       query: () => '/referrals/me',
@@ -75,6 +100,7 @@ export const referralApi = baseApi.injectEndpoints({
 export const {
   useValidateReferralCodeMutation,
   useResolveReferralAttributionMutation,
+  useAttachMyReferralAttributionMutation,
   useGetMyReferralSummaryQuery,
   useGetMyReferralsQuery,
   useGetMyReferralRewardsQuery,

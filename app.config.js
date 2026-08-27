@@ -39,6 +39,16 @@ const CHOTTULINK_DOMAIN = process.env.CHOTTULINK_DOMAIN || '';
 const HAS_CHOTTULINK = Boolean(
   CHOTTULINK_MOBILE_API_KEY && CHOTTULINK_DOMAIN,
 );
+const IS_EAS_PRODUCTION_BUILD = process.env.EAS_BUILD_PROFILE === 'production';
+
+if (CHOTTULINK_DOMAIN && !/^[a-z0-9.-]+$/i.test(CHOTTULINK_DOMAIN)) {
+  throw new Error('CHOTTULINK_DOMAIN doit contenir uniquement un nom de domaine.');
+}
+if (IS_EAS_PRODUCTION_BUILD && !HAS_CHOTTULINK) {
+  throw new Error(
+    'Build production refuse: CHOTTULINK_MOBILE_API_KEY et CHOTTULINK_DOMAIN doivent etre definis dans EAS Environment Variables.',
+  );
+}
 
 module.exports = {
   expo: {

@@ -11,7 +11,7 @@ import { selectIsAuthenticated } from '@/store/selectors';
 import { saveTokensAndUpdateState } from '@/store/slices/authSlice';
 import type { UserGender } from '@/types';
 import {
-  clearPendingReferralAttribution,
+  consumePendingReferralAttribution,
   getPendingReferralAttribution,
   type PendingReferralAttribution,
 } from '@/utils/referralAttribution';
@@ -472,7 +472,6 @@ export default function AuthScreen() {
       setGoogleLastName(result.familyName || null);
       setGoogleEmail(result.email || null);
       await googleMobile({ idToken: result.idToken }).unwrap();
-      await clearPendingReferralAttribution();
       await trackEvent('login_success', { method: 'google' });
     } catch (error: any) {
       console.error('Google login error:', error);
@@ -538,7 +537,6 @@ export default function AuthScreen() {
         idToken: result.identityToken,
         nonce: result.nonce,
       }).unwrap();
-      await clearPendingReferralAttribution();
       await trackEvent('login_success', { method: 'apple' });
     } catch (error: any) {
       console.error('Apple login error:', error);
@@ -770,7 +768,6 @@ export default function AuthScreen() {
     if (mode === 'login') {
       try {
         const result = await login({ phone, pin }).unwrap();
-        await clearPendingReferralAttribution();
         await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
         await trackEvent('login_success', { method: 'phone' });
       } catch (error: any) {
@@ -877,7 +874,6 @@ export default function AuthScreen() {
     }
     try {
       const result = await login({ phone, newPin: resetNewPin }).unwrap();
-      await clearPendingReferralAttribution();
       await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
       await trackEvent('login_success', { method: 'pin_reset' });
       showDialog({ variant: 'success', title: 'PIN réinitialisé', message: 'Vous êtes maintenant connecté.' });
@@ -1057,7 +1053,7 @@ export default function AuthScreen() {
               vehicle: signupVehicle,
               ...referralSignupPayload,
             }).unwrap();
-        await clearPendingReferralAttribution();
+        await consumePendingReferralAttribution(pendingAttribution?.token);
         await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
         
         if (requiresVehicle && kycFiles) {
@@ -1116,7 +1112,7 @@ export default function AuthScreen() {
       }
 
       const result = await register(formData).unwrap();
-      await clearPendingReferralAttribution();
+      await consumePendingReferralAttribution(pendingAttribution?.token);
       await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
 
       if (requiresVehicle && kycFiles) {

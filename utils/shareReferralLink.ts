@@ -1,3 +1,4 @@
+import * as Clipboard from 'expo-clipboard';
 import { Platform, Share } from 'react-native';
 
 export const buildReferralShareMessage = (shareLink: string) =>
@@ -32,4 +33,13 @@ export const shareReferralLink = async (value?: string | null) => {
       ? { dialogTitle: 'Partager mon lien Zwanga' }
       : undefined,
   );
+};
+
+export const copyReferralLink = async (value?: string | null) => {
+  const shareLink = normalizeReferralShareLink(value);
+  if (!shareLink) {
+    throw new Error("Le lien d'invitation n'est pas encore disponible.");
+  }
+  await Clipboard.setStringAsync(shareLink);
+  return shareLink;
 };

@@ -8,7 +8,7 @@ import {
   useRequestReferralWithdrawalMutation,
 } from '@/store/api/referralApi';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
-import { shareReferralLink } from '@/utils/shareReferralLink';
+import { copyReferralLink, shareReferralLink } from '@/utils/shareReferralLink';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
@@ -47,6 +47,12 @@ const formatDate = (value?: string | null) => {
 const rewardLabel = (sourceType: string) =>
   sourceType === 'subscription_payment' ? 'Abonnement paye' : 'Trajet paye';
 
+const referralQueryOptions = {
+  refetchOnFocus: true,
+  refetchOnReconnect: true,
+  refetchOnMountOrArgChange: true,
+} as const;
+
 export default function ReferralsScreen() {
   const router = useRouter();
   const { showDialog } = useDialog();
@@ -57,22 +63,22 @@ export default function ReferralsScreen() {
     isLoading,
     isFetching: isSummaryFetching,
     refetch: refetchSummary,
-  } = useGetMyReferralSummaryQuery();
+  } = useGetMyReferralSummaryQuery(undefined, referralQueryOptions);
   const {
     data: referrals = [],
     isFetching: isReferralsFetching,
     refetch: refetchReferrals,
-  } = useGetMyReferralsQuery();
+  } = useGetMyReferralsQuery(undefined, referralQueryOptions);
   const {
     data: rewards = [],
     isFetching: isRewardsFetching,
     refetch: refetchRewards,
-  } = useGetMyReferralRewardsQuery();
+  } = useGetMyReferralRewardsQuery(undefined, referralQueryOptions);
   const {
     data: withdrawals = [],
     isFetching: isWithdrawalsFetching,
     refetch: refetchWithdrawals,
-  } = useGetMyReferralWithdrawalsQuery();
+  } = useGetMyReferralWithdrawalsQuery(undefined, referralQueryOptions);
   const [requestWithdrawal, { isLoading: isWithdrawing }] =
     useRequestReferralWithdrawalMutation();
 
@@ -96,17 +102,35 @@ export default function ReferralsScreen() {
   const handleShare = async () => {
     if (isSharing) return;
     setIsSharing(true);
+    let fallbackLink = summary?.shareLink;
     try {
       const currentSummary = summary ?? (await refetchSummary().unwrap());
+      fallbackLink = currentSummary.shareLink;
       await shareReferralLink(currentSummary.shareLink);
     } catch (error) {
+      console.warn('[referrals] Partage natif indisponible:', error);
       showDialog({
         variant: 'danger',
         title: 'Partage indisponible',
-        message: getApiErrorMessage(
-          error,
-          "Le lien d'invitation n'est pas encore disponible. Verifiez votre connexion puis reessayez.",
-        ),
+        message:
+          "Le menu de partage n'a pas pu s'ouvrir. Vous pouvez copier le lien et le coller dans WhatsApp, SMS ou une autre application.",
+        actions: fallbackLink
+          ? [
+              {
+                label: 'Copier le lien',
+                variant: 'primary',
+                onPress: async () => {
+                  await copyReferralLink(fallbackLink);
+                  showDialog({
+                    variant: 'success',
+                    title: 'Lien copié',
+                    message: "Le lien d'invitation est dans votre presse-papiers.",
+                  });
+                },
+              },
+              { label: 'Fermer', variant: 'ghost' },
+            ]
+          : [{ label: 'Fermer', variant: 'primary' }],
       });
     } finally {
       setIsSharing(false);

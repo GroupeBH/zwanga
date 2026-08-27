@@ -5,6 +5,8 @@
   "scripts": {
     "start": "expo start",
     "postinstall": "node ./scripts/patch-react-native-drawing-order.js && node ./scripts/patch-chottulink-ios-swift-header.js",
+    "eas-build-pre-install": "node ./scripts/validate-referral-config.js",
+    "validate:referrals": "node ./scripts/validate-referral-config.js",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
     "ios": "expo run:ios",
@@ -32,6 +34,7 @@
     "expo-auth-session": "^7.0.10",
     "expo-build-properties": "~1.0.10",
     "expo-camera": "^17.0.9",
+    "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.10",
     "expo-contacts": "~15.0.11",
     "expo-crypto": "~15.0.8",

@@ -205,6 +205,12 @@ export const handleNotificationNavigation = (
         }
       }
 
+      // Ouvrir directement le tableau de parrainage.
+      if (type === 'referral_new_referral') {
+        router.push('/referrals' as any);
+        return;
+      }
+
       // Gérer les notifications explicitement pour conducteurs
       if (
         type === 'driver_trip_revenue' ||

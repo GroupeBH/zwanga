@@ -495,6 +495,10 @@ export interface ReferralSummary {
   shareLink: string;
   referralCount: number;
   rewardCount: number;
+  attribution: {
+    hasReferrer: boolean;
+    referredAt: string | null;
+  };
   balances: {
     pendingTokens: number;
     availableTokens: number;
