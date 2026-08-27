@@ -1,4 +1,3 @@
-import * as Clipboard from 'expo-clipboard';
 import { Platform, Share } from 'react-native';
 
 export const buildReferralShareMessage = (shareLink: string) =>
@@ -40,6 +39,17 @@ export const copyReferralLink = async (value?: string | null) => {
   if (!shareLink) {
     throw new Error("Le lien d'invitation n'est pas encore disponible.");
   }
-  await Clipboard.setStringAsync(shareLink);
+
+  // Loading the module only when the user copies keeps Expo Router route
+  // discovery working with a development client that predates this module.
+  try {
+    const Clipboard = await import('expo-clipboard');
+    await Clipboard.setStringAsync(shareLink);
+  } catch (error) {
+    console.warn('[referrals] Presse-papiers natif indisponible:', error);
+    throw new Error(
+      "La copie n'est pas disponible dans cette version de l'application. Reinstallez l'application puis reessayez.",
+    );
+  }
   return shareLink;
 };

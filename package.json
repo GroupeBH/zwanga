@@ -7,6 +7,7 @@
     "postinstall": "node ./scripts/patch-react-native-drawing-order.js && node ./scripts/patch-chottulink-ios-swift-header.js",
     "eas-build-pre-install": "node ./scripts/validate-referral-config.js",
     "validate:referrals": "node ./scripts/validate-referral-config.js",
+    "test:referrals": "node --test ./tests/referralAttributionPolicy.test.js",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
     "ios": "expo run:ios",

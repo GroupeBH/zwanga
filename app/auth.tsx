@@ -1178,6 +1178,8 @@ export default function AuthScreen() {
               isGoogleLoading={isGoogleMobileLoading || isSendingGoogleOtp || isVerifyingGoogleOtp}
               isAppleLoading={isAppleAuthLoading}
               isAppleAvailable={isAppleAvailable}
+              hasReferralAttribution={Boolean(referralAttribution || legacyReferralCode)}
+              referrerFirstName={referralAttribution?.referrerFirstName}
             />
           )}
 

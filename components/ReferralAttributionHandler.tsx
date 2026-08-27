@@ -17,21 +17,15 @@ import {
   getPendingReferralAttribution,
   type PendingReferralAttribution,
 } from '@/utils/referralAttribution';
+import {
+  getReferralErrorStatus,
+  isDefinitiveAuthenticatedAttributionError,
+  isDuplicateReferralEvent,
+  shouldNavigateToReferralAuth,
+} from '@/utils/referralAttributionPolicy';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
-
-const getErrorStatus = (error: unknown) => {
-  if (!error || typeof error !== 'object') return null;
-  const value = error as { status?: unknown; originalStatus?: unknown };
-  const status = value.status ?? value.originalStatus;
-  return typeof status === 'number' ? status : null;
-};
-
-const isDefinitiveAttributionError = (error: unknown) => {
-  const status = getErrorStatus(error);
-  return status !== null && [400, 404, 409, 422].includes(status);
-};
 
 /**
  * Captures ChottuLink referrals for both new and existing accounts.
@@ -49,10 +43,12 @@ export function ReferralAttributionHandler() {
     useAttachMyReferralAttributionMutation();
   const isProcessing = useRef(false);
   const isAuthenticatedRef = useRef(isAuthenticated);
+  const lastProcessedEventRef = useRef<{ token: string; processedAt: number } | null>(null);
+  const lastRetryNoticeTokenRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    isAuthenticatedRef.current = isAuthenticated;
-  }, [isAuthenticated]);
+  // Keep this synchronized during render so a deep-link callback can never use
+  // the authentication value from the previous render and navigate to /auth.
+  isAuthenticatedRef.current = isAuthenticated;
 
   const attachPendingAttribution = useCallback(
     async (pending: PendingReferralAttribution) => {
@@ -66,6 +62,7 @@ export function ReferralAttributionHandler() {
           referralCapturedAt: pending.capturedAt,
         }).unwrap();
         await consumePendingReferralAttribution(pending.token);
+        lastRetryNoticeTokenRef.current = null;
         await trackEvent('referral_attribution_attached', {
           newly_attached: result.newlyAttached,
           source: pending.isDeferred ? 'deferred' : 'direct',
@@ -81,11 +78,12 @@ export function ReferralAttributionHandler() {
         });
       } catch (error) {
         await trackEvent('referral_attribution_failed', {
-          status: getErrorStatus(error) ?? 'network',
+          status: getReferralErrorStatus(error) ?? 'network',
           phase: 'authenticated_attachment',
         });
-        if (isDefinitiveAttributionError(error)) {
+        if (isDefinitiveAuthenticatedAttributionError(error)) {
           await consumePendingReferralAttribution(pending.token);
+          lastRetryNoticeTokenRef.current = null;
           showDialog({
             variant: 'warning',
             title: 'Invitation non appliquée',
@@ -95,6 +93,15 @@ export function ReferralAttributionHandler() {
             ),
           });
         } else {
+          if (lastRetryNoticeTokenRef.current !== pending.token) {
+            lastRetryNoticeTokenRef.current = pending.token;
+            showDialog({
+              variant: 'info',
+              title: 'Invitation conservée',
+              message:
+                "Zwanga n'a pas encore pu enregistrer votre parrain. Votre session reste ouverte et une nouvelle tentative sera faite automatiquement.",
+            });
+          }
           // A transient/network failure keeps the attribution for the next
           // foreground event or application launch.
           console.warn(
@@ -111,10 +118,25 @@ export function ReferralAttributionHandler() {
 
   const processReferral = useCallback(
     async (payload: ChottuLinkReferralPayload) => {
+      const now = Date.now();
+      if (isDuplicateReferralEvent(lastProcessedEventRef.current, payload.token, now)) {
+        return;
+      }
+      lastProcessedEventRef.current = { token: payload.token, processedAt: now };
       if (isProcessing.current) return;
       isProcessing.current = true;
       try {
         const existing = await getPendingReferralAttribution();
+        if (existing && existing.token !== payload.token) {
+          showDialog({
+            variant: 'info',
+            title: 'Première invitation conservée',
+            message: `L'invitation de ${existing.referrerFirstName ?? 'votre premier parrain'} reste prioritaire pendant sa période de validité.`,
+          });
+          await trackEvent('referral_attribution_ignored', {
+            reason: 'first_touch_already_captured',
+          });
+        }
         let selected = existing;
         if (!selected) {
           const resolved = await resolveReferralAttribution(
@@ -136,7 +158,7 @@ export function ReferralAttributionHandler() {
         }
         if (!selected) return;
 
-        if (isAuthenticatedRef.current) {
+        if (!shouldNavigateToReferralAuth(isAuthenticatedRef.current)) {
           // Release the capture lock before entering the shared attachment
           // routine, which owns the lock for the authenticated request.
           isProcessing.current = false;
@@ -150,7 +172,7 @@ export function ReferralAttributionHandler() {
         });
       } catch (error) {
         await trackEvent('referral_attribution_failed', {
-          status: getErrorStatus(error) ?? 'network',
+          status: getReferralErrorStatus(error) ?? 'network',
           phase: 'link_resolution',
         });
         console.warn(
@@ -161,7 +183,7 @@ export function ReferralAttributionHandler() {
         isProcessing.current = false;
       }
     },
-    [attachPendingAttribution, resolveReferralAttribution, router],
+    [attachPendingAttribution, resolveReferralAttribution, router, showDialog],
   );
 
   useEffect(

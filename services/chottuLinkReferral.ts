@@ -28,6 +28,12 @@ export interface ChottuLinkReferralPayload {
 
 const loadChottuLink = (): ChottuLinkModule | null => {
   if (!chottuLinkReferralConfig.enabled) return null;
+  if (!NativeModules.ChottulinkSdk) {
+    console.warn(
+      '[ChottuLink] Module natif indisponible dans cette version de l application.',
+    );
+    return null;
+  }
   try {
     // Chargement conditionnel requis pour garder Expo Go utilisable sans module natif.
     // eslint-disable-next-line @typescript-eslint/no-require-imports

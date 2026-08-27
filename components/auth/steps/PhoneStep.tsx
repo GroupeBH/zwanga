@@ -17,6 +17,8 @@ interface PhoneStepProps {
   isGoogleLoading: boolean;
   isAppleLoading?: boolean;
   isAppleAvailable?: boolean;
+  hasReferralAttribution?: boolean;
+  referrerFirstName?: string;
 }
 
 export function PhoneStep({
@@ -30,6 +32,8 @@ export function PhoneStep({
   isGoogleLoading,
   isAppleLoading = false,
   isAppleAvailable = false,
+  hasReferralAttribution = false,
+  referrerFirstName,
 }: PhoneStepProps) {
   const isPhoneValid = phone.length >= 10;
   const showAppleAuth = Platform.OS === 'ios' && isAppleAvailable && onAppleAuth;
@@ -56,6 +60,26 @@ export function PhoneStep({
         </Text>
         <Text style={styles.introSubtitle}>La mobilité simplifiée, pour tous.</Text>
       </View>
+
+      {hasReferralAttribution && (
+        <View style={styles.referralNotice}>
+          <View style={styles.referralNoticeIcon}>
+            <Ionicons name="gift-outline" size={20} color={Colors.primaryDark} />
+          </View>
+          <View style={styles.referralNoticeContent}>
+            <Text style={styles.referralNoticeTitle}>
+              {referrerFirstName
+                ? `Invitation de ${referrerFirstName}`
+                : 'Invitation Zwanga détectée'}
+            </Text>
+            <Text style={styles.referralNoticeText}>
+              {mode === 'login'
+                ? "Après connexion, elle sera appliquée si votre compte n'a pas encore de parrain."
+                : 'Vous pouvez créer un compte ou choisir Connexion si vous en possédez déjà un.'}
+            </Text>
+          </View>
+        </View>
+      )}
 
       <View style={styles.authCard}>
         <Text style={styles.inputLabel}>Numéro de téléphone</Text>
