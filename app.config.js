@@ -66,7 +66,7 @@ module.exports = {
 
     ios: {
       bundleIdentifier: "com.biso.zwanga",
-      buildNumber: "45",
+      buildNumber: "101",
       supportsTablet: true,
       usesAppleSignIn: true,
       ...(HAS_CHOTTULINK
@@ -95,7 +95,7 @@ module.exports = {
     android: {
       googleServicesFile: './google-services.json',
       package: 'com.zwanga',
-      versionCode: 7,
+      versionCode: 119,
       config: {
         googleMaps: {
           apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
