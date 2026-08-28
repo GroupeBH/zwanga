@@ -94,6 +94,18 @@ export function NotificationHandler() {
               },
             } as any);
           });
+        } else if (route.startsWith('booking/payment')) {
+          const parts = route.split('?');
+          const params = parseQueryParams(parts[1] || '');
+          InteractionManager.runAfterInteractions(() => {
+            router.replace({
+              pathname: '/booking/payment',
+              params: {
+                bookingId: params.bookingId,
+                status: params.status || 'returned',
+              },
+            } as any);
+          });
         } else if (route.startsWith('trip/manage/')) {
           const tripId = route.replace('trip/manage/', '').split('?')[0];
           router.push({

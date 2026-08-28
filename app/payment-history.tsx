@@ -4,8 +4,8 @@ import { useGetPaymentHistoryQuery, useLazyGetPaymentDetailsQuery } from '@/stor
 import type { PaymentHistoryItem, SubscriptionPaymentStatus } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
-import { useRouter } from 'expo-router';
-import React, { useMemo, useRef, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   InteractionManager,
@@ -272,8 +272,10 @@ const buildPaymentPdfBase64 = (payment: PaymentHistoryItem) => {
 
 export default function PaymentHistoryScreen() {
   const router = useRouter();
+  const { paymentId } = useLocalSearchParams<{ paymentId?: string | string[] }>();
   const { showDialog } = useDialog();
   const isDownloadingRef = useRef(false);
+  const openedPaymentIdRef = useRef<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<PaymentFilter>('all');
   const [selectedPayment, setSelectedPayment] = useState<PaymentHistoryItem | null>(null);
   const [loadingDetailsPaymentId, setLoadingDetailsPaymentId] = useState<string | null>(null);
@@ -317,6 +319,29 @@ export default function PaymentHistoryScreen() {
       setLoadingDetailsPaymentId(null);
     }
   };
+
+  useEffect(() => {
+    const requestedPaymentId = Array.isArray(paymentId) ? paymentId[0] : paymentId;
+    if (!requestedPaymentId || openedPaymentIdRef.current === requestedPaymentId) return;
+
+    openedPaymentIdRef.current = requestedPaymentId;
+    setLoadingDetailsPaymentId(requestedPaymentId);
+    void getPaymentDetails(requestedPaymentId)
+      .unwrap()
+      .then((details) => setSelectedPayment(details))
+      .catch((error: any) => {
+        openedPaymentIdRef.current = null;
+        showDialog({
+          variant: 'danger',
+          title: 'Detail indisponible',
+          message:
+            error?.data?.message ||
+            error?.message ||
+            'Impossible de charger la facture pour le moment.',
+        });
+      })
+      .finally(() => setLoadingDetailsPaymentId(null));
+  }, [getPaymentDetails, paymentId, showDialog]);
 
   const handleDownloadPayment = async (payment: PaymentHistoryItem) => {
     if (isDownloadingRef.current) {

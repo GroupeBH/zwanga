@@ -353,6 +353,7 @@ const tripListTag = { type: 'Trip' as const, id: 'LIST' };
 const myTripsListTag = { type: 'MyTrips' as const, id: 'LIST' };
 const walletTag = { type: 'Wallet' as const, id: 'ME' };
 const driverSettlementTag = { type: 'DriverSettlement' as const, id: 'ME' };
+const paymentHistoryTag = { type: 'PaymentHistory' as const, id: 'ME' };
 
 export const bookingApi = baseApi.injectEndpoints({
   overrideExisting: true,
@@ -417,7 +418,13 @@ export const bookingApi = baseApi.injectEndpoints({
         method: 'POST',
         body,
       }),
-      invalidatesTags: (_result, _error, { bookingId }) => [{ type: 'Booking', id: bookingId }, bookingListTag],
+      invalidatesTags: (_result, _error, { bookingId }) => [
+        { type: 'Booking', id: bookingId },
+        bookingListTag,
+        walletTag,
+        driverSettlementTag,
+        paymentHistoryTag,
+      ],
     }),
     updateBookingPaymentMode: builder.mutation<Booking, { bookingId: string; paymentMode: TripPaymentMode }>({
       query: ({ bookingId, paymentMode }) => ({
@@ -431,6 +438,7 @@ export const bookingApi = baseApi.injectEndpoints({
         bookingListTag,
         walletTag,
         driverSettlementTag,
+        paymentHistoryTag,
       ],
     }),
     checkBookingPaymentStatus: builder.query<BookingPaymentResponse, string>({
