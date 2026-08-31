@@ -355,6 +355,36 @@ const walletTag = { type: 'Wallet' as const, id: 'ME' };
 const driverSettlementTag = { type: 'DriverSettlement' as const, id: 'ME' };
 const paymentHistoryTag = { type: 'PaymentHistory' as const, id: 'ME' };
 
+const asAcceptedBooking = (booking: Booking, acceptedAt: string): Booking => ({
+  ...booking,
+  status: 'accepted',
+  acceptedAt: booking.acceptedAt ?? acceptedAt,
+  updatedAt: booking.updatedAt ?? acceptedAt,
+});
+
+const mergeAcceptedBooking = (
+  currentBooking: Booking,
+  acceptedBooking: Booking,
+  acceptedAt: string,
+): Booking => ({
+  ...currentBooking,
+  ...acceptedBooking,
+  status: 'accepted',
+  acceptedAt: acceptedBooking.acceptedAt ?? currentBooking.acceptedAt ?? acceptedAt,
+  updatedAt: acceptedBooking.updatedAt ?? currentBooking.updatedAt ?? acceptedAt,
+  trip: acceptedBooking.trip ?? currentBooking.trip,
+});
+
+const patchAcceptedBookingInList = (
+  bookings: Booking[],
+  acceptedBooking: Booking,
+  acceptedAt: string,
+) => {
+  const bookingIndex = bookings.findIndex((booking) => booking.id === acceptedBooking.id);
+  if (bookingIndex === -1) return;
+  bookings[bookingIndex] = mergeAcceptedBooking(bookings[bookingIndex], acceptedBooking, acceptedAt);
+};
+
 export const bookingApi = baseApi.injectEndpoints({
   overrideExisting: true,
   endpoints: (builder: BaseEndpointBuilder) => ({
@@ -481,6 +511,32 @@ export const bookingApi = baseApi.injectEndpoints({
         method: 'PUT',
       }),
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
+      async onQueryStarted(id, { dispatch, queryFulfilled }) {
+        const acceptedAt = new Date().toISOString();
+
+        try {
+          const { data } = await queryFulfilled;
+          const acceptedBooking = asAcceptedBooking(data, acceptedAt);
+
+          dispatch(
+            bookingApi.util.updateQueryData('getTripBookings', acceptedBooking.tripId, (draft) => {
+              patchAcceptedBookingInList(draft, acceptedBooking, acceptedAt);
+            }),
+          );
+          dispatch(
+            bookingApi.util.updateQueryData('getMyBookings', undefined, (draft) => {
+              patchAcceptedBookingInList(draft, acceptedBooking, acceptedAt);
+            }),
+          );
+          dispatch(
+            bookingApi.util.updateQueryData('getBookingById', id, (draft) => {
+              Object.assign(draft, mergeAcceptedBooking(draft, acceptedBooking, acceptedAt));
+            }),
+          );
+        } catch {
+          // L'erreur est traitée dans l'écran appelant; aucun patch cache si l'API refuse.
+        }
+      },
       invalidatesTags: (result) =>
         result
           ? [

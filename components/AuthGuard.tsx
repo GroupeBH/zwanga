@@ -1,5 +1,9 @@
 import { Colors } from '@/constants/styles';
-import { clearStoredFcmToken, obtainFcmToken } from '@/services/pushNotifications';
+import {
+  clearStoredFcmToken,
+  obtainFcmToken,
+  subscribeToFcmRefresh,
+} from '@/services/pushNotifications';
 import {
   proactiveTokenRefresh,
   validateAndRefreshTokens,
@@ -366,6 +370,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     let timeout: ReturnType<typeof setTimeout> | null = null;
     let interactionTask: { cancel: () => void } | null = null;
+    let unsubscribeTokenRefresh: (() => void) | null = null;
 
     const syncTokenWithBackend = async (token: string | null) => {
       if (!token) {
@@ -397,6 +402,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     };
 
     interactionTask = InteractionManager.runAfterInteractions(() => {
+      if (isAuthenticated) {
+        unsubscribeTokenRefresh = subscribeToFcmRefresh(syncTokenWithBackend);
+      }
       timeout = setTimeout(() => {
         if (cancelled || AppState.currentState !== 'active') {
           return;
@@ -408,6 +416,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
       interactionTask?.cancel();
+      unsubscribeTokenRefresh?.();
       if (timeout) {
         clearTimeout(timeout);
       }

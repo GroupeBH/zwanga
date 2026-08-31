@@ -770,6 +770,9 @@ export default function NavigationScreen() {
   const [pickupNoticeCountdown, setPickupNoticeCountdown] = useState<number | null>(null);
   const [tripEndNotice, setTripEndNotice] = useState<TripEndNotice | null>(null);
   const [processingBookingId, setProcessingBookingId] = useState<string | null>(null);
+  const [locallyAcceptedBookingIds, setLocallyAcceptedBookingIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const pickupNoticeRef = useRef<PickupNotice | null>(null);
   const tripEndNoticeRef = useRef<TripEndNotice | null>(null);
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
@@ -817,10 +820,30 @@ export default function NavigationScreen() {
     isMapReadyRef.current = true;
   }, []);
 
+  const rememberAcceptedBooking = useCallback((bookingId: string) => {
+    setLocallyAcceptedBookingIds((current) => {
+      if (current.has(bookingId)) return current;
+
+      const next = new Set(current);
+      next.add(bookingId);
+      return next;
+    });
+  }, []);
+
+  const visibleBookings = useMemo(() => {
+    if (!bookings || locallyAcceptedBookingIds.size === 0) return bookings;
+
+    return bookings.map((booking) =>
+      locallyAcceptedBookingIds.has(booking.id) && booking.status === 'pending'
+        ? { ...booking, status: 'accepted' as const }
+        : booking,
+    );
+  }, [bookings, locallyAcceptedBookingIds]);
+
   const passengerMapLocations = useMemo<PassengerMapLocation[]>(() => {
     const locations: PassengerMapLocation[] = [];
 
-    (bookings ?? [])
+    (visibleBookings ?? [])
       .filter((booking) => {
         if (booking.status !== 'accepted' && booking.status !== 'completed') {
           return false;
@@ -934,17 +957,17 @@ export default function NavigationScreen() {
 
     return locations;
   }, [
-    bookings,
     isKinshasaNavigationTrip,
     livePassengerLocations,
     tripArrivalCoordinate,
     tripDepartureCoordinate,
+    visibleBookings,
   ]);
   
   // Refs pour éviter les re-rendus excessifs
   const pendingNavigationBookings = useMemo(
-    () => (bookings ?? []).filter((booking) => booking.status === 'pending'),
-    [bookings],
+    () => (visibleBookings ?? []).filter((booking) => booking.status === 'pending'),
+    [visibleBookings],
   );
   const activePendingBooking = pendingNavigationBookings[0] ?? null;
   const activePendingBookingPickupLabel = getBookingPickupLabel(activePendingBooking, trip);
@@ -955,10 +978,10 @@ export default function NavigationScreen() {
   );
   const passengerInterruptionRequests = useMemo(
     () =>
-      (bookings ?? []).filter((booking) =>
+      (visibleBookings ?? []).filter((booking) =>
         isPendingTripInterruption(booking.interruptionRequest?.status),
       ),
-    [bookings],
+    [visibleBookings],
   );
   const activePassengerInterruptionBooking = passengerInterruptionRequests[0] ?? null;
   const pendingPassengerInterruptionQueueCount = Math.max(
@@ -1027,7 +1050,7 @@ export default function NavigationScreen() {
   routeCoordinatesRef.current = routeCoordinates;
   pickupNoticeRef.current = pickupNotice;
   tripEndNoticeRef.current = tripEndNotice;
-  bookingsRef.current = bookings;
+  bookingsRef.current = visibleBookings;
   skippedPickupBookingIdsRef.current = skippedPickupBookingIds;
 
   const activeNavigationDestination = useMemo(() => {
@@ -1431,9 +1454,9 @@ export default function NavigationScreen() {
   const getPassengerNameForBooking = useCallback(
     (bookingId: string, waypoint?: Waypoint | null) =>
       waypoint?.passenger.name ||
-      bookings?.find((booking) => booking.id === bookingId)?.passengerName ||
+      visibleBookings?.find((booking) => booking.id === bookingId)?.passengerName ||
       'Le passager',
-    [bookings],
+    [visibleBookings],
   );
 
   const presentPassengerBoardedNotice = useCallback(
@@ -2298,7 +2321,7 @@ export default function NavigationScreen() {
   ]);
   // Créer les waypoints à partir des bookings acceptés
   useEffect(() => {
-    if (!bookings || !trip) return;
+    if (!visibleBookings || !trip) return;
 
     // Vérifier que les coordonnées du trip sont valides
     const hasDeparture = Boolean(tripDepartureCoordinate);
@@ -2309,7 +2332,7 @@ export default function NavigationScreen() {
       return;
     }
 
-    const acceptedBookings = bookings.filter(b => b.status === 'accepted');
+    const acceptedBookings = visibleBookings.filter(b => b.status === 'accepted');
     const waypointsList: Waypoint[] = [];
 
     acceptedBookings.forEach((booking) => {
@@ -2439,22 +2462,22 @@ export default function NavigationScreen() {
       setCurrentWaypointIndex(waypointsList.length);
     }
   }, [
-    bookings,
     isKinshasaNavigationTrip,
     skippedPickupBookingIds,
     trip,
     tripArrivalCoordinate,
     tripDepartureCoordinate,
     tripId,
+    visibleBookings,
   ]);
 
   useEffect(() => {
-    if (!bookings) {
+    if (!visibleBookings) {
       return;
     }
 
     const activeSkippedIds = new Set(
-      bookings
+      visibleBookings
         .filter(
           (booking) =>
             booking.status === 'accepted' &&
@@ -2482,7 +2505,7 @@ export default function NavigationScreen() {
       return next;
     });
 
-    const bookingIds = new Set(bookings.map((booking) => booking.id));
+    const bookingIds = new Set(visibleBookings.map((booking) => booking.id));
     Array.from(pickupClosestDistanceMetersRef.current.keys()).forEach(
       (bookingId) => {
         if (!bookingIds.has(bookingId)) {
@@ -2490,12 +2513,12 @@ export default function NavigationScreen() {
         }
       },
     );
-  }, [bookings]);
+  }, [visibleBookings]);
 
   useEffect(() => {
     const currentNotice = pickupNoticeRef.current;
     if (currentNotice) {
-      const latestBooking = bookings?.find(
+      const latestBooking = visibleBookings?.find(
         (booking) => booking.id === currentNotice.waypoint.booking.id,
       );
 
@@ -2511,7 +2534,7 @@ export default function NavigationScreen() {
     }
 
     if (activeWaypoint) {
-      const latestBooking = bookings?.find(
+      const latestBooking = visibleBookings?.find(
         (booking) => booking.id === activeWaypoint.booking.id,
       );
       const isCompleted =
@@ -2525,7 +2548,7 @@ export default function NavigationScreen() {
         setActiveWaypoint(null);
       }
     }
-  }, [activeWaypoint, bookings]);
+  }, [activeWaypoint, visibleBookings]);
 
   const sendDriverLocationToTracking = useCallback(
     (location: Location.LocationObject) => {
@@ -3701,6 +3724,7 @@ export default function NavigationScreen() {
       setProcessingBookingId(booking.id);
       try {
         await acceptBooking(booking.id).unwrap();
+        rememberAcceptedBooking(booking.id);
         lastRouteFetchTimeRef.current = 0;
         routeFetchedRef.current = false;
         await Promise.all([refetchBookings(), refetchTrip()]);
@@ -3721,7 +3745,7 @@ export default function NavigationScreen() {
         setProcessingBookingId(null);
       }
     },
-    [acceptBooking, refetchBookings, refetchTrip, showDialog, speakNavigationMessage],
+    [acceptBooking, refetchBookings, refetchTrip, rememberAcceptedBooking, showDialog, speakNavigationMessage],
   );
 
   const handleRejectPendingBooking = useCallback(

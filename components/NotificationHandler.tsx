@@ -1,6 +1,5 @@
-import {
-  ensureAndroidChannel,
-} from '@/services/pushNotifications';
+import { useDialog } from '@/components/ui/DialogProvider';
+import { ensureAndroidChannel } from '@/services/pushNotifications';
 import { registerBackgroundNotificationTask } from '@/services/backgroundNotificationTask';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useAppSelector } from '@/store/hooks';
@@ -14,6 +13,7 @@ import { InteractionManager, Linking } from 'react-native';
 
 export function NotificationHandler() {
   const router = useRouter();
+  const { showDialog } = useDialog();
   const pathname = usePathname();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const { data: currentUser } = useGetCurrentUserQuery(undefined, {
@@ -55,14 +55,120 @@ export function NotificationHandler() {
       });
     });
 
-    const handleNotificationPress = (data: Record<string, any>) => {
+    const formatAmount = (value: unknown, currency: string) => {
+      const amount = Number(value);
+      const safeAmount = Number.isFinite(amount) ? amount : 0;
+      return `${safeAmount.toLocaleString('fr-FR', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      })} ${currency}`;
+    };
+
+    const presentDriverFinancialModal = (
+      data: Record<string, any>,
+      fallbackBody?: string | null,
+      allowOnNavigationScreen = false,
+    ): boolean => {
+      const type = data.type;
+
+      if (type === 'driver_trip_revenue') {
+        // L'écran de navigation possède son propre modal, alimenté par Socket.IO
+        // avec un repli REST. Ne pas ouvrir deux modals pour la même clôture.
+        if (
+          !allowOnNavigationScreen &&
+          pathnameRef.current.startsWith('/trip/navigate/')
+        ) {
+          return false;
+        }
+
+        const currency = typeof data.currency === 'string' ? data.currency : 'CDF';
+        const total = Number(data.totalExpectedAmount) || 0;
+        const confirmed = Number(data.confirmedAmount) || 0;
+        const cash = Number(data.cashToCollectAmount) || 0;
+        const electronicPending = Number(data.electronicPendingAmount) || 0;
+        const details: string[] = [];
+
+        if (total > 0) {
+          details.push(`Total du trajet : ${formatAmount(total, currency)}`);
+        }
+        if (confirmed > 0) {
+          details.push(`Acquis dans vos gains : ${formatAmount(confirmed, currency)}`);
+        }
+        if (cash > 0) {
+          details.push(`À encaisser en liquide : ${formatAmount(cash, currency)}`);
+        }
+        if (electronicPending > 0) {
+          details.push(
+            `Paiement électronique attendu : ${formatAmount(electronicPending, currency)}`,
+          );
+        }
+
+        showDialog({
+          title: 'Votre gain du trajet',
+          message:
+            details.length > 0
+              ? details.join('\n')
+              : fallbackBody || 'Aucun montant à encaisser pour ce trajet.',
+          variant: 'success',
+          icon: 'wallet',
+          dismissible: true,
+          actions: [
+            {
+              label: 'Voir mes gains',
+              variant: 'primary',
+              onPress: () => router.push('/driver-earnings'),
+            },
+            { label: 'Fermer', variant: 'secondary' },
+          ],
+        });
+        return true;
+      }
+
+      if (type === 'driver_booking_earning_confirmed') {
+        const currency = typeof data.currency === 'string' ? data.currency : 'CDF';
+        showDialog({
+          title: 'Gain maintenant disponible',
+          message: `${formatAmount(data.amount, currency)} sont disponibles et peuvent être retirés depuis votre espace gains.`,
+          variant: 'success',
+          icon: 'wallet',
+          actions: [
+            {
+              label: 'Voir mes gains',
+              variant: 'primary',
+              onPress: () => router.push('/driver-earnings'),
+            },
+            { label: 'Fermer', variant: 'secondary' },
+          ],
+        });
+        return true;
+      }
+
+      return false;
+    };
+
+    const handleNotificationPress = (
+      data: Record<string, any>,
+      fallbackBody?: string | null,
+    ) => {
+      // Un appui depuis l'arrière-plan doit d'abord restituer le détail
+      // financier. Le bouton du modal laisse ensuite le conducteur choisir
+      // d'ouvrir ses gains, au lieu de perdre l'information dans une redirection.
+      if (presentDriverFinancialModal(data, fallbackBody, true)) {
+        return;
+      }
       handleNotificationNavigation(data, router, currentUserRef.current);
     };
+
+    const foregroundListener = Notifications.addNotificationReceivedListener((notification) => {
+      const content = notification.request.content;
+      const data = (content.data || {}) as Record<string, any>;
+      presentDriverFinancialModal(data, content.body);
+    });
 
     const responseListener = Notifications.addNotificationResponseReceivedListener((response) => {
       console.log('[NotificationHandler] Notification pressed from background.');
       const data = response.notification.request.content.data || {};
-      handleNotificationPress(data);
+      handleNotificationPress(data, response.notification.request.content.body);
     });
 
     const linkingListener = Linking.addEventListener('url', (event) => {
@@ -161,10 +267,11 @@ export function NotificationHandler() {
 
     return () => {
       startupTask.cancel();
+      foregroundListener.remove();
       responseListener.remove();
       linkingListener.remove();
     };
-  }, [router]);
+  }, [router, showDialog]);
 
   return null;
 }

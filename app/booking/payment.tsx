@@ -34,7 +34,7 @@ export default function BookingPaymentReturnScreen() {
         </View>
         <ActivityIndicator color={Colors.primary} />
         <Text style={styles.title}>Retour du paiement</Text>
-        <Text style={styles.text}>Verification du paiement en cours...</Text>
+        <Text style={styles.text}>Vérification du paiement en cours...</Text>
       </View>
     </SafeAreaView>
   );
