@@ -45,7 +45,7 @@ const formatDate = (value?: string | null) => {
 };
 
 const rewardLabel = (sourceType: string) =>
-  sourceType === 'subscription_payment' ? 'Abonnement paye' : 'Trajet paye';
+  sourceType === 'subscription_payment' ? 'Abonnement payé' : 'Trajet payé';
 
 const referralQueryOptions = {
   refetchOnFocus: true,
@@ -75,7 +75,7 @@ export default function ReferralsScreen() {
     refetch: refetchRewards,
   } = useGetMyReferralRewardsQuery(undefined, referralQueryOptions);
   const {
-    data: withdrawals = [],
+    data: withdrawals=[],
     isFetching: isWithdrawalsFetching,
     refetch: refetchWithdrawals,
   } = useGetMyReferralWithdrawalsQuery(undefined, referralQueryOptions);
@@ -83,7 +83,7 @@ export default function ReferralsScreen() {
     useRequestReferralWithdrawalMutation();
 
   const recentRewards = useMemo(() => rewards.slice(0, 8), [rewards]);
-  const recentWithdrawals = useMemo(() => withdrawals.slice(0, 5), [withdrawals]);
+  const recentWithdrawals = useMemo(() => withdrawals?.slice(0, 5), [withdrawals]);
   const refreshing =
     isSummaryFetching ||
     isReferralsFetching ||
@@ -144,7 +144,7 @@ export default function ReferralsScreen() {
       showDialog({
         variant: 'warning',
         title: 'Montant invalide',
-        message: 'Entrez le nombre de jetons a retirer.',
+        message: 'Entrez le nombre de jetons à retirer.',
       });
       return;
     }
@@ -168,7 +168,7 @@ export default function ReferralsScreen() {
       showDialog({
         variant: 'warning',
         title: 'Verification requise',
-        message: 'Faites approuver votre identite KYC avant de retirer vos gains.',
+        message: 'Faites approuver votre identité KYC avant de retirer vos gains.',
       });
       return;
     }
@@ -223,10 +223,10 @@ export default function ReferralsScreen() {
         >
           <View style={styles.hero}>
             <Text style={styles.eyebrow}>VOTRE LIEN PERSONNEL</Text>
-            <Text style={styles.linkReady}>Pret a etre partage</Text>
+            <Text style={styles.linkReady}>Prêt à être partagé</Text>
             <Text style={styles.heroText}>
-              Votre ami n’a aucun code a saisir. Le lien reconnait automatiquement
-              votre invitation apres son installation et son inscription.
+              Votre ami n’a aucun code à saisir. Le lien reconnait automatiquement
+              votre invitation après son installation et son inscription.
             </Text>
             <View style={styles.heroActions}>
               <TouchableOpacity
@@ -240,7 +240,7 @@ export default function ReferralsScreen() {
                   <Ionicons name="share-social-outline" size={18} color={Colors.white} />
                 )}
                 <Text style={styles.shareButtonText}>
-                  {isSharing ? 'Preparation...' : 'Partager mon lien'}
+                  {isSharing ? 'Préparation...' : 'Partager mon lien'}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.contactsButton} onPress={() => router.push('/invite')}>
@@ -267,7 +267,7 @@ export default function ReferralsScreen() {
               <View style={styles.statDivider} />
               <View style={styles.stat}>
                 <Text style={styles.statValue}>{formatNumber(summary?.balances.withdrawnTokens)}</Text>
-                <Text style={styles.statLabel}>Deja retires</Text>
+                <Text style={styles.statLabel}>Dejà retirés</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.stat}>
@@ -300,7 +300,7 @@ export default function ReferralsScreen() {
                     <Text style={styles.listMeta}>
                       {referral.qualifiedAt
                         ? `Actif · gains jusqu'au ${formatDate(referral.rewardWindowEndsAt)}`
-                        : `Inscrit le ${formatDate(referral.referredAt)} · aucun paiement eligible`}
+                        : `Inscrit le ${formatDate(referral.referredAt)} · aucun paiement éligible`}
                     </Text>
                     {referral.earnings.pendingTokens > 0 && (
                       <Text style={styles.pendingEarning}>
@@ -314,7 +314,7 @@ export default function ReferralsScreen() {
                     </Text>
                     <Text style={styles.earningAmount}>
                       {formatNumber(referral.earnings.earnedAmount)}{' '}
-                      {referral.earnings.currency} cumules
+                      {referral.earnings.currency} cumulés
                     </Text>
                   </View>
                 </View>
@@ -402,11 +402,11 @@ export default function ReferralsScreen() {
             )}
           </View>
 
-          {recentWithdrawals.length > 0 && (
+          {recentWithdrawals?.length > 0 && (
             <>
               <Text style={styles.sectionTitle}>Retraits recents</Text>
               <View style={styles.listPanel}>
-                {recentWithdrawals.map((withdrawal) => (
+                {recentWithdrawals?.map((withdrawal: any) => (
                   <View key={withdrawal.id} style={styles.listItem}>
                     <View style={[styles.listIcon, styles.payoutIcon]}>
                       <Ionicons name="cash-outline" size={18} color={Colors.infoDark} />

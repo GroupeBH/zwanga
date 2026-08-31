@@ -148,9 +148,29 @@ export async function obtainFcmToken(): Promise<string | null> {
   }
 }
 
-export function subscribeToFcmRefresh(): (() => void) | undefined {
-  console.warn('Automatic token refresh is not supported in Expo Go.');
-  return undefined;
+export function subscribeToFcmRefresh(
+  onTokenRefresh: (token: string) => void | Promise<void>,
+): () => void {
+  if (isExpoGo) {
+    return () => {};
+  }
+
+  const subscription = Notifications.addPushTokenListener(() => {
+    // Sur iOS, l'événement contient le token APNs natif alors que Zwanga
+    // enregistre un ExpoPushToken. On recalcule donc le token transportable
+    // au lieu de transmettre aveuglément la valeur native au backend.
+    void obtainFcmToken()
+      .then(async (token) => {
+        if (token) {
+          await onTokenRefresh(token);
+        }
+      })
+      .catch((error) => {
+        console.warn('Unable to refresh push token:', error);
+      });
+  });
+
+  return () => subscription.remove();
 }
 
 export async function clearStoredFcmToken(): Promise<void> {

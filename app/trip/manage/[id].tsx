@@ -205,6 +205,9 @@ export default function ManageTripScreen() {
   const [rejectError, setRejectError] = useState('');
   const [targetBooking, setTargetBooking] = useState<Booking | null>(null);
   const [processingBookingId, setProcessingBookingId] = useState<string | null>(null);
+  const [locallyAcceptedBookingIds, setLocallyAcceptedBookingIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [contactModalVisible, setContactModalVisible] = useState(false);
   const [selectedPassengerPhone, setSelectedPassengerPhone] = useState<string | null>(null);
   const [selectedPassengerName, setSelectedPassengerName] = useState<string | null>(null);
@@ -235,9 +238,29 @@ export default function ManageTripScreen() {
     }
   }, [refetchTrip, refetchBookings]);
 
+  const rememberAcceptedBooking = useCallback((bookingId: string) => {
+    setLocallyAcceptedBookingIds((current) => {
+      if (current.has(bookingId)) return current;
+
+      const next = new Set(current);
+      next.add(bookingId);
+      return next;
+    });
+  }, []);
+
+  const visibleBookings = useMemo(() => {
+    if (!bookings || locallyAcceptedBookingIds.size === 0) return bookings;
+
+    return bookings.map((booking) =>
+      locallyAcceptedBookingIds.has(booking.id) && booking.status === 'pending'
+        ? { ...booking, status: 'accepted' as const }
+        : booking,
+    );
+  }, [bookings, locallyAcceptedBookingIds]);
+
   useEffect(() => {
-    bookingsRef.current = bookings;
-  }, [bookings]);
+    bookingsRef.current = visibleBookings;
+  }, [visibleBookings]);
 
   useEffect(() => {
     showDialogRef.current = showDialog;
@@ -611,6 +634,7 @@ export default function ManageTripScreen() {
     setProcessingBookingId(bookingId);
     try {
       await acceptBooking(bookingId).unwrap();
+      rememberAcceptedBooking(bookingId);
       void trackEvent('booking_accepted', {
         booking_id: bookingId,
         trip_id: trip?.id ?? '',
@@ -784,7 +808,7 @@ export default function ManageTripScreen() {
 
   const handlePauseTrip = async () => {
     if (!trip) return;
-    const passengersOnBoard = (bookings ?? []).filter(
+    const passengersOnBoard = (visibleBookings ?? []).filter(
       (booking) =>
         booking.status === 'accepted' &&
         hasPassengerBoarded(booking) &&
@@ -895,13 +919,13 @@ export default function ManageTripScreen() {
 
   // Vérifier si l'arrivée de tous les passagers est confirmée
   const allPassengersDroppedOff = useMemo(() => {
-    if (!bookings || bookings.length === 0) return true;
-    const acceptedBookings = bookings.filter((booking) => booking.status === 'accepted');
+    if (!visibleBookings || visibleBookings.length === 0) return true;
+    const acceptedBookings = visibleBookings.filter((booking) => booking.status === 'accepted');
     if (acceptedBookings.length === 0) return true;
     return acceptedBookings.every(
       (booking) => booking.droppedOff && booking.droppedOffConfirmedByPassenger,
     );
-  }, [bookings]);
+  }, [visibleBookings]);
 
   const tripStatus = trip?.status;
   const tripCurrentLocation = trip?.currentLocation;
@@ -931,7 +955,7 @@ export default function ManageTripScreen() {
   // console.log("this user is owner", isOwner);
   // console.log("this user is", user);
 
-  const pendingBookings = (bookings ?? []).filter((booking) => booking.status === 'pending');
+  const pendingBookings = (visibleBookings ?? []).filter((booking) => booking.status === 'pending');
 
   if (!tripId) {
     return (
@@ -1133,7 +1157,7 @@ export default function ManageTripScreen() {
             <View>
               <Text style={styles.sectionTitle}>Passagers</Text>
               <Text style={styles.sectionSubtitle}>
-                {bookings?.length || 0} réservation(s) au total
+                {visibleBookings?.length || 0} réservation(s) au total
               </Text>
             </View>
             {(trip.status === 'upcoming' || trip.status === 'ongoing') && (
@@ -1146,8 +1170,8 @@ export default function ManageTripScreen() {
             )}
           </View>
 
-          {bookings && bookings.length > 0 ? (
-            bookings.map((booking) => (
+          {visibleBookings && visibleBookings.length > 0 ? (
+            visibleBookings.map((booking) => (
               <View key={booking.id} style={styles.bookingCard}>
                 <View style={styles.bookingHeader}>
                   <TouchableOpacity

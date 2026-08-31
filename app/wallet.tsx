@@ -87,6 +87,9 @@ const formatWalletAmount = (amount?: number | string | null, currency?: string |
   return `${numericAmount < 0 ? '-' : ''}${formatted} ${unit}`;
 };
 
+const formatWalletTokenAmount = (amount?: number | string | null) =>
+  formatWalletAmount(amount, 'PTS');
+
 const formatLedgerDescription = (description: string) =>
   description
     .replace(/\bPoints\b/g, 'Jetons')
@@ -334,10 +337,10 @@ export default function WalletScreen() {
         </View>
         <View style={styles.ledgerAmountBlock}>
           <Text style={[styles.ledgerAmount, { color: amountColor }]}>
-            {formatWalletAmount(entry.amount, entry.currency)}
+            {formatWalletTokenAmount(entry.amount)}
           </Text>
           <Text style={styles.ledgerBalance}>
-            Solde {formatWalletAmount(entry.balanceAfter, entry.currency)}
+            Solde {formatWalletTokenAmount(entry.balanceAfter)}
           </Text>
         </View>
       </View>

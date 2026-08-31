@@ -162,7 +162,7 @@ export default function DriverEarningsScreen() {
         title: 'Retrait impossible',
         message: getApiErrorMessage(
           error,
-          'Le retrait n’a pas pu être lancé. Votre solde reste disponible.',
+          "Le retrait n’a pas pu être lancé. Votre solde reste disponible.",
         ),
       });
     }
