@@ -26,6 +26,8 @@ import {
 } from '@/services/driverBackgroundLocationTask';
 import {
   useAcceptBookingMutation,
+  useCancelBookingMutation,
+  useConfirmPickupMutation,
   useConfirmPassengerTripInterruptionMutation,
   useGetTripBookingsQuery,
   useRejectPassengerTripInterruptionMutation,
@@ -178,6 +180,15 @@ interface PickupNotice {
   detectedAt?: string;
   expiresAt?: string;
   pickupWaitSeconds?: number;
+}
+
+interface PickupBypassConfirmation {
+  waypoint: Waypoint;
+  distanceMeters: number;
+  closestDistanceMeters: number;
+  hasPassedPickupOnRoute: boolean;
+  isPickupBehindDriver: boolean;
+  detectedAt: string;
 }
 
 interface TripEndNotice {
@@ -651,6 +662,8 @@ export default function NavigationScreen() {
   const [getDirections] = useGetDirectionsMutation();
   const [acceptBooking, { isLoading: isAcceptingBooking }] = useAcceptBookingMutation();
   const [rejectBooking, { isLoading: isRejectingBooking }] = useRejectBookingMutation();
+  const [cancelBooking, { isLoading: isCancellingPickupBypassBooking }] = useCancelBookingMutation();
+  const [confirmPickup, { isLoading: isConfirmingPickup }] = useConfirmPickupMutation();
   const [completeTrip] = useCompleteTripMutation();
   const [getDriverTripRevenueSummary] = useLazyGetDriverTripRevenueSummaryQuery();
   const [pauseTrip, { isLoading: isPausingTrip }] = usePauseTripMutation();
@@ -768,12 +781,22 @@ export default function NavigationScreen() {
   const [securityModalVisible, setSecurityModalVisible] = useState(false);
   const [pickupNotice, setPickupNotice] = useState<PickupNotice | null>(null);
   const [pickupNoticeCountdown, setPickupNoticeCountdown] = useState<number | null>(null);
+  const [pickupBypassConfirmation, setPickupBypassConfirmation] =
+    useState<PickupBypassConfirmation | null>(null);
+  const [pickupBypassAction, setPickupBypassAction] = useState<'confirm' | 'cancel' | null>(null);
   const [tripEndNotice, setTripEndNotice] = useState<TripEndNotice | null>(null);
   const [processingBookingId, setProcessingBookingId] = useState<string | null>(null);
   const [locallyAcceptedBookingIds, setLocallyAcceptedBookingIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const [locallyPickedUpBookingIds, setLocallyPickedUpBookingIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [locallyCancelledBookingIds, setLocallyCancelledBookingIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const pickupNoticeRef = useRef<PickupNotice | null>(null);
+  const pickupBypassConfirmationRef = useRef<PickupBypassConfirmation | null>(null);
   const tripEndNoticeRef = useRef<TripEndNotice | null>(null);
   const locationSubscription = useRef<Location.LocationSubscription | null>(null);
   const recalcRouteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -830,15 +853,89 @@ export default function NavigationScreen() {
     });
   }, []);
 
-  const visibleBookings = useMemo(() => {
-    if (!bookings || locallyAcceptedBookingIds.size === 0) return bookings;
+  const rememberPickedUpBooking = useCallback((bookingId: string) => {
+    setLocallyPickedUpBookingIds((current) => {
+      if (current.has(bookingId)) return current;
 
-    return bookings.map((booking) =>
-      locallyAcceptedBookingIds.has(booking.id) && booking.status === 'pending'
-        ? { ...booking, status: 'accepted' as const }
-        : booking,
-    );
-  }, [bookings, locallyAcceptedBookingIds]);
+      const next = new Set(current);
+      next.add(bookingId);
+      return next;
+    });
+  }, []);
+
+  const rememberCancelledBooking = useCallback((bookingId: string) => {
+    setLocallyCancelledBookingIds((current) => {
+      if (current.has(bookingId)) return current;
+
+      const next = new Set(current);
+      next.add(bookingId);
+      return next;
+    });
+  }, []);
+
+  const setPickupSkipped = useCallback((bookingId: string, shouldSkip: boolean) => {
+    setSkippedPickupBookingIds((current) => {
+      if (current.has(bookingId) === shouldSkip) {
+        return current;
+      }
+
+      const next = new Set(current);
+      if (shouldSkip) {
+        next.add(bookingId);
+      } else {
+        next.delete(bookingId);
+      }
+      skippedPickupBookingIdsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const visibleBookings = useMemo(() => {
+    if (
+      !bookings ||
+      (locallyAcceptedBookingIds.size === 0 &&
+        locallyPickedUpBookingIds.size === 0 &&
+        locallyCancelledBookingIds.size === 0)
+    ) {
+      return bookings;
+    }
+
+    return bookings.map((booking) => {
+      const updatedAt = new Date().toISOString();
+      let nextBooking = booking;
+
+      if (locallyAcceptedBookingIds.has(booking.id) && nextBooking.status === 'pending') {
+        nextBooking = {
+          ...nextBooking,
+          status: 'accepted' as const,
+          acceptedAt: nextBooking.acceptedAt ?? updatedAt,
+          updatedAt: nextBooking.updatedAt ?? updatedAt,
+        };
+      }
+
+      if (locallyPickedUpBookingIds.has(booking.id)) {
+        nextBooking = {
+          ...nextBooking,
+          status: nextBooking.status === 'pending' ? 'accepted' as const : nextBooking.status,
+          pickedUp: true,
+          pickedUpAt: nextBooking.pickedUpAt ?? updatedAt,
+          pickupDetectionMethod: nextBooking.pickupDetectionMethod ?? 'driver_manual_bypass',
+          updatedAt: nextBooking.updatedAt ?? updatedAt,
+        };
+      }
+
+      if (locallyCancelledBookingIds.has(booking.id)) {
+        nextBooking = {
+          ...nextBooking,
+          status: 'cancelled' as const,
+          cancelledAt: nextBooking.cancelledAt ?? updatedAt,
+          updatedAt: nextBooking.updatedAt ?? updatedAt,
+        };
+      }
+
+      return nextBooking;
+    });
+  }, [bookings, locallyAcceptedBookingIds, locallyCancelledBookingIds, locallyPickedUpBookingIds]);
 
   const passengerMapLocations = useMemo<PassengerMapLocation[]>(() => {
     const locations: PassengerMapLocation[] = [];
@@ -1022,6 +1119,7 @@ export default function NavigationScreen() {
   const announcedWaypointIdsRef = useRef<Set<string>>(new Set());
   const presentedWaypointIdsRef = useRef<Set<string>>(new Set());
   const presentedPickupNoticeKeysRef = useRef<Set<string>>(new Set());
+  const presentedPickupBypassBookingIdsRef = useRef<Set<string>>(new Set());
   const highestPickupNoticePriorityRef = useRef<Map<string, number>>(new Map());
   const skippedPickupBookingIdsRef = useRef<ReadonlySet<string>>(new Set());
   const pickupClosestDistanceMetersRef = useRef<Map<string, number>>(new Map());
@@ -1049,6 +1147,7 @@ export default function NavigationScreen() {
   waypointModalVisibleRef.current = waypointModalVisible;
   routeCoordinatesRef.current = routeCoordinates;
   pickupNoticeRef.current = pickupNotice;
+  pickupBypassConfirmationRef.current = pickupBypassConfirmation;
   tripEndNoticeRef.current = tripEndNotice;
   bookingsRef.current = visibleBookings;
   skippedPickupBookingIdsRef.current = skippedPickupBookingIds;
@@ -1102,6 +1201,10 @@ export default function NavigationScreen() {
     driverCoordinate: RouteCoordinate,
     gpsHeadingDegrees: number | null,
   ) => {
+    if (pickupBypassConfirmationRef.current) {
+      return;
+    }
+
     const route = routeCoordinatesRef.current;
     const driverProgress = route.length >= 2
       ? getPolylineProgress(driverCoordinate, route)
@@ -1116,7 +1219,8 @@ export default function NavigationScreen() {
         waypoint.completed ||
         hasBookingPickupCompleted(booking) ||
         hasBookingDropoffCompleted(booking) ||
-        skippedPickupBookingIdsRef.current.has(booking.id)
+        skippedPickupBookingIdsRef.current.has(booking.id) ||
+        presentedPickupBypassBookingIdsRef.current.has(booking.id)
       ) {
         continue;
       }
@@ -1175,25 +1279,29 @@ export default function NavigationScreen() {
         continue;
       }
 
-      console.warn('[DriverNavigation] Pickup depasse sans embarquement, retrait local du trace:', {
+      const nextConfirmation: PickupBypassConfirmation = {
+        waypoint,
+        distanceMeters: Math.round(distanceToPickupMeters),
+        closestDistanceMeters: Math.round(closestDistance),
+        hasPassedPickupOnRoute,
+        isPickupBehindDriver,
+        detectedAt: new Date().toISOString(),
+      };
+
+      presentedPickupBypassBookingIdsRef.current.add(booking.id);
+      pickupBypassConfirmationRef.current = nextConfirmation;
+      setPickupBypassConfirmation(nextConfirmation);
+
+      console.warn('[DriverNavigation] Pickup depasse sans embarquement, arbitrage conducteur requis:', {
         bookingId: booking.id,
         passengerName: waypoint.passenger.name,
-        distanceToPickupMeters: Math.round(distanceToPickupMeters),
-        closestDistanceMeters: Math.round(closestDistance),
+        distanceToPickupMeters: nextConfirmation.distanceMeters,
+        closestDistanceMeters: nextConfirmation.closestDistanceMeters,
         hasPassedPickupOnRoute,
         isPickupBehindDriver,
       });
 
-      setSkippedPickupBookingIds((current) => {
-        if (current.has(booking.id)) {
-          return current;
-        }
-
-        const next = new Set(current);
-        next.add(booking.id);
-        skippedPickupBookingIdsRef.current = next;
-        return next;
-      });
+      setPickupSkipped(booking.id, true);
 
       const currentNotice = pickupNoticeRef.current;
       if (currentNotice?.waypoint.booking.id === booking.id) {
@@ -1239,6 +1347,7 @@ export default function NavigationScreen() {
     previousTripStatusRef.current = null;
     skippedPickupBookingIdsRef.current = new Set();
     pickupClosestDistanceMetersRef.current.clear();
+    presentedPickupBypassBookingIdsRef.current.clear();
     tripDestinationNearSinceMsRef.current = null;
     setIsReroutingRoute(false);
     setRouteDistanceMeters(null);
@@ -1247,6 +1356,9 @@ export default function NavigationScreen() {
     setSecurityModalVisible(false);
     setPickupNotice(null);
     setPickupNoticeCountdown(null);
+    pickupBypassConfirmationRef.current = null;
+    setPickupBypassConfirmation(null);
+    setPickupBypassAction(null);
     tripEndNoticeRef.current = null;
     setTripEndNotice(null);
     waypointModalVisibleRef.current = false;
@@ -1314,7 +1426,11 @@ export default function NavigationScreen() {
     setLoadedPassengerMarkerKeys(new Set());
     setPickupNotice(null);
     setPickupNoticeCountdown(null);
+    pickupBypassConfirmationRef.current = null;
+    setPickupBypassConfirmation(null);
+    setPickupBypassAction(null);
     presentedPickupNoticeKeysRef.current.clear();
+    presentedPickupBypassBookingIdsRef.current.clear();
     highestPickupNoticePriorityRef.current.clear();
     offRouteSampleCountRef.current = 0;
     lastOffRouteRerouteAtRef.current = 0;
@@ -1332,6 +1448,9 @@ export default function NavigationScreen() {
     skippedPickupBookingIdsRef.current = new Set();
     pickupClosestDistanceMetersRef.current.clear();
     setSkippedPickupBookingIds(new Set());
+    setLocallyAcceptedBookingIds(new Set());
+    setLocallyPickedUpBookingIds(new Set());
+    setLocallyCancelledBookingIds(new Set());
     setRouteDistanceMeters(null);
     setRouteDurationSeconds(null);
     setIsReroutingRoute(false);
@@ -1351,6 +1470,9 @@ export default function NavigationScreen() {
     setWaypointModalVisible(false);
     setPassengersPanelVisible(false);
     setActiveWaypoint(null);
+    pickupBypassConfirmationRef.current = null;
+    setPickupBypassConfirmation(null);
+    setPickupBypassAction(null);
   }, [isTripOngoing]);
 
   const resolveBackgroundDisclosure = (accepted: boolean) => {
@@ -1372,6 +1494,7 @@ export default function NavigationScreen() {
       !isMountedRef.current ||
       waypoint.completed ||
       waypointModalVisibleRef.current ||
+      pickupBypassConfirmationRef.current ||
       presentedWaypointIdsRef.current.has(waypoint.id)
     ) {
       return;
@@ -1387,6 +1510,7 @@ export default function NavigationScreen() {
     (event: BookingAutoProgressEvent, waypoint: Waypoint) => {
       if (
         !isMountedRef.current ||
+        pickupBypassConfirmationRef.current ||
         !event.bookingId ||
         !['driver_arrived_pickup', 'parties_nearby', 'passenger_ready_pickup'].includes(event.type)
       ) {
@@ -1476,6 +1600,11 @@ export default function NavigationScreen() {
         current?.waypoint.booking.id === event.bookingId ? null : current,
       );
       setPickupNoticeCountdown(null);
+      if (pickupBypassConfirmationRef.current?.waypoint.booking.id === event.bookingId) {
+        pickupBypassConfirmationRef.current = null;
+        setPickupBypassConfirmation(null);
+        setPickupBypassAction(null);
+      }
 
       showDialog({
         variant: 'success',
@@ -2167,6 +2296,10 @@ export default function NavigationScreen() {
           if (event.type === 'passenger_no_show') {
             const passengerName = getPassengerNameForBooking(event.bookingId);
             const currentNotice = pickupNoticeRef.current;
+            const currentBypassConfirmation = pickupBypassConfirmationRef.current;
+            if (currentBypassConfirmation?.waypoint.booking.id === event.bookingId) {
+              return;
+            }
             if (currentNotice?.waypoint.booking.id === event.bookingId) {
               pickupNoticeRef.current = null;
               setPickupNotice(null);
@@ -2184,6 +2317,10 @@ export default function NavigationScreen() {
           if (event.type === 'passenger_boarding_uncertain') {
             const passengerName = getPassengerNameForBooking(event.bookingId);
             const currentNotice = pickupNoticeRef.current;
+            const currentBypassConfirmation = pickupBypassConfirmationRef.current;
+            if (currentBypassConfirmation?.waypoint.booking.id === event.bookingId) {
+              return;
+            }
             if (currentNotice?.waypoint.booking.id === event.bookingId) {
               pickupNoticeRef.current = null;
               setPickupNotice(null);
@@ -2513,6 +2650,11 @@ export default function NavigationScreen() {
         }
       },
     );
+    Array.from(presentedPickupBypassBookingIdsRef.current).forEach((bookingId) => {
+      if (!bookingIds.has(bookingId)) {
+        presentedPickupBypassBookingIdsRef.current.delete(bookingId);
+      }
+    });
   }, [visibleBookings]);
 
   useEffect(() => {
@@ -2530,6 +2672,24 @@ export default function NavigationScreen() {
         pickupNoticeRef.current = null;
         setPickupNotice(null);
         setPickupNoticeCountdown(null);
+      }
+    }
+
+    const currentBypassConfirmation = pickupBypassConfirmationRef.current;
+    if (currentBypassConfirmation) {
+      const latestBooking = visibleBookings?.find(
+        (booking) => booking.id === currentBypassConfirmation.waypoint.booking.id,
+      );
+
+      if (
+        !latestBooking ||
+        latestBooking.status !== 'accepted' ||
+        hasBookingPickupCompleted(latestBooking) ||
+        hasBookingDropoffCompleted(latestBooking)
+      ) {
+        pickupBypassConfirmationRef.current = null;
+        setPickupBypassConfirmation(null);
+        setPickupBypassAction(null);
       }
     }
 
@@ -3978,6 +4138,135 @@ export default function NavigationScreen() {
     tripEndNoticeRef.current = null;
     setTripEndNotice(null);
   }, []);
+
+  const dismissPickupBypassConfirmation = useCallback(() => {
+    pickupBypassConfirmationRef.current = null;
+    setPickupBypassConfirmation(null);
+    setPickupBypassAction(null);
+  }, []);
+
+  const dismissPickupNoticeForBooking = useCallback((bookingId: string) => {
+    const currentNotice = pickupNoticeRef.current;
+    if (currentNotice?.waypoint.booking.id !== bookingId) {
+      return;
+    }
+
+    pickupNoticeRef.current = null;
+    setPickupNotice(null);
+    setPickupNoticeCountdown(null);
+  }, []);
+
+  const markNavigationRouteDirty = useCallback(() => {
+    lastRouteFetchTimeRef.current = 0;
+    routeFetchedRef.current = false;
+    routeSignatureRef.current = '';
+    offRouteSampleCountRef.current = 0;
+    lastOffRouteRerouteAtRef.current = 0;
+  }, []);
+
+  const handleConfirmBypassedPickup = useCallback(async () => {
+    const confirmation = pickupBypassConfirmationRef.current;
+    if (!confirmation || pickupBypassAction) {
+      return;
+    }
+
+    const bookingId = confirmation.waypoint.booking.id;
+    const passengerName = confirmation.waypoint.passenger.name || 'Le passager';
+    setPickupBypassAction('confirm');
+    setProcessingBookingId(bookingId);
+
+    try {
+      await confirmPickup(bookingId).unwrap();
+      rememberPickedUpBooking(bookingId);
+      setPickupSkipped(bookingId, false);
+      dismissPickupNoticeForBooking(bookingId);
+      dismissPickupBypassConfirmation();
+      markNavigationRouteDirty();
+      await Promise.all([refetchBookings(), refetchTrip()]);
+      void speakNavigationMessage(
+        `${passengerName} est marque comme pris en charge. Recalcul de l'itineraire.`,
+        { force: true },
+      );
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        "Impossible de confirmer la prise en charge pour le moment.";
+      showDialog({
+        variant: 'danger',
+        icon: 'alert-circle',
+        title: 'Confirmation impossible',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    } finally {
+      setProcessingBookingId(null);
+      setPickupBypassAction(null);
+    }
+  }, [
+    confirmPickup,
+    dismissPickupBypassConfirmation,
+    dismissPickupNoticeForBooking,
+    markNavigationRouteDirty,
+    pickupBypassAction,
+    refetchBookings,
+    refetchTrip,
+    rememberPickedUpBooking,
+    setPickupSkipped,
+    showDialog,
+    speakNavigationMessage,
+  ]);
+
+  const handleCancelBypassedPickup = useCallback(async () => {
+    const confirmation = pickupBypassConfirmationRef.current;
+    if (!confirmation || pickupBypassAction) {
+      return;
+    }
+
+    const bookingId = confirmation.waypoint.booking.id;
+    const passengerName = confirmation.waypoint.passenger.name || 'Le passager';
+    setPickupBypassAction('cancel');
+    setProcessingBookingId(bookingId);
+
+    try {
+      await cancelBooking(bookingId).unwrap();
+      rememberCancelledBooking(bookingId);
+      setPickupSkipped(bookingId, true);
+      dismissPickupNoticeForBooking(bookingId);
+      dismissPickupBypassConfirmation();
+      markNavigationRouteDirty();
+      await Promise.all([refetchBookings(), refetchTrip()]);
+      void speakNavigationMessage(
+        `La reservation de ${passengerName} est annulee. L'itineraire continue.`,
+        { force: true },
+      );
+    } catch (error: any) {
+      const message =
+        error?.data?.message ??
+        error?.error ??
+        "Impossible d'annuler cette reservation pour le moment.";
+      showDialog({
+        variant: 'danger',
+        icon: 'alert-circle',
+        title: 'Annulation impossible',
+        message: Array.isArray(message) ? message.join('\n') : message,
+      });
+    } finally {
+      setProcessingBookingId(null);
+      setPickupBypassAction(null);
+    }
+  }, [
+    cancelBooking,
+    dismissPickupBypassConfirmation,
+    dismissPickupNoticeForBooking,
+    markNavigationRouteDirty,
+    pickupBypassAction,
+    refetchBookings,
+    refetchTrip,
+    rememberCancelledBooking,
+    setPickupSkipped,
+    showDialog,
+    speakNavigationMessage,
+  ]);
 
   const handleRatePassengersFromTripEnd = useCallback(() => {
     if (!tripId) {
@@ -5603,10 +5892,116 @@ export default function NavigationScreen() {
 
       <Modal
         visible={
-          Boolean(pickupNotice) &&
+          Boolean(pickupBypassConfirmation) &&
           !backgroundDisclosureVisible &&
           !securityModalVisible &&
           !tripEndNotice
+        }
+        transparent
+        animationType="slide"
+        onRequestClose={() => undefined}
+      >
+        <View style={styles.waypointModalOverlay}>
+          <View
+            style={[
+              styles.waypointModalContent,
+              { paddingBottom: Math.max(insets.bottom, Spacing.xl) + Spacing.lg },
+            ]}
+          >
+            <View style={styles.waypointModalHandle} />
+            <View style={[styles.waypointModalIcon, { backgroundColor: Colors.warning }]}>
+              <Ionicons name="help-circle" size={32} color={Colors.white} />
+            </View>
+            <Text style={styles.waypointModalTitle}>Embarquement a confirmer</Text>
+            <Text style={styles.waypointModalPassenger}>
+              {pickupBypassConfirmation?.waypoint.passenger.name || 'Passager'}
+            </Text>
+            <View style={styles.waypointModalAddressContainer}>
+              <Ionicons name="location" size={18} color={Colors.gray[500]} />
+              <Text style={styles.waypointModalAddress}>
+                {pickupBypassConfirmation?.waypoint.address ||
+                  'Point de prise en charge du passager'}
+              </Text>
+            </View>
+            <Text style={styles.waypointModalWaitingText}>
+              Vous avez depasse le point de prise en charge sans confirmation automatique.
+              Le passager est-il deja a bord ?
+            </Text>
+            <View style={[styles.waypointGpsStatus, styles.pickupBypassStatus]}>
+              <Ionicons name="navigate-circle" size={18} color={Colors.warningDark} />
+              <Text style={[styles.waypointGpsStatusText, { color: Colors.warningDark }]}>
+                {pickupBypassConfirmation?.distanceMeters !== undefined
+                  ? `Point depasse, distance actuelle ${Math.max(
+                      1,
+                      pickupBypassConfirmation.distanceMeters,
+                    )} m`
+                  : 'Point de prise en charge depasse'}
+              </Text>
+            </View>
+            <View style={styles.waypointModalActions}>
+              <TouchableOpacity
+                style={[
+                  styles.waypointModalSecondaryButton,
+                  styles.pickupBypassDecisionButton,
+                  styles.pickupBypassCancelButton,
+                ]}
+                onPress={() => void handleCancelBypassedPickup()}
+                disabled={
+                  Boolean(pickupBypassAction) ||
+                  isConfirmingPickup ||
+                  isCancellingPickupBypassBooking
+                }
+              >
+                {pickupBypassAction === 'cancel' ? (
+                  <ActivityIndicator size="small" color={Colors.danger} />
+                ) : (
+                  <>
+                    <Ionicons name="close-circle" size={20} color={Colors.danger} />
+                    <Text
+                      style={[
+                        styles.waypointModalSecondaryButtonText,
+                        styles.pickupBypassCancelButtonText,
+                      ]}
+                    >
+                      Annuler reservation
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.waypointModalPrimaryButton,
+                  styles.pickupBypassDecisionButton,
+                  styles.pickupBypassConfirmButton,
+                ]}
+                onPress={() => void handleConfirmBypassedPickup()}
+                disabled={
+                  Boolean(pickupBypassAction) ||
+                  isConfirmingPickup ||
+                  isCancellingPickupBypassBooking
+                }
+              >
+                {pickupBypassAction === 'confirm' ? (
+                  <ActivityIndicator size="small" color={Colors.white} />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={20} color={Colors.white} />
+                    <Text style={styles.waypointModalPrimaryButtonText}>Pris en charge</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={
+          Boolean(pickupNotice) &&
+          !backgroundDisclosureVisible &&
+          !securityModalVisible &&
+          !tripEndNotice &&
+          !pickupBypassConfirmation
         }
         transparent
         animationType="slide"
@@ -5697,7 +6092,8 @@ export default function NavigationScreen() {
           !backgroundDisclosureVisible &&
           !securityModalVisible &&
           !tripEndNotice &&
-          !pickupNotice
+          !pickupNotice &&
+          !pickupBypassConfirmation
         }
         transparent
         animationType="slide"
@@ -5812,6 +6208,7 @@ export default function NavigationScreen() {
           !securityModalVisible &&
           !tripEndNotice &&
           !pickupNotice &&
+          !pickupBypassConfirmation &&
           !waypointModalVisible
         }
         transparent
@@ -7209,6 +7606,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: Spacing.xs,
   },
+  pickupBypassStatus: {
+    backgroundColor: Colors.warning + '15',
+    borderColor: Colors.warning,
+  },
   waypointGpsStatusText: {
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
@@ -7229,6 +7630,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  pickupBypassDecisionButton: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  },
+  pickupBypassCancelButton: {
+    borderColor: Colors.danger + '40',
+  },
+  pickupBypassCancelButtonText: {
+    color: Colors.danger,
+  },
   waypointModalSecondaryButtonText: {
     fontSize: FontSizes.base,
     fontWeight: FontWeights.semibold,
@@ -7243,6 +7654,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: Spacing.xs,
+  },
+  pickupBypassConfirmButton: {
+    backgroundColor: Colors.success,
   },
   waypointModalPrimaryButtonText: {
     fontSize: FontSizes.base,

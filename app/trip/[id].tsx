@@ -1,4 +1,3 @@
-import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardModal';
 import LocationPickerModal, { type MapLocationSelection } from '@/components/LocationPickerModal';
 import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
@@ -23,7 +22,7 @@ import { useCreateConversationMutation, useLazyListConversationsQuery } from '@/
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
 import { useCreateTripShareLinkMutation } from '@/store/api/trackingApi';
 import { useGetTripByIdQuery, useUpdateTripMutation } from '@/store/api/tripApi';
-import { useGetKycStatusQuery, useUploadKycMutation } from '@/store/api/userApi';
+import { useGetKycStatusQuery } from '@/store/api/userApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectConversations, selectTripById, selectUser } from '@/store/selectors';
@@ -939,18 +938,13 @@ export default function TripDetailsScreen() {
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
   const [estimatedArrivalTime, setEstimatedArrivalTime] = useState<Date | null>(null);
   const [calculatedArrivalTime, setCalculatedArrivalTime] = useState<Date | null>(null);
-  const [kycWizardVisible, setKycWizardVisible] = useState(false);
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [contactModalVisible, setContactModalVisible] = useState(false);
   const [securityModalVisible, setSecurityModalVisible] = useState(false);
   const securityModalTransitionRef = useRef(false);
   const securityModalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [kycFrontImage, setKycFrontImage] = useState<string | null>(null);
-  const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
-  const [kycSubmitting, setKycSubmitting] = useState(false);
   const { refetch: refetchKycStatus } = useGetKycStatusQuery();
-  const [uploadKyc, { isLoading: uploadingKyc }] = useUploadKycMutation();
   const { data: driverReviews } = useGetReviewsQuery(trip?.driverId ?? '', {
     skip: !trip?.driverId,
   });
@@ -2134,116 +2128,6 @@ export default function TripDetailsScreen() {
     });
   };
 
-  const closeKycWizard = () => {
-    if (kycSubmitting || uploadingKyc) {
-      return;
-    }
-    setKycWizardVisible(false);
-  };
-
-  const buildKycFormData = (files?: Partial<KycCaptureResult>) => {
-    const formData = new FormData();
-    const appendFile = (field: 'cniFront' | 'selfie', uri: string | null | undefined) => {
-      if (!uri) return;
-      const extensionMatch = uri.split('.').pop()?.split('?')[0]?.toLowerCase();
-      const extension = extensionMatch && extensionMatch.length <= 5 ? extensionMatch : 'jpg';
-      const mimeType =
-        extension === 'png'
-          ? 'image/png'
-          : extension === 'webp'
-            ? 'image/webp'
-            : extension === 'heic'
-              ? 'image/heic'
-              : 'image/jpeg';
-      formData.append(field, {
-        uri,
-        type: mimeType,
-        name: `${field}-${Date.now()}.${extension === 'jpg' ? 'jpg' : extension}`,
-      } as any);
-    };
-
-    appendFile('cniFront', files?.front ?? kycFrontImage);
-    appendFile('selfie', files?.selfie ?? kycSelfieImage);
-
-    return formData;
-  };
-
-  const handleSubmitKyc = async (documents?: Partial<KycCaptureResult>) => {
-    const front = documents?.front ?? kycFrontImage;
-    const selfie = documents?.selfie ?? kycSelfieImage;
-
-    if (!front || !selfie) {
-      showDialog({
-        variant: 'warning',
-        title: 'Documents requis',
-        message: 'Merci de fournir le recto de votre pièce ainsi qu\'un selfie.',
-      });
-      return;
-    }
-    try {
-      setKycSubmitting(true);
-      const formData = buildKycFormData({ front, selfie });
-      const result = await uploadKyc(formData).unwrap();
-      setKycWizardVisible(false);
-
-      // Refetch immédiatement pour obtenir le statut mis à jour
-      await refetchKycStatus();
-
-      // Vérifier le statut retourné par le backend
-      const kycStatusAfterUpload = result?.status;
-
-      if (kycStatusAfterUpload === 'approved') {
-        // KYC approuvé immédiatement (validation automatique réussie)
-        showDialog({
-          variant: 'success',
-          title: 'KYC validé avec succès !',
-          message: 'Votre identité a été vérifiée automatiquement. Vous pouvez maintenant réserver ce trajet.',
-        });
-      } else if (kycStatusAfterUpload === 'rejected') {
-        // KYC rejeté (validation automatique échouée)
-        const rejectionReason = result?.rejectionReason || 'Votre demande KYC a été rejetée.';
-        showDialog({
-          variant: 'danger',
-          title: 'KYC rejeté',
-          message: rejectionReason,
-        });
-      } else {
-        // KYC en attente (validation manuelle requise)
-        showDialog({
-          variant: 'success',
-          title: 'Documents envoyés',
-          message: 'Vos documents sont en cours de vérification. Nous vous informerons dès que la vérification sera terminée.',
-        });
-      }
-    } catch (error: any) {
-      // Gérer les erreurs détaillées du backend
-      let errorMessage = error?.data?.message ?? error?.error ?? 'Impossible de soumettre les documents pour le moment.';
-
-      // Si le message est une chaîne, la traiter directement
-      if (typeof errorMessage === 'string') {
-        // Le backend peut retourner des messages multi-lignes avec des détails
-        errorMessage = errorMessage;
-      } else if (Array.isArray(errorMessage)) {
-        errorMessage = errorMessage.join('\n');
-      }
-
-      showDialog({
-        variant: 'danger',
-        title: 'Erreur KYC',
-        message: errorMessage,
-      });
-    } finally {
-      setKycSubmitting(false);
-    }
-  };
-
-  const handleKycWizardComplete = async (payload: KycCaptureResult) => {
-    setKycFrontImage(payload.front);
-    setKycSelfieImage(payload.selfie);
-    await handleSubmitKyc(payload);
-  };
-
-  const isKycBusy = kycSubmitting || uploadingKyc;
 
   const estimatedTotal = useMemo(() => {
     const seatsValue = parseInt(bookingSeats, 10);
@@ -4014,17 +3898,6 @@ export default function TripDetailsScreen() {
         title="Découvrez ce trajet"
         message="Suivez la progression du conducteur, contactez-le ou réservez vos places depuis cet écran."
         onDismiss={dismissTripGuide}
-      />
-
-      <KycWizardModal
-        visible={kycWizardVisible}
-        onClose={closeKycWizard}
-        isSubmitting={isKycBusy}
-        initialValues={{
-          front: kycFrontImage,
-          selfie: kycSelfieImage,
-        }}
-        onComplete={handleKycWizardComplete}
       />
 
       {/* Image Modal */}

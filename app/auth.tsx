@@ -1,10 +1,10 @@
-import { KycCaptureResult, KycWizardModal } from '@/components/KycWizardModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { isSignupOtpVerificationEnabled } from '@/config/env';
+import { useDiditKycFlow } from '@/hooks/useDiditKycFlow';
 import { trackEvent } from '@/services/analytics';
 import { isAppleSignInAvailable, signInWithApple, type AppleAuthResult } from '@/services/appleAuth';
 import { configureGoogleSignIn, signInWithGoogle, type GoogleAuthResult } from '@/services/googleAuth';
-import { useSendPhoneVerificationOtpMutation, useUploadKycMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
+import { useSendPhoneVerificationOtpMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
 import { useAppleMobileMutation, useGoogleMobileMutation, useLoginMutation, useRegisterMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated } from '@/store/selectors';
@@ -206,11 +206,6 @@ export default function AuthScreen() {
   const [vehiclePlate, setVehiclePlate] = useState('');
   const [vehicleModalVisible, setVehicleModalVisible] = useState(false);
 
-  // KYC State
-  const [kycModalVisible, setKycModalVisible] = useState(false);
-  const [kycSubmitting, setKycSubmitting] = useState(false);
-  const [kycFiles, setKycFiles] = useState<KycCaptureResult | null>(null);
-
   // Google flow states
   const [googleIdToken, setGoogleIdToken] = useState<string | null>(null);
   const [googleProfileName, setGoogleProfileName] = useState<string | null>(null);
@@ -236,9 +231,15 @@ export default function AuthScreen() {
   const [register, { isLoading: isRegistering }] = useRegisterMutation();
   const [googleMobile, { isLoading: isGoogleMobileLoading }] = useGoogleMobileMutation();
   const [appleMobile, { isLoading: isAppleMobileLoading }] = useAppleMobileMutation();
-  const [uploadKyc] = useUploadKycMutation();
   const [sendPhoneVerificationOtp, { isLoading: isSendingOtpMutation }] = useSendPhoneVerificationOtpMutation();
   const [verifyPhoneOtp, { isLoading: isVerifyingOtp }] = useVerifyPhoneOtpMutation();
+  const { startDiditKyc, isStartingDiditKyc } = useDiditKycFlow({
+    sourceScreen: 'auth',
+    approvedMessage:
+      "Votre identité a été vérifiée avec succès. Bienvenue parmi les conducteurs Zwanga.",
+    pendingMessage:
+      'Votre compte est créé. Terminez la vérification Didit pour activer toutes les fonctionnalités conducteur.',
+  });
 
   // ============ COMPUTED VALUES ============
   const getStepSequence = () => {
@@ -390,7 +391,6 @@ export default function AuthScreen() {
     setVehicleColor('');
     setVehiclePlate('');
     setVehicleModalVisible(false);
-    setKycFiles(null);
     setIsSendingOtp(false);
     setGoogleIdToken(null);
     setGoogleProfileName(null);
@@ -438,7 +438,6 @@ export default function AuthScreen() {
     setVehicleColor('');
     setVehiclePlate('');
     setVehicleModalVisible(false);
-    setKycFiles(null);
     setIsSendingOtp(false);
     setGoogleIdToken(seed.idToken);
     setGoogleProfileName(seed.profileName);
@@ -980,23 +979,6 @@ export default function AuthScreen() {
     }
   };
 
-  // KYC Helpers
-  const buildKycFormData = (files: KycCaptureResult) => {
-    const formData = new FormData();
-    const appendFile = (field: string, uri: string) => {
-      const ext = uri.split('.').pop()?.split('?')[0]?.toLowerCase() || 'jpg';
-      formData.append(field, { uri, type: 'image/jpeg', name: `${field}-${Date.now()}.${ext}` } as any);
-    };
-    appendFile('cniFront', files.front);
-    appendFile('selfie', files.selfie);
-    return formData;
-  };
-
-  const handleKycWizardComplete = async (payload: KycCaptureResult) => {
-    setKycFiles(payload);
-    setKycModalVisible(false);
-  };
-
   // Final Registration
   const handleFinalRegister = async () => {
     try {
@@ -1056,14 +1038,8 @@ export default function AuthScreen() {
         await consumePendingReferralAttribution(pendingAttribution?.token);
         await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
         
-        if (requiresVehicle && kycFiles) {
-          setKycSubmitting(true);
-          await uploadKyc(buildKycFormData(kycFiles)).unwrap();
-          await trackEvent('kyc_completed', {
-            source_screen: 'auth',
-            method: authMethod,
-            role,
-          });
+        if (requiresVehicle) {
+          await startDiditKyc();
         }
 
         await triggerSignupSuccessNotification(firstName || googleProfileName || undefined);
@@ -1072,6 +1048,7 @@ export default function AuthScreen() {
           role,
           is_driver: requiresVehicle,
         });
+        router.replace('/(tabs)');
         setGoogleIdToken(null);
         setGoogleProfileName(null);
         setGoogleFirstName(null);
@@ -1115,14 +1092,8 @@ export default function AuthScreen() {
       await consumePendingReferralAttribution(pendingAttribution?.token);
       await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
 
-      if (requiresVehicle && kycFiles) {
-        setKycSubmitting(true);
-        await uploadKyc(buildKycFormData(kycFiles)).unwrap();
-        await trackEvent('kyc_completed', {
-          source_screen: 'auth',
-          method: 'phone',
-          role,
-        });
+      if (requiresVehicle) {
+        await startDiditKyc();
       }
 
       await triggerSignupSuccessNotification(firstName);
@@ -1131,10 +1102,9 @@ export default function AuthScreen() {
         role,
         is_driver: requiresVehicle,
       });
+      router.replace('/(tabs)');
     } catch (error: any) {
       showDialog({ variant: 'danger', title: 'Erreur', message: error?.data?.message || "Erreur lors de l'inscription" });
-    } finally {
-      setKycSubmitting(false);
     }
   };
 
@@ -1294,10 +1264,8 @@ export default function AuthScreen() {
           {/* KYC Step */}
           {step === 'kyc' && role === 'driver' && (
             <KycStep
-              kycFiles={kycFiles}
-              onOpenKycModal={() => setKycModalVisible(true)}
               onFinish={handleFinalRegister}
-              isLoading={isRegistering || kycSubmitting}
+              isLoading={isRegistering || isStartingDiditKyc}
             />
           )}
         </ScrollView>
@@ -1315,13 +1283,6 @@ export default function AuthScreen() {
         onModelChange={setVehicleModel}
         onColorChange={setVehicleColor}
         onPlateChange={setVehiclePlate}
-      />
-
-      <KycWizardModal
-        visible={kycModalVisible}
-        onClose={() => setKycModalVisible(false)}
-        onComplete={handleKycWizardComplete}
-        isSubmitting={kycSubmitting}
       />
     </SafeAreaView>
   );

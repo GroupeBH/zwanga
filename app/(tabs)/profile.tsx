@@ -1,10 +1,10 @@
-import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardModal';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { VehicleFormModal } from '@/components/VehicleFormModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { getRegisteredVehicleTypeLabel } from '@/constants/vehicleTypes';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
+import { useDiditKycFlow } from '@/hooks/useDiditKycFlow';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
 import { useGetPaymentHistoryQuery } from '@/store/api/paymentApi';
 import { useGetMyDriverSettlementQuery } from '@/store/api/driverSettlementsApi';
@@ -24,7 +24,6 @@ import {
   useUpdatePinMutation,
   useUpdatePinWithOtpMutation,
   useUpdateUserMutation,
-  useUploadKycMutation,
   useVerifyPhoneOtpMutation,
 } from '@/store/api/userApi';
 import {
@@ -444,11 +443,7 @@ export default function ProfileScreen() {
   const [vehicleModel, setVehicleModel] = useState('');
   const [vehicleColor, setVehicleColor] = useState('');
   const [vehiclePlate, setVehiclePlate] = useState('');
-  const [kycModalVisible, setKycModalVisible] = useState(false);
   const [reviewsModalVisible, setReviewsModalVisible] = useState(false);
-  const [kycFrontImage, setKycFrontImage] = useState<string | null>(null);
-  const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
-  const [kycSubmitting, setKycSubmitting] = useState(false);
   const [pinModalVisible, setPinModalVisible] = useState(false);
   const [pinStep, setPinStep] = useState<'oldPin' | 'otp' | 'newPin'>('oldPin');
   const [forgotPinMode, setForgotPinMode] = useState(false); // true si l'utilisateur a oublié son PIN
@@ -494,7 +489,6 @@ export default function ProfileScreen() {
   const [createVehicle, { isLoading: creatingVehicle }] = useCreateVehicleMutation();
   const [updateVehicle, { isLoading: updatingVehicle }] = useUpdateVehicleMutation();
   const [deleteVehicle, { isLoading: deletingVehicle }] = useDeleteVehicleMutation();
-  const [uploadKyc, { isLoading: uploadingKyc }] = useUploadKycMutation();
   const [updatePin, { isLoading: isUpdatingPin }] = useUpdatePinMutation();
   const [updatePinWithOtp, { isLoading: isUpdatingPinWithOtp }] = useUpdatePinWithOtpMutation();
   const [updateUser, { isLoading: isUpdatingUser }] = useUpdateUserMutation();
@@ -505,6 +499,16 @@ export default function ProfileScreen() {
     useLazyCheckSubscriptionPaymentStatusQuery();
   const { data: myTripRequests = [] } = useGetMyTripRequestsQuery();
   const { data: myDriverOffers = [] } = useGetMyDriverOffersQuery();
+  const refreshKycAndProfile = useCallback(
+    () => Promise.all([refetchKycStatus(), refetchProfile()]),
+    [refetchKycStatus, refetchProfile],
+  );
+  const { startDiditKyc, isStartingDiditKyc } = useDiditKycFlow({
+    sourceScreen: 'profile',
+    onStatusRefresh: refreshKycAndProfile,
+    approvedMessage:
+      "Votre identité a été vérifiée avec succès. Vous pouvez maintenant accéder aux fonctionnalités conducteur.",
+  });
 
   const currentUser = profileSummary?.user ?? user;
   const stats = profileSummary?.stats;
@@ -545,7 +549,7 @@ export default function ProfileScreen() {
   const isKycApproved = kycStatus?.status === 'approved';
   const isKycPending = kycStatus?.status === 'pending';
   const isKycRejected = kycStatus?.status === 'rejected';
-  const isKycBusy = kycSubmitting || uploadingKyc;
+  const isKycBusy = isStartingDiditKyc;
   const isKycActionDisabled = isKycBusy || isKycApproved;
   const needsDriverOnboarding = !isDriver || vehicleList.length === 0 || !isKycApproved;
 
@@ -968,18 +972,6 @@ export default function ProfileScreen() {
     setVehicleFormError(null);
   }, []);
 
-  const resetKycForm = () => {
-    setKycFrontImage(null);
-    setKycSelfieImage(null);
-  };
-
-  useEffect(() => {
-    if (!kycModalVisible) {
-      resetKycForm();
-      setKycSubmitting(false);
-    }
-  }, [kycModalVisible]);
-
   const handleSaveVehicle = async () => {
     if (!vehicleType || !vehicleBrand.trim() || !vehicleModel.trim() || !vehicleColor.trim() || !vehiclePlate.trim()) {
       setVehicleFormError('Choisissez le type et renseignez la marque, le modèle, la couleur et la plaque.');
@@ -1096,15 +1088,8 @@ export default function ProfileScreen() {
       });
       return;
     }
-    setKycModalVisible(true);
-  }, [isKycApproved, router, showDialog]);
-
-  const handleCloseKycModal = () => {
-    if (kycSubmitting || uploadingKyc) {
-      return;
-    }
-    setKycModalVisible(false);
-  };
+    void startDiditKyc();
+  }, [isKycApproved, router, showDialog, startDiditKyc]);
 
   const handleBecomeDriver = useCallback(async () => {
     try {
@@ -2192,116 +2177,6 @@ export default function ProfileScreen() {
     } as any);
   }, [paymentStatus, router]);
 
-  const buildKycFormData = (files?: Partial<KycCaptureResult>) => {
-    const formData = new FormData();
-    const appendFile = (field: 'cniFront' | 'selfie', uri: string | null | undefined) => {
-      if (!uri) return;
-      const extensionMatch = uri.split('.').pop()?.split('?')[0]?.toLowerCase();
-      const extension = extensionMatch && extensionMatch.length <= 5 ? extensionMatch : 'jpg';
-      const mimeType =
-        extension === 'png'
-          ? 'image/png'
-          : extension === 'webp'
-            ? 'image/webp'
-            : extension === 'heic'
-              ? 'image/heic'
-              : 'image/jpeg';
-      formData.append(field, {
-        uri,
-        type: mimeType,
-        name: `${field}-${Date.now()}.${extension === 'jpg' ? 'jpg' : extension}`,
-      } as any);
-    };
-
-    appendFile('cniFront', files?.front ?? kycFrontImage);
-    appendFile('selfie', files?.selfie ?? kycSelfieImage);
-
-    return formData;
-  };
-
-  const handleSubmitKyc = async (documents?: Partial<KycCaptureResult>) => {
-    const front = documents?.front ?? kycFrontImage;
-    const selfie = documents?.selfie ?? kycSelfieImage;
-
-    if (!front || !selfie) {
-      showDialog({
-        variant: 'warning',
-        title: 'Documents requis',
-        message: "Merci de fournir le recto de votre pièce ainsi qu'un selfie.",
-      });
-      return;
-    }
-    try {
-      setKycSubmitting(true);
-      const formData = buildKycFormData({ front, selfie });
-      const result = await uploadKyc(formData).unwrap();
-      setKycModalVisible(false);
-
-      // Refetch immédiatement pour obtenir le statut mis à jour
-      await Promise.all([refetchKycStatus(), refetchProfile()]);
-
-      // Vérifier le statut retourné par le backend
-      const kycStatusAfterUpload = result?.status;
-
-      if (kycStatusAfterUpload === 'approved') {
-        // KYC approuvé immédiatement (validation automatique réussie)
-        showDialog({
-          variant: 'success',
-          title: 'KYC validé avec succès !',
-          message:
-            "Votre identité a été vérifiée automatiquement. Vous pouvez maintenant accéder à toutes les fonctionnalités de l'application.",
-        });
-      } else if (kycStatusAfterUpload === 'rejected') {
-        // KYC rejeté (validation automatique échouée)
-        const rejectionReason = result?.rejectionReason || 'Votre demande KYC a été rejetée.';
-        showDialog({
-          variant: 'danger',
-          title: 'KYC rejeté',
-          message: rejectionReason,
-        });
-      } else {
-        // KYC en attente (validation manuelle requise)
-        showDialog({
-          variant: 'success',
-          title: 'Documents envoyés',
-          message:
-            'Vos documents sont en cours de vérification. Nous vous informerons dès que la vérification sera terminée.',
-        });
-      }
-    } catch (error: any) {
-      // Gérer les erreurs détaillées du backend
-      let errorMessage =
-        error?.data?.message ?? error?.error ?? 'Impossible de soumettre les documents pour le moment.';
-
-      // Si le message est une chaîne, la traiter directement
-      if (typeof errorMessage === 'string') {
-        // Le backend peut retourner des messages multi-lignes avec des détails
-        errorMessage = errorMessage;
-      } else if (Array.isArray(errorMessage)) {
-        errorMessage = errorMessage.join('\n');
-      }
-
-      showDialog({
-        variant: 'danger',
-        title: 'Erreur KYC',
-        message: errorMessage,
-      });
-    } finally {
-      setKycSubmitting(false);
-    }
-  };
-
-  const handleKycWizardComplete = async (payload: KycCaptureResult) => {
-    setKycFrontImage(payload.front);
-    setKycSelfieImage(payload.selfie);
-    await handleSubmitKyc(payload);
-  };
-
-  useEffect(() => {
-    if (isKycApproved && kycModalVisible) {
-      setKycModalVisible(false);
-    }
-  }, [isKycApproved, kycModalVisible]);
 
   const badges = [
     ...(currentUser?.role === 'driver' ? [{ icon: 'car', color: Colors.primary, label: 'Conducteur' }] : []),
@@ -3412,17 +3287,6 @@ export default function ProfileScreen() {
         onSubmit={handleSaveVehicle}
         submitting={creatingVehicle || updatingVehicle}
         errorMessage={vehicleFormError}
-      />
-
-      <KycWizardModal
-        visible={kycModalVisible}
-        onClose={handleCloseKycModal}
-        isSubmitting={isKycBusy}
-        initialValues={{
-          front: kycFrontImage,
-          selfie: kycSelfieImage,
-        }}
-        onComplete={handleKycWizardComplete}
       />
 
       <Modal

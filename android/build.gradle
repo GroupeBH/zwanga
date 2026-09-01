@@ -15,9 +15,12 @@ buildscript {
 
 allprojects {
   repositories {
+        maven {
+            url "https://raw.githubusercontent.com/didit-protocol/sdk-android/main/repository"
+            content { includeGroup "me.didit" }
+        }
     google()
     mavenCentral()
-    maven { url "$rootDir/../node_modules/@notifee/react-native/android/libs" }
     maven { url 'https://www.jitpack.io' }
   }
 }

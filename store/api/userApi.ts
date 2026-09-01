@@ -1,6 +1,6 @@
 import { API_BASE_URL } from '../../config/env';
 import { getRefreshToken, storeTokens } from '../../services/tokenStorage';
-import type { FavoriteLocation, KycDocument, ProfileStats, ProfileSummary, TripRequestVehicleType, User, UserRole, Vehicle } from '../../types';
+import type { FavoriteLocation, KycDocument, KycStatus, ProfileStats, ProfileSummary, TripRequestVehicleType, User, UserRole, Vehicle } from '../../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
@@ -134,6 +134,110 @@ const currentUserTag = { type: 'User' as const, id: 'CURRENT' };
 const kycStatusTag = { type: 'KycStatus' as const, id: 'CURRENT' };
 const vehicleListTag = { type: 'Vehicle' as const, id: 'LIST' };
 const favoriteLocationsListTag = { type: 'FavoriteLocations' as const, id: 'LIST' };
+
+export interface DiditKycSession {
+  sessionId: string;
+  sessionNumber?: number | null;
+  sessionToken?: string | null;
+  url: string;
+  status?: string | null;
+  vendorData?: string | null;
+  workflowId?: string | null;
+}
+
+type RawDiditKycSession = DiditKycSession & {
+  session_id?: string;
+  session_number?: number | null;
+  session_token?: string | null;
+  session_url?: string;
+  verification_url?: string;
+  vendor_data?: string | null;
+  workflow_id?: string | null;
+};
+
+type DiditKycSyncPayload = {
+  sessionId?: string | null;
+  status?: string | null;
+};
+
+type RawDiditKycSyncResponse =
+  | KycDocument
+  | {
+      kyc?: KycDocument | null;
+      document?: KycDocument | null;
+      status?: KycStatus | null;
+      rejectionReason?: string | null;
+    }
+  | null;
+
+const mapDiditKycSession = (session: RawDiditKycSession): DiditKycSession => ({
+  sessionId: session.sessionId ?? session.session_id ?? '',
+  sessionNumber: session.sessionNumber ?? session.session_number ?? null,
+  sessionToken: session.sessionToken ?? session.session_token ?? null,
+  url: session.url ?? session.session_url ?? session.verification_url ?? '',
+  status: session.status ?? null,
+  vendorData: session.vendorData ?? session.vendor_data ?? null,
+  workflowId: session.workflowId ?? session.workflow_id ?? null,
+});
+
+const mapDiditKycSyncResponse = (response: RawDiditKycSyncResponse): KycDocument | null => {
+  if (!response) {
+    return null;
+  }
+
+  if ('kyc' in response || 'document' in response) {
+    return response.kyc ?? response.document ?? null;
+  }
+
+  return response as KycDocument;
+};
+
+const refreshAuthAfterKycUpdate = async (dispatch: any) => {
+  dispatch(userApi.util.invalidateTags([currentUserTag, kycStatusTag]));
+
+  const refreshToken = await getRefreshToken();
+
+  if (!refreshToken) {
+    dispatch(userApi.endpoints.getKycStatus.initiate(undefined, { forceRefetch: true }));
+    dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true }));
+    return;
+  }
+
+  const normalizedBaseUrl = API_BASE_URL.endsWith('/')
+    ? API_BASE_URL.slice(0, -1)
+    : API_BASE_URL;
+
+  const refreshResponse = await fetch(`${normalizedBaseUrl}/auth/refresh`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ refreshToken }),
+  });
+
+  if (refreshResponse.ok) {
+    const refreshedTokens = (await refreshResponse.json()) as {
+      accessToken?: string;
+      refreshToken?: string;
+    };
+
+    if (refreshedTokens.accessToken && refreshedTokens.refreshToken) {
+      await storeTokens(refreshedTokens.accessToken, refreshedTokens.refreshToken);
+      dispatch({
+        type: 'auth/setTokens',
+        payload: {
+          accessToken: refreshedTokens.accessToken,
+          refreshToken: refreshedTokens.refreshToken,
+        },
+      });
+    }
+  } else {
+    console.warn('Token refresh failed after KYC update:', refreshResponse.status);
+  }
+
+  dispatch(userApi.endpoints.getKycStatus.initiate(undefined, { forceRefetch: true }));
+  dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true }));
+};
 
 /**
  * API utilisateurs
@@ -279,6 +383,38 @@ export const userApi = baseApi.injectEndpoints({
     getKycStatus: builder.query<KycDocument | null, void>({
       query: () => '/users/kyc/status',
       providesTags: [kycStatusTag],
+    }),
+
+    createDiditKycSession: builder.mutation<
+      DiditKycSession,
+      { callbackUrl?: string; language?: string; source?: string } | void
+    >({
+      query: (body) => ({
+        url: '/users/kyc/didit/session',
+        method: 'POST',
+        body: body ?? {},
+      }),
+      transformResponse: (response: RawDiditKycSession) => mapDiditKycSession(response),
+      invalidatesTags: [kycStatusTag],
+    }),
+
+    syncDiditKycSession: builder.mutation<KycDocument | null, DiditKycSyncPayload | void>({
+      query: (body) => ({
+        url: '/users/kyc/didit/sync',
+        method: 'POST',
+        body: body ?? {},
+      }),
+      transformResponse: (response: RawDiditKycSyncResponse) => mapDiditKycSyncResponse(response),
+      async onQueryStarted(_arg, { queryFulfilled, dispatch }) {
+        try {
+          await queryFulfilled;
+          await refreshAuthAfterKycUpdate(dispatch);
+        } catch (error) {
+          console.warn('Error refreshing auth after Didit KYC sync:', error);
+          dispatch(userApi.util.invalidateTags([currentUserTag, kycStatusTag]));
+        }
+      },
+      invalidatesTags: [currentUserTag, kycStatusTag],
     }),
 
     updateFcmToken: builder.mutation<{ message: string }, { fcmToken: string }>({
@@ -494,6 +630,8 @@ export const {
   useGetPublicUserInfoQuery,
   useUploadKycMutation,
   useGetKycStatusQuery,
+  useCreateDiditKycSessionMutation,
+  useSyncDiditKycSessionMutation,
   useUpdateFcmTokenMutation,
   useSendPhoneVerificationOtpMutation,
   useVerifyPhoneOtpMutation,

@@ -16,6 +16,7 @@
     "version": "eas version"
   },
   "dependencies": {
+    "@didit-protocol/sdk-react-native": "^4.7.5",
     "@expo/vector-icons": "^15.0.3",
     "@notifee/react-native": "^9.1.8",
     "@react-native-async-storage/async-storage": "^2.1.0",
