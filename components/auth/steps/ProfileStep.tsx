@@ -83,26 +83,36 @@ export function ProfileStep({
       </View>
 
       {showNameFields && (
-        <View style={styles.profileNameRow}>
-          <View style={[styles.inputWrapper, styles.profileInputWrapper]}>
-            <Ionicons name="person-outline" size={17} color={Colors.gray[500]} style={styles.profileInputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Prénom"
-              placeholderTextColor={Colors.gray[400]}
-              value={firstName}
-              onChangeText={onFirstNameChange}
-            />
+        <View style={styles.legalIdentitySection}>
+          <View style={styles.legalIdentityNotice}>
+            <Ionicons name="id-card-outline" size={18} color={Colors.primary} />
+            <Text style={styles.legalIdentityNoticeText}>
+              Saisissez vos prénom(s) et votre nom comme sur votre pièce d’identité. Le post-nom est facultatif.
+            </Text>
           </View>
-          <View style={[styles.inputWrapper, styles.profileInputWrapper]}>
-            <Ionicons name="person-outline" size={17} color={Colors.gray[500]} style={styles.profileInputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Nom"
-              placeholderTextColor={Colors.gray[400]}
-              value={lastName}
-              onChangeText={onLastNameChange}
-            />
+          <View style={styles.profileNameRow}>
+            <View style={[styles.inputWrapper, styles.profileInputWrapper]}>
+              <Ionicons name="person-outline" size={17} color={Colors.gray[500]} style={styles.profileInputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Prénom(s)"
+                placeholderTextColor={Colors.gray[400]}
+                value={firstName}
+                onChangeText={onFirstNameChange}
+                autoCapitalize="words"
+              />
+            </View>
+            <View style={[styles.inputWrapper, styles.profileInputWrapper]}>
+              <Ionicons name="person-outline" size={17} color={Colors.gray[500]} style={styles.profileInputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Nom (post-nom facultatif)"
+                placeholderTextColor={Colors.gray[400]}
+                value={lastName}
+                onChangeText={onLastNameChange}
+                autoCapitalize="words"
+              />
+            </View>
           </View>
         </View>
       )}

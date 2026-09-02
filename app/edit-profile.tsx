@@ -1,10 +1,15 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { GenderSelector } from '@/components/GenderSelector';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
-import { useGetProfileSummaryQuery, useUpdateUserMutation } from '@/store/api/userApi';
+import {
+  useGetKycStatusQuery,
+  useGetProfileSummaryQuery,
+  useUpdateUserMutation,
+} from '@/store/api/userApi';
 import { useAppDispatch } from '@/store/hooks';
 import { updateUser as updateUserAction } from '@/store/slices/authSlice';
 import type { UserGender } from '@/types';
+import { normalizeLegalName } from '@/utils/legalIdentity';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -26,10 +31,12 @@ export default function EditProfileScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { data: profileSummary, isLoading: summaryLoading, refetch } = useGetProfileSummaryQuery();
+  const { data: kycStatus } = useGetKycStatusQuery();
   const [updateUserMutation, { isLoading: isSaving }] = useUpdateUserMutation();
   const { changeProfilePhoto, isUploading } = useProfilePhoto();
 
   const user = profileSummary?.user;
+  const isLegalIdentityLocked = kycStatus?.status === 'approved';
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -67,7 +74,10 @@ export default function EditProfileScreen() {
   }, [user?.role]);
 
   const handleSave = async () => {
-    if (!firstName.trim() || !lastName.trim()) {
+    const legalFirstName = normalizeLegalName(firstName);
+    const legalLastName = normalizeLegalName(lastName);
+
+    if (!legalFirstName || !legalLastName) {
       setFeedback({
         visible: true,
         success: false,
@@ -77,8 +87,10 @@ export default function EditProfileScreen() {
     }
     try {
       const formData = new FormData();
-      formData.append('firstName', firstName.trim());
-      formData.append('lastName', lastName.trim());
+      if (!isLegalIdentityLocked) {
+        formData.append('firstName', legalFirstName);
+        formData.append('lastName', legalLastName);
+      }
       formData.append('phone', phone.trim());
       if (gender) formData.append('gender', gender);
       // Ne modifier le rôle que si l'utilisateur n'est pas déjà conducteur
@@ -160,24 +172,40 @@ export default function EditProfileScreen() {
 
         <Animated.View entering={FadeInDown.delay(100)} style={styles.card}>
           <Text style={styles.sectionTitle}>Informations personnelles</Text>
+          <View style={styles.legalIdentityNotice}>
+            <Ionicons
+              name={isLegalIdentityLocked ? 'lock-closed-outline' : 'id-card-outline'}
+              size={19}
+              color={isLegalIdentityLocked ? Colors.success : Colors.primary}
+            />
+            <Text style={styles.legalIdentityNoticeText}>
+              {isLegalIdentityLocked
+                ? 'Vos noms sont protégés après validation KYC. Contactez le support pour signaler un changement légal.'
+                : 'Saisissez vos prénom(s) et votre nom comme sur votre pièce d’identité. Le post-nom est facultatif.'}
+            </Text>
+          </View>
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Prénom</Text>
+            <Text style={styles.inputLabel}>Prénom(s)</Text>
             <TextInput
-              style={styles.input}
-              placeholder="Prénom"
+              style={[styles.input, isLegalIdentityLocked && styles.inputLocked]}
+              placeholder="Prénom(s)"
               placeholderTextColor={Colors.gray[400]}
               value={firstName}
               onChangeText={setFirstName}
+              autoCapitalize="words"
+              editable={!isLegalIdentityLocked}
             />
           </View>
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Nom</Text>
             <TextInput
-              style={styles.input}
-              placeholder="Nom"
+              style={[styles.input, isLegalIdentityLocked && styles.inputLocked]}
+              placeholder="Nom (post-nom facultatif)"
               placeholderTextColor={Colors.gray[400]}
               value={lastName}
               onChangeText={setLastName}
+              autoCapitalize="words"
+              editable={!isLegalIdentityLocked}
             />
           </View>
           <View style={styles.inputGroup}>
@@ -399,6 +427,26 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     fontSize: FontSizes.base,
     color: Colors.gray[900],
+  },
+  inputLocked: {
+    backgroundColor: Colors.gray[100],
+    color: Colors.gray[600],
+  },
+  legalIdentityNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: `${Colors.primary}25`,
+    backgroundColor: `${Colors.primary}08`,
+  },
+  legalIdentityNoticeText: {
+    flex: 1,
+    color: Colors.gray[700],
+    fontSize: FontSizes.sm,
+    lineHeight: 19,
   },
   toggleRow: {
     flexDirection: 'row',

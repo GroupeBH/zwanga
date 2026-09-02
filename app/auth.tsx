@@ -10,6 +10,7 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated } from '@/store/selectors';
 import { saveTokensAndUpdateState } from '@/store/slices/authSlice';
 import type { UserGender } from '@/types';
+import { hasCompleteLegalIdentity, normalizeLegalName } from '@/utils/legalIdentity';
 import {
   consumePendingReferralAttribution,
   getPendingReferralAttribution,
@@ -224,7 +225,8 @@ export default function AuthScreen() {
   const [appleNonce, setAppleNonce] = useState<string | null>(null);
   const [isAppleAvailable, setIsAppleAvailable] = useState(false);
   const [isAppleLoading, setIsAppleLoading] = useState(false);
-  const isAppleSignupFlow = googleFlow === 'signup' && socialProvider === 'apple' && Boolean(googleIdToken);
+  const isAppleSignupFlow =
+    googleFlow === 'signup' && socialProvider === 'apple' && Boolean(googleIdToken);
 
   // ============ API HOOKS ============
   const [login, { isLoading: isLoggingIn }] = useLoginMutation();
@@ -414,7 +416,6 @@ export default function AuthScreen() {
 
   const continueSocialSignupFromLogin = (seed: SocialSignupSeed) => {
     const reusablePhone = phone.trim();
-    const keepsProfileIdentity = seed.provider !== 'apple';
 
     setMode('signup');
     setStep('phone');
@@ -426,9 +427,9 @@ export default function AuthScreen() {
     setResetOtpCode(['', '', '', '', '']);
     setResetNewPin('');
     setResetNewPinConfirm('');
-    setFirstName(keepsProfileIdentity ? seed.firstName ?? '' : '');
-    setLastName(keepsProfileIdentity ? seed.lastName ?? '' : '');
-    setEmail(keepsProfileIdentity ? seed.email ?? '' : '');
+    setFirstName(seed.firstName ?? '');
+    setLastName(seed.lastName ?? '');
+    setEmail(seed.email ?? '');
     setGender(null);
     setRole('passenger');
     setProfilePicture(null);
@@ -441,9 +442,9 @@ export default function AuthScreen() {
     setIsSendingOtp(false);
     setGoogleIdToken(seed.idToken);
     setGoogleProfileName(seed.profileName);
-    setGoogleFirstName(keepsProfileIdentity ? seed.firstName ?? null : null);
-    setGoogleLastName(keepsProfileIdentity ? seed.lastName ?? null : null);
-    setGoogleEmail(keepsProfileIdentity ? seed.email ?? null : null);
+    setGoogleFirstName(seed.firstName ?? null);
+    setGoogleLastName(seed.lastName ?? null);
+    setGoogleEmail(seed.email ?? null);
     setGooglePhone(reusablePhone.length >= 10 ? reusablePhone : '');
     setGoogleOtp(['', '', '', '', '']);
     setGoogleFlow('signup');
@@ -527,10 +528,12 @@ export default function AuthScreen() {
       setSocialProvider('apple');
       result = await signInWithApple();
       setGoogleIdToken(result.identityToken);
-      setGoogleProfileName('Profil Apple');
-      setGoogleFirstName(null);
-      setGoogleLastName(null);
-      setGoogleEmail(null);
+      setGoogleProfileName(
+        [result.firstName, result.lastName].filter(Boolean).join(' ') || 'Profil Apple',
+      );
+      setGoogleFirstName(result.firstName);
+      setGoogleLastName(result.lastName);
+      setGoogleEmail(result.email);
       setAppleNonce(result.nonce);
       await appleMobile({
         idToken: result.identityToken,
@@ -544,7 +547,11 @@ export default function AuthScreen() {
         continueSocialSignupFromLogin({
           provider: 'apple',
           idToken: result.identityToken,
-          profileName: 'Profil Apple',
+          profileName:
+            [result.firstName, result.lastName].filter(Boolean).join(' ') || 'Profil Apple',
+          firstName: result.firstName,
+          lastName: result.lastName,
+          email: result.email,
           nonce: result.nonce,
         });
         return;
@@ -569,10 +576,15 @@ export default function AuthScreen() {
       setSocialProvider('apple');
       const result = await signInWithApple();
       setGoogleIdToken(result.identityToken);
-      setGoogleProfileName('Profil Apple');
-      setGoogleFirstName(null);
-      setGoogleLastName(null);
-      setGoogleEmail(null);
+      setGoogleProfileName(
+        [result.firstName, result.lastName].filter(Boolean).join(' ') || 'Profil Apple',
+      );
+      setGoogleFirstName(result.firstName);
+      setGoogleLastName(result.lastName);
+      setGoogleEmail(result.email);
+      setFirstName(result.firstName ?? '');
+      setLastName(result.lastName ?? '');
+      setEmail(result.email ?? '');
       setAppleNonce(result.nonce);
     } catch (error: any) {
       console.error('Apple signup error:', error);
@@ -939,10 +951,21 @@ export default function AuthScreen() {
   };
 
   const validateProfileAndContinue = () => {
-    if (!isAppleSignupFlow && (!firstName.trim() || !lastName.trim())) {
-      showDialog({ variant: 'warning', title: 'Information manquante', message: 'Veuillez entrer votre nom et prénom.' });
+    const legalFirstName = normalizeLegalName(firstName);
+    const legalLastName = normalizeLegalName(lastName);
+
+    if (!hasCompleteLegalIdentity(legalFirstName, legalLastName)) {
+      showDialog({
+        variant: 'warning',
+        title: isAppleSignupFlow ? 'Nom Apple indisponible' : 'Nom légal requis',
+        message: isAppleSignupFlow
+          ? 'Apple ne transmet le nom que lors de la première autorisation. Reconnectez votre compte Apple après avoir retiré Zwanga des apps utilisant votre identifiant Apple, ou choisissez une autre méthode d’inscription.'
+          : 'Renseignez vos prénom(s) et votre nom exactement comme sur votre pièce d’identité. Le post-nom est facultatif.',
+      });
       return;
     }
+    setFirstName(legalFirstName);
+    setLastName(legalLastName);
     if (role === 'driver') {
       if (!vehicleType) {
         showDialog({ variant: 'warning', title: 'Véhicule', message: 'Veuillez sélectionner un type de véhicule.' });
@@ -982,6 +1005,20 @@ export default function AuthScreen() {
   // Final Registration
   const handleFinalRegister = async () => {
     try {
+      const legalFirstName = normalizeLegalName(firstName);
+      const legalLastName = normalizeLegalName(lastName);
+      if (!hasCompleteLegalIdentity(legalFirstName, legalLastName)) {
+        setStep('profile');
+        showDialog({
+          variant: 'warning',
+          title: isAppleSignupFlow ? 'Nom Apple indisponible' : 'Nom légal requis',
+          message: isAppleSignupFlow
+            ? 'Apple n’a pas transmis votre nom. Reconnectez votre compte Apple après avoir retiré Zwanga des apps utilisant votre identifiant Apple, ou choisissez une autre méthode d’inscription.'
+            : 'Renseignez vos prénom(s) et votre nom exactement comme sur votre pièce d’identité. Le post-nom est facultatif.',
+        });
+        return;
+      }
+
       const pendingAttribution = await getPendingReferralAttribution();
       const referralSignupPayload = pendingAttribution
         ? {
@@ -1020,6 +1057,8 @@ export default function AuthScreen() {
               idToken: googleIdToken,
               phone,
               nonce: appleNonce ?? undefined,
+              firstName: legalFirstName,
+              lastName: legalLastName,
               gender: gender ?? undefined,
               role,
               isDriver: requiresVehicle,
@@ -1029,6 +1068,8 @@ export default function AuthScreen() {
           : await googleMobile({
               idToken: googleIdToken,
               phone,
+              firstName: legalFirstName,
+              lastName: legalLastName,
               gender: gender ?? undefined,
               role,
               isDriver: requiresVehicle,
@@ -1039,10 +1080,10 @@ export default function AuthScreen() {
         await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
         
         if (requiresVehicle) {
-          await startDiditKyc();
+          await startDiditKyc({ skipLegalIdentityConfirmation: true });
         }
 
-        await triggerSignupSuccessNotification(firstName || googleProfileName || undefined);
+        await triggerSignupSuccessNotification(legalFirstName || googleProfileName || undefined);
         await trackEvent('signup_completed', {
           method: authMethod,
           role,
@@ -1066,8 +1107,8 @@ export default function AuthScreen() {
       const formData = new FormData();
       formData.append('phone', phone);
       formData.append('pin', pin);
-      formData.append('firstName', firstName);
-      formData.append('lastName', lastName);
+      formData.append('firstName', legalFirstName);
+      formData.append('lastName', legalLastName);
       if (gender) formData.append('gender', gender);
       formData.append('role', role);
       formData.append('isDriver', JSON.stringify(requiresVehicle));
@@ -1093,10 +1134,10 @@ export default function AuthScreen() {
       await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
 
       if (requiresVehicle) {
-        await startDiditKyc();
+        await startDiditKyc({ skipLegalIdentityConfirmation: true });
       }
 
-      await triggerSignupSuccessNotification(firstName);
+      await triggerSignupSuccessNotification(legalFirstName);
       await trackEvent('signup_completed', {
         method: 'phone',
         role,
@@ -1265,7 +1306,10 @@ export default function AuthScreen() {
           {step === 'kyc' && role === 'driver' && (
             <KycStep
               onFinish={handleFinalRegister}
+              onEditIdentity={isAppleSignupFlow ? undefined : () => setStep('profile')}
               isLoading={isRegistering || isStartingDiditKyc}
+              firstName={normalizeLegalName(firstName)}
+              lastName={normalizeLegalName(lastName)}
             />
           )}
         </ScrollView>

@@ -2,12 +2,15 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { trackEvent } from '@/services/analytics';
 import {
   useCreateDiditKycSessionMutation,
+  useLazyGetCurrentUserQuery,
   useSyncDiditKycSessionMutation,
 } from '@/store/api/userApi';
 import type { KycDocument, KycStatus } from '@/types';
+import { hasCompleteLegalIdentity, normalizeLegalName } from '@/utils/legalIdentity';
 import type { VerificationResult } from '@didit-protocol/sdk-react-native';
 import * as ExpoLinking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
+import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -28,6 +31,7 @@ export type DiditKycFlowOutcome = {
 
 type StartDiditKycOptions = {
   showResultDialog?: boolean;
+  skipLegalIdentityConfirmation?: boolean;
 };
 
 type UseDiditKycFlowOptions = {
@@ -132,19 +136,88 @@ export function useDiditKycFlow({
   pendingMessage = 'Votre vérification Didit est en cours. Nous mettrons votre statut à jour dès que Didit confirme la décision.',
 }: UseDiditKycFlowOptions) {
   const { showDialog } = useDialog();
+  const router = useRouter();
+  const [getCurrentUser] = useLazyGetCurrentUserQuery();
   const [createDiditKycSession, { isLoading: isCreatingDiditKycSession }] =
     useCreateDiditKycSessionMutation();
   const [syncDiditKycSession, { isLoading: isSyncingDiditKycSession }] =
     useSyncDiditKycSessionMutation();
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
 
+  const confirmLegalIdentity = useCallback(
+    (firstNameValue?: string | null, lastNameValue?: string | null) => {
+      const firstName = normalizeLegalName(firstNameValue);
+      const lastName = normalizeLegalName(lastNameValue);
+
+      return new Promise<boolean>((resolve) => {
+        const editIdentity = () => {
+          resolve(false);
+          router.push('/edit-profile');
+        };
+
+        if (!hasCompleteLegalIdentity(firstName, lastName)) {
+          showDialog({
+            variant: 'warning',
+            title: 'Noms légaux requis',
+            message:
+              'Renseignez vos prénom(s) et votre nom exactement comme sur votre pièce d’identité avant de lancer Didit. Le post-nom est facultatif.',
+            dismissible: false,
+            actions: [
+              {
+                label: 'Compléter mon profil',
+                variant: 'primary',
+                onPress: editIdentity,
+              },
+            ],
+          });
+          return;
+        }
+
+        showDialog({
+          variant: 'info',
+          icon: 'id-card-outline',
+          title: 'Confirmez vos noms légaux',
+          message:
+            `Prénom(s) : ${firstName}\nNom : ${lastName}\n\n` +
+            'Didit comparera ces informations à votre pièce d’identité. Corrigez-les avant de continuer si elles ne sont pas identiques.',
+          dismissible: false,
+          actions: [
+            {
+              label: 'Modifier mes noms',
+              variant: 'secondary',
+              onPress: editIdentity,
+            },
+            {
+              label: 'Confirmer et continuer',
+              variant: 'primary',
+              onPress: () => resolve(true),
+            },
+          ],
+        });
+      });
+    },
+    [router, showDialog],
+  );
+
   const startDiditKyc = useCallback(
     async ({
       showResultDialog = true,
+      skipLegalIdentityConfirmation = false,
     }: StartDiditKycOptions = {}): Promise<DiditKycFlowOutcome | null> => {
       setIsBrowserOpen(true);
 
       try {
+        if (!skipLegalIdentityConfirmation) {
+          const currentUser = await getCurrentUser().unwrap();
+          const isConfirmed = await confirmLegalIdentity(
+            currentUser.firstName,
+            currentUser.lastName,
+          );
+          if (!isConfirmed) {
+            return null;
+          }
+        }
+
         const callbackUrl = ExpoLinking.createURL(DIDIT_KYC_RETURN_PATH);
         const session = await createDiditKycSession({
           callbackUrl,
@@ -296,7 +369,9 @@ export function useDiditKycFlow({
     },
     [
       approvedMessage,
+      confirmLegalIdentity,
       createDiditKycSession,
+      getCurrentUser,
       onApproved,
       onStatusRefresh,
       pendingMessage,
