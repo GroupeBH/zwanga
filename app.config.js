@@ -83,6 +83,7 @@ module.exports = {
         NSLocationAlwaysAndWhenInUseUsageDescription: "Zwanga utilise votre position pour détecter votre emplacement même lorsque l'application est en arrière-plan.",
         NSLocationAlwaysUsageDescription: "Zwanga nécessite un accès constant à votre position pour fournir des trajets précis.",
         NSCameraUsageDescription: "L'appareil photo est utilisé pour prendre des photos de profil ou des documents.",
+        NSMicrophoneUsageDescription: "Le microphone peut être utilisé pendant la vérification vidéo de présence.",
         NSPhotoLibraryUsageDescription: "Zwanga nécessite l'accès à votre galerie pour permettre l'envoi d'images.",
         NSContactsUsageDescription: "Zwanga utilise vos contacts pour faciliter l'invitation d'amis.",
         // NSUserTrackingUsageDescription: "Votre identifiant peut être utilisé pour fournir une meilleure expérience publicitaire.",
@@ -245,6 +246,13 @@ module.exports = {
           dark: {
             backgroundColor: '#000000',
           },
+        },
+      ],
+      [
+        '@didit-protocol/sdk-react-native',
+        {
+          iosVariant: 'autodetection',
+          androidVariant: 'autodetection',
         },
       ],
       [

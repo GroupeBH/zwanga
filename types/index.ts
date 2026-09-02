@@ -710,11 +710,20 @@ export type KycStatus = 'pending' | 'approved' | 'rejected';
 export interface KycDocument {
   id: string;
   userId: string;
-  cniFrontUrl: string;
+  cniFrontUrl?: string | null;
+  cniFrontUrls?: string[] | null;
   cniBackUrl?: string | null;
-  selfieUrl: string;
+  selfieUrl?: string | null;
   status: KycStatus;
+  provider?: 'legacy' | 'didit';
   rejectionReason?: string | null;
+  diditSessionId?: string | null;
+  diditSessionNumber?: number | null;
+  diditWorkflowId?: string | null;
+  diditVendorData?: string | null;
+  diditSessionStatus?: string | null;
+  diditLastSyncedAt?: string | null;
+  providerMetadata?: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
 }

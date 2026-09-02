@@ -56,6 +56,8 @@ export {
   useUpdateUserMutation,
   useDeleteAccountMutation,
   useUploadKycMutation,
+  useCreateDiditKycSessionMutation,
+  useSyncDiditKycSessionMutation,
   useGetKycStatusQuery
 } from './userApi';
 

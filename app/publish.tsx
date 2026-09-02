@@ -1,16 +1,16 @@
 import { type AddressSectionStep } from '@/components/AddressSectionSlider';
-import { KycWizardModal, type KycCaptureResult } from '@/components/KycWizardModal';
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { VehicleFormModal } from '@/components/VehicleFormModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { getRegisteredVehicleTypeLabel } from '@/constants/vehicleTypes';
+import { useDiditKycFlow } from '@/hooks/useDiditKycFlow';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackEvent } from '@/services/analytics';
 import { useGeocodeMutation } from '@/store/api/googleMapsApi';
 import { useCreateRecurringTripMutation, useCreateTripMutation } from '@/store/api/tripApi';
-import { useGetKycStatusQuery, useGetProfileSummaryQuery, useUploadKycMutation } from '@/store/api/userApi';
+import { useGetKycStatusQuery, useGetProfileSummaryQuery } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import type { TripRequestVehicleType, Vehicle } from '@/types';
 import {
@@ -183,16 +183,19 @@ export default function PublishScreen() {
   const departureTouchedRef = useRef(false);
 
   const [kycModalVisible, setKycModalVisible] = useState(false);
-  const [kycWizardVisible, setKycWizardVisible] = useState(false);
-  const [kycFrontImage, setKycFrontImage] = useState<string | null>(null);
-  const [kycSelfieImage, setKycSelfieImage] = useState<string | null>(null);
-  const [kycSubmitting, setKycSubmitting] = useState(false);
   const [kycApprovedInForm, setKycApprovedInForm] = useState(false);
 
   const { data: kycStatusData, refetch: refetchKycStatus } = useGetKycStatusQuery();
-  const [uploadKyc, { isLoading: uploadingKyc }] = useUploadKycMutation();
   const isPublishIdentityVerified =
     isIdentityVerified || kycApprovedInForm || kycStatusData?.status === 'approved';
+  const { startDiditKyc, isStartingDiditKyc } = useDiditKycFlow({
+    sourceScreen: 'publish',
+    onStatusRefresh: refetchKycStatus,
+    approvedMessage:
+      "Votre identité a été vérifiée avec succès. Vous pouvez maintenant publier vos trajets.",
+    pendingMessage:
+      'Votre vérification Didit est en cours. Vous pourrez publier dès que le statut sera validé.',
+  });
 
   useEffect(() => {
     if (kycStatusData?.status !== 'approved') {
@@ -201,137 +204,33 @@ export default function PublishScreen() {
 
     setKycApprovedInForm(true);
     setKycModalVisible(false);
-    setKycWizardVisible(false);
   }, [kycStatusData?.status]);
 
   const openKycModal = () => setKycModalVisible(true);
   const closeKycModal = () => {
-    if (kycSubmitting || uploadingKyc) {
+    if (isStartingDiditKyc) {
       return;
     }
     setKycModalVisible(false);
-    setKycWizardVisible(false);
   };
 
-  const handleStartKyc = () => {
-    setKycWizardVisible(true);
+  const handleStartKyc = async () => {
     setKycModalVisible(false);
-  };
-
-  const buildKycFormData = (files?: Partial<KycCaptureResult>) => {
-    const formData = new FormData();
-    const appendFile = (field: 'cniFront' | 'selfie', uri: string | null | undefined) => {
-      if (!uri) return;
-      const extensionMatch = uri.split('.').pop()?.split('?')[0]?.toLowerCase();
-      const extension = extensionMatch && extensionMatch.length <= 5 ? extensionMatch : 'jpg';
-      const mimeType =
-        extension === 'png'
-          ? 'image/png'
-          : extension === 'webp'
-            ? 'image/webp'
-            : extension === 'heic'
-              ? 'image/heic'
-              : 'image/jpeg';
-      formData.append(field, {
-        uri,
-        type: mimeType,
-        name: `${field}-${Date.now()}.${extension === 'jpg' ? 'jpg' : extension}`,
-      } as any);
-    };
-
-    appendFile('cniFront', files?.front ?? kycFrontImage);
-    appendFile('selfie', files?.selfie ?? kycSelfieImage);
-
-    return formData;
-  };
-
-  const handleSubmitKyc = async (documents?: Partial<KycCaptureResult>) => {
-    const front = documents?.front ?? kycFrontImage;
-    const selfie = documents?.selfie ?? kycSelfieImage;
-
-    if (!front || !selfie) {
-      showDialog({
-        variant: 'warning',
-        title: 'Documents requis',
-        message: 'Merci de fournir le recto de votre pièce ainsi qu\'un selfie.',
-      });
-      return;
-    }
-    try {
-      setKycSubmitting(true);
-      const formData = buildKycFormData({ front, selfie });
-      const result = await uploadKyc(formData).unwrap();
-      setKycModalVisible(false);
-
-      // Refetch immédiatement pour obtenir le statut mis à jour
-      const refreshedKycStatus = await refetchKycStatus();
-
-      // Vérifier le statut retourné par le backend
-      const kycStatusAfterUpload = result?.status ?? refreshedKycStatus.data?.status;
-
-      if (kycStatusAfterUpload === 'approved') {
-        setKycApprovedInForm(true);
-        setKycWizardVisible(false);
-        // KYC approuvé immédiatement (validation automatique réussie)
-        showDialog({
-          variant: 'success',
-          title: 'KYC validé avec succès !',
-          message: 'Votre identité a été vérifiée automatiquement. Vous pouvez maintenant publier vos trajets.',
-        });
-        if (step === 'route' && hasDepartureCoordinates && hasArrivalCoordinates) {
-          goToStep('datetime');
-        }
-      } else if (kycStatusAfterUpload === 'rejected') {
-        // KYC rejeté (validation automatique échouée)
-        const rejectionReason = result?.rejectionReason || 'Votre demande KYC a été rejetée.';
-        showDialog({
-          variant: 'danger',
-          title: 'KYC rejeté',
-          message: rejectionReason,
-        });
-      } else {
-        // KYC en attente (validation manuelle requise)
-        showDialog({
-          variant: 'success',
-          title: 'Documents envoyés',
-          message: 'Vos documents sont en cours de vérification. Nous vous informerons dès que la vérification sera terminée.',
-        });
+    const outcome = await startDiditKyc();
+    if (outcome?.status === 'approved') {
+      setKycApprovedInForm(true);
+      if (step === 'route' && hasDepartureCoordinates && hasArrivalCoordinates) {
+        goToStep('datetime');
       }
-    } catch (error: any) {
-      // Gérer les erreurs détaillées du backend
-      let errorMessage = error?.data?.message ?? error?.error ?? 'Impossible de soumettre les documents pour le moment.';
-
-      // Si le message est une chaîne, la traiter directement
-      if (typeof errorMessage === 'string') {
-        // Le backend peut retourner des messages multi-lignes avec des détails
-        errorMessage = errorMessage;
-      } else if (Array.isArray(errorMessage)) {
-        errorMessage = errorMessage.join('\n');
-      }
-
-      showDialog({
-        variant: 'danger',
-        title: 'Erreur KYC',
-        message: errorMessage,
-      });
-    } finally {
-      setKycSubmitting(false);
     }
   };
 
-  const handleKycWizardComplete = async (payload: KycCaptureResult) => {
-    setKycFrontImage(payload.front);
-    setKycSelfieImage(payload.selfie);
-    await handleSubmitKyc(payload);
-    setKycWizardVisible(false);
-  };
-
-  const isKycBusy = kycSubmitting || uploadingKyc;
+  const isKycBusy = isStartingDiditKyc;
 
   const kycChecklist = [
-    { icon: 'id-card', title: "Pièce d'identité", subtitle: 'Recto bien lisible' },
-    { icon: 'camera', title: 'Selfie sécurisé', subtitle: 'Prenez une photo nette de votre visage' },
-    { icon: 'time', title: 'Validation express', subtitle: 'Moins de 24h en moyenne' },
+    { icon: 'shield-checkmark', title: 'Didit sécurisé', subtitle: 'Vérification hébergée par Didit' },
+    { icon: 'id-card', title: "Pièce d'identité", subtitle: 'Contrôle guidé depuis le parcours Didit' },
+    { icon: 'time', title: 'Validation rapide', subtitle: 'Retour automatique du statut KYC' },
   ] as const;
 
   // Driver and Vehicle Management
@@ -2739,18 +2638,6 @@ export default function PublishScreen() {
         </View>
       </Modal>
 
-      <KycWizardModal
-        visible={kycWizardVisible}
-        onClose={closeKycModal}
-        isSubmitting={isKycBusy}
-        initialValues={{
-          front: kycFrontImage,
-          selfie: kycSelfieImage,
-        }}
-        onComplete={handleKycWizardComplete}
-      />
-
-
       <Modal
         transparent
         animationType="fade"
@@ -2796,9 +2683,19 @@ export default function PublishScreen() {
             </View>
 
             <View style={[styles.kycModalActions, { paddingBottom: Math.max(insets.bottom, 0) }]}>
-              <TouchableOpacity style={styles.kycPrimaryButton} onPress={handleStartKyc}>
-                <Text style={styles.kycPrimaryButtonText}>Commencer ma vérification</Text>
-                <Ionicons name="arrow-forward" size={18} color={Colors.white} />
+              <TouchableOpacity
+                style={[styles.kycPrimaryButton, isKycBusy && styles.kycPrimaryButtonDisabled]}
+                onPress={handleStartKyc}
+                disabled={isKycBusy}
+              >
+                {isKycBusy ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <>
+                    <Text style={styles.kycPrimaryButtonText}>Commencer avec Didit</Text>
+                    <Ionicons name="arrow-forward" size={18} color={Colors.white} />
+                  </>
+                )}
               </TouchableOpacity>
               <TouchableOpacity style={styles.kycSecondaryButton} onPress={closeKycModal}>
                 <Text style={styles.kycSecondaryButtonText}>Plus tard</Text>
@@ -3759,6 +3656,9 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
+  },
+  kycPrimaryButtonDisabled: {
+    opacity: 0.7,
   },
   kycPrimaryButtonText: {
     color: Colors.white,

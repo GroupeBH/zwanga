@@ -51,9 +51,3 @@ export interface AuthFormRefs {
   resetPinConfirmInputRef: React.MutableRefObject<TextInput | null>;
 }
 
-// KYC files type (from KycWizardModal)
-export interface KycFiles {
-  front: string;
-  selfie: string;
-}
-

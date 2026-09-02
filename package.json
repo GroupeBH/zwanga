@@ -16,6 +16,7 @@
     "version": "eas version"
   },
   "dependencies": {
+    "@didit-protocol/sdk-react-native": "^4.7.5",
     "@expo/vector-icons": "^15.0.3",
     "@notifee/react-native": "^9.1.8",
     "@react-native-async-storage/async-storage": "^2.1.0",
@@ -77,6 +78,9 @@
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
+    "@emnapi/core": "^1.11.3",
+    "@emnapi/runtime": "^1.11.3",
+    "@emnapi/wasi-threads": "^1.2.3",
     "@types/react": "~19.1.0",
     "babel-preset-expo": "~54.0.11",
     "dotenv": "^17.2.3",
