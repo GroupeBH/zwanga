@@ -4,5 +4,6 @@
   "newArchEnabled": "true",
   "ios.useFrameworks": "static",
   "ios.forceStaticLinking": "[]",
+  "didit.iosVariant": "autodetection",
   "apple.privacyManifestAggregationEnabled": "true"
 }
