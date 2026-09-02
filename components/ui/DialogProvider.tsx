@@ -176,6 +176,12 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     void runDialogAction(pendingAction);
   };
 
+  const handleRequestClose = useCallback(() => {
+    if (dialog?.dismissible !== false) {
+      hideDialog();
+    }
+  }, [dialog?.dismissible, hideDialog]);
+
   const getActionLoaderColor = (action: DialogAction) => {
     if (action.variant === 'primary') {
       return Colors.white;
@@ -196,7 +202,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
         transparent
         animationType="fade"
         onDismiss={handleModalDismiss}
-        onRequestClose={hideDialog}
+        onRequestClose={handleRequestClose}
       >
         <View style={styles.overlay}>
           <View style={styles.card}>

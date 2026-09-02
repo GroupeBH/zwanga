@@ -119,6 +119,8 @@ export const authApi = baseApi.injectEndpoints({
     googleMobile: builder.mutation<AuthResponse, ReferralRegistrationAttributionPayload & {
       idToken: string;
       phone?: string;
+      firstName?: string;
+      lastName?: string;
       gender?: UserGender;
       role?: 'driver' | 'passenger';
       isDriver?: boolean;
@@ -172,6 +174,8 @@ export const authApi = baseApi.injectEndpoints({
       idToken: string;
       phone?: string;
       nonce?: string;
+      firstName?: string;
+      lastName?: string;
       gender?: UserGender;
       role?: 'driver' | 'passenger';
       isDriver?: boolean;
@@ -187,6 +191,8 @@ export const authApi = baseApi.injectEndpoints({
         idToken,
         phone,
         nonce,
+        firstName,
+        lastName,
         gender,
         role,
         isDriver,
@@ -203,6 +209,8 @@ export const authApi = baseApi.injectEndpoints({
           idToken,
           ...(phone ? { phone } : {}),
           ...(nonce ? { nonce } : {}),
+          ...(firstName ? { firstName } : {}),
+          ...(lastName ? { lastName } : {}),
           ...(gender ? { gender } : {}),
           ...(role ? { role } : {}),
           ...(typeof isDriver === 'boolean' ? { isDriver } : {}),

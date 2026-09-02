@@ -7,10 +7,19 @@ import { authStyles as styles } from '../styles';
 
 interface KycStepProps {
   onFinish: () => void;
+  onEditIdentity?: () => void;
   isLoading: boolean;
+  firstName: string;
+  lastName: string;
 }
 
-export function KycStep({ onFinish, isLoading }: KycStepProps) {
+export function KycStep({
+  onFinish,
+  onEditIdentity,
+  isLoading,
+  firstName,
+  lastName,
+}: KycStepProps) {
   return (
     <Animated.View entering={FadeInDown.springify()} exiting={FadeOutUp} style={styles.stepContainer}>
       <View style={styles.heroSection}>
@@ -38,6 +47,27 @@ export function KycStep({ onFinish, isLoading }: KycStepProps) {
         </View>
       </View>
 
+      <View style={styles.kycIdentityCard}>
+        <Text style={styles.kycIdentityEyebrow}>IDENTITÉ À CONTRÔLER</Text>
+        <Text style={styles.kycIdentityLabel}>Prénom(s)</Text>
+        <Text style={styles.kycIdentityValue}>{firstName}</Text>
+        <Text style={styles.kycIdentityLabel}>Nom</Text>
+        <Text style={styles.kycIdentityValue}>{lastName}</Text>
+        <Text style={styles.kycIdentityHint}>
+          Ces informations doivent correspondre à votre pièce d’identité. Le post-nom est facultatif.
+        </Text>
+        {onEditIdentity ? (
+          <TouchableOpacity
+            style={styles.kycIdentityEditButton}
+            onPress={onEditIdentity}
+            disabled={isLoading}
+          >
+            <Ionicons name="pencil-outline" size={17} color={Colors.primary} />
+            <Text style={styles.kycIdentityEditText}>Modifier mes noms</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
       <View style={{ gap: 16 }}>
         <TouchableOpacity
           style={[styles.mainButton, styles.mainButtonActive, { backgroundColor: Colors.primary }]}
@@ -49,7 +79,7 @@ export function KycStep({ onFinish, isLoading }: KycStepProps) {
           ) : (
             <>
               <Text style={styles.mainButtonText}>
-                Créer mon compte et vérifier avec Didit
+                Confirmer et vérifier avec Didit
               </Text>
               <Ionicons name="arrow-forward" size={20} color="white" />
             </>
@@ -59,4 +89,3 @@ export function KycStep({ onFinish, isLoading }: KycStepProps) {
     </Animated.View>
   );
 }
-

@@ -715,6 +715,25 @@ export const authStyles = StyleSheet.create({
     flexDirection: 'row',
     gap: Spacing.sm,
   },
+  legalIdentitySection: {
+    gap: Spacing.sm,
+  },
+  legalIdentityNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    padding: Spacing.sm,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: `${Colors.primary}30`,
+    backgroundColor: `${Colors.primary}0A`,
+  },
+  legalIdentityNoticeText: {
+    flex: 1,
+    color: Colors.gray[700],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+  },
   profileInputWrapper: {
     flex: 1,
     height: 46,
@@ -909,6 +928,50 @@ export const authStyles = StyleSheet.create({
     fontSize: FontSizes.base,
     fontWeight: FontWeights.semibold,
     color: Colors.gray[800],
+  },
+  kycIdentityCard: {
+    gap: Spacing.xs,
+    padding: Spacing.lg,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: `${Colors.primary}35`,
+    backgroundColor: `${Colors.primary}08`,
+  },
+  kycIdentityEyebrow: {
+    color: Colors.primaryDark,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    letterSpacing: 0.7,
+    marginBottom: Spacing.xs,
+  },
+  kycIdentityLabel: {
+    color: AUTH_MUTED_TEXT,
+    fontSize: FontSizes.xs,
+  },
+  kycIdentityValue: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    marginBottom: Spacing.xs,
+  },
+  kycIdentityHint: {
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+    lineHeight: 19,
+    marginTop: Spacing.xs,
+  },
+  kycIdentityEditButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: Spacing.xs,
+    marginTop: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  kycIdentityEditText: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
   },
 
   // Modal
