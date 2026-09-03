@@ -468,6 +468,7 @@ export default function ProfileScreen() {
   const openedDriverOnboardingParamRef = useRef(false);
   const openedSubscriptionParamRef = useRef(false);
   const handledPaymentStatusRef = useRef<string | null>(null);
+  const kycLaunchInFlightRef = useRef(false);
   const prefilledSubscriptionPhoneRef = useRef(false);
   const subscriptionPaymentPollingRunIdRef = useRef(0);
   const subscriptionPaymentMountedRef = useRef(true);
@@ -485,7 +486,13 @@ export default function ProfileScreen() {
       refetchOnMountOrArgChange: true,
     });
   const { data: kycStatus, isLoading: kycLoading, refetch: refetchKycStatus } = useGetKycStatusQuery();
-  const { data: vehicles, isLoading: vehiclesLoading, refetch: refetchVehicles } = useGetVehiclesQuery();
+  const {
+    data: vehicles,
+    isLoading: vehiclesLoading,
+    isFetching: vehiclesFetching,
+    isError: vehiclesLoadError,
+    refetch: refetchVehicles,
+  } = useGetVehiclesQuery();
   const [createVehicle, { isLoading: creatingVehicle }] = useCreateVehicleMutation();
   const [updateVehicle, { isLoading: updatingVehicle }] = useUpdateVehicleMutation();
   const [deleteVehicle, { isLoading: deletingVehicle }] = useDeleteVehicleMutation();
@@ -551,6 +558,10 @@ export default function ProfileScreen() {
   const isKycRejected = kycStatus?.status === 'rejected';
   const isKycBusy = isStartingDiditKyc;
   const isKycActionDisabled = isKycBusy || isKycApproved;
+  const hasLoadedVehicles = vehicles !== undefined;
+  const isVehicleInitialLoading = !hasLoadedVehicles && (vehiclesLoading || vehiclesFetching);
+  const isVehicleDataUnavailable = !hasLoadedVehicles && vehiclesLoadError;
+  const isProfileDataLoading = profileLoading || isVehicleInitialLoading;
   const needsDriverOnboarding = !isDriver || vehicleList.length === 0 || !isKycApproved;
 
   // console.log("kycstatus:", kycStatus)
@@ -1071,7 +1082,11 @@ export default function ProfileScreen() {
     [deleteVehicle, refetchVehicles, router, showDialog],
   );
 
-  const handleOpenKycModal = useCallback(() => {
+  const handleOpenKycModal = useCallback(async () => {
+    if (isKycBusy || kycLaunchInFlightRef.current) {
+      return;
+    }
+
     if (isKycApproved) {
       showDialog({
         variant: 'info',
@@ -1088,8 +1103,14 @@ export default function ProfileScreen() {
       });
       return;
     }
-    void startDiditKyc();
-  }, [isKycApproved, router, showDialog, startDiditKyc]);
+
+    kycLaunchInFlightRef.current = true;
+    try {
+      await startDiditKyc();
+    } finally {
+      kycLaunchInFlightRef.current = false;
+    }
+  }, [isKycApproved, isKycBusy, router, showDialog, startDiditKyc]);
 
   const handleBecomeDriver = useCallback(async () => {
     try {
@@ -2487,7 +2508,7 @@ export default function ProfileScreen() {
           icon: 'wallet-outline' as keyof typeof Ionicons.glyphMap,
           onPress: () => router.push('/wallet' as any),
         };
-  const isPriorityCtaBusy = needsDriverOnboarding ? isUpdatingUser : proBusy;
+  const isPriorityCtaBusy = needsDriverOnboarding ? isUpdatingUser || isKycBusy : proBusy;
   const shouldShowProDetailsCard = !needsDriverOnboarding && isPremiumActive;
   const quickActionItems = [
     {
@@ -2564,11 +2585,45 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 120 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-      >
+      {isProfileDataLoading ? (
+        <View
+          accessibilityLiveRegion="polite"
+          accessibilityRole="progressbar"
+          accessibilityLabel="Chargement du profil et des véhicules"
+          style={styles.profileLoadingContainer}
+        >
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.profileLoadingTitle}>Chargement du profil…</Text>
+          <Text style={styles.profileLoadingMessage}>
+            Récupération de vos informations et de vos véhicules.
+          </Text>
+        </View>
+      ) : isVehicleDataUnavailable ? (
+        <View accessibilityLiveRegion="assertive" style={styles.profileLoadingContainer}>
+          <View style={styles.profileLoadErrorIcon}>
+            <Ionicons name="cloud-offline-outline" size={32} color={Colors.danger} />
+          </View>
+          <Text style={styles.profileLoadErrorTitle}>Véhicules indisponibles</Text>
+          <Text style={styles.profileLoadErrorMessage}>
+            Impossible de récupérer vos véhicules. Réessayez avant de continuer.
+          </Text>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Réessayer le chargement des véhicules"
+            activeOpacity={0.85}
+            onPress={() => void refetchVehicles()}
+            style={styles.profileLoadRetryButton}
+          >
+            <Ionicons name="refresh" size={18} color={Colors.white} />
+            <Text style={styles.profileLoadRetryButtonText}>Réessayer</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+        >
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <View style={styles.headerTitleGroup}>
@@ -3264,7 +3319,8 @@ export default function ProfileScreen() {
             </View>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+        </ScrollView>
+      )}
 
       <VehicleFormModal
         visible={vehicleModalVisible}
@@ -3896,6 +3952,25 @@ export default function ProfileScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
+      {isKycBusy ? (
+        <View
+          accessibilityLiveRegion="polite"
+          accessibilityRole="progressbar"
+          accessibilityLabel="En attente d'ouverture de la validation d'identité"
+          style={styles.kycLaunchOverlay}
+        >
+          <View style={styles.kycLaunchCard}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.kycLaunchTitle}>
+              En attente d’ouverture de la validation d’identité…
+            </Text>
+            <Text style={styles.kycLaunchMessage}>
+              Préparation de votre espace sécurisé de vérification.
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
       <TutorialOverlay
         visible={profileGuideVisible}
         title="Votre espace Zwanga"
@@ -3910,6 +3985,103 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.gray[50],
+  },
+  profileLoadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xl,
+    backgroundColor: Colors.gray[50],
+  },
+  profileLoadingTitle: {
+    marginTop: Spacing.lg,
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    textAlign: 'center',
+  },
+  profileLoadingMessage: {
+    marginTop: Spacing.sm,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  profileLoadErrorIcon: {
+    width: 68,
+    height: 68,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: BorderRadius.full,
+    backgroundColor: `${Colors.danger}14`,
+  },
+  profileLoadErrorTitle: {
+    marginTop: Spacing.lg,
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    textAlign: 'center',
+  },
+  profileLoadErrorMessage: {
+    maxWidth: 320,
+    marginTop: Spacing.sm,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  profileLoadRetryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.xl,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary,
+  },
+  profileLoadRetryButtonText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
+  },
+  kycLaunchOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1000,
+    elevation: 1000,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xl,
+    backgroundColor: 'rgba(17, 24, 39, 0.42)',
+  },
+  kycLaunchCard: {
+    width: '100%',
+    maxWidth: 340,
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.xxl,
+    borderRadius: BorderRadius.xxl,
+    backgroundColor: Colors.white,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 12,
+  },
+  kycLaunchTitle: {
+    marginTop: Spacing.lg,
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    textAlign: 'center',
+  },
+  kycLaunchMessage: {
+    marginTop: Spacing.sm,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    textAlign: 'center',
+    lineHeight: 20,
   },
   header: {
     paddingHorizontal: Spacing.xl,
