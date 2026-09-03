@@ -1072,6 +1072,10 @@ export default function ProfileScreen() {
   );
 
   const handleOpenKycModal = useCallback(() => {
+    if (isKycBusy) {
+      return;
+    }
+
     if (isKycApproved) {
       showDialog({
         variant: 'info',
@@ -1089,7 +1093,7 @@ export default function ProfileScreen() {
       return;
     }
     void startDiditKyc();
-  }, [isKycApproved, router, showDialog, startDiditKyc]);
+  }, [isKycApproved, isKycBusy, router, showDialog, startDiditKyc]);
 
   const handleBecomeDriver = useCallback(async () => {
     try {
@@ -2487,7 +2491,7 @@ export default function ProfileScreen() {
           icon: 'wallet-outline' as keyof typeof Ionicons.glyphMap,
           onPress: () => router.push('/wallet' as any),
         };
-  const isPriorityCtaBusy = needsDriverOnboarding ? isUpdatingUser : proBusy;
+  const isPriorityCtaBusy = needsDriverOnboarding ? isUpdatingUser || isKycBusy : proBusy;
   const shouldShowProDetailsCard = !needsDriverOnboarding && isPremiumActive;
   const quickActionItems = [
     {
@@ -3896,6 +3900,23 @@ export default function ProfileScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
+      {isKycBusy ? (
+        <View
+          accessibilityLiveRegion="polite"
+          accessibilityRole="progressbar"
+          accessibilityLabel="Ouverture de la vérification d'identité Didit"
+          style={styles.kycLaunchOverlay}
+        >
+          <View style={styles.kycLaunchCard}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.kycLaunchTitle}>Ouverture de Didit…</Text>
+            <Text style={styles.kycLaunchMessage}>
+              Préparation de votre espace sécurisé de vérification.
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
       <TutorialOverlay
         visible={profileGuideVisible}
         title="Votre espace Zwanga"
@@ -3910,6 +3931,43 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.gray[50],
+  },
+  kycLaunchOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1000,
+    elevation: 1000,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xl,
+    backgroundColor: 'rgba(17, 24, 39, 0.42)',
+  },
+  kycLaunchCard: {
+    width: '100%',
+    maxWidth: 340,
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.xxl,
+    borderRadius: BorderRadius.xxl,
+    backgroundColor: Colors.white,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 12,
+  },
+  kycLaunchTitle: {
+    marginTop: Spacing.lg,
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    textAlign: 'center',
+  },
+  kycLaunchMessage: {
+    marginTop: Spacing.sm,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    textAlign: 'center',
+    lineHeight: 20,
   },
   header: {
     paddingHorizontal: Spacing.xl,
