@@ -44,6 +44,7 @@ import type {
   Vehicle,
 } from '@/types';
 import { createBecomeDriverAction, getApiErrorMessage, isDriverRequiredError } from '@/utils/errorHelpers';
+import { getEffectiveKycStatus } from '@/utils/kycStatus';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -553,16 +554,22 @@ export default function ProfileScreen() {
   const recentPendingSubscriptionOrderNumber = recentPendingSubscriptionPayment?.orderNumber ?? null;
   const paymentHistoryLoaded = Boolean(paymentHistory);
 
-  const isKycApproved = kycStatus?.status === 'approved';
-  const isKycPending = kycStatus?.status === 'pending';
-  const isKycRejected = kycStatus?.status === 'rejected';
+  const effectiveKycStatus = getEffectiveKycStatus(kycStatus);
+  const isKycApproved = effectiveKycStatus === 'approved';
+  const isKycPending = effectiveKycStatus === 'pending';
+  const isKycRejected = effectiveKycStatus === 'rejected';
   const isKycBusy = isStartingDiditKyc;
   const isKycActionDisabled = isKycBusy || isKycApproved;
   const hasLoadedVehicles = vehicles !== undefined;
-  const isVehicleInitialLoading = !hasLoadedVehicles && (vehiclesLoading || vehiclesFetching);
+  const isVehicleInitialLoading = !hasLoadedVehicles && vehiclesLoading;
   const isVehicleDataUnavailable = !hasLoadedVehicles && vehiclesLoadError;
+  const isVehicleRetrying = !hasLoadedVehicles && vehiclesFetching && !vehiclesLoading;
+  const shouldShowVehicleLoadError = isVehicleDataUnavailable || isVehicleRetrying;
   const isProfileDataLoading = profileLoading || isVehicleInitialLoading;
-  const needsDriverOnboarding = !isDriver || vehicleList.length === 0 || !isKycApproved;
+  const knownVehicleCount = hasLoadedVehicles ? vehicleList.length : stats?.vehicles;
+  const hasVehicle = (knownVehicleCount ?? 0) > 0;
+  const hasNoVehicle = knownVehicleCount === 0;
+  const needsDriverOnboarding = !isDriver || hasNoVehicle || !isKycApproved;
 
   // console.log("kycstatus:", kycStatus)
   const userId = currentUser?.id ?? '';
@@ -1148,7 +1155,6 @@ export default function ProfileScreen() {
   }, [router, showDialog, updateUser]);
 
   const handleStartDriverOnboarding = useCallback(() => {
-    const hasVehicle = vehicleList.length > 0;
     const hasKyc = isKycApproved;
 
     if (!hasVehicle && !hasKyc) {
@@ -1180,7 +1186,7 @@ export default function ProfileScreen() {
     }
 
     void handleBecomeDriver();
-  }, [handleBecomeDriver, handleOpenKycModal, isKycApproved, openCreateVehicleModal, showDialog, vehicleList.length]);
+  }, [handleBecomeDriver, handleOpenKycModal, hasVehicle, isKycApproved, openCreateVehicleModal, showDialog]);
 
   const openExternalUrl = async (url: string) => {
     try {
@@ -2454,7 +2460,6 @@ export default function ProfileScreen() {
   const driverTripsCount = stats?.tripsAsDriver ?? currentUser?.totalTrips ?? 0;
   const passengerBookingsCount = stats?.bookingsAsPassenger ?? 0;
   const driverBookingsCount = stats?.bookingsAsDriver ?? 0;
-  const hasVehicle = vehicleList.length > 0;
   const kycStatusLabel = isKycApproved
     ? 'Vérifiée'
     : isKycPending
@@ -2479,8 +2484,16 @@ export default function ProfileScreen() {
     {
       icon: 'car-outline' as keyof typeof Ionicons.glyphMap,
       label: 'Véhicule',
-      value: hasVehicle ? `${vehicleList.length} ajouté${vehicleList.length > 1 ? 's' : ''}` : 'À ajouter',
-      color: hasVehicle ? Colors.success : Colors.warning,
+      value: hasVehicle
+        ? `${knownVehicleCount} ajouté${knownVehicleCount !== 1 ? 's' : ''}`
+        : shouldShowVehicleLoadError && knownVehicleCount === undefined
+          ? 'Indisponible'
+          : 'À ajouter',
+      color: hasVehicle
+        ? Colors.success
+        : shouldShowVehicleLoadError && knownVehicleCount === undefined
+          ? Colors.gray[500]
+          : Colors.warning,
     },
     {
       icon: isPremiumActive
@@ -2597,26 +2610,6 @@ export default function ProfileScreen() {
           <Text style={styles.profileLoadingMessage}>
             Récupération de vos informations et de vos véhicules.
           </Text>
-        </View>
-      ) : isVehicleDataUnavailable ? (
-        <View accessibilityLiveRegion="assertive" style={styles.profileLoadingContainer}>
-          <View style={styles.profileLoadErrorIcon}>
-            <Ionicons name="cloud-offline-outline" size={32} color={Colors.danger} />
-          </View>
-          <Text style={styles.profileLoadErrorTitle}>Véhicules indisponibles</Text>
-          <Text style={styles.profileLoadErrorMessage}>
-            Impossible de récupérer vos véhicules. Réessayez avant de continuer.
-          </Text>
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel="Réessayer le chargement des véhicules"
-            activeOpacity={0.85}
-            onPress={() => void refetchVehicles()}
-            style={styles.profileLoadRetryButton}
-          >
-            <Ionicons name="refresh" size={18} color={Colors.white} />
-            <Text style={styles.profileLoadRetryButtonText}>Réessayer</Text>
-          </TouchableOpacity>
         </View>
       ) : (
         <ScrollView
@@ -3203,7 +3196,34 @@ export default function ProfileScreen() {
               <Ionicons name="add" size={18} color={Colors.white} />
             </TouchableOpacity>
           </View>
-          {vehiclesLoading ? (
+          {shouldShowVehicleLoadError ? (
+            <View accessibilityLiveRegion="polite" style={styles.vehicleLoadErrorContainer}>
+              <View style={styles.profileLoadErrorIcon}>
+                <Ionicons name="cloud-offline-outline" size={28} color={Colors.danger} />
+              </View>
+              <Text style={styles.profileLoadErrorTitle}>Véhicules indisponibles</Text>
+              <Text style={styles.profileLoadErrorMessage}>
+                Impossible d’afficher vos véhicules pour le moment. Le reste du profil reste disponible.
+              </Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Réessayer le chargement des véhicules"
+                activeOpacity={0.85}
+                disabled={vehiclesFetching}
+                onPress={() => void refetchVehicles()}
+                style={styles.profileLoadRetryButton}
+              >
+                {vehiclesFetching ? (
+                  <ActivityIndicator size="small" color={Colors.white} />
+                ) : (
+                  <Ionicons name="refresh" size={18} color={Colors.white} />
+                )}
+                <Text style={styles.profileLoadRetryButtonText}>
+                  {vehiclesFetching ? 'Chargement…' : 'Réessayer'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : vehiclesLoading ? (
             <ActivityIndicator color={Colors.primary} />
           ) : vehicleList.length > 0 ? (
             vehicleList.map((vehicle) => (
@@ -4743,6 +4763,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: Spacing.md,
+  },
+  vehicleLoadErrorContainer: {
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.xl,
+    borderWidth: 1,
+    borderColor: Colors.danger + '20',
+    borderRadius: BorderRadius.xl,
+    backgroundColor: Colors.white,
   },
   vehicleAddButton: {
     width: 32,

@@ -395,7 +395,6 @@ export const userApi = baseApi.injectEndpoints({
         body: body ?? {},
       }),
       transformResponse: (response: RawDiditKycSession) => mapDiditKycSession(response),
-      invalidatesTags: [kycStatusTag],
     }),
 
     syncDiditKycSession: builder.mutation<KycDocument | null, DiditKycSyncPayload | void>({
