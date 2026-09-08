@@ -18,7 +18,7 @@ import {
   selectRefreshToken,
 } from '@/store/selectors';
 import { performLogout, setTokens } from '@/store/slices/authSlice';
-import { isTokenExpired } from '@/utils/jwt';
+import { getUserIdFromToken, isTokenExpired } from '@/utils/jwt';
 import { useRootNavigationState, useRouter, useSegments } from 'expo-router';
 import { useCallback, useEffect, useRef } from 'react';
 import {
@@ -29,6 +29,8 @@ import {
   View,
 } from 'react-native';
 import type { AppStateStatus } from 'react-native';
+
+const FCM_SYNC_RETRY_DELAY_MS = 60_000;
 
 /**
  * Route guard:
@@ -57,6 +59,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const lastAuthTime = useRef<number | null>(null);
   const isRedirectingAfterLogout = useRef(false);
   const lastFcmSyncAccessToken = useRef<string | null>(null);
+  const lastSyncedFcmRegistration = useRef<string | null>(null);
+  const fcmSyncInFlightRegistration = useRef<string | null>(null);
+  const fcmSyncRetry = useRef<{ key: string; notBefore: number } | null>(null);
   const latestAuthState = useRef({ isAuthenticated, accessToken, refreshToken });
   const lastAppState = useRef<AppStateStatus>(AppState.currentState);
   const appBackgroundedAt = useRef<number | null>(null);
@@ -373,19 +378,45 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     let unsubscribeTokenRefresh: (() => void) | null = null;
 
     const syncTokenWithBackend = async (token: string | null) => {
-      if (!token) {
+      const userId = accessToken ? getUserIdFromToken(accessToken) : null;
+      if (!token || !userId) {
         return;
       }
+
+      const registrationKey = `${userId}:${token}`;
+      const retry = fcmSyncRetry.current;
+      if (
+        lastSyncedFcmRegistration.current === registrationKey ||
+        fcmSyncInFlightRegistration.current === registrationKey ||
+        (retry?.key === registrationKey && Date.now() < retry.notBefore)
+      ) {
+        return;
+      }
+
+      fcmSyncInFlightRegistration.current = registrationKey;
       try {
         await updateFcmTokenMutation({ fcmToken: token }).unwrap();
+        lastSyncedFcmRegistration.current = registrationKey;
+        fcmSyncRetry.current = null;
       } catch (error) {
+        fcmSyncRetry.current = {
+          key: registrationKey,
+          notBefore: Date.now() + FCM_SYNC_RETRY_DELAY_MS,
+        };
         console.warn('Unable to send FCM token to backend:', error);
+      } finally {
+        if (fcmSyncInFlightRegistration.current === registrationKey) {
+          fcmSyncInFlightRegistration.current = null;
+        }
       }
     };
 
     const registerPushToken = async () => {
       if (!isAuthenticated) {
         lastFcmSyncAccessToken.current = null;
+        lastSyncedFcmRegistration.current = null;
+        fcmSyncInFlightRegistration.current = null;
+        fcmSyncRetry.current = null;
         await clearStoredFcmToken();
         return;
       }

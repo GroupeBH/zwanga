@@ -17,14 +17,15 @@ import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Image,
   InteractionManager,
   Keyboard,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -185,10 +186,14 @@ function getSafeTripId(trip: Trip | null | undefined) {
 type SearchResultCardProps = {
   trip: Trip;
   disabled?: boolean;
-  onPress: () => void;
+  onPress: (trip: Trip) => void;
 };
 
-function SearchResultCard({ trip, disabled = false, onPress }: SearchResultCardProps) {
+const SearchResultCard = React.memo(function SearchResultCard({
+  trip,
+  disabled = false,
+  onPress,
+}: SearchResultCardProps) {
   const calculatedArrivalTime = useTripArrivalTime(trip);
   const arrivalIso = calculatedArrivalTime?.toISOString() ?? trip.arrivalTime;
   const departureDateTime = formatDateTime(trip.departureTime);
@@ -205,7 +210,7 @@ function SearchResultCard({ trip, disabled = false, onPress }: SearchResultCardP
     <TouchableOpacity
       activeOpacity={0.9}
       style={[styles.resultCard, disabled && styles.resultCardDisabled]}
-      onPress={onPress}
+      onPress={() => onPress(trip)}
       disabled={disabled}
       accessibilityState={{ disabled }}
     >
@@ -300,6 +305,10 @@ function SearchResultCard({ trip, disabled = false, onPress }: SearchResultCardP
       </View>
     </TouchableOpacity>
   );
+});
+
+function SearchResultSeparator() {
+  return <View style={styles.resultSeparator} />;
 }
 
 export default function SearchScreen() {
@@ -335,6 +344,13 @@ export default function SearchScreen() {
   const [searchTripsByCoordinates, { isLoading: isAdvancedSearching }] = useSearchTripsByCoordinatesMutation();
   const firstName = currentUser?.firstName || currentUser?.name?.split(' ')[0] || 'Kinshasa';
   const avatarUri = currentUser?.profilePicture || currentUser?.avatar;
+
+  useFocusEffect(
+    useCallback(() => {
+      openingTripIdRef.current = null;
+      setOpeningTripId(null);
+    }, []),
+  );
 
   const {
     data: remoteTrips,
@@ -554,7 +570,7 @@ export default function SearchScreen() {
     );
   };
 
-  const handleOpenTrip = (trip: Trip) => {
+  const handleOpenTrip = useCallback((trip: Trip) => {
     const tripId = getSafeTripId(trip);
 
     if (openingTripIdRef.current) {
@@ -603,7 +619,20 @@ export default function SearchScreen() {
     }
 
     navigate();
-  };
+  }, [router, showDialog]);
+
+  const renderTrip = useCallback(
+    ({ item }: { item: Trip }) => (
+      <SearchResultCard
+        trip={item}
+        disabled={openingTripId !== null}
+        onPress={handleOpenTrip}
+      />
+    ),
+    [handleOpenTrip, openingTripId],
+  );
+
+  const searchResultData = !isLoadingResults && !advancedError ? filteredTrips : [];
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -623,12 +652,22 @@ export default function SearchScreen() {
         )}
       </View>
 
-      <ScrollView
+      <FlatList
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-      >
+        data={searchResultData}
+        renderItem={renderTrip}
+        keyExtractor={(trip) => getSafeTripId(trip) ?? `trip-${trip.departureTime}-${trip.driverId}`}
+        ItemSeparatorComponent={SearchResultSeparator}
+        initialNumToRender={5}
+        maxToRenderPerBatch={5}
+        updateCellsBatchingPeriod={50}
+        windowSize={7}
+        removeClippedSubviews={Platform.OS === 'android'}
+        ListHeaderComponent={
+          <>
         <View style={styles.routeSummaryCard}>
           <View style={styles.routeSummaryPlaces}>
             <View style={styles.routeSummaryRow}>
@@ -766,19 +805,9 @@ export default function SearchScreen() {
           </View>
         )}
 
-        {!isLoadingResults && !advancedError && (
-          <View style={styles.resultsList}>
-            {filteredTrips.map((trip) => (
-              <SearchResultCard
-                key={getSafeTripId(trip) ?? `trip-${trip.departureTime}-${trip.driverId}`}
-                trip={trip}
-                disabled={openingTripId !== null}
-                onPress={() => handleOpenTrip(trip)}
-              />
-            ))}
-          </View>
-        )}
-      </ScrollView>
+          </>
+        }
+      />
     </SafeAreaView>
   );
 }
@@ -1066,6 +1095,9 @@ const styles = StyleSheet.create({
   },
   resultsList: {
     gap: Spacing.xl,
+  },
+  resultSeparator: {
+    height: Spacing.xl,
   },
   resultCard: {
     borderRadius: BorderRadius.xl,

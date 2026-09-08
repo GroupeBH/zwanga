@@ -1,6 +1,7 @@
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { VehicleFormModal } from '@/components/VehicleFormModal';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { MUTATION_RECONCILIATION_DELAYS_MS } from '@/constants/network';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { getRegisteredVehicleTypeLabel } from '@/constants/vehicleTypes';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
@@ -43,7 +44,12 @@ import type {
   TripRequestVehicleType,
   Vehicle,
 } from '@/types';
-import { createBecomeDriverAction, getApiErrorMessage, isDriverRequiredError } from '@/utils/errorHelpers';
+import {
+  createBecomeDriverAction,
+  getApiErrorMessage,
+  isAmbiguousTransportError,
+  isDriverRequiredError,
+} from '@/utils/errorHelpers';
 import { getEffectiveKycStatus } from '@/utils/kycStatus';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -231,8 +237,6 @@ const isValidCongolesePaymentPhone = (value?: string | null) =>
 const getApiMessage = (error: any, fallback: string) => {
   return getApiErrorMessage(error, fallback);
 };
-
-const isNetworkOrTimeoutError = (error: any) => error?.status === 'FETCH_ERROR' || error?.status === 'TIMEOUT_ERROR';
 
 type VehicleFormData = Pick<Vehicle, 'type' | 'brand' | 'model' | 'color' | 'licensePlate'>;
 
@@ -1012,7 +1016,7 @@ export default function ProfileScreen() {
 
   const reconcileVehicleMutation = useCallback(
     async (isConfirmed: (refreshedVehicles: Vehicle[]) => boolean) => {
-      for (const delayMs of [0, 800]) {
+      for (const delayMs of MUTATION_RECONCILIATION_DELAYS_MS) {
         if (delayMs > 0) {
           await wait(delayMs);
         }
@@ -1063,7 +1067,7 @@ export default function ProfileScreen() {
         try {
           await createVehicle(vehicleData).unwrap();
         } catch (error: any) {
-          if (!isNetworkOrTimeoutError(error)) {
+          if (!isAmbiguousTransportError(error)) {
             throw error;
           }
 
@@ -1126,7 +1130,7 @@ export default function ProfileScreen() {
                 try {
                   await deleteVehicle(vehicle.id).unwrap();
                 } catch (error: any) {
-                  if (!isNetworkOrTimeoutError(error)) {
+                  if (!isAmbiguousTransportError(error)) {
                     throw error;
                   }
 
@@ -2069,7 +2073,7 @@ export default function ProfileScreen() {
         ),
       );
     } catch (error: any) {
-      if (isNetworkOrTimeoutError(error)) {
+      if (isAmbiguousTransportError(error)) {
         const pendingMessage =
           'Le lancement prend plus de temps que prévu. Ne relancez pas le paiement ; nous vérifions son statut dans quelques secondes.';
         setSubscriptionModalStep('payment');

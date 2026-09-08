@@ -5,6 +5,7 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import {
   ELECTRONIC_PAYMENTS_ENABLED,
 } from '@/constants/paymentFeatures';
+import { MUTATION_RECONCILIATION_DELAYS_MS } from '@/constants/network';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { REGISTERED_VEHICLE_TYPE_OPTIONS } from '@/constants/vehicleTypes';
 import { useUserLocation } from '@/hooks/useUserLocation';
@@ -19,7 +20,7 @@ import {
 import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
 import type { FavoriteLocation, TripPaymentMode, TripRequestVehicleType } from '@/types';
 import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
-import { getApiErrorMessage } from '@/utils/errorHelpers';
+import { getApiErrorMessage, isAmbiguousTransportError } from '@/utils/errorHelpers';
 import {
   buildManualGeocodeQuery,
   MANUAL_GEOCODE_DEBOUNCE_MS,
@@ -121,15 +122,15 @@ const TRIP_PAYMENT_MODE_OPTIONS: {
     ? [
         {
           id: 'electronic' as const,
-          label: 'Paiement electronique',
-          description: 'Paiement securise via FlexPay',
+          label: 'Paiement électronique',
+          description: 'Paiement securisé via FlexPay',
           icon: 'card-outline' as const,
         },
       ]
     : []),
   {
     id: 'cash',
-    label: "Paiement à l'arrivée",
+    label: "Paiement cash",
     description: 'Réglez directement auprès du conducteur',
     icon: 'cash-outline',
   },
@@ -1121,16 +1122,16 @@ export default function RequestTripScreen() {
       });
       scheduleDetailRedirect(String(createdRequest.id));
     } catch (error: any) {
-      const status = error?.status;
-      if (status === 'FETCH_ERROR' || status === 'TIMEOUT_ERROR') {
+      if (isAmbiguousTransportError(error)) {
         setSubmissionRecoveryMessage(
           'Demande envoyée. Récupération du détail en cours…',
         );
 
         let recoveredRequestId: string | null = null;
-        for (let attempt = 0; attempt < 3 && !recoveredRequestId; attempt += 1) {
-          if (attempt > 0) {
-            await new Promise((resolve) => setTimeout(resolve, 700));
+        for (const delayMs of MUTATION_RECONCILIATION_DELAYS_MS) {
+          if (recoveredRequestId) break;
+          if (delayMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
           }
           try {
             const requests = await getMyTripRequests(undefined, false).unwrap();

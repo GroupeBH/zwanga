@@ -1,8 +1,5 @@
-import Constants from 'expo-constants';
-
-const mapboxToken =
-  Constants.expoConfig?.extra?.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ||
-  process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
+import { store } from '@/store';
+import { isMapboxConfigured, mapboxApi } from '@/store/api/mapboxApi';
 
 export interface RouteCoordinates {
   latitude: number;
@@ -19,7 +16,7 @@ export async function getRouteCoordinates(
   start: RouteCoordinates,
   end: RouteCoordinates,
 ): Promise<RouteCoordinates[] | null> {
-  if (!mapboxToken) {
+  if (!isMapboxConfigured()) {
     console.warn('Mapbox token not available for directions');
     return null;
   }
@@ -59,21 +56,18 @@ export async function getRouteCoordinates(
     // Alternatives: walking, cycling, driving-traffic
     const profile = 'driving';
     
-    const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordinates}?` +
-      `geometries=geojson&` +
-      `access_token=${mapboxToken}&` +
-      `overview=full&` +
-      `alternatives=false&` +
-      `steps=false`;
-
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      console.warn(`Mapbox Directions API error: ${response.status}`);
-      return null;
+    const request = store.dispatch(
+      mapboxApi.endpoints.getDirections.initiate(
+        { coordinates, profile },
+        { forceRefetch: true, subscribe: false },
+      ),
+    );
+    let data: any;
+    try {
+      data = await request.unwrap();
+    } finally {
+      request.unsubscribe();
     }
-
-    const data = await response.json();
 
     if (!data.routes || !Array.isArray(data.routes) || data.routes.length === 0) {
       console.warn('No routes found in Mapbox Directions response');

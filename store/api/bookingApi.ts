@@ -17,6 +17,7 @@ import { mapServerTripToClient } from './tripApi';
 import type { BaseEndpointBuilder } from './types';
 import type { BookingAutoProgressPayload } from '@/services/trackingSocket';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
+import { CRITICAL_MUTATION_TIMEOUT_MS } from '@/constants/network';
 
 type ServerUser = {
   id: string;
@@ -409,6 +410,7 @@ export const bookingApi = baseApi.injectEndpoints({
         url: '/bookings',
         method: 'POST',
         body,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
       invalidatesTags: (_result, _error, { tripId }) => [
@@ -447,6 +449,7 @@ export const bookingApi = baseApi.injectEndpoints({
         url: `/bookings/${bookingId}/pay`,
         method: 'POST',
         body,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       invalidatesTags: (_result, _error, { bookingId }) => [
         { type: 'Booking', id: bookingId },
@@ -461,6 +464,7 @@ export const bookingApi = baseApi.injectEndpoints({
         url: `/bookings/${bookingId}/payment-mode`,
         method: 'PUT',
         body: { paymentMode },
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
       invalidatesTags: (result, _error, { bookingId }) => [
@@ -486,6 +490,7 @@ export const bookingApi = baseApi.injectEndpoints({
         url: `/bookings/${id}/status`,
         method: 'PUT',
         body,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
       invalidatesTags: (result) =>
@@ -497,6 +502,7 @@ export const bookingApi = baseApi.injectEndpoints({
       query: (id: string) => ({
         url: `/bookings/${id}/cancel`,
         method: 'PUT',
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       invalidatesTags: (_result, _error, id: string) => [
         { type: 'Booking', id },
@@ -509,6 +515,7 @@ export const bookingApi = baseApi.injectEndpoints({
       query: (id: string) => ({
         url: `/bookings/${id}/accept`,
         method: 'PUT',
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
       async onQueryStarted(id, { dispatch, queryFulfilled }) {
@@ -553,6 +560,7 @@ export const bookingApi = baseApi.injectEndpoints({
         url: `/bookings/${id}/reject`,
         method: 'PUT',
         body: { reason },
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
       invalidatesTags: (result) =>
@@ -594,6 +602,7 @@ export const bookingApi = baseApi.injectEndpoints({
         url: `/bookings/${id}/confirm-pickup`,
         method: 'PUT',
         body: {},
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
       invalidatesTags: (result) =>
@@ -614,6 +623,7 @@ export const bookingApi = baseApi.injectEndpoints({
         url: `/bookings/${id}/confirm-pickup-passenger`,
         method: 'PUT',
         body: {},
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
       invalidatesTags: (result) =>
@@ -634,6 +644,7 @@ export const bookingApi = baseApi.injectEndpoints({
         url: `/bookings/${id}/confirm-dropoff`,
         method: 'PUT',
         body: {},
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
       invalidatesTags: (result) =>
@@ -657,6 +668,7 @@ export const bookingApi = baseApi.injectEndpoints({
           url: `/bookings/${id}/confirm-dropoff-passenger`,
           method: 'PUT',
           body: paymentMode ? { paymentMode } : {},
+          timeout: CRITICAL_MUTATION_TIMEOUT_MS,
         };
       },
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
@@ -684,6 +696,7 @@ export const bookingApi = baseApi.injectEndpoints({
         url: `/bookings/${bookingId}/interruption-request`,
         method: 'POST',
         body,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
       invalidatesTags: (result, _error, { bookingId }) => [
@@ -699,6 +712,7 @@ export const bookingApi = baseApi.injectEndpoints({
         url: `/bookings/${bookingId}/interruption-request/cancel`,
         method: 'PUT',
         body: {},
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
       invalidatesTags: (result, _error, bookingId) => [
@@ -714,6 +728,7 @@ export const bookingApi = baseApi.injectEndpoints({
         url: `/bookings/${bookingId}/interruption-request/confirm`,
         method: 'PUT',
         body: {},
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
       invalidatesTags: (result, _error, bookingId) => [
@@ -729,6 +744,7 @@ export const bookingApi = baseApi.injectEndpoints({
         url: `/bookings/${bookingId}/interruption-request/reject`,
         method: 'PUT',
         body: reason ? { reason } : {},
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
       invalidatesTags: (result, _error, { bookingId }) => [

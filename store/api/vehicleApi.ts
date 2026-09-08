@@ -1,5 +1,6 @@
 import { baseApi } from './baseApi';
 import type { TripRequestVehicleType, Vehicle } from '../../types';
+import { CRITICAL_MUTATION_TIMEOUT_MS } from '../../constants/network';
 import type { BaseEndpointBuilder } from './types';
 
 type CreateVehiclePayload = {
@@ -32,6 +33,7 @@ export const vehicleApi = baseApi.injectEndpoints({
         url: '/vehicles',
         method: 'POST',
         body,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       async onQueryStarted(_body, { dispatch, queryFulfilled }) {
         try {
@@ -56,6 +58,7 @@ export const vehicleApi = baseApi.injectEndpoints({
         url: `/vehicles/${id}`,
         method: 'PUT',
         body: data,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       invalidatesTags: (_result, _error, { id }: { id: string }) => [
         { type: 'Vehicle', id },
@@ -67,6 +70,7 @@ export const vehicleApi = baseApi.injectEndpoints({
       query: (id: string) => ({
         url: `/vehicles/${id}`,
         method: 'DELETE',
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       invalidatesTags: (_result, _error, id: string) => [
         { type: 'Vehicle', id },

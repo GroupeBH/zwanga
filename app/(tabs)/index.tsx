@@ -47,15 +47,15 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
   Easing,
+  FlatList,
   Image,
   type ImageRequireSource,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -193,13 +193,13 @@ type TripPreviewCardProps = {
   cardWidth: number;
   isBooked: boolean;
   isSelected: boolean;
-  onOpen: () => void;
+  onOpen: (tripId: string) => void;
   trip: Trip;
 };
 
 type TripRequestPreviewCardProps = {
   cardWidth: number;
-  onOpen: () => void;
+  onOpen: (requestId: string) => void;
   request: TripRequest;
 };
 
@@ -400,7 +400,7 @@ function getTripRequestMarkerImage(gender?: TripRequest['passengerGender']): Ima
 }
 
 
-function TripPreviewCard({
+const TripPreviewCard = React.memo(function TripPreviewCard({
   cardWidth,
   isBooked,
   isSelected,
@@ -422,7 +422,7 @@ function TripPreviewCard({
       activeOpacity={0.9}
       accessibilityRole="button"
       accessibilityLabel={`Voir le trajet de ${placeName(trip.departure)} à ${placeName(trip.arrival)}`}
-      onPress={onOpen}
+      onPress={() => onOpen(trip.id)}
       style={[styles.tripPreviewCard, isSelected && styles.tripPreviewCardSelected, { width: cardWidth }]}
     >
       <View style={styles.tripPreviewTopRow}>
@@ -504,9 +504,9 @@ function TripPreviewCard({
       </View>
     </TouchableOpacity>
   );
-}
+});
 
-function TripRequestPreviewCard({
+const TripRequestPreviewCard = React.memo(function TripRequestPreviewCard({
   cardWidth,
   onOpen,
   request,
@@ -522,7 +522,7 @@ function TripRequestPreviewCard({
       activeOpacity={0.9}
       accessibilityRole="button"
       accessibilityLabel={`Voir la demande de ${placeName(request.departure)} à ${placeName(request.arrival)}`}
-      onPress={onOpen}
+      onPress={() => onOpen(request.id)}
       style={[styles.requestPreviewCard, { width: cardWidth }]}
     >
       <View style={styles.requestPreviewTopRow}>
@@ -606,7 +606,7 @@ function TripRequestPreviewCard({
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 function TripVehicleMapMarker({ isSelected, onReady, trip }: TripVehicleMapMarkerProps) {
   return (
@@ -2150,7 +2150,7 @@ export default function HomeScreen() {
 
     setTripsSheetOpen((current) => !current);
   };
-  const scheduleMapDetailNavigation = (key: string, navigate: () => void) => {
+  const scheduleMapDetailNavigation = useCallback((key: string, navigate: () => void) => {
     if (openingMapDetailRef.current) return;
 
     openingMapDetailRef.current = true;
@@ -2165,19 +2165,19 @@ export default function HomeScreen() {
       navigate();
       openingMapDetailTimerRef.current = null;
     }, Platform.OS === 'ios' ? 260 : 40);
-  };
+  }, []);
 
-  const openTripDetail = (tripId: string) => {
+  const openTripDetail = useCallback((tripId: string) => {
     scheduleMapDetailNavigation(`trip:${tripId}`, () => {
       router.replace(`/trip/${tripId}`);
     });
-  };
+  }, [router, scheduleMapDetailNavigation]);
 
-  const openTripRequestDetail = (requestId: string) => {
+  const openTripRequestDetail = useCallback((requestId: string) => {
     scheduleMapDetailNavigation(`request:${requestId}`, () => {
       router.push(getTripRequestDetailHref(requestId));
     });
-  };
+  }, [router, scheduleMapDetailNavigation]);
 
   useEffect(() => {
     if (!isFocused) {
@@ -2773,39 +2773,45 @@ export default function HomeScreen() {
         )}
 
         {effectiveTripsSheetOpen && !sheetLoading && !sheetError && isRequestsSheetMode && availableDriverRequests.length > 0 && (
-          <ScrollView
+          <FlatList
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.tripsHorizontalContent}
-          >
-            {availableDriverRequests.map((request) => (
+            data={availableDriverRequests}
+            keyExtractor={(request) => request.id}
+            initialNumToRender={3}
+            maxToRenderPerBatch={3}
+            windowSize={5}
+            renderItem={({ item: request }) => (
               <TripRequestPreviewCard
-                key={request.id}
                 cardWidth={tripCardWidth}
                 request={request}
-                onOpen={() => openTripRequestDetail(request.id)}
+                onOpen={openTripRequestDetail}
               />
-            ))}
-          </ScrollView>
+            )}
+          />
         )}
 
         {effectiveTripsSheetOpen && !sheetLoading && !sheetError && !isRequestsSheetMode && latestTrips.length > 0 && (
-          <ScrollView
+          <FlatList
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.tripsHorizontalContent}
-          >
-            {latestTrips.map((trip) => (
+            data={latestTrips}
+            keyExtractor={(trip) => trip.id}
+            initialNumToRender={3}
+            maxToRenderPerBatch={3}
+            windowSize={5}
+            renderItem={({ item: trip }) => (
               <TripPreviewCard
-                key={trip.id}
                 cardWidth={tripCardWidth}
                 trip={trip}
                 isBooked={bookedTripIds.has(trip.id)}
                 isSelected={trip.id === selectedTrip?.id}
-                onOpen={() => openTripDetail(trip.id)}
+                onOpen={openTripDetail}
               />
-            ))}
-          </ScrollView>
+            )}
+          />
         )}
       </View>
     </SafeAreaView>

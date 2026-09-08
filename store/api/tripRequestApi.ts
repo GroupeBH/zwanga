@@ -14,6 +14,7 @@ import type { ServerTrip } from './tripApi';
 import { mapServerTripToClient } from './tripApi';
 import type { BaseEndpointBuilder } from './types';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
+import { CRITICAL_MUTATION_TIMEOUT_MS } from '@/constants/network';
 
 type ServerTripRequest = {
   id: string;
@@ -476,6 +477,7 @@ export const tripRequestApi = baseApi.injectEndpoints({
         url: '/trip-requests',
         method: 'POST',
         body: payload,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (
         response: ServerTripRequest | { data?: ServerTripRequest; tripRequest?: ServerTripRequest },
@@ -549,6 +551,7 @@ export const tripRequestApi = baseApi.injectEndpoints({
         url: `/trip-requests/${id}`,
         method: 'PUT',
         body: payload,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerTripRequest) => mapServerTripRequestToClient(response),
       invalidatesTags: (_result, _error, { id }: { id: string }) => [
@@ -563,6 +566,7 @@ export const tripRequestApi = baseApi.injectEndpoints({
       query: (id: string) => ({
         url: `/trip-requests/${id}`,
         method: 'DELETE',
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       invalidatesTags: (_result, _error, id: string) => [
         { type: 'TripRequest', id },
@@ -580,6 +584,7 @@ export const tripRequestApi = baseApi.injectEndpoints({
         url: `/trip-requests/${tripRequestId}/offers`,
         method: 'POST',
         body: payload,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerDriverOffer) => mapServerDriverOfferToClient(response),
       invalidatesTags: (_result, _error, { tripRequestId }: { tripRequestId: string }) => [
@@ -612,6 +617,7 @@ export const tripRequestApi = baseApi.injectEndpoints({
         url: `/trip-requests/${tripRequestId}/accept-offer`,
         method: 'POST',
         body: payload,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerTripRequest) => mapServerTripRequestToClient(response),
       invalidatesTags: (_result, _error, { tripRequestId }: { tripRequestId: string }) => [
@@ -629,6 +635,7 @@ export const tripRequestApi = baseApi.injectEndpoints({
       query: ({ tripRequestId, offerId }: { tripRequestId: string; offerId: string }) => ({
         url: `/trip-requests/${tripRequestId}/offers/${offerId}/reject`,
         method: 'POST',
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerDriverOffer) => mapServerDriverOfferToClient(response),
       invalidatesTags: (_result, _error, { tripRequestId }: { tripRequestId: string }) => [
@@ -648,6 +655,7 @@ export const tripRequestApi = baseApi.injectEndpoints({
       query: (tripRequestId: string) => ({
         url: `/trip-requests/${tripRequestId}/start-trip`,
         method: 'PUT',
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: { trip: ServerTrip; tripRequest: ServerTripRequest }) => ({
         trip: mapServerTripToClient(response.trip),
@@ -673,6 +681,7 @@ export const tripRequestApi = baseApi.injectEndpoints({
         url: `/trip-requests/${tripRequestId}/accept`,
         method: 'POST',
         body: payload,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: { trip: ServerTrip; tripRequest: ServerTripRequest }) => ({
         trip: mapServerTripToClient(response.trip),

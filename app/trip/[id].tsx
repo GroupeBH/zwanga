@@ -1499,7 +1499,7 @@ export default function TripDetailsScreen() {
         ? 'Avant de monter, choisissez les proches à prévenir pendant le trajet.'
         : 'Vous pouvez ajuster les proches à prévenir.';
   const passengerSecurityButtonLabel = canAccessTripSecurity
-    ? 'Choisir mes proches'
+    ? 'Prévenir mes proches'
     : 'Connectez-vous';
   const defaultPassengerOriginSelection = useMemo<MapLocationSelection | null>(() => {
     const latitude = Number(lastKnownLocation?.coords?.latitude);
@@ -2796,7 +2796,7 @@ export default function TripDetailsScreen() {
                   <Ionicons name="flag-outline" size={16} color={Colors.success} />
                 </View>
                 <View>
-                  <Text style={styles.tripQuickFactLabel}>Arrivée estimee</Text>
+                  <Text style={styles.tripQuickFactLabel}>Arrivée estimée</Text>
                   <Text style={styles.tripQuickFactValue}>{tripArrivalTimeLabel}</Text>
                 </View>
               </View>
@@ -2974,7 +2974,7 @@ export default function TripDetailsScreen() {
         {showPassengerSecurityAccess && (
           <Animated.View entering={FadeInDown.delay(460)} style={styles.section}>
             <View style={[styles.sectionCard, styles.passengerSecurityCard]}>
-              <View style={styles.passengerSecurityHeader}>
+              {/* <View style={styles.passengerSecurityHeader}>
                 <View style={styles.passengerSecurityIconWrap}>
                   <Ionicons name="shield-checkmark-outline" size={20} color={Colors.primary} />
                 </View>
@@ -2984,8 +2984,8 @@ export default function TripDetailsScreen() {
                     Simple et modifiable avant le départ.
                   </Text>
                 </View>
-              </View>
-              <Text style={styles.passengerSecurityHintText}>{passengerSecurityQuickHint}</Text>
+              </View> */}
+              {/* <Text style={styles.passengerSecurityHintText}>{passengerSecurityQuickHint}</Text> */}
               <TouchableOpacity
                 style={[
                   styles.passengerSecurityButton,
@@ -3083,10 +3083,10 @@ export default function TripDetailsScreen() {
         {showPassengerVehicleReminder && (
           <Animated.View entering={FadeInDown.delay(550)} style={styles.section}>
             <View style={[styles.sectionCard, styles.securityReminderCard]}>
-              <View style={styles.securityReminderHeader}>
+              {/* <View style={styles.securityReminderHeader}>
                 <Ionicons name="shield-checkmark" size={20} color={Colors.secondary} />
                 <Text style={styles.securityReminderTitle}>Vérification avant embarquement</Text>
-              </View>
+              </View> */}
               <Text style={styles.securityReminderText}>
                 Avant de monter, vérifiez que le véhicule devant vous correspond exactement à celui du trajet.
               </Text>
@@ -3103,15 +3103,17 @@ export default function TripDetailsScreen() {
             <View style={[styles.sectionCard, styles.securityReminderCard]}>
               <View style={styles.securityReminderHeader}>
                 <Ionicons name="car-sport" size={20} color={Colors.primary} />
-                <Text style={styles.securityReminderTitle}>Rappel sécurité conducteur</Text>
+                <Text style={styles.securityReminderTitle}>
+                   Assurez-vous de conduire le véhicule indiqué ci-dessous. Si vous changez de véhicule, mettez à jour le trajet avant de récupérer un passager.
+                </Text>
               </View>
-              <Text style={styles.securityReminderText}>
+              {/* <Text style={styles.securityReminderText}>
                 Assurez-vous de conduire le véhicule indiqué ci-dessous. Si vous changez de véhicule, mettez à jour le trajet avant de récupérer un passager.
               </Text>
               <View style={styles.securityReminderVehicleBox}>
                 <Text style={styles.securityReminderVehicleLabel}>Véhicule déclaré</Text>
                 <Text style={styles.securityReminderVehicleValue}>{tripVehicleIdentity}</Text>
-              </View>
+              </View> */}
               <TouchableOpacity
                 style={styles.driverSecurityActionButton}
                 onPress={openTripSecurityModal}
