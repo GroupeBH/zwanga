@@ -2,6 +2,7 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useGetPaymentHistoryQuery, useLazyGetPaymentDetailsQuery } from '@/store/api/paymentApi';
 import type { PaymentHistoryItem, SubscriptionPaymentStatus } from '@/types';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -116,6 +117,14 @@ const sanitizeFileSegment = (value: string) =>
 
 const formatValue = (value?: string | null) => value?.trim() || 'Non disponible';
 
+const formatPaymentMessage = (message?: string | null) => {
+  if (!message?.trim()) return null;
+  return getApiErrorMessage(
+    { message },
+    'Le statut du paiement est indisponible pour le moment.',
+  );
+};
+
 const waitForNativePresentation = () =>
   new Promise<void>((resolve) => {
     InteractionManager.runAfterInteractions(() => {
@@ -138,7 +147,7 @@ const getPaymentDetailRows = (payment: PaymentHistoryItem) => {
     { label: 'Référence opérateur', value: formatValue(payment.providerReference) },
     { label: 'Code statut', value: formatValue(payment.statusCode) },
     { label: 'Téléphone', value: formatValue(payment.phone) },
-    { label: 'Message', value: formatValue(payment.message) },
+    { label: 'Message', value: formatValue(formatPaymentMessage(payment.message)) },
     { label: 'Créé le', value: formatDate(payment.createdAt) },
     { label: 'Mis à jour le', value: formatDate(payment.updatedAt) },
     { label: 'Validé le', value: formatDate(payment.paidAt) },
@@ -310,10 +319,10 @@ export default function PaymentHistoryScreen() {
       showDialog({
         variant: 'danger',
         title: 'Détail indisponible',
-        message:
-          error?.data?.message ||
-          error?.message ||
+        message: getApiErrorMessage(
+          error,
           'Impossible de charger le détail du paiement pour le moment.',
+        ),
       });
     } finally {
       setLoadingDetailsPaymentId(null);
@@ -334,10 +343,7 @@ export default function PaymentHistoryScreen() {
         showDialog({
           variant: 'danger',
           title: 'Detail indisponible',
-          message:
-            error?.data?.message ||
-            error?.message ||
-            'Impossible de charger la facture pour le moment.',
+          message: getApiErrorMessage(error, 'Impossible de charger la facture pour le moment.'),
         });
       })
       .finally(() => setLoadingDetailsPaymentId(null));
@@ -406,10 +412,10 @@ export default function PaymentHistoryScreen() {
       showDialog({
         variant: 'danger',
         title: 'Téléchargement impossible',
-        message:
-          error?.data?.message ||
-          error?.message ||
+        message: getApiErrorMessage(
+          error,
           'Impossible de générer le détail du paiement pour le moment.',
+        ),
       });
     } finally {
       isDownloadingRef.current = false;
@@ -421,6 +427,7 @@ export default function PaymentHistoryScreen() {
     const meta = statusMeta[payment.status] ?? statusMeta.pending;
     const isDownloading = downloadingPaymentId === payment.id;
     const isLoadingDetails = loadingDetailsPaymentId === payment.id;
+    const paymentMessage = formatPaymentMessage(payment.message);
 
     return (
       <View key={payment.id} style={styles.paymentRow}>
@@ -451,9 +458,9 @@ export default function PaymentHistoryScreen() {
           <Text style={styles.referenceText} numberOfLines={1}>
             Réf. {payment.reference}
           </Text>
-          {payment.message ? (
+          {paymentMessage ? (
             <Text style={styles.paymentMessage} numberOfLines={2}>
-              {payment.message}
+              {paymentMessage}
             </Text>
           ) : null}
           <View style={styles.paymentDetailHint}>

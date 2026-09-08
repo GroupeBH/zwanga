@@ -763,10 +763,10 @@ export const bookingApi = baseApi.injectEndpoints({
           recordedAt,
         },
       }),
-      invalidatesTags: (result, _error, { bookingId }) => [
-        { type: 'Booking', id: bookingId },
-        ...(result?.autoProgress?.events.length
+      invalidatesTags: (result, _error, { bookingId }) =>
+        result?.autoProgress?.events.length
           ? [
+              { type: 'Booking' as const, id: bookingId },
               bookingListTag,
               tripListTag,
               myTripsListTag,
@@ -779,8 +779,7 @@ export const bookingApi = baseApi.injectEndpoints({
                 id: event.tripId,
               })),
             ]
-          : []),
-      ],
+          : [],
     }),
   }),
 });

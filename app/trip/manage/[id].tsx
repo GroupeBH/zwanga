@@ -23,6 +23,7 @@ import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus, TripInterruptionReason } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import {
   buildManualGeocodeQuery,
   mapGeocodeResponseToSelection,
@@ -146,8 +147,9 @@ export default function ManageTripScreen() {
   } = useGetTripByIdQuery(tripId, { 
     skip: !tripId,
     pollingInterval,
+    skipPollingIfUnfocused: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
 
   // Mettre à jour l'intervalle de polling en fonction du statut du trajet
@@ -182,8 +184,9 @@ export default function ManageTripScreen() {
     skip: !tripId,
     // Polling réduit - utiliser le refresh manuel ou refetchOnFocus
     pollingInterval: trip?.status === 'upcoming' ? 60000 : 0,
+    skipPollingIfUnfocused: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
   const [acceptBooking, { isLoading: isAccepting }] = useAcceptBookingMutation();
   const [rejectBooking, { isLoading: isRejecting }] = useRejectBookingMutation();
@@ -589,9 +592,9 @@ export default function ManageTripScreen() {
       showFeedback('success', 'Les adresses du trajet ont été mises à jour.');
       refreshAll();
     } catch (error: any) {
-      const message =
-        error?.data?.message ?? error?.error ?? 'Impossible de mettre à jour les adresses du trajet.';
-      setEditRouteError(Array.isArray(message) ? message.join('\n') : message);
+      setEditRouteError(
+        getApiErrorMessage(error, 'Impossible de mettre à jour les adresses du trajet.'),
+      );
     } finally {
       setIsResolvingRoute(false);
     }
@@ -643,9 +646,10 @@ export default function ManageTripScreen() {
       showFeedback('success', 'La réservation a été acceptée.');
       refreshAll();
     } catch (error: any) {
-      const message =
-        error?.data?.message ?? error?.error ?? 'Impossible d’accepter cette réservation.';
-      showFeedback('error', message);
+      showFeedback(
+        'error',
+        getApiErrorMessage(error, 'Impossible d’accepter cette réservation.'),
+      );
     } finally {
       setProcessingBookingId(null);
     }
@@ -669,9 +673,9 @@ export default function ManageTripScreen() {
       closeRejectModal();
       refreshAll();
     } catch (error: any) {
-      const message =
-        error?.data?.message ?? error?.error ?? 'Impossible de refuser cette réservation.';
-      setRejectError(Array.isArray(message) ? message.join('\n') : message);
+      setRejectError(
+        getApiErrorMessage(error, 'Impossible de refuser cette réservation.'),
+      );
     } finally {
       setProcessingBookingId(null);
     }
@@ -708,9 +712,10 @@ export default function ManageTripScreen() {
               showFeedback('success', 'La réservation a été annulée. Le passager sera notifié.');
               refreshAll();
             } catch (error: any) {
-              const message =
-                error?.data?.message ?? error?.error ?? 'Impossible d\'annuler cette réservation.';
-              showFeedback('error', message);
+              showFeedback(
+                'error',
+                getApiErrorMessage(error, 'Impossible d\'annuler cette réservation.'),
+              );
             } finally {
               setProcessingBookingId(null);
             }
@@ -741,9 +746,10 @@ export default function ManageTripScreen() {
               showFeedback('success', 'Le trajet a été démarré avec succès.');
               refreshAll();
             } catch (error: any) {
-              const message =
-                error?.data?.message ?? error?.error ?? 'Impossible de démarrer ce trajet.';
-              showFeedback('error', message);
+              showFeedback(
+                'error',
+                getApiErrorMessage(error, 'Impossible de démarrer ce trajet.'),
+              );
             }
           },
         },
@@ -763,9 +769,10 @@ export default function ManageTripScreen() {
       showFeedback('success', 'Le trajet a été interrompu avec succès.');
       refreshAll();
     } catch (error: any) {
-      const message =
-        error?.data?.message ?? error?.error ?? 'Impossible d\'interrompre ce trajet.';
-      showFeedback('error', message);
+      showFeedback(
+        'error',
+        getApiErrorMessage(error, 'Impossible d\'interrompre ce trajet.'),
+      );
     }
   };
 
@@ -798,11 +805,10 @@ export default function ManageTripScreen() {
       );
       refreshAll();
     } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        "Impossible d'envoyer la demande d'interruption.";
-      showFeedback('error', Array.isArray(message) ? message.join('\n') : message);
+      showFeedback(
+        'error',
+        getApiErrorMessage(error, "Impossible d'envoyer la demande d'interruption."),
+      );
     }
   };
 
@@ -907,9 +913,10 @@ export default function ManageTripScreen() {
               showFeedback('success', 'Le trajet a été annulé.');
               goHome();
             } catch (error: any) {
-              const message =
-                error?.data?.message ?? error?.error ?? "Impossible d'annuler ce trajet.";
-              showFeedback('error', message);
+              showFeedback(
+                'error',
+                getApiErrorMessage(error, "Impossible d'annuler ce trajet."),
+              );
             }
           },
         },

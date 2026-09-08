@@ -9,6 +9,7 @@ import {
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import type { Notification } from '@/types';
 import { formatDateTime, formatRelativeTime } from '@/utils/dateHelpers';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import {
   extractTripRequestId,
   getTripUrl,
@@ -201,7 +202,7 @@ export default function NotificationsScreen() {
       showDialog({
         variant: 'danger',
         title: 'Erreur',
-        message: error?.data?.message || 'Impossible de supprimer la notification',
+        message: getApiErrorMessage(error, 'Impossible de supprimer la notification.'),
       });
     }
   }, [disableNotifications, showDialog]);
@@ -243,7 +244,7 @@ export default function NotificationsScreen() {
               showDialog({
                 variant: 'danger',
                 title: 'Erreur',
-                message: error?.data?.message || 'Impossible de supprimer les notifications',
+                message: getApiErrorMessage(error, 'Impossible de supprimer les notifications.'),
               });
             }
           },

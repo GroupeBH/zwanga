@@ -95,6 +95,7 @@ const baseQueryWithReauth: BaseQueryFn<
 export const baseApi = createApi({
   reducerPath: 'zwangaApi',
   baseQuery: baseQueryWithReauth,
+  keepUnusedDataFor: 180,
   tagTypes: [
     'User',
     'Trip',

@@ -1,4 +1,4 @@
-import type { FetchBaseQueryError } from '@reduxjs/toolkit/query';
+import { fetchBaseQuery, type FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import { API_BASE_URL } from '../../config/env';
 import { storeTokens } from '../../services/tokenStorage';
 import { saveTokensAndUpdateState, setUser } from '../../store/slices/authSlice';
@@ -283,7 +283,7 @@ export const authApi = baseApi.injectEndpoints({
     // IMPORTANT: Utilise queryFn avec fetch direct pour éviter la dépendance circulaire
     // et éviter que baseQueryWithReauth n'ajoute un header Authorization (qui causerait une boucle)
     refreshToken: builder.mutation<{ accessToken: string; refreshToken: string }, { refreshToken: string }>({
-      queryFn: async (data: { refreshToken: string }) => {
+      queryFn: async (data: { refreshToken: string }, api, extraOptions) => {
         try {
           // Normaliser l'URL pour éviter les doubles slashes
           const normalizedBaseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;

@@ -52,6 +52,7 @@ import type {
   Trip,
   TripInterruptionReason,
 } from '@/types';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import {
   areTripMapCoordinatesSame,
   getTripLocationCoordinate,
@@ -212,7 +213,7 @@ const MAX_LIVE_PASSENGER_MARKERS = Platform.OS === 'ios' ? 10 : 16;
 const USE_ANDROID_NAVIGATION_MARKER_IMAGES = Platform.OS === 'android';
 const ANDROID_PIN_MARKER_ANCHOR = { x: 0.5, y: 0.88 };
 const DRIVER_DROPOFF_APPROACH_DISTANCE_KM = 0.04;
-const DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS = 3000;
+const DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS = 5000;
 const FRESH_DRIVER_LOCATION_MAX_AGE_MS = LOCATION_FRESHNESS_MS;
 const OFF_ROUTE_DISTANCE_KM = ROUTE_DEVIATION_THRESHOLD_METERS / 1000;
 const DRIVER_REROUTE_DEVIATION_THRESHOLD_METERS = 55;
@@ -512,8 +513,7 @@ const formatPendingBookingPayment = (booking: Booking, tripPrice?: number): stri
 };
 
 const getBookingActionErrorMessage = (error: any, fallback: string): string => {
-  const message = error?.data?.message ?? error?.error;
-  return Array.isArray(message) ? message.join('\n') : message || fallback;
+  return getApiErrorMessage(error, fallback);
 };
 
 const hasBookingPickupCompleted = (booking?: Booking | null): boolean =>
@@ -655,7 +655,7 @@ export default function NavigationScreen() {
     tripId,
     {
       skip: !tripId,
-      pollingInterval: isTripOngoing ? 10000 : 0,
+      pollingInterval: isTripOngoing ? 20_000 : 0,
       skipPollingIfUnfocused: true,
     },
   );
@@ -2901,15 +2901,15 @@ export default function NavigationScreen() {
       let lastStateUpdateTime = 0;
       let lastBackendUpdateTime = 0;
       let lastStepCheckTime = 0;
-      const STATE_UPDATE_INTERVAL = DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS; // Mise à jour du state toutes les 3 secondes
-      const BACKEND_UPDATE_INTERVAL = DRIVER_LOCATION_BACKEND_UPDATE_INTERVAL_MS; // Mise à jour WebSocket toutes les 3 secondes
+      const STATE_UPDATE_INTERVAL = DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS; // Mise à jour du state toutes les 5 secondes
+      const BACKEND_UPDATE_INTERVAL = DRIVER_LOCATION_BACKEND_UPDATE_INTERVAL_MS; // Mise à jour WebSocket toutes les 5 secondes
       const STEP_CHECK_INTERVAL = 5000; // Vérification étapes toutes les 5 secondes
 
       // S'abonner aux mises à jour de localisation (fréquence réduite pour stabilité)
       const subscription = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.High, // Équilibre entre précision et batterie
-          timeInterval: DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS, // GPS update toutes les 3 secondes
+          timeInterval: DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS, // GPS update toutes les 5 secondes
           distanceInterval: 5, // Ou tous les 5 mètres
         },
         (newLocation) => {
@@ -3965,15 +3965,11 @@ export default function NavigationScreen() {
                   message: 'La participation du passager est interrompue.',
                 });
               } catch (error: any) {
-                const message =
-                  error?.data?.message ??
-                  error?.error ??
-                  "Impossible de confirmer l'interruption.";
                 showDialog({
                   variant: 'danger',
                   icon: 'alert-circle',
                   title: 'Confirmation impossible',
-                  message: Array.isArray(message) ? message.join('\n') : message,
+                  message: getApiErrorMessage(error, "Impossible de confirmer l'interruption."),
                 });
               } finally {
                 setProcessingBookingId(null);
@@ -4021,15 +4017,11 @@ export default function NavigationScreen() {
                   message: 'Le passager sera informé du refus.',
                 });
               } catch (error: any) {
-                const message =
-                  error?.data?.message ??
-                  error?.error ??
-                  "Impossible de refuser l'interruption.";
                 showDialog({
                   variant: 'danger',
                   icon: 'alert-circle',
                   title: 'Refus impossible',
-                  message: Array.isArray(message) ? message.join('\n') : message,
+                  message: getApiErrorMessage(error, "Impossible de refuser l'interruption."),
                 });
               } finally {
                 setProcessingBookingId(null);
@@ -4188,15 +4180,11 @@ export default function NavigationScreen() {
         { force: true },
       );
     } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        "Impossible de confirmer la prise en charge pour le moment.";
       showDialog({
         variant: 'danger',
         icon: 'alert-circle',
         title: 'Confirmation impossible',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message: getApiErrorMessage(error, "Impossible de confirmer la prise en charge pour le moment."),
       });
     } finally {
       setProcessingBookingId(null);
@@ -4240,15 +4228,11 @@ export default function NavigationScreen() {
         { force: true },
       );
     } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        "Impossible d'annuler cette reservation pour le moment.";
       showDialog({
         variant: 'danger',
         icon: 'alert-circle',
         title: 'Annulation impossible',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message: getApiErrorMessage(error, "Impossible d'annuler cette réservation pour le moment."),
       });
     } finally {
       setProcessingBookingId(null);
@@ -4321,13 +4305,11 @@ export default function NavigationScreen() {
         message: 'La navigation va reprendre depuis votre position actuelle.',
       });
     } catch (error: any) {
-      const message =
-        error?.data?.message ?? error?.error ?? 'Impossible de redémarrer ce trajet.';
       showDialog({
         variant: 'danger',
         icon: 'alert-circle',
         title: 'Redemarrage impossible',
-        message,
+        message: getApiErrorMessage(error, 'Impossible de redémarrer ce trajet.'),
       });
     }
   }, [
@@ -4361,13 +4343,11 @@ export default function NavigationScreen() {
         message: 'Le trajet a été interrompu avec succès.',
       });
     } catch (error: any) {
-      const message =
-        error?.data?.message ?? error?.error ?? "Impossible d'interrompre ce trajet.";
       showDialog({
         variant: 'danger',
         icon: 'alert-circle',
         title: 'Interruption impossible',
-        message,
+        message: getApiErrorMessage(error, "Impossible d'interrompre ce trajet."),
       });
     }
   }, [
@@ -4408,15 +4388,11 @@ export default function NavigationScreen() {
           message: 'Tous les passagers à bord doivent confirmer avant interruption du trajet.',
         });
       } catch (error: any) {
-        const message =
-          error?.data?.message ??
-          error?.error ??
-          "Impossible d'envoyer la demande d'interruption.";
         showDialog({
           variant: 'danger',
           icon: 'alert-circle',
           title: 'Demande impossible',
-          message: Array.isArray(message) ? message.join('\n') : message,
+          message: getApiErrorMessage(error, "Impossible d'envoyer la demande d'interruption."),
         });
       }
     },
@@ -4535,14 +4511,10 @@ export default function NavigationScreen() {
         trip?.arrival?.name ?? trip?.arrival?.address,
       );
     } catch (error: any) {
-      const backendMessage = error?.data?.message;
-      const message = Array.isArray(backendMessage)
-        ? backendMessage.join('\n')
-        : backendMessage || error?.message || 'Impossible de créer le lien web de suivi.';
       showDialog({
         variant: 'danger',
         title: 'Partage impossible',
-        message,
+        message: getApiErrorMessage(error, 'Impossible de créer le lien web de suivi.'),
       });
     }
   }, [

@@ -1,5 +1,5 @@
-import { API_BASE_URL } from '../../config/env';
-import { getRefreshToken, storeTokens } from '../../services/tokenStorage';
+import { refreshAccessToken } from '../../services/tokenRefresh';
+import { getRefreshToken } from '../../services/tokenStorage';
 import type { FavoriteLocation, KycDocument, KycStatus, ProfileStats, ProfileSummary, TripRequestVehicleType, User, UserRole, Vehicle } from '../../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { baseApi } from './baseApi';
@@ -203,36 +203,9 @@ const refreshAuthAfterKycUpdate = async (dispatch: any) => {
     return;
   }
 
-  const normalizedBaseUrl = API_BASE_URL.endsWith('/')
-    ? API_BASE_URL.slice(0, -1)
-    : API_BASE_URL;
-
-  const refreshResponse = await fetch(`${normalizedBaseUrl}/auth/refresh`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ refreshToken }),
-  });
-
-  if (refreshResponse.ok) {
-    const refreshedTokens = (await refreshResponse.json()) as {
-      accessToken?: string;
-      refreshToken?: string;
-    };
-
-    if (refreshedTokens.accessToken && refreshedTokens.refreshToken) {
-      await storeTokens(refreshedTokens.accessToken, refreshedTokens.refreshToken);
-      dispatch({
-        type: 'auth/setTokens',
-        payload: {
-          accessToken: refreshedTokens.accessToken,
-          refreshToken: refreshedTokens.refreshToken,
-        },
-      });
-    }
-  } else {
-    console.warn('Token refresh failed after KYC update:', refreshResponse.status);
+  const refreshedAccessToken = await refreshAccessToken(refreshToken);
+  if (!refreshedAccessToken) {
+    console.warn('Token refresh failed after KYC update');
   }
 
   dispatch(userApi.endpoints.getKycStatus.initiate(undefined, { forceRefetch: true }));
@@ -320,39 +293,12 @@ export const userApi = baseApi.injectEndpoints({
           if (refreshToken) {
             // Trigger token refresh to get new JWT with updated KYC status
             // This ensures the access token immediately reflects the new KYC status
-            const normalizedBaseUrl = API_BASE_URL.endsWith('/')
-              ? API_BASE_URL.slice(0, -1)
-              : API_BASE_URL;
+            const refreshedAccessToken = await refreshAccessToken(refreshToken);
 
-            const refreshResponse = await fetch(`${normalizedBaseUrl}/auth/refresh`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ refreshToken }),
-            });
-
-            if (refreshResponse.ok) {
-              const refreshedTokens = (await refreshResponse.json()) as {
-                accessToken?: string;
-                refreshToken?: string;
-              };
-
-              if (refreshedTokens.accessToken && refreshedTokens.refreshToken) {
-                await storeTokens(refreshedTokens.accessToken, refreshedTokens.refreshToken);
-                dispatch({
-                  type: 'auth/setTokens',
-                  payload: {
-                    accessToken: refreshedTokens.accessToken,
-                    refreshToken: refreshedTokens.refreshToken,
-                  },
-                });
-                console.log('Tokens refreshed successfully after KYC upload');
-              } else {
-                console.warn('Refresh response missing tokens after KYC upload');
-              }
+            if (refreshedAccessToken) {
+              console.log('Tokens refreshed successfully after KYC upload');
             } else {
-              console.warn('Token refresh failed after KYC upload:', refreshResponse.status);
+              console.warn('Token refresh failed after KYC upload');
             }
 
             // Invalider les tags User et KycStatus pour forcer un refetch immédiat

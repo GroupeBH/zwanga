@@ -38,6 +38,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  InteractionManager,
   Keyboard,
   Modal,
   Platform,
@@ -251,7 +252,7 @@ export default function PublishScreen() {
   } = useGetVehiclesQuery(undefined, {
     refetchOnMountOrArgChange: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
 
   const [createdVehicle, setCreatedVehicle] = useState<Vehicle | null>(null);
@@ -699,6 +700,7 @@ export default function PublishScreen() {
     mode: 'date' | 'time',
     target: 'departure' | 'recurringEndDate' = 'departure',
   ) => {
+    Keyboard.dismiss();
     if (Platform.OS === 'android') {
       const value =
         target === 'recurringEndDate'
@@ -832,10 +834,6 @@ export default function PublishScreen() {
   }, [recurringWeekdayOptions, recurringWeekdays]);
 
   const isSubmittingTrip = isPublishing || isPublishingRecurring;
-  const isManualAddressGeocoding =
-    (manualAddressTarget === 'departure' && departureManualGeocodeStatus === 'searching') ||
-    (manualAddressTarget === 'arrival' && arrivalManualGeocodeStatus === 'searching');
-
   const toggleRecurringTrip = () => {
     setIsRecurringTrip((current) => {
       const next = !current;
@@ -974,24 +972,29 @@ export default function PublishScreen() {
     setIsRouteLoading(true);
     setRouteCoordinates([]);
 
-    getRouteCoordinates(origin, destination)
-      .then((coordinates) => {
-        if (!isCurrent) return;
-        setRouteCoordinates(getRenderableRouteCoordinates(coordinates, origin, destination));
-      })
-      .catch((error) => {
-        if (!isCurrent) return;
-        console.warn("Impossible de calculer l'itinéraire de publication", error);
-        setRouteCoordinates([]);
-      })
-      .finally(() => {
-        if (isCurrent) {
-          setIsRouteLoading(false);
-        }
-      });
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      if (!isCurrent) return;
+
+      getRouteCoordinates(origin, destination)
+        .then((coordinates) => {
+          if (!isCurrent) return;
+          setRouteCoordinates(getRenderableRouteCoordinates(coordinates, origin, destination));
+        })
+        .catch((error) => {
+          if (!isCurrent) return;
+          console.warn("Impossible de calculer l'itinéraire de publication", error);
+          setRouteCoordinates([]);
+        })
+        .finally(() => {
+          if (isCurrent) {
+            setIsRouteLoading(false);
+          }
+        });
+    });
 
     return () => {
       isCurrent = false;
+      interaction.cancel();
     };
   }, [arrivalLocation, departureLocation]);
 
@@ -1045,42 +1048,6 @@ export default function PublishScreen() {
     }
   };
 
-  const showRouteCoordinatesRequiredDialog = () => {
-    const missingType: 'departure' | 'arrival' = !hasDepartureCoordinates
-      ? 'departure'
-      : 'arrival';
-    const isDeparture = missingType === 'departure';
-    const hasSuggestedPoint = isDeparture ? hasDepartureGpsSuggestion : hasArrivalGpsSuggestion;
-
-    const openMissingPointPicker = () => {
-      setManualAddressTarget(null);
-      openLocationPicker(missingType, isDeparture ? departureAddress : arrivalAddress);
-    };
-
-    setAddressSectionStep(missingType);
-
-    if (hasSuggestedPoint) {
-      openMissingPointPicker();
-      return;
-    }
-
-    showDialog({
-      variant: 'warning',
-      title: 'Point sur la carte requis',
-      message: isDeparture
-        ? 'Confirmez le point de départ sur la carte pour éviter une position approximative.'
-        : 'Confirmez la destination sur la carte pour éviter une position approximative.',
-      actions: [
-        { label: 'Plus tard', variant: 'ghost' },
-        {
-          label: 'Ouvrir la carte',
-          variant: 'primary',
-          onPress: openMissingPointPicker,
-        },
-      ],
-    });
-  };
-
   const handleNextStep = () => {
     if (step === 'route') {
       if (!hasDepartureAddress || !hasArrivalAddress) {
@@ -1090,10 +1057,6 @@ export default function PublishScreen() {
           title: 'Itinéraire incomplet',
           message: 'Indiquez une adresse de départ et une destination, ou choisissez-les sur la carte.',
         });
-        return;
-      }
-      if (!hasDepartureCoordinates || !hasArrivalCoordinates) {
-        showRouteCoordinatesRequiredDialog();
         return;
       }
       if (!isPublishIdentityVerified) {
@@ -1166,11 +1129,6 @@ export default function PublishScreen() {
         title: 'Itinéraire incomplet',
         message: "Indiquez vos adresses de départ et d’arrivée, ou choisissez-les sur la carte.",
       });
-      return;
-    }
-
-    if (!hasDepartureCoordinates || !hasArrivalCoordinates) {
-      showRouteCoordinatesRequiredDialog();
       return;
     }
 
@@ -1285,10 +1243,10 @@ export default function PublishScreen() {
       // rendered as an in-screen overlay instead of a React Native Modal.
       setPublicationSuccess({ recurring: isRecurringTrip });
     } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        'Impossible de publier le trajet pour le moment. Veuillez réessayer.';
+      const message = getApiErrorMessage(
+        error,
+        'Impossible de publier le trajet pour le moment. Veuillez réessayer.',
+      );
 
       const isDriverError = isDriverRequiredError(error);
       const isQuotaError = isDailyPublicationLimitError(error);
@@ -1296,7 +1254,7 @@ export default function PublishScreen() {
       showDialog({
         variant: isQuotaError ? 'warning' : 'danger',
         title: isQuotaError ? 'Abonnement conducteur requis' : 'Erreur',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message,
         actions: isQuotaError
           ? [
               { label: 'Plus tard', variant: 'ghost' },
@@ -1342,19 +1300,13 @@ export default function PublishScreen() {
       ? !hasDepartureAddress || !hasArrivalAddress
       : step === 'confirm'
         ? isSubmittingTrip ||
-          !isPublishIdentityVerified ||
-          isManualAddressGeocoding ||
-          !hasDepartureCoordinates ||
-          !hasArrivalCoordinates
+          !isPublishIdentityVerified
         : false;
 
   const footerPrimaryLabel = (() => {
     if (step === 'route') {
       if (!hasDepartureAddress) return 'Indiquez le départ';
       if (!hasArrivalAddress) return "Indiquez l'arrivée";
-      if (!hasDepartureCoordinates) return 'Confirmez le départ';
-      if (!hasArrivalCoordinates) return "Confirmez l'arrivée";
-      if (isManualAddressGeocoding) return 'Recherche du point...';
       return 'Continuer';
     }
     if (step === 'confirm') {
@@ -2557,6 +2509,7 @@ export default function PublishScreen() {
 
             {iosPickerMode && (
               <IOSDateTimePicker
+                key={`${iosPickerTarget}-${iosPickerMode}`}
                 value={iosPickerValue}
                 mode={iosPickerMode}
                 display="spinner"

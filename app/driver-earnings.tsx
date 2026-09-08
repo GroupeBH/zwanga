@@ -73,9 +73,10 @@ export default function DriverEarningsScreen() {
     isError: summaryError,
     refetch: refetchSummary,
   } = useGetMyDriverSettlementQuery(undefined, {
-    pollingInterval: 30_000,
+    pollingInterval: 60_000,
+    skipPollingIfUnfocused: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
   const {
     data: earnings = [],
@@ -83,18 +84,20 @@ export default function DriverEarningsScreen() {
     isError: earningsError,
     refetch: refetchEarnings,
   } = useGetMyDriverEarningsQuery(undefined, {
-    pollingInterval: 30_000,
+    pollingInterval: 60_000,
+    skipPollingIfUnfocused: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
   const {
     data: payouts = [],
     isError: payoutsError,
     refetch: refetchPayouts,
   } = useGetMyDriverPayoutsQuery(undefined, {
-    pollingInterval: 15_000,
+    pollingInterval: 60_000,
+    skipPollingIfUnfocused: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
   const [requestPayout, { isLoading: isWithdrawing }] = useRequestDriverPayoutMutation();
 

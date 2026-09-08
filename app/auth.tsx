@@ -10,6 +10,7 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated } from '@/store/selectors';
 import { saveTokensAndUpdateState } from '@/store/slices/authSlice';
 import type { UserGender } from '@/types';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { hasCompleteLegalIdentity, normalizeLegalName } from '@/utils/legalIdentity';
 import {
   consumePendingReferralAttribution,
@@ -74,7 +75,7 @@ type SocialSignupSeed = {
 
 const getAuthErrorMessage = (error: unknown, fallback: string) => {
   if (typeof error === 'string' && error.trim()) {
-    return error;
+    return getApiErrorMessage({ message: error }, fallback);
   }
 
   if (!error || typeof error !== 'object') {
@@ -93,14 +94,20 @@ const getAuthErrorMessage = (error: unknown, fallback: string) => {
     authError.error;
 
   if (Array.isArray(rawMessage)) {
-    return rawMessage.filter((item): item is string => typeof item === 'string').join('\n') || fallback;
+    return getApiErrorMessage(
+      {
+        ...authError,
+        message: rawMessage.filter((item): item is string => typeof item === 'string').join('\n'),
+      },
+      fallback,
+    );
   }
 
   if (typeof rawMessage === 'string' && rawMessage.trim()) {
-    return rawMessage;
+    return getApiErrorMessage({ ...authError, message: rawMessage }, fallback);
   }
 
-  return fallback;
+  return getApiErrorMessage(authError, fallback);
 };
 
 const normalizeAuthErrorMessage = (message: string) =>
@@ -513,7 +520,7 @@ export default function AuthScreen() {
       showDialog({
         variant: 'danger',
         title: 'Inscription Google',
-        message: error?.data?.message || error?.message || 'Inscription Google impossible',
+        message: getAuthErrorMessage(error, 'Inscription Google impossible. Réessayez dans un instant.'),
       });
       setGoogleFlow(null);
       setSocialProvider(null);
@@ -591,7 +598,7 @@ export default function AuthScreen() {
       showDialog({
         variant: 'danger',
         title: 'Inscription Apple',
-        message: error?.data?.message || error?.message || 'Inscription Apple impossible',
+        message: getAuthErrorMessage(error, 'Inscription Apple impossible. Réessayez dans un instant.'),
       });
       setGoogleFlow(null);
       setSocialProvider(null);
@@ -624,7 +631,7 @@ export default function AuthScreen() {
       setGooglePhone(normalizedPhone);
       setGoogleSignupStep('otp');
     } catch (error: any) {
-      showDialog({ variant: 'danger', title: 'Erreur OTP', message: error?.data?.message || 'Impossible d\'envoyer le code' });
+      showDialog({ variant: 'danger', title: 'Erreur OTP', message: getAuthErrorMessage(error, 'Impossible d\'envoyer le code. Réessayez dans un instant.') });
     } finally {
       setIsSendingGoogleOtp(false);
     }
@@ -636,7 +643,7 @@ export default function AuthScreen() {
       await sendPhoneVerificationOtp({ phone: googlePhone, context: 'registration' }).unwrap();
       showDialog({ variant: 'success', title: 'Code renvoyé', message: 'Un nouveau code a été envoyé par SMS.' });
     } catch (error: any) {
-      showDialog({ variant: 'danger', title: 'Erreur', message: error?.data?.message || 'Impossible de renvoyer le code' });
+      showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, 'Impossible de renvoyer le code. Réessayez dans un instant.') });
     } finally {
       setIsSendingGoogleOtp(false);
     }
@@ -678,7 +685,7 @@ export default function AuthScreen() {
       setStep('profile');
       showDialog({ variant: 'success', title: 'Numéro vérifié', message: 'Complétez maintenant votre profil.' });
     } catch (error: any) {
-      showDialog({ variant: 'danger', title: 'Validation', message: error?.data?.message || 'Code invalide ou expiré' });
+      showDialog({ variant: 'danger', title: 'Validation', message: getAuthErrorMessage(error, 'Code invalide ou expiré.') });
     } finally {
       setIsVerifyingGoogleOtp(false);
     }
@@ -706,7 +713,7 @@ export default function AuthScreen() {
       setStep('sms');
       showDialog({ variant: 'success', title: 'Code envoyé', message: 'Un code de vérification a été envoyé.' });
     } catch (error: any) {
-      showDialog({ variant: 'danger', title: 'Erreur', message: error?.data?.message || 'Erreur lors de l\'envoi du code' });
+      showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, 'Impossible d\'envoyer le code. Réessayez dans un instant.') });
     } finally {
       setIsSendingOtp(false);
     }
@@ -761,7 +768,7 @@ export default function AuthScreen() {
       showDialog({
         variant: 'danger',
         title: 'Code invalide',
-        message: error?.data?.message || 'Code OTP invalide ou expiré',
+        message: getAuthErrorMessage(error, 'Code OTP invalide ou expiré.'),
         actions: [{ label: 'Réessayer', variant: 'primary', onPress: () => { setStep('phone'); setSmsCode(['', '', '', '', '']); } }],
       });
     }
@@ -782,7 +789,7 @@ export default function AuthScreen() {
         await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
         await trackEvent('login_success', { method: 'phone' });
       } catch (error: any) {
-        showDialog({ variant: 'danger', title: 'Erreur', message: error?.data?.message || 'PIN incorrect' });
+        showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, 'PIN incorrect.') });
         setPin('');
         pinInputRef.current?.focus();
       }
@@ -814,7 +821,7 @@ export default function AuthScreen() {
       showDialog({ variant: 'success', title: 'Code envoyé', message: 'Un code de vérification a été envoyé.' });
       focusAfterInteractions({ current: resetOtpInputRefs.current[0] });
     } catch (error: any) {
-      showDialog({ variant: 'danger', title: 'Erreur', message: error?.data?.message || 'Erreur lors de l\'envoi du code' });
+      showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, 'Impossible d\'envoyer le code. Réessayez dans un instant.') });
     } finally {
       setIsSendingResetOtp(false);
     }
@@ -866,7 +873,7 @@ export default function AuthScreen() {
       setResetPinStep('newPin');
       focusAfterInteractions(resetPinInputRef);
     } catch (error: any) {
-      showDialog({ variant: 'danger', title: 'Code invalide', message: error?.data?.message || 'Code OTP invalide' });
+      showDialog({ variant: 'danger', title: 'Code invalide', message: getAuthErrorMessage(error, 'Code OTP invalide ou expiré.') });
     }
   };
 
@@ -895,7 +902,7 @@ export default function AuthScreen() {
       setResetNewPinConfirm('');
       setPin('');
     } catch (error: any) {
-      showDialog({ variant: 'danger', title: 'Erreur', message: error?.data?.message || 'Erreur lors de la réinitialisation' });
+      showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, 'Impossible de réinitialiser le PIN pour le moment.') });
     }
   };
 
@@ -1145,7 +1152,7 @@ export default function AuthScreen() {
       });
       router.replace('/(tabs)');
     } catch (error: any) {
-      showDialog({ variant: 'danger', title: 'Erreur', message: error?.data?.message || "Erreur lors de l'inscription" });
+      showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, "Impossible de terminer l'inscription pour le moment.") });
     }
   };
 

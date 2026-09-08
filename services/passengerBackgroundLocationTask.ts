@@ -3,13 +3,15 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 
-import { API_BASE_URL } from '@/config/env';
 import {
   ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS,
   ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS,
   PASSENGER_TRIP_STATUS_CHECK_INTERVAL_MS,
 } from '@/constants/rideProgress';
 import { getValidAccessToken, handle401Error } from '@/services/tokenRefresh';
+import { store } from '@/store';
+import { bookingApi } from '@/store/api/bookingApi';
+import { tripApi } from '@/store/api/tripApi';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 
 export const PASSENGER_BACKGROUND_LOCATION_TASK =
@@ -17,10 +19,13 @@ export const PASSENGER_BACKGROUND_LOCATION_TASK =
 
 const ACTIVE_BOOKING_KEY = 'zwanga.activePassengerBackgroundBookingId';
 const FETCH_TIMEOUT_MS = 18_000;
+const LOCATION_FAILURE_BACKOFF_MS = 30_000;
 const BACKGROUND_PERMISSION_RETRY_COOLDOWN_MS = 10 * 60_000;
 let lastSentAt = 0;
 let lastBackgroundPermissionDeniedAt = 0;
 let lastTripStatusCheckAt = 0;
+let passengerLocationRequestInFlight = false;
+let passengerLocationBackoffUntil = 0;
 
 type BackgroundLocationTaskData = {
   locations?: Location.LocationObject[];
@@ -39,9 +44,6 @@ type PassengerTrackingSession = {
 };
 
 type PassengerTrackingReadiness = 'active' | 'waiting' | 'terminal';
-
-const normalizeApiBaseUrl = () =>
-  API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
 
 const getActiveTrackingSession = async (): Promise<PassengerTrackingSession | null> => {
   try {
@@ -98,22 +100,62 @@ const normalizeErrorMessage = (value: unknown) =>
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
 
-const readResponseMessage = async (response: Response) => {
-  try {
-    const payload = (await response.json()) as { message?: string | string[] };
-    return Array.isArray(payload?.message)
-      ? payload.message.join(' ')
-      : payload?.message ?? '';
-  } catch {
-    return '';
+const getRtkErrorStatus = (error: unknown) => {
+  if (!error || typeof error !== 'object' || !('status' in error)) {
+    return undefined;
   }
+
+  return (error as { status?: number | string }).status;
 };
 
-const isInactiveTripResponse = (status: number, message: string) =>
+const getRtkErrorMessage = (error: unknown) => {
+  if (!error || typeof error !== 'object') {
+    return '';
+  }
+
+  const { data, error: errorMessage } = error as {
+    data?: unknown;
+    error?: unknown;
+  };
+
+  if (typeof data === 'string') {
+    return data;
+  }
+
+  if (data && typeof data === 'object') {
+    const message = (data as { message?: unknown; error?: unknown }).message;
+    if (Array.isArray(message)) {
+      return message.join(' ');
+    }
+    if (typeof message === 'string') {
+      return message;
+    }
+
+    const dataError = (data as { error?: unknown }).error;
+    if (typeof dataError === 'string') {
+      return dataError;
+    }
+  }
+
+  return typeof errorMessage === 'string' ? errorMessage : '';
+};
+
+const shouldBackOffAfterBackgroundResponse = (status: number | string | undefined) =>
+  status === 'FETCH_ERROR' ||
+  status === 'TIMEOUT_ERROR' ||
+  status === 408 ||
+  status === 425 ||
+  status === 429 ||
+  (typeof status === 'number' && status >= 500);
+
+const isInactiveTripResponse = (status: number | string | undefined, message: string) =>
   status === 400 &&
   normalizeErrorMessage(message).includes('trajet doit etre actif');
 
-const isTerminalPassengerTrackingResponse = (status: number, message: string) => {
+const isTerminalPassengerTrackingResponse = (
+  status: number | string | undefined,
+  message: string,
+) => {
   if (status === 401 || status === 403 || status === 404) return true;
   if (status !== 400) return false;
 
@@ -129,28 +171,56 @@ const stopTrackingSession = async () => {
   await stopRegisteredTask();
 };
 
-const fetchWithAccessToken = async (url: string) => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  const send = (accessToken: string | null) =>
-    fetch(url, {
-      signal: controller.signal,
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-    });
+const getBookingSnapshot = async (bookingId: string) => {
+  const dispatchRequest = async () => {
+    const request = store.dispatch(
+      bookingApi.endpoints.getBookingById.initiate(bookingId, {
+        forceRefetch: true,
+        subscribe: false,
+      }),
+    );
+    const timeout = setTimeout(() => request.abort(), FETCH_TIMEOUT_MS);
 
-  try {
-    let accessToken = await getValidAccessToken();
-    if (!accessToken) return null;
-
-    let response = await send(accessToken);
-    if (response.status === 401 && (await handle401Error())) {
-      accessToken = await getValidAccessToken();
-      response = await send(accessToken);
+    try {
+      return await request;
+    } finally {
+      clearTimeout(timeout);
+      request.unsubscribe();
     }
-    return response;
-  } finally {
-    clearTimeout(timeout);
+  };
+
+  let result = await dispatchRequest();
+  if (getRtkErrorStatus(result.error) === 401 && (await handle401Error())) {
+    result = await dispatchRequest();
   }
+
+  return result;
+};
+
+const getTripSnapshot = async (tripId: string) => {
+  const dispatchRequest = async () => {
+    const request = store.dispatch(
+      tripApi.endpoints.getTripById.initiate(tripId, {
+        forceRefetch: true,
+        subscribe: false,
+      }),
+    );
+    const timeout = setTimeout(() => request.abort(), FETCH_TIMEOUT_MS);
+
+    try {
+      return await request;
+    } finally {
+      clearTimeout(timeout);
+      request.unsubscribe();
+    }
+  };
+
+  let result = await dispatchRequest();
+  if (getRtkErrorStatus(result.error) === 401 && (await handle401Error())) {
+    result = await dispatchRequest();
+  }
+
+  return result;
 };
 
 const getPassengerTrackingReadiness = async (
@@ -165,20 +235,20 @@ const getPassengerTrackingReadiness = async (
   lastTripStatusCheckAt = now;
 
   try {
-    const bookingResponse = await fetchWithAccessToken(
-      `${normalizeApiBaseUrl()}/bookings/${session.bookingId}`,
-    );
-    if (!bookingResponse) return 'terminal';
-    if (bookingResponse.status === 401 || bookingResponse.status === 403 || bookingResponse.status === 404) {
+    if (!(await getValidAccessToken())) return 'terminal';
+
+    const bookingResult = await getBookingSnapshot(session.bookingId);
+    const bookingErrorStatus = getRtkErrorStatus(bookingResult.error);
+    if (
+      bookingErrorStatus === 401 ||
+      bookingErrorStatus === 403 ||
+      bookingErrorStatus === 404
+    ) {
       return 'terminal';
     }
-    if (!bookingResponse.ok) return 'waiting';
+    if (bookingResult.error || !bookingResult.data) return 'waiting';
 
-    const booking = (await bookingResponse.json()) as {
-      status?: string | null;
-      tripId?: string | null;
-      trip?: { id?: string | null; status?: string | null } | null;
-    };
+    const booking = bookingResult.data;
     const bookingStatus = booking.status?.toLowerCase();
     if (['rejected', 'cancelled', 'completed', 'expired'].includes(bookingStatus ?? '')) {
       return 'terminal';
@@ -188,17 +258,14 @@ const getPassengerTrackingReadiness = async (
     let tripStatus = booking.trip?.status?.toLowerCase() ?? null;
 
     if (!tripStatus && resolvedTripId) {
-      const tripResponse = await fetchWithAccessToken(
-        `${normalizeApiBaseUrl()}/trips/${resolvedTripId}`,
-      );
-      if (!tripResponse) return 'terminal';
-      if (tripResponse.status === 401 || tripResponse.status === 403 || tripResponse.status === 404) {
+      const tripResult = await getTripSnapshot(resolvedTripId);
+      const tripErrorStatus = getRtkErrorStatus(tripResult.error);
+      if (tripErrorStatus === 401 || tripErrorStatus === 403 || tripErrorStatus === 404) {
         return 'terminal';
       }
-      if (!tripResponse.ok) return 'waiting';
+      if (tripResult.error || !tripResult.data) return 'waiting';
 
-      const trip = (await tripResponse.json()) as { status?: string | null };
-      tripStatus = trip.status?.toLowerCase() ?? null;
+      tripStatus = tripResult.data.status?.toLowerCase() ?? null;
     }
 
     if (tripStatus === 'cancelled' || tripStatus === 'completed') {
@@ -237,65 +304,77 @@ async function putPassengerLocation(
     return false;
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  const send = (accessToken: string | null) =>
-    fetch(`${normalizeApiBaseUrl()}/bookings/${bookingId}/passenger-location`, {
-      method: 'PUT',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      },
-      body: JSON.stringify({
-        latitude: coordinate.latitude,
-        longitude: coordinate.longitude,
-        ...(typeof location.coords.accuracy === 'number' &&
-        Number.isFinite(location.coords.accuracy) &&
-        location.coords.accuracy >= 0
-          ? { accuracy: location.coords.accuracy }
-          : {}),
-        ...(typeof location.coords.speed === 'number' &&
-        Number.isFinite(location.coords.speed) &&
-        location.coords.speed >= 0
-          ? { speed: location.coords.speed }
-          : {}),
-        ...(typeof location.coords.heading === 'number' &&
-        Number.isFinite(location.coords.heading) &&
-        location.coords.heading >= 0
-          ? { heading: location.coords.heading }
-          : {}),
-        recordedAt: new Date(location.timestamp || now).toISOString(),
-      }),
-    });
+  if (passengerLocationRequestInFlight || now < passengerLocationBackoffUntil) {
+    return false;
+  }
+
+  passengerLocationRequestInFlight = true;
 
   try {
-    let accessToken = await getValidAccessToken();
-    if (!accessToken) {
+    if (!(await getValidAccessToken())) {
       await stopTrackingSession();
       return false;
     }
 
-    let response = await send(accessToken);
-    if (response.status === 401 && (await handle401Error())) {
-      accessToken = await getValidAccessToken();
-      response = await send(accessToken);
+    const payload = {
+      bookingId,
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude,
+      ...(typeof location.coords.accuracy === 'number' &&
+      Number.isFinite(location.coords.accuracy) &&
+      location.coords.accuracy >= 0
+        ? { accuracy: location.coords.accuracy }
+        : {}),
+      ...(typeof location.coords.speed === 'number' &&
+      Number.isFinite(location.coords.speed) &&
+      location.coords.speed >= 0
+        ? { speed: location.coords.speed }
+        : {}),
+      ...(typeof location.coords.heading === 'number' &&
+      Number.isFinite(location.coords.heading) &&
+      location.coords.heading >= 0
+        ? { heading: location.coords.heading }
+        : {}),
+      recordedAt: new Date(location.timestamp || now).toISOString(),
+    };
+
+    const send = async () => {
+      const request = store.dispatch(
+        bookingApi.endpoints.updatePassengerLocation.initiate(payload),
+      );
+      const timeout = setTimeout(() => request.abort(), FETCH_TIMEOUT_MS);
+
+      try {
+        return await request;
+      } finally {
+        clearTimeout(timeout);
+        request.reset();
+      }
+    };
+
+    let result = await send();
+    if (getRtkErrorStatus(result.error) === 401 && (await handle401Error())) {
+      result = await send();
     }
 
-    if (!response.ok) {
-      const responseMessage = await readResponseMessage(response);
-      if (isInactiveTripResponse(response.status, responseMessage)) {
+    if (result.error || !result.data) {
+      lastSentAt = now;
+      const responseStatus = getRtkErrorStatus(result.error);
+      const responseMessage = getRtkErrorMessage(result.error);
+      if (isInactiveTripResponse(responseStatus, responseMessage)) {
         const session = await getActiveTrackingSession();
         if (session?.bookingId === bookingId) {
           await saveTrackingSession({ ...session, waitForActiveTrip: true });
           lastTripStatusCheckAt = 0;
         }
-      } else if (isTerminalPassengerTrackingResponse(response.status, responseMessage)) {
+      } else if (isTerminalPassengerTrackingResponse(responseStatus, responseMessage)) {
         await stopTrackingSession();
+      } else if (shouldBackOffAfterBackgroundResponse(responseStatus)) {
+        passengerLocationBackoffUntil = Date.now() + LOCATION_FAILURE_BACKOFF_MS;
       }
       console.warn('[PassengerBackgroundLocation] Position non envoyée :', {
         bookingId,
-        status: response.status,
+        status: responseStatus,
       });
       return false;
     }
@@ -303,10 +382,12 @@ async function putPassengerLocation(
     lastSentAt = now;
     return true;
   } catch (error) {
+    lastSentAt = now;
+    passengerLocationBackoffUntil = Date.now() + LOCATION_FAILURE_BACKOFF_MS;
     console.warn('[PassengerBackgroundLocation] Envoi impossible:', error);
     return false;
   } finally {
-    clearTimeout(timeout);
+    passengerLocationRequestInFlight = false;
   }
 }
 

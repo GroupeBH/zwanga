@@ -21,10 +21,10 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated, selectUser } from '@/store/selectors';
 import type { Booking, Trip, TripPaymentMode } from '@/types';
 
-const DRIVER_PAYMENT_NOTICE_REFRESH_MS = 15_000;
+const DRIVER_PAYMENT_NOTICE_REFRESH_MS = 60_000;
 const DRIVER_PAYMENT_NOTICE_WINDOW_MS = 36 * 60 * 60 * 1_000;
 const DRIVER_PAYMENT_NOTICE_STORAGE_PREFIX = 'zwanga:driver-payment-notices:';
-const DRIVER_PAYMENT_NOTICE_MAX_TRIPS = 6;
+const DRIVER_PAYMENT_NOTICE_MAX_TRIPS = 4;
 
 type SeenDriverPaymentNotices = Record<string, string>;
 
@@ -124,8 +124,9 @@ export function DriverPaymentNoticeCoordinator() {
   const { data: myTrips = [] } = useGetMyTripsQuery(undefined, {
     skip: !isAuthenticated || !driverUser,
     pollingInterval: DRIVER_PAYMENT_NOTICE_REFRESH_MS,
+    skipPollingIfUnfocused: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
 
   const relevantTrips = useMemo(

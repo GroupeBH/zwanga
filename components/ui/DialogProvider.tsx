@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 
 type DialogVariant = 'info' | 'success' | 'warning' | 'danger';
 
@@ -92,13 +93,22 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const showDialog = useCallback(
     (options: DialogOptions) => {
       const variant = options.variant ?? 'info';
+      const message =
+        (variant === 'danger' || variant === 'warning') && options.message
+          ? getApiErrorMessage(
+              { message: options.message },
+              variant === 'warning'
+                ? "Cette action n'a pas pu \u00eatre termin\u00e9e. V\u00e9rifiez les informations puis r\u00e9essayez."
+                : 'Une erreur est survenue. Veuillez r\u00e9essayer.',
+            )
+          : options.message;
       setDialog({
         visible: true,
         variant,
         icon: options.icon ?? VARIANT_CONFIG[variant].icon,
         dismissible: options.dismissible ?? true,
         title: options.title,
-        message: options.message,
+        message,
         actions:
           options.actions && options.actions.length > 0
             ? options.actions

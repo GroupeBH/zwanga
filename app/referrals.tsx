@@ -49,7 +49,7 @@ const rewardLabel = (sourceType: string) =>
 
 const referralQueryOptions = {
   refetchOnFocus: true,
-  refetchOnReconnect: true,
+  refetchOnReconnect: false,
   refetchOnMountOrArgChange: true,
 } as const;
 

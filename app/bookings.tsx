@@ -8,6 +8,7 @@ import {
 } from '@/store/api/bookingApi';
 import type { BookingStatus } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -170,14 +171,10 @@ export default function BookingsScreen() {
               });
               refetch();
             } catch (error: any) {
-              const message =
-                error?.data?.message ??
-                error?.error ??
-                'Impossible d\'annuler la réservation pour le moment.';
               showDialog({
                 variant: 'danger',
                 title: 'Erreur',
-                message: Array.isArray(message) ? message.join('\n') : message,
+                message: getApiErrorMessage(error, 'Impossible d\'annuler la réservation pour le moment.'),
               });
             }
           },

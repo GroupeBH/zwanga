@@ -2,7 +2,6 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 
-import { API_BASE_URL } from '@/config/env';
 import {
   ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS,
   ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS,
@@ -15,6 +14,8 @@ import {
   type DriverBackgroundLocationCoordinate,
 } from '@/services/driverBackgroundLocationSession';
 import { getValidAccessToken, handle401Error } from '@/services/tokenRefresh';
+import { store } from '@/store';
+import { tripApi } from '@/store/api/tripApi';
 import { MAX_ACCEPTABLE_GPS_ACCURACY_METERS } from '@/utils/navigation/routeProgress';
 import {
   DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS,
@@ -29,10 +30,16 @@ import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 export const DRIVER_BACKGROUND_LOCATION_TASK = 'zwanga-driver-background-location';
 
 const BACKGROUND_LOCATION_FETCH_TIMEOUT_MS = 18_000;
+const BACKGROUND_LOCATION_FAILURE_BACKOFF_MS = 30_000;
+const BACKGROUND_COMPLETE_FAILURE_BACKOFF_MS = 45_000;
 const BACKGROUND_PERMISSION_RETRY_COOLDOWN_MS = 10 * 60_000;
 
 let lastBackgroundLocationSentAt = 0;
 let lastBackgroundPermissionDeniedAt = 0;
+let driverLocationRequestInFlight = false;
+let driverLocationBackoffUntil = 0;
+let completeTripRequestInFlight = false;
+let completeTripBackoffUntil = 0;
 
 type BackgroundLocationTaskData = {
   locations?: Location.LocationObject[];
@@ -45,9 +52,6 @@ type StartDriverBackgroundLocationTrackingOptions = {
   autoCompleteDwellMs?: number;
   requestMissingPermissions?: boolean;
 };
-
-const normalizeApiBaseUrl = () =>
-  API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
 
 const isDriverBackgroundLocationAvailable = async () => {
   if (Platform.OS === 'web') {
@@ -104,18 +108,58 @@ const normalizeErrorMessage = (value: unknown) =>
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
 
-const readResponseMessage = async (response: Response) => {
-  try {
-    const payload = (await response.json()) as { message?: string | string[] };
-    return Array.isArray(payload?.message)
-      ? payload.message.join(' ')
-      : payload?.message ?? '';
-  } catch {
-    return '';
+const getRtkErrorStatus = (error: unknown) => {
+  if (!error || typeof error !== 'object' || !('status' in error)) {
+    return undefined;
   }
+
+  return (error as { status?: number | string }).status;
 };
 
-const isTerminalDriverTrackingResponse = (status: number, message: string) => {
+const getRtkErrorMessage = (error: unknown) => {
+  if (!error || typeof error !== 'object') {
+    return '';
+  }
+
+  const { data, error: errorMessage } = error as {
+    data?: unknown;
+    error?: unknown;
+  };
+
+  if (typeof data === 'string') {
+    return data;
+  }
+
+  if (data && typeof data === 'object') {
+    const message = (data as { message?: unknown; error?: unknown }).message;
+    if (Array.isArray(message)) {
+      return message.join(' ');
+    }
+    if (typeof message === 'string') {
+      return message;
+    }
+
+    const dataError = (data as { error?: unknown }).error;
+    if (typeof dataError === 'string') {
+      return dataError;
+    }
+  }
+
+  return typeof errorMessage === 'string' ? errorMessage : '';
+};
+
+const shouldBackOffAfterBackgroundResponse = (status: number | string | undefined) =>
+  status === 'FETCH_ERROR' ||
+  status === 'TIMEOUT_ERROR' ||
+  status === 408 ||
+  status === 425 ||
+  status === 429 ||
+  (typeof status === 'number' && status >= 500);
+
+const isTerminalDriverTrackingResponse = (
+  status: number | string | undefined,
+  message: string,
+) => {
   if (status === 401 || status === 403 || status === 404) return true;
   if (status !== 400) return false;
 
@@ -144,65 +188,76 @@ async function putDriverLocation(tripId: string, location: Location.LocationObje
     return false;
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), BACKGROUND_LOCATION_FETCH_TIMEOUT_MS);
+  if (driverLocationRequestInFlight || now < driverLocationBackoffUntil) {
+    return false;
+  }
 
-  const send = async (accessToken: string | null) =>
-    fetch(`${normalizeApiBaseUrl()}/trips/${tripId}/driver-location`, {
-      method: 'PUT',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      },
-      body: JSON.stringify({
-        coordinates: [coordinate.longitude, coordinate.latitude],
-        ...(typeof location.coords.accuracy === 'number' &&
-        Number.isFinite(location.coords.accuracy) &&
-        location.coords.accuracy >= 0
-          ? { accuracy: location.coords.accuracy }
-          : {}),
-        ...(typeof location.coords.speed === 'number' &&
-        Number.isFinite(location.coords.speed) &&
-        location.coords.speed >= 0
-          ? { speed: location.coords.speed }
-          : {}),
-        ...(typeof location.coords.heading === 'number' &&
-        Number.isFinite(location.coords.heading) &&
-        location.coords.heading >= 0
-          ? { heading: location.coords.heading }
-          : {}),
-        ...(Number.isFinite(location.timestamp)
-          ? { recordedAt: new Date(location.timestamp).toISOString() }
-          : {}),
-      }),
-    });
+  driverLocationRequestInFlight = true;
 
   try {
-    let accessToken = await getValidAccessToken();
-    if (!accessToken) {
+    if (!(await getValidAccessToken())) {
       await clearActiveDriverBackgroundTripId(tripId);
       await stopRegisteredDriverBackgroundLocationTask();
       return false;
     }
 
-    let response = await send(accessToken);
-    if (response.status === 401) {
-      const refreshed = await handle401Error();
-      if (refreshed) {
-        accessToken = await getValidAccessToken();
-        response = await send(accessToken);
+    const payload = {
+      tripId,
+      coordinates: [coordinate.longitude, coordinate.latitude] as [number, number],
+      ...(typeof location.coords.accuracy === 'number' &&
+      Number.isFinite(location.coords.accuracy) &&
+      location.coords.accuracy >= 0
+        ? { accuracy: location.coords.accuracy }
+        : {}),
+      ...(typeof location.coords.speed === 'number' &&
+      Number.isFinite(location.coords.speed) &&
+      location.coords.speed >= 0
+        ? { speed: location.coords.speed }
+        : {}),
+      ...(typeof location.coords.heading === 'number' &&
+      Number.isFinite(location.coords.heading) &&
+      location.coords.heading >= 0
+        ? { heading: location.coords.heading }
+        : {}),
+      ...(Number.isFinite(location.timestamp)
+        ? { recordedAt: new Date(location.timestamp).toISOString() }
+        : {}),
+    };
+
+    const send = async () => {
+      const request = store.dispatch(
+        tripApi.endpoints.updateDriverLocation.initiate(payload),
+      );
+      const timeout = setTimeout(
+        () => request.abort(),
+        BACKGROUND_LOCATION_FETCH_TIMEOUT_MS,
+      );
+
+      try {
+        return await request;
+      } finally {
+        clearTimeout(timeout);
+        request.reset();
       }
+    };
+
+    let result = await send();
+    if (getRtkErrorStatus(result.error) === 401 && (await handle401Error())) {
+      result = await send();
     }
 
-    if (!response.ok) {
-      const responseMessage = await readResponseMessage(response);
-      if (isTerminalDriverTrackingResponse(response.status, responseMessage)) {
+    if (result.error || !result.data) {
+      lastBackgroundLocationSentAt = now;
+      const responseStatus = getRtkErrorStatus(result.error);
+      const responseMessage = getRtkErrorMessage(result.error);
+      if (isTerminalDriverTrackingResponse(responseStatus, responseMessage)) {
         await clearActiveDriverBackgroundTripId(tripId);
         await stopRegisteredDriverBackgroundLocationTask();
+      } else if (shouldBackOffAfterBackgroundResponse(responseStatus)) {
+        driverLocationBackoffUntil = Date.now() + BACKGROUND_LOCATION_FAILURE_BACKOFF_MS;
       }
       console.warn('[DriverBackgroundLocation] Position non envoyée:', {
-        status: response.status,
+        status: responseStatus,
         tripId,
       });
       return false;
@@ -211,44 +266,54 @@ async function putDriverLocation(tripId: string, location: Location.LocationObje
     lastBackgroundLocationSentAt = now;
     return true;
   } catch (error) {
+    lastBackgroundLocationSentAt = now;
+    driverLocationBackoffUntil = Date.now() + BACKGROUND_LOCATION_FAILURE_BACKOFF_MS;
     console.warn('[DriverBackgroundLocation] Envoi impossible:', error);
     return false;
   } finally {
-    clearTimeout(timeout);
+    driverLocationRequestInFlight = false;
   }
 }
 
 async function completeTripFromBackground(tripId: string) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), BACKGROUND_LOCATION_FETCH_TIMEOUT_MS);
+  if (completeTripRequestInFlight || Date.now() < completeTripBackoffUntil) {
+    return false;
+  }
 
-  const send = async (accessToken: string | null) =>
-    fetch(`${normalizeApiBaseUrl()}/trips/${tripId}/complete`, {
-      method: 'PUT',
-      signal: controller.signal,
-      headers: {
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      },
-    });
+  completeTripRequestInFlight = true;
 
   try {
-    let accessToken = await getValidAccessToken();
-    if (!accessToken) {
+    if (!(await getValidAccessToken())) {
       return false;
     }
 
-    let response = await send(accessToken);
-    if (response.status === 401) {
-      const refreshed = await handle401Error();
-      if (refreshed) {
-        accessToken = await getValidAccessToken();
-        response = await send(accessToken);
+    const send = async () => {
+      const request = store.dispatch(tripApi.endpoints.completeTrip.initiate(tripId));
+      const timeout = setTimeout(
+        () => request.abort(),
+        BACKGROUND_LOCATION_FETCH_TIMEOUT_MS,
+      );
+
+      try {
+        return await request;
+      } finally {
+        clearTimeout(timeout);
+        request.reset();
       }
+    };
+
+    let result = await send();
+    if (getRtkErrorStatus(result.error) === 401 && (await handle401Error())) {
+      result = await send();
     }
 
-    if (!response.ok) {
+    if (result.error || !result.data) {
+      const responseStatus = getRtkErrorStatus(result.error);
+      if (shouldBackOffAfterBackgroundResponse(responseStatus)) {
+        completeTripBackoffUntil = Date.now() + BACKGROUND_COMPLETE_FAILURE_BACKOFF_MS;
+      }
       console.warn('[DriverBackgroundLocation] Trajet non finalise en arrière-plan:', {
-        status: response.status,
+        status: responseStatus,
         tripId,
       });
       return false;
@@ -256,10 +321,11 @@ async function completeTripFromBackground(tripId: string) {
 
     return true;
   } catch (error) {
+    completeTripBackoffUntil = Date.now() + BACKGROUND_COMPLETE_FAILURE_BACKOFF_MS;
     console.warn('[DriverBackgroundLocation] Finalisation impossible:', error);
     return false;
   } finally {
-    clearTimeout(timeout);
+    completeTripRequestInFlight = false;
   }
 }
 

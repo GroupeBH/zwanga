@@ -9,6 +9,7 @@ import {
 import { useAppDispatch } from '@/store/hooks';
 import { updateUser as updateUserAction } from '@/store/slices/authSlice';
 import type { UserGender } from '@/types';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { normalizeLegalName } from '@/utils/legalIdentity';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -127,11 +128,10 @@ export default function EditProfileScreen() {
         message: successMessage,
       });
     } catch (error: any) {
-      const message = error?.data?.message ?? error?.error ?? 'Impossible de sauvegarder les informations.';
       setFeedback({
         visible: true,
         success: false,
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message: getApiErrorMessage(error, 'Impossible de sauvegarder les informations.'),
       });
     }
   };

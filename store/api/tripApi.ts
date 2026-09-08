@@ -880,18 +880,17 @@ export const tripApi = baseApi.injectEndpoints({
         method: 'PUT',
         body: { coordinates, accuracy, speed, heading, recordedAt },
       }),
-      invalidatesTags: (result, _error, { tripId }) => [
-        { type: 'Trip', id: tripId },
-        ...(result?.autoProgress?.events.length
+      invalidatesTags: (result, _error, { tripId }) =>
+        result?.autoProgress?.events.length
           ? [
+              { type: 'Trip' as const, id: tripId },
               { type: 'Trip' as const, id: 'LIST' },
               { type: 'Booking' as const, id: 'LIST' },
               ...result.autoProgress.events
                 .filter((event) => Boolean(event.bookingId))
                 .map((event) => ({ type: 'Booking' as const, id: event.bookingId! })),
             ]
-          : []),
-      ],
+          : [],
     }),
 
     // Obtenir la position du conducteur pour un utilisateur

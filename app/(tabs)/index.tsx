@@ -69,6 +69,10 @@ const RECENT_TRIPS_LIMIT = 10;
 const HOME_MIN_AVAILABLE_SEATS = 1;
 const MAX_LIVE_PASSENGER_MARKERS = Platform.OS === 'ios' ? 10 : 16;
 const HOME_MAP_ANIMATION_MIN_INTERVAL_MS = Platform.OS === 'ios' ? 1200 : 700;
+const HOME_ACTIVE_TRIP_POLL_MS = 30_000;
+const HOME_ACTIVE_BOOKINGS_POLL_MS = 30_000;
+const HOME_ACTIVITY_POLL_MS = 60_000;
+const HOME_PASSIVE_LIST_POLL_MS = 120_000;
 const DRIVER_UPCOMING_TRIP_HIGHLIGHT_WINDOW_MS = 3 * 60 * 60 * 1000;
 const UNACCEPTED_TRIP_REQUEST_EXPIRATION_MS = 12 * 60 * 60 * 1000;
 const IS_ANDROID = Platform.OS === 'android';
@@ -902,10 +906,10 @@ export default function HomeScreen() {
 
   const { data: myDriverTrips = EMPTY_HOME_TRIPS } = useGetMyTripsQuery(undefined, {
     skip: !isDriver,
-    pollingInterval: isFocused ? 30000 : 0,
+    pollingInterval: isFocused ? HOME_ACTIVITY_POLL_MS : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: isFocused,
-    refetchOnReconnect: isFocused,
+    refetchOnReconnect: false,
   });
   const listedOngoingDriverTrip = useMemo(
     () =>
@@ -920,10 +924,10 @@ export default function HomeScreen() {
     '';
   const { data: refreshedDriverTrip } = useGetTripByIdQuery(driverTripLookupId, {
     skip: !isDriver || !driverTripLookupId,
-    pollingInterval: isFocused ? 10000 : 0,
+    pollingInterval: isFocused ? HOME_ACTIVE_TRIP_POLL_MS : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: isFocused,
-    refetchOnReconnect: isFocused,
+    refetchOnReconnect: false,
   });
   const ongoingDriverTrip = useMemo(() => {
     if (refreshedDriverTrip) {
@@ -937,10 +941,10 @@ export default function HomeScreen() {
     refetch: refetchOngoingDriverBookings,
   } = useGetTripBookingsQuery(ongoingDriverTrip?.id ?? '', {
     skip: !ongoingDriverTrip?.id,
-    pollingInterval: isFocused && ongoingDriverTrip ? 10000 : 0,
+    pollingInterval: isFocused && ongoingDriverTrip ? HOME_ACTIVE_BOOKINGS_POLL_MS : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: isFocused,
-    refetchOnReconnect: isFocused,
+    refetchOnReconnect: false,
   });
   const { getCurrentLocation, lastKnownLocation } = useUserLocation({
     autoRequest: isFocused,
@@ -997,10 +1001,10 @@ export default function HomeScreen() {
     driverReservationHighlightTrip?.id ?? '',
     {
       skip: !isFocused || !driverReservationHighlightTrip?.id || Boolean(ongoingDriverTrip),
-      pollingInterval: isFocused && driverReservationHighlightTrip && !ongoingDriverTrip ? 20000 : 0,
+      pollingInterval: isFocused && driverReservationHighlightTrip && !ongoingDriverTrip ? HOME_ACTIVITY_POLL_MS : 0,
       skipPollingIfUnfocused: true,
       refetchOnFocus: isFocused,
-      refetchOnReconnect: isFocused,
+      refetchOnReconnect: false,
     },
   );
 
@@ -1039,10 +1043,10 @@ export default function HomeScreen() {
   } = useGetTripsQuery(
     { minSeats: HOME_MIN_AVAILABLE_SEATS },
     {
-      pollingInterval: isFocused ? 60000 : 0,
+      pollingInterval: isFocused ? HOME_PASSIVE_LIST_POLL_MS : 0,
       skipPollingIfUnfocused: true,
       refetchOnFocus: isFocused,
-      refetchOnReconnect: isFocused,
+      refetchOnReconnect: false,
     },
   );
 
@@ -1058,10 +1062,10 @@ export default function HomeScreen() {
     },
     {
       skip: !nearbyTripsPayload,
-      pollingInterval: isFocused ? 60000 : 0,
+      pollingInterval: isFocused ? HOME_PASSIVE_LIST_POLL_MS : 0,
       skipPollingIfUnfocused: true,
       refetchOnFocus: isFocused,
-      refetchOnReconnect: isFocused,
+      refetchOnReconnect: false,
     },
   );
 
@@ -1107,17 +1111,17 @@ export default function HomeScreen() {
     refetchOnMountOrArgChange: true,
   });
   const { data: myBookings, refetch: refetchMyBookings } = useGetMyBookingsQuery(undefined, {
-    pollingInterval: isFocused ? 10000 : 0,
+    pollingInterval: isFocused ? HOME_ACTIVE_BOOKINGS_POLL_MS : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: isFocused,
-    refetchOnReconnect: isFocused,
+    refetchOnReconnect: false,
   });
   const { data: myTripRequests = EMPTY_HOME_TRIP_REQUESTS } = useGetMyTripRequestsQuery(undefined, {
     skip: !currentUser?.id,
-    pollingInterval: isFocused ? 30000 : 0,
+    pollingInterval: isFocused ? HOME_ACTIVITY_POLL_MS : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: isFocused,
-    refetchOnReconnect: isFocused,
+    refetchOnReconnect: false,
   });
   const {
     data: availableTripRequests = EMPTY_HOME_TRIP_REQUESTS,
@@ -1126,10 +1130,10 @@ export default function HomeScreen() {
     refetch: refetchAvailableTripRequests,
   } = useGetAvailableTripRequestsQuery(undefined, {
     skip: !isDriver,
-    pollingInterval: isFocused && isDriver ? 30000 : 0,
+    pollingInterval: isFocused && isDriver ? HOME_ACTIVITY_POLL_MS : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: isFocused,
-    refetchOnReconnect: isFocused,
+    refetchOnReconnect: false,
   });
 
   useEffect(() => {
@@ -1175,10 +1179,10 @@ export default function HomeScreen() {
     '';
   const { data: refreshedPassengerTrip } = useGetTripByIdQuery(passengerTripLookupId, {
     skip: !currentUser?.id || !passengerTripLookupId,
-    pollingInterval: isFocused ? 10000 : 0,
+    pollingInterval: isFocused ? HOME_ACTIVE_TRIP_POLL_MS : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: isFocused,
-    refetchOnReconnect: isFocused,
+    refetchOnReconnect: false,
   });
 
   const bookedTripIds = useMemo(

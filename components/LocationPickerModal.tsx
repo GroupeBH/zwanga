@@ -55,6 +55,8 @@ const DEFAULT_REGION: Region = {
   longitudeDelta: 0.1,
 };
 const LOCATION_PICKER_MAP_PROVIDER = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
+const SEARCH_SUGGESTION_DEBOUNCE_MS = 550;
+const SEARCH_SUGGESTION_MIN_LENGTH = 3;
 
 const DEFAULT_LOCATION_SELECTION: MapLocationSelection = {
   title: 'Kinshasa',
@@ -168,6 +170,7 @@ export default function LocationPickerModal({
   const [googleMapsSuggestions, setGoogleMapsSuggestions] = useState<GoogleMapsSearchSuggestion[]>([]);
   const [googleMapsLoading, setGoogleMapsLoading] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchRequestIdRef = useRef(0);
   const [region, setRegion] = useState<Region>(DEFAULT_REGION);
   const [selectedLocation, setSelectedLocation] = useState<MapLocationSelection | null>(
     initialLocation ?? null,
@@ -640,12 +643,12 @@ export default function LocationPickerModal({
 
   // Recherche avec suggestions Mapbox en temps réel
   const searchMapboxSuggestions = useCallback(async (query: string) => {
-    if (!query.trim() || query.trim().length < 2) {
-      try {
-        setGoogleMapsSuggestions([]);
-      } catch (error) {
-        console.error('Error clearing suggestions:', error);
-      }
+    const normalizedQuery = query.trim();
+    const requestId = ++searchRequestIdRef.current;
+
+    if (!normalizedQuery || normalizedQuery.length < SEARCH_SUGGESTION_MIN_LENGTH) {
+      setGoogleMapsLoading(false);
+      setGoogleMapsSuggestions([]);
       return;
     }
 
@@ -654,7 +657,12 @@ export default function LocationPickerModal({
       const proximity = selectedLocation
         ? { longitude: selectedLocation.longitude, latitude: selectedLocation.latitude }
         : undefined;
-      const suggestions = await searchGoogleMapsPlaces(query, proximity, 5);
+      const suggestions = await searchGoogleMapsPlaces(normalizedQuery, proximity, 5);
+
+      if (requestId !== searchRequestIdRef.current) {
+        return;
+      }
+
       // Filtrer les suggestions invalides
       const validSuggestions = (suggestions || []).filter(
         (s) =>
@@ -674,23 +682,18 @@ export default function LocationPickerModal({
               s.coordinates.longitude >= -180 &&
               s.coordinates.longitude <= 180))
       );
-      try {
-        setGoogleMapsSuggestions(validSuggestions);
-      } catch (error) {
-        console.error('Error setting suggestions:', error);
-      }
+
+      setGoogleMapsSuggestions(validSuggestions);
     } catch (error) {
-      console.error('Mapbox search failed', error);
-      try {
-        setGoogleMapsSuggestions([]);
-      } catch (setError) {
-        console.error('Error clearing suggestions after error:', setError);
+      if (requestId !== searchRequestIdRef.current) {
+        return;
       }
+
+      console.warn('Google Places suggestions failed', error);
+      setGoogleMapsSuggestions([]);
     } finally {
-      try {
+      if (requestId === searchRequestIdRef.current) {
         setGoogleMapsLoading(false);
-      } catch (error) {
-        console.error('Error setting loading state:', error);
       }
     }
   }, [selectedLocation]);
@@ -701,11 +704,22 @@ export default function LocationPickerModal({
       clearTimeout(searchTimeoutRef.current);
     }
 
-    if (searchQuery.trim().length >= 2) {
+    const normalizedQuery = searchQuery.trim();
+
+    if (!visible) {
+      searchRequestIdRef.current += 1;
+      setGoogleMapsLoading(false);
+      setGoogleMapsSuggestions([]);
+      return;
+    }
+
+    if (normalizedQuery.length >= SEARCH_SUGGESTION_MIN_LENGTH) {
       searchTimeoutRef.current = setTimeout(() => {
-        searchMapboxSuggestions(searchQuery);
-      }, 300);
+        searchMapboxSuggestions(normalizedQuery);
+      }, SEARCH_SUGGESTION_DEBOUNCE_MS);
     } else {
+      searchRequestIdRef.current += 1;
+      setGoogleMapsLoading(false);
       setGoogleMapsSuggestions([]);
     }
 
@@ -714,7 +728,7 @@ export default function LocationPickerModal({
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [searchQuery, searchMapboxSuggestions]);
+  }, [searchQuery, searchMapboxSuggestions, visible]);
 
   const handleSearchSubmit = async () => {
     const query = searchQuery.trim();

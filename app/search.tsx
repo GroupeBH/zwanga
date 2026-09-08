@@ -1,3 +1,4 @@
+import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { trackEvent } from '@/services/analytics';
@@ -12,13 +13,17 @@ import { useAppSelector } from '@/store/hooks';
 import { selectTrips } from '@/store/selectors';
 import type { Trip } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  InteractionManager,
+  Keyboard,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -172,12 +177,18 @@ function matchesSearch(value: string | undefined, query: string) {
   return terms.some((term) => normalizedValue.includes(term));
 }
 
+function getSafeTripId(trip: Trip | null | undefined) {
+  const tripId = String(trip?.id ?? '').trim();
+  return tripId.length > 0 ? tripId : null;
+}
+
 type SearchResultCardProps = {
   trip: Trip;
+  disabled?: boolean;
   onPress: () => void;
 };
 
-function SearchResultCard({ trip, onPress }: SearchResultCardProps) {
+function SearchResultCard({ trip, disabled = false, onPress }: SearchResultCardProps) {
   const calculatedArrivalTime = useTripArrivalTime(trip);
   const arrivalIso = calculatedArrivalTime?.toISOString() ?? trip.arrivalTime;
   const departureDateTime = formatDateTime(trip.departureTime);
@@ -191,7 +202,13 @@ function SearchResultCard({ trip, onPress }: SearchResultCardProps) {
   const routeAccent = trip.vehicleType === 'moto' ? Colors.primaryDark : trip.vehicleType === 'tricycle' ? Colors.infoDark : Colors.success;
 
   return (
-    <TouchableOpacity activeOpacity={0.9} style={styles.resultCard} onPress={onPress}>
+    <TouchableOpacity
+      activeOpacity={0.9}
+      style={[styles.resultCard, disabled && styles.resultCardDisabled]}
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityState={{ disabled }}
+    >
       <View style={styles.resultTop}>
         <View style={styles.driverAvatarWrap}>
           {trip.driverAvatar ? (
@@ -287,6 +304,7 @@ function SearchResultCard({ trip, onPress }: SearchResultCardProps) {
 
 export default function SearchScreen() {
   const router = useRouter();
+  const { showDialog } = useDialog();
   const searchParams = useLocalSearchParams<{
     arrival?: string;
     arrivalLat?: string;
@@ -312,6 +330,8 @@ export default function SearchScreen() {
   const [advancedError, setAdvancedError] = useState<string | null>(null);
   const [lastAdvancedPayload, setLastAdvancedPayload] = useState<TripSearchByPointsPayload | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>('cheap');
+  const [openingTripId, setOpeningTripId] = useState<string | null>(null);
+  const openingTripIdRef = useRef<string | null>(null);
   const [searchTripsByCoordinates, { isLoading: isAdvancedSearching }] = useSearchTripsByCoordinatesMutation();
   const firstName = currentUser?.firstName || currentUser?.name?.split(' ')[0] || 'Kinshasa';
   const avatarUri = currentUser?.profilePicture || currentUser?.avatar;
@@ -322,9 +342,9 @@ export default function SearchScreen() {
     isFetching: queryFetching,
     refetch,
   } = useGetTripsQuery(queryParams, {
-    pollingInterval: 60000,
-    refetchOnFocus: true,
-    refetchOnReconnect: true,
+    pollingInterval: 0,
+    refetchOnFocus: false,
+    refetchOnReconnect: false,
   });
 
   useEffect(() => {
@@ -360,9 +380,9 @@ export default function SearchScreen() {
         arrival_radius_km: payload.arrivalRadiusKm,
       });
     } catch (error: any) {
-      const message =
-        error?.data?.message ?? error?.error ?? 'Impossible de filtrer par carte pour le moment.';
-      setAdvancedError(Array.isArray(message) ? message.join('\n') : message);
+      setAdvancedError(
+        getApiErrorMessage(error, 'Impossible de filtrer par carte pour le moment. Réessayez dans un instant.'),
+      );
     }
   };
 
@@ -427,6 +447,10 @@ export default function SearchScreen() {
 
   const filteredTrips = useMemo(() => {
     const visibleTrips = baseTrips.filter((trip) => {
+      if (!getSafeTripId(trip)) {
+        return false;
+      }
+
       const departureText = `${trip.departure?.name ?? ''} ${trip.departure?.address ?? ''}`;
       const arrivalText = `${trip.arrival?.name ?? ''} ${trip.arrival?.address ?? ''}`;
       const routeText = `${departureText} ${arrivalText}`;
@@ -528,6 +552,57 @@ export default function SearchScreen() {
         seats: desiredSeats,
       }),
     );
+  };
+
+  const handleOpenTrip = (trip: Trip) => {
+    const tripId = getSafeTripId(trip);
+
+    if (openingTripIdRef.current) {
+      return;
+    }
+
+    if (!tripId) {
+      showDialog({
+        variant: 'warning',
+        title: 'Trajet indisponible',
+        message: "Ce trajet n'a pas pu être ouvert. Actualisez la recherche puis réessayez.",
+      });
+      return;
+    }
+
+    openingTripIdRef.current = tripId;
+    setOpeningTripId(tripId);
+    Keyboard.dismiss();
+
+    void trackEvent('trip_opened_from_search', {
+      trip_id: tripId,
+      vehicle_type: trip.vehicleType ?? null,
+    });
+
+    const navigate = () => {
+      try {
+        router.push({
+          pathname: '/trip/[id]',
+          params: { id: tripId },
+        });
+      } catch (error) {
+        console.warn('[Search] Impossible d’ouvrir le trajet:', error);
+        openingTripIdRef.current = null;
+        setOpeningTripId(null);
+        showDialog({
+          variant: 'danger',
+          title: 'Ouverture impossible',
+          message: "Ce trajet n'a pas pu être ouvert. Actualisez la recherche puis réessayez.",
+        });
+      }
+    };
+
+    if (Platform.OS === 'ios') {
+      InteractionManager.runAfterInteractions(navigate);
+      return;
+    }
+
+    navigate();
   };
 
   return (
@@ -694,7 +769,12 @@ export default function SearchScreen() {
         {!isLoadingResults && !advancedError && (
           <View style={styles.resultsList}>
             {filteredTrips.map((trip) => (
-              <SearchResultCard key={trip.id} trip={trip} onPress={() => router.push(`/trip/${trip.id}`)} />
+              <SearchResultCard
+                key={getSafeTripId(trip) ?? `trip-${trip.departureTime}-${trip.driverId}`}
+                trip={trip}
+                disabled={openingTripId !== null}
+                onPress={() => handleOpenTrip(trip)}
+              />
             ))}
           </View>
         )}
@@ -994,6 +1074,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     padding: Spacing.lg,
     ...CommonStyles.shadowSm,
+  },
+  resultCardDisabled: {
+    opacity: 0.72,
   },
   resultTop: {
     flexDirection: 'row',

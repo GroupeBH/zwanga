@@ -28,14 +28,11 @@ import { useAppSelector } from '@/store/hooks';
 import { selectConversations, selectTripById, selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus, Conversation, GeoPoint, TripPaymentMode } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import {
   buildManualGeocodeQuery,
   mapGeocodeResponseToSelection,
 } from '@/utils/manualAddressGeocode';
-import {
-  isCoordinateInKinshasaBounds,
-  normalizeTripMapCoordinate,
-} from '@/utils/tripCoordinates';
 import { openWhatsApp } from '@/utils/phoneHelpers';
 import Animated, {
   FadeInDown,
@@ -46,8 +43,12 @@ import Animated, {
 } from '@/utils/reanimated';
 import { getRouteInfo, type RouteInfo } from '@/utils/routeApi';
 import { isPointOnRoute, splitRouteByProgress } from '@/utils/routeHelpers';
-import { shareTrip } from '@/utils/shareHelpers';
 import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
+import { shareTrip } from '@/utils/shareHelpers';
+import {
+  isCoordinateInKinshasaBounds,
+  normalizeTripMapCoordinate,
+} from '@/utils/tripCoordinates';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerAndroid, type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useIsFocused } from '@react-navigation/native';
@@ -106,7 +107,7 @@ const arrayToLatLng = (coordinates?: [number, number] | null) => {
   };
 };
 
-const USE_CUSTOM_MAP_MARKERS = Platform.OS !== 'android';
+const USE_CUSTOM_MAP_MARKERS = false;
 const USE_ANDROID_MAP_MARKER_IMAGES = Platform.OS === 'android';
 const TRIP_DETAIL_MAP_PROVIDER = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
 const TRIP_DETAIL_MAP_MIN_DELTA = 0.006;
@@ -330,12 +331,13 @@ export default function TripDetailsScreen() {
     skip: !tripId,
     // Polling automatique basé sur le statut du trajet
     pollingInterval: tripFromStore?.status === 'ongoing'
-      ? 5000 // 5 secondes pour les trajets en cours
+      ? 15000 // 15 secondes pour les trajets en cours
       : tripFromStore?.status === 'upcoming'
-        ? 30000 // 30 secondes pour les trajets à venir
+        ? 60000 // 60 secondes pour les trajets à venir
         : 0, // Pas de polling pour les trajets terminés/annulés
+    skipPollingIfUnfocused: true,
     refetchOnFocus: true, // Rafraîchir quand l'utilisateur revient dans l'app
-    refetchOnReconnect: true, // Rafraîchir après une reconnexion réseau
+    refetchOnReconnect: false,
   });
 
   // Utiliser le trajet de l'API en priorité, sinon celui du store
@@ -354,10 +356,11 @@ export default function TripDetailsScreen() {
     refetch: refetchMyBookings,
   } = useGetMyBookingsQuery(undefined, {
     // Polling pour les réservations si le trajet est actif
-    pollingInterval: trip?.status === 'ongoing' ? 10000 : trip?.status === 'upcoming' ? 30000 : 0, // 10s en cours, 30s à venir
+    pollingInterval: trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
+    skipPollingIfUnfocused: true,
     refetchOnMountOrArgChange: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
   const {
     data: tripBookings,
@@ -366,9 +369,10 @@ export default function TripDetailsScreen() {
   } = useGetTripBookingsQuery(tripId, {
     skip: !tripId,
     // Polling pour les réservations du trajet
-    pollingInterval: trip?.status === 'ongoing' ? 10000 : trip?.status === 'upcoming' ? 30000 : 0,
+    pollingInterval: trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
+    skipPollingIfUnfocused: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
   const {
     lastKnownLocation,
@@ -846,9 +850,11 @@ export default function TripDetailsScreen() {
       closeEditModal();
       refetchTrip();
     } catch (error: any) {
-      const message =
-        error?.data?.message ?? error?.error ?? 'Impossible de mettre à jour ce trajet pour le moment.';
-      showDialog({ variant: 'danger', title: 'Erreur', message });
+      showDialog({
+        variant: 'danger',
+        title: 'Erreur',
+        message: getApiErrorMessage(error, 'Impossible de mettre à jour ce trajet pour le moment.'),
+      });
     }
   };
 
@@ -998,11 +1004,15 @@ export default function TripDetailsScreen() {
     }
   }, [refetchTrip, refetchMyBookings, refetchTripBookings, refetchKycStatus]);
   const driverReviewCount = driverReviews?.length ?? 0;
-  const driverReviewAverage =
+  const rawDriverReviewAverage =
     driverAverageData?.averageRating ??
     (driverReviewCount && driverReviews
       ? driverReviews.reduce((sum, review) => sum + review.rating, 0) / driverReviewCount
       : trip?.driverRating ?? 0);
+  const parsedDriverReviewAverage = Number(rawDriverReviewAverage);
+  const driverReviewAverage = Number.isFinite(parsedDriverReviewAverage)
+    ? parsedDriverReviewAverage
+    : 0;
 
   const refreshBookingLists = () => {
     refetchMyBookings();
@@ -1724,14 +1734,10 @@ export default function TripDetailsScreen() {
         },
       });
     } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        "Impossible d'ouvrir la conversation pour le moment.";
       showDialog({
         variant: 'danger',
         title: 'Erreur',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message: getApiErrorMessage(error, "Impossible d'ouvrir la conversation pour le moment."),
       });
     }
   };
@@ -1754,15 +1760,10 @@ export default function TripDetailsScreen() {
         trip.arrival?.name ?? trip.arrival?.address,
       );
     } catch (error: any) {
-      const backendMessage = error?.data?.message;
-      const message = Array.isArray(backendMessage)
-        ? backendMessage.join('\n')
-        : backendMessage || error?.message || 'Impossible de créer le lien web de suivi.';
-
       showDialog({
         variant: 'danger',
         title: 'Partage impossible',
-        message,
+        message: getApiErrorMessage(error, 'Impossible de créer le lien web de suivi.'),
       });
     }
   }, [
@@ -1824,21 +1825,18 @@ export default function TripDetailsScreen() {
           response.payment.status === 'succeeded'
             ? 'Paiement confirmé'
             : 'Paiement lance',
-        message:
-          response.payment.message ??
+        message: getApiErrorMessage(
+          { message: response.payment.message },
           'Confirmez la demande FlexPay sur votre téléphone.',
+        ),
       });
       refreshBookingLists();
       return response;
     } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        'Impossible de lancer le paiement pour le moment.';
       showDialog({
         variant: 'danger',
         title: 'Paiement impossible',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message: getApiErrorMessage(error, 'Impossible de lancer le paiement pour le moment.'),
       });
     }
   };
@@ -2075,11 +2073,9 @@ export default function TripDetailsScreen() {
       openBookingSuccessModal(seatsValue);
       refreshBookingLists();
     } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        'Impossible de créer la réservation pour le moment.';
-      setBookingModalError(Array.isArray(message) ? message.join('\n') : message);
+      setBookingModalError(
+        getApiErrorMessage(error, 'Impossible de créer la réservation pour le moment.'),
+      );
     }
   };
 
@@ -2101,14 +2097,10 @@ export default function TripDetailsScreen() {
       });
       refreshBookingLists();
     } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        'Impossible d’annuler la réservation pour le moment.';
       showDialog({
         variant: 'danger',
         title: 'Erreur',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message: getApiErrorMessage(error, 'Impossible d’annuler la réservation pour le moment.'),
       });
     }
   };
@@ -2162,7 +2154,9 @@ export default function TripDetailsScreen() {
     cancelled: { color: Colors.gray[600], bgColor: Colors.gray[200], label: 'Annulé' },
   };
 
-  const config = trip ? statusConfig[trip.status as keyof typeof statusConfig] : statusConfig.upcoming;
+  const config = trip
+    ? statusConfig[trip.status as keyof typeof statusConfig] ?? statusConfig.upcoming
+    : statusConfig.upcoming;
 
   const departureCoordinate = useMemo(
     () => {
@@ -2841,7 +2835,7 @@ export default function TripDetailsScreen() {
               </View>
             )}
 
-            <View style={styles.tripCompactRoute}>
+            {/* <View style={styles.tripCompactRoute}>
               <View style={styles.tripCompactRail}>
                 <View style={[styles.tripCompactDot, styles.tripCompactStartDot]} />
                 <View style={styles.tripCompactLine} />
@@ -2865,7 +2859,7 @@ export default function TripDetailsScreen() {
                   <Text style={styles.tripCompactStopAddress} numberOfLines={1}>{tripArrivalAddress}</Text>
                 </View>
               </View>
-            </View>
+            </View> */}
 
             <View style={styles.tripDirectInfoRow}>
               <TouchableOpacity
@@ -3096,10 +3090,10 @@ export default function TripDetailsScreen() {
               <Text style={styles.securityReminderText}>
                 Avant de monter, vérifiez que le véhicule devant vous correspond exactement à celui du trajet.
               </Text>
-              <View style={styles.securityReminderVehicleBox}>
+              {/* <View style={styles.securityReminderVehicleBox}>
                 <Text style={styles.securityReminderVehicleLabel}>Véhicule attendu</Text>
                 <Text style={styles.securityReminderVehicleValue}>{tripVehicleIdentity}</Text>
-              </View>
+              </View> */}
             </View>
           </Animated.View>
         )}

@@ -45,6 +45,7 @@ import {
   isCoordinateInKinshasaBounds,
   normalizeTripMapCoordinate,
 } from '@/utils/tripCoordinates';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { calculateDistance, getRouteAlignedPosition } from '@/utils/routeHelpers';
 import {
   MAX_PLAUSIBLE_LOCATION_JUMP_METERS,
@@ -206,17 +207,19 @@ export default function PassengerNavigationScreen() {
   // Récupérer la réservation et le trajet
   const { data: booking, isLoading: bookingLoading, refetch: refetchBooking } = useGetBookingByIdQuery(bookingId, { 
     skip: !bookingId,
-    pollingInterval: 30000, // Polling leger pour sync
+    pollingInterval: isFocused ? 60_000 : 0,
+    skipPollingIfUnfocused: true,
   });
   const tripId = booking?.tripId || '';
   const { data: trip, isLoading: tripLoading, refetch: refetchTrip } = useGetTripByIdQuery(tripId, {
     skip: !tripId,
-    pollingInterval: 10000,
+    pollingInterval: isFocused ? 30_000 : 0,
+    skipPollingIfUnfocused: true,
   });
   const isTripOngoing = trip?.status === 'ongoing';
   const { data: driverLocationSnapshot } = useGetDriverLocationQuery(tripId, {
     skip: !tripId || !isTripOngoing,
-    pollingInterval: 5000,
+    pollingInterval: isFocused ? 10_000 : 0,
     skipPollingIfUnfocused: true,
   });
 
@@ -1716,14 +1719,10 @@ export default function PassengerNavigationScreen() {
         trip?.arrival?.name ?? trip?.arrival?.address,
       );
     } catch (error: any) {
-      const backendMessage = error?.data?.message;
-      const message = Array.isArray(backendMessage)
-        ? backendMessage.join('\n')
-        : backendMessage || error?.message || 'Impossible de créer le lien web de suivi.';
       showDialog({
         variant: 'danger',
         title: 'Partage impossible',
-        message,
+        message: getApiErrorMessage(error, 'Impossible de créer le lien web de suivi.'),
       });
     }
   }, [
@@ -1764,14 +1763,10 @@ export default function PassengerNavigationScreen() {
         ],
       });
     } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        "Impossible d'annuler votre participation pour le moment.";
       showDialog({
         variant: 'danger',
         title: 'Annulation impossible',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message: getApiErrorMessage(error, "Impossible d'annuler votre participation pour le moment."),
       });
     }
   }, [
@@ -1865,14 +1860,10 @@ export default function PassengerNavigationScreen() {
           message: 'Le conducteur doit confirmer avant que votre trajet soit interrompu.',
         });
       } catch (error: any) {
-        const message =
-          error?.data?.message ??
-          error?.error ??
-          "Impossible d'envoyer votre demande d'interruption.";
         showDialog({
           variant: 'danger',
           title: 'Demande impossible',
-          message: Array.isArray(message) ? message.join('\n') : message,
+          message: getApiErrorMessage(error, "Impossible d'envoyer votre demande d'interruption."),
         });
       }
     },
@@ -1927,14 +1918,10 @@ export default function PassengerNavigationScreen() {
         message: 'Votre confirmation a été envoyée au conducteur.',
       });
     } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        "Impossible de confirmer l'interruption du trajet.";
       showDialog({
         variant: 'danger',
         title: 'Confirmation impossible',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message: getApiErrorMessage(error, "Impossible de confirmer l'interruption du trajet."),
       });
     }
   }, [
@@ -1962,14 +1949,10 @@ export default function PassengerNavigationScreen() {
         message: 'Votre refus a été transmis au conducteur.',
       });
     } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        "Impossible d'envoyer votre refus.";
       showDialog({
         variant: 'danger',
         title: 'Refus impossible',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message: getApiErrorMessage(error, "Impossible d'envoyer votre refus."),
       });
     }
   }, [

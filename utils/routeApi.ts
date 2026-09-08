@@ -13,6 +13,8 @@ export interface RouteInfo {
 const ROUTE_CACHE_TTL_MS = 10 * 60 * 1000;
 const FALLBACK_CACHE_TTL_MS = 60 * 1000;
 const THROTTLE_COOLDOWN_MS = 90 * 1000;
+const SOFT_TIMEOUT_COOLDOWN_MS = 30 * 1000;
+const ROUTE_REQUEST_SOFT_TIMEOUT_MS = 4_500;
 
 const routeInfoCache = new Map<string, { expiresAt: number; value: RouteInfo }>();
 const inFlightRouteRequests = new Map<string, Promise<RouteInfo>>();
@@ -118,6 +120,21 @@ function isThrottleError(errorLike: unknown) {
   return message.includes('too many requests') || message.includes('throttlerexception');
 }
 
+function isAbortLikeError(errorLike: unknown) {
+  if (!errorLike || typeof errorLike !== 'object') {
+    return false;
+  }
+
+  const candidate = errorLike as {
+    error?: string;
+    message?: string;
+    name?: string;
+    status?: string | number;
+  };
+  const errorText = `${candidate.name ?? ''} ${candidate.message ?? ''} ${candidate.error ?? ''} ${String(candidate.status ?? '')}`.toLowerCase();
+  return errorText.includes('abort') || errorText.includes('cancel');
+}
+
 function enterRouteApiCooldown() {
   routeApiCooldownUntil = Date.now() + THROTTLE_COOLDOWN_MS;
 
@@ -125,6 +142,10 @@ function enterRouteApiCooldown() {
     lastThrottleWarningAt = Date.now();
     console.warn('[routeApi] Backend directions throttled. Using cached or straight-line fallback temporarily.');
   }
+}
+
+function enterRouteApiSoftCooldown() {
+  routeApiCooldownUntil = Math.max(routeApiCooldownUntil, Date.now() + SOFT_TIMEOUT_COOLDOWN_MS);
 }
 
 export async function getRouteCoordinates(origin: LatLng, destination: LatLng): Promise<LatLng[]> {
@@ -190,25 +211,36 @@ export async function getRouteInfo(origin: LatLng, destination: LatLng): Promise
   }
 
   const routeRequest = (async () => {
+    let didSoftTimeout = false;
+    const request = store.dispatch(
+      googleMapsApi.endpoints.getDirections.initiate({
+        origin: {
+          lat: origin.latitude,
+          lng: origin.longitude,
+        },
+        destination: {
+          lat: destination.latitude,
+          lng: destination.longitude,
+        },
+        mode: TravelMode.DRIVING,
+        alternatives: false,
+      }),
+    );
+    const softTimeout = setTimeout(() => {
+      didSoftTimeout = true;
+      request.abort();
+    }, ROUTE_REQUEST_SOFT_TIMEOUT_MS);
+
     try {
-      const result = await store.dispatch(
-        googleMapsApi.endpoints.getDirections.initiate({
-          origin: {
-            lat: origin.latitude,
-            lng: origin.longitude,
-          },
-          destination: {
-            lat: destination.latitude,
-            lng: destination.longitude,
-          },
-          mode: TravelMode.DRIVING,
-          alternatives: false,
-        })
-      );
+      const result = await request;
 
       if (result.error || !result.data || !result.data.routes?.length) {
         if (isThrottleError(result.error)) {
           enterRouteApiCooldown();
+        } else if (didSoftTimeout || isAbortLikeError(result.error)) {
+          enterRouteApiSoftCooldown();
+          // The route polyline is secondary UI. Keep the form responsive and
+          // avoid noisy "aborted" logs when the mobile network is unstable.
         } else {
           console.warn('No route found from backend, using straight line:', result.error || result.data?.status);
         }
@@ -237,6 +269,9 @@ export async function getRouteInfo(origin: LatLng, destination: LatLng): Promise
     } catch (error) {
       if (isThrottleError(error)) {
         enterRouteApiCooldown();
+      } else if (didSoftTimeout || isAbortLikeError(error)) {
+        enterRouteApiSoftCooldown();
+        // Silent fallback: route drawing must not block forms or overload weak devices.
       } else {
         console.warn('Failed to fetch route from backend, using straight line:', error);
       }
@@ -244,6 +279,8 @@ export async function getRouteInfo(origin: LatLng, destination: LatLng): Promise
       setCachedRouteInfo(cacheKey, fallbackRouteInfo, FALLBACK_CACHE_TTL_MS);
       return fallbackRouteInfo;
     } finally {
+      clearTimeout(softTimeout);
+      request.reset();
       inFlightRouteRequests.delete(cacheKey);
     }
   })();

@@ -27,6 +27,7 @@ import {
   useDeleteEmergencyContactMutation,
 } from '@/store/api/safetyApi';
 import type { EmergencyContact } from '@/types';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 
 const MAX_CONTACTS = 5;
 
@@ -135,7 +136,7 @@ export default function SecurityScreen() {
     } catch (error: any) {
       showDialog({
         title: 'Erreur',
-        message: error?.data?.message || 'Impossible d\'ajouter le contact',
+        message: getApiErrorMessage(error, 'Impossible d\'ajouter le contact.'),
         variant: 'danger',
       });
     }
@@ -173,7 +174,7 @@ export default function SecurityScreen() {
     } catch (error: any) {
       showDialog({
         title: 'Erreur',
-        message: error?.data?.message || 'Impossible de mettre à jour le contact',
+        message: getApiErrorMessage(error, 'Impossible de mettre à jour le contact.'),
         variant: 'danger',
       });
     }
@@ -200,7 +201,7 @@ export default function SecurityScreen() {
             } catch (error: any) {
               showDialog({
                 title: 'Erreur',
-                message: error?.data?.message || 'Impossible de supprimer le contact',
+                message: getApiErrorMessage(error, 'Impossible de supprimer le contact.'),
                 variant: 'danger',
               });
             }

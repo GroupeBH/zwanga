@@ -10,11 +10,16 @@ const buildFullName = (user?: { firstName?: string | null; lastName?: string | n
   return fullName || user.phone || 'Utilisateur';
 };
 
+const toFiniteRating = (value: unknown) => {
+  const rating = Number(value);
+  return Number.isFinite(rating) ? rating : 0;
+};
+
 const mapServerRating = (rating: any): Review => ({
   id: rating.id,
   ratedUserId: rating.ratedUserId,
   raterId: rating.raterId,
-  rating: rating.rating,
+  rating: toFiniteRating(rating.rating),
   comment: rating.comment ?? undefined,
   tripId: rating.tripId ?? null,
   createdAt: rating.createdAt ?? new Date().toISOString(),
@@ -50,6 +55,10 @@ export const reviewApi = baseApi.injectEndpoints({
 
     getAverageRating: builder.query<{ userId: string; averageRating: number }, string>({
       query: (userId: string) => `/ratings/user/${userId}/average`,
+      transformResponse: (response: any, _meta, userId: string) => ({
+        userId: String(response?.userId ?? userId),
+        averageRating: toFiniteRating(response?.averageRating),
+      }),
     }),
   }),
 });
