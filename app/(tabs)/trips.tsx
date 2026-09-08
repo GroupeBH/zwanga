@@ -13,6 +13,7 @@ import {
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import type { Trip } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { getTripLocationCoordinate } from '@/utils/tripCoordinates';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
@@ -94,7 +95,7 @@ export default function TripsScreen() {
     pollingInterval: isFocused ? 60000 : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: isFocused,
-    refetchOnReconnect: isFocused,
+    refetchOnReconnect: false,
   });
   const {
     data: myBookings,
@@ -106,7 +107,7 @@ export default function TripsScreen() {
     pollingInterval: isFocused ? 60000 : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: isFocused,
-    refetchOnReconnect: isFocused,
+    refetchOnReconnect: false,
   });
   const { data: recurringTemplates = [] } = useGetMyRecurringTripsQuery();
   const { data: userVehicles = [], isLoading: vehiclesLoading } = useGetVehiclesQuery();
@@ -679,9 +680,10 @@ export default function TripsScreen() {
       showFeedback('success', 'Le trajet a été mis à jour.');
       closeEditModal();
     } catch (error: any) {
-      const message =
-        error?.data?.message ?? error?.error ?? 'Impossible de mettre à jour ce trajet pour le moment.';
-      showFeedback('error', message);
+      showFeedback(
+        'error',
+        getApiErrorMessage(error, 'Impossible de mettre à jour ce trajet pour le moment.'),
+      );
     }
   };
 
@@ -694,9 +696,10 @@ export default function TripsScreen() {
       showFeedback('success', 'Le trajet a été supprimé.');
       closeDeleteModal();
     } catch (error: any) {
-      const message =
-        error?.data?.message ?? error?.error ?? 'Impossible de supprimer ce trajet pour le moment.';
-      showFeedback('error', message);
+      showFeedback(
+        'error',
+        getApiErrorMessage(error, 'Impossible de supprimer ce trajet pour le moment.'),
+      );
     }
   };
 

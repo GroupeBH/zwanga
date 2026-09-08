@@ -96,6 +96,9 @@ const formatLedgerDescription = (description: string) =>
     .replace(/\bpoints\b/g, 'jetons')
     .replace(/\bpoint\b/g, 'jeton');
 
+const getPaymentStatusMessage = (message: string | null | undefined, fallback: string) =>
+  getApiErrorMessage({ message }, fallback);
+
 const parsePositiveAmount = (value: string) => {
   const normalized = value.replace(/\s/g, '').replace(',', '.');
   const amount = Number(normalized);
@@ -220,11 +223,12 @@ export default function WalletScreen() {
       showDialog({
         variant: 'success',
         title: 'Recharge lancée',
-        message:
-          response.payment.message ||
-          (openedPaymentPage
+        message: getPaymentStatusMessage(
+          response.payment.message,
+          openedPaymentPage
             ? 'Finalisez le paiement dans la page ouverte.'
-            : 'Confirmez la demande de paiement, puis actualisez le statut.'),
+            : 'Confirmez la demande de paiement, puis actualisez le statut.',
+        ),
       });
     } catch (error) {
       showDialog({
@@ -250,7 +254,7 @@ export default function WalletScreen() {
       showDialog({
         variant: isSucceeded ? 'success' : status === 'failed' || status === 'cancelled' ? 'danger' : 'info',
         title: isSucceeded ? 'Recharge validee' : 'Statut recharge',
-        message: response.payment.message || `Statut actuel: ${status}.`,
+        message: getPaymentStatusMessage(response.payment.message, `Statut actuel: ${status}.`),
       });
     } catch (error) {
       showDialog({

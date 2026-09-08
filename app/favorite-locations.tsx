@@ -8,6 +8,7 @@ import {
   useDeleteFavoriteLocationMutation,
 } from '@/store/api/userApi';
 import type { FavoriteLocation } from '@/types';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
@@ -185,7 +186,7 @@ export default function FavoriteLocationsScreen() {
       showDialog({
         variant: 'danger',
         title: 'Erreur',
-        message: error?.data?.message || 'Impossible de sauvegarder le lieu favori.',
+        message: getApiErrorMessage(error, 'Impossible de sauvegarder le lieu favori.'),
       });
     }
   };
@@ -213,7 +214,7 @@ export default function FavoriteLocationsScreen() {
               showDialog({
                 variant: 'danger',
                 title: 'Erreur',
-                message: error?.data?.message || 'Impossible de supprimer le lieu favori.',
+                message: getApiErrorMessage(error, 'Impossible de supprimer le lieu favori.'),
               });
             }
           },

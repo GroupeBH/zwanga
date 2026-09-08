@@ -2,6 +2,7 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { useUpdateUserMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch } from '@/store/hooks';
 import { updateUser } from '@/store/slices/authSlice';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useState } from 'react';
 import { AppState, Platform } from 'react-native';
@@ -227,7 +228,7 @@ export function useProfilePhoto() {
       showDialog({
         variant: 'danger',
         title: 'Erreur',
-        message: error?.data?.message || 'Impossible de mettre à jour la photo de profil',
+        message: getApiErrorMessage(error, 'Impossible de mettre à jour la photo de profil.'),
       });
       return false;
     } finally {

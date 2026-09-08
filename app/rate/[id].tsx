@@ -5,6 +5,7 @@ import { useCreateReviewMutation } from '@/store/api/reviewApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -301,14 +302,10 @@ export default function RateScreen() {
         return;
       }
 
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        'Impossible de soumettre votre avis pour le moment.';
       showDialog({
         variant: 'danger',
         title: 'Erreur',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message: getApiErrorMessage(error, 'Impossible de soumettre votre avis pour le moment.'),
       });
     }
   };

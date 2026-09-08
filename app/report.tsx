@@ -2,6 +2,7 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useCreateUserReportMutation } from '@/store/api/safetyApi';
 import type { ReportReason } from '@/types';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
@@ -86,13 +87,9 @@ export default function ReportScreen() {
         actions: [{ label: 'Retour', variant: 'primary', onPress: () => router.back() }],
       });
     } catch (error: any) {
-      const message =
-        error?.data?.message ??
-        error?.error ??
-        'Impossible d’envoyer le signalement pour le moment.';
       showDialog({
         title: 'Erreur',
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message: getApiErrorMessage(error, 'Impossible d’envoyer le signalement pour le moment.'),
         variant: 'danger',
       });
     }

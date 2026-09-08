@@ -48,9 +48,11 @@ import type {
   WalletLedgerEntry,
   WalletSummary,
 } from '@/types';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 
-const ARRIVAL_PAYMENT_REFRESH_MS = 5_000;
+const ARRIVAL_BOOKING_REFRESH_MS = 45_000;
+const ARRIVAL_PAYMENT_STATUS_REFRESH_MS = 12_000;
 const RECENT_ARRIVAL_WINDOW_MS = 24 * 60 * 60 * 1_000;
 const PAYMENT_STATE_STORAGE_PREFIX = 'zwanga:passenger-arrival-payment:';
 const BOOKING_CARD_PAYMENT_RETURN_PATH = 'booking/payment';
@@ -225,7 +227,14 @@ function getPaymentModeLabel(mode?: TripPaymentMode | null, channel?: PaymentCha
 }
 
 function getPaymentFailureMessage(message?: string | null) {
-  return message || "Le paiement n'a pas ete confirme. Vous pouvez reessayer.";
+  return getApiErrorMessage(
+    { message },
+    "Le paiement n'a pas ete confirme. Vous pouvez reessayer.",
+  );
+}
+
+function getPaymentStatusMessage(message: string | null | undefined, fallback: string) {
+  return getApiErrorMessage({ message }, fallback);
 }
 
 function isPaymentSucceeded(response: BookingPaymentResponse) {
@@ -356,9 +365,10 @@ export function PassengerArrivalPaymentCoordinator() {
     refetch: refetchBookings,
   } = useGetMyBookingsQuery(undefined, {
     skip: !isAuthenticated,
-    pollingInterval: ARRIVAL_PAYMENT_REFRESH_MS,
+    pollingInterval: ARRIVAL_BOOKING_REFRESH_MS,
+    skipPollingIfUnfocused: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
 
   const arrivalBooking = useMemo(() => {
@@ -382,16 +392,18 @@ export function PassengerArrivalPaymentCoordinator() {
     refetch: refetchWallet,
   } = useGetMyWalletQuery(undefined, {
     skip: !isAuthenticated || !arrivalBooking,
+    skipPollingIfUnfocused: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
   const {
     data: paymentHistory = [],
     refetch: refetchPaymentHistory,
   } = useGetPaymentHistoryQuery(undefined, {
     skip: !isAuthenticated || !arrivalBooking,
+    skipPollingIfUnfocused: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
 
   const [updatePaymentMode, { isLoading: isUpdatingPaymentMode }] =
@@ -616,8 +628,10 @@ export function PassengerArrivalPaymentCoordinator() {
 
       if (!finished) {
         setStatusMessage(
-          statusResponse.payment.message ??
+          getPaymentStatusMessage(
+            statusResponse.payment.message,
             'Paiement carte en cours de validation. Nous continuons la verification.',
+          ),
         );
       }
 
@@ -733,12 +747,15 @@ export function PassengerArrivalPaymentCoordinator() {
 
           if (response.payment.status === 'failed' || response.payment.status === 'cancelled') {
             persistBookingState(bookingId, { walletTopUpOrderNumber: null });
-            setPaymentError(response.payment.message ?? 'La recharge des jetons a échoué.');
+            setPaymentError(getPaymentFailureMessage(response.payment.message));
             return;
           }
 
           setStatusMessage(
-            response.payment.message ?? 'Confirmez le complément Mobile Money sur votre téléphone.',
+            getPaymentStatusMessage(
+              response.payment.message,
+              'Confirmez le complément Mobile Money sur votre téléphone.',
+            ),
           );
           return;
         }
@@ -757,12 +774,15 @@ export function PassengerArrivalPaymentCoordinator() {
 
           if (response.payment.status === 'failed' || response.payment.status === 'cancelled') {
             persistBookingState(bookingId, { bookingPaymentOrderNumber: null });
-            setPaymentError(response.payment.message ?? 'Le paiement Mobile Money a échoué.');
+            setPaymentError(getPaymentFailureMessage(response.payment.message));
             return;
           }
 
           setStatusMessage(
-            response.payment.message ?? 'Confirmez le paiement Mobile Money sur votre téléphone.',
+            getPaymentStatusMessage(
+              response.payment.message,
+              'Confirmez le paiement Mobile Money sur votre téléphone.',
+            ),
           );
         }
       } catch (error) {
@@ -774,7 +794,7 @@ export function PassengerArrivalPaymentCoordinator() {
     };
 
     void checkPayment();
-    const interval = setInterval(() => void checkPayment(), ARRIVAL_PAYMENT_REFRESH_MS);
+    const interval = setInterval(() => void checkPayment(), ARRIVAL_PAYMENT_STATUS_REFRESH_MS);
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -859,8 +879,10 @@ export function PassengerArrivalPaymentCoordinator() {
         }
 
         setStatusMessage(
-          response.payment.message ??
+          getPaymentStatusMessage(
+            response.payment.message,
             `Confirmez le complément de ${formatMoney(moneyComplement, paymentCurrency)} sur votre téléphone.`,
+          ),
         );
         return;
       }
@@ -929,14 +951,15 @@ export function PassengerArrivalPaymentCoordinator() {
       }
 
       setStatusMessage(
-        response.payment.message ??
-          (method === 'card'
+        getPaymentStatusMessage(
+          response.payment.message,
+          method === 'card'
             ? 'Paiement carte en cours de validation.'
-            : 'Confirmez le paiement Mobile Money sur votre telephone.'),
+            : 'Confirmez le paiement Mobile Money sur votre telephone.',
+        ),
       );
     } catch (error: any) {
-      const message = error?.data?.message ?? error?.error ?? "Le paiement n'a pas pu être effectué.";
-      setPaymentError(Array.isArray(message) ? message.join('\n') : String(message));
+      setPaymentError(getApiErrorMessage(error, "Le paiement n'a pas pu être effectué."));
     }
   }, [
     arrivalBooking,

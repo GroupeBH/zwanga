@@ -234,6 +234,17 @@ const getApiMessage = (error: any, fallback: string) => {
 
 const isNetworkOrTimeoutError = (error: any) => error?.status === 'FETCH_ERROR' || error?.status === 'TIMEOUT_ERROR';
 
+type VehicleFormData = Pick<Vehicle, 'type' | 'brand' | 'model' | 'color' | 'licensePlate'>;
+
+const normalizeVehicleField = (value: string) => value.trim().toLowerCase();
+
+const vehicleMatchesFormData = (vehicle: Vehicle, data: VehicleFormData) =>
+  vehicle.type === data.type &&
+  normalizeVehicleField(vehicle.brand) === normalizeVehicleField(data.brand) &&
+  normalizeVehicleField(vehicle.model) === normalizeVehicleField(data.model) &&
+  normalizeVehicleField(vehicle.color) === normalizeVehicleField(data.color) &&
+  normalizeVehicleField(vehicle.licensePlate) === normalizeVehicleField(data.licensePlate);
+
 const isSubscriptionPaymentComplete = (response?: SubscriptionPaymentResponse | null) =>
   response?.subscription?.status === 'active' || response?.payment?.status === 'succeeded';
 
@@ -300,8 +311,14 @@ const getSubscriptionPaymentFailureMessage = (message?: string | null) => {
     return 'Paiement non abouti. Aucun montant confirmé ; vous pouvez relancer une nouvelle tentative.';
   }
 
-  return message || 'Le paiement a échoué. Vous pouvez réessayer ou choisir un autre moyen de paiement.';
+  return getApiErrorMessage(
+    { message },
+    'Le paiement a échoué. Vous pouvez réessayer ou choisir un autre moyen de paiement.',
+  );
 };
+
+const getSubscriptionPaymentStatusMessage = (message: string | null | undefined, fallback: string) =>
+  getApiErrorMessage({ message }, fallback);
 
 const isTerminalFailedSubscriptionPaymentStatus = (status?: string | null) => {
   const normalizedStatus = normalizeSubscriptionPaymentMessage(status);
@@ -413,7 +430,10 @@ const buildStoredSubscriptionPaymentFromHistory = (
   return {
     channel,
     createdAt: payment.createdAt,
-    message: payment.message || 'Tentative récente retrouvée côté Zwanga.',
+    message: getSubscriptionPaymentStatusMessage(
+      payment.message,
+      'Tentative récente retrouvée côté Zwanga.',
+    ),
     orderNumber: payment.orderNumber,
     paymentMethod: payment.method === 'card' ? 'card' : 'mobile_money',
     paymentUrl: payment.paymentUrl,
@@ -483,7 +503,7 @@ export default function ProfileScreen() {
   const { data: referralSummary, refetch: refetchReferralSummary } =
     useGetMyReferralSummaryQuery(undefined, {
       refetchOnFocus: true,
-      refetchOnReconnect: true,
+      refetchOnReconnect: false,
       refetchOnMountOrArgChange: true,
     });
   const { data: kycStatus, isLoading: kycLoading, refetch: refetchKycStatus } = useGetKycStatusQuery();
@@ -545,7 +565,7 @@ export default function ProfileScreen() {
   const { data: driverSettlement, refetch: refetchDriverSettlement } = useGetMyDriverSettlementQuery(undefined, {
     skip: !isDriver,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
   const recentPendingSubscriptionPayment = useMemo(
     () => getMostRecentPendingSubscriptionPayment(paymentHistory),
@@ -990,6 +1010,28 @@ export default function ProfileScreen() {
     setVehicleFormError(null);
   }, []);
 
+  const reconcileVehicleMutation = useCallback(
+    async (isConfirmed: (refreshedVehicles: Vehicle[]) => boolean) => {
+      for (const delayMs of [0, 800]) {
+        if (delayMs > 0) {
+          await wait(delayMs);
+        }
+
+        try {
+          const result = await refetchVehicles();
+          if (Array.isArray(result.data) && isConfirmed(result.data)) {
+            return true;
+          }
+        } catch {
+          // Preserve the original mutation error when verification also fails.
+        }
+      }
+
+      return false;
+    },
+    [refetchVehicles],
+  );
+
   const handleSaveVehicle = async () => {
     if (!vehicleType || !vehicleBrand.trim() || !vehicleModel.trim() || !vehicleColor.trim() || !vehiclePlate.trim()) {
       setVehicleFormError('Choisissez le type et renseignez la marque, le modèle, la couleur et la plaque.');
@@ -1014,7 +1056,28 @@ export default function ProfileScreen() {
           data: vehicleData,
         }).unwrap();
       } else {
-        await createVehicle(vehicleData).unwrap();
+        const matchingVehicleIdsBeforeCreation = new Set(
+          vehicleList.filter((vehicle) => vehicleMatchesFormData(vehicle, vehicleData)).map((vehicle) => vehicle.id),
+        );
+
+        try {
+          await createVehicle(vehicleData).unwrap();
+        } catch (error: any) {
+          if (!isNetworkOrTimeoutError(error)) {
+            throw error;
+          }
+
+          const wasCreatedDespiteTransportError = await reconcileVehicleMutation((refreshedVehicles) =>
+            refreshedVehicles.some(
+              (vehicle) =>
+                !matchingVehicleIdsBeforeCreation.has(vehicle.id) && vehicleMatchesFormData(vehicle, vehicleData),
+            ),
+          );
+
+          if (!wasCreatedDespiteTransportError) {
+            throw error;
+          }
+        }
       }
 
       closeVehicleModal();
@@ -1060,22 +1123,36 @@ export default function ProfileScreen() {
             variant: 'primary',
             onPress: async () => {
               try {
-                await deleteVehicle(vehicle.id).unwrap();
-                await refetchVehicles();
+                try {
+                  await deleteVehicle(vehicle.id).unwrap();
+                } catch (error: any) {
+                  if (!isNetworkOrTimeoutError(error)) {
+                    throw error;
+                  }
+
+                  const wasDeletedDespiteTransportError = await reconcileVehicleMutation(
+                    (refreshedVehicles) => !refreshedVehicles.some(({ id }) => id === vehicle.id),
+                  );
+
+                  if (!wasDeletedDespiteTransportError) {
+                    throw error;
+                  }
+                }
+
+                void Promise.allSettled([refetchVehicles(), refetchProfile()]);
                 showDialog({
                   variant: 'success',
                   title: 'Véhicule supprimé',
                   message: 'Le véhicule a été supprimé avec succès.',
                 });
               } catch (error: any) {
-                const message =
-                  error?.data?.message ?? error?.error ?? 'Impossible de supprimer le véhicule pour le moment.';
+                const message = getApiErrorMessage(error, 'Impossible de supprimer le véhicule pour le moment.');
                 const isDriverError = isDriverRequiredError(error);
 
                 showDialog({
                   variant: 'danger',
                   title: 'Erreur',
-                  message: Array.isArray(message) ? message.join('\n') : message,
+                  message,
                   actions: isDriverError
                     ? [{ label: 'Fermer', variant: 'ghost' }, createBecomeDriverAction(router)]
                     : undefined,
@@ -1086,7 +1163,7 @@ export default function ProfileScreen() {
         ],
       });
     },
-    [deleteVehicle, refetchVehicles, router, showDialog],
+    [deleteVehicle, reconcileVehicleMutation, refetchProfile, refetchVehicles, router, showDialog],
   );
 
   const handleOpenKycModal = useCallback(async () => {
@@ -1149,7 +1226,10 @@ export default function ProfileScreen() {
       showDialog({
         variant: 'danger',
         title: 'Erreur',
-        message: error?.data?.message || "Impossible d'activer le compte conducteur. Veuillez réessayer.",
+        message: getApiErrorMessage(
+          error,
+          "Impossible d'activer le compte conducteur. Veuillez réessayer.",
+        ),
       });
     }
   }, [router, showDialog, updateUser]);
@@ -1354,9 +1434,11 @@ export default function ProfileScreen() {
 
         setSubscriptionPaymentStage(options?.pendingStage ?? 'operator_confirmation');
         setSubscriptionPaymentMessage(
-          options?.pendingMessage ||
-            response.payment.message ||
-            'Paiement en attente chez FlexPay. Confirmez sur votre téléphone ou terminez la page de paiement par carte ; nous continuons la vérification.',
+          getSubscriptionPaymentStatusMessage(
+            response.payment.message,
+            options?.pendingMessage ||
+              'Paiement en attente chez FlexPay. Confirmez sur votre téléphone ou terminez la page de paiement par carte ; nous continuons la vérification.',
+          ),
         );
         return 'pending' as SubscriptionPaymentCheckOutcome;
       } catch (error: any) {
@@ -1567,8 +1649,10 @@ export default function ProfileScreen() {
     setSubscriptionPaymentOrderNumber(storedPayment.orderNumber);
     setSubscriptionPaymentStage(storedPayment.paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation');
     setSubscriptionPaymentMessage(
-      storedPayment.message ||
+      getSubscriptionPaymentStatusMessage(
+        storedPayment.message,
         'Abonnement non actif. Une tentative existe déjà ; nous gardons cette référence avant toute nouvelle tentative.',
+      ),
     );
     setSubscriptionModalStep('payment');
   }, []);
@@ -1647,11 +1731,19 @@ export default function ProfileScreen() {
 
         applyStoredSubscriptionPayment(storedPayment);
         if (message) {
-          setSubscriptionPaymentMessage(message);
+          setSubscriptionPaymentMessage(
+            getSubscriptionPaymentStatusMessage(
+              message,
+              'Référence de paiement retrouvée côté Zwanga. Le suivi automatique reprend.',
+            ),
+          );
         }
         await persistStoredSubscriptionPayment({
           channel: storedPayment.channel,
-          message: message || storedPayment.message,
+          message: getSubscriptionPaymentStatusMessage(
+            message || storedPayment.message,
+            'Référence de paiement retrouvée côté Zwanga. Le suivi automatique reprend.',
+          ),
           orderNumber: storedPayment.orderNumber,
           paymentMethod: storedPayment.paymentMethod,
           paymentUrl: storedPayment.paymentUrl,
@@ -1688,12 +1780,17 @@ export default function ProfileScreen() {
           if (restoredPayment?.orderNumber) {
             setSubscriptionModalStep('payment');
             setSubscriptionPaymentMessage(
-              message ||
+              getSubscriptionPaymentStatusMessage(
+                message,
                 'Référence de paiement retrouvée côté Zwanga. Évitez de relancer le paiement ; le suivi automatique reprend.',
+              ),
             );
             startSubscriptionPaymentAutoCheck(
               restoredPayment.orderNumber,
-              message || 'Référence de paiement retrouvée côté Zwanga. Nous reprenons le suivi automatique.',
+              getSubscriptionPaymentStatusMessage(
+                message,
+                'Référence de paiement retrouvée côté Zwanga. Nous reprenons le suivi automatique.',
+              ),
             );
             return;
           }
@@ -1926,7 +2023,10 @@ export default function ProfileScreen() {
       if (response.payment.orderNumber) {
         await persistStoredSubscriptionPayment({
           channel: selectedSubscriptionPaymentChannel,
-          message: response.payment.message,
+          message: getSubscriptionPaymentStatusMessage(
+            response.payment.message,
+            'Paiement en attente chez FlexPay. Nous continuons le suivi.',
+          ),
           orderNumber: response.payment.orderNumber,
           paymentMethod,
           paymentUrl: response.payment.paymentUrl,
@@ -1951,9 +2051,10 @@ export default function ProfileScreen() {
       }
 
       if (!isSubscriptionCardPayment && response.payment.orderNumber) {
-        const pendingMessage =
-          response.payment.message ||
-          'Demande envoyée sur votre téléphone. Confirmez avec votre PIN Mobile Money ; Zwanga activera l’abonnement dès que FlexPay confirme.';
+        const pendingMessage = getSubscriptionPaymentStatusMessage(
+          response.payment.message,
+          'Demande envoyée sur votre téléphone. Confirmez avec votre PIN Mobile Money ; Zwanga activera l’abonnement dès que FlexPay confirme.',
+        );
         setSubscriptionPaymentStage('phone_confirmation');
         setSubscriptionPaymentMessage(pendingMessage);
         startSubscriptionPaymentAutoCheck(response.payment.orderNumber, pendingMessage);
@@ -1962,8 +2063,10 @@ export default function ProfileScreen() {
 
       setSubscriptionPaymentStage(response.payment.orderNumber ? 'operator_confirmation' : 'preparing');
       setSubscriptionPaymentMessage(
-        response.payment.message ||
+        getSubscriptionPaymentStatusMessage(
+          response.payment.message,
           'Demande de paiement créée. Confirmez sur votre téléphone ; la référence reste disponible pour le suivi.',
+        ),
       );
     } catch (error: any) {
       if (isNetworkOrTimeoutError(error)) {
@@ -2258,7 +2361,7 @@ export default function ProfileScreen() {
       showDialog({
         variant: 'danger',
         title: 'Erreur',
-        message: error?.data?.message || "Erreur lors de l'envoi du code",
+        message: getApiErrorMessage(error, "Impossible d'envoyer le code. Réessayez dans un instant."),
       });
     } finally {
       setIsSendingOtp(false);
@@ -2325,7 +2428,7 @@ export default function ProfileScreen() {
       showDialog({
         variant: 'danger',
         title: 'Code invalide',
-        message: error?.data?.message || 'Code OTP invalide ou expiré',
+        message: getApiErrorMessage(error, 'Code OTP invalide ou expiré.'),
       });
     }
   };
@@ -2433,7 +2536,7 @@ export default function ProfileScreen() {
       showDialog({
         variant: 'danger',
         title: 'Erreur',
-        message: error?.data?.message || 'Erreur lors de la modification du PIN',
+        message: getApiErrorMessage(error, 'Impossible de modifier le PIN pour le moment.'),
       });
       // En cas d'erreur, réinitialiser et revenir à l'étape de l'ancien PIN
       setOldPin('');

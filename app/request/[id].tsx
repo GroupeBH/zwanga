@@ -23,6 +23,7 @@ import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import {
   createBecomeDriverAction,
   createSubscribeToZwangaProAction,
+  getApiErrorMessage,
   isDailyPublicationLimitError,
   isDriverRequiredError,
 } from '@/utils/errorHelpers';
@@ -252,19 +253,21 @@ export default function TripRequestDetailsScreen() {
   const { isIdentityVerified, checkIdentity } = useIdentityCheck();
   
   // État pour le polling interval dynamique
-  const [pollingInterval, setPollingInterval] = useState(30000);
+  const [pollingInterval, setPollingInterval] = useState(45_000);
   
   const { data: tripRequest, isLoading, error, refetch, isError } = useGetTripRequestByIdQuery(id || '', {
     skip: !id || isCreateRouteAlias,
     pollingInterval,
+    skipPollingIfUnfocused: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
   const { data: assignedTrip } = useGetTripByIdQuery(tripRequest?.tripId || '', {
     skip: !tripRequest?.tripId,
-    pollingInterval: tripRequest?.status === 'driver_selected' ? 15000 : 0,
+    pollingInterval: tripRequest?.status === 'driver_selected' ? 30_000 : 0,
+    skipPollingIfUnfocused: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
 
   useEffect(() => {
@@ -1011,7 +1014,7 @@ export default function TripRequestDetailsScreen() {
         ],
       });
     } catch (error: any) {
-      const message = error?.data?.message || 'Impossible de créer la proposition.';
+      const message = getApiErrorMessage(error, 'Impossible de créer la proposition.');
       const isQuotaError = isDailyPublicationLimitError(error);
       const isDriverError = isDriverRequiredError(error);
       
@@ -1052,7 +1055,7 @@ export default function TripRequestDetailsScreen() {
     } catch (error: any) {
       showDialog({
         title: 'Erreur',
-        message: error?.data?.message || 'Impossible de retenir cette proposition.',
+        message: getApiErrorMessage(error, 'Impossible de retenir cette proposition.'),
         variant: 'danger',
       });
     }
@@ -1090,7 +1093,7 @@ export default function TripRequestDetailsScreen() {
             } catch (error: any) {
               showDialog({
                 title: 'Erreur',
-                message: error?.data?.message || 'Impossible de rejeter cette proposition.',
+                message: getApiErrorMessage(error, 'Impossible de rejeter cette proposition.'),
                 variant: 'danger',
               });
             }
@@ -1142,7 +1145,7 @@ export default function TripRequestDetailsScreen() {
                       createSubscribeToZwangaProAction(router),
                     ]
                   : undefined,
-                message: error?.data?.message || 'Impossible de démarrer le trajet',
+                message: getApiErrorMessage(error, 'Impossible de démarrer le trajet.'),
                 variant: 'danger',
               });
             }
@@ -1215,10 +1218,10 @@ export default function TripRequestDetailsScreen() {
             ],
           });
         } catch (startError: any) {
-          const startErrorMessage =
-            startError?.data?.message ??
-            startError?.error ??
-            'La demande est accept\u00E9e, mais le trajet n\u2019a pas pu d\u00E9marrer tout de suite.';
+          const startErrorMessage = getApiErrorMessage(
+            startError,
+            'La demande est accept\u00E9e, mais le trajet n\u2019a pas pu d\u00E9marrer tout de suite.',
+          );
 
           showDialog({
             title: 'Demande accept\u00E9e',
@@ -1266,10 +1269,10 @@ export default function TripRequestDetailsScreen() {
         ],
       });
     } catch (error: any) {
-      const resolvedMessage =
-        error?.data?.message ??
-        error?.error ??
-        'Impossible d\u2019accepter cette demande pour le moment.';
+      const resolvedMessage = getApiErrorMessage(
+        error,
+        'Impossible d\u2019accepter cette demande pour le moment.',
+      );
       const isQuotaError = isDailyPublicationLimitError(error);
       const isDriverError = isDriverRequiredError(error);
 
@@ -1498,7 +1501,7 @@ export default function TripRequestDetailsScreen() {
     } catch (error: any) {
       showDialog({
         title: 'Erreur',
-        message: error?.data?.message || 'Impossible de modifier la demande',
+        message: getApiErrorMessage(error, 'Impossible de modifier la demande.'),
         variant: 'danger',
       });
     }
@@ -1531,7 +1534,7 @@ export default function TripRequestDetailsScreen() {
             } catch (error: any) {
               showDialog({
                 title: 'Erreur',
-                message: error?.data?.message || 'Impossible d\'annuler la demande',
+                message: getApiErrorMessage(error, 'Impossible d\'annuler la demande.'),
                 variant: 'danger',
               });
             }
@@ -1559,7 +1562,10 @@ export default function TripRequestDetailsScreen() {
   }
 
   if (isError || error) {
-    const errorMessage = (error as any)?.data?.message || (error as any)?.error || 'Erreur lors du chargement de la demande';
+    const errorMessage = getApiErrorMessage(
+      error,
+      'Impossible de charger la demande pour le moment. Réessayez dans un instant.',
+    );
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>

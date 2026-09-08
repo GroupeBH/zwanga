@@ -5,6 +5,7 @@ import {
   stopPassengerBackgroundLocationTracking,
 } from '@/services/passengerBackgroundLocationTask';
 import {
+  ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS,
   PASSENGER_TRACKING_PREARM_PAST_GRACE_MS,
   PASSENGER_TRACKING_PREARM_WINDOW_MS,
 } from '@/constants/rideProgress';
@@ -17,7 +18,9 @@ import * as Location from 'expo-location';
 import { useEffect, useMemo, useRef } from 'react';
 import { AppState } from 'react-native';
 
-const ACTIVE_RIDE_REFRESH_INTERVAL_MS = 15_000;
+const ACTIVE_RIDE_REFRESH_INTERVAL_MS = 60_000;
+const ACTIVE_RIDE_DETAIL_REFRESH_INTERVAL_MS = 30_000;
+const ACTIVE_RIDE_FOREGROUND_REFETCH_COOLDOWN_MS = 30_000;
 
 const isIncompletePassengerBooking = (booking: {
   status: string;
@@ -50,6 +53,7 @@ export function ActiveRideLocationCoordinator() {
   const activePassengerBookingIdRef = useRef<string | null>(null);
   const passengerBackgroundStartPromiseRef = useRef<Promise<boolean> | null>(null);
   const passengerForegroundSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  const lastForegroundRefetchAtRef = useRef(0);
 
   const {
     data: myTrips = [],
@@ -58,8 +62,9 @@ export function ActiveRideLocationCoordinator() {
   } = useGetMyTripsQuery(undefined, {
     skip: !isAuthenticated,
     pollingInterval: ACTIVE_RIDE_REFRESH_INTERVAL_MS,
+    skipPollingIfUnfocused: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
   const {
     data: myBookings = [],
@@ -68,8 +73,9 @@ export function ActiveRideLocationCoordinator() {
   } = useGetMyBookingsQuery(undefined, {
     skip: !isAuthenticated,
     pollingInterval: ACTIVE_RIDE_REFRESH_INTERVAL_MS,
+    skipPollingIfUnfocused: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
 
   const activeDriverTrip = useMemo(
@@ -106,9 +112,10 @@ export function ActiveRideLocationCoordinator() {
   const passengerTripId = activePassengerBooking?.tripId ?? null;
   const { data: passengerTripSnapshot } = useGetTripByIdQuery(passengerTripId ?? '', {
     skip: !isAuthenticated || !passengerTripId,
-    pollingInterval: 5000,
+    pollingInterval: ACTIVE_RIDE_DETAIL_REFRESH_INTERVAL_MS,
+    skipPollingIfUnfocused: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
   const passengerTripStatus =
     passengerTripSnapshot?.status ?? activePassengerBooking?.trip?.status ?? null;
@@ -235,7 +242,7 @@ export function ActiveRideLocationCoordinator() {
         const subscription = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.High,
-            timeInterval: 5000,
+            timeInterval: ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS,
             distanceInterval: 0,
           },
           sendLocation,
@@ -270,6 +277,11 @@ export function ActiveRideLocationCoordinator() {
 
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState !== 'active') return;
+      const now = Date.now();
+      if (now - lastForegroundRefetchAtRef.current < ACTIVE_RIDE_FOREGROUND_REFETCH_COOLDOWN_MS) {
+        return;
+      }
+      lastForegroundRefetchAtRef.current = now;
       void refetchTrips();
       void refetchBookings();
     });

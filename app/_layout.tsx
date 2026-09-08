@@ -53,7 +53,7 @@ export default function RootLayout() {
             <Stack.Screen name="request/index" options={{ headerShown: false, presentation: 'card' }} />
             <Stack.Screen name="request/[id]" options={{ headerShown: false }} />
             <Stack.Screen name="request-details/[id]" options={{ headerShown: false }} />
-            <Stack.Screen name="search" options={{ headerShown: false, presentation: modalPresentation }} />
+            <Stack.Screen name="search" options={{ headerShown: false, presentation: 'card' }} />
             <Stack.Screen name="wallet" options={{ headerShown: false }} />
             <Stack.Screen name="driver-earnings" options={{ headerShown: false }} />
             <Stack.Screen name="referrals" options={{ headerShown: false }} />

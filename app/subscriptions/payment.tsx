@@ -227,8 +227,14 @@ const getPaymentFailureMessage = (message?: string | null) => {
     return 'Paiement non abouti. Aucun montant confirmé; vous pouvez relancer une nouvelle tentative.';
   }
 
-  return message || 'Le paiement a échoué. Vous pouvez réessayer ou choisir un autre moyen.';
+  return getApiErrorMessage(
+    { message },
+    'Le paiement a échoué. Vous pouvez réessayer ou choisir un autre moyen.',
+  );
 };
+
+const getPaymentStatusMessage = (message: string | null | undefined, fallback: string) =>
+  getApiErrorMessage({ message }, fallback);
 
 const isPaymentComplete = (response?: SubscriptionPaymentResponse | null) =>
   response?.subscription?.status === 'active' || response?.payment?.status === 'succeeded';
@@ -344,7 +350,7 @@ const buildStoredPaymentFromHistory = (
   return {
     channel,
     createdAt: payment.createdAt,
-    message: payment.message || 'Paiement retrouvé côté Zwanga.',
+    message: getPaymentStatusMessage(payment.message, 'Paiement retrouvé côté Zwanga.'),
     orderNumber: payment.orderNumber,
     paymentMethod: payment.method === 'card' ? 'card' : 'mobile_money',
     paymentUrl: payment.paymentUrl,
@@ -737,7 +743,12 @@ export default function SubscriptionPaymentScreen() {
     setPaymentUrl(storedPayment.paymentUrl ?? null);
     setPaymentMethod(storedPayment.paymentMethod);
     setStage(storedPayment.paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation');
-    setMessage(storedPayment.message || "Référence retrouvée. Aucune nouvelle demande n'est envoyée.");
+    setMessage(
+      getPaymentStatusMessage(
+        storedPayment.message,
+        "Référence retrouvée. Aucune nouvelle demande n'est envoyée.",
+      ),
+    );
   }, []);
 
   const finishPayment = useCallback(
@@ -791,9 +802,10 @@ export default function SubscriptionPaymentScreen() {
 
         setStage(options?.pendingStage ?? 'operator_confirmation');
         setMessage(
-          response.payment.message ||
-            options?.pendingMessage ||
-            'Paiement en attente chez FlexPay. Nous continuons le suivi.',
+          getPaymentStatusMessage(
+            response.payment.message,
+            options?.pendingMessage || 'Paiement en attente chez FlexPay. Nous continuons le suivi.',
+          ),
         );
         return 'pending';
       } catch (error: any) {
@@ -1071,7 +1083,12 @@ export default function SubscriptionPaymentScreen() {
         if (await finishPayment(response)) return;
 
         setStage('failed');
-        setMessage(response.payment.message || "Le paiement par jetons n'a pas été confirmé.");
+        setMessage(
+          getPaymentStatusMessage(
+            response.payment.message,
+            "Le paiement par jetons n'a pas été confirmé.",
+          ),
+        );
       } catch (error: any) {
         setStage('failed');
         showDialog({
@@ -1143,7 +1160,10 @@ export default function SubscriptionPaymentScreen() {
         setPaymentUrl(response.payment.paymentUrl);
         await persistStoredPayment({
           channel: selectedChannel,
-          message: response.payment.message,
+          message: getPaymentStatusMessage(
+            response.payment.message,
+            'Paiement en attente chez FlexPay. Nous continuons le suivi.',
+          ),
           orderNumber: response.payment.orderNumber,
           paymentMethod: method,
           paymentUrl: response.payment.paymentUrl,
@@ -1167,9 +1187,10 @@ export default function SubscriptionPaymentScreen() {
       }
 
       if (method === 'mobile_money' && response.payment.orderNumber) {
-        const pendingMessage =
-          response.payment.message ||
-          'Demande envoyée sur votre téléphone. Confirmez avec votre PIN Mobile Money.';
+        const pendingMessage = getPaymentStatusMessage(
+          response.payment.message,
+          'Demande envoyée sur votre téléphone. Confirmez avec votre PIN Mobile Money.',
+        );
         setStage('phone_confirmation');
         setMessage(pendingMessage);
         startAutoCheck(response.payment.orderNumber, pendingMessage);
@@ -1177,7 +1198,7 @@ export default function SubscriptionPaymentScreen() {
       }
 
       setStage(response.payment.orderNumber ? 'operator_confirmation' : 'preparing');
-      setMessage(response.payment.message || 'Demande de paiement créée.');
+      setMessage(getPaymentStatusMessage(response.payment.message, 'Demande de paiement créée.'));
     } catch (error: any) {
       if (isNetworkOrTimeoutError(error)) {
         const pendingMessage =

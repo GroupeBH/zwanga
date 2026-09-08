@@ -11,6 +11,7 @@ import {
   useSetDriverEmergencyContactsMutation,
 } from '@/store/api/tripApi';
 import type { TripStatus } from '@/types';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -33,18 +34,7 @@ type TripSecurityPanelProps = {
 };
 
 const parseErrorMessage = (error: unknown, fallback: string): string => {
-  if (!error || typeof error !== 'object') {
-    return fallback;
-  }
-  const err = error as { data?: { message?: string | string[] }; error?: string };
-  const apiMessage = err.data?.message ?? err.error;
-  if (Array.isArray(apiMessage)) {
-    return apiMessage.join('\n');
-  }
-  if (typeof apiMessage === 'string' && apiMessage.trim().length > 0) {
-    return apiMessage;
-  }
-  return fallback;
+  return getApiErrorMessage(error, fallback);
 };
 
 function TripSecurityPanel({
@@ -68,7 +58,7 @@ function TripSecurityPanel({
     refetch: refetchContacts,
   } = useGetEmergencyContactsQuery(undefined, {
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
 
   const {
@@ -77,7 +67,7 @@ function TripSecurityPanel({
   } = useGetTripByIdQuery(tripId, {
     skip: role !== 'driver' || !tripId,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
 
   const {
@@ -87,7 +77,7 @@ function TripSecurityPanel({
   } = useGetBookingByIdQuery(bookingId ?? '', {
     skip: role !== 'passenger' || !bookingId,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
 
   const [setDriverEmergencyContacts, { isLoading: isSavingDriverSelection }] =

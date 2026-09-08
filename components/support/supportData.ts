@@ -5,6 +5,7 @@ import type {
   SupportTicketCategory,
   SupportTicketStatus,
 } from '@/types';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 
 export const FAVORITE_CONTACT_KEY = 'support_favorite_contact';
@@ -287,19 +288,5 @@ export const formatSupportDate = (value?: string | null) => {
 };
 
 export const buildApiErrorMessage = (error: any, fallbackMessage: string) => {
-  const message = error?.data?.message;
-
-  if (Array.isArray(message) && message.length > 0) {
-    return message.join('\n');
-  }
-
-  if (typeof message === 'string' && message.trim()) {
-    return message;
-  }
-
-  if (typeof error?.data === 'string' && error.data.trim()) {
-    return error.data;
-  }
-
-  return fallbackMessage;
+  return getApiErrorMessage(error, fallbackMessage);
 };

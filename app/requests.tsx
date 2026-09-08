@@ -38,10 +38,11 @@ export default function TripRequestsScreen() {
     refetch: refetchAvailable,
   } = useGetAvailableTripRequestsQuery(undefined, {
     skip: activeTab !== 'available',
-    // Polling pour les demandes disponibles (conducteurs)
-    pollingInterval: activeTab === 'available' ? 30000 : 0,
+    // Polling léger pour les demandes disponibles (conducteurs)
+    pollingInterval: activeTab === 'available' ? 60_000 : 0,
+    skipPollingIfUnfocused: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
 
   // Query pour mes demandes (pour les passagers)
@@ -52,10 +53,11 @@ export default function TripRequestsScreen() {
     refetch: refetchMyRequests,
   } = useGetMyTripRequestsQuery(undefined, {
     skip: activeTab !== 'my-requests',
-    // Polling pour mes demandes (passagers)
-    pollingInterval: activeTab === 'my-requests' ? 30000 : 0,
+    // Polling léger pour mes demandes (passagers)
+    pollingInterval: activeTab === 'my-requests' ? 60_000 : 0,
+    skipPollingIfUnfocused: true,
     refetchOnFocus: true,
-    refetchOnReconnect: true,
+    refetchOnReconnect: false,
   });
 
   const filteredAvailableRequests = useMemo(
