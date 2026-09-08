@@ -9,7 +9,12 @@ import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackEvent } from '@/services/analytics';
 import { useGeocodeMutation } from '@/store/api/googleMapsApi';
-import { useCreateRecurringTripMutation, useCreateTripMutation } from '@/store/api/tripApi';
+import {
+  useCreateRecurringTripMutation,
+  useCreateTripMutation,
+  useLazyGetMyRecurringTripsQuery,
+  useLazyGetMyTripsQuery,
+} from '@/store/api/tripApi';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import type { TripRequestVehicleType, Vehicle } from '@/types';
@@ -29,6 +34,7 @@ import {
 import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
 import { getRouteCoordinates } from '@/utils/routeApi';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
+import { reconcileAmbiguousMutation } from '@/utils/mutationReconciliation';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -171,6 +177,8 @@ export default function PublishScreen() {
   const stepEntering = Platform.OS === 'android' ? undefined : FadeInDown.duration(180);
   const [createTrip, { isLoading: isPublishing }] = useCreateTripMutation();
   const [createRecurringTrip, { isLoading: isPublishingRecurring }] = useCreateRecurringTripMutation();
+  const [getMyTrips] = useLazyGetMyTripsQuery();
+  const [getMyRecurringTrips] = useLazyGetMyRecurringTripsQuery();
   const publishInFlightRef = useRef(false);
   const publicationSuccessActionRef = useRef(false);
   const [publicationSuccess, setPublicationSuccess] = useState<PublicationSuccess>(null);
@@ -1185,6 +1193,7 @@ export default function PublishScreen() {
     }
 
     publishInFlightRef.current = true;
+    const publicationStartedAt = Date.now();
 
     try {
       const departureCoordinates = getLocationCoordinates(departureLocation);
@@ -1243,6 +1252,44 @@ export default function PublishScreen() {
       // rendered as an in-screen overlay instead of a React Native Modal.
       setPublicationSuccess({ recurring: isRecurringTrip });
     } catch (error: any) {
+      const normalizedDeparture = departureAddress.trim().toLowerCase();
+      const normalizedArrival = arrivalAddress.trim().toLowerCase();
+      const recoveredPublication = isRecurringTrip
+        ? await reconcileAmbiguousMutation({
+            error,
+            loadSnapshot: async () => getMyRecurringTrips(undefined, false).unwrap(),
+            isApplied: (templates) =>
+              templates.some((template) => {
+                const createdAt = new Date(template.createdAt).getTime();
+                return (
+                  Number.isFinite(createdAt) &&
+                  createdAt >= publicationStartedAt - 10_000 &&
+                  template.departure.name.trim().toLowerCase() === normalizedDeparture &&
+                  template.arrival.name.trim().toLowerCase() === normalizedArrival
+                );
+              }),
+          })
+        : await reconcileAmbiguousMutation({
+            error,
+            loadSnapshot: async () => getMyTrips(undefined, false).unwrap(),
+            isApplied: (latestTrips) =>
+              latestTrips.some((latestTrip) => {
+                const latestDepartureAt = new Date(latestTrip.departureTime).getTime();
+                return (
+                  Number.isFinite(latestDepartureAt) &&
+                  Math.abs(latestDepartureAt - departureDate.getTime()) < 60_000 &&
+                  latestTrip.departure.name.trim().toLowerCase() === normalizedDeparture &&
+                  latestTrip.arrival.name.trim().toLowerCase() === normalizedArrival &&
+                  (latestTrip.vehicle?.id ?? latestTrip.vehicleId) === selectedVehicleId
+                );
+              }),
+          });
+
+      if (recoveredPublication) {
+        setPublicationSuccess({ recurring: isRecurringTrip });
+        return;
+      }
+
       const message = getApiErrorMessage(
         error,
         'Impossible de publier le trajet pour le moment. Veuillez réessayer.',

@@ -14,6 +14,7 @@ import type {
 } from '../../types';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import type { BookingAutoProgressPayload } from '@/services/trackingSocket';
+import { CRITICAL_MUTATION_TIMEOUT_MS } from '@/constants/network';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 
@@ -664,6 +665,7 @@ export const tripApi = baseApi.injectEndpoints({
         url: '/trips',
         method: 'POST',
         body: trip,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
       invalidatesTags: [tripListTag, myTripsListTag],
@@ -673,6 +675,7 @@ export const tripApi = baseApi.injectEndpoints({
         url: '/trips/recurring',
         method: 'POST',
         body: trip,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerRecurringTripTemplate) =>
         mapServerRecurringTripToClient(response),
@@ -682,6 +685,7 @@ export const tripApi = baseApi.injectEndpoints({
       query: (id: string) => ({
         url: `/trips/recurring/${id}/pause`,
         method: 'PUT',
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerRecurringTripTemplate) =>
         mapServerRecurringTripToClient(response),
@@ -696,6 +700,7 @@ export const tripApi = baseApi.injectEndpoints({
       query: (id: string) => ({
         url: `/trips/recurring/${id}/resume`,
         method: 'PUT',
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerRecurringTripTemplate) =>
         mapServerRecurringTripToClient(response),
@@ -713,6 +718,7 @@ export const tripApi = baseApi.injectEndpoints({
         url: `/trips/${id}`,
         method: 'PUT',
         body: updates,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
       invalidatesTags: (_result, _error, { id }: { id: string }) => [
@@ -728,6 +734,7 @@ export const tripApi = baseApi.injectEndpoints({
       query: (id: string) => ({
         url: `/trips/${id}`,
         method: 'DELETE',
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       invalidatesTags: (_result, _error, id: string) => [
         { type: 'Trip', id },
@@ -742,6 +749,7 @@ export const tripApi = baseApi.injectEndpoints({
       query: (id: string) => ({
         url: `/trips/${id}/start`,
         method: 'PUT',
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
       invalidatesTags: (_result, _error, id: string) => [
@@ -758,6 +766,7 @@ export const tripApi = baseApi.injectEndpoints({
       query: (id: string) => ({
         url: `/trips/${id}/pause`,
         method: 'PUT',
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
       invalidatesTags: (_result, _error, id: string) => [
@@ -782,6 +791,7 @@ export const tripApi = baseApi.injectEndpoints({
         url: `/trips/${tripId}/interruption-request`,
         method: 'POST',
         body,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
       invalidatesTags: (_result, _error, { tripId }) => [
@@ -797,6 +807,7 @@ export const tripApi = baseApi.injectEndpoints({
         url: `/trips/${tripId}/interruption-request/cancel`,
         method: 'PUT',
         body: {},
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
       invalidatesTags: (_result, _error, tripId) => [
@@ -815,6 +826,7 @@ export const tripApi = baseApi.injectEndpoints({
         url: `/trips/${tripId}/interruption-request/confirm`,
         method: 'PUT',
         body: bookingId ? { bookingId } : {},
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
       invalidatesTags: (_result, _error, { tripId }) => [
@@ -833,6 +845,7 @@ export const tripApi = baseApi.injectEndpoints({
         url: `/trips/${tripId}/interruption-request/reject`,
         method: 'PUT',
         body: cleanObject({ bookingId, reason }),
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
       invalidatesTags: (_result, _error, { tripId }) => [
@@ -848,6 +861,7 @@ export const tripApi = baseApi.injectEndpoints({
       query: (id: string) => ({
         url: `/trips/${id}/complete`,
         method: 'PUT',
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
       invalidatesTags: (_result, _error, id: string) => [
@@ -908,6 +922,7 @@ export const tripApi = baseApi.injectEndpoints({
         url: `/trips/${tripId}/book`,
         method: 'POST',
         body: { seats },
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       invalidatesTags: (_result, _error, { tripId }: { tripId: string }) => [
         { type: 'Trip', id: tripId },
@@ -922,6 +937,7 @@ export const tripApi = baseApi.injectEndpoints({
         url: `/trips/${tripId}/driver-emergency-contacts`,
         method: 'PUT',
         body: { emergencyContactIds },
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       invalidatesTags: (_result, _error, { tripId }) => [
         { type: 'Trip', id: tripId },
@@ -938,7 +954,9 @@ export const {
   useGetAllTripsQuery,
   useLazyGetTripsQuery,
   useGetMyTripsQuery,
+  useLazyGetMyTripsQuery,
   useGetMyRecurringTripsQuery,
+  useLazyGetMyRecurringTripsQuery,
   useGetTripByIdQuery,
   useCreateTripMutation,
   useCreateRecurringTripMutation,

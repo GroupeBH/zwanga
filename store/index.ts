@@ -1,6 +1,8 @@
 import { configureStore, type Middleware } from '@reduxjs/toolkit';
 import { setupListeners } from '@reduxjs/toolkit/query';
+import { authRefreshApi } from './api/authRefreshApi';
 import { zwangaApi } from './api/zwangaApi';
+import { mapboxApi } from './api/mapboxApi';
 import authReducer from './slices/authSlice';
 import messagesReducer from './slices/messagesSlice';
 import locationReducer from './slices/locationSlice';
@@ -16,6 +18,8 @@ const largeStatePaths = [
   'trips.items',
   'messages.conversations',
   zwangaApi.reducerPath,
+  authRefreshApi.reducerPath,
+  mapboxApi.reducerPath,
 ];
 
 /**
@@ -40,6 +44,7 @@ const apiCacheIsolationMiddleware: Middleware = (storeApi) => (next) => (action)
 
   if (logoutAction || accountChanged) {
     storeApi.dispatch(zwangaApi.util.resetApiState());
+    storeApi.dispatch(authRefreshApi.util.resetApiState());
   }
   return result;
 };
@@ -51,6 +56,8 @@ export const store = configureStore({
     messages: messagesReducer,
     location: locationReducer,
     [zwangaApi.reducerPath]: zwangaApi.reducer,
+    [authRefreshApi.reducerPath]: authRefreshApi.reducer,
+    [mapboxApi.reducerPath]: mapboxApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
@@ -77,7 +84,7 @@ export const store = configureStore({
       },
     })
       .prepend(apiCacheIsolationMiddleware)
-      .concat(zwangaApi.middleware),
+      .concat(zwangaApi.middleware, authRefreshApi.middleware, mapboxApi.middleware),
 });
 
 // Initialize store accessor to avoid circular dependencies

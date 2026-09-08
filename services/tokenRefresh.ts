@@ -1,5 +1,4 @@
-import { fetchBaseQuery } from '@reduxjs/toolkit/query/react';
-import { API_BASE_URL } from '../config/env';
+import { authRefreshApi } from '../store/api/authRefreshApi';
 import { getStoreDispatch } from '../store/storeAccessor';
 import { isTokenExpired, isTokenExpiringSoon } from '../utils/jwt';
 import { clearTokens, getTokens, storeTokens } from './tokenStorage';
@@ -22,16 +21,6 @@ let lastProactiveRefreshAttemptToken: string | null = null;
 const AUTH_REFRESH_ERROR_STATUSES = new Set([400, 401, 403]);
 const ACCESS_TOKEN_REFRESH_WINDOW_MINUTES = 2;
 const PROACTIVE_REFRESH_COOLDOWN_MS = 60_000;
-
-const getNormalizedBaseUrl = () => {
-  if (!API_BASE_URL) return '';
-  return API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
-};
-
-const refreshBaseQuery = fetchBaseQuery({
-  baseUrl: getNormalizedBaseUrl(),
-  timeout: 20_000,
-});
 
 async function forceLocalLogout(reason: string): Promise<void> {
   if (isForceLoggingOut) {
@@ -122,49 +111,18 @@ export async function refreshAccessToken(
 
   isRefreshing = true;
 
-  if (!API_BASE_URL) {
-    console.error('[refreshAccessToken] API_BASE_URL is undefined');
-    isRefreshing = false;
-    return Promise.resolve(null);
-  }
-
   refreshPromise = (async () => {
-    let result: any = null;
     try {
-      result = await refreshBaseQuery(
-        {
-          url: '/auth/refresh',
-          method: 'POST',
-          body: { refreshToken },
-        },
-        // @ts-ignore isolated call: no api object required
-        { signal: new AbortController().signal },
-        {}
+      const refreshRequest = getStoreDispatch()(
+        authRefreshApi.endpoints.refreshSession.initiate({ refreshToken }),
       );
-
-      if (result.error) {
-        const errorStatus = result.error.status;
-        const errorData = result.error.data;
-
-        if (errorStatus === 'FETCH_ERROR' || errorStatus === 'TIMEOUT_ERROR') {
-          throw {
-            name: 'TypeError',
-            message: 'Network request failed',
-            isNetworkError: true,
-            originalError: result.error,
-          };
-        }
-
-        throw {
-          name: 'HTTPError',
-          message: `HTTP ${String(errorStatus)}: ${JSON.stringify(errorData)}`,
-          status: errorStatus,
-          data: errorData,
-          isNetworkError: false,
-        };
+      let data: { accessToken: string; refreshToken: string };
+      try {
+        data = await refreshRequest.unwrap();
+      } finally {
+        refreshRequest.reset();
       }
 
-      const data = result.data as { accessToken: string; refreshToken: string };
       if (!data?.accessToken || !data?.refreshToken) {
         throw new Error('Missing tokens in refresh response');
       }
@@ -197,10 +155,8 @@ export async function refreshAccessToken(
         error?.message?.toLowerCase().includes('fetch') ||
         error?.message?.toLowerCase().includes('failed to fetch') ||
         error?.message?.toLowerCase().includes('network request failed') ||
-        (result?.error &&
-          'status' in result.error &&
-          (result.error.status === 'FETCH_ERROR' ||
-            result.error.status === 'TIMEOUT_ERROR'));
+        status === 'FETCH_ERROR' ||
+        status === 'TIMEOUT_ERROR';
 
       if (isNetworkError) {
         console.warn('[refreshAccessToken] Network error, keep session');

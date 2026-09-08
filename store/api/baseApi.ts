@@ -2,6 +2,7 @@ import type { BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolk
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { Mutex } from 'async-mutex';
 import { API_BASE_URL } from '../../config/env';
+import { DEFAULT_API_TIMEOUT_MS } from '../../constants/network';
 import { getValidAccessToken, refreshAccessToken } from '../../services/tokenRefresh';
 import type { RootState } from '../index';
 
@@ -11,7 +12,7 @@ import type { RootState } from '../index';
 const baseQueryWithAuth = fetchBaseQuery({
   baseUrl: API_BASE_URL,
   // Never leave the whole UI waiting forever when the mobile connection stalls.
-  timeout: 20_000,
+  timeout: DEFAULT_API_TIMEOUT_MS,
   prepareHeaders: async (headers, { getState }) => {
     // Récupérer un access token valide (rafraîchi automatiquement si nécessaire)
     const accessToken = await getValidAccessToken();

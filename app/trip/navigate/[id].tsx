@@ -53,6 +53,7 @@ import type {
   TripInterruptionReason,
 } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
+import { reconcileAmbiguousMutation } from '@/utils/mutationReconciliation';
 import {
   areTripMapCoordinatesSame,
   getTripLocationCoordinate,
@@ -684,6 +685,27 @@ export default function NavigationScreen() {
   const [getDriverLocationSnapshot] = useLazyGetDriverLocationQuery();
   const [createTripShareLink, { isLoading: isCreatingTripShareLink }] =
     useCreateTripShareLinkMutation();
+  const reconcileBookingStatus = useCallback(
+    async (error: unknown, bookingId: string, expectedStatuses: readonly string[]) =>
+      reconcileAmbiguousMutation({
+        error,
+        loadSnapshot: async () => {
+          const result = await refetchBookings();
+          return result.data?.find((booking) => booking.id === bookingId) ?? null;
+        },
+        isApplied: (booking) => expectedStatuses.includes(booking.status),
+      }),
+    [refetchBookings],
+  );
+  const reconcileTripStatus = useCallback(
+    async (error: unknown, expectedStatuses: readonly string[]) =>
+      reconcileAmbiguousMutation({
+        error,
+        loadSnapshot: async () => (await refetchTrip()).data ?? null,
+        isApplied: (latestTrip) => expectedStatuses.includes(latestTrip.status),
+      }),
+    [refetchTrip],
+  );
   const tripDepartureCoordinate = useMemo(
     () =>
       getTripLocationCoordinate({
@@ -1905,8 +1927,12 @@ export default function NavigationScreen() {
       }
 
       const complete = async () => {
-        await completeTrip(tripId).unwrap();
-        return true;
+        try {
+          await completeTrip(tripId).unwrap();
+          return true;
+        } catch (error) {
+          return Boolean(await reconcileTripStatus(error, ['completed']));
+        }
       };
 
       autoCompletingTripRef.current = true;
@@ -1939,6 +1965,7 @@ export default function NavigationScreen() {
     [
       completeTrip,
       presentTripDestinationNotice,
+      reconcileTripStatus,
       refetchBookings,
       refetchTrip,
       trip?.status,
@@ -3893,6 +3920,12 @@ export default function NavigationScreen() {
           { force: true },
         );
       } catch (error: any) {
+        const acceptedBooking = await reconcileBookingStatus(error, booking.id, ['accepted']);
+        if (acceptedBooking) {
+          rememberAcceptedBooking(booking.id);
+          await Promise.all([refetchBookings(), refetchTrip()]);
+          return;
+        }
         showDialog({
           variant: 'danger',
           title: 'Réservation impossible',
@@ -3905,7 +3938,7 @@ export default function NavigationScreen() {
         setProcessingBookingId(null);
       }
     },
-    [acceptBooking, refetchBookings, refetchTrip, rememberAcceptedBooking, showDialog, speakNavigationMessage],
+    [acceptBooking, reconcileBookingStatus, refetchBookings, refetchTrip, rememberAcceptedBooking, showDialog, speakNavigationMessage],
   );
 
   const handleRejectPendingBooking = useCallback(
@@ -3922,6 +3955,11 @@ export default function NavigationScreen() {
           { force: true },
         );
       } catch (error: any) {
+        const rejectedBooking = await reconcileBookingStatus(error, booking.id, ['rejected']);
+        if (rejectedBooking) {
+          await Promise.all([refetchBookings(), refetchTrip()]);
+          return;
+        }
         showDialog({
           variant: 'danger',
           title: 'Refus impossible',
@@ -3934,7 +3972,7 @@ export default function NavigationScreen() {
         setProcessingBookingId(null);
       }
     },
-    [refetchBookings, refetchTrip, rejectBooking, showDialog, speakNavigationMessage],
+    [reconcileBookingStatus, refetchBookings, refetchTrip, rejectBooking, showDialog, speakNavigationMessage],
   );
 
   const handleConfirmPassengerInterruption = useCallback(
@@ -4228,6 +4266,16 @@ export default function NavigationScreen() {
         { force: true },
       );
     } catch (error: any) {
+      const cancelledBooking = await reconcileBookingStatus(error, bookingId, ['cancelled']);
+      if (cancelledBooking) {
+        rememberCancelledBooking(bookingId);
+        setPickupSkipped(bookingId, true);
+        dismissPickupNoticeForBooking(bookingId);
+        dismissPickupBypassConfirmation();
+        markNavigationRouteDirty();
+        await Promise.all([refetchBookings(), refetchTrip()]);
+        return;
+      }
       showDialog({
         variant: 'danger',
         icon: 'alert-circle',
@@ -4244,6 +4292,7 @@ export default function NavigationScreen() {
     dismissPickupNoticeForBooking,
     markNavigationRouteDirty,
     pickupBypassAction,
+    reconcileBookingStatus,
     refetchBookings,
     refetchTrip,
     rememberCancelledBooking,
@@ -4305,6 +4354,28 @@ export default function NavigationScreen() {
         message: 'La navigation va reprendre depuis votre position actuelle.',
       });
     } catch (error: any) {
+      const restartedTrip = await reconcileTripStatus(error, ['ongoing']);
+      if (restartedTrip) {
+        lastRouteFetchTimeRef.current = 0;
+        routeFetchedRef.current = false;
+        routeSignatureRef.current = '';
+        hasFetchedInitialDriverRouteRef.current = false;
+        offRouteSampleCountRef.current = 0;
+        lastOffRouteRerouteAtRef.current = 0;
+        setRouteCoordinates([]);
+        setRouteDistanceMeters(null);
+        setRouteDurationSeconds(null);
+        setSteps([]);
+        setCurrentStepIndex(0);
+        await Promise.all([refetchTrip(), refetchBookings()]);
+        showDialog({
+          variant: 'success',
+          icon: 'play-circle',
+          title: 'Trajet redémarré',
+          message: 'Le trajet a bien redémarré malgré la connexion lente.',
+        });
+        return;
+      }
       showDialog({
         variant: 'danger',
         icon: 'alert-circle',
@@ -4317,6 +4388,7 @@ export default function NavigationScreen() {
     isTripFetching,
     refetchBookings,
     refetchTrip,
+    reconcileTripStatus,
     showDialog,
     startTrip,
     tripId,
@@ -4343,6 +4415,24 @@ export default function NavigationScreen() {
         message: 'Le trajet a été interrompu avec succès.',
       });
     } catch (error: any) {
+      const pausedTrip = await reconcileTripStatus(error, ['upcoming']);
+      if (pausedTrip) {
+        void stopDriverBackgroundLocationTracking(tripId);
+        locationSubscription.current?.remove();
+        locationSubscription.current = null;
+        currentLocationRef.current = null;
+        setIsSocketConnected(false);
+        setLivePassengerLocations({});
+        cleanupNavigationUi();
+        await Promise.all([refetchTrip(), refetchBookings()]);
+        showDialog({
+          variant: 'success',
+          icon: 'checkmark-circle',
+          title: 'Trajet interrompu',
+          message: 'Le trajet a bien été interrompu malgré la connexion lente.',
+        });
+        return;
+      }
       showDialog({
         variant: 'danger',
         icon: 'alert-circle',
@@ -4353,6 +4443,7 @@ export default function NavigationScreen() {
   }, [
     cleanupNavigationUi,
     pauseTrip,
+    reconcileTripStatus,
     refetchBookings,
     refetchTrip,
     showDialog,

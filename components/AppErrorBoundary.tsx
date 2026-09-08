@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { trackEvent } from '@/services/analytics';
 
 type AppErrorBoundaryProps = {
   children: ReactNode;
@@ -34,6 +35,10 @@ export class AppErrorBoundary extends Component<
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[AppErrorBoundary] Unhandled render error:', error, info.componentStack);
+    void trackEvent('app_render_error', {
+      error_name: error.name || 'Error',
+      has_component_stack: Boolean(info.componentStack),
+    });
   }
 
   private retry = () => {

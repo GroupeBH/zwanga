@@ -6,8 +6,8 @@ import { selectConversations, selectUser } from '@/store/selectors';
 import { setConversations } from '@/store/slices/messagesSlice';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function MessagesScreen() {
@@ -26,7 +26,7 @@ export default function MessagesScreen() {
     }
   }, [data, dispatch]);
 
-  const formatTimestamp = (rawValue: Date | string | number | null | undefined) => {
+  const formatTimestamp = useCallback((rawValue: Date | string | number | null | undefined) => {
     if (!rawValue) {
       return '--';
     }
@@ -55,7 +55,7 @@ export default function MessagesScreen() {
     if (minutes < 60) return `${minutes}m`;
     if (hours < 24) return `${hours}h`;
     return `${days}j`;
-  };
+  }, []);
 
   const filteredConversations = useMemo(() => {
     if (!search.trim()) {
@@ -77,7 +77,7 @@ export default function MessagesScreen() {
     });
   }, [conversations, search, user?.id]);
 
-  const getConversationTitle = (conversation: typeof conversations[number]) => {
+  const getConversationTitle = useCallback((conversation: typeof conversations[number]) => {
     if (conversation.title) {
       return conversation.title;
     }
@@ -89,9 +89,9 @@ export default function MessagesScreen() {
       }
     }
     return 'Conversation';
-  };
+  }, [user?.id]);
 
-  const handleDeleteConversation = (conversationId: string) => {
+  const handleDeleteConversation = useCallback((conversationId: string) => {
     if (!conversationId) return;
 
     showDialog({
@@ -114,7 +114,67 @@ export default function MessagesScreen() {
         },
       ],
     });
-  };
+  }, [deleteConversation, showDialog]);
+
+  const renderConversation = useCallback(
+    ({ item: conversation }: { item: typeof conversations[number] }) => {
+      const subtitle = conversation.lastMessage?.content ?? 'Conversation démarrée';
+      const timestamp = formatTimestamp(
+        conversation.lastMessage?.createdAt ?? conversation.lastMessageAt,
+      );
+      const title = getConversationTitle(conversation);
+
+      return (
+        <View style={styles.conversationRow}>
+          <TouchableOpacity
+            style={styles.conversationItem}
+            onPress={() =>
+              router.push({
+                pathname: '/chat/[id]',
+                params: { id: conversation.id, title },
+              })
+            }
+          >
+            <View style={styles.avatarContainer}>
+              <View style={styles.avatar} />
+              <View style={styles.onlineBadge} />
+            </View>
+
+            <View style={styles.conversationContent}>
+              <View style={styles.conversationHeader}>
+                <Text style={styles.conversationName}>{title}</Text>
+                <Text style={styles.conversationTime}>{timestamp}</Text>
+              </View>
+              <View style={styles.conversationFooter}>
+                <Text
+                  style={[
+                    styles.conversationMessage,
+                    (conversation.unreadCount ?? 0) > 0 && styles.conversationMessageUnread,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {subtitle}
+                </Text>
+                {(conversation.unreadCount ?? 0) > 0 && (
+                  <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadBadgeText}>{conversation.unreadCount}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.deleteConversationButton}
+            onPress={() => handleDeleteConversation(conversation.id)}
+          >
+            <Ionicons name="trash-outline" size={20} color={Colors.danger} />
+          </TouchableOpacity>
+        </View>
+      );
+    },
+    [formatTimestamp, getConversationTitle, handleDeleteConversation, router],
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -150,82 +210,29 @@ export default function MessagesScreen() {
         </View>
       )}
 
-      <ScrollView
+      <FlatList
         style={styles.scrollView}
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
-      >
-        {filteredConversations.length === 0 ? (
+        keyboardShouldPersistTaps="handled"
+        data={filteredConversations}
+        renderItem={renderConversation}
+        keyExtractor={(conversation) => conversation.id}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        updateCellsBatchingPeriod={50}
+        windowSize={7}
+        removeClippedSubviews
+        ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIcon}>
               <Ionicons name="chatbubbles-outline" size={48} color={Colors.gray[500]} />
             </View>
             <Text style={styles.emptyTitle}>Aucun message</Text>
-            <Text style={styles.emptyText}>
-              Vos conversations apparaîtront ici
-            </Text>
+            <Text style={styles.emptyText}>Vos conversations apparaîtront ici</Text>
           </View>
-        ) : (
-          filteredConversations.map((conversation) => {
-            const subtitle = conversation.lastMessage?.content ?? 'Conversation démarrée';
-            const timestamp = formatTimestamp(conversation.lastMessage?.createdAt ?? conversation.lastMessageAt);
-            const title = getConversationTitle(conversation);
-            return (
-              <View key={conversation.id}>
-                <View style={styles.conversationRow}>
-                  <TouchableOpacity
-                    style={styles.conversationItem}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/chat/[id]',
-                        params: {
-                          id: conversation.id,
-                          title,
-                        },
-                      })
-                    }
-                  >
-                    <View style={styles.avatarContainer}>
-                      <View style={styles.avatar} />
-                      <View style={styles.onlineBadge} />
-                    </View>
-
-                    <View style={styles.conversationContent}>
-                      <View style={styles.conversationHeader}>
-                        <Text style={styles.conversationName}>{title}</Text>
-                        <Text style={styles.conversationTime}>{timestamp}</Text>
-                      </View>
-                      <View style={styles.conversationFooter}>
-                        <Text
-                          style={[
-                            styles.conversationMessage,
-                            (conversation.unreadCount ?? 0) > 0 && styles.conversationMessageUnread,
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {subtitle}
-                        </Text>
-                        {(conversation.unreadCount ?? 0) > 0 && (
-                          <View style={styles.unreadBadge}>
-                            <Text style={styles.unreadBadgeText}>{conversation.unreadCount}</Text>
-                          </View>
-                        )}
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.deleteConversationButton}
-                    onPress={() => handleDeleteConversation(conversation.id)}
-                  >
-                    <Ionicons name="trash-outline" size={20} color={Colors.danger} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
-          })
-        )}
-      </ScrollView>
+        }
+      />
     </SafeAreaView>
   );
 }

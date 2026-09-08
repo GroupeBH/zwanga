@@ -80,11 +80,11 @@ function getRawErrorMessage(error: any, fallback: string): string {
 
 function getStatusErrorMessage(status: number | string | undefined, fallback: string): string | null {
   if (status === 'FETCH_ERROR') {
-    return 'Connexion impossible avec le serveur. V\u00e9rifiez votre connexion internet puis r\u00e9essayez.';
+    return 'La connexion a \u00e9t\u00e9 interrompue. V\u00e9rifiez votre connexion puis actualisez l\u2019\u00e9cran pour confirmer le r\u00e9sultat.';
   }
 
   if (status === 'TIMEOUT_ERROR') {
-    return 'La connexion est trop lente pour terminer cette action. R\u00e9essayez dans un instant.';
+    return 'La connexion a \u00e9t\u00e9 trop lente. Actualisez l\u2019\u00e9cran pour v\u00e9rifier si l\u2019action a bien \u00e9t\u00e9 prise en compte.';
   }
 
   if (status === 'PARSING_ERROR') {
@@ -159,7 +159,7 @@ function getTechnicalErrorMessage(rawMessage: string, status: number | string | 
   const message = rawMessage.toLowerCase();
 
   if (/\b(aborterror|aborted|request aborted)\b/.test(message)) {
-    return 'La connexion a \u00e9t\u00e9 interrompue avant la fin de l\u2019action. V\u00e9rifiez votre connexion puis r\u00e9essayez.';
+    return 'La connexion a \u00e9t\u00e9 interrompue. Actualisez l\u2019\u00e9cran pour v\u00e9rifier si l\u2019action a bien \u00e9t\u00e9 prise en compte.';
   }
 
   if (/\b(cancelled|canceled)\b/.test(message)) {
@@ -167,13 +167,13 @@ function getTechnicalErrorMessage(rawMessage: string, status: number | string | 
   }
 
   if (/\b(timeout|timed out|etimedout|gateway timeout)\b/.test(message)) {
-    return 'La connexion est trop lente pour terminer cette action. R\u00e9essayez dans un instant.';
+    return 'La connexion a \u00e9t\u00e9 trop lente. Actualisez l\u2019\u00e9cran pour v\u00e9rifier si l\u2019action a bien \u00e9t\u00e9 prise en compte.';
   }
 
   if (
     /\b(network request failed|failed to fetch|fetch error|load failed|econn|enotfound|socket|ssl|tls|cors)\b/.test(message)
   ) {
-    return 'Connexion impossible avec le serveur. V\u00e9rifiez votre connexion internet puis r\u00e9essayez.';
+    return 'La connexion a \u00e9t\u00e9 interrompue. V\u00e9rifiez votre connexion puis actualisez l\u2019\u00e9cran pour confirmer le r\u00e9sultat.';
   }
 
   if (/\b(unauthorized|invalid token|jwt expired|token expired)\b/.test(message)) {
@@ -336,6 +336,22 @@ export function isDriverRequiredError(error: any): boolean {
   ];
 
   return driverKeywords.some(keyword => lowerMessage.includes(keyword));
+}
+
+/**
+ * A transport failure does not prove that a mutation failed. The server may
+ * have committed the change after the client stopped waiting for the reply.
+ */
+export function isAmbiguousTransportError(error: any): boolean {
+  const status = getErrorStatus(error);
+  if (status === 'FETCH_ERROR' || status === 'TIMEOUT_ERROR') {
+    return true;
+  }
+
+  const message = getRawErrorMessage(error, '').toLowerCase();
+  return /\b(aborterror|aborted|request aborted|network request failed|failed to fetch|load failed|timed out|timeout|etimedout)\b/.test(
+    message,
+  );
 }
 
 export function getApiErrorMessage(error: any, fallback: string): string {

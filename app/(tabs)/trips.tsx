@@ -11,9 +11,10 @@ import {
   useUpdateTripMutation,
 } from '@/store/api/tripApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
-import type { Trip } from '@/types';
+import type { Booking, Trip } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
+import { reconcileAmbiguousMutation } from '@/utils/mutationReconciliation';
 import { getTripLocationCoordinate } from '@/utils/tripCoordinates';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
@@ -22,9 +23,10 @@ import DateTimePicker, {
 } from '@react-native-community/datetimepicker';
 import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -43,6 +45,9 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 type MainTab = 'published' | 'bookings';
 type SubTab = 'upcoming' | 'completed';
 type EditTripStep = 1 | 2;
+type TripListItem =
+  | { kind: 'published'; trip: Trip }
+  | { booking: Booking; kind: 'booking' };
 
 const normalizeSearchText = (value: unknown) =>
   String(value ?? '')
@@ -63,6 +68,13 @@ const getLocationCoordinatesTuple = (
   return [selection.longitude, selection.latitude];
 };
 
+const getDefaultFutureDate = () => {
+  const base = new Date();
+  base.setMinutes(0, 0, 0);
+  base.setHours(base.getHours() + 1);
+  return base;
+};
+
 function ArrivalTimeBlock({ trip }: { trip: Trip }) {
   const calculatedArrivalTime = useTripArrivalTime(trip);
   const arrivalDateTimeDisplay = calculatedArrivalTime
@@ -76,6 +88,260 @@ function ArrivalTimeBlock({ trip }: { trip: Trip }) {
     </View>
   );
 }
+
+function canManagePublishedTrip(trip: Trip) {
+  if (trip.status === 'completed') return false;
+
+  if (trip.status !== 'ongoing' && trip.departureTime) {
+    const departureTime = new Date(trip.departureTime).getTime();
+    if (Number.isFinite(departureTime) && departureTime < Date.now()) return false;
+  }
+
+  return trip.status === 'upcoming' || trip.status === 'ongoing';
+}
+
+function getTripStatusBadge(trip: Trip): TripStatusBadge {
+  const departureTime = trip.departureTime ? new Date(trip.departureTime).getTime() : Number.NaN;
+  const isExpired =
+    trip.status !== 'ongoing' &&
+    Number.isFinite(departureTime) &&
+    departureTime < Date.now();
+
+  if (isExpired && trip.status !== 'completed') {
+    return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: 'Expiré' };
+  }
+
+  switch (trip.status) {
+    case 'upcoming':
+      return { bgColor: 'rgba(247, 184, 1, 0.1)', textColor: Colors.secondary, label: 'À venir' };
+    case 'ongoing':
+      return { bgColor: 'rgba(52, 152, 219, 0.1)', textColor: Colors.info, label: 'En cours' };
+    case 'completed':
+      return { bgColor: 'rgba(46, 204, 113, 0.1)', textColor: Colors.success, label: 'Terminé' };
+    default:
+      return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: trip.status };
+  }
+}
+
+function getBookingStatusBadge(booking: Booking): TripStatusBadge {
+  switch (booking.status) {
+    case 'pending':
+      return { bgColor: 'rgba(247, 184, 1, 0.1)', textColor: Colors.secondary, label: 'En attente' };
+    case 'accepted':
+      return { bgColor: 'rgba(46, 204, 113, 0.1)', textColor: Colors.success, label: 'Confirmée' };
+    case 'rejected':
+      return { bgColor: 'rgba(239, 68, 68, 0.1)', textColor: Colors.danger, label: 'Refusée' };
+    case 'cancelled':
+      return { bgColor: 'rgba(156, 163, 175, 0.1)', textColor: Colors.gray[600], label: 'Annulée' };
+    case 'completed':
+      return { bgColor: 'rgba(46, 204, 113, 0.1)', textColor: Colors.success, label: 'Terminée' };
+    case 'no_show':
+      return { bgColor: 'rgba(59, 130, 246, 0.1)', textColor: Colors.info, label: 'Non embarqué' };
+    case 'boarding_uncertain':
+      return { bgColor: 'rgba(245, 158, 11, 0.1)', textColor: Colors.warning, label: 'Embarquement non confirmé' };
+    default:
+      return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: booking.status };
+  }
+}
+
+type TripStatusBadge = { bgColor: string; textColor: string; label: string };
+
+type PublishedTripCardProps = {
+  canManage: boolean;
+  onDelete: (trip: Trip) => void;
+  onDetails: (tripId: string) => void;
+  onEdit: (trip: Trip) => void;
+  status: TripStatusBadge;
+  trip: Trip;
+};
+
+const PublishedTripCard = React.memo(function PublishedTripCard({
+  canManage,
+  onDelete,
+  onDetails,
+  onEdit,
+  status,
+  trip,
+}: PublishedTripCardProps) {
+  return (
+    <View style={styles.tripCard}>
+      <View style={styles.tripHeader}>
+        <View style={styles.tripDriverInfo}>
+          {trip.driverAvatar ? (
+            <Image source={{ uri: trip.driverAvatar }} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatar} />
+          )}
+          <View style={styles.tripDriverDetails}>
+            <Text style={styles.driverName}>{trip.driverName}</Text>
+            <View style={styles.driverMeta}>
+              <Ionicons name="star" size={14} color={Colors.secondary} />
+              <Text style={styles.driverRating}>{trip.driverRating}</Text>
+              {trip.vehicle || trip.vehicleInfo ? (
+                <>
+                  <View style={styles.dot} />
+                  <Text style={styles.vehicleInfo}>
+                    {trip.vehicle
+                      ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
+                      : trip.vehicleInfo}
+                  </Text>
+                </>
+              ) : null}
+            </View>
+          </View>
+        </View>
+        <View style={[styles.statusBadge, { backgroundColor: status.bgColor }]}>
+          <Text style={[styles.statusText, { color: status.textColor }]}>{status.label}</Text>
+        </View>
+      </View>
+
+      <View style={styles.routeContainer}>
+        <View style={styles.routeRow}>
+          <Ionicons name="location" size={16} color={Colors.success} />
+          <Text style={styles.routeText}>{trip.departure.name}</Text>
+          <View style={styles.timeContainer}>
+            <Text style={styles.routeDateLabel}>Départ</Text>
+            <Text style={styles.routeTime}>{formatDateTime(trip.departureTime)}</Text>
+          </View>
+        </View>
+        <View style={styles.routeDivider} />
+        <View style={styles.routeRow}>
+          <Ionicons name="navigate" size={16} color={Colors.primary} />
+          <Text style={styles.routeText}>{trip.arrival.name}</Text>
+          <ArrivalTimeBlock trip={trip} />
+        </View>
+      </View>
+
+      <View style={styles.tripFooter}>
+        <View style={styles.tripFooterLeft}>
+          <View style={styles.infoItem}>
+            <Ionicons name="people" size={16} color={Colors.gray[600]} />
+            <Text style={styles.infoText}>{trip.availableSeats} places</Text>
+          </View>
+          <View style={[styles.infoItem, { marginLeft: Spacing.lg }]}>
+            <Ionicons name="cash" size={16} color={Colors.gray[600]} />
+            {trip.price === 0 ? (
+              <Text style={[styles.infoText, { color: Colors.success, fontWeight: FontWeights.bold }]}>Gratuit</Text>
+            ) : (
+              <Text style={styles.infoText}>{trip.price} FC</Text>
+            )}
+          </View>
+        </View>
+        <TouchableOpacity style={styles.detailsButton} onPress={() => onDetails(trip.id)}>
+          <Text style={styles.detailsButtonText}>Détails</Text>
+          <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.ownerActionsRow}>
+        <TouchableOpacity
+          style={[styles.ownerActionButton, !canManage && styles.ownerActionDisabled]}
+          onPress={() => onEdit(trip)}
+          disabled={!canManage}
+        >
+          <Ionicons name="create-outline" size={16} color={Colors.primary} />
+          <Text style={styles.ownerActionText}>Modifier</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.ownerActionButton, styles.ownerActionDanger, { marginRight: 0 }]}
+          onPress={() => onDelete(trip)}
+        >
+          <Ionicons name="trash-outline" size={16} color={Colors.danger} />
+          <Text style={[styles.ownerActionText, styles.ownerActionDangerText]}>Supprimer</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+});
+
+type BookingTripCardProps = {
+  booking: Booking;
+  onDetails: (tripId: string) => void;
+  status: TripStatusBadge;
+};
+
+const BookingTripCard = React.memo(function BookingTripCard({
+  booking,
+  onDetails,
+  status,
+}: BookingTripCardProps) {
+  const trip = booking.trip;
+  if (!trip) return null;
+
+  return (
+    <View style={styles.tripCard}>
+      <View style={styles.tripHeader}>
+        <View style={styles.tripDriverInfo}>
+          {trip.driverAvatar ? (
+            <Image source={{ uri: trip.driverAvatar }} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatar} />
+          )}
+          <View style={styles.tripDriverDetails}>
+            <Text style={styles.driverName}>{trip.driverName}</Text>
+            <View style={styles.driverMeta}>
+              <Ionicons name="star" size={14} color={Colors.secondary} />
+              <Text style={styles.driverRating}>{trip.driverRating}</Text>
+              {trip.vehicle || trip.vehicleInfo ? (
+                <>
+                  <View style={styles.dot} />
+                  <Text style={styles.vehicleInfo}>
+                    {trip.vehicle
+                      ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
+                      : trip.vehicleInfo}
+                  </Text>
+                </>
+              ) : null}
+            </View>
+          </View>
+        </View>
+        <View style={[styles.statusBadge, { backgroundColor: status.bgColor }]}>
+          <Text style={[styles.statusText, { color: status.textColor }]}>{status.label}</Text>
+        </View>
+      </View>
+
+      <View style={styles.routeContainer}>
+        <View style={styles.routeRow}>
+          <Ionicons name="location" size={16} color={Colors.success} />
+          <Text style={styles.routeText}>{trip.departure.name}</Text>
+          <View style={styles.timeContainer}>
+            <Text style={styles.routeDateLabel}>Départ</Text>
+            <Text style={styles.routeTime}>{formatDateTime(trip.departureTime)}</Text>
+          </View>
+        </View>
+        <View style={styles.routeDivider} />
+        <View style={styles.routeRow}>
+          <Ionicons name="navigate" size={16} color={Colors.primary} />
+          <Text style={styles.routeText}>{booking.passengerDestination || trip.arrival.name}</Text>
+          <ArrivalTimeBlock trip={trip} />
+        </View>
+      </View>
+
+      <View style={styles.tripFooter}>
+        <View style={styles.tripFooterLeft}>
+          <View style={styles.infoItem}>
+            <Ionicons name="people" size={16} color={Colors.gray[600]} />
+            <Text style={styles.infoText}>
+              {booking.numberOfSeats} place{booking.numberOfSeats > 1 ? 's' : ''}
+            </Text>
+          </View>
+          <View style={[styles.infoItem, { marginLeft: Spacing.lg }]}>
+            <Ionicons name="cash" size={16} color={Colors.gray[600]} />
+            {trip.price === 0 ? (
+              <Text style={[styles.infoText, { color: Colors.success, fontWeight: FontWeights.bold }]}>Gratuit</Text>
+            ) : (
+              <Text style={styles.infoText}>{trip.price * booking.numberOfSeats} FC</Text>
+            )}
+          </View>
+        </View>
+        <TouchableOpacity style={styles.detailsButton} onPress={() => onDetails(trip.id)}>
+          <Text style={styles.detailsButtonText}>Détails</Text>
+          <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+});
 
 export default function TripsScreen() {
   const router = useRouter();
@@ -341,17 +607,16 @@ export default function TripsScreen() {
       ].join(' ')).includes(normalizedSearchQuery);
     });
   }, [displayBookings, normalizedSearchQuery]);
-  const displayData = mainTab === 'published' ? filteredTrips : filteredBookings;
+  const tripListData = useMemo<TripListItem[]>(
+    () =>
+      mainTab === 'published'
+        ? filteredTrips.map((trip) => ({ kind: 'published' as const, trip }))
+        : filteredBookings.map((booking) => ({ kind: 'booking' as const, booking })),
+    [filteredBookings, filteredTrips, mainTab],
+  );
   const showLoader = (mainTab === 'published' ? tripsLoading : bookingsLoading) && (mainTab === 'published' ? trips.length === 0 : (myBookings?.length ?? 0) === 0);
   const isError = mainTab === 'published' ? tripsError : bookingsError;
   const isFetching = mainTab === 'published' ? tripsFetching : bookingsFetching;
-
-  const getDefaultFutureDate = () => {
-    const base = new Date();
-    base.setMinutes(0, 0, 0);
-    base.setHours(base.getHours() + 1);
-    return base;
-  };
 
   const getEditBaseDate = () => {
     if (editDateTime) {
@@ -405,7 +670,7 @@ export default function TripsScreen() {
 
   const closeIosPicker = () => setIosPickerMode(null);
 
-  const openEditModal = (trip: Trip) => {
+  const openEditModal = useCallback((trip: Trip) => {
     const departureCoordinate = getTripLocationCoordinate(trip.departure);
     const arrivalCoordinate = getTripLocationCoordinate(trip.arrival);
 
@@ -445,7 +710,7 @@ export default function TripsScreen() {
     setEditRoutePickerTarget(null);
     setEditVehicleId(trip.vehicle?.id ?? trip.vehicleId ?? null);
     setEditStep(1);
-  };
+  }, []);
 
   const closeEditModal = () => {
     setEditingTrip(null);
@@ -514,7 +779,7 @@ export default function TripsScreen() {
     setEditStep(1);
   };
 
-  const openDeleteModal = (trip: Trip) => setDeleteTarget(trip);
+  const openDeleteModal = useCallback((trip: Trip) => setDeleteTarget(trip), []);
   const closeDeleteModal = () => setDeleteTarget(null);
 
   const formattedEditDate = useMemo(() => {
@@ -696,6 +961,17 @@ export default function TripsScreen() {
       showFeedback('success', 'Le trajet a été supprimé.');
       closeDeleteModal();
     } catch (error: any) {
+      const deletedTripId = deleteTarget.id;
+      const reconciledTrips = await reconcileAmbiguousMutation({
+        error,
+        loadSnapshot: async () => (await refetchTrips()).data ?? null,
+        isApplied: (latestTrips) => !latestTrips.some((trip) => trip.id === deletedTripId),
+      });
+      if (reconciledTrips) {
+        showFeedback('success', 'Le trajet a bien été supprimé malgré la connexion lente.');
+        closeDeleteModal();
+        return;
+      }
       showFeedback(
         'error',
         getApiErrorMessage(error, 'Impossible de supprimer ce trajet pour le moment.'),
@@ -703,44 +979,39 @@ export default function TripsScreen() {
     }
   };
 
-  const canManageTrip = (trip: Trip) => {
-    // Ne peut pas gérer les trajets complétés
-    if (trip.status === 'completed') {
-      return false;
-    }
-
-    // Vérifier si la date de départ est passée pour les trajets non démarrés.
-    if (trip.status !== 'ongoing' && trip.departureTime) {
-      const departureDate = new Date(trip.departureTime);
-      const now = new Date();
-      if (departureDate < now) {
-        return false;
+  const openPublishedTripDetails = useCallback(
+    (selectedTripId: string) => router.push(`/trip/manage/${selectedTripId}`),
+    [router],
+  );
+  const openBookingTripDetails = useCallback(
+    (selectedTripId: string) => router.push(`/trip/${selectedTripId}`),
+    [router],
+  );
+  const renderTripListItem = useCallback(
+    ({ item }: { item: TripListItem }) => {
+      if (item.kind === 'published') {
+        return (
+          <PublishedTripCard
+            trip={item.trip}
+            status={getTripStatusBadge(item.trip)}
+            canManage={canManagePublishedTrip(item.trip)}
+            onDetails={openPublishedTripDetails}
+            onEdit={openEditModal}
+            onDelete={openDeleteModal}
+          />
+        );
       }
-    }
 
-    return trip.status === 'upcoming' || trip.status === 'ongoing';
-  };
-
-  const getStatusConfig = (trip: Trip) => {
-    const isExpired =
-      trip.status !== 'ongoing' &&
-      trip.departureTime &&
-      new Date(trip.departureTime) < new Date();
-    if (isExpired && trip.status !== 'completed') {
-      return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: 'Expiré' };
-    }
-
-    switch (trip.status) {
-      case 'upcoming':
-        return { bgColor: 'rgba(247, 184, 1, 0.1)', textColor: Colors.secondary, label: 'À venir' };
-      case 'ongoing':
-        return { bgColor: 'rgba(52, 152, 219, 0.1)', textColor: Colors.info, label: 'En cours' };
-      case 'completed':
-        return { bgColor: 'rgba(46, 204, 113, 0.1)', textColor: Colors.success, label: 'Terminé' };
-      default:
-        return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: trip.status };
-    }
-  };
+      return (
+        <BookingTripCard
+          booking={item.booking}
+          status={getBookingStatusBadge(item.booking)}
+          onDetails={openBookingTripDetails}
+        />
+      );
+    },
+    [openBookingTripDetails, openDeleteModal, openEditModal, openPublishedTripDetails],
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -864,10 +1135,23 @@ export default function TripsScreen() {
         </TouchableOpacity>
       )}
 
-      <ScrollView
+      <FlatList
         style={styles.scrollView}
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        data={showLoader ? [] : tripListData}
+        renderItem={renderTripListItem}
+        keyExtractor={(item) =>
+          item.kind === 'published'
+            ? `trip-${item.trip.id}`
+            : `booking-${item.booking.id}`
+        }
+        initialNumToRender={5}
+        maxToRenderPerBatch={5}
+        updateCellsBatchingPeriod={50}
+        windowSize={7}
+        removeClippedSubviews={Platform.OS === 'android'}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing || isFetching}
@@ -875,308 +1159,90 @@ export default function TripsScreen() {
             tintColor={Colors.primary}
           />
         }
-      >
-        {mainTab === 'published' && (
-          <TouchableOpacity
-            style={styles.recurringHubCard}
-            onPress={() => router.push('/recurring-trips')}
-          >
-            <View style={styles.recurringHubIcon}>
-              <Ionicons name="repeat" size={20} color={Colors.white} />
-            </View>
-            <View style={styles.recurringHubContent}>
-              <Text style={styles.recurringHubTitle}>Trajets réguliers</Text>
-              <Text style={styles.recurringHubText}>
-                {recurringTemplates.length > 0
-                  ? `${activeRecurringTemplates} actif(s), ${recurringTemplates.length} trajet(s) enregistré(s)`
-                  : 'Publier automatiquement vos trajets habituels'}
+        ListHeaderComponent={
+          mainTab === 'published' ? (
+            <TouchableOpacity
+              style={styles.recurringHubCard}
+              onPress={() => router.push('/recurring-trips')}
+            >
+              <View style={styles.recurringHubIcon}>
+                <Ionicons name="repeat" size={20} color={Colors.white} />
+              </View>
+              <View style={styles.recurringHubContent}>
+                <Text style={styles.recurringHubTitle}>Trajets réguliers</Text>
+                <Text style={styles.recurringHubText}>
+                  {recurringTemplates.length > 0
+                    ? `${activeRecurringTemplates} actif(s), ${recurringTemplates.length} trajet(s) enregistré(s)`
+                    : 'Publier automatiquement vos trajets habituels'}
+                </Text>
+              </View>
+              <View style={styles.recurringHubAction}>
+                <Text style={styles.recurringHubActionText}>Gérer</Text>
+                <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+              </View>
+            </TouchableOpacity>
+          ) : null
+        }
+        ListEmptyComponent={
+          showLoader ? (
+            <View style={styles.loaderContainer}>
+              <ActivityIndicator size="large" color={Colors.primary} />
+              <Text style={styles.loaderText}>
+                Chargement des {mainTab === 'published' ? 'trajets' : 'réservations'}...
               </Text>
             </View>
-            <View style={styles.recurringHubAction}>
-              <Text style={styles.recurringHubActionText}>Gérer</Text>
-              <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+          ) : (
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIcon}>
+                <Ionicons
+                  name={
+                    normalizedSearchQuery
+                      ? 'search-outline'
+                      : mainTab === 'published'
+                        ? 'car-outline'
+                        : 'calendar-outline'
+                  }
+                  size={48}
+                  color={Colors.gray[500]}
+                />
+              </View>
+              <Text style={styles.emptyTitle}>
+                {normalizedSearchQuery
+                  ? 'Aucun résultat'
+                  : mainTab === 'published'
+                    ? 'Aucun trajet'
+                    : 'Aucune réservation'}
+              </Text>
+              <Text style={styles.emptyText}>
+                {normalizedSearchQuery
+                  ? `Aucun trajet ne correspond à « ${searchQuery.trim()} ».`
+                  : mainTab === 'published'
+                    ? subTab === 'upcoming'
+                      ? "Vous n'avez pas de trajet à venir"
+                      : "Vous n'avez pas encore terminé de trajet"
+                    : subTab === 'upcoming'
+                      ? "Vous n'avez pas de réservation à venir"
+                      : "Vous n'avez pas encore terminé de réservation"}
+              </Text>
+              {normalizedSearchQuery ? (
+                <TouchableOpacity
+                  style={styles.emptySecondaryButton}
+                  onPress={() => setSearchQuery('')}
+                >
+                  <Text style={styles.emptySecondaryButtonText}>Effacer la recherche</Text>
+                </TouchableOpacity>
+              ) : mainTab === 'published' && subTab === 'upcoming' ? (
+                <TouchableOpacity
+                  style={styles.emptyButton}
+                  onPress={() => router.push('/publish')}
+                >
+                  <Text style={styles.emptyButtonText}>Publier un trajet</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
-          </TouchableOpacity>
-        )}
-
-        {showLoader && (
-          <View style={styles.loaderContainer}>
-            <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loaderText}>
-              Chargement des {mainTab === 'published' ? 'trajets' : 'réservations'}...
-            </Text>
-          </View>
-        )}
-        {displayData.length === 0 && !showLoader ? (
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIcon}>
-              <Ionicons
-                name={normalizedSearchQuery ? 'search-outline' : mainTab === 'published' ? 'car-outline' : 'calendar-outline'}
-                size={48}
-                color={Colors.gray[500]}
-              />
-            </View>
-            <Text style={styles.emptyTitle}>
-              {normalizedSearchQuery
-                ? 'Aucun résultat'
-                : mainTab === 'published' ? 'Aucun trajet' : 'Aucune réservation'}
-            </Text>
-            <Text style={styles.emptyText}>
-              {normalizedSearchQuery
-                ? `Aucun trajet ne correspond à « ${searchQuery.trim()} ».`
-                : mainTab === 'published'
-                ? subTab === 'upcoming'
-                  ? 'Vous n\'avez pas de trajet à venir'
-                  : 'Vous n\'avez pas encore terminé de trajet'
-                : subTab === 'upcoming'
-                  ? 'Vous n\'avez pas de réservation à venir'
-                  : 'Vous n\'avez pas encore terminé de réservation'}
-            </Text>
-            {normalizedSearchQuery ? (
-              <TouchableOpacity style={styles.emptySecondaryButton} onPress={() => setSearchQuery('')}>
-                <Text style={styles.emptySecondaryButtonText}>Effacer la recherche</Text>
-              </TouchableOpacity>
-            ) : mainTab === 'published' && subTab === 'upcoming' && (
-              <TouchableOpacity
-                style={styles.emptyButton}
-                onPress={() => router.push('/publish')}
-              >
-                <Text style={styles.emptyButtonText}>Publier un trajet</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        ) : (
-          mainTab === 'published'
-            ? filteredTrips.map((trip) => {
-              const statusConfig = getStatusConfig(trip);
-
-              return (
-                <View key={trip.id} style={styles.tripCard}>
-                  {/* Header */}
-                  <View style={styles.tripHeader}>
-                    <View style={styles.tripDriverInfo}>
-                      {trip.driverAvatar ? (
-                        <Image
-                          source={{ uri: trip.driverAvatar }}
-                          style={styles.avatar}
-                        />
-                      ) : (
-                        <View style={styles.avatar} />
-                      )}
-                      <View style={styles.tripDriverDetails}>
-                        <Text style={styles.driverName}>{trip.driverName}</Text>
-                        <View style={styles.driverMeta}>
-                          <Ionicons name="star" size={14} color={Colors.secondary} />
-                          <Text style={styles.driverRating}>{trip.driverRating}</Text>
-                          {trip.vehicle || trip.vehicleInfo ? (
-                            <>
-                              <View style={styles.dot} />
-                              <Text style={styles.vehicleInfo}>
-                                {trip.vehicle
-                                  ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
-                                  : trip.vehicleInfo}
-                              </Text>
-                            </>
-                          ) : null}
-                        </View>
-                      </View>
-                    </View>
-                    <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
-                      <Text style={[styles.statusText, { color: statusConfig.textColor }]}>
-                        {statusConfig.label}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Route */}
-                  <View style={styles.routeContainer}>
-                    <View style={styles.routeRow}>
-                      <Ionicons name="location" size={16} color={Colors.success} />
-                      <Text style={styles.routeText}>{trip.departure.name}</Text>
-                      <View style={styles.timeContainer}>
-                        <Text style={styles.routeDateLabel}>Départ</Text>
-                        <Text style={styles.routeTime}>{formatDateTime(trip.departureTime)}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.routeDivider} />
-                    <View style={styles.routeRow}>
-                      <Ionicons name="navigate" size={16} color={Colors.primary} />
-                      <Text style={styles.routeText}>{trip.arrival.name}</Text>
-                      <ArrivalTimeBlock trip={trip} />
-                    </View>
-                  </View>
-
-                  {/* Info */}
-                  <View style={styles.tripFooter}>
-                    <View style={styles.tripFooterLeft}>
-                      <View style={styles.infoItem}>
-                        <Ionicons name="people" size={16} color={Colors.gray[600]} />
-                        <Text style={styles.infoText}>{trip.availableSeats} places</Text>
-                      </View>
-                      <View style={[styles.infoItem, { marginLeft: Spacing.lg }]}>
-                        <Ionicons name="cash" size={16} color={Colors.gray[600]} />
-                        {trip.price === 0 ? (
-                          <Text style={[styles.infoText, { color: Colors.success, fontWeight: FontWeights.bold }]}>Gratuit</Text>
-                        ) : (
-                          <Text style={styles.infoText}>{trip.price} FC</Text>
-                        )}
-                      </View>
-                    </View>
-                    {/* Bouton Détails - Toujours accessible, même pour les trajets expirés/complétés */}
-                    <TouchableOpacity
-                      style={styles.detailsButton}
-                      onPress={() => router.push(`/trip/manage/${trip.id}`)}
-                    >
-                      <Text style={styles.detailsButtonText}>Détails</Text>
-                      <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Actions de gestion - Désactivées pour les trajets expirés/complétés mais toujours visibles */}
-                  <View style={styles.ownerActionsRow}>
-                    <TouchableOpacity
-                      style={[
-                        styles.ownerActionButton,
-                        !canManageTrip(trip) && styles.ownerActionDisabled,
-                      ]}
-                      onPress={() => openEditModal(trip)}
-                      disabled={!canManageTrip(trip)}
-                    >
-                      <Ionicons name="create-outline" size={16} color={Colors.primary} />
-                      <Text style={styles.ownerActionText}>Modifier</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.ownerActionButton,
-                        styles.ownerActionDanger,
-                        { marginRight: 0 },
-                        !canManageTrip(trip) && styles.ownerActionDisabled,
-                      ]}
-                      onPress={() => openDeleteModal(trip)}
-                      // disabled={!canManageTrip(trip)}
-                    >
-                      <Ionicons name="trash-outline" size={16} color={Colors.danger} />
-                      <Text style={[styles.ownerActionText, styles.ownerActionDangerText]}>
-                        Supprimer
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-          })
-            : filteredBookings.map((booking) => {
-                const trip = booking.trip;
-                if (!trip) return null;
-
-                const getBookingStatusConfig = () => {
-                    switch (booking.status) {
-                      case 'pending':
-                        return { bgColor: 'rgba(247, 184, 1, 0.1)', textColor: Colors.secondary, label: 'En attente' };
-                      case 'accepted':
-                        return { bgColor: 'rgba(46, 204, 113, 0.1)', textColor: Colors.success, label: 'Confirmée' };
-                      case 'rejected':
-                        return { bgColor: 'rgba(239, 68, 68, 0.1)', textColor: Colors.danger, label: 'Refusée' };
-                      case 'cancelled':
-                        return { bgColor: 'rgba(156, 163, 175, 0.1)', textColor: Colors.gray[600], label: 'Annulée' };
-                      case 'completed':
-                        return { bgColor: 'rgba(46, 204, 113, 0.1)', textColor: Colors.success, label: 'Terminée' };
-                      case 'no_show':
-                        return { bgColor: 'rgba(59, 130, 246, 0.1)', textColor: Colors.info, label: 'Non embarqué' };
-                      case 'boarding_uncertain':
-                        return { bgColor: 'rgba(245, 158, 11, 0.1)', textColor: Colors.warning, label: 'Embarquement non confirmé' };
-                      default:
-                        return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: booking.status };
-                    }
-                  };
-
-                const statusConfig = getBookingStatusConfig();
-
-                return (
-                    <View key={booking.id} style={styles.tripCard}>
-                      {/* Header */}
-                      <View style={styles.tripHeader}>
-                        <View style={styles.tripDriverInfo}>
-                          {trip.driverAvatar ? (
-                            <Image source={{ uri: trip.driverAvatar }} style={styles.avatar} />
-                          ) : (
-                            <View style={styles.avatar} />
-                          )}
-                          <View style={styles.tripDriverDetails}>
-                            <Text style={styles.driverName}>{trip.driverName}</Text>
-                            <View style={styles.driverMeta}>
-                              <Ionicons name="star" size={14} color={Colors.secondary} />
-                              <Text style={styles.driverRating}>{trip.driverRating}</Text>
-                              {trip.vehicle || trip.vehicleInfo ? (
-                                <>
-                                  <View style={styles.dot} />
-                                  <Text style={styles.vehicleInfo}>
-                                    {trip.vehicle
-                                      ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
-                                      : trip.vehicleInfo}
-                                  </Text>
-                                </>
-                              ) : null}
-                            </View>
-                          </View>
-                        </View>
-                        <View style={[styles.statusBadge, { backgroundColor: statusConfig.bgColor }]}>
-                          <Text style={[styles.statusText, { color: statusConfig.textColor }]}>
-                            {statusConfig.label}
-                          </Text>
-                        </View>
-                      </View>
-
-                      {/* Route */}
-                      <View style={styles.routeContainer}>
-                        <View style={styles.routeRow}>
-                          <Ionicons name="location" size={16} color={Colors.success} />
-                          <Text style={styles.routeText}>{trip.departure.name}</Text>
-                          <View style={styles.timeContainer}>
-                            <Text style={styles.routeDateLabel}>Départ</Text>
-                            <Text style={styles.routeTime}>{formatDateTime(trip.departureTime)}</Text>
-                          </View>
-                        </View>
-                        <View style={styles.routeDivider} />
-                        <View style={styles.routeRow}>
-                          <Ionicons name="navigate" size={16} color={Colors.primary} />
-                          <Text style={styles.routeText}>
-                            {booking.passengerDestination || trip.arrival.name}
-                          </Text>
-                          <ArrivalTimeBlock trip={trip} />
-                        </View>
-                      </View>
-
-                      {/* Info */}
-                      <View style={styles.tripFooter}>
-                        <View style={styles.tripFooterLeft}>
-                          <View style={styles.infoItem}>
-                            <Ionicons name="people" size={16} color={Colors.gray[600]} />
-                            <Text style={styles.infoText}>{booking.numberOfSeats} place{booking.numberOfSeats > 1 ? 's' : ''}</Text>
-                          </View>
-                          <View style={[styles.infoItem, { marginLeft: Spacing.lg }]}>
-                            <Ionicons name="cash" size={16} color={Colors.gray[600]} />
-                            {trip.price === 0 ? (
-                              <Text style={[styles.infoText, { color: Colors.success, fontWeight: FontWeights.bold }]}>
-                                Gratuit
-                              </Text>
-                            ) : (
-                              <Text style={styles.infoText}>{trip.price * booking.numberOfSeats} FC</Text>
-                            )}
-                          </View>
-                        </View>
-                        <TouchableOpacity
-                          style={styles.detailsButton}
-                          onPress={() => router.push(`/trip/${trip.id}`)}
-                        >
-                          <Text style={styles.detailsButtonText}>Détails</Text>
-                          <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                );
-              })
-        )}
-      </ScrollView>
+          )
+        }
+      />
 
       {/* FAB - Publier un trajet (seulement pour les trajets publiés) */}
       {mainTab === 'published' && (

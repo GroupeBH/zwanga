@@ -1,8 +1,8 @@
-import { fetchBaseQuery, type FetchBaseQueryError } from '@reduxjs/toolkit/query';
-import { API_BASE_URL } from '../../config/env';
+import type { FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import { storeTokens } from '../../services/tokenStorage';
 import { saveTokensAndUpdateState, setUser } from '../../store/slices/authSlice';
 import type { TripRequestVehicleType, User, UserGender } from '../../types';
+import { authRefreshApi } from './authRefreshApi';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 import { userApi } from './userApi';
@@ -280,35 +280,12 @@ export const authApi = baseApi.injectEndpoints({
     }),
 
     // Rafraîchir l'access token avec le refresh token
-    // IMPORTANT: Utilise queryFn avec fetch direct pour éviter la dépendance circulaire
-    // et éviter que baseQueryWithReauth n'ajoute un header Authorization (qui causerait une boucle)
+    // Délègue à l'API RTK Query non authentifiée pour éviter une boucle de refresh.
     refreshToken: builder.mutation<{ accessToken: string; refreshToken: string }, { refreshToken: string }>({
-      queryFn: async (data: { refreshToken: string }, api, extraOptions) => {
+      queryFn: async (data: { refreshToken: string }, api) => {
+        const request = api.dispatch(authRefreshApi.endpoints.refreshSession.initiate(data));
         try {
-          // Normaliser l'URL pour éviter les doubles slashes
-          const normalizedBaseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
-          const refreshUrl = `${normalizedBaseUrl}/auth/refresh`;
-          
-          // Utiliser fetch direct pour éviter de passer par baseQueryWithReauth
-          // L'endpoint refresh ne nécessite pas d'authentification (pas de header Authorization)
-          const response = await fetch(refreshUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(data),
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            const error: FetchBaseQueryError = {
-              status: response.status,
-              data: errorText || response.statusText,
-            };
-            return { error };
-          }
-
-          const responseData = await response.json() as { accessToken: string; refreshToken: string };
+          const responseData = await request.unwrap();
 
           if (!responseData.accessToken || !responseData.refreshToken) {
             const error: FetchBaseQueryError = {
@@ -319,21 +296,31 @@ export const authApi = baseApi.injectEndpoints({
             return { error };
           }
 
+          const refreshedTokens = {
+            accessToken: responseData.accessToken,
+            refreshToken: responseData.refreshToken,
+          };
+
           // Stocker les nouveaux tokens dans SecureStore
           try {
-            await storeTokens(responseData.accessToken, responseData.refreshToken);
+            await storeTokens(refreshedTokens.accessToken, refreshedTokens.refreshToken);
           } catch (error) {
             console.error('Erreur lors du stockage des tokens après refresh:', error);
           }
 
-          return { data: responseData };
+          return { data: refreshedTokens };
         } catch (error: any) {
+          if (error && typeof error === 'object' && 'status' in error) {
+            return { error: error as FetchBaseQueryError };
+          }
           const fetchError: FetchBaseQueryError = {
-            status: 'FETCH_ERROR',
+            status: 'CUSTOM_ERROR',
             data: error?.message || 'Erreur lors du rafraîchissement du token',
             error: error?.message || 'Erreur lors du rafraîchissement du token',
           };
           return { error: fetchError };
+        } finally {
+          request.reset();
         }
       },
     }),

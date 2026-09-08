@@ -24,6 +24,7 @@ import { selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus, TripInterruptionReason } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
+import { reconcileAmbiguousMutation } from '@/utils/mutationReconciliation';
 import {
   buildManualGeocodeQuery,
   mapGeocodeResponseToSelection,
@@ -240,6 +241,29 @@ export default function ManageTripScreen() {
       setRefreshing(false);
     }
   }, [refetchTrip, refetchBookings]);
+
+  const reconcileBookingStatus = useCallback(
+    async (error: unknown, bookingId: string, expectedStatuses: readonly BookingStatus[]) =>
+      reconcileAmbiguousMutation({
+        error,
+        loadSnapshot: async () => {
+          const result = await refetchBookings();
+          return result.data?.find((booking) => booking.id === bookingId) ?? null;
+        },
+        isApplied: (booking) => expectedStatuses.includes(booking.status),
+      }),
+    [refetchBookings],
+  );
+
+  const reconcileTripStatus = useCallback(
+    async (error: unknown, expectedStatuses: readonly string[]) =>
+      reconcileAmbiguousMutation({
+        error,
+        loadSnapshot: async () => (await refetchTrip()).data ?? null,
+        isApplied: (latestTrip) => expectedStatuses.includes(latestTrip.status),
+      }),
+    [refetchTrip],
+  );
 
   const rememberAcceptedBooking = useCallback((bookingId: string) => {
     setLocallyAcceptedBookingIds((current) => {
@@ -646,6 +670,13 @@ export default function ManageTripScreen() {
       showFeedback('success', 'La réservation a été acceptée.');
       refreshAll();
     } catch (error: any) {
+      const acceptedBooking = await reconcileBookingStatus(error, bookingId, ['accepted']);
+      if (acceptedBooking) {
+        rememberAcceptedBooking(bookingId);
+        showFeedback('success', 'La réservation a bien été acceptée malgré la connexion lente.');
+        void refreshAll();
+        return;
+      }
       showFeedback(
         'error',
         getApiErrorMessage(error, 'Impossible d’accepter cette réservation.'),
@@ -673,6 +704,16 @@ export default function ManageTripScreen() {
       closeRejectModal();
       refreshAll();
     } catch (error: any) {
+      const rejectedBooking = await reconcileBookingStatus(error, targetBooking.id, ['rejected']);
+      if (rejectedBooking) {
+        setRejectModalVisible(false);
+        setTargetBooking(null);
+        setRejectReason('');
+        setRejectError('');
+        showFeedback('success', 'La réservation a bien été refusée malgré la connexion lente.');
+        void refreshAll();
+        return;
+      }
       setRejectError(
         getApiErrorMessage(error, 'Impossible de refuser cette réservation.'),
       );
@@ -712,6 +753,12 @@ export default function ManageTripScreen() {
               showFeedback('success', 'La réservation a été annulée. Le passager sera notifié.');
               refreshAll();
             } catch (error: any) {
+              const cancelledBooking = await reconcileBookingStatus(error, booking.id, ['cancelled']);
+              if (cancelledBooking) {
+                showFeedback('success', 'La réservation a bien été annulée malgré la connexion lente.');
+                void refreshAll();
+                return;
+              }
               showFeedback(
                 'error',
                 getApiErrorMessage(error, 'Impossible d\'annuler cette réservation.'),
@@ -746,6 +793,12 @@ export default function ManageTripScreen() {
               showFeedback('success', 'Le trajet a été démarré avec succès.');
               refreshAll();
             } catch (error: any) {
+              const startedTrip = await reconcileTripStatus(error, ['ongoing']);
+              if (startedTrip) {
+                showFeedback('success', 'Le trajet a bien démarré malgré la connexion lente.');
+                void refreshAll();
+                return;
+              }
               showFeedback(
                 'error',
                 getApiErrorMessage(error, 'Impossible de démarrer ce trajet.'),
@@ -769,6 +822,12 @@ export default function ManageTripScreen() {
       showFeedback('success', 'Le trajet a été interrompu avec succès.');
       refreshAll();
     } catch (error: any) {
+      const pausedTrip = await reconcileTripStatus(error, ['upcoming']);
+      if (pausedTrip) {
+        showFeedback('success', 'Le trajet a bien été interrompu malgré la connexion lente.');
+        void refreshAll();
+        return;
+      }
       showFeedback(
         'error',
         getApiErrorMessage(error, 'Impossible d\'interrompre ce trajet.'),
