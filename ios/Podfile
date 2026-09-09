@@ -23,7 +23,7 @@ prepare_react_native_project!
 target 'zwanga' do
   use_expo_modules!
 
-  # @generated begin didit-sdk-react-native-pod - expo prebuild (DO NOT MODIFY) sync-8ba713654697d19f0398abca524db7d416e2634d
+  # @generated begin didit-sdk-react-native-pod - expo prebuild (DO NOT MODIFY) sync-5582f867fa212923163950a0e17b210a065a2fa6
   $DiditSdkIosVariant = podfile_properties.fetch('didit.iosVariant', 'autodetection')
   $DiditSdkIosLinkage = 'cocoapods'
   didit_sdk_subspec = case $DiditSdkIosVariant
@@ -34,7 +34,7 @@ target 'zwanga' do
                       else
                         raise "Invalid $DiditSdkIosVariant '#{$DiditSdkIosVariant}'. Supported values: all, core, autodetection, nfc."
                       end
-  pod didit_sdk_subspec, :podspec => 'https://raw.githubusercontent.com/didit-protocol/sdk-ios/4.7.2/DiditSDK.podspec'
+  pod didit_sdk_subspec, :podspec => 'https://raw.githubusercontent.com/didit-protocol/sdk-ios/4.7.5/DiditSDK.podspec'
   # @generated end didit-sdk-react-native-pod
 
   if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
