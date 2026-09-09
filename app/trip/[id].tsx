@@ -3500,7 +3500,7 @@ export default function TripDetailsScreen() {
               { paddingBottom: Math.max(insets.bottom, Spacing.lg) + Spacing.md },
             ]}
           >
-            <View style={styles.vehicleDetailModalHero}>
+            <View style={styles.vehicleDetailModalHeader}>
               {trip?.vehicle?.photoUrl ? (
                 <Image
                   resizeMode="cover"
@@ -3508,32 +3508,31 @@ export default function TripDetailsScreen() {
                   style={styles.vehicleDetailModalPhoto}
                 />
               ) : (
-                <View style={styles.vehicleDetailModalHeroFallback}>
-                  <View style={styles.vehicleDetailModalHeroIcon}>
-                    <Ionicons name={tripVehicleIconName} size={34} color={Colors.white} />
-                  </View>
-                  <Text style={styles.vehicleDetailModalHeroFallbackLabel}>
-                    {tripVehicleTypeLabel}
-                  </Text>
+                <View style={styles.vehicleDetailModalBadge}>
+                  <Ionicons name={tripVehicleIconName} size={22} color={Colors.white} />
                 </View>
               )}
+              <View style={styles.vehicleDetailModalHeaderCopy}>
+                <Text style={styles.vehicleDetailModalTitle} numberOfLines={1}>
+                  {tripVehicleLabel}
+                </Text>
+                <Text style={styles.vehicleDetailModalSubtitle} numberOfLines={1}>
+                  {tripVehicleTypeLabel}
+                </Text>
+              </View>
               <TouchableOpacity
                 accessibilityLabel="Fermer les détails du véhicule"
                 accessibilityRole="button"
                 onPress={() => setVehicleDetailModalVisible(false)}
                 style={styles.vehicleDetailModalCloseIcon}
               >
-                <Ionicons name="close" size={20} color={Colors.gray[800]} />
+                <Ionicons name="close" size={20} color={Colors.gray[500]} />
               </TouchableOpacity>
             </View>
 
             <View style={styles.vehicleDetailModalBody}>
-              <View style={styles.vehicleDetailModalChips}>
-                <View style={styles.vehicleDetailModalChip}>
-                  <Ionicons name={tripVehicleIconName} size={14} color={Colors.primary} />
-                  <Text style={styles.vehicleDetailModalChipText}>{tripVehicleTypeLabel}</Text>
-                </View>
-                {tripVehicleStatusLabel ? (
+              {tripVehicleStatusLabel ? (
+                <View style={styles.vehicleDetailModalChips}>
                   <View
                     style={[
                       styles.vehicleDetailModalChip,
@@ -3558,12 +3557,8 @@ export default function TripDetailsScreen() {
                       {tripVehicleStatusLabel}
                     </Text>
                   </View>
-                ) : null}
-              </View>
-
-              <Text style={styles.vehicleDetailModalTitle} numberOfLines={2}>
-                {tripVehicleLabel}
-              </Text>
+                </View>
+              ) : null}
 
               {tripVehicleLicensePlate ? (
                 <View style={styles.vehicleDetailModalPlate}>
@@ -5223,49 +5218,46 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 16,
   },
-  vehicleDetailModalHero: {
-    height: 188,
-    backgroundColor: Colors.gray[100],
+  vehicleDetailModalHeader: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
   },
   vehicleDetailModalPhoto: {
-    width: '100%',
-    height: '100%',
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: Colors.gray[100],
   },
-  vehicleDetailModalHeroFallback: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
+  vehicleDetailModalBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: Colors.primary,
-  },
-  vehicleDetailModalHeroIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  vehicleDetailModalHeroFallbackLabel: {
-    color: Colors.white,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
+  vehicleDetailModalHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   vehicleDetailModalCloseIcon: {
-    position: 'absolute',
-    top: Spacing.md,
-    right: Spacing.md,
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.gray[50],
     alignItems: 'center',
     justifyContent: 'center',
-    ...CommonStyles.shadowMd,
   },
   vehicleDetailModalBody: {
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.lg,
+    paddingTop: Spacing.md,
     gap: Spacing.md,
   },
   vehicleDetailModalChips: {
@@ -5280,7 +5272,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: 6,
     borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary + '10',
+    backgroundColor: Colors.gray[100],
   },
   vehicleDetailModalChipSuccess: {
     backgroundColor: Colors.success + '14',
@@ -5289,7 +5281,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[100],
   },
   vehicleDetailModalChipText: {
-    color: Colors.primaryDark,
+    color: Colors.gray[700],
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
   },
@@ -5301,8 +5293,14 @@ const styles = StyleSheet.create({
   },
   vehicleDetailModalTitle: {
     color: Colors.gray[900],
-    fontSize: FontSizes.xl,
+    fontSize: FontSizes.lg,
     fontWeight: FontWeights.bold,
+  },
+  vehicleDetailModalSubtitle: {
+    marginTop: 2,
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
   },
   vehicleDetailModalPlate: {
     alignSelf: 'flex-start',
