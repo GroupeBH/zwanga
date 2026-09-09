@@ -14,6 +14,36 @@ import React, {
 
 type IdentityAction = 'publish' | 'book' | 'manage' | 'request';
 
+const getIdentityRequirementCopy = (action: IdentityAction) => {
+  switch (action) {
+    case 'publish':
+      return {
+        actionText: 'publier ou gérer vos trajets',
+        message:
+          "Pour publier ou gérer vos trajets, vous devez d'abord vérifier votre identité avec une pièce officielle et un selfie.",
+      };
+    case 'request':
+      return {
+        actionText: 'demander un trajet',
+        message:
+          "Pour demander ce trajet, vous devez vérifier votre identité. Cette vérification concerne votre profil passager : aucun véhicule n'est demandé.",
+      };
+    case 'manage':
+      return {
+        actionText: 'gérer vos trajets',
+        message:
+          "Pour gérer vos trajets, vous devez d'abord vérifier votre identité avec une pièce officielle et un selfie.",
+      };
+    case 'book':
+    default:
+      return {
+        actionText: 'réserver ce trajet ou contacter le conducteur',
+        message:
+          "Ce trajet accepte uniquement les passagers dont l'identité est vérifiée. Vous pouvez vérifier votre identité comme passager, sans ajouter de véhicule.",
+      };
+  }
+};
+
 interface IdentityContextValue {
   isIdentityVerified: boolean;
   kycStatus: KycDocument['status'] | undefined;
@@ -51,22 +81,23 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
         return true;
       }
 
-      const actionText =
-        action === 'publish'
-          ? 'publier ou gérer vos trajets'
-          : action === 'request'
-            ? 'demander un trajet'
-          : action === 'manage'
-            ? 'gérer vos trajets'
-            : 'réserver un trajet ou contacter un conducteur';
+      const { actionText, message } = getIdentityRequirementCopy(action);
 
       showDialog({
         variant: 'warning',
-        title: 'KYC requis',
-        message: `Pour ${actionText}, vous devez finaliser la vérification de votre identité (pièce d'identité + selfie).`,
+        title: 'Identité vérifiée requise',
+        message,
         actions: [
           { label: 'Plus tard', variant: 'ghost' },
-          { label: 'Compléter maintenant', variant: 'primary', onPress: () => router.push('/profile') },
+          {
+            label: 'Vérifier mon identité',
+            variant: 'primary',
+            onPress: () =>
+              router.push({
+                pathname: '/verification',
+                params: { source: action, reason: actionText },
+              } as any),
+          },
         ],
       });
 

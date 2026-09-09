@@ -95,6 +95,7 @@ import {
   isPendingTripInterruption,
 } from '@/utils/tripInterruption';
 import { Ionicons } from '@expo/vector-icons';
+import { useIsFocused } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -254,7 +255,7 @@ const getSafeMapCoordinate = (
     : null;
 
 const getSafeMapCoordinateList = (
-  coordinates: Array<RouteCoordinate | null | undefined>,
+  coordinates: (RouteCoordinate | null | undefined)[],
   minimumDistanceMeters = MAP_POLYLINE_MIN_COORDINATE_DISTANCE_METERS,
 ) => {
   const safeCoordinates: RouteCoordinate[] = [];
@@ -279,7 +280,7 @@ const getSafeMapCoordinateList = (
 };
 
 const getSafePolylineCoordinates = (
-  coordinates: Array<RouteCoordinate | null | undefined>,
+  coordinates: (RouteCoordinate | null | undefined)[],
 ) => {
   const safeCoordinates = getSafeMapCoordinateList(coordinates);
   return safeCoordinates.length > 1 ? safeCoordinates : [];
@@ -287,7 +288,7 @@ const getSafePolylineCoordinates = (
 
 const fitMapToSafeCoordinates = (
   map: MapView | null,
-  coordinates: Array<RouteCoordinate | null | undefined>,
+  coordinates: (RouteCoordinate | null | undefined)[],
   {
     animated = true,
     durationMs = 320,
@@ -649,14 +650,18 @@ export default function NavigationScreen() {
   const { showDialog } = useDialog();
   const insets = useSafeAreaInsets();
   const tripId = typeof id === 'string' ? id : '';
+  const isFocused = useIsFocused();
 
-  const { data: trip, isLoading, isFetching: isTripFetching, refetch: refetchTrip } = useGetTripByIdQuery(tripId, { skip: !tripId });
+  const { data: trip, isLoading, isFetching: isTripFetching, refetch: refetchTrip } = useGetTripByIdQuery(tripId, {
+    skip: !tripId,
+    skipPollingIfUnfocused: true,
+  });
   const isTripOngoing = trip?.status === 'ongoing';
   const { data: bookings, isLoading: bookingsLoading, refetch: refetchBookings } = useGetTripBookingsQuery(
     tripId,
     {
       skip: !tripId,
-      pollingInterval: isTripOngoing ? 20_000 : 0,
+      pollingInterval: isFocused && isTripOngoing ? 20_000 : 0,
       skipPollingIfUnfocused: true,
     },
   );
@@ -732,7 +737,7 @@ export default function NavigationScreen() {
   );
 
   useEffect(() => {
-    if (!trip?.id) {
+    if (!__DEV__ || !trip?.id) {
       return;
     }
 
@@ -849,7 +854,7 @@ export default function NavigationScreen() {
 
   const focusMapOnCoordinates = useCallback(
     (
-      coordinates: Array<RouteCoordinate | null | undefined>,
+      coordinates: (RouteCoordinate | null | undefined)[],
       options: Parameters<typeof fitMapToSafeCoordinates>[2],
     ) => {
       if (!isMapReadyRef.current) {
@@ -1127,6 +1132,7 @@ export default function NavigationScreen() {
   const routeCoordinatesRef = useRef<RouteCoordinate[]>([]);
   const lastRouteFetchTimeRef = useRef(0);
   const fetchRouteRef = useRef<((options?: FetchRouteOptions) => Promise<void>) | null>(null);
+  const updateCurrentStepRef = useRef<((location: Location.LocationObject) => void) | null>(null);
   const routeSignatureRef = useRef('');
   const hasFetchedInitialDriverRouteRef = useRef(false);
   const offRouteSampleCountRef = useRef(0);
@@ -1340,7 +1346,7 @@ export default function NavigationScreen() {
     }
   };
 
-  const cleanupNavigationUi = useCallback(() => {
+  const stopNavigationSideEffects = useCallback(() => {
     if (recalcRouteTimeoutRef.current) {
       clearTimeout(recalcRouteTimeoutRef.current);
       recalcRouteTimeoutRef.current = null;
@@ -1354,7 +1360,10 @@ export default function NavigationScreen() {
       backgroundDisclosureResolverRef.current = null;
     }
     void Speech.stop();
+  }, []);
 
+  const cleanupNavigationUi = useCallback(() => {
+    stopNavigationSideEffects();
     offRouteSampleCountRef.current = 0;
     isReroutingRef.current = false;
     hasFetchedInitialDriverRouteRef.current = false;
@@ -1387,7 +1396,7 @@ export default function NavigationScreen() {
     setWaypointModalVisible(false);
     setPassengersPanelVisible(false);
     setActiveWaypoint(null);
-  }, []);
+  }, [stopNavigationSideEffects]);
 
   const navigateBackSafely = useCallback(() => {
     if (isExitingRef.current) {
@@ -1395,15 +1404,13 @@ export default function NavigationScreen() {
     }
 
     isExitingRef.current = true;
-    cleanupNavigationUi();
+    stopNavigationSideEffects();
     currentLocationRef.current = null;
     mapRef.current = null;
 
     try {
-      if (router.canGoBack()) {
-        router.back();
-      } else if (tripId) {
-        router.replace(`/trip/${tripId}`);
+      if (tripId) {
+        router.replace(`/trip/manage/${tripId}`);
       } else {
         router.replace('/(tabs)');
       }
@@ -1412,22 +1419,14 @@ export default function NavigationScreen() {
       console.warn('[DriverNavigation] Impossible de quitter la navigation:', error);
       router.replace('/(tabs)');
     }
-  }, [cleanupNavigationUi, router, tripId]);
+  }, [router, stopNavigationSideEffects, tripId]);
 
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
-      if (recalcRouteTimeoutRef.current) {
-        clearTimeout(recalcRouteTimeoutRef.current);
-        recalcRouteTimeoutRef.current = null;
-      }
-      if (backgroundDisclosureResolverRef.current) {
-        backgroundDisclosureResolverRef.current(false);
-        backgroundDisclosureResolverRef.current = null;
-      }
-      void Speech.stop();
+      stopNavigationSideEffects();
     };
-  }, []);
+  }, [stopNavigationSideEffects]);
 
   useEffect(() => {
     isTripOngoingRef.current = isTripOngoing;
@@ -2013,12 +2012,12 @@ export default function NavigationScreen() {
         return;
       }
 
-      const completionCandidates: Array<{
+      const completionCandidates: {
         source: 'rest' | 'device';
         coordinate: RouteCoordinate;
         timestampMs: number;
         location?: Location.LocationObject | null;
-      }> = [];
+      }[] = [];
       const previousAcceptedTimestamp = lastAcceptedDriverTimestampRef.current ?? 0;
 
       try {
@@ -2273,7 +2272,7 @@ export default function NavigationScreen() {
 
   // Connexion WebSocket pour le tracking temps réel
   useEffect(() => {
-    if (!tripId || !isTripOngoing) {
+    if (!isFocused || !tripId || !isTripOngoing) {
       setIsSocketConnected(false);
       return;
     }
@@ -2288,7 +2287,9 @@ export default function NavigationScreen() {
         if (!isMountedRef.current || isCancelled) return;
         setIsSocketConnected(true);
         void trackingSocket.requestPassengerLocations(tripId);
-        console.log('[Navigation] Connecté au suivi en temps réel');
+        if (__DEV__) {
+          console.log('[Navigation] Connecté au suivi en temps réel');
+        }
       })
       .catch((error) => {
         if (!isMountedRef.current || isCancelled) return;
@@ -2446,10 +2447,23 @@ export default function NavigationScreen() {
           return;
         }
 
-        setLivePassengerLocations((current) => ({
-          ...current,
-          [payload.bookingId]: passengerLiveLocation,
-        }));
+        setLivePassengerLocations((current) => {
+          const currentPassengerLocation = current[payload.bookingId!];
+          if (
+            currentPassengerLocation?.updatedAt === passengerLiveLocation.updatedAt &&
+            areTripMapCoordinatesSame(
+              currentPassengerLocation?.coordinate,
+              passengerLiveLocation.coordinate,
+            )
+          ) {
+            return current;
+          }
+
+          return {
+            ...current,
+            [payload.bookingId!]: passengerLiveLocation,
+          };
+        });
       },
     );
 
@@ -2465,11 +2479,13 @@ export default function NavigationScreen() {
       unsubscribeAutoProgress();
       unsubscribePassengerLocation();
       clearInterval(passengerLocationsRefreshInterval);
-      currentLocationRef.current = null;
 
-      console.log('[Navigation] Déconnecté et mémoire nettoyée');
+      if (__DEV__) {
+        console.log('[Navigation] Déconnecté du suivi en temps réel');
+      }
     };
   }, [
+    isFocused,
     isTripOngoing,
     isKinshasaNavigationTrip,
     getPassengerNameForBooking,
@@ -2492,7 +2508,9 @@ export default function NavigationScreen() {
     const hasArrival = Boolean(tripArrivalCoordinate);
     
     if (!hasDeparture || !hasArrival) {
-      console.log('Coordonnées du trajet invalides');
+      if (__DEV__) {
+        console.log('Coordonnées du trajet invalides');
+      }
       return;
     }
 
@@ -2591,22 +2609,26 @@ export default function NavigationScreen() {
           completed: hasBookingDropoffCompleted(booking),
         });
       } catch (error) {
-        console.log('Erreur création waypoint pour booking:', booking.id, error);
+        if (__DEV__) {
+          console.log('Erreur création waypoint pour booking:', booking.id, error);
+        }
       }
     });
 
-    console.log('[DriverNavigation] navigation waypoints', {
-      tripId,
-      isKinshasaNavigationTrip,
-      count: waypointsList.length,
-      waypoints: waypointsList.map((waypoint) => ({
-        id: waypoint.id,
-        type: waypoint.type,
-        completed: waypoint.completed,
-        bookingId: waypoint.booking.id,
-        coordinate: waypoint.location,
-      })),
-    });
+    if (__DEV__) {
+      console.log('[DriverNavigation] navigation waypoints', {
+        tripId,
+        isKinshasaNavigationTrip,
+        count: waypointsList.length,
+        waypoints: waypointsList.map((waypoint) => ({
+          id: waypoint.id,
+          type: waypoint.type,
+          completed: waypoint.completed,
+          bookingId: waypoint.booking.id,
+          coordinate: waypoint.location,
+        })),
+      });
+    }
 
     waypointsRef.current = waypointsList;
     setWaypoints(waypointsList);
@@ -2803,7 +2825,7 @@ export default function NavigationScreen() {
 
   // Demander les permissions de localisation
   useEffect(() => {
-    if (!tripId || !isTripOngoing) {
+    if (!isFocused || !tripId || !isTripOngoing) {
       if (locationSubscription.current) {
         locationSubscription.current.remove();
         locationSubscription.current = null;
@@ -2846,15 +2868,21 @@ export default function NavigationScreen() {
               const { status: requestedBackgroundStatus } = await Location.requestBackgroundPermissionsAsync();
               if (!isMountedRef.current) return;
               if (requestedBackgroundStatus !== 'granted') {
-                console.log('Permission de localisation en arrière-plan non accordee - mode premier plan uniquement');
+                if (__DEV__) {
+                  console.log('Permission de localisation en arrière-plan non accordee - mode premier plan uniquement');
+                }
               }
             } else {
-              console.log('Autorisation d’arrière-plan refusée par l’utilisateur : mode premier plan uniquement');
+              if (__DEV__) {
+                console.log('Autorisation d’arrière-plan refusée par l’utilisateur : mode premier plan uniquement');
+              }
             }
           }
         } catch (bgError) {
           // La permission de localisation en arrière-plan n'est pas disponible/configuree
-          console.log('Localisation en arrière-plan non disponible:', bgError);
+          if (__DEV__) {
+            console.log('Localisation en arrière-plan non disponible:', bgError);
+          }
         }
 
         const hasServicesEnabled = await Location.hasServicesEnabledAsync();
@@ -3107,7 +3135,7 @@ export default function NavigationScreen() {
           // Calculer la distance à chaque étape (throttled)
           if (now - lastStepCheckTime > STEP_CHECK_INTERVAL) {
             lastStepCheckTime = now;
-            updateCurrentStep(normalizedLocation);
+            updateCurrentStepRef.current?.(normalizedLocation);
           }
         }
       );
@@ -3136,9 +3164,13 @@ export default function NavigationScreen() {
     };
   }, [
     tripId,
+    isFocused,
     isTripOngoing,
+    driverPosition,
     navigateBackSafely,
+    router,
     sendDriverLocationToTracking,
+    showDialog,
     tripArrivalCoordinate,
   ]);
 
@@ -3402,14 +3434,16 @@ export default function NavigationScreen() {
     const directDistanceKm = calculateDistance(routeOrigin, routeDestination);
     const directDistanceMeters = directDistanceKm * 1000;
 
-    console.log('[DriverNavigation] Directions request coordinates', {
-      tripId,
-      isKinshasaNavigationTrip,
-      activeDestination: activeNavigationDestination,
-      origin: routeOrigin,
-      destination: routeDestination,
-      directDistanceKm: Number(directDistanceKm.toFixed(2)),
-    });
+    if (__DEV__) {
+      console.log('[DriverNavigation] Directions request coordinates', {
+        tripId,
+        isKinshasaNavigationTrip,
+        activeDestination: activeNavigationDestination,
+        origin: routeOrigin,
+        destination: routeDestination,
+        directDistanceKm: Number(directDistanceKm.toFixed(2)),
+      });
+    }
 
     const buildFallbackRoute = () => {
       return getSafeMapCoordinateList([routeOrigin, routeDestination]);
@@ -3692,6 +3726,7 @@ export default function NavigationScreen() {
       }
     }
   };
+  updateCurrentStepRef.current = updateCurrentStep;
 
   const normalizeHeading = (value: number) => {
     const normalized = value % 360;
@@ -4630,6 +4665,10 @@ export default function NavigationScreen() {
   }, [cleanupNavigationUi, router, tripId]);
 
   useEffect(() => {
+    if (!isFocused) {
+      return;
+    }
+
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (securityModalVisible) {
         setSecurityModalVisible(false);
@@ -4642,7 +4681,7 @@ export default function NavigationScreen() {
     return () => {
       backHandler.remove();
     };
-  }, [handleExitNavigation, securityModalVisible]);
+  }, [handleExitNavigation, isFocused, securityModalVisible]);
 
   // Décoder un polyline Google (avec simplification pour économiser la mémoire)
   const decodePolyline = (encoded: string): RouteCoordinate[] => {
@@ -6002,35 +6041,61 @@ export default function NavigationScreen() {
               </Text>
             </View>
             <View style={styles.waypointModalActions}>
-              <TouchableOpacity
-                style={[
-                  styles.waypointModalSecondaryButton,
-                  styles.pickupBypassDecisionButton,
-                  styles.pickupBypassCancelButton,
-                ]}
-                onPress={() => void handleCancelBypassedPickup()}
-                disabled={
-                  Boolean(pickupBypassAction) ||
-                  isConfirmingPickup ||
-                  isCancellingPickupBypassBooking
-                }
-              >
-                {pickupBypassAction === 'cancel' ? (
-                  <ActivityIndicator size="small" color={Colors.danger} />
-                ) : (
-                  <>
-                    <Ionicons name="close-circle" size={20} color={Colors.danger} />
-                    <Text
-                      style={[
-                        styles.waypointModalSecondaryButtonText,
-                        styles.pickupBypassCancelButtonText,
-                      ]}
-                    >
-                      Annuler reservation
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              {trip?.tripRequestId ? (
+                <TouchableOpacity
+                  style={[
+                    styles.waypointModalSecondaryButton,
+                    styles.pickupBypassDecisionButton,
+                  ]}
+                  onPress={() => void pauseTripWithoutPassengerConfirmation()}
+                  disabled={
+                    Boolean(pickupBypassAction) ||
+                    isConfirmingPickup ||
+                    isPausingTrip
+                  }
+                >
+                  {isPausingTrip ? (
+                    <ActivityIndicator size="small" color={Colors.warningDark} />
+                  ) : (
+                    <>
+                      <Ionicons name="pause-circle" size={20} color={Colors.warningDark} />
+                      <Text style={styles.waypointModalSecondaryButtonText}>
+                        Arrêter le trajet
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[
+                    styles.waypointModalSecondaryButton,
+                    styles.pickupBypassDecisionButton,
+                    styles.pickupBypassCancelButton,
+                  ]}
+                  onPress={() => void handleCancelBypassedPickup()}
+                  disabled={
+                    Boolean(pickupBypassAction) ||
+                    isConfirmingPickup ||
+                    isCancellingPickupBypassBooking
+                  }
+                >
+                  {pickupBypassAction === 'cancel' ? (
+                    <ActivityIndicator size="small" color={Colors.danger} />
+                  ) : (
+                    <>
+                      <Ionicons name="close-circle" size={20} color={Colors.danger} />
+                      <Text
+                        style={[
+                          styles.waypointModalSecondaryButtonText,
+                          styles.pickupBypassCancelButtonText,
+                        ]}
+                      >
+                        Annuler reservation
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={[
                   styles.waypointModalPrimaryButton,

@@ -7,16 +7,23 @@ import {
   useLazyCheckWalletTopUpStatusQuery,
   useTransferWalletPointsMutation,
 } from '@/store/api/walletApi';
-import type { SubscriptionPaymentMethod, WalletLedgerEntry, WalletLedgerEntryType } from '@/types';
+import { useAppSelector } from '@/store/hooks';
+import { selectUser } from '@/store/selectors';
+import type { SubscriptionPaymentMethod, WalletLedgerEntry, WalletLedgerEntryType, WalletPaymentResponse } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ExpoLinking from 'expo-linking';
+import * as WebBrowser from 'expo-web-browser';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   RefreshControl,
   ScrollView,
@@ -26,12 +33,40 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type WalletTab = 'top_up' | 'transfer';
+type WalletAction = 'top_up' | 'transfer';
+type TopUpStage =
+  | 'idle'
+  | 'preparing'
+  | 'phone_confirmation'
+  | 'card_redirect'
+  | 'checking'
+  | 'waiting_long'
+  | 'success'
+  | 'failed';
+type TopUpCheckOutcome = 'success' | 'pending' | 'failed' | 'error';
+type StoredWalletTopUp = {
+  amount: number;
+  createdAt: string;
+  message?: string | null;
+  orderNumber: string;
+  paymentMethod: SubscriptionPaymentMethod;
+  paymentUrl?: string | null;
+  userId: string;
+};
 
 const DRC_PAYMENT_PHONE_PREFIX = '+243';
 const DRC_PAYMENT_PHONE_REGEX = /^\+243\d{9}$/;
+const WALLET_CARD_PAYMENT_RETURN_PATH = 'wallet';
+const WALLET_TOP_UP_STORAGE_PREFIX = 'zwanga:wallet:pending-top-up:';
+const RECENT_PENDING_TOP_UP_MAX_AGE_MS = 30 * 60 * 1000;
+const AUTO_CHECK_INITIAL_DELAY_MS = 3500;
+const AUTO_CHECK_INTERVAL_MS = 8000;
+const AUTO_CHECK_TIMEOUT_MS = 90000;
+const AUTO_CHECK_MAX_ATTEMPTS = 8;
+
+WebBrowser.maybeCompleteAuthSession();
 
 const TOP_UP_METHOD_OPTIONS: {
   id: SubscriptionPaymentMethod;
@@ -99,6 +134,96 @@ const formatLedgerDescription = (description: string) =>
 const getPaymentStatusMessage = (message: string | null | undefined, fallback: string) =>
   getApiErrorMessage({ message }, fallback);
 
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const createWalletCardPaymentRedirectUrls = () => {
+  const baseUrl = ExpoLinking.createURL(WALLET_CARD_PAYMENT_RETURN_PATH);
+  const separator = baseUrl.includes('?') ? '&' : '?';
+  const withStatus = (status: 'success' | 'cancel' | 'decline') =>
+    `${baseUrl}${separator}status=${status}`;
+
+  return {
+    approveUrl: withStatus('success'),
+    cancelUrl: withStatus('cancel'),
+    declineUrl: withStatus('decline'),
+    returnUrl: baseUrl,
+  };
+};
+
+const getCardPaymentResultFromUrl = (url?: string | null) => {
+  if (!url) return null;
+  const lowerUrl = url.toLowerCase();
+  if (lowerUrl.includes('status=success') || lowerUrl.includes('/success')) return 'success';
+  if (lowerUrl.includes('status=cancel') || lowerUrl.includes('/cancel')) return 'cancel';
+  if (lowerUrl.includes('status=decline') || lowerUrl.includes('/decline')) return 'decline';
+  return null;
+};
+
+const normalizePaymentMessage = (message?: string | null) =>
+  (message ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+const isTopUpSucceeded = (response?: WalletPaymentResponse | null) =>
+  response?.payment.status === 'succeeded';
+
+const isTopUpFailed = (response?: WalletPaymentResponse | null) => {
+  const status = normalizePaymentMessage(response?.payment.status);
+  const message = normalizePaymentMessage(response?.payment.message);
+
+  return (
+    status === 'failed' ||
+    status === 'cancelled' ||
+    status === 'canceled' ||
+    status === 'declined' ||
+    status === 'rejected' ||
+    message.includes('annul') ||
+    message.includes('cancel') ||
+    message.includes('declined') ||
+    message.includes('echec') ||
+    message.includes('echoue') ||
+    message.includes('failed') ||
+    message.includes('refuse') ||
+    message.includes('rejet') ||
+    message.includes('insufficient') ||
+    message.includes('solde insuffisant')
+  );
+};
+
+const getStoredTopUpKey = (userId?: string | null) =>
+  userId ? `${WALLET_TOP_UP_STORAGE_PREFIX}${userId}` : null;
+
+const parseStoredTopUp = (value?: string | null): StoredWalletTopUp | null => {
+  if (!value) return null;
+
+  try {
+    const parsed = JSON.parse(value) as Partial<StoredWalletTopUp>;
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (typeof parsed.orderNumber !== 'string' || !parsed.orderNumber.trim()) return null;
+    if (typeof parsed.userId !== 'string' || !parsed.userId.trim()) return null;
+    if (parsed.paymentMethod !== 'card' && parsed.paymentMethod !== 'mobile_money') return null;
+
+    const createdAt = typeof parsed.createdAt === 'string' ? parsed.createdAt : '';
+    const createdAtMs = Date.parse(createdAt);
+    if (!Number.isFinite(createdAtMs)) return null;
+    if (Date.now() - createdAtMs > RECENT_PENDING_TOP_UP_MAX_AGE_MS) return null;
+
+    const amount = Number(parsed.amount);
+    return {
+      amount: Number.isFinite(amount) && amount > 0 ? amount : 0,
+      createdAt,
+      message: typeof parsed.message === 'string' ? parsed.message : null,
+      orderNumber: parsed.orderNumber,
+      paymentMethod: parsed.paymentMethod,
+      paymentUrl: typeof parsed.paymentUrl === 'string' ? parsed.paymentUrl : null,
+      userId: parsed.userId,
+    };
+  } catch {
+    return null;
+  }
+};
+
 const parsePositiveAmount = (value: string) => {
   const normalized = value.replace(/\s/g, '').replace(',', '.');
   const amount = Number(normalized);
@@ -143,48 +268,525 @@ const formatDate = (value?: string | null) => {
   });
 };
 
+function WalletSheetModal({
+  visible,
+  title,
+  subtitle,
+  icon,
+  onClose,
+  children,
+}: {
+  visible: boolean;
+  title: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Modal
+      transparent
+      statusBarTranslucent
+      animationType="slide"
+      presentationStyle="overFullScreen"
+      visible={visible}
+      onRequestClose={onClose}
+    >
+      <SafeAreaProvider>
+        <WalletSheetModalBody
+          icon={icon}
+          onClose={onClose}
+          subtitle={subtitle}
+          title={title}
+        >
+          {children}
+        </WalletSheetModalBody>
+      </SafeAreaProvider>
+    </Modal>
+  );
+}
+
+function WalletSheetModalBody({
+  title,
+  subtitle,
+  icon,
+  onClose,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, Spacing.lg) + Spacing.md;
+
+  return (
+    <View style={styles.sheetOverlay}>
+      <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={onClose} />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        pointerEvents="box-none"
+        style={styles.sheetKeyboard}
+      >
+        <View style={[styles.sheetCard, { paddingBottom: bottomInset }]}>
+          <View style={styles.sheetHeader}>
+            <View style={styles.sheetBadge}>
+              <Ionicons name={icon} size={22} color={Colors.white} />
+            </View>
+            <View style={styles.sheetHeaderCopy}>
+              <Text numberOfLines={1} style={styles.sheetTitle}>
+                {title}
+              </Text>
+              <Text numberOfLines={2} style={styles.sheetSubtitle}>
+                {subtitle}
+              </Text>
+            </View>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Fermer"
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.sheetCloseButton}
+              onPress={onClose}
+            >
+              <Ionicons name="close" size={22} color={Colors.gray[500]} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.sheetContent}>
+            {children}
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </View>
+  );
+}
+
 export default function WalletScreen() {
   const router = useRouter();
+  const { paymentStatus, status } = useLocalSearchParams<{
+    paymentStatus?: string;
+    status?: string;
+  }>();
+  const returnedPaymentStatus = paymentStatus ?? status;
+  const user = useAppSelector(selectUser);
   const { showDialog } = useDialog();
-  const [activeTab, setActiveTab] = useState<WalletTab>('top_up');
+  const [activeModal, setActiveModal] = useState<WalletAction | null>(null);
   const [topUpAmount, setTopUpAmount] = useState('50');
   const [topUpMethod, setTopUpMethod] = useState<SubscriptionPaymentMethod>('mobile_money');
   const [topUpPhone, setTopUpPhone] = useState('');
   const [topUpOrderNumber, setTopUpOrderNumber] = useState<string | null>(null);
+  const [topUpPaymentUrl, setTopUpPaymentUrl] = useState<string | null>(null);
+  const [topUpStage, setTopUpStage] = useState<TopUpStage>('idle');
+  const [topUpStatusMessage, setTopUpStatusMessage] = useState<string | null>(null);
+  const [topUpAutoCheckAttempt, setTopUpAutoCheckAttempt] = useState(0);
+  const [isAutoCheckingTopUp, setIsAutoCheckingTopUp] = useState(false);
   const [transferAmount, setTransferAmount] = useState('');
   const [transferRecipient, setTransferRecipient] = useState('');
   const [transferNote, setTransferNote] = useState('');
+  const mountedRef = useRef(true);
+  const pollingRunIdRef = useRef(0);
+  const restoredStorageKeyRef = useRef<string | null>(null);
+  const handledReturnStatusRef = useRef<string | null>(null);
 
   const {
     data: walletSummary,
     isLoading: isWalletLoading,
     isFetching: isWalletFetching,
     refetch: refetchWallet,
-  } = useGetMyWalletQuery();
+  } = useGetMyWalletQuery(undefined, {
+    refetchOnFocus: true,
+    refetchOnReconnect: false,
+  });
   const {
     data: ledger = [],
     isFetching: isLedgerFetching,
     refetch: refetchLedger,
-  } = useGetWalletLedgerQuery();
+  } = useGetWalletLedgerQuery(undefined, {
+    refetchOnFocus: true,
+    refetchOnReconnect: false,
+  });
   const [initiateWalletTopUp, { isLoading: isStartingTopUp }] = useInitiateWalletTopUpMutation();
   const [checkWalletTopUpStatus, { isFetching: isCheckingTopUp }] =
     useLazyCheckWalletTopUpStatusQuery();
   const [transferWalletPoints, { isLoading: isTransferring }] = useTransferWalletPointsMutation();
 
   const currency = walletSummary?.account.currency || 'PTS';
+  const storageKey = useMemo(
+    () => getStoredTopUpKey(user?.id ?? walletSummary?.account.userId),
+    [user?.id, walletSummary?.account.userId],
+  );
   const entries = useMemo<WalletLedgerEntry[]>(
     () => (ledger.length > 0 ? ledger : walletSummary?.recentEntries ?? []),
     [ledger, walletSummary?.recentEntries],
   );
   const isRefreshing = isWalletFetching || isLedgerFetching;
   const isTopUpPhoneRequired = topUpMethod === 'mobile_money';
+  const isTopUpBusy = isStartingTopUp || isCheckingTopUp || isAutoCheckingTopUp;
+  const topUpStatusTitle =
+    topUpStage === 'success'
+      ? 'Recharge confirmée'
+      : topUpStage === 'failed'
+        ? 'Recharge non confirmée'
+        : topUpStage === 'waiting_long'
+          ? 'Toujours en traitement'
+          : topUpStage === 'card_redirect'
+            ? 'Paiement carte'
+            : topUpOrderNumber
+              ? 'Suivi de la recharge'
+              : 'Recharge';
+  const topUpStatusColor =
+    topUpStage === 'success'
+      ? Colors.success
+      : topUpStage === 'failed'
+        ? Colors.danger
+        : topUpStage === 'waiting_long'
+          ? Colors.warningDark
+          : Colors.primary;
 
-  const refreshAll = async () => {
+  const refreshAll = useCallback(async () => {
     await Promise.allSettled([refetchWallet(), refetchLedger()]);
-  };
+  }, [refetchLedger, refetchWallet]);
+
+  const stopTopUpAutoCheck = useCallback(() => {
+    pollingRunIdRef.current += 1;
+    if (mountedRef.current) setIsAutoCheckingTopUp(false);
+  }, []);
+
+  const clearStoredTopUp = useCallback(async () => {
+    if (!storageKey) return;
+
+    try {
+      await AsyncStorage.removeItem(storageKey);
+    } catch (error) {
+      console.warn('[WalletTopUp] Impossible de supprimer la référence locale:', error);
+    }
+  }, [storageKey]);
+
+  const persistStoredTopUp = useCallback(
+    async (payment: Omit<StoredWalletTopUp, 'createdAt' | 'userId'>) => {
+      const userId = user?.id ?? walletSummary?.account.userId;
+      if (!storageKey || !userId || !payment.orderNumber) return;
+
+      const storedPayment: StoredWalletTopUp = {
+        ...payment,
+        createdAt: new Date().toISOString(),
+        userId,
+      };
+
+      try {
+        await AsyncStorage.setItem(storageKey, JSON.stringify(storedPayment));
+      } catch (error) {
+        console.warn('[WalletTopUp] Impossible de garder la référence locale:', error);
+      }
+    },
+    [storageKey, user?.id, walletSummary?.account.userId],
+  );
+
+  const readStoredTopUp = useCallback(async () => {
+    if (!storageKey) return null;
+
+    try {
+      const rawValue = await AsyncStorage.getItem(storageKey);
+      const storedPayment = parseStoredTopUp(rawValue);
+      const userId = user?.id ?? walletSummary?.account.userId;
+
+      if (!storedPayment || (userId && storedPayment.userId !== userId)) {
+        if (rawValue) await AsyncStorage.removeItem(storageKey);
+        return null;
+      }
+
+      return storedPayment;
+    } catch (error) {
+      console.warn('[WalletTopUp] Référence locale illisible:', error);
+      return null;
+    }
+  }, [storageKey, user?.id, walletSummary?.account.userId]);
+
+  const applyStoredTopUp = useCallback((storedPayment: StoredWalletTopUp) => {
+    setTopUpAmount(storedPayment.amount > 0 ? String(storedPayment.amount) : '50');
+    setTopUpMethod(storedPayment.paymentMethod);
+    setTopUpOrderNumber(storedPayment.orderNumber);
+    setTopUpPaymentUrl(storedPayment.paymentUrl ?? null);
+    setTopUpStage(storedPayment.paymentMethod === 'card' ? 'checking' : 'phone_confirmation');
+    setTopUpStatusMessage(
+      getPaymentStatusMessage(
+        storedPayment.message,
+        "Référence de recharge retrouvée. Nous vérifions son statut sans relancer de paiement.",
+      ),
+    );
+  }, []);
+
+  const finishSuccessfulTopUp = useCallback(
+    async (
+      response: WalletPaymentResponse,
+      options: { suppressDialog?: boolean } = {},
+    ) => {
+      stopTopUpAutoCheck();
+      await clearStoredTopUp();
+      setTopUpOrderNumber(null);
+      setTopUpPaymentUrl(null);
+      setTopUpStage('success');
+      setTopUpAutoCheckAttempt(0);
+      setTopUpStatusMessage('Recharge confirmée. Votre solde de jetons est en cours d’actualisation.');
+      setActiveModal(null);
+      await refreshAll();
+      setTimeout(() => {
+        if (mountedRef.current) void refreshAll();
+      }, 2500);
+
+      if (!options.suppressDialog) {
+        showDialog({
+          variant: 'success',
+          title: 'Recharge validée',
+          message: getPaymentStatusMessage(
+            response.payment.message,
+            'Votre paiement est confirmé. Les jetons ont été crédités sur votre compte.',
+          ),
+        });
+      }
+
+      return true;
+    },
+    [clearStoredTopUp, refreshAll, showDialog, stopTopUpAutoCheck],
+  );
+
+  const handleFailedTopUp = useCallback(
+    async (
+      response: WalletPaymentResponse,
+      options: { suppressDialog?: boolean } = {},
+    ) => {
+      stopTopUpAutoCheck();
+      await clearStoredTopUp();
+      setTopUpOrderNumber(null);
+      setTopUpPaymentUrl(null);
+      setTopUpStage('failed');
+      setTopUpAutoCheckAttempt(0);
+      const message = getPaymentStatusMessage(
+        response.payment.message,
+        "La recharge n'a pas été confirmée. Aucun jeton n'a été ajouté.",
+      );
+      setTopUpStatusMessage(message);
+      await refreshAll();
+
+      if (!options.suppressDialog) {
+        showDialog({
+          variant: 'danger',
+          title: 'Recharge non confirmée',
+          message,
+        });
+      }
+
+      return true;
+    },
+    [clearStoredTopUp, refreshAll, showDialog, stopTopUpAutoCheck],
+  );
+
+  const checkTopUpByOrderNumber = useCallback(
+    async (
+      orderNumber: string,
+      options: {
+        pendingMessage?: string;
+        suppressErrorDialog?: boolean;
+        suppressSuccessDialog?: boolean;
+      } = {},
+    ): Promise<TopUpCheckOutcome> => {
+      try {
+        setTopUpOrderNumber(orderNumber);
+        setTopUpStage('checking');
+        const response = await checkWalletTopUpStatus(orderNumber).unwrap();
+
+        if (isTopUpSucceeded(response)) {
+          await finishSuccessfulTopUp(response, {
+            suppressDialog: options.suppressSuccessDialog,
+          });
+          return 'success';
+        }
+
+        if (isTopUpFailed(response)) {
+          await handleFailedTopUp(response, {
+            suppressDialog: options.suppressErrorDialog,
+          });
+          return 'failed';
+        }
+
+        await refreshAll();
+        setTopUpStage(response.payment.method === 'card' ? 'checking' : 'phone_confirmation');
+        setTopUpStatusMessage(
+          getPaymentStatusMessage(
+            response.payment.message,
+            options.pendingMessage ||
+              'Paiement en attente chez FlexPay. Nous continuons la vérification.',
+          ),
+        );
+        return 'pending';
+      } catch (error) {
+        if (options.suppressErrorDialog) {
+          setTopUpStage('waiting_long');
+          setTopUpStatusMessage(
+            'La vérification prend plus de temps que prévu. La référence reste gardée.',
+          );
+          return 'error';
+        }
+
+        showDialog({
+          variant: 'danger',
+          title: 'Vérification impossible',
+          message: getApiErrorMessage(error, 'Impossible de vérifier cette recharge.'),
+        });
+        return 'error';
+      }
+    },
+    [checkWalletTopUpStatus, finishSuccessfulTopUp, handleFailedTopUp, refreshAll, showDialog],
+  );
+
+  const startTopUpAutoCheck = useCallback(
+    (
+      orderNumber: string,
+      paymentMethod: SubscriptionPaymentMethod,
+      initialMessage?: string | null,
+    ) => {
+      if (!orderNumber) return;
+
+      const runId = pollingRunIdRef.current + 1;
+      pollingRunIdRef.current = runId;
+      setIsAutoCheckingTopUp(true);
+      setTopUpAutoCheckAttempt(0);
+      setTopUpStage(paymentMethod === 'card' ? 'checking' : 'phone_confirmation');
+      setTopUpStatusMessage(
+        initialMessage ||
+          (paymentMethod === 'card'
+            ? 'Paiement carte ouvert. Nous vérifierons le statut au retour.'
+            : 'Demande envoyée au téléphone. Confirmez avec votre PIN Mobile Money.'),
+      );
+
+      void (async () => {
+        const deadline = Date.now() + AUTO_CHECK_TIMEOUT_MS;
+        let attempt = 0;
+        let nextDelay = AUTO_CHECK_INITIAL_DELAY_MS;
+
+        while (mountedRef.current && pollingRunIdRef.current === runId) {
+          const remainingMs = deadline - Date.now();
+          if (remainingMs <= 0 || attempt >= AUTO_CHECK_MAX_ATTEMPTS) break;
+
+          await wait(Math.min(nextDelay, remainingMs));
+          if (!mountedRef.current || pollingRunIdRef.current !== runId) return;
+
+          attempt += 1;
+          setTopUpAutoCheckAttempt(attempt);
+          const outcome = await checkTopUpByOrderNumber(orderNumber, {
+            pendingMessage:
+              attempt === 1
+                ? 'Vérification en cours. Si la demande est sur votre téléphone, confirmez avec votre PIN.'
+                : 'Toujours en attente côté opérateur. La confirmation peut prendre quelques instants.',
+            suppressErrorDialog: true,
+          });
+
+          if (!mountedRef.current || pollingRunIdRef.current !== runId) return;
+          if (outcome === 'success' || outcome === 'failed') {
+            setIsAutoCheckingTopUp(false);
+            return;
+          }
+
+          nextDelay = AUTO_CHECK_INTERVAL_MS;
+        }
+
+        if (mountedRef.current && pollingRunIdRef.current === runId) {
+          setIsAutoCheckingTopUp(false);
+          setTopUpStage('waiting_long');
+          setTopUpStatusMessage(
+            'La recharge est encore en traitement. Si votre argent a été débité, appuyez sur Vérifier la recharge au lieu de relancer un paiement.',
+          );
+        }
+      })();
+    },
+    [checkTopUpByOrderNumber],
+  );
+
+  const openTopUpCardPaymentUrl = useCallback(
+    async (
+      paymentUrl: string,
+      orderNumber: string | null,
+      returnUrl: string,
+    ) => {
+      setTopUpStage('card_redirect');
+      setTopUpStatusMessage('Page carte FlexPay ouverte. Finalisez le paiement; nous suivrons le retour.');
+
+      const result = await WebBrowser.openAuthSessionAsync(paymentUrl, returnUrl);
+      if (result.type !== 'success') {
+        if (orderNumber) {
+          const pendingMessage = "Retour dans l'app détecté. Vérification du paiement carte en cours.";
+          const outcome = await checkTopUpByOrderNumber(orderNumber, {
+            pendingMessage,
+            suppressErrorDialog: true,
+          });
+          if (outcome === 'pending' || outcome === 'error') {
+            startTopUpAutoCheck(orderNumber, 'card', pendingMessage);
+          }
+          return;
+        }
+
+        setTopUpStage('waiting_long');
+        setTopUpStatusMessage('Le paiement carte a été fermé avant le retour FlexPay.');
+        return;
+      }
+
+      const paymentResult = getCardPaymentResultFromUrl(result.url);
+      if ((paymentResult === 'cancel' || paymentResult === 'decline') && !orderNumber) {
+        setTopUpStage('failed');
+        setTopUpStatusMessage(
+          paymentResult === 'cancel'
+            ? 'Paiement carte annulé. Aucun jeton n’a été ajouté.'
+            : 'Paiement carte refusé. Vérifiez votre carte ou choisissez un autre moyen.',
+        );
+        return;
+      }
+
+      if (!orderNumber) {
+        setTopUpStage('waiting_long');
+        setTopUpStatusMessage('Retour carte reçu, mais la référence FlexPay est manquante.');
+        return;
+      }
+
+      const pendingMessage =
+        paymentResult === 'success'
+          ? 'Paiement carte validé côté FlexPay. Crédit des jetons en cours.'
+          : 'Retour carte reçu. Nous vérifions le statut avant toute nouvelle tentative.';
+      const outcome = await checkTopUpByOrderNumber(orderNumber, {
+        pendingMessage,
+        suppressErrorDialog: true,
+      });
+      if (outcome === 'pending' || outcome === 'error') {
+        startTopUpAutoCheck(orderNumber, 'card', pendingMessage);
+      }
+    },
+    [checkTopUpByOrderNumber, startTopUpAutoCheck],
+  );
 
   const handleTopUp = async () => {
     Keyboard.dismiss();
+
+    if (topUpOrderNumber) {
+      if (topUpMethod === 'card' && topUpPaymentUrl) {
+        const cardRedirectUrls = createWalletCardPaymentRedirectUrls();
+        await openTopUpCardPaymentUrl(
+          topUpPaymentUrl,
+          topUpOrderNumber,
+          cardRedirectUrls.returnUrl,
+        );
+        return;
+      }
+
+      const outcome = await checkTopUpByOrderNumber(topUpOrderNumber, {
+        pendingMessage: 'Actualisation du statut de recharge en cours.',
+        suppressErrorDialog: true,
+      });
+      if (outcome === 'pending' || outcome === 'error') {
+        startTopUpAutoCheck(topUpOrderNumber, topUpMethod, 'Nous continuons le suivi de cette recharge.');
+      }
+      return;
+    }
+
     const amount = parsePositiveAmount(topUpAmount);
     if (!amount) {
       showDialog({
@@ -207,30 +809,79 @@ export default function WalletScreen() {
     }
 
     try {
+      stopTopUpAutoCheck();
+      setTopUpStage('preparing');
+      setTopUpStatusMessage('Création de la référence de paiement. Aucun débit n’est relancé si une référence existe déjà.');
+      setTopUpAutoCheckAttempt(0);
+
+      const cardRedirectUrls = topUpMethod === 'card' ? createWalletCardPaymentRedirectUrls() : null;
       const response = await initiateWalletTopUp({
         amount,
         method: topUpMethod,
         phone: formattedPhone,
+        ...(cardRedirectUrls
+          ? {
+              approveUrl: cardRedirectUrls.approveUrl,
+              cancelUrl: cardRedirectUrls.cancelUrl,
+              declineUrl: cardRedirectUrls.declineUrl,
+            }
+          : {}),
       }).unwrap();
 
       if (formattedPhone) setTopUpPhone(formattedPhone);
       setTopUpOrderNumber(response.payment.orderNumber);
-      const openedPaymentPage = await openExternalUrlSafely(response.payment.paymentUrl, {
-        logLabel: 'WalletTopUp',
-      });
+      setTopUpPaymentUrl(response.payment.paymentUrl);
+
+      if (response.payment.orderNumber) {
+        await persistStoredTopUp({
+          amount,
+          message: response.payment.message,
+          orderNumber: response.payment.orderNumber,
+          paymentMethod: topUpMethod,
+          paymentUrl: response.payment.paymentUrl,
+        });
+      }
+
+      if (isTopUpSucceeded(response)) {
+        await finishSuccessfulTopUp(response);
+        return;
+      }
+
+      if (isTopUpFailed(response)) {
+        await handleFailedTopUp(response);
+        return;
+      }
+
+      if (response.payment.paymentUrl) {
+        if (topUpMethod === 'card' && cardRedirectUrls) {
+          await openTopUpCardPaymentUrl(
+            response.payment.paymentUrl,
+            response.payment.orderNumber,
+            cardRedirectUrls.returnUrl,
+          );
+          return;
+        }
+
+        await openExternalUrlSafely(response.payment.paymentUrl, {
+          logLabel: 'WalletTopUp',
+        });
+      }
+
+      const pendingMessage = getPaymentStatusMessage(
+        response.payment.message,
+        topUpMethod === 'card'
+          ? 'Finalisez le paiement carte. Nous vérifierons ensuite la recharge.'
+          : 'Confirmez la demande Mobile Money avec votre PIN. Le solde sera actualisé automatiquement.',
+      );
+      setTopUpStage(topUpMethod === 'card' ? 'checking' : 'phone_confirmation');
+      setTopUpStatusMessage(pendingMessage);
       await refreshAll();
 
-      showDialog({
-        variant: 'success',
-        title: 'Recharge lancée',
-        message: getPaymentStatusMessage(
-          response.payment.message,
-          openedPaymentPage
-            ? 'Finalisez le paiement dans la page ouverte.'
-            : 'Confirmez la demande de paiement, puis actualisez le statut.',
-        ),
-      });
+      if (response.payment.orderNumber) {
+        startTopUpAutoCheck(response.payment.orderNumber, topUpMethod, pendingMessage);
+      }
     } catch (error) {
+      setTopUpStage('failed');
       showDialog({
         variant: 'danger',
         title: 'Recharge impossible',
@@ -242,26 +893,12 @@ export default function WalletScreen() {
   const handleCheckTopUpStatus = async () => {
     if (!topUpOrderNumber) return;
 
-    try {
-      const response = await checkWalletTopUpStatus(topUpOrderNumber).unwrap();
-      const status = response.payment.status;
-      const isSucceeded = status === 'succeeded';
-      if (isSucceeded) {
-        setTopUpOrderNumber(null);
-      }
-      await refreshAll();
-
-      showDialog({
-        variant: isSucceeded ? 'success' : status === 'failed' || status === 'cancelled' ? 'danger' : 'info',
-        title: isSucceeded ? 'Recharge validee' : 'Statut recharge',
-        message: getPaymentStatusMessage(response.payment.message, `Statut actuel: ${status}.`),
-      });
-    } catch (error) {
-      showDialog({
-        variant: 'danger',
-        title: 'Vérification impossible',
-        message: getApiErrorMessage(error, 'Impossible de vérifier cette recharge.'),
-      });
+    stopTopUpAutoCheck();
+    const outcome = await checkTopUpByOrderNumber(topUpOrderNumber, {
+      pendingMessage: 'Actualisation du statut de recharge en cours.',
+    });
+    if (outcome === 'pending' || outcome === 'error') {
+      startTopUpAutoCheck(topUpOrderNumber, topUpMethod, 'Nous continuons le suivi de cette recharge.');
     }
   };
 
@@ -303,6 +940,7 @@ export default function WalletScreen() {
       setTransferAmount('');
       setTransferRecipient('');
       setTransferNote('');
+      setActiveModal(null);
       await refreshAll();
 
       showDialog({
@@ -318,6 +956,139 @@ export default function WalletScreen() {
       });
     }
   };
+
+  useEffect(() => () => {
+    mountedRef.current = false;
+    pollingRunIdRef.current += 1;
+  }, []);
+
+  useEffect(() => {
+    if (!storageKey) return;
+    if (restoredStorageKeyRef.current === storageKey) return;
+    restoredStorageKeyRef.current = storageKey;
+
+    let cancelled = false;
+    void (async () => {
+      const storedPayment = await readStoredTopUp();
+      if (cancelled || !storedPayment?.orderNumber) return;
+
+      applyStoredTopUp(storedPayment);
+      const outcome = await checkTopUpByOrderNumber(storedPayment.orderNumber, {
+        pendingMessage: "Référence de recharge retrouvée. Nous vérifions son statut.",
+        suppressErrorDialog: true,
+      });
+
+      if (!cancelled && (outcome === 'pending' || outcome === 'error')) {
+        startTopUpAutoCheck(
+          storedPayment.orderNumber,
+          storedPayment.paymentMethod,
+          "Référence de recharge retrouvée. Nous continuons le suivi.",
+        );
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    applyStoredTopUp,
+    checkTopUpByOrderNumber,
+    readStoredTopUp,
+    startTopUpAutoCheck,
+    storageKey,
+  ]);
+
+  useEffect(() => {
+    if (!returnedPaymentStatus) return;
+
+    const returnStatusKey = `${String(returnedPaymentStatus)}:${topUpOrderNumber ?? 'stored'}`;
+    if (handledReturnStatusRef.current === returnStatusKey) return;
+    handledReturnStatusRef.current = returnStatusKey;
+
+    const normalizedStatus = String(returnedPaymentStatus).toLowerCase();
+    void (async () => {
+      const storedPayment = await readStoredTopUp();
+      const orderNumber = topUpOrderNumber ?? storedPayment?.orderNumber;
+      const paymentMethod = storedPayment?.paymentMethod ?? topUpMethod;
+      setActiveModal('top_up');
+
+      if (!orderNumber) {
+        if (normalizedStatus === 'cancel' || normalizedStatus === 'decline') {
+          setTopUpStage('failed');
+          setTopUpStatusMessage(
+            normalizedStatus === 'cancel'
+              ? 'Paiement carte annulé. Aucun jeton n’a été ajouté.'
+              : 'Paiement carte refusé. Vérifiez votre carte ou choisissez un autre moyen.',
+          );
+        } else {
+          setTopUpStage('waiting_long');
+          setTopUpStatusMessage('Retour carte reçu. Actualisez le statut avant de relancer un paiement.');
+        }
+        return;
+      }
+
+      const pendingMessage =
+        normalizedStatus === 'success'
+          ? 'Retour carte reçu. Crédit des jetons en cours de vérification.'
+          : 'Retour carte reçu. Nous vérifions le statut avant toute nouvelle tentative.';
+      const outcome = await checkTopUpByOrderNumber(orderNumber, {
+        pendingMessage,
+        suppressErrorDialog: true,
+      });
+
+      if (outcome === 'pending' || outcome === 'error') {
+        startTopUpAutoCheck(orderNumber, paymentMethod, pendingMessage);
+      }
+    })();
+  }, [
+    checkTopUpByOrderNumber,
+    readStoredTopUp,
+    returnedPaymentStatus,
+    startTopUpAutoCheck,
+    topUpMethod,
+    topUpOrderNumber,
+  ]);
+
+  useEffect(() => {
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (
+        nextState !== 'active' ||
+        !topUpOrderNumber ||
+        topUpStage === 'success' ||
+        topUpStage === 'failed'
+      ) {
+        return;
+      }
+
+      void checkTopUpByOrderNumber(topUpOrderNumber, {
+        pendingMessage: "Retour dans l'app détecté. Nous actualisons la recharge.",
+        suppressErrorDialog: true,
+      }).then((outcome) => {
+        if (
+          mountedRef.current &&
+          (outcome === 'pending' || outcome === 'error') &&
+          !isAutoCheckingTopUp
+        ) {
+          startTopUpAutoCheck(
+            topUpOrderNumber,
+            topUpMethod,
+            "Retour dans l'app détecté. Nous reprenons le suivi.",
+          );
+        }
+      });
+    });
+
+    return () => {
+      appStateSubscription.remove();
+    };
+  }, [
+    checkTopUpByOrderNumber,
+    isAutoCheckingTopUp,
+    startTopUpAutoCheck,
+    topUpMethod,
+    topUpOrderNumber,
+    topUpStage,
+  ]);
 
   const renderLedgerEntry = (entry: WalletLedgerEntry) => {
     const meta = LEDGER_META[entry.type] ?? {
@@ -370,228 +1141,311 @@ export default function WalletScreen() {
         </TouchableOpacity>
       </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.keyboardRoot}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refreshAll} />}
+        showsVerticalScrollIndicator={false}
+        style={styles.scrollRoot}
       >
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refreshAll} />}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.balancePanel}>
-            <View style={styles.balanceTopRow}>
-              <View style={styles.balanceIcon}>
-                <Ionicons name="wallet-outline" size={22} color={Colors.white} />
-              </View>
-              <Text style={styles.balanceLabel}>Solde disponible</Text>
+        <View style={styles.balancePanel}>
+          <View style={styles.balanceTopRow}>
+            <View style={styles.balanceIcon}>
+              <Ionicons name="wallet-outline" size={22} color={Colors.white} />
             </View>
-            {isWalletLoading ? (
-              <ActivityIndicator color={Colors.primary} style={styles.balanceLoader} />
-            ) : (
-              <Text style={styles.balanceValue}>
-                {formatWalletAmount(walletSummary?.account.balance ?? 0, currency)}
-              </Text>
-            )}
-            <Text style={styles.balanceHint}>
-              Les jetons achetés et les jetons de fidélité sont utilisables pour vos trajets et abonnements.
-            </Text>
+            <Text style={styles.balanceLabel}>Solde disponible</Text>
           </View>
-
-          <TouchableOpacity style={styles.referralBanner} onPress={() => router.push('/referrals')}>
-            <View style={styles.referralBannerIcon}>
-              <Ionicons name="gift-outline" size={21} color={Colors.primary} />
-            </View>
-            <View style={styles.referralBannerText}>
-              <Text style={styles.referralBannerTitle}>Jetons de parrainage</Text>
-              <Text style={styles.referralBannerHint}>Consultez vos commissions de 5 % et retirez vos gains.</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
-          </TouchableOpacity>
-
-          <View style={styles.tabs}>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => setActiveTab('top_up')}
-              style={[styles.tabButton, activeTab === 'top_up' && styles.tabButtonActive]}
-            >
-              <Ionicons
-                name="add-circle-outline"
-                size={18}
-                color={activeTab === 'top_up' ? Colors.white : Colors.gray[700]}
-              />
-              <Text style={[styles.tabText, activeTab === 'top_up' && styles.tabTextActive]}>
-                Recharger
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => setActiveTab('transfer')}
-              style={[styles.tabButton, activeTab === 'transfer' && styles.tabButtonActive]}
-            >
-              <Ionicons
-                name="share-outline"
-                size={18}
-                color={activeTab === 'transfer' ? Colors.white : Colors.gray[700]}
-              />
-              <Text style={[styles.tabText, activeTab === 'transfer' && styles.tabTextActive]}>
-                Partager
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {activeTab === 'top_up' ? (
-            <View style={styles.formPanel}>
-              <Text style={styles.sectionTitle}>Acheter des jetons</Text>
-              <View style={styles.methodRow}>
-                {TOP_UP_METHOD_OPTIONS.map((option) => {
-                  const selected = topUpMethod === option.id;
-                  return (
-                    <TouchableOpacity
-                      key={option.id}
-                      activeOpacity={0.85}
-                      onPress={() => setTopUpMethod(option.id)}
-                      style={[styles.methodButton, selected && styles.methodButtonActive]}
-                    >
-                      <Ionicons
-                        name={option.icon}
-                        size={18}
-                        color={selected ? Colors.primary : Colors.gray[600]}
-                      />
-                      <View style={styles.methodTextBlock}>
-                        <Text style={styles.methodLabel}>{option.label}</Text>
-                        <Text numberOfLines={1} style={styles.methodHint}>
-                          {option.hint}
-                        </Text>
-                      </View>
-                      <Ionicons
-                        name={selected ? 'radio-button-on' : 'radio-button-off'}
-                        size={18}
-                        color={selected ? Colors.primary : Colors.gray[300]}
-                      />
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <TextInput
-                keyboardType="numeric"
-                onChangeText={setTopUpAmount}
-                placeholder="Nombre de jetons"
-                placeholderTextColor={Colors.gray[400]}
-                style={styles.input}
-                value={topUpAmount}
-              />
-              <Text style={styles.helperText}>1 jeton = 100 FC. Exemple: 50 jetons = 5 000 FC.</Text>
-              {isTopUpPhoneRequired ? (
-                <TextInput
-                  keyboardType="phone-pad"
-                  maxLength={13}
-                  onChangeText={(text) => setTopUpPhone(normalizePhone(text))}
-                  placeholder="+243891234567"
-                  placeholderTextColor={Colors.gray[400]}
-                  style={styles.input}
-                  value={topUpPhone}
-                />
-              ) : null}
-
-              <TouchableOpacity
-                activeOpacity={0.85}
-                disabled={isStartingTopUp}
-                onPress={handleTopUp}
-                style={[styles.primaryButton, isStartingTopUp && styles.disabled]}
-              >
-                {isStartingTopUp ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <>
-                    <Ionicons name="flash-outline" size={18} color={Colors.white} />
-                    <Text style={styles.primaryButtonText}>Recharger</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-
-              {topUpOrderNumber ? (
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  disabled={isCheckingTopUp}
-                  onPress={handleCheckTopUpStatus}
-                  style={[styles.secondaryButton, isCheckingTopUp && styles.disabled]}
-                >
-                  {isCheckingTopUp ? (
-                    <ActivityIndicator color={Colors.primary} />
-                  ) : (
-                    <>
-                      <Ionicons name="sync-outline" size={18} color={Colors.primary} />
-                      <Text style={styles.secondaryButtonText}>Vérifier la recharge</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              ) : null}
-            </View>
+          {isWalletLoading ? (
+            <ActivityIndicator color={Colors.primary} style={styles.balanceLoader} />
           ) : (
-            <View style={styles.formPanel}>
-              <Text style={styles.sectionTitle}>Partager a un utilisateur</Text>
-              <TextInput
-                keyboardType="numeric"
-                onChangeText={setTransferAmount}
-                placeholder="Nombre de jetons"
-                placeholderTextColor={Colors.gray[400]}
-                style={styles.input}
-                value={transferAmount}
-              />
-              <TextInput
-                autoCapitalize="none"
-                keyboardType="default"
-                onChangeText={setTransferRecipient}
-                placeholder="Téléphone, email ou ID utilisateur"
-                placeholderTextColor={Colors.gray[400]}
-                style={styles.input}
-                value={transferRecipient}
-              />
-              <TextInput
-                onChangeText={setTransferNote}
-                placeholder="Note optionnelle"
-                placeholderTextColor={Colors.gray[400]}
-                style={styles.input}
-                value={transferNote}
-              />
-              <TouchableOpacity
-                activeOpacity={0.85}
-                disabled={isTransferring}
-                onPress={handleTransfer}
-                style={[styles.primaryButton, isTransferring && styles.disabled]}
-              >
-                {isTransferring ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <>
-                    <Ionicons name="send-outline" size={18} color={Colors.white} />
-                    <Text style={styles.primaryButtonText}>Partager les jetons</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+            <Text style={styles.balanceValue}>
+              {formatWalletAmount(walletSummary?.account.balance ?? 0, currency)}
+            </Text>
+          )}
+          <Text style={styles.balanceHint}>
+            Les jetons achetés et les jetons de fidélité sont utilisables pour vos trajets et abonnements.
+          </Text>
+        </View>
+
+        <TouchableOpacity style={styles.referralBanner} onPress={() => router.push('/referrals')}>
+          <View style={styles.referralBannerIcon}>
+            <Ionicons name="gift-outline" size={21} color={Colors.primary} />
+          </View>
+          <View style={styles.referralBannerText}>
+            <Text style={styles.referralBannerTitle}>Jetons de parrainage</Text>
+            <Text style={styles.referralBannerHint}>Consultez vos commissions de 5 % et retirez vos gains.</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+        </TouchableOpacity>
+
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Recharger des jetons"
+            activeOpacity={0.85}
+            onPress={() => setActiveModal('top_up')}
+            style={styles.actionCard}
+          >
+            <View style={styles.actionCardIcon}>
+              <Ionicons name="add-circle-outline" size={22} color={Colors.white} />
+            </View>
+            <Text style={styles.actionCardTitle}>Recharger</Text>
+            <Text style={styles.actionCardHint}>Acheter des jetons</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Partager des jetons"
+            activeOpacity={0.85}
+            onPress={() => setActiveModal('transfer')}
+            style={styles.actionCard}
+          >
+            <View style={[styles.actionCardIcon, styles.actionCardIconSecondary]}>
+              <Ionicons name="share-outline" size={20} color={Colors.primary} />
+            </View>
+            <Text style={styles.actionCardTitle}>Partager</Text>
+            <Text style={styles.actionCardHint}>Envoyer à un utilisateur</Text>
+          </TouchableOpacity>
+        </View>
+
+        {topUpStatusMessage || topUpOrderNumber ? (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => setActiveModal('top_up')}
+            style={[styles.followUpBanner, { borderColor: topUpStatusColor + '35' }]}
+          >
+            <View style={[styles.followUpIcon, { backgroundColor: topUpStatusColor + '12' }]}>
+              {isAutoCheckingTopUp || isCheckingTopUp ? (
+                <ActivityIndicator size="small" color={topUpStatusColor} />
+              ) : (
+                <Ionicons
+                  name={
+                    topUpStage === 'success'
+                      ? 'checkmark-circle-outline'
+                      : topUpStage === 'failed'
+                        ? 'close-circle-outline'
+                        : 'sync-outline'
+                  }
+                  size={18}
+                  color={topUpStatusColor}
+                />
+              )}
+            </View>
+            <View style={styles.followUpCopy}>
+              <Text style={[styles.followUpTitle, { color: topUpStatusColor }]}>{topUpStatusTitle}</Text>
+              <Text numberOfLines={2} style={styles.followUpText}>
+                {topUpStatusMessage || 'Touchez pour suivre la recharge.'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
+          </TouchableOpacity>
+        ) : null}
+
+        <View style={styles.historyHeader}>
+          <Text style={styles.sectionTitle}>Historique</Text>
+          {isLedgerFetching ? <ActivityIndicator size="small" color={Colors.primary} /> : null}
+        </View>
+
+        <View style={styles.ledgerPanel}>
+          {entries.length > 0 ? (
+            entries.map(renderLedgerEntry)
+          ) : (
+            <View style={styles.emptyLedger}>
+              <Ionicons name="receipt-outline" size={24} color={Colors.gray[400]} />
+              <Text style={styles.emptyLedgerText}>Aucun mouvement pour le moment.</Text>
             </View>
           )}
+        </View>
+      </ScrollView>
 
-          <View style={styles.historyHeader}>
-            <Text style={styles.sectionTitle}>Historique</Text>
-            {isLedgerFetching ? <ActivityIndicator size="small" color={Colors.primary} /> : null}
+      <WalletSheetModal
+        icon="flash-outline"
+        onClose={() => setActiveModal(null)}
+        subtitle="Mobile Money ou carte. 1 jeton = 100 FC."
+        title="Acheter des jetons"
+        visible={activeModal === 'top_up'}
+      >
+        <View style={styles.methodRow}>
+          {TOP_UP_METHOD_OPTIONS.map((option) => {
+            const selected = topUpMethod === option.id;
+            const disabled = Boolean(topUpOrderNumber) || isTopUpBusy;
+            return (
+              <TouchableOpacity
+                key={option.id}
+                activeOpacity={0.85}
+                disabled={disabled}
+                onPress={() => setTopUpMethod(option.id)}
+                style={[
+                  styles.methodButton,
+                  selected && styles.methodButtonActive,
+                  disabled && styles.disabled,
+                ]}
+              >
+                <Ionicons
+                  name={option.icon}
+                  size={18}
+                  color={selected ? Colors.primary : Colors.gray[600]}
+                />
+                <View style={styles.methodTextBlock}>
+                  <Text style={styles.methodLabel}>{option.label}</Text>
+                  <Text numberOfLines={1} style={styles.methodHint}>
+                    {option.hint}
+                  </Text>
+                </View>
+                <Ionicons
+                  name={selected ? 'radio-button-on' : 'radio-button-off'}
+                  size={18}
+                  color={selected ? Colors.primary : Colors.gray[300]}
+                />
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <TextInput
+          keyboardType="numeric"
+          onChangeText={setTopUpAmount}
+          placeholder="Nombre de jetons"
+          placeholderTextColor={Colors.gray[400]}
+          style={styles.input}
+          value={topUpAmount}
+        />
+        <Text style={styles.helperText}>1 jeton = 100 FC. Exemple: 50 jetons = 5 000 FC.</Text>
+        {isTopUpPhoneRequired ? (
+          <TextInput
+            keyboardType="phone-pad"
+            maxLength={13}
+            onChangeText={(text) => setTopUpPhone(normalizePhone(text))}
+            placeholder="+243891234567"
+            placeholderTextColor={Colors.gray[400]}
+            style={styles.input}
+            value={topUpPhone}
+          />
+        ) : null}
+
+        <TouchableOpacity
+          activeOpacity={0.85}
+          disabled={isTopUpBusy}
+          onPress={handleTopUp}
+          style={[styles.primaryButton, isTopUpBusy && styles.disabled]}
+        >
+          {isTopUpBusy ? (
+            <ActivityIndicator color={Colors.white} />
+          ) : (
+            <>
+              <Ionicons name="flash-outline" size={18} color={Colors.white} />
+              <Text style={styles.primaryButtonText}>
+                {topUpOrderNumber
+                  ? topUpMethod === 'card' && topUpPaymentUrl
+                    ? 'Rouvrir le paiement'
+                    : 'Actualiser la recharge'
+                  : 'Recharger'}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {topUpStatusMessage || topUpOrderNumber ? (
+          <View style={[styles.topUpStatusCard, { borderColor: topUpStatusColor + '35' }]}>
+            <View style={styles.topUpStatusHeader}>
+              {isAutoCheckingTopUp || isCheckingTopUp ? (
+                <ActivityIndicator size="small" color={topUpStatusColor} />
+              ) : (
+                <Ionicons
+                  name={
+                    topUpStage === 'success'
+                      ? 'checkmark-circle-outline'
+                      : topUpStage === 'failed'
+                        ? 'close-circle-outline'
+                        : 'sync-outline'
+                  }
+                  size={18}
+                  color={topUpStatusColor}
+                />
+              )}
+              <Text style={[styles.topUpStatusTitle, { color: topUpStatusColor }]}>
+                {topUpStatusTitle}
+              </Text>
+            </View>
+            {topUpStatusMessage ? (
+              <Text style={styles.topUpStatusText}>{topUpStatusMessage}</Text>
+            ) : null}
+            {topUpAutoCheckAttempt > 0 ? (
+              <Text style={styles.topUpReferenceText}>
+                Vérification automatique {topUpAutoCheckAttempt}/{AUTO_CHECK_MAX_ATTEMPTS}
+              </Text>
+            ) : null}
+            {topUpOrderNumber ? (
+              <Text style={styles.topUpReferenceText}>Référence FlexPay {topUpOrderNumber}</Text>
+            ) : null}
           </View>
+        ) : null}
 
-          <View style={styles.ledgerPanel}>
-            {entries.length > 0 ? (
-              entries.map(renderLedgerEntry)
+        {topUpOrderNumber ? (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            disabled={isTopUpBusy}
+            onPress={handleCheckTopUpStatus}
+            style={[styles.secondaryButton, isTopUpBusy && styles.disabled]}
+          >
+            {isCheckingTopUp || isAutoCheckingTopUp ? (
+              <ActivityIndicator color={Colors.primary} />
             ) : (
-              <View style={styles.emptyLedger}>
-                <Ionicons name="receipt-outline" size={24} color={Colors.gray[400]} />
-                <Text style={styles.emptyLedgerText}>Aucun mouvement pour le moment.</Text>
-              </View>
+              <>
+                <Ionicons name="sync-outline" size={18} color={Colors.primary} />
+                <Text style={styles.secondaryButtonText}>Vérifier la recharge</Text>
+              </>
             )}
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          </TouchableOpacity>
+        ) : null}
+      </WalletSheetModal>
+
+      <WalletSheetModal
+        icon="share-outline"
+        onClose={() => setActiveModal(null)}
+        subtitle="Téléphone +243, email ou identifiant utilisateur."
+        title="Partager des jetons"
+        visible={activeModal === 'transfer'}
+      >
+        <TextInput
+          keyboardType="numeric"
+          onChangeText={setTransferAmount}
+          placeholder="Nombre de jetons"
+          placeholderTextColor={Colors.gray[400]}
+          style={styles.input}
+          value={transferAmount}
+        />
+        <TextInput
+          autoCapitalize="none"
+          keyboardType="default"
+          onChangeText={setTransferRecipient}
+          placeholder="Téléphone, email ou ID utilisateur"
+          placeholderTextColor={Colors.gray[400]}
+          style={styles.input}
+          value={transferRecipient}
+        />
+        <TextInput
+          onChangeText={setTransferNote}
+          placeholder="Note optionnelle"
+          placeholderTextColor={Colors.gray[400]}
+          style={styles.input}
+          value={transferNote}
+        />
+        <TouchableOpacity
+          activeOpacity={0.85}
+          disabled={isTransferring}
+          onPress={handleTransfer}
+          style={[styles.primaryButton, isTransferring && styles.disabled]}
+        >
+          {isTransferring ? (
+            <ActivityIndicator color={Colors.white} />
+          ) : (
+            <>
+              <Ionicons name="send-outline" size={18} color={Colors.white} />
+              <Text style={styles.primaryButtonText}>Partager les jetons</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </WalletSheetModal>
     </SafeAreaView>
   );
 }
@@ -601,7 +1455,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.gray[50],
   },
-  keyboardRoot: {
+  scrollRoot: {
     flex: 1,
   },
   header: {
@@ -705,40 +1559,144 @@ const styles = StyleSheet.create({
   referralBannerText: { flex: 1, minWidth: 0 },
   referralBannerTitle: { color: Colors.gray[900], fontSize: FontSizes.sm, fontWeight: FontWeights.bold },
   referralBannerHint: { color: Colors.gray[500], fontSize: FontSizes.xs, lineHeight: 17, marginTop: 3 },
-  tabs: {
-    minHeight: 48,
+  actionRow: {
     flexDirection: 'row',
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.gray[100],
-    padding: 4,
-    gap: 4,
+    gap: Spacing.md,
   },
-  tabButton: {
+  actionCard: {
     flex: 1,
-    minHeight: 40,
-    borderRadius: BorderRadius.sm,
-    flexDirection: 'row',
+    minHeight: 118,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+  },
+  actionCardIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.xs,
   },
-  tabButtonActive: {
-    backgroundColor: Colors.primary,
+  actionCardIconSecondary: {
+    backgroundColor: Colors.primary + '12',
   },
-  tabText: {
-    color: Colors.gray[700],
+  actionCardTitle: {
+    color: Colors.gray[900],
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
   },
-  tabTextActive: {
-    color: Colors.white,
+  actionCardHint: {
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
   },
-  formPanel: {
+  followUpBanner: {
+    minHeight: 72,
     borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.white,
     borderWidth: 1,
-    borderColor: Colors.gray[200],
-    padding: Spacing.lg,
+    backgroundColor: Colors.white,
+    padding: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  followUpIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  followUpCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  followUpTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  followUpText: {
+    marginTop: 3,
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+  },
+  sheetOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  sheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  sheetKeyboard: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'flex-end',
+  },
+  sheetCard: {
+    width: '100%',
+    minHeight: '90%',
+    maxHeight: '96%',
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: -5 },
+    elevation: 16,
+  },
+  sheetHeader: {
+    minHeight: 76,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+  },
+  sheetBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  sheetTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+  },
+  sheetSubtitle: {
+    marginTop: 2,
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+  },
+  sheetCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.gray[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetContent: {
+    flex: 1,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
     gap: Spacing.md,
   },
   sectionTitle: {
@@ -824,6 +1782,31 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
+  },
+  topUpStatusCard: {
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    backgroundColor: Colors.gray[50],
+    padding: Spacing.md,
+    gap: Spacing.xs,
+  },
+  topUpStatusHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  topUpStatusTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  topUpStatusText: {
+    color: Colors.gray[700],
+    fontSize: FontSizes.sm,
+    lineHeight: 19,
+  },
+  topUpReferenceText: {
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
   },
   historyHeader: {
     minHeight: 28,

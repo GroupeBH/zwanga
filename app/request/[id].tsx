@@ -5,20 +5,17 @@ import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constan
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useGetTripByIdQuery, useStartTripMutation } from '@/store/api/tripApi';
 import {
-  useAcceptDriverOfferMutation,
   useAcceptTripRequestMutation,
   useCancelTripRequestMutation,
-  useCreateDriverOfferMutation,
   useGetTripRequestVehicleOptionsMutation,
   useGetTripRequestByIdQuery,
-  useRejectDriverOfferMutation,
   useStartTripFromRequestMutation,
   useUpdateTripRequestMutation,
   type TripRequestVehiclePriceOption,
 } from '@/store/api/tripRequestApi';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
-import type { TripRequestVehicleType, Vehicle } from '@/types';
+import type { TripRequestVehicleType, VehicleType } from '@/types';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import {
   createBecomeDriverAction,
@@ -26,6 +23,7 @@ import {
   getApiErrorMessage,
   isDailyPublicationLimitError,
   isDriverRequiredError,
+  isPassengerKycRequiredError,
 } from '@/utils/errorHelpers';
 import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import { getRouteCoordinates } from '@/utils/routeApi';
@@ -60,7 +58,7 @@ import Animated, {
   FadeOutUp,
   LinearTransition,
 } from '@/utils/reanimated';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type RequestRouteMapData = {
   arrivalCoordinate: LatLng;
@@ -70,8 +68,6 @@ type RequestRouteMapData = {
 };
 
 type RouteOverridePickerTarget =
-  | 'offerDeparture'
-  | 'offerArrival'
   | 'directDeparture'
   | 'directArrival';
 
@@ -89,6 +85,54 @@ const TRIP_REQUEST_VEHICLE_ICONS: Record<
   motorcycle_2_wheels: 'bicycle',
   motorcycle_3_wheels: 'car-outline',
 };
+
+function normalizeTripRequestVehicleType(
+  type?: TripRequestVehicleType | VehicleType | null,
+): TripRequestVehicleType {
+  switch (type) {
+    case 'motorcycle_2_wheels':
+    case 'moto':
+      return 'motorcycle_2_wheels';
+    case 'motorcycle_3_wheels':
+    case 'tricycle':
+      return 'motorcycle_3_wheels';
+    case 'car':
+    default:
+      return 'car';
+  }
+}
+
+const EDIT_SCHEDULE_SUGGESTION_LEAD_MS = 5 * 60 * 1000;
+const EDIT_SCHEDULE_MIN_WINDOW_MS = 30 * 60 * 1000;
+
+function isValidDate(value: Date | null | undefined): value is Date {
+  return value instanceof Date && Number.isFinite(value.getTime());
+}
+
+function getScheduleWindowDuration(minDate: Date | null, maxDate: Date | null) {
+  if (!isValidDate(minDate) || !isValidDate(maxDate)) {
+    return EDIT_SCHEDULE_MIN_WINDOW_MS;
+  }
+
+  return Math.max(
+    maxDate.getTime() - minDate.getTime(),
+    EDIT_SCHEDULE_MIN_WINDOW_MS,
+  );
+}
+
+function getEditScheduleError(minDate: Date | null, maxDate: Date | null) {
+  if (!isValidDate(minDate) || !isValidDate(maxDate)) {
+    return 'Choisissez une date et une heure de d\u00e9part valides.';
+  }
+  if (minDate.getTime() <= Date.now()) {
+    return 'L\u2019heure de d\u00e9part doit \u00eatre dans le futur.';
+  }
+  if (maxDate.getTime() <= minDate.getTime()) {
+    return 'L\u2019heure de fin du cr\u00e9neau doit suivre l\u2019heure de d\u00e9part.';
+  }
+
+  return null;
+}
 
 function formatCdfPrice(value: number) {
   return `${String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} FC`;
@@ -241,15 +285,23 @@ export default function TripRequestDetailsScreen() {
       params: { openDriverOnboarding: '1' },
     } as any);
   }, [router]);
-  const params = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string; editSchedule?: string }>();
   const { showDialog } = useDialog();
-  const insets = useSafeAreaInsets();
   
   // Extraire l'ID correctement (peut être un tableau avec Expo Router)
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  const editScheduleParam = Array.isArray(params.editSchedule)
+    ? params.editSchedule[0]
+    : params.editSchedule;
+  const shouldOpenScheduleEditor = editScheduleParam === '1';
   const isCreateRouteAlias = id === 'index';
   
   const { data: currentUser } = useGetCurrentUserQuery();
+  const isDriverAccount = Boolean(
+    currentUser?.isDriver ||
+      currentUser?.role === 'driver' ||
+      currentUser?.role === 'both',
+  );
   const { isIdentityVerified, checkIdentity } = useIdentityCheck();
   
   // État pour le polling interval dynamique
@@ -314,18 +366,26 @@ export default function TripRequestDetailsScreen() {
     }
   }, [id, error, tripRequest, isCreateRouteAlias]);
   const { data: vehicles = [] } = useGetVehiclesQuery(undefined, {
-    skip: !(currentUser?.role === 'driver' || currentUser?.role === 'both'),
+    skip: !isDriverAccount,
   });
   
   // Filtrer pour n'afficher que les véhicules actifs
   const activeVehicles = useMemo(() => {
-    return vehicles.filter((vehicle) => vehicle.isActive === true);
+    return vehicles.filter((vehicle) => vehicle.isActive !== false);
   }, [vehicles]);
+  const requestedVehicleType = normalizeTripRequestVehicleType(
+    tripRequest?.vehicleType,
+  );
+  const compatibleActiveVehicles = useMemo(
+    () =>
+      activeVehicles.filter(
+        (vehicle) =>
+          normalizeTripRequestVehicleType(vehicle.type) === requestedVehicleType,
+      ),
+    [activeVehicles, requestedVehicleType],
+  );
   
-  const [createOffer, { isLoading: isCreatingOffer }] = useCreateDriverOfferMutation();
-  const [acceptOffer, { isLoading: isAcceptingOffer }] = useAcceptDriverOfferMutation();
   const [acceptTripRequest, { isLoading: isAcceptingTripRequest }] = useAcceptTripRequestMutation();
-  const [rejectOffer, { isLoading: isRejectingOffer }] = useRejectDriverOfferMutation();
   const [cancelRequest, { isLoading: isCancelling }] = useCancelTripRequestMutation();
   const [updateTripRequest, { isLoading: isUpdating }] = useUpdateTripRequestMutation();
   const [
@@ -373,46 +433,52 @@ export default function TripRequestDetailsScreen() {
   const [editLocationPickerType, setEditLocationPickerType] = useState<'departure' | 'arrival' | null>(null);
   const editPickerTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editPickerRestorePendingRef = useRef(false);
+  const overdueScheduleEditorOpenedRef = useRef(false);
+  const directPickerTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const directPickerRestorePendingRef = useRef(false);
 
   useEffect(() => () => {
     if (editPickerTransitionTimerRef.current) {
       clearTimeout(editPickerTransitionTimerRef.current);
     }
+    if (directPickerTransitionTimerRef.current) {
+      clearTimeout(directPickerTransitionTimerRef.current);
+    }
   }, []);
 
-  // États pour le formulaire d'offre
-  const [showOfferForm, setShowOfferForm] = useState(false);
-  const [offerStep, setOfferStep] = useState<'details' | 'preview'>('details');
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string>('');
-  const [proposedDepartureDate, setProposedDepartureDate] = useState(() => {
-    // Initialiser avec la date min de la demande ou maintenant
-    const minDate = tripRequest?.departureDateMin 
-      ? new Date(tripRequest.departureDateMin)
-      : new Date();
-    // Si la date min est dans le passé, utiliser maintenant
-    return minDate > new Date() ? minDate : new Date();
-  });
-  const [pricePerSeat, setPricePerSeat] = useState('');
-  const [availableSeats, setAvailableSeats] = useState('');
-  const [message, setMessage] = useState('');
-  const [offerDepartureLocation, setOfferDepartureLocation] = useState<MapLocationSelection | null>(null);
-  const [offerDepartureReference, setOfferDepartureReference] = useState('');
-  const [offerArrivalLocation, setOfferArrivalLocation] = useState<MapLocationSelection | null>(null);
-  const [offerArrivalReference, setOfferArrivalReference] = useState('');
+  const [directAcceptVehicleId, setDirectAcceptVehicleId] = useState<string>('');
+  const [showDirectAcceptModal, setShowDirectAcceptModal] = useState(false);
   const [directAcceptDepartureLocation, setDirectAcceptDepartureLocation] = useState<MapLocationSelection | null>(null);
   const [directAcceptDepartureReference, setDirectAcceptDepartureReference] = useState('');
   const [directAcceptArrivalLocation, setDirectAcceptArrivalLocation] = useState<MapLocationSelection | null>(null);
   const [directAcceptArrivalReference, setDirectAcceptArrivalReference] = useState('');
   const [routeOverridePickerTarget, setRouteOverridePickerTarget] = useState<RouteOverridePickerTarget | null>(null);
-  const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[] | null>(null);
   const [, setIsLoadingRoute] = useState(false);
   const [areDirectOptionsExpanded, setAreDirectOptionsExpanded] = useState(false);
+  const [directAcceptRequiresPassengerKyc, setDirectAcceptRequiresPassengerKyc] = useState(false);
+
+  useEffect(() => {
+    setDirectAcceptRequiresPassengerKyc(false);
+  }, [tripRequest?.id]);
 
   const directAcceptVehicle = useMemo(
-    () => activeVehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? activeVehicles[0],
-    [activeVehicles, selectedVehicleId]
+    () =>
+      compatibleActiveVehicles.find(
+        (vehicle) => vehicle.id === directAcceptVehicleId,
+      ) ?? null,
+    [compatibleActiveVehicles, directAcceptVehicleId],
   );
+
+  useEffect(() => {
+    setDirectAcceptVehicleId((currentVehicleId) => {
+      if (compatibleActiveVehicles.some((vehicle) => vehicle.id === currentVehicleId)) {
+        return currentVehicleId;
+      }
+
+      return compatibleActiveVehicles.length === 1 ? compatibleActiveVehicles[0].id : '';
+    });
+  }, [compatibleActiveVehicles]);
 
   const directAcceptDepartureDate = useMemo(() => {
     if (!tripRequest) return null;
@@ -424,17 +490,6 @@ export default function TripRequestDetailsScreen() {
 
     return preferredDate <= maxDate ? preferredDate : maxDate;
   }, [tripRequest]);
-
-  // Mettre à jour la date proposée quand la demande change
-  useEffect(() => {
-    if (tripRequest?.departureDateMin) {
-      const minDate = new Date(tripRequest.departureDateMin);
-      const currentDate = new Date();
-      // Utiliser la date min si elle est dans le futur, sinon utiliser maintenant
-      const newDate = minDate > currentDate ? minDate : currentDate;
-      setProposedDepartureDate(newDate);
-    }
-  }, [tripRequest?.departureDateMin]);
 
   // Charger les coordonnées de la route réelle
   useEffect(() => {
@@ -525,14 +580,12 @@ export default function TripRequestDetailsScreen() {
     return tripRequest.offers.some((offer) => offer.status === 'accepted');
   }, [tripRequest?.offers]);
 
-  const canMakeOffer = useMemo(() => {
-    const userRole = currentUser?.role;
-    if (!(userRole === 'driver' || userRole === 'both') || !isIdentityVerified || isOwner || hasExistingOffer) {
+  const canAcceptRequest = useMemo(() => {
+    if (!isDriverAccount || !isIdentityVerified || isOwner || hasExistingOffer) {
       return false;
     }
 
-    // Permettre l'envoi d'offres tant qu'aucune offre n'a été acceptée
-    // Vérifier d'abord le statut
+    // Permettre l'acceptation directe tant qu'aucun conducteur n'a été retenu.
     const isRequestOpen = tripRequest?.status === 'pending' || tripRequest?.status === 'offers_received';
     if (!isRequestOpen) {
       return false;
@@ -545,7 +598,14 @@ export default function TripRequestDetailsScreen() {
     }
 
     return true;
-  }, [currentUser, isIdentityVerified, isOwner, tripRequest, hasExistingOffer, hasAcceptedOffer]);
+  }, [
+    hasAcceptedOffer,
+    hasExistingOffer,
+    isDriverAccount,
+    isIdentityVerified,
+    isOwner,
+    tripRequest?.status,
+  ]);
 
   const myOffer = useMemo(() => {
     if (!tripRequest?.offers || !currentUser) return null;
@@ -574,9 +634,11 @@ export default function TripRequestDetailsScreen() {
     [isCurrentDriverAssigned, tripRequest?.tripId]
   );
 
-  const canAcceptDirectly = useMemo(() => canMakeOffer && !myOffer, [canMakeOffer, myOffer]);
+  const canAcceptDirectly = useMemo(
+    () => canAcceptRequest && compatibleActiveVehicles.length > 0,
+    [canAcceptRequest, compatibleActiveVehicles.length],
+  );
 
-  const minimumSeatsRequired = tripRequest?.numberOfSeats ?? 1;
   const editDepartureAddress =
     editAddressInputMode === 'manual'
       ? editDepartureManualAddress.trim()
@@ -592,11 +654,14 @@ export default function TripRequestDetailsScreen() {
   const isEditVehicleSelectionValid = Boolean(
     selectedEditVehicleOption?.availableForRequestedSeats,
   );
+  const editScheduleError = getEditScheduleError(
+    editDepartureDateMin,
+    editDepartureDateMax,
+  );
   const isEditFormValid = Boolean(
     editDepartureAddress &&
     editArrivalAddress &&
-    editDepartureDateMin &&
-    editDepartureDateMax &&
+    !editScheduleError &&
     Number.isFinite(parsedEditNumberOfSeats) &&
     parsedEditNumberOfSeats >= 1 &&
     parsedEditNumberOfSeats <= 2 &&
@@ -692,57 +757,39 @@ export default function TripRequestDetailsScreen() {
     tripRequest?.vehicleType,
   ]);
 
-  const isOfferDraftValid = useMemo(() => {
-    if (!tripRequest) return false;
+  const closeDirectAcceptModal = useCallback(() => {
+    setShowDirectAcceptModal(false);
+  }, []);
 
-    const parsedPrice = Number.parseFloat(pricePerSeat);
-    const parsedSeats = Number.parseInt(availableSeats, 10);
-
-    if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
-      return false;
+  const openDirectRouteOverridePicker = (target: RouteOverridePickerTarget) => {
+    Keyboard.dismiss();
+    directPickerRestorePendingRef.current = false;
+    if (directPickerTransitionTimerRef.current) {
+      clearTimeout(directPickerTransitionTimerRef.current);
     }
+    setShowDirectAcceptModal(false);
+    directPickerTransitionTimerRef.current = setTimeout(() => {
+      setRouteOverridePickerTarget(target);
+      directPickerTransitionTimerRef.current = null;
+    }, Platform.OS === 'ios' ? 350 : 80);
+  };
 
-    if (!Number.isFinite(parsedSeats) || parsedSeats < minimumSeatsRequired) {
-      return false;
+  const restoreDirectAcceptModalAfterLocationPicker = () => {
+    if (directPickerRestorePendingRef.current) return;
+    directPickerRestorePendingRef.current = true;
+    if (directPickerTransitionTimerRef.current) {
+      clearTimeout(directPickerTransitionTimerRef.current);
     }
-
-    if (tripRequest.maxPricePerSeat && parsedPrice > tripRequest.maxPricePerSeat) {
-      return false;
-    }
-
-    return true;
-  }, [availableSeats, minimumSeatsRequired, pricePerSeat, tripRequest]);
-
-  const resetOfferForm = useCallback(() => {
-    const minDate = tripRequest?.departureDateMin ? new Date(tripRequest.departureDateMin) : new Date();
-    const currentDate = new Date();
-
-    setOfferStep('details');
-    setSelectedVehicleId('');
-    setPricePerSeat('');
-    setAvailableSeats(tripRequest ? String(tripRequest.numberOfSeats) : '');
-    setMessage('');
-    setOfferDepartureLocation(null);
-    setOfferDepartureReference('');
-    setOfferArrivalLocation(null);
-    setOfferArrivalReference('');
-    setIosPickerMode(null);
-    setProposedDepartureDate(minDate > currentDate ? minDate : currentDate);
-  }, [tripRequest]);
-
-  const closeOfferForm = useCallback(() => {
-    setShowOfferForm(false);
-    resetOfferForm();
-  }, [resetOfferForm]);
+    setRouteOverridePickerTarget(null);
+    directPickerTransitionTimerRef.current = setTimeout(() => {
+      setShowDirectAcceptModal(true);
+      directPickerRestorePendingRef.current = false;
+      directPickerTransitionTimerRef.current = null;
+    }, Platform.OS === 'ios' ? 350 : 80);
+  };
 
   const handleRouteOverrideSelected = (location: MapLocationSelection) => {
     switch (routeOverridePickerTarget) {
-      case 'offerDeparture':
-        setOfferDepartureLocation(location);
-        break;
-      case 'offerArrival':
-        setOfferArrivalLocation(location);
-        break;
       case 'directDeparture':
         setDirectAcceptDepartureLocation(location);
         break;
@@ -752,20 +799,13 @@ export default function TripRequestDetailsScreen() {
       default:
         break;
     }
-    setRouteOverridePickerTarget(null);
+    restoreDirectAcceptModalAfterLocationPicker();
   };
-
-  const openOfferForm = useCallback(() => {
-    resetOfferForm();
-    setShowOfferForm(true);
-  }, [resetOfferForm]);
 
   // Fonctions pour appliquer uniquement la date ou l'heure
   const applyDatePart = (date: Date, currentDate: Date) => {
     const next = new Date(currentDate);
-    next.setFullYear(date.getFullYear());
-    next.setMonth(date.getMonth());
-    next.setDate(date.getDate());
+    next.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
     return next;
   };
 
@@ -776,6 +816,33 @@ export default function TripRequestDetailsScreen() {
     next.setSeconds(0);
     next.setMilliseconds(0);
     return next;
+  };
+
+  const updateEditDepartureDateMin = (newDate: Date) => {
+    const previousWindowDuration = getScheduleWindowDuration(
+      editDepartureDateMin,
+      editDepartureDateMax,
+    );
+    setEditDepartureDateMin(newDate);
+    setEditDepartureDateMax(
+      new Date(newDate.getTime() + previousWindowDuration),
+    );
+  };
+
+  const updateEditDepartureDateMax = (newDate: Date) => {
+    if (
+      isValidDate(editDepartureDateMin) &&
+      newDate.getTime() <= editDepartureDateMin.getTime()
+    ) {
+      setEditDepartureDateMax(
+        new Date(
+          editDepartureDateMin.getTime() + EDIT_SCHEDULE_MIN_WINDOW_MS,
+        ),
+      );
+      return;
+    }
+
+    setEditDepartureDateMax(newDate);
   };
 
   // Fonctions pour les date pickers du formulaire de modification
@@ -792,10 +859,7 @@ export default function TripRequestDetailsScreen() {
           const newDate = mode === 'date' 
             ? applyDatePart(selectedDate, editDepartureDateMin) 
             : applyTimePart(selectedDate, editDepartureDateMin);
-          setEditDepartureDateMin(newDate);
-          if (mode === 'date' && editDepartureDateMax && newDate >= editDepartureDateMax) {
-            setEditDepartureDateMax(new Date(newDate.getTime() + 24 * 60 * 60 * 1000));
-          }
+          updateEditDepartureDateMin(newDate);
         },
       });
     } else {
@@ -816,7 +880,7 @@ export default function TripRequestDetailsScreen() {
           const newDate = mode === 'date' 
             ? applyDatePart(selectedDate, editDepartureDateMax) 
             : applyTimePart(selectedDate, editDepartureDateMax);
-          setEditDepartureDateMax(newDate);
+          updateEditDepartureDateMax(newDate);
         },
       });
     } else {
@@ -829,10 +893,7 @@ export default function TripRequestDetailsScreen() {
     const newDate = editIosPickerModeMin === 'date' 
       ? applyDatePart(selectedDate, editDepartureDateMin) 
       : applyTimePart(selectedDate, editDepartureDateMin);
-    setEditDepartureDateMin(newDate);
-    if (editIosPickerModeMin === 'date' && editDepartureDateMax && newDate >= editDepartureDateMax) {
-      setEditDepartureDateMax(new Date(newDate.getTime() + 24 * 60 * 60 * 1000));
-    }
+    updateEditDepartureDateMin(newDate);
     setEditIosPickerModeMin(null);
   };
 
@@ -841,266 +902,8 @@ export default function TripRequestDetailsScreen() {
     const newDate = editIosPickerModeMax === 'date' 
       ? applyDatePart(selectedDate, editDepartureDateMax) 
       : applyTimePart(selectedDate, editDepartureDateMax);
-    setEditDepartureDateMax(newDate);
+    updateEditDepartureDateMax(newDate);
     setEditIosPickerModeMax(null);
-  };
-
-  const openDateOrTimePicker = (mode: 'date' | 'time') => {
-    if (!tripRequest) return;
-    
-    if (Platform.OS === 'android') {
-      DateTimePickerAndroid.open({
-        mode,
-        value: proposedDepartureDate,
-        is24Hour: true,
-        minimumDate: mode === 'date' ? new Date(tripRequest.departureDateMin) : undefined,
-        maximumDate: mode === 'date' ? new Date(tripRequest.departureDateMax) : undefined,
-        onChange: (_event: DateTimePickerEvent, selectedDate?: Date) => {
-          if (!selectedDate) return;
-          setProposedDepartureDate(
-            mode === 'date' 
-              ? applyDatePart(selectedDate, proposedDepartureDate) 
-              : applyTimePart(selectedDate, proposedDepartureDate)
-          );
-        },
-      });
-    } else {
-      setIosPickerMode(mode);
-    }
-  };
-
-  const handleIosPickerChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (!selectedDate || !iosPickerMode || !tripRequest) return;
-    const newDate = iosPickerMode === 'date' 
-      ? applyDatePart(selectedDate, proposedDepartureDate) 
-      : applyTimePart(selectedDate, proposedDepartureDate);
-    
-    // Valider que la date est dans la plage autorisée
-    const minDate = new Date(tripRequest.departureDateMin);
-    const maxDate = new Date(tripRequest.departureDateMax);
-    if (newDate >= minDate && newDate <= maxDate) {
-      setProposedDepartureDate(newDate);
-    }
-  };
-
-  const handleCreateOffer = async () => {
-    if (!tripRequest || !id) return;
-
-    // Vérifier que l'utilisateur est driver
-    const userRole = currentUser?.role;
-    if (!(userRole === 'driver' || userRole === 'both')) {
-      showDialog({
-        title: 'Devenir conducteur requis',
-        message: 'Pour faire une proposition sur une demande de covoiturage, vous devez être conducteur. Voulez-vous devenir conducteur ?',
-        variant: 'warning',
-        actions: [
-          { label: 'Annuler', variant: 'ghost' },
-          createBecomeDriverAction(router),
-        ],
-      });
-      return;
-    }
-
-    // Vérifier que le KYC est approuvé
-    if (!isIdentityVerified) {
-      const canProceed = checkIdentity('publish');
-      if (!canProceed) {
-        return;
-      }
-    }
-
-    // Valider la date proposée
-    const proposedDate = new Date(proposedDepartureDate);
-    const minDate = new Date(tripRequest.departureDateMin);
-    const maxDate = new Date(tripRequest.departureDateMax);
-
-    if (proposedDate < minDate || proposedDate > maxDate) {
-      showDialog({
-        title: 'Date invalide',
-        message: `La date proposée doit être entre le ${formatDateWithRelativeLabel(tripRequest.departureDateMin, true)} et le ${formatDateWithRelativeLabel(tripRequest.departureDateMax, true)}`,
-        variant: 'danger',
-      });
-      return;
-    }
-
-    if (!pricePerSeat || parseFloat(pricePerSeat) <= 0) {
-      showDialog({
-        title: 'Erreur',
-        message: 'Veuillez entrer une participation valide par place.',
-        variant: 'danger',
-      });
-      return;
-    }
-
-    if (!availableSeats || parseInt(availableSeats, 10) < tripRequest.numberOfSeats) {
-      showDialog({
-        title: 'Erreur',
-        message: `Vous devez proposer au moins ${tripRequest.numberOfSeats} place(s).`,
-        variant: 'danger',
-      });
-      return;
-    }
-
-    if (tripRequest.maxPricePerSeat && parseFloat(pricePerSeat) > tripRequest.maxPricePerSeat) {
-      showDialog({
-        title: 'Erreur',
-        message: `La participation ne doit pas dépasser ${tripRequest.maxPricePerSeat} FC par place.`,
-        variant: 'danger',
-      });
-      return;
-    }
-
-    try {
-      // Construire le payload en excluant les valeurs undefined
-      const payload: {
-        proposedDepartureDate: string;
-        pricePerSeat: number;
-        availableSeats: number;
-        vehicleId?: string;
-        message?: string;
-        departureReference?: string;
-        departureCoordinates?: [number, number];
-        arrivalReference?: string;
-        arrivalCoordinates?: [number, number];
-      } = {
-        proposedDepartureDate: proposedDepartureDate.toISOString(),
-        pricePerSeat: parseFloat(pricePerSeat),
-        availableSeats: parseInt(availableSeats, 10),
-      };
-
-      // Ajouter vehicleId seulement s'il est défini et non vide
-      if (selectedVehicleId && selectedVehicleId.trim() !== '') {
-        payload.vehicleId = selectedVehicleId;
-      }
-
-      // Ajouter message seulement s'il est défini et non vide
-      if (message && message.trim() !== '') {
-        payload.message = message.trim();
-      }
-
-      const offerDepartureCoordinates = getLocationCoordinates(offerDepartureLocation);
-      const offerArrivalCoordinates = getLocationCoordinates(offerArrivalLocation);
-      if (offerDepartureReference.trim()) {
-        payload.departureReference = offerDepartureReference.trim();
-      }
-      if (offerDepartureCoordinates) {
-        payload.departureCoordinates = offerDepartureCoordinates;
-      }
-      if (offerArrivalReference.trim()) {
-        payload.arrivalReference = offerArrivalReference.trim();
-      }
-      if (offerArrivalCoordinates) {
-        payload.arrivalCoordinates = offerArrivalCoordinates;
-      }
-
-      await createOffer({
-        tripRequestId: id,
-        payload,
-      }).unwrap();
-
-      // Fermer le modal et réinitialiser le formulaire
-      closeOfferForm();
-
-      showDialog({
-        title: 'Proposition envoyée',
-        message: `Votre proposition de ${parseFloat(pricePerSeat).toLocaleString('fr-FR')} FC/place pour ${availableSeats} place(s) a été envoyée. Le demandeur pourra la choisir si elle lui convient.`,
-        variant: 'success',
-        actions: [
-          { 
-            label: 'OK', 
-            variant: 'primary',
-            onPress: () => refetch() 
-          },
-        ],
-      });
-    } catch (error: any) {
-      const message = getApiErrorMessage(error, 'Impossible de créer la proposition.');
-      const isQuotaError = isDailyPublicationLimitError(error);
-      const isDriverError = isDriverRequiredError(error);
-      
-      showDialog({
-        title: isQuotaError ? 'Abonnement conducteur requis' : 'Erreur',
-        message,
-        variant: isQuotaError ? 'warning' : 'danger',
-        actions: isQuotaError
-          ? [
-              { label: 'Plus tard', variant: 'ghost' },
-              createSubscribeToZwangaProAction(router),
-            ]
-          : isDriverError
-          ? [
-              { label: 'Fermer', variant: 'ghost' },
-              createBecomeDriverAction(router),
-            ]
-          : undefined,
-      });
-    }
-  };
-
-  const handleAcceptOffer = async (offerId: string) => {
-    if (!tripRequest || !id) return;
-
-    try {
-      await acceptOffer({
-        tripRequestId: id,
-        payload: { offerId },
-      }).unwrap();
-
-      showDialog({
-        title: 'Proposition retenue',
-        message: 'Vous avez choisi cette proposition de covoiturage.',
-        variant: 'success',
-        actions: [{ label: 'OK', onPress: () => refetch() }],
-      });
-    } catch (error: any) {
-      showDialog({
-        title: 'Erreur',
-        message: getApiErrorMessage(error, 'Impossible de retenir cette proposition.'),
-        variant: 'danger',
-      });
-    }
-  };
-
-  const handleRejectOffer = async (offerId: string) => {
-    if (!tripRequest || !id) return;
-
-    showDialog({
-      title: 'Rejeter la proposition',
-      message: 'Êtes-vous sûr de vouloir rejeter cette proposition ?',
-      variant: 'warning',
-      actions: [
-        {
-          label: 'Annuler',
-          variant: 'secondary',
-          onPress: () => {},
-        },
-        {
-          label: 'Rejeter',
-          variant: 'secondary',
-          onPress: async () => {
-            try {
-              await rejectOffer({
-                tripRequestId: id,
-                offerId,
-              }).unwrap();
-
-              showDialog({
-                title: 'Proposition rejetée',
-                message: 'La proposition a été rejetée avec succès.',
-                variant: 'success',
-                actions: [{ label: 'OK', onPress: () => refetch() }],
-              });
-            } catch (error: any) {
-              showDialog({
-                title: 'Erreur',
-                message: getApiErrorMessage(error, 'Impossible de rejeter cette proposition.'),
-                variant: 'danger',
-              });
-            }
-          },
-        },
-      ],
-    });
   };
 
   const handleStartTripFromRequest = async () => {
@@ -1157,21 +960,39 @@ export default function TripRequestDetailsScreen() {
 
   const handleDirectAcceptTripRequest = async (startImmediately: boolean) => {
     if (!tripRequest || !id || !directAcceptDepartureDate) return;
+    if (compatibleActiveVehicles.length === 0) {
+      setShowDirectAcceptModal(false);
+      showDialog({
+        title: 'Véhicule non disponible',
+        message: `Cette demande nécessite le type ${TRIP_REQUEST_VEHICLE_LABELS[requestedVehicleType]}. Aucun de vos véhicules actifs ne correspond pour le moment.`,
+        variant: 'warning',
+        actions: [{ label: 'Fermer', variant: 'ghost' }],
+      });
+      return;
+    }
+    if (!directAcceptVehicle) {
+      showDialog({
+        title: 'Choisissez un véhicule',
+        message: 'Sélectionnez le véhicule que vous utiliserez pour transporter le passager.',
+        variant: 'warning',
+      });
+      return;
+    }
 
     const payload: {
-      vehicleId?: string;
+      vehicleId: string;
       departureDate?: string;
       departureReference?: string;
       departureCoordinates?: [number, number];
       arrivalReference?: string;
       arrivalCoordinates?: [number, number];
+      requiresPassengerKyc?: boolean;
     } = {
+      vehicleId: directAcceptVehicle.id,
       departureDate: directAcceptDepartureDate.toISOString(),
+      requiresPassengerKyc: directAcceptRequiresPassengerKyc,
     };
 
-    if (directAcceptVehicle?.id) {
-      payload.vehicleId = directAcceptVehicle.id;
-    }
     const directDepartureCoordinates = getLocationCoordinates(directAcceptDepartureLocation);
     const directArrivalCoordinates = getLocationCoordinates(directAcceptArrivalLocation);
     if (directAcceptDepartureReference.trim()) {
@@ -1192,6 +1013,7 @@ export default function TripRequestDetailsScreen() {
         tripRequestId: id,
         payload,
       }).unwrap();
+      setShowDirectAcceptModal(false);
 
       if (startImmediately) {
         try {
@@ -1269,22 +1091,32 @@ export default function TripRequestDetailsScreen() {
         ],
       });
     } catch (error: any) {
+      setShowDirectAcceptModal(false);
       const resolvedMessage = getApiErrorMessage(
         error,
         'Impossible d\u2019accepter cette demande pour le moment.',
       );
       const isQuotaError = isDailyPublicationLimitError(error);
       const isDriverError = isDriverRequiredError(error);
+      const isPassengerKycError = isPassengerKycRequiredError(error);
 
       showDialog({
-        title: isQuotaError ? 'Abonnement conducteur requis' : 'Erreur',
-        message: resolvedMessage,
-        variant: isQuotaError ? 'warning' : 'danger',
+        title: isQuotaError
+          ? 'Abonnement conducteur requis'
+          : isPassengerKycError
+            ? 'KYC passager requis'
+            : 'Erreur',
+        message: isPassengerKycError
+          ? "Ce passager n'a pas encore un KYC approuvé. Acceptez sans exigence KYC, ou demandez-lui de finaliser sa vérification avant de continuer."
+          : resolvedMessage,
+        variant: isQuotaError || isPassengerKycError ? 'warning' : 'danger',
         actions: isQuotaError
           ? [
               { label: 'Plus tard', variant: 'ghost' },
               createSubscribeToZwangaProAction(router),
             ]
+          : isPassengerKycError
+          ? [{ label: 'Fermer', variant: 'ghost' }]
           : isDriverError
           ? [
               { label: 'Fermer', variant: 'ghost' },
@@ -1295,35 +1127,19 @@ export default function TripRequestDetailsScreen() {
     }
   };
 
-  const handleOpenDirectAcceptDialog = () => {
+  const handleOpenDirectAcceptModal = () => {
     if (!tripRequest || !directAcceptDepartureDate) return;
-
-    const vehicleLabel = directAcceptVehicle
-      ? `${directAcceptVehicle.brand} ${directAcceptVehicle.model}`
-      : 'votre profil conducteur';
-
-    showDialog({
-      title: 'Accepter la demande',
-      message: `Le trajet sera cr\u00E9\u00E9 pour ${formatDateWithRelativeLabel(directAcceptDepartureDate.toISOString(), true)} avec ${vehicleLabel}. Le passager sera r\u00E9serv\u00E9 automatiquement.`,
-      variant: 'info',
-      actions: [
-        { label: 'Annuler', variant: 'ghost' },
-        {
-          label: 'Accepter',
-          variant: 'secondary',
-          onPress: async () => {
-            await handleDirectAcceptTripRequest(false);
-          },
-        },
-        {
-          label: 'Accepter et d\u00E9marrer',
-          variant: 'primary',
-          onPress: async () => {
-            await handleDirectAcceptTripRequest(true);
-          },
-        },
-      ],
-    });
+    if (compatibleActiveVehicles.length === 0) {
+      showDialog({
+        title: 'Véhicule non disponible',
+        message: `Cette demande nécessite le type ${TRIP_REQUEST_VEHICLE_LABELS[requestedVehicleType]}. Aucun de vos véhicules actifs ne correspond pour le moment.`,
+        variant: 'warning',
+        actions: [{ label: 'Fermer', variant: 'ghost' }],
+      });
+      return;
+    }
+    setAreDirectOptionsExpanded(false);
+    setShowDirectAcceptModal(true);
   };
 
   const handleViewTrip = (tripId: string) => {
@@ -1345,7 +1161,7 @@ export default function TripRequestDetailsScreen() {
   };
 
   // Initialiser le formulaire de modification avec les valeurs actuelles
-  const initializeEditForm = () => {
+  const initializeEditForm = (suggestUpdatedSchedule = false) => {
     if (!tripRequest) return;
     const hasMapCoordinates = tripRequest.departure.hasCoordinates && tripRequest.arrival.hasCoordinates;
     setEditAddressInputMode(hasMapCoordinates ? 'map' : 'manual');
@@ -1376,10 +1192,35 @@ export default function TripRequestDetailsScreen() {
     setEditArrivalManualAddress(tripRequest.arrival.name || tripRequest.arrival.address || '');
     setEditArrivalReference(tripRequest.arrival.reference || '');
     
-    setEditDepartureDateMin(new Date(tripRequest.departureDateMin));
-    setEditDepartureDateMax(new Date(tripRequest.departureDateMax));
+    const currentDepartureDateMin = new Date(tripRequest.departureDateMin);
+    const currentDepartureDateMax = new Date(tripRequest.departureDateMax);
+    const currentScheduleIsInvalid =
+      !isValidDate(currentDepartureDateMin) ||
+      !isValidDate(currentDepartureDateMax) ||
+      currentDepartureDateMin.getTime() <= Date.now() ||
+      currentDepartureDateMax.getTime() <= currentDepartureDateMin.getTime();
+    if (
+      suggestUpdatedSchedule ||
+      currentScheduleIsInvalid
+    ) {
+      const suggestedMin = new Date(
+        Date.now() + EDIT_SCHEDULE_SUGGESTION_LEAD_MS,
+      );
+      suggestedMin.setSeconds(0, 0);
+      const previousWindowDuration = getScheduleWindowDuration(
+        currentDepartureDateMin,
+        currentDepartureDateMax,
+      );
+      setEditDepartureDateMin(suggestedMin);
+      setEditDepartureDateMax(
+        new Date(suggestedMin.getTime() + previousWindowDuration),
+      );
+    } else {
+      setEditDepartureDateMin(currentDepartureDateMin);
+      setEditDepartureDateMax(currentDepartureDateMax);
+    }
     setEditNumberOfSeats(tripRequest.numberOfSeats.toString());
-    setEditVehicleType(tripRequest.vehicleType ?? 'car');
+    setEditVehicleType(requestedVehicleType);
     setEditVehicleOptions([]);
     setEditVehiclePriceMultiplier(1);
     setEditHasEditedBudget(false);
@@ -1391,6 +1232,30 @@ export default function TripRequestDetailsScreen() {
     initializeEditForm();
     setShowEditForm(true);
   };
+
+  useEffect(() => {
+    if (
+      !shouldOpenScheduleEditor ||
+      overdueScheduleEditorOpenedRef.current ||
+      !tripRequest ||
+      currentUser?.id !== tripRequest.passengerId ||
+      !['pending', 'offers_received'].includes(tripRequest.status)
+    ) {
+      return;
+    }
+
+    overdueScheduleEditorOpenedRef.current = true;
+    initializeEditForm(true);
+    setShowEditForm(true);
+    // The initializer intentionally runs once for this navigation intent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    currentUser?.id,
+    shouldOpenScheduleEditor,
+    tripRequest?.id,
+    tripRequest?.passengerId,
+    tripRequest?.status,
+  ]);
 
   const openEditLocationPicker = (target: 'departure' | 'arrival') => {
     Keyboard.dismiss();
@@ -1420,6 +1285,37 @@ export default function TripRequestDetailsScreen() {
       showDialog({
         title: 'Adresse requise',
         message: 'Indiquez une adresse de départ et une adresse d’arrivée, ou choisissez-les sur la carte.',
+        variant: 'warning',
+      });
+      return;
+    }
+    const updatedDepartureDateMin = editDepartureDateMin;
+    const updatedDepartureDateMax = editDepartureDateMax;
+    if (
+      !isValidDate(updatedDepartureDateMin) ||
+      !isValidDate(updatedDepartureDateMax)
+    ) {
+      showDialog({
+        title: 'Date invalide',
+        message: 'Choisissez une date et une heure de d\u00e9part valides.',
+        variant: 'warning',
+      });
+      return;
+    }
+    if (updatedDepartureDateMin.getTime() <= Date.now()) {
+      showDialog({
+        title: 'Heure pass\u00e9e',
+        message: 'Choisissez une heure de d\u00e9part dans le futur.',
+        variant: 'warning',
+      });
+      return;
+    }
+    if (
+      updatedDepartureDateMax.getTime() <= updatedDepartureDateMin.getTime()
+    ) {
+      showDialog({
+        title: 'Cr\u00e9neau invalide',
+        message: 'L\u2019heure de fin doit suivre l\u2019heure de d\u00e9part.',
         variant: 'warning',
       });
       return;
@@ -1474,8 +1370,8 @@ export default function TripRequestDetailsScreen() {
           arrivalReference: editArrivalReference.trim() || undefined,
           arrivalCoordinates:
             editAddressInputMode === 'map' ? getLocationCoordinates(editArrivalLocation) : undefined,
-          departureDateMin: editDepartureDateMin?.toISOString() || tripRequest?.departureDateMin || '',
-          departureDateMax: editDepartureDateMax?.toISOString() || tripRequest?.departureDateMax || '',
+          departureDateMin: updatedDepartureDateMin.toISOString(),
+          departureDateMax: updatedDepartureDateMax.toISOString(),
           numberOfSeats: parsedEditNumberOfSeats,
           vehicleType: editVehicleType,
           ...(
@@ -1642,9 +1538,6 @@ export default function TripRequestDetailsScreen() {
   }
 
   const displayedRouteCoordinates = routeCoordinates ?? [];
-  const receivedOffers = tripRequest.offers ?? [];
-  const shouldShowReceivedOffers = false;
-
   const statusConfigMap = {
     pending: { label: 'En attente', color: Colors.warning, bg: Colors.warning + '15' },
     offers_received: { label: 'Réponses reçues', color: Colors.info, bg: Colors.info + '15' },
@@ -1712,7 +1605,6 @@ export default function TripRequestDetailsScreen() {
     pendingOffersCount > 0
       ? 'Les réponses arrivent. Le conducteur retenu apparaîtra ici.'
       : "Vous serez alerté dès qu'un conducteur se manifeste.";
-  const isDriverRole = currentUser?.role === 'driver' || currentUser?.role === 'both';
   const driverHero = (() => {
     if (canOpenAssignedTrip) {
       return {
@@ -1728,45 +1620,52 @@ export default function TripRequestDetailsScreen() {
         subtitle: 'Le passager est déjà réservé. Vous pouvez démarrer le trajet dès maintenant.',
       };
     }
+    if (canAcceptDirectly) {
+      return {
+        badge: 'Immédiat',
+        title: 'Vous pouvez accepter cette course maintenant',
+        subtitle: 'Choisissez votre véhicule. Le trajet sera ensuite créé immédiatement pour le passager.',
+      };
+    }
     if (myOffer?.status === 'pending') {
       return {
         badge: 'En attente',
-        title: 'Votre proposition attend la décision du passager',
-        subtitle: 'Gardez un œil sur cette demande. Vous serez notifié dès qu\'une réponse arrive.',
+        title: 'Votre ancienne réponse est encore en attente',
+        subtitle: 'Vous serez notifié dès que son statut évoluera.',
       };
     }
     if (myOffer?.status === 'rejected') {
       return {
         badge: 'Clôturé',
-        title: 'Votre proposition n\'a pas été retenue',
+        title: 'Votre ancienne réponse n\'a pas été retenue',
         subtitle: 'Vous pouvez consulter d\'autres demandes disponibles depuis l\'accueil ou la liste des demandes.',
       };
     }
-    if (!isDriverRole) {
+    if (!isDriverAccount) {
       return {
         badge: 'Profil',
         title: 'Activez votre profil conducteur',
-        subtitle: 'Cette demande est ouverte, mais votre compte doit devenir conducteur pour envoyer une proposition.',
+        subtitle: 'Cette demande est ouverte, mais votre compte doit devenir conducteur pour l\'accepter.',
       };
     }
     if (!isIdentityVerified) {
       return {
         badge: 'KYC',
-        title: 'Vérifiez votre identité pour répondre',
-        subtitle: 'Une vérification rapide est nécessaire avant d\'envoyer une proposition au passager.',
+        title: 'Vérifiez votre identité pour accepter',
+        subtitle: 'Une vérification rapide est nécessaire avant d\'accepter cette demande.',
       };
     }
-    if (canAcceptDirectly) {
+    if (compatibleActiveVehicles.length === 0) {
       return {
-        badge: 'Immédiat',
-        title: 'Vous pouvez accepter cette course maintenant',
-        subtitle: 'Le trajet sera créé tout de suite, avec une option pour le démarrer immédiatement si vous êtes prêt.',
+        badge: 'Véhicule',
+        title: `${TRIP_REQUEST_VEHICLE_LABELS[requestedVehicleType]} requise pour cette course`,
+        subtitle: 'Aucun de vos véhicules actifs ne correspond au type demandé.',
       };
     }
     return {
       badge: statusConfig.label,
-      title: 'Une course attend votre offre',
-      subtitle: 'Analysez les besoins du passager puis proposez votre heure et votre tarif.',
+      title: 'Cette demande n’est pas disponible',
+      subtitle: 'Actualisez l’écran ou consultez une autre demande de trajet.',
     };
   })();
 
@@ -1858,7 +1757,7 @@ export default function TripRequestDetailsScreen() {
             <View style={[styles.driverVehicleSpotlight, styles.ownerVehicleSpotlight]}>
               <View style={styles.driverVehicleIconShell}>
                 <Ionicons
-                  name={TRIP_REQUEST_VEHICLE_ICONS[tripRequest.vehicleType]}
+                  name={TRIP_REQUEST_VEHICLE_ICONS[requestedVehicleType]}
                   size={28}
                   color={Colors.primary}
                 />
@@ -1866,7 +1765,7 @@ export default function TripRequestDetailsScreen() {
               <View style={styles.driverVehicleCopy}>
                 <Text style={styles.driverVehicleEyebrow}>Véhicule demandé</Text>
                 <Text style={styles.driverVehicleName}>
-                  {TRIP_REQUEST_VEHICLE_LABELS[tripRequest.vehicleType]}
+                  {TRIP_REQUEST_VEHICLE_LABELS[requestedVehicleType]}
                 </Text>
                 <Text style={styles.driverVehicleHint}>
                   Choisi pour {tripRequest.numberOfSeats} place{tripRequest.numberOfSeats > 1 ? 's' : ''}
@@ -1904,6 +1803,20 @@ export default function TripRequestDetailsScreen() {
                 </>
               ) : null}
             </View>
+
+            {tripRequest.selectedDriverRequiresPassengerKyc ? (
+              <View style={styles.ownerPassengerKycNotice}>
+                <View style={styles.ownerPassengerKycNoticeIcon}>
+                  <Ionicons name="shield-checkmark-outline" size={17} color={Colors.primary} />
+                </View>
+                <View style={styles.ownerPassengerKycNoticeCopy}>
+                  <Text style={styles.ownerPassengerKycNoticeTitle}>KYC passager requis</Text>
+                  <Text style={styles.ownerPassengerKycNoticeText}>
+                    Ce conducteur demande une vérification d&apos;identité approuvée avant la prise en charge.
+                  </Text>
+                </View>
+              </View>
+            ) : null}
 
             <View style={styles.ownerProgressPanel}>
               <View style={styles.ownerProgressHeader}>
@@ -2060,7 +1973,7 @@ export default function TripRequestDetailsScreen() {
             <View style={styles.driverVehicleSpotlight}>
               <View style={styles.driverVehicleIconShell}>
                 <Ionicons
-                  name={TRIP_REQUEST_VEHICLE_ICONS[tripRequest.vehicleType]}
+                  name={TRIP_REQUEST_VEHICLE_ICONS[requestedVehicleType]}
                   size={28}
                   color={Colors.primary}
                 />
@@ -2068,7 +1981,7 @@ export default function TripRequestDetailsScreen() {
               <View style={styles.driverVehicleCopy}>
                 <Text style={styles.driverVehicleEyebrow}>Véhicule demandé</Text>
                 <Text style={styles.driverVehicleName}>
-                  {TRIP_REQUEST_VEHICLE_LABELS[tripRequest.vehicleType]}
+                  {TRIP_REQUEST_VEHICLE_LABELS[requestedVehicleType]}
                 </Text>
                 <Text style={styles.driverVehicleHint}>Souhaité par le passager pour cette course</Text>
               </View>
@@ -2105,69 +2018,6 @@ export default function TripRequestDetailsScreen() {
               ) : null}
             </View>
 
-            {canAcceptDirectly && (
-              <View style={styles.driverOverridePanel}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: areDirectOptionsExpanded }}
-                  onPress={() => setAreDirectOptionsExpanded((isExpanded) => !isExpanded)}
-                  style={({ pressed }) => [
-                    styles.driverOverrideToggle,
-                    pressed && styles.driverOverrideTogglePressed,
-                  ]}
-                >
-                  <View style={styles.driverOverrideToggleIcon}>
-                    <Ionicons name="options-outline" size={18} color={Colors.primary} />
-                  </View>
-                  <View style={styles.driverOverrideToggleCopy}>
-                    <Text style={styles.driverOverrideTitle}>Ajuster les points de rendez-vous</Text>
-                    <Text style={styles.driverOverrideSubtitle}>Optionnel · seulement si nécessaire</Text>
-                  </View>
-                  <Ionicons
-                    name={areDirectOptionsExpanded ? 'chevron-up' : 'chevron-down'}
-                    size={18}
-                    color={Colors.gray[600]}
-                  />
-                </Pressable>
-                {areDirectOptionsExpanded && (
-                  <Animated.View entering={FadeInDown.duration(200)} style={styles.driverOverrideFields}>
-                    <TouchableOpacity
-                      style={styles.driverOverrideButton}
-                      onPress={() => setRouteOverridePickerTarget('directDeparture')}
-                    >
-                      <Ionicons name="location-outline" size={16} color={Colors.primary} />
-                      <Text style={styles.driverOverrideButtonText}>
-                        {directAcceptDepartureLocation?.title || 'Point de départ sur la carte'}
-                      </Text>
-                    </TouchableOpacity>
-                    <TextInput
-                      style={styles.driverOverrideInput}
-                      placeholder={LANDMARK_PLACEHOLDER}
-                      placeholderTextColor={Colors.gray[400]}
-                      value={directAcceptDepartureReference}
-                      onChangeText={setDirectAcceptDepartureReference}
-                    />
-                    <TouchableOpacity
-                      style={styles.driverOverrideButton}
-                      onPress={() => setRouteOverridePickerTarget('directArrival')}
-                    >
-                      <Ionicons name="navigate-outline" size={16} color={Colors.primary} />
-                      <Text style={styles.driverOverrideButtonText}>
-                        {directAcceptArrivalLocation?.title || 'Point d’arrivée sur la carte'}
-                      </Text>
-                    </TouchableOpacity>
-                    <TextInput
-                      style={styles.driverOverrideInput}
-                      placeholder={LANDMARK_PLACEHOLDER}
-                      placeholderTextColor={Colors.gray[400]}
-                      value={directAcceptArrivalReference}
-                      onChangeText={setDirectAcceptArrivalReference}
-                    />
-                  </Animated.View>
-                )}
-              </View>
-            )}
-
             {canOpenAssignedTrip ? (
               <TouchableOpacity
                 style={styles.ownerHeroPrimaryButton}
@@ -2192,36 +2042,21 @@ export default function TripRequestDetailsScreen() {
                 )}
               </TouchableOpacity>
             ) : canAcceptDirectly ? (
-              <>
-                <TouchableOpacity
-                  style={styles.ownerHeroPrimaryButton}
-                  onPress={handleOpenDirectAcceptDialog}
-                  disabled={isAcceptingTripRequest || isStartingTrip}
-                >
-                  {isAcceptingTripRequest || isStartingTrip ? (
-                    <ActivityIndicator size="small" color={Colors.white} />
-                  ) : (
-                    <>
-                      <Ionicons name="checkmark-circle-outline" size={18} color={Colors.white} />
-                      <Text style={styles.ownerHeroPrimaryButtonText}>Accepter la demande</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-                <View style={[styles.ownerHeroActions, styles.ownerHeroSecondaryActions]}>
-                  <TouchableOpacity style={styles.ownerHeroGhostButton} onPress={openOfferForm}>
-                    <Ionicons name="options-outline" size={16} color={Colors.primary} />
-                    <Text style={styles.ownerHeroGhostButtonText}>Faire une proposition</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            ) : canMakeOffer ? (
-              <TouchableOpacity style={styles.ownerHeroPrimaryButton} onPress={openOfferForm}>
-                <Ionicons name="send-outline" size={18} color={Colors.white} />
-                <Text style={styles.ownerHeroPrimaryButtonText}>
-                  {myOffer?.status === 'rejected' ? 'Faire une nouvelle proposition' : 'Faire une proposition'}
-                </Text>
+              <TouchableOpacity
+                style={styles.ownerHeroPrimaryButton}
+                onPress={handleOpenDirectAcceptModal}
+                disabled={isAcceptingTripRequest || isStartingTrip}
+              >
+                {isAcceptingTripRequest || isStartingTrip ? (
+                  <ActivityIndicator size="small" color={Colors.white} />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle-outline" size={18} color={Colors.white} />
+                    <Text style={styles.ownerHeroPrimaryButtonText}>Accepter la demande</Text>
+                  </>
+                )}
               </TouchableOpacity>
-            ) : !isDriverRole ? (
+            ) : !isDriverAccount ? (
               <TouchableOpacity style={styles.ownerHeroPrimaryButton} onPress={openDriverOnboarding}>
                 <Ionicons name="car-outline" size={18} color={Colors.white} />
                 <Text style={styles.ownerHeroPrimaryButtonText}>Devenir conducteur</Text>
@@ -2235,7 +2070,9 @@ export default function TripRequestDetailsScreen() {
               <View style={styles.ownerHeroHintRow}>
                 <Ionicons name="information-circle-outline" size={16} color={Colors.primary} />
                 <Text style={styles.ownerHeroHintText}>
-                  Faites défiler pour consulter tout le détail de la demande et votre proposition.
+                  {compatibleActiveVehicles.length === 0
+                    ? 'Aucun de vos véhicules actifs ne correspond au type demandé pour cette course.'
+                    : 'Cette demande ne peut plus être acceptée. Actualisez l’écran pour obtenir son dernier statut.'}
                 </Text>
               </View>
             )}
@@ -2318,707 +2155,288 @@ export default function TripRequestDetailsScreen() {
           </View>
         )}
 
-        {/* Offres reçues (pour le propriétaire) */}
-        {shouldShowReceivedOffers && isOwner && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeaderWithBadge}>
-              <View style={styles.sectionTitleContainer}>
-                <Ionicons name="checkmark-circle" size={24} color={Colors.info} />
-                <Text style={styles.sectionTitle}>
-                  Propositions reçues
-                </Text>
-              </View>
-              {receivedOffers.length > 0 && (
-                <View style={styles.offersCountBadge}>
-                  <Text style={styles.offersCountText}>{receivedOffers.length}</Text>
-                </View>
-              )}
-            </View>
-            
-            {receivedOffers.length === 0 ? (
-              <View style={styles.noOffersContainer}>
-                <View style={styles.noOffersIconContainer}>
-                  <Ionicons name="hourglass-outline" size={48} color={Colors.gray[400]} />
-                </View>
-                <Text style={styles.noOffersTitle}>Aucune proposition pour le moment</Text>
-                <Text style={styles.noOffersText}>
-                  Les conducteurs intéressés verront votre demande et pourront vous envoyer une proposition. Elles apparaîtront ici dès leur arrivée.
-                </Text>
-              </View>
-            ) : (
-              <>
-            {receivedOffers.map((offer, index) => {
-              const isPending = offer.status === 'pending';
-              const driverRating = offer.driverRating;
-              return (
-              <Animated.View
-                key={offer.id}
-                entering={FadeInDown.delay(index * 50)}
-                style={[
-                  styles.offerCard,
-                  isPending && styles.offerCardPending,
-                  offer.status === 'accepted' && styles.offerCardAccepted,
-                ]}
-              >
-                <View style={styles.offerHeader}>
-                  <View style={styles.driverInfo}>
-                    {offer.driverAvatar ? (
-                      <Image
-                        source={{ uri: offer.driverAvatar }}
-                        style={styles.offerAvatar}
-                      />
-                    ) : (
-                      <View style={styles.offerAvatar}>
-                        <Ionicons name="person" size={20} color={Colors.gray[500]} />
-                      </View>
-                    )}
-                    <View style={styles.offerDriverText}>
-                      <View style={styles.offerDriverNameRow}>
-                        <Text style={styles.driverName} numberOfLines={1}>{offer.driverName}</Text>
-                        {offer.driverPremiumBadge && (
-                          <View style={styles.offerProBadge}>
-                            <Ionicons name="shield-checkmark" size={11} color={Colors.white} />
-                            <Text style={styles.offerProBadgeText}>Pro</Text>
-                          </View>
-                        )}
-                      </View>
-                      {driverRating !== undefined && driverRating > 0 && (
-                        <View style={styles.ratingRow}>
-                          <Ionicons name="star" size={14} color={Colors.secondary} />
-                          <Text style={styles.ratingText}>{driverRating.toFixed(1)}</Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                  {offer.status === 'accepted' && (
-                    <View style={[styles.statusBadge, { backgroundColor: Colors.success + '15' }]}>
-                      <Text style={[styles.statusText, { color: Colors.success }]}>Retenue</Text>
-                    </View>
-                  )}
-                </View>
-
-                {offer.vehicleInfo && (
-                  <View style={styles.offerDetail}>
-                    <Ionicons name="car-outline" size={16} color={Colors.gray[600]} />
-                    <Text style={styles.offerDetailText}>{offer.vehicleInfo}</Text>
-                  </View>
-                )}
-
-                <View style={styles.offerDetail}>
-                  <Ionicons name="calendar-outline" size={16} color={Colors.gray[600]} />
-                  <Text style={styles.offerDetailText}>
-                    {formatDateWithRelativeLabel(offer.proposedDepartureDate, true)}
-                  </Text>
-                </View>
-
-                <View style={styles.offerDetail}>
-                  <Ionicons name="cash-outline" size={16} color={Colors.gray[600]} />
-                  <Text style={styles.offerDetailText}>
-                    {offer.pricePerSeat} FC/place ({offer.availableSeats} places disponibles)
-                  </Text>
-                </View>
-
-                {(offer.departureReference || offer.departureCoordinates) && (
-                  <View style={styles.offerDetail}>
-                    <Ionicons name="location-outline" size={16} color={Colors.gray[600]} />
-                    <Text style={styles.offerDetailText}>
-                      {offer.departureReference || 'Point de départ précisé'}
-                    </Text>
-                  </View>
-                )}
-
-                {(offer.arrivalReference || offer.arrivalCoordinates) && (
-                  <View style={styles.offerDetail}>
-                    <Ionicons name="navigate-outline" size={16} color={Colors.gray[600]} />
-                    <Text style={styles.offerDetailText}>
-                      {offer.arrivalReference || 'Point d’arrivée précisé'}
-                    </Text>
-                  </View>
-                )}
-
-                {offer.message && (
-                  <View style={styles.messageContainer}>
-                    <Text style={styles.messageText}>{offer.message}</Text>
-                  </View>
-                )}
-
-                {tripRequest.status !== 'driver_selected' && offer.status === 'pending' && isOwner && (
-                  <View style={styles.offerActions}>
-                    <TouchableOpacity
-                      style={[styles.offerActionButton, styles.rejectButton]}
-                      onPress={() => handleRejectOffer(offer.id)}
-                      disabled={isRejectingOffer}
-                    >
-                      {isRejectingOffer ? (
-                        <ActivityIndicator size="small" color={Colors.danger} />
-                      ) : (
-                        <>
-                          <Ionicons name="close-circle" size={18} color={Colors.danger} />
-                          <Text style={styles.rejectButtonText}>Rejeter</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.offerActionButton, styles.acceptButton]}
-                      onPress={() => handleAcceptOffer(offer.id)}
-                      disabled={isAcceptingOffer}
-                    >
-                      {isAcceptingOffer ? (
-                        <ActivityIndicator size="small" color={Colors.white} />
-                      ) : (
-                        <>
-                          <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
-                          <Text style={styles.acceptButtonText}>Choisir</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </Animated.View>
-            );
-            })}
-              </>
-            )}
-          </View>
-        )}
-
-        {/* Statut de l'offre du driver (si le driver a déjà fait une offre) */}
-        {!isOwner && myOffer && (
-          <View style={styles.section}>
-            <View style={styles.sectionTitleContainer}>
-              <Ionicons name="star" size={24} color={Colors.secondary} />
-              <Text style={styles.sectionTitle}>Votre proposition</Text>
-            </View>
-            <View style={[
-              styles.offerCard,
-              myOffer.status === 'accepted' && styles.offerCardAccepted,
-              myOffer.status === 'rejected' && styles.offerCardRejected,
-            ]}>
-              <View style={styles.offerHeader}>
-                <View>
-                  <Text style={styles.driverName}>Statut de votre proposition</Text>
-                  <View style={styles.ratingRow}>
-                    <Text style={styles.ratingText}>
-                      {formatDateWithRelativeLabel(myOffer.proposedDepartureDate, true)}
-                    </Text>
-                  </View>
-                </View>
-                <View style={[
-                  styles.statusBadge,
-                  {
-                    backgroundColor:
-                      myOffer.status === 'accepted'
-                        ? Colors.success + '15'
-                        : myOffer.status === 'rejected'
-                        ? Colors.danger + '15'
-                        : Colors.warning + '15',
-                  },
-                ]}>
-                  <Text style={[
-                    styles.statusText,
-                    {
-                      color:
-                        myOffer.status === 'accepted'
-                          ? Colors.success
-                          : myOffer.status === 'rejected'
-                          ? Colors.danger
-                          : Colors.warning,
-                    },
-                  ]}>
-                    {myOffer.status === 'accepted'
-                      ? 'Retenue'
-                      : myOffer.status === 'rejected'
-                      ? 'Rejetée'
-                      : 'En attente'}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.offerDetail}>
-                <Ionicons name="cash-outline" size={16} color={Colors.gray[600]} />
-                <Text style={styles.offerDetailText}>
-                  {myOffer.pricePerSeat} FC/place ({myOffer.availableSeats} places)
-                </Text>
-              </View>
-              {(myOffer.departureReference || myOffer.departureCoordinates) && (
-                <View style={styles.offerDetail}>
-                  <Ionicons name="location-outline" size={16} color={Colors.gray[600]} />
-                  <Text style={styles.offerDetailText}>
-                    {myOffer.departureReference || 'Point de départ précisé'}
-                  </Text>
-                </View>
-              )}
-              {(myOffer.arrivalReference || myOffer.arrivalCoordinates) && (
-                <View style={styles.offerDetail}>
-                  <Ionicons name="navigate-outline" size={16} color={Colors.gray[600]} />
-                  <Text style={styles.offerDetailText}>
-                    {myOffer.arrivalReference || 'Point d’arrivée précisé'}
-                  </Text>
-                </View>
-              )}
-              {myOffer.message && (
-                <View style={styles.messageContainer}>
-                  <Text style={styles.messageText}>{myOffer.message}</Text>
-                </View>
-              )}
-              {myOffer.status === 'accepted' && (tripRequest.status === 'driver_selected' || !!tripRequest.tripId) && (
-                <View style={styles.successMessage}>
-                  <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
-                  <Text style={styles.successMessageText}>
-                    Félicitations ! Votre proposition a été retenue. {tripRequest.tripId ? 'Le trajet a déjà été créé.' : 'Vous pouvez maintenant démarrer le trajet.'}
-                  </Text>
-                  {!tripRequest.tripId && (
-                    <TouchableOpacity
-                      style={styles.startTripButton}
-                      onPress={handleStartTripFromRequest}
-                      disabled={isStartingTripFromRequest}
-                    >
-                      {isStartingTripFromRequest ? (
-                        <ActivityIndicator size="small" color={Colors.white} />
-                      ) : (
-                        <>
-                          <Ionicons name="play-circle" size={18} color={Colors.white} />
-                          <Text style={styles.startTripButtonText}>Démarrer le trajet</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  )}
-                  {tripRequest.tripId && (
-                    <TouchableOpacity
-                      style={styles.viewTripButton}
-                  onPress={() => handleViewTrip(tripRequest.tripId!)}
-                    >
-                      <Ionicons name="car" size={18} color={Colors.primary} />
-                      <Text style={styles.viewTripButtonText}>Voir le trajet</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              )}
-            </View>
-          </View>
-        )}
-
-        {/* Modal pour créer une offre */}
         {tripRequest && (
           <Modal
-            visible={showOfferForm}
+            visible={showDirectAcceptModal}
             animationType="slide"
-            transparent={true}
-            onRequestClose={closeOfferForm}
+            transparent
+            onRequestClose={closeDirectAcceptModal}
           >
-            <View style={styles.modalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={styles.editModalRoot}
+            >
               <TouchableOpacity
-                style={styles.modalBackdrop}
+                style={styles.editModalBackdrop}
                 activeOpacity={1}
-                onPress={closeOfferForm}
+                onPress={closeDirectAcceptModal}
               />
-              <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={styles.modalKeyboardView}
-              >
-                <SafeAreaView edges={['bottom']} style={styles.modalContent}>
-                  <TouchableOpacity
-                    activeOpacity={1}
-                    onPress={(e) => e.stopPropagation()}
-                    style={styles.modalContentInner}
-                  >
-                    <View style={styles.modalHeader}>
-                      <Text style={styles.modalTitle}>Faire une proposition</Text>
-                      <TouchableOpacity
-                        style={styles.modalCloseButton}
-                        onPress={closeOfferForm}
-                      >
-                        <Ionicons name="close" size={24} color={Colors.gray[600]} />
-                      </TouchableOpacity>
-                    </View>
 
-                    {/* Indicateur d'étapes */}
-                    <View style={styles.offerStepIndicator}>
-                      <View style={styles.offerStepContainer}>
-                        <View style={[styles.offerStepCircle, offerStep === 'details' && styles.offerStepCircleActive]}>
-                          {offerStep === 'preview' ? (
-                            <Ionicons name="checkmark" size={16} color={Colors.white} />
-                          ) : (
-                            <Text style={[styles.offerStepNumber, offerStep === 'details' && styles.offerStepNumberActive]}>1</Text>
-                          )}
-                        </View>
-                        <Text style={[styles.offerStepLabel, offerStep === 'details' && styles.offerStepLabelActive]}>Détails</Text>
+              <View style={[styles.editModalCard, styles.directAcceptModalCard]}>
+                <View style={styles.editModalHeader}>
+                  <View style={styles.editModalHeaderContent}>
+                    <View style={styles.directAcceptModalIcon}>
+                      <Ionicons name="checkmark-circle-outline" size={20} color={Colors.primary} />
+                    </View>
+                    <View style={styles.directAcceptModalTitleCopy}>
+                      <Text style={styles.editModalTitle}>Accepter la demande</Text>
+                      <Text style={styles.editModalSubtitle}>Choisissez le véhicule utilisé</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.editModalCloseButton}
+                    onPress={closeDirectAcceptModal}
+                    accessibilityRole="button"
+                    accessibilityLabel="Fermer"
+                  >
+                    <Ionicons name="close" size={20} color={Colors.gray[700]} />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView
+                  style={styles.editModalScrollView}
+                  contentContainerStyle={styles.directAcceptModalScrollContent}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  <View style={styles.directAcceptSummaryCard}>
+                    <View style={styles.directAcceptSummaryRow}>
+                      <Ionicons name="calendar-outline" size={17} color={Colors.primary} />
+                      <Text style={styles.directAcceptSummaryText}>
+                        {directAcceptDepartureDate
+                          ? formatDateWithRelativeLabel(directAcceptDepartureDate.toISOString(), true)
+                          : 'Départ à confirmer'}
+                      </Text>
+                    </View>
+                    <View style={styles.directAcceptSummaryRow}>
+                      <Ionicons name={TRIP_REQUEST_VEHICLE_ICONS[requestedVehicleType]} size={17} color={Colors.primary} />
+                      <Text style={styles.directAcceptSummaryText}>
+                        {TRIP_REQUEST_VEHICLE_LABELS[requestedVehicleType]} demandée
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Pressable
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: directAcceptRequiresPassengerKyc }}
+                    onPress={() => setDirectAcceptRequiresPassengerKyc((current) => !current)}
+                    style={({ pressed }) => [
+                      styles.directPassengerKycCard,
+                      directAcceptRequiresPassengerKyc && styles.directPassengerKycCardActive,
+                      pressed && styles.directPassengerKycCardPressed,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.directPassengerKycIcon,
+                        directAcceptRequiresPassengerKyc && styles.directPassengerKycIconActive,
+                      ]}
+                    >
+                      <Ionicons
+                        name="shield-checkmark-outline"
+                        size={19}
+                        color={directAcceptRequiresPassengerKyc ? Colors.white : Colors.primary}
+                      />
+                    </View>
+                    <View style={styles.directPassengerKycCopy}>
+                      <Text style={styles.directPassengerKycTitle}>Exiger KYC passager</Text>
+                      <Text style={styles.directPassengerKycSubtitle}>
+                        Le passager devra avoir une vérification d&apos;identité approuvée avant que ce trajet continue.
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.directPassengerKycSwitch,
+                        directAcceptRequiresPassengerKyc && styles.directPassengerKycSwitchActive,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.directPassengerKycThumb,
+                          directAcceptRequiresPassengerKyc && styles.directPassengerKycThumbActive,
+                        ]}
+                      />
+                    </View>
+                  </Pressable>
+
+                  <View style={styles.directVehiclePicker}>
+                    <View style={styles.directVehiclePickerHeader}>
+                      <View style={styles.directVehiclePickerIcon}>
+                        <Ionicons name="car-sport-outline" size={18} color={Colors.primary} />
                       </View>
-                      <View style={[styles.offerStepLine, offerStep === 'preview' && styles.offerStepLineActive]} />
-                      <View style={styles.offerStepContainer}>
-                        <View style={[styles.offerStepCircle, offerStep === 'preview' && styles.offerStepCircleActive]}>
-                          <Text style={[styles.offerStepNumber, offerStep === 'preview' && styles.offerStepNumberActive]}>2</Text>
-                        </View>
-                        <Text style={[styles.offerStepLabel, offerStep === 'preview' && styles.offerStepLabelActive]}>Confirmation</Text>
+                      <View style={styles.directVehiclePickerCopy}>
+                        <Text style={styles.directVehiclePickerTitle}>Véhicule pour ce trajet</Text>
+                        <Text style={styles.directVehiclePickerSubtitle}>
+                          {compatibleActiveVehicles.length > 1
+                            ? 'Sélectionnez le véhicule que vous allez utiliser.'
+                            : 'Ce véhicule sera communiqué au passager.'}
+                        </Text>
                       </View>
+                      <Text style={styles.directVehicleRequired}>REQUIS</Text>
                     </View>
 
                     <ScrollView
-                      style={styles.modalScrollView}
-                      contentContainerStyle={[
-                        styles.modalScrollContent,
-                        { paddingBottom: Math.max(insets.bottom, 16) + 16 }
-                      ]}
-                      showsVerticalScrollIndicator={false}
-                      keyboardShouldPersistTaps="handled"
+                      horizontal
+                      nestedScrollEnabled
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.directVehicleList}
                     >
-                      <View style={styles.offerFormCard}>
-                        {offerStep === 'details' && (
-                          <>
-                            {activeVehicles.length > 0 && (
-                              <View style={styles.formGroup}>
-                                <Text style={styles.formLabel}>Véhicule (optionnel)</Text>
-                                <ScrollView
-                                  horizontal
-                                  showsHorizontalScrollIndicator={false}
-                                  style={styles.vehicleScrollView}
-                                  contentContainerStyle={styles.vehicleScrollContent}
-                                >
-                                  {activeVehicles.map((vehicle: Vehicle) => (
-                                    <TouchableOpacity
-                                      key={vehicle.id}
-                                      style={[
-                                        styles.vehicleCard,
-                                        selectedVehicleId === vehicle.id && styles.vehicleCardActive,
-                                      ]}
-                                      onPress={() =>
-                                        setSelectedVehicleId(
-                                          selectedVehicleId === vehicle.id ? '' : vehicle.id
-                                        )
-                                      }
-                                    >
-                                      <View style={styles.vehicleCardHeader}>
-                                        <Ionicons
-                                          name="car"
-                                          size={24}
-                                          color={selectedVehicleId === vehicle.id ? Colors.primary : Colors.gray[600]}
-                                        />
-                                        {selectedVehicleId === vehicle.id && (
-                                          <View style={styles.vehicleCardBadge}>
-                                            <Ionicons name="checkmark" size={14} color={Colors.white} />
-                                          </View>
-                                        )}
-                                      </View>
-                                      <Text style={styles.vehicleCardBrand}>{vehicle.brand}</Text>
-                                      <Text style={styles.vehicleCardModel}>{vehicle.model}</Text>
-                                      <Text style={styles.vehicleCardDetails}>
-                                        {vehicle.color} • {vehicle.licensePlate}
-                                      </Text>
-                                    </TouchableOpacity>
-                                  ))}
-                                </ScrollView>
-                              </View>
-                            )}
+                      {compatibleActiveVehicles.map((vehicle) => {
+                        const isSelected = directAcceptVehicleId === vehicle.id;
+                        const vehicleType = normalizeTripRequestVehicleType(vehicle.type);
 
-                            <View style={styles.acceptanceNotice}>
-                              <Ionicons name="information-circle" size={24} color={Colors.info} />
-                              <Text style={styles.acceptanceNoticeText}>
-                                Le demandeur a publié un besoin. Vous proposez votre horaire, vos places et votre participation par place. Rien n&apos;est confirmé tant qu&apos;il n&apos;a pas choisi votre proposition.
-                              </Text>
-                            </View>
-
-                            <View style={styles.formGroup}>
-                              <Text style={styles.formLabel}>Repère de départ</Text>
-                              <Text style={styles.formHelperText}>
-                                Optionnel. Ajoutez un point de prise en charge ou un repère plus précis.
-                              </Text>
-                              <TouchableOpacity
-                                style={styles.locationButton}
-                                onPress={() => setRouteOverridePickerTarget('offerDeparture')}
-                              >
-                                <Ionicons name="location" size={20} color={Colors.primary} />
-                                <Text style={styles.locationButtonText}>
-                                  {offerDepartureLocation?.title || 'Utiliser position/carte'}
-                                </Text>
-                                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
-                              </TouchableOpacity>
-                              <TextInput
-                                style={[styles.input, styles.referenceInput]}
-                                placeholder={LANDMARK_PLACEHOLDER}
-                                value={offerDepartureReference}
-                                onChangeText={setOfferDepartureReference}
+                        return (
+                          <Pressable
+                            key={vehicle.id}
+                            accessibilityRole="radio"
+                            accessibilityLabel={`${vehicle.brand} ${vehicle.model}, ${vehicle.color}, plaque ${vehicle.licensePlate}`}
+                            accessibilityState={{ checked: isSelected }}
+                            onPress={() => setDirectAcceptVehicleId(vehicle.id)}
+                            style={({ pressed }) => [
+                              styles.directVehicleCard,
+                              isSelected && styles.directVehicleCardSelected,
+                              pressed && styles.directVehicleCardPressed,
+                            ]}
+                          >
+                            <View style={styles.directVehicleCardHeader}>
+                              <Ionicons
+                                name={TRIP_REQUEST_VEHICLE_ICONS[vehicleType]}
+                                size={21}
+                                color={isSelected ? Colors.primary : Colors.gray[600]}
                               />
-                            </View>
-
-                            <View style={styles.formGroup}>
-                              <Text style={styles.formLabel}>Repère d’arrivée</Text>
-                              <Text style={styles.formHelperText}>
-                                Optionnel. Précisez le point d&apos;arrivée si nécessaire.
-                              </Text>
-                              <TouchableOpacity
-                                style={styles.locationButton}
-                                onPress={() => setRouteOverridePickerTarget('offerArrival')}
+                              <View
+                                style={[
+                                  styles.directVehicleRadio,
+                                  isSelected && styles.directVehicleRadioSelected,
+                                ]}
                               >
-                                <Ionicons name="navigate" size={20} color={Colors.primary} />
-                                <Text style={styles.locationButtonText}>
-                                  {offerArrivalLocation?.title || 'Utiliser position/carte'}
-                                </Text>
-                                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
-                              </TouchableOpacity>
-                              <TextInput
-                                style={[styles.input, styles.referenceInput]}
-                                placeholder={LANDMARK_PLACEHOLDER}
-                                value={offerArrivalReference}
-                                onChangeText={setOfferArrivalReference}
-                              />
-                            </View>
-
-                            <View style={styles.formGroup}>
-                              <Text style={styles.formLabel}>Date et heure de départ proposées *</Text>
-                              {tripRequest && (
-                                <Text style={styles.formHelperText}>
-                                  Choisissez une date et une heure entre le {formatDateWithRelativeLabel(tripRequest.departureDateMin, true)} et le {formatDateWithRelativeLabel(tripRequest.departureDateMax, true)}
-                                </Text>
-                              )}
-                              <View style={styles.datetimeButtons}>
-                                <TouchableOpacity
-                                  style={styles.datetimeButton}
-                                  onPress={() => openDateOrTimePicker('date')}
-                                >
-                                  <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.primary + '15' }]}>
-                                    <Ionicons name="calendar" size={20} color={Colors.primary} />
-                                  </View>
-                                  <View style={styles.datetimeButtonContent}>
-                                    <Text style={styles.datetimeButtonLabel}>Date</Text>
-                                    <Text style={styles.datetimeButtonValue}>
-                                      {proposedDepartureDate.toLocaleDateString('fr-FR', {
-                                        weekday: 'short',
-                                        day: 'numeric',
-                                        month: 'short',
-                                      })}
-                                    </Text>
-                                  </View>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.datetimeButton}
-                                  onPress={() => openDateOrTimePicker('time')}
-                                >
-                                  <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.success + '15' }]}>
-                                    <Ionicons name="time" size={20} color={Colors.success} />
-                                  </View>
-                                  <View style={styles.datetimeButtonContent}>
-                                    <Text style={styles.datetimeButtonLabel}>Heure</Text>
-                                    <Text style={styles.datetimeButtonValue}>
-                                      {proposedDepartureDate.toLocaleTimeString('fr-FR', {
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                      })}
-                                    </Text>
-                                  </View>
-                                </TouchableOpacity>
+                                {isSelected && <Ionicons name="checkmark" size={13} color={Colors.white} />}
                               </View>
-                              {Platform.OS === 'ios' && iosPickerMode && (
-                                <View style={styles.iosPickerContainer}>
-                                  {tripRequest && (
-                                    <DateTimePicker
-                                      value={proposedDepartureDate}
-                                      mode={iosPickerMode}
-                                      display="spinner"
-                                      onChange={handleIosPickerChange}
-                                      minimumDate={new Date(tripRequest.departureDateMin)}
-                                      maximumDate={new Date(tripRequest.departureDateMax)}
-                                    />
-                                  )}
-                                  <TouchableOpacity
-                                    style={styles.iosPickerCloseButton}
-                                    onPress={() => setIosPickerMode(null)}
-                                  >
-                                    <Text style={styles.iosPickerCloseText}>Confirmer</Text>
-                                  </TouchableOpacity>
-                                </View>
-                              )}
                             </View>
-
-                            <View style={styles.formGroup}>
-                              <Text style={styles.formLabel}>Places proposées *</Text>
-                              <Text style={styles.formHelperText}>
-                                Cette demande concerne au moins {minimumSeatsRequired} place(s).
-                              </Text>
-                              <TextInput
-                                style={styles.input}
-                                keyboardType="number-pad"
-                                placeholder={`Au moins ${minimumSeatsRequired}`}
-                                value={availableSeats}
-                                onChangeText={setAvailableSeats}
-                              />
-                            </View>
-
-                            <View style={styles.formGroup}>
-                              <Text style={styles.formLabel}>Participation proposée par place *</Text>
-                              <Text style={styles.formHelperText}>
-                                {tripRequest.maxPricePerSeat
-                                  ? `Le demandeur a indiqué un budget maximum de ${tripRequest.maxPricePerSeat} FC par place.`
-                                  : 'Indiquez le montant demandé par place pour ce covoiturage.'}
-                              </Text>
-                              <TextInput
-                                style={styles.input}
-                                keyboardType="number-pad"
-                                placeholder="Ex: 2000"
-                                value={pricePerSeat}
-                                onChangeText={setPricePerSeat}
-                              />
-                            </View>
-
-                            <View style={styles.formGroup}>
-                              <Text style={styles.formLabel}>Message (optionnel)</Text>
-                              <TextInput
-                                style={[styles.input, styles.textArea]}
-                                multiline
-                                numberOfLines={4}
-                                placeholder="Ajoutez un message pour rassurer ou préciser votre proposition..."
-                                value={message}
-                                onChangeText={setMessage}
-                              />
-                            </View>
-
-                            <View style={styles.formActions}>
-                              <TouchableOpacity
-                                style={styles.cancelFormButton}
-                                onPress={() => {
-                                  closeOfferForm();
-                                }}
-                              >
-                                <Text style={styles.cancelFormButtonText}>Annuler</Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={[styles.nextButton, !isOfferDraftValid && styles.submitButtonDisabled]}
-                                onPress={() => {
-                                  if (isOfferDraftValid) {
-                                    setOfferStep('preview');
-                                  }
-                                }}
-                                disabled={!isOfferDraftValid}
-                              >
-                                <Text style={styles.nextButtonText}>Suivant</Text>
-                                <Ionicons name="arrow-forward" size={18} color={Colors.white} />
-                              </TouchableOpacity>
-                            </View>
-                          </>
-                        )}
-
-
-                        {offerStep === 'preview' && (
-                          <>
-                            <View style={styles.previewContainer}>
-                              <Text style={styles.previewTitle}>Confirmer votre proposition</Text>
-                              
-                              {/* Information importante */}
-                              <View style={styles.acceptanceNotice}>
-                                <Ionicons name="information-circle" size={24} color={Colors.info} />
-                                <Text style={styles.acceptanceNoticeText}>
-                                  Votre proposition sera envoyée au demandeur. Un trajet ne sera créé que s&apos;il la retient.
-                                </Text>
-                              </View>
-
-                              {/* Informations du véhicule */}
-                              {selectedVehicleId && (
-                                <View style={styles.previewSection}>
-                                  <Text style={styles.previewSectionTitle}>Véhicule</Text>
-                                  {activeVehicles.find(v => v.id === selectedVehicleId) && (
-                                    <View style={styles.previewVehicleCard}>
-                                      <Ionicons name="car" size={24} color={Colors.primary} />
-                                      <View style={styles.previewVehicleInfo}>
-                                        <Text style={styles.previewVehicleBrand}>
-                                          {activeVehicles.find(v => v.id === selectedVehicleId)?.brand} {activeVehicles.find(v => v.id === selectedVehicleId)?.model}
-                                        </Text>
-                                        <Text style={styles.previewVehicleDetails}>
-                                          {activeVehicles.find(v => v.id === selectedVehicleId)?.color} • {activeVehicles.find(v => v.id === selectedVehicleId)?.licensePlate}
-                                        </Text>
-                                      </View>
-                                    </View>
-                                  )}
-                                </View>
-                              )}
-
-                              {/* Date et heure */}
-                              <View style={styles.previewSection}>
-                                <Text style={styles.previewSectionTitle}>Départ proposé</Text>
-                                <View style={styles.previewInfoCard}>
-                                  <Ionicons name="calendar" size={20} color={Colors.primary} />
-                                  <Text style={styles.previewInfoText}>
-                                    {formatDateWithRelativeLabel(proposedDepartureDate.toISOString(), true)}
-                                  </Text>
-                                </View>
-                                {(offerDepartureLocation || offerDepartureReference.trim()) && (
-                                  <View style={styles.previewInfoCard}>
-                                    <Ionicons name="location" size={20} color={Colors.primary} />
-                                    <Text style={styles.previewInfoText}>
-                                      {[offerDepartureLocation?.title, offerDepartureReference.trim()].filter(Boolean).join(' - ')}
-                                    </Text>
-                                  </View>
-                                )}
-                                {(offerArrivalLocation || offerArrivalReference.trim()) && (
-                                  <View style={styles.previewInfoCard}>
-                                    <Ionicons name="navigate" size={20} color={Colors.primary} />
-                                    <Text style={styles.previewInfoText}>
-                                      {[offerArrivalLocation?.title, offerArrivalReference.trim()].filter(Boolean).join(' - ')}
-                                    </Text>
-                                  </View>
-                                )}
-                              </View>
-
-                              <View style={styles.previewSection}>
-                                <Text style={styles.previewSectionTitle}>Places proposées</Text>
-                                <View style={styles.previewInfoCard}>
-                                  <Ionicons name="people" size={20} color={Colors.primary} />
-                                  <Text style={styles.previewInfoText}>
-                                    {availableSeats} place(s)
-                                  </Text>
-                                </View>
-                              </View>
-
-                              <View style={styles.previewSection}>
-                                <Text style={styles.previewSectionTitle}>Participation proposée</Text>
-                                <View style={styles.previewTotalCard}>
-                                  <Text style={styles.previewTotalLabel}>Par place</Text>
-                                  <Text style={styles.previewTotalAmount}>
-                                    {Number.parseFloat(pricePerSeat || '0').toLocaleString('fr-FR')} FC
-                                  </Text>
-                                </View>
-                              </View>
-
-                              {/* Message */}
-                              {message && (
-                                <View style={styles.previewSection}>
-                                  <Text style={styles.previewSectionTitle}>Message</Text>
-                                  <View style={styles.previewInfoCard}>
-                                    <Ionicons name="chatbox" size={20} color={Colors.primary} />
-                                    <Text style={styles.previewInfoText}>{message}</Text>
-                                  </View>
-                                </View>
-                              )}
-                            </View>
-
-                            <View style={styles.formActions}>
-                              <TouchableOpacity
-                                style={styles.offerBackButton}
-                                onPress={() => setOfferStep('details')}
-                              >
-                                <Ionicons name="arrow-back" size={18} color={Colors.gray[700]} />
-                                <Text style={styles.offerBackButtonText}>Retour</Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={[styles.submitButton, !isOfferDraftValid && styles.submitButtonDisabled]}
-                                onPress={handleCreateOffer}
-                                disabled={isCreatingOffer || !isOfferDraftValid}
-                              >
-                                {isCreatingOffer ? (
-                                  <ActivityIndicator size="small" color={Colors.white} />
-                                ) : (
-                                  <>
-                                    <Ionicons name="send" size={18} color={Colors.white} />
-                                    <Text style={styles.submitButtonText}>Envoyer la proposition</Text>
-                                  </>
-                                )}
-                              </TouchableOpacity>
-                            </View>
-                          </>
-                        )}
-                      </View>
+                            <Text style={styles.directVehicleName} numberOfLines={1}>
+                              {vehicle.brand} {vehicle.model}
+                            </Text>
+                            <Text style={styles.directVehicleDetails} numberOfLines={1}>
+                              {vehicle.color} • {vehicle.licensePlate}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
                     </ScrollView>
+
+                    {!directAcceptVehicle && (
+                      <View style={styles.directVehicleHint}>
+                        <Ionicons name="information-circle-outline" size={15} color={Colors.warning} />
+                        <Text style={styles.directVehicleHintText}>
+                          Sélectionnez un véhicule pour continuer.
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={styles.driverOverridePanel}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: areDirectOptionsExpanded }}
+                      onPress={() => setAreDirectOptionsExpanded((isExpanded) => !isExpanded)}
+                      style={({ pressed }) => [
+                        styles.driverOverrideToggle,
+                        pressed && styles.driverOverrideTogglePressed,
+                      ]}
+                    >
+                      <View style={styles.driverOverrideToggleIcon}>
+                        <Ionicons name="options-outline" size={18} color={Colors.primary} />
+                      </View>
+                      <View style={styles.driverOverrideToggleCopy}>
+                        <Text style={styles.driverOverrideTitle}>Ajuster les points de rendez-vous</Text>
+                        <Text style={styles.driverOverrideSubtitle}>Optionnel · seulement si nécessaire</Text>
+                      </View>
+                      <Ionicons
+                        name={areDirectOptionsExpanded ? 'chevron-up' : 'chevron-down'}
+                        size={18}
+                        color={Colors.gray[600]}
+                      />
+                    </Pressable>
+                    {areDirectOptionsExpanded && (
+                      <Animated.View entering={FadeInDown.duration(200)} style={styles.driverOverrideFields}>
+                        <TouchableOpacity
+                          style={styles.driverOverrideButton}
+                          onPress={() => openDirectRouteOverridePicker('directDeparture')}
+                        >
+                          <Ionicons name="location-outline" size={16} color={Colors.primary} />
+                          <Text style={styles.driverOverrideButtonText}>
+                            {directAcceptDepartureLocation?.title || 'Point de départ sur la carte'}
+                          </Text>
+                        </TouchableOpacity>
+                        <TextInput
+                          style={styles.driverOverrideInput}
+                          placeholder={LANDMARK_PLACEHOLDER}
+                          placeholderTextColor={Colors.gray[400]}
+                          value={directAcceptDepartureReference}
+                          onChangeText={setDirectAcceptDepartureReference}
+                        />
+                        <TouchableOpacity
+                          style={styles.driverOverrideButton}
+                          onPress={() => openDirectRouteOverridePicker('directArrival')}
+                        >
+                          <Ionicons name="navigate-outline" size={16} color={Colors.primary} />
+                          <Text style={styles.driverOverrideButtonText}>
+                            {directAcceptArrivalLocation?.title || 'Point d’arrivée sur la carte'}
+                          </Text>
+                        </TouchableOpacity>
+                        <TextInput
+                          style={styles.driverOverrideInput}
+                          placeholder={LANDMARK_PLACEHOLDER}
+                          placeholderTextColor={Colors.gray[400]}
+                          value={directAcceptArrivalReference}
+                          onChangeText={setDirectAcceptArrivalReference}
+                        />
+                      </Animated.View>
+                    )}
+                  </View>
+                </ScrollView>
+
+                <View style={styles.directAcceptModalFooter}>
+                  <TouchableOpacity
+                    style={[
+                      styles.directAcceptSecondaryButton,
+                      (!directAcceptVehicle || isAcceptingTripRequest || isStartingTrip) &&
+                        styles.directAcceptSecondaryButtonDisabled,
+                    ]}
+                    onPress={() => handleDirectAcceptTripRequest(false)}
+                    disabled={!directAcceptVehicle || isAcceptingTripRequest || isStartingTrip}
+                  >
+                    <Text
+                      style={[
+                        styles.directAcceptSecondaryButtonText,
+                        (!directAcceptVehicle || isAcceptingTripRequest || isStartingTrip) &&
+                          styles.directAcceptButtonTextDisabled,
+                      ]}
+                    >
+                      Accepter
+                    </Text>
                   </TouchableOpacity>
-                </SafeAreaView>
-              </KeyboardAvoidingView>
-            </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.directAcceptPrimaryButton,
+                      (!directAcceptVehicle || isAcceptingTripRequest || isStartingTrip) &&
+                        styles.directAcceptButtonDisabled,
+                    ]}
+                    onPress={() => handleDirectAcceptTripRequest(true)}
+                    disabled={!directAcceptVehicle || isAcceptingTripRequest || isStartingTrip}
+                  >
+                    {isAcceptingTripRequest || isStartingTrip ? (
+                      <ActivityIndicator size="small" color={Colors.white} />
+                    ) : (
+                      <>
+                        <Ionicons name="play-circle-outline" size={18} color={Colors.white} />
+                        <Text style={styles.directAcceptPrimaryButtonText}>Accepter et démarrer</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </KeyboardAvoidingView>
           </Modal>
         )}
 
@@ -3193,6 +2611,10 @@ export default function TripRequestDetailsScreen() {
                           <Text style={styles.editDateTimeText}>{editDepartureDateMax ? editDepartureDateMax.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'}) : 'Heure'}</Text>
                         </TouchableOpacity>
                       </View>
+
+                      {editScheduleError ? (
+                        <Text style={styles.editScheduleError}>{editScheduleError}</Text>
+                      ) : null}
 
                       {/* iOS Pickers intégrés */}
                       {Platform.OS === 'ios' && editIosPickerModeMin && editDepartureDateMin && (
@@ -3415,21 +2837,17 @@ export default function TripRequestDetailsScreen() {
 
         <LocationPickerModal
           visible={routeOverridePickerTarget !== null}
-          onClose={() => setRouteOverridePickerTarget(null)}
+          onClose={restoreDirectAcceptModalAfterLocationPicker}
           onSelect={handleRouteOverrideSelected}
           initialLocation={
-            routeOverridePickerTarget === 'offerDeparture'
-              ? offerDepartureLocation
-              : routeOverridePickerTarget === 'offerArrival'
-                ? offerArrivalLocation
-                : routeOverridePickerTarget === 'directDeparture'
-                  ? directAcceptDepartureLocation
-                  : routeOverridePickerTarget === 'directArrival'
-                    ? directAcceptArrivalLocation
-                    : null
+            routeOverridePickerTarget === 'directDeparture'
+              ? directAcceptDepartureLocation
+              : routeOverridePickerTarget === 'directArrival'
+                ? directAcceptArrivalLocation
+                : null
           }
           title={
-            routeOverridePickerTarget === 'offerArrival' || routeOverridePickerTarget === 'directArrival'
+            routeOverridePickerTarget === 'directArrival'
               ? 'Point d’arrivée'
               : 'Point de départ'
           }
@@ -4040,6 +3458,304 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
     lineHeight: 18,
+  },
+  ownerPassengerKycNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+    backgroundColor: Colors.primary + '08',
+    gap: Spacing.sm,
+  },
+  ownerPassengerKycNoticeIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+  },
+  ownerPassengerKycNoticeCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  ownerPassengerKycNoticeTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  ownerPassengerKycNoticeText: {
+    marginTop: 3,
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+  },
+  directVehiclePicker: {
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: Colors.gray[200],
+  },
+  directVehiclePickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  directVehiclePickerIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary + '10',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  directVehiclePickerCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  directVehiclePickerTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  directVehiclePickerSubtitle: {
+    marginTop: 2,
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    lineHeight: 16,
+  },
+  directVehicleRequired: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+    overflow: 'hidden',
+    color: Colors.primaryDark,
+    backgroundColor: Colors.primary + '12',
+    fontSize: 9,
+    fontWeight: FontWeights.bold,
+    letterSpacing: 0.5,
+  },
+  directVehicleList: {
+    gap: Spacing.sm,
+    paddingRight: Spacing.sm,
+  },
+  directVehicleCard: {
+    width: 158,
+    minHeight: 96,
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1.5,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
+  },
+  directVehicleCardSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '08',
+  },
+  directVehicleCardPressed: {
+    opacity: 0.78,
+  },
+  directVehicleCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.sm,
+  },
+  directVehicleRadio: {
+    width: 22,
+    height: 22,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1.5,
+    borderColor: Colors.gray[300],
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+  },
+  directVehicleRadioSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary,
+  },
+  directVehicleName: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  directVehicleDetails: {
+    marginTop: 3,
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+  },
+  directVehicleHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  directVehicleHintText: {
+    flex: 1,
+    color: Colors.gray[700],
+    fontSize: FontSizes.xs,
+  },
+  directPassengerKycCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
+    gap: Spacing.sm,
+  },
+  directPassengerKycCardActive: {
+    borderColor: Colors.primary + '55',
+    backgroundColor: Colors.primary + '08',
+  },
+  directPassengerKycCardPressed: {
+    opacity: 0.82,
+  },
+  directPassengerKycIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary + '12',
+  },
+  directPassengerKycIconActive: {
+    backgroundColor: Colors.primary,
+  },
+  directPassengerKycCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  directPassengerKycTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  directPassengerKycSubtitle: {
+    marginTop: 3,
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+  },
+  directPassengerKycSwitch: {
+    width: 42,
+    height: 24,
+    borderRadius: BorderRadius.full,
+    padding: 2,
+    justifyContent: 'center',
+    backgroundColor: Colors.gray[300],
+  },
+  directPassengerKycSwitchActive: {
+    backgroundColor: Colors.success,
+  },
+  directPassengerKycThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+    alignSelf: 'flex-start',
+  },
+  directPassengerKycThumbActive: {
+    alignSelf: 'flex-end',
+  },
+  directAcceptModalIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary + '12',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  directAcceptModalTitleCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  directAcceptModalCard: {
+    height: '85%',
+    maxHeight: '85%',
+  },
+  directAcceptModalScrollContent: {
+    padding: Spacing.lg,
+    paddingBottom: Spacing.md,
+    gap: Spacing.md,
+  },
+  directAcceptSummaryCard: {
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.gray[50],
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+  },
+  directAcceptSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  directAcceptSummaryText: {
+    flex: 1,
+    color: Colors.gray[800],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
+  directAcceptModalFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[100],
+    backgroundColor: Colors.white,
+  },
+  directAcceptSecondaryButton: {
+    flex: 1,
+    minHeight: 48,
+    marginBottom: Spacing.md,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.sm,
+  },
+  directAcceptSecondaryButtonDisabled: {
+    borderColor: Colors.gray[300],
+    backgroundColor: Colors.gray[50],
+  },
+  directAcceptSecondaryButtonText: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  directAcceptPrimaryButton: {
+    flex: 1.35,
+    minHeight: 48,
+    marginBottom: Spacing.md,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+  },
+  directAcceptPrimaryButtonText: {
+    flexShrink: 1,
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    textAlign: 'center',
+  },
+  directAcceptButtonDisabled: {
+    backgroundColor: Colors.gray[400],
+    opacity: 0.72,
+  },
+  directAcceptButtonTextDisabled: {
+    color: Colors.gray[400],
   },
   ownerProgressPanel: {
     padding: Spacing.sm,
@@ -5434,6 +5150,11 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     color: Colors.gray[900],
     fontWeight: FontWeights.semibold,
+  },
+  editScheduleError: {
+    marginTop: Spacing.sm,
+    color: Colors.danger,
+    fontSize: FontSizes.sm,
   },
   editIosPickerWrapper: {
     marginTop: Spacing.md,

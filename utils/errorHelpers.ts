@@ -207,10 +207,6 @@ function getTechnicalErrorMessage(rawMessage: string, status: number | string | 
     return 'V\u00e9rifiez le montant ou le mode de paiement, puis r\u00e9essayez.';
   }
 
-  if (/\b(required|must be|invalid|bad request|validation)\b/.test(message)) {
-    return 'Certaines informations sont incorrectes ou incompl\u00e8tes. V\u00e9rifiez le formulaire puis r\u00e9essayez.';
-  }
-
   if (/\b(json parse|unexpected token|syntaxerror)\b/.test(message)) {
     return 'Le service a renvoy\u00e9 une r\u00e9ponse inattendue. R\u00e9essayez dans quelques instants.';
   }
@@ -226,6 +222,13 @@ function getTechnicalErrorMessage(rawMessage: string, status: number | string | 
     return 'Le service rencontre un probl\u00e8me pour le moment. R\u00e9essayez dans quelques instants.';
   }
 
+  if (
+    /\b(required|must be|invalid|bad request)\b/.test(message) ||
+    /\b(validation error|validation failed|validationexception)\b/.test(message)
+  ) {
+    return 'Certaines informations sont incorrectes ou incompl\u00e8tes. V\u00e9rifiez le formulaire puis r\u00e9essayez.';
+  }
+
   return null;
 }
 
@@ -236,6 +239,10 @@ function getKnownBusinessErrorMessage(error: any): string | null {
 
   if (isDriverRequiredError(error)) {
     return 'Activez votre compte conducteur pour effectuer cette action.';
+  }
+
+  if (isPassengerKycRequiredError(error)) {
+    return "Ce trajet exige une vérification d'identité approuvée du passager avant de continuer.";
   }
 
   const message = getErrorMessageText(error).toLowerCase();
@@ -315,27 +322,73 @@ export function isDriverRequiredError(error: any): boolean {
   const message = getErrorMessageText(error);
   if (!message || isDailyPublicationLimitError(error)) return false;
 
+  const code = String(
+    error?.data?.code ??
+      error?.data?.error?.code ??
+      error?.error?.code ??
+      error?.code ??
+      '',
+  ).toUpperCase();
+  if (
+    [
+      'DRIVER_REQUIRED',
+      'DRIVER_PROFILE_REQUIRED',
+      'DRIVER_ACCOUNT_REQUIRED',
+      'USER_NOT_DRIVER',
+    ].includes(code)
+  ) {
+    return true;
+  }
+
   const lowerMessage = message.toLowerCase();
 
   const driverKeywords = [
-    'driver',
-    'conducteur',
-    'chauffeur',
     'not a driver',
     "n'est pas conducteur",
+    "n'est pas un conducteur",
     "n'\u00eates pas conducteur",
+    "n'\u00eates pas un conducteur",
     'devenir conducteur',
     'driver required',
-    'conducteur requis',
-    'driver account',
-    'compte conducteur',
-    'passenger',
-    'passager',
+    'driver profile required',
+    'profil conducteur requis',
+    'must be a driver',
+    'vous devez être conducteur',
+    'vous devez etre conducteur',
     'only drivers',
     'seulement les conducteurs',
+    'seuls les conducteurs',
   ];
 
   return driverKeywords.some(keyword => lowerMessage.includes(keyword));
+}
+
+/**
+ * Detecte si une action est bloquee parce que le passager n'a pas encore
+ * un KYC approuve alors que le conducteur l'exige pour ce trajet.
+ */
+export function isPassengerKycRequiredError(error: any): boolean {
+  const code = String(
+    error?.data?.code ??
+      error?.data?.error?.code ??
+      error?.error?.code ??
+      error?.code ??
+      '',
+  ).toUpperCase();
+
+  if (code === 'PASSENGER_KYC_REQUIRED') {
+    return true;
+  }
+
+  const message = getErrorMessageText(error).toLowerCase();
+  return (
+    message.includes('passenger_kyc_required') ||
+    message.includes('passenger kyc') ||
+    message.includes('kyc passager') ||
+    (message.includes('passager') &&
+      message.includes('kyc') &&
+      (message.includes('requis') || message.includes('required')))
+  );
 }
 
 /**

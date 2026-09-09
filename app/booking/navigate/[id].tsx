@@ -41,6 +41,7 @@ import {
 } from '@/store/api/tripApi';
 import type { TripInterruptionReason } from '@/types';
 import {
+  areTripMapCoordinatesSame,
   getGeoPointCoordinate,
   isCoordinateInKinshasaBounds,
   normalizeTripMapCoordinate,
@@ -958,17 +959,27 @@ export default function PassengerNavigationScreen() {
       return;
     }
 
-    const snapshotUpdatedAt = driverLocationSnapshot.updatedAt
-      ? new Date(driverLocationSnapshot.updatedAt)
+    const snapshotUpdatedAtMs = driverLocationSnapshot.updatedAt
+      ? new Date(driverLocationSnapshot.updatedAt).getTime()
       : null;
-    const isNewerSnapshot = Boolean(
-      snapshotUpdatedAt &&
-        !Number.isNaN(snapshotUpdatedAt.getTime()) &&
-        (!lastUpdate || snapshotUpdatedAt.getTime() >= lastUpdate.getTime()),
-    );
+    const hasSnapshotUpdatedAt =
+      typeof snapshotUpdatedAtMs === 'number' &&
+      Number.isFinite(snapshotUpdatedAtMs);
+    const lastUpdateMs = lastUpdate?.getTime();
+    const shouldApplySnapshot =
+      !driverLocation ||
+      (hasSnapshotUpdatedAt &&
+        (!Number.isFinite(lastUpdateMs) || snapshotUpdatedAtMs > lastUpdateMs!));
 
-    if (!driverLocation || isNewerSnapshot) {
-      const snapshotTimestamp = snapshotUpdatedAt?.getTime() ?? Date.now();
+    if (shouldApplySnapshot) {
+      const snapshotTimestamp = hasSnapshotUpdatedAt ? snapshotUpdatedAtMs : Date.now();
+      if (
+        areTripMapCoordinatesSame(driverLocation, coordinate) &&
+        lastAcceptedDriverTimestampRef.current === snapshotTimestamp
+      ) {
+        return;
+      }
+
       if (
         !isPlausibleLocationUpdate({
           previous: lastAcceptedDriverCoordinateRef.current,
@@ -984,11 +995,7 @@ export default function PassengerNavigationScreen() {
       lastAcceptedDriverCoordinateRef.current = coordinate;
       lastAcceptedDriverTimestampRef.current = snapshotTimestamp;
       setDriverLocation(coordinate);
-      if (snapshotUpdatedAt && !Number.isNaN(snapshotUpdatedAt.getTime())) {
-        setLastUpdate(snapshotUpdatedAt);
-      } else {
-        setLastUpdate(new Date());
-      }
+      setLastUpdate(new Date(snapshotTimestamp));
     }
   }, [driverLocation, driverLocationSnapshot, lastUpdate]);
 

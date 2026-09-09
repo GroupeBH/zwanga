@@ -28,6 +28,11 @@ type RequestTab = 'available' | 'my-requests';
 export default function TripRequestsScreen() {
   const router = useRouter();
   const { data: currentUser } = useGetCurrentUserQuery();
+  const isDriverAccount = Boolean(
+    currentUser?.isDriver ||
+      currentUser?.role === 'driver' ||
+      currentUser?.role === 'both',
+  );
   const [activeTab, setActiveTab] = useState<RequestTab>('available');
 
   // Query pour les demandes disponibles (pour les drivers)
@@ -193,7 +198,7 @@ export default function TripRequestsScreen() {
               <Text style={styles.viewButtonText}>Voir la demande</Text>
               <Ionicons name="arrow-forward" size={16} color={Colors.primary} />
             </TouchableOpacity>
-            {(currentUser?.role === 'driver' || currentUser?.role === 'both') && (
+            {isDriverAccount && (
               <TouchableOpacity
                 style={styles.makeOfferButton}
                 onPress={() => handleRequestPress(item.id)}

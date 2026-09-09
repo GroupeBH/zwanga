@@ -114,9 +114,11 @@ export type ServerTrip = {
   startedAt?: string | null;
   completedAt?: string | null;
   driverSafetyEmergencyContactIds?: string[];
+  tripRequestId?: string | null;
   recurringTemplateId?: string | null;
   recurringOccurrenceDate?: string | null;
   isFeatured?: boolean;
+  requiresPassengerKyc?: boolean | null;
   interruptionRequest?: ServerDriverTripInterruptionRequest | null;
   activeInterruptionRequest?: ServerDriverTripInterruptionRequest | null;
   currentInterruptionRequest?: ServerDriverTripInterruptionRequest | null;
@@ -160,6 +162,7 @@ export type ServerRecurringTripTemplate = {
   vehicle?: ServerVehicle | null;
   nextOccurrenceDate?: string | null;
   upcomingGeneratedTripsCount?: number;
+  requiresPassengerKyc?: boolean | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -446,9 +449,11 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     driverSafetyEmergencyContactIds: Array.isArray(trip.driverSafetyEmergencyContactIds)
       ? trip.driverSafetyEmergencyContactIds
       : [],
+    tripRequestId: trip.tripRequestId ?? null,
     recurringTemplateId: trip.recurringTemplateId ?? null,
     recurringOccurrenceDate: trip.recurringOccurrenceDate ?? null,
     isFeatured: Boolean(trip.isFeatured),
+    requiresPassengerKyc: Boolean(trip.requiresPassengerKyc),
     interruptionRequest: mapDriverInterruptionRequest(
       trip.interruptionRequest ??
         trip.activeInterruptionRequest ??
@@ -495,6 +500,7 @@ const mapServerRecurringTripToClient = (
     vehicle: mapServerVehicleToClient(template.vehicle) ?? null,
     nextOccurrenceDate: template.nextOccurrenceDate ?? null,
     upcomingGeneratedTripsCount: Number(template.upcomingGeneratedTripsCount ?? 0),
+    requiresPassengerKyc: Boolean(template.requiresPassengerKyc),
     createdAt: template.createdAt,
     updatedAt: template.updatedAt,
   };
@@ -554,6 +560,7 @@ type CreateTripPayload = {
   isFree?: boolean;
   description?: string;
   vehicleId?: string;
+  requiresPassengerKyc?: boolean;
 };
 
 export type CreateRecurringTripPayload = {
@@ -572,6 +579,7 @@ export type CreateRecurringTripPayload = {
   isFree?: boolean;
   description?: string;
   vehicleId: string;
+  requiresPassengerKyc?: boolean;
 };
 
 type UpdateTripRequest = Partial<CreateTripPayload> & {

@@ -1334,7 +1334,9 @@ export default function ManageTripScreen() {
                       <Text style={[styles.actionText, { color: Colors.primary }]}>Contacter</Text>
                     </TouchableOpacity>
 
-                    {!hasPassengerBoarded(booking) && (trip.status === 'upcoming' || trip.status === 'ongoing') && (
+                    {!trip.tripRequestId &&
+                      !hasPassengerBoarded(booking) &&
+                      (trip.status === 'upcoming' || trip.status === 'ongoing') && (
                       <TouchableOpacity
                         style={[styles.actionButton, styles.cancelBookingButton]}
                         onPress={() => handleCancelBookingBeforePickup(booking)}
@@ -1452,18 +1454,20 @@ export default function ManageTripScreen() {
                 <Text style={styles.footerSecondaryActionText} numberOfLines={1}>Modifier</Text>
               </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={[styles.secondaryButton, styles.footerFullWidthButton, styles.cancelTripFooterButton]}
-              onPress={handleCancelTrip}
-              disabled={isUpdatingTripStatus}
-              activeOpacity={0.8}
-            >
-              {isUpdatingTripStatus ? (
-                <ActivityIndicator color={Colors.danger} />
-              ) : (
-                <Text style={[styles.secondaryButtonText, { color: Colors.danger }]}>Annuler</Text>
-              )}
-            </TouchableOpacity>
+            {!trip.tripRequestId && (
+              <TouchableOpacity
+                style={[styles.secondaryButton, styles.footerFullWidthButton, styles.cancelTripFooterButton]}
+                onPress={handleCancelTrip}
+                disabled={isUpdatingTripStatus}
+                activeOpacity={0.8}
+              >
+                {isUpdatingTripStatus ? (
+                  <ActivityIndicator color={Colors.danger} />
+                ) : (
+                  <Text style={[styles.secondaryButtonText, { color: Colors.danger }]}>Annuler</Text>
+                )}
+              </TouchableOpacity>
+            )}
           </>
         )}
 

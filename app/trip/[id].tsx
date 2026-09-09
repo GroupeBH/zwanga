@@ -6,7 +6,9 @@ import {
   ELECTRONIC_PAYMENTS_ENABLED,
 } from '@/constants/paymentFeatures';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { getRegisteredVehicleTypeLabel } from '@/constants/vehicleTypes';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
+import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackEvent } from '@/services/analytics';
 import { trackingSocket, type BookingAutoProgressPayload } from '@/services/trackingSocket';
@@ -28,7 +30,7 @@ import { useAppSelector } from '@/store/hooks';
 import { selectConversations, selectTripById, selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus, Conversation, GeoPoint, TripPaymentMode } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
-import { getApiErrorMessage } from '@/utils/errorHelpers';
+import { getApiErrorMessage, isPassengerKycRequiredError } from '@/utils/errorHelpers';
 import {
   buildManualGeocodeQuery,
   mapGeocodeResponseToSelection,
@@ -346,6 +348,7 @@ export default function TripDetailsScreen() {
   const user = useAppSelector(selectUser);
   const conversations = useAppSelector(selectConversations);
   const { showDialog } = useDialog();
+  const { isIdentityVerified, checkIdentity } = useIdentityCheck();
   const driverPhone = trip?.driver?.phone ?? null;
   // console.log('driverPhone', driverPhone);
   const isTripDriver = Boolean(trip && user && trip.driverId === user.id);
@@ -418,6 +421,7 @@ export default function TripDetailsScreen() {
   const [editKeyboardHeight, setEditKeyboardHeight] = useState(0);
   const [editSeats, setEditSeats] = useState('');
   const [editPrice, setEditPrice] = useState('');
+  const [editRequiresPassengerKyc, setEditRequiresPassengerKyc] = useState(false);
   const [editDateTime, setEditDateTime] = useState<Date | null>(null);
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
   const [editRouteMode, setEditRouteMode] = useState<'map' | 'manual'>('map');
@@ -535,6 +539,7 @@ export default function TripDetailsScreen() {
 
     setEditSeats(String(trip.availableSeats));
     setEditPrice(String(trip.price));
+    setEditRequiresPassengerKyc(Boolean(trip.requiresPassengerKyc));
     const parsedDate = trip.departureTime ? new Date(trip.departureTime) : null;
     setEditDateTime(parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : getDefaultFutureDate());
     setEditDepartureSelection(departureSelection);
@@ -554,6 +559,7 @@ export default function TripDetailsScreen() {
     setEditKeyboardHeight(0);
     setEditSeats('');
     setEditPrice('');
+    setEditRequiresPassengerKyc(false);
     setEditDateTime(null);
     setIosPickerMode(null);
     setEditRouteMode('map');
@@ -798,11 +804,13 @@ export default function TripDetailsScreen() {
       departureCoordinates?: [number, number];
       arrivalCoordinates?: [number, number];
       vehicleId?: string;
+      requiresPassengerKyc?: boolean;
     } = {
       totalSeats: seatsValue,
       pricePerSeat: priceValue,
       departureDate: editDateTime.toISOString(),
       vehicleId: editVehicleId,
+      requiresPassengerKyc: editRequiresPassengerKyc,
     };
 
     if (departureAddressChanged) {
@@ -850,10 +858,13 @@ export default function TripDetailsScreen() {
       closeEditModal();
       refetchTrip();
     } catch (error: any) {
+      const isPassengerKycError = isPassengerKycRequiredError(error);
       showDialog({
-        variant: 'danger',
-        title: 'Erreur',
-        message: getApiErrorMessage(error, 'Impossible de mettre à jour ce trajet pour le moment.'),
+        variant: isPassengerKycError ? 'warning' : 'danger',
+        title: isPassengerKycError ? 'KYC passager requis' : 'Erreur',
+        message: isPassengerKycError
+          ? "Certains passagers déjà liés à ce trajet n'ont pas encore un KYC approuvé. Gardez l'exigence désactivée, ou demandez-leur de finaliser leur vérification avant de l'activer."
+          : getApiErrorMessage(error, 'Impossible de mettre à jour ce trajet pour le moment.'),
       });
     }
   };
@@ -948,6 +959,7 @@ export default function TripDetailsScreen() {
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [contactModalVisible, setContactModalVisible] = useState(false);
   const [securityModalVisible, setSecurityModalVisible] = useState(false);
+  const [vehicleDetailModalVisible, setVehicleDetailModalVisible] = useState(false);
   const securityModalTransitionRef = useRef(false);
   const securityModalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { refetch: refetchKycStatus } = useGetKycStatusQuery();
@@ -1545,6 +1557,11 @@ export default function TripDetailsScreen() {
     [passengerDestination, passengerDestinationManualAddress, trip?.arrival?.address, trip?.arrival?.name],
   );
   const openBookingModal = () => {
+    if (trip?.requiresPassengerKyc && !isIdentityVerified) {
+      checkIdentity('book');
+      return;
+    }
+
     const autoOrigin = defaultPassengerOriginSelection;
     setBookingSeats('1');
     setBookingPaymentMode('cash');
@@ -2073,6 +2090,13 @@ export default function TripDetailsScreen() {
       openBookingSuccessModal(seatsValue);
       refreshBookingLists();
     } catch (error: any) {
+      if (isPassengerKycRequiredError(error)) {
+        setBookingModalVisible(false);
+        setBookingModalError('');
+        checkIdentity('book');
+        return;
+      }
+
       setBookingModalError(
         getApiErrorMessage(error, 'Impossible de créer la réservation pour le moment.'),
       );
@@ -2418,18 +2442,55 @@ export default function TripDetailsScreen() {
   const tripRouteDistanceLabel = routeInfo?.distance
     ? `${Math.max(routeInfo.distance / 1000, 0.1).toFixed(1)} km`
     : 'Trajet';
-  const tripVehicleLabel = trip?.vehicle
-    ? `${trip.vehicle.brand} ${trip.vehicle.model}`.trim()
+  const tripVehicleTypeLabel = trip?.vehicle
+    ? getRegisteredVehicleTypeLabel(trip.vehicle.type)
     : trip?.vehicleType === 'moto'
       ? 'Moto'
       : trip?.vehicleType === 'tricycle'
         ? 'Tricycle'
         : 'Voiture';
+  const tripVehicleLabel = trip?.vehicle
+    ? `${trip.vehicle.brand} ${trip.vehicle.model}`.trim() || tripVehicleTypeLabel
+    : tripVehicleTypeLabel;
   const tripVehicleMetaLabel = trip?.vehicle
     ? [trip.vehicle.color, trip.vehicle.licensePlate].filter(Boolean).join(' • ')
     : trip?.vehicleInfo && trip.vehicleInfo !== 'Informations véhicule fournies par le conducteur'
       ? trip.vehicleInfo
       : 'Véhicule confirmé après réservation';
+  const tripVehicleIconName: keyof typeof Ionicons.glyphMap =
+    trip?.vehicle?.type === 'motorcycle_2_wheels' || trip?.vehicleType === 'moto'
+      ? 'bicycle'
+      : trip?.vehicle?.type === 'motorcycle_3_wheels' || trip?.vehicleType === 'tricycle'
+        ? 'car-sport'
+        : 'car';
+  const tripVehicleSeatLabel = trip
+    ? `${trip.totalSeats} place${trip.totalSeats > 1 ? 's' : ''} au total`
+    : null;
+  const tripVehicleLicensePlate = trip?.vehicle?.licensePlate?.trim() || null;
+  const tripVehicleStatusLabel = trip?.vehicle
+    ? trip.vehicle.isActive === false
+      ? 'Indisponible'
+      : 'Actif'
+    : null;
+  const tripVehicleDetailRows: {
+    icon: keyof typeof Ionicons.glyphMap;
+    label: string;
+    value?: string | null;
+  }[] = [
+    { icon: 'business-outline', label: 'Marque', value: trip?.vehicle?.brand },
+    { icon: 'car-outline', label: 'Modèle', value: trip?.vehicle?.model },
+    { icon: 'color-palette-outline', label: 'Couleur', value: trip?.vehicle?.color },
+    { icon: 'people-outline', label: 'Places', value: tripVehicleSeatLabel },
+    {
+      icon: 'information-circle-outline',
+      label: 'Information',
+      value: !trip?.vehicle && trip?.vehicleInfo ? trip.vehicleInfo : null,
+    },
+  ];
+  const visibleTripVehicleDetailRows = tripVehicleDetailRows.filter(
+    (row): row is { icon: keyof typeof Ionicons.glyphMap; label: string; value: string } =>
+      Boolean(row.value),
+  );
   const headerFloatingOffset = Math.max(insets.top, 12) + 10;
 
   // Early return AFTER all hooks to avoid hook order violation
@@ -2892,16 +2953,16 @@ export default function TripDetailsScreen() {
                 <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
               </TouchableOpacity>
 
-              <View style={styles.tripVehicleCompact}>
+              <TouchableOpacity
+                style={styles.tripVehicleCompact}
+                onPress={() => setVehicleDetailModalVisible(true)}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Voir les details du vehicule"
+              >
                 <View style={styles.tripVehicleCompactIcon}>
                   <Ionicons
-                    name={
-                      trip?.vehicleType === 'moto'
-                        ? 'bicycle'
-                        : trip?.vehicleType === 'tricycle'
-                          ? 'car-sport'
-                          : 'car'
-                    }
+                    name={tripVehicleIconName}
                     size={18}
                     color={Colors.primary}
                   />
@@ -2911,8 +2972,23 @@ export default function TripDetailsScreen() {
                   <Text style={styles.tripVehicleCompactName} numberOfLines={1}>{tripVehicleLabel}</Text>
                   <Text style={styles.tripVehicleCompactMeta} numberOfLines={1}>{tripVehicleMetaLabel}</Text>
                 </View>
-              </View>
+                <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
+              </TouchableOpacity>
             </View>
+
+            {trip?.requiresPassengerKyc ? (
+              <View style={styles.passengerKycTripNotice}>
+                <View style={styles.passengerKycTripNoticeIcon}>
+                  <Ionicons name="shield-checkmark-outline" size={17} color={Colors.primary} />
+                </View>
+                <View style={styles.passengerKycTripNoticeCopy}>
+                  <Text style={styles.passengerKycTripNoticeTitle}>KYC passager requis</Text>
+                  <Text style={styles.passengerKycTripNoticeText}>
+                    Ce conducteur accepte uniquement les passagers dont l&apos;identité est vérifiée.
+                  </Text>
+                </View>
+              </View>
+            ) : null}
 
             <View style={styles.tripInlineActions}>
               <TouchableOpacity
@@ -3405,6 +3481,138 @@ export default function TripDetailsScreen() {
       </View>
 
       <Modal
+        visible={vehicleDetailModalVisible}
+        animationType="slide"
+        transparent
+        statusBarTranslucent
+        presentationStyle="overFullScreen"
+        onRequestClose={() => setVehicleDetailModalVisible(false)}
+      >
+        <View style={styles.vehicleDetailModalOverlay}>
+          <TouchableOpacity
+            style={styles.vehicleDetailModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setVehicleDetailModalVisible(false)}
+          />
+          <View
+            style={[
+              styles.vehicleDetailModalCard,
+              { paddingBottom: Math.max(insets.bottom, Spacing.lg) + Spacing.md },
+            ]}
+          >
+            <View style={styles.vehicleDetailModalHeader}>
+              {trip?.vehicle?.photoUrl ? (
+                <Image
+                  resizeMode="cover"
+                  source={{ uri: trip.vehicle.photoUrl }}
+                  style={styles.vehicleDetailModalPhoto}
+                />
+              ) : (
+                <View style={styles.vehicleDetailModalBadge}>
+                  <Ionicons name={tripVehicleIconName} size={22} color={Colors.white} />
+                </View>
+              )}
+              <View style={styles.vehicleDetailModalHeaderCopy}>
+                <Text style={styles.vehicleDetailModalTitle} numberOfLines={1}>
+                  {tripVehicleLabel}
+                </Text>
+                <Text style={styles.vehicleDetailModalSubtitle} numberOfLines={1}>
+                  {tripVehicleTypeLabel}
+                </Text>
+              </View>
+              <TouchableOpacity
+                accessibilityLabel="Fermer les détails du véhicule"
+                accessibilityRole="button"
+                onPress={() => setVehicleDetailModalVisible(false)}
+                style={styles.vehicleDetailModalCloseIcon}
+              >
+                <Ionicons name="close" size={20} color={Colors.gray[500]} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.vehicleDetailModalBody}>
+              {tripVehicleStatusLabel ? (
+                <View style={styles.vehicleDetailModalChips}>
+                  <View
+                    style={[
+                      styles.vehicleDetailModalChip,
+                      tripVehicleStatusLabel === 'Actif'
+                        ? styles.vehicleDetailModalChipSuccess
+                        : styles.vehicleDetailModalChipMuted,
+                    ]}
+                  >
+                    <Ionicons
+                      name={tripVehicleStatusLabel === 'Actif' ? 'checkmark-circle' : 'pause-circle'}
+                      size={14}
+                      color={tripVehicleStatusLabel === 'Actif' ? Colors.successDark : Colors.gray[600]}
+                    />
+                    <Text
+                      style={[
+                        styles.vehicleDetailModalChipText,
+                        tripVehicleStatusLabel === 'Actif'
+                          ? styles.vehicleDetailModalChipTextSuccess
+                          : styles.vehicleDetailModalChipTextMuted,
+                      ]}
+                    >
+                      {tripVehicleStatusLabel}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+
+              {tripVehicleLicensePlate ? (
+                <View style={styles.vehicleDetailModalPlate}>
+                  <Text style={styles.vehicleDetailModalPlateCaption}>Plaque</Text>
+                  <Text style={styles.vehicleDetailModalPlateValue}>{tripVehicleLicensePlate}</Text>
+                </View>
+              ) : null}
+
+              {visibleTripVehicleDetailRows.length > 0 ? (
+                <View style={styles.vehicleDetailModalGrid}>
+                  {visibleTripVehicleDetailRows.map((row) => (
+                    <View
+                      key={row.label}
+                      style={[
+                        styles.vehicleDetailModalFact,
+                        row.label === 'Information' && styles.vehicleDetailModalFactWide,
+                      ]}
+                    >
+                      <View style={styles.vehicleDetailModalFactIcon}>
+                        <Ionicons name={row.icon} size={16} color={Colors.primary} />
+                      </View>
+                      <View style={styles.vehicleDetailModalFactCopy}>
+                        <Text style={styles.vehicleDetailModalFactLabel}>{row.label}</Text>
+                        <Text style={styles.vehicleDetailModalFactValue} numberOfLines={2}>
+                          {row.value}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              <View style={styles.vehicleDetailModalSafetyNote}>
+                <View style={styles.vehicleDetailModalSafetyIcon}>
+                  <Ionicons name="shield-checkmark" size={16} color={Colors.primary} />
+                </View>
+                <Text style={styles.vehicleDetailModalSafetyText}>
+                  Avant de monter, vérifiez que le véhicule et la plaque correspondent aux informations du trajet.
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setVehicleDetailModalVisible(false)}
+                style={styles.vehicleDetailModalCloseButton}
+              >
+                <Text style={styles.vehicleDetailModalCloseText}>Fermer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={securityModalVisible}
         animationType="slide"
         transparent
@@ -3718,6 +3926,14 @@ export default function TripDetailsScreen() {
                       <Ionicons name="card-outline" size={16} color={Colors.primary} />
                       <Text style={styles.bookingSummaryText}>
                         {getTripPaymentModeLabel(bookingPaymentMode)}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {trip?.requiresPassengerKyc ? (
+                    <View style={styles.bookingSummaryKycRow}>
+                      <Ionicons name="shield-checkmark-outline" size={16} color={Colors.primary} />
+                      <Text style={styles.bookingSummaryKycText}>
+                        Vérification d&apos;identité passager requise
                       </Text>
                     </View>
                   ) : null}
@@ -4290,6 +4506,38 @@ export default function TripDetailsScreen() {
                   />
                 </View>
               </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.editPassengerKycCard,
+                  editRequiresPassengerKyc && styles.editPassengerKycCardActive,
+                ]}
+                onPress={() => setEditRequiresPassengerKyc((current) => !current)}
+                activeOpacity={0.84}
+              >
+                <View style={styles.editPassengerKycCopy}>
+                  <View style={styles.editPassengerKycTitleRow}>
+                    <Ionicons name="shield-checkmark-outline" size={17} color={Colors.primary} />
+                    <Text style={styles.editPassengerKycTitle}>Passagers vérifiés uniquement</Text>
+                  </View>
+                  <Text style={styles.editPassengerKycText}>
+                    Les passagers devront avoir une vérification d&apos;identité approuvée avant de réserver ou embarquer.
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.editPassengerKycSwitch,
+                    editRequiresPassengerKyc && styles.editPassengerKycSwitchActive,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.editPassengerKycThumb,
+                      editRequiresPassengerKyc && styles.editPassengerKycThumbActive,
+                    ]}
+                  />
+                </View>
+              </TouchableOpacity>
                 </>
               )}
             </ScrollView>
@@ -4948,6 +5196,254 @@ const styles = StyleSheet.create({
     color: Colors.gray[500],
     fontSize: 11,
     fontWeight: FontWeights.medium,
+  },
+  vehicleDetailModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  vehicleDetailModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 15, 15, 0.55)',
+  },
+  vehicleDetailModalCard: {
+    width: '100%',
+    maxHeight: '88%',
+    overflow: 'hidden',
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.14,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  vehicleDetailModalHeader: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+  },
+  vehicleDetailModalPhoto: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: Colors.gray[100],
+  },
+  vehicleDetailModalBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleDetailModalHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  vehicleDetailModalCloseIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.gray[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleDetailModalBody: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    gap: Spacing.md,
+  },
+  vehicleDetailModalChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  vehicleDetailModalChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[100],
+  },
+  vehicleDetailModalChipSuccess: {
+    backgroundColor: Colors.success + '14',
+  },
+  vehicleDetailModalChipMuted: {
+    backgroundColor: Colors.gray[100],
+  },
+  vehicleDetailModalChipText: {
+    color: Colors.gray[700],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  vehicleDetailModalChipTextSuccess: {
+    color: Colors.successDark,
+  },
+  vehicleDetailModalChipTextMuted: {
+    color: Colors.gray[600],
+  },
+  vehicleDetailModalTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+  },
+  vehicleDetailModalSubtitle: {
+    marginTop: 2,
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+  },
+  vehicleDetailModalPlate: {
+    alignSelf: 'flex-start',
+    minWidth: 148,
+    borderRadius: BorderRadius.md,
+    borderWidth: 2,
+    borderColor: Colors.gray[900],
+    backgroundColor: Colors.gray[50],
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  vehicleDetailModalPlateCaption: {
+    color: Colors.gray[500],
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  vehicleDetailModalPlateValue: {
+    marginTop: 2,
+    color: Colors.gray[900],
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+  vehicleDetailModalGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  vehicleDetailModalFact: {
+    width: '48%',
+    flexGrow: 1,
+    flexBasis: '46%',
+    minHeight: 64,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    backgroundColor: Colors.gray[50],
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  vehicleDetailModalFactWide: {
+    width: '100%',
+    flexBasis: '100%',
+  },
+  vehicleDetailModalFactIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleDetailModalFactCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  vehicleDetailModalFactLabel: {
+    color: Colors.gray[500],
+    fontSize: 11,
+    fontWeight: FontWeights.bold,
+    textTransform: 'uppercase',
+  },
+  vehicleDetailModalFactValue: {
+    marginTop: 2,
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
+  vehicleDetailModalSafetyNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.primary + '08',
+    borderWidth: 1,
+    borderColor: Colors.primary + '20',
+  },
+  vehicleDetailModalSafetyIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleDetailModalSafetyText: {
+    flex: 1,
+    color: Colors.gray[700],
+    fontSize: FontSizes.sm,
+    lineHeight: 20,
+  },
+  vehicleDetailModalCloseButton: {
+    minHeight: 50,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleDetailModalCloseText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  passengerKycTripNotice: {
+    marginTop: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+    backgroundColor: Colors.primary + '08',
+  },
+  passengerKycTripNoticeIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+  },
+  passengerKycTripNoticeCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  passengerKycTripNoticeTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  passengerKycTripNoticeText: {
+    marginTop: 3,
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
   },
   tripInlineActions: {
     marginTop: Spacing.sm,
@@ -5962,6 +6458,21 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
+  },
+  bookingSummaryKycRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.xs,
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.primary + '18',
+  },
+  bookingSummaryKycText: {
+    flex: 1,
+    color: Colors.primaryDark,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
   },
   bookingModalTitle: {
     fontSize: 22,
@@ -6998,6 +7509,61 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[200],
+  },
+  editPassengerKycCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
+  },
+  editPassengerKycCardActive: {
+    borderColor: Colors.primary + '45',
+    backgroundColor: Colors.primary + '08',
+  },
+  editPassengerKycCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  editPassengerKycTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  editPassengerKycTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  editPassengerKycText: {
+    marginTop: 4,
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+  },
+  editPassengerKycSwitch: {
+    width: 42,
+    height: 24,
+    borderRadius: BorderRadius.full,
+    padding: 2,
+    justifyContent: 'center',
+    backgroundColor: Colors.gray[300],
+  },
+  editPassengerKycSwitchActive: {
+    backgroundColor: Colors.success,
+  },
+  editPassengerKycThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+    alignSelf: 'flex-start',
+  },
+  editPassengerKycThumbActive: {
+    alignSelf: 'flex-end',
   },
   editModalActions: {
     flexDirection: 'row',

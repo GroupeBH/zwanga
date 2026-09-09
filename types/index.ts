@@ -256,9 +256,11 @@ export interface Trip {
   description?: string | null; // Description du trajet
   vehicle?: Vehicle; // Informations complètes du véhicule
   driverSafetyEmergencyContactIds?: string[];
+  tripRequestId?: string | null;
   recurringTemplateId?: string | null;
   recurringOccurrenceDate?: string | null;
   isFeatured?: boolean;
+  requiresPassengerKyc?: boolean;
   interruptionRequest?: DriverTripInterruptionRequest | null;
 }
 
@@ -280,6 +282,7 @@ export interface RecurringTripTemplate {
   vehicle?: Vehicle | null;
   nextOccurrenceDate?: string | null;
   upcomingGeneratedTripsCount: number;
+  requiresPassengerKyc?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -786,6 +789,8 @@ export interface TripRequest {
   selectedPricePerSeat?: number | null; // Prix accepté pour le driver sélectionné
   selectedAt?: string | null; // Date de sélection du driver
   tripId?: string | null; // ID du trip créé à partir de cette demande
+  selectedDriverRequiresPassengerKyc?: boolean | null;
+  driverPickupOverdueNotifiedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   offers?: DriverOffer[]; // Offres reçues des drivers
@@ -813,6 +818,7 @@ export interface DriverOffer {
   departureCoordinates?: [number, number] | null;
   arrivalReference?: string | null;
   arrivalCoordinates?: [number, number] | null;
+  requiresPassengerKyc?: boolean;
   status: DriverOfferStatus;
   acceptedAt?: string | null;
   rejectedAt?: string | null;

@@ -33,6 +33,7 @@ import {
   KeyboardAvoidingView,
   Linking,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -419,6 +420,8 @@ export default function SubscriptionPaymentScreen() {
 
   const pollingRunIdRef = useRef(0);
   const mountedRef = useRef(true);
+  const scrollRef = useRef<ScrollView>(null);
+  const phoneFieldOffsetRef = useRef(0);
   const restoredKeyRef = useRef<string | null>(null);
   const handledPaymentStatusRef = useRef<string | null>(null);
   const prefilledPhoneRef = useRef(false);
@@ -1270,6 +1273,22 @@ export default function SubscriptionPaymentScreen() {
     });
   }, [handlePrimaryAction, handleRetry, showDialog]);
 
+  const scrollPhoneFieldIntoView = useCallback(() => {
+    const reveal = () => {
+      scrollRef.current?.scrollTo({
+        y: Math.max(0, phoneFieldOffsetRef.current - Spacing.lg),
+        animated: true,
+      });
+    };
+
+    if (Platform.OS === 'android') {
+      setTimeout(reveal, 280);
+      return;
+    }
+
+    requestAnimationFrame(reveal);
+  }, []);
+
   useEffect(() => {
     if (prefilledPhoneRef.current || !currentUser?.phone) return;
     setPhone(formatCongolesePaymentPhone(currentUser.phone));
@@ -1397,7 +1416,8 @@ export default function SubscriptionPaymentScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : Math.max(insets.bottom, Spacing.sm)}
         style={styles.keyboardRoot}
       >
         <View style={styles.header}>
@@ -1437,7 +1457,14 @@ export default function SubscriptionPaymentScreen() {
           </View>
         </View>
 
-        <View style={[styles.content, isCompactHeight && styles.contentCompact]}>
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={[styles.content, isCompactHeight && styles.contentCompact]}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          style={styles.scrollRoot}
+        >
           <LinearGradient
             colors={['#FFF7ED', '#FFFFFF']}
             start={{ x: 0, y: 0 }}
@@ -1521,7 +1548,12 @@ export default function SubscriptionPaymentScreen() {
               </View>
             </View>
           ) : !isCardPayment ? (
-            <View style={[styles.section, isCompactHeight && styles.sectionCompact]}>
+            <View
+              onLayout={(event) => {
+                phoneFieldOffsetRef.current = event.nativeEvent.layout.y;
+              }}
+              style={[styles.section, isCompactHeight && styles.sectionCompact]}
+            >
               <Text style={styles.sectionLabel}>Numéro Mobile Money</Text>
               <View
                 style={[
@@ -1536,6 +1568,7 @@ export default function SubscriptionPaymentScreen() {
                   keyboardType="phone-pad"
                   maxLength={13}
                   onChangeText={(text) => setPhone(normalizePaymentPhone(text))}
+                  onFocus={scrollPhoneFieldIntoView}
                   placeholder="+243891234567"
                   placeholderTextColor={Colors.gray[400]}
                   style={styles.phoneInput}
@@ -1638,7 +1671,7 @@ export default function SubscriptionPaymentScreen() {
               </View>
             </View>
           ) : null}
-        </View>
+        </ScrollView>
 
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}>
           {stage === 'failed' && !orderNumber ? (
@@ -1685,6 +1718,9 @@ const styles = StyleSheet.create({
   keyboardRoot: {
     flex: 1,
   },
+  scrollRoot: {
+    flex: 1,
+  },
   header: {
     minHeight: 64,
     paddingHorizontal: Spacing.lg,
@@ -1725,7 +1761,7 @@ const styles = StyleSheet.create({
     fontWeight: FontWeights.semibold,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,
     paddingBottom: Spacing.sm,
