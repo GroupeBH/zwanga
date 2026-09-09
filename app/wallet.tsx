@@ -23,6 +23,7 @@ import {
   AppState,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   RefreshControl,
   ScrollView,
@@ -32,9 +33,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type WalletTab = 'top_up' | 'transfer';
+type WalletAction = 'top_up' | 'transfer';
 type TopUpStage =
   | 'idle'
   | 'preparing'
@@ -267,6 +268,100 @@ const formatDate = (value?: string | null) => {
   });
 };
 
+function WalletSheetModal({
+  visible,
+  title,
+  subtitle,
+  icon,
+  onClose,
+  children,
+}: {
+  visible: boolean;
+  title: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Modal
+      transparent
+      statusBarTranslucent
+      animationType="slide"
+      presentationStyle="overFullScreen"
+      visible={visible}
+      onRequestClose={onClose}
+    >
+      <SafeAreaProvider>
+        <WalletSheetModalBody
+          icon={icon}
+          onClose={onClose}
+          subtitle={subtitle}
+          title={title}
+        >
+          {children}
+        </WalletSheetModalBody>
+      </SafeAreaProvider>
+    </Modal>
+  );
+}
+
+function WalletSheetModalBody({
+  title,
+  subtitle,
+  icon,
+  onClose,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, Spacing.lg) + Spacing.md;
+
+  return (
+    <View style={styles.sheetOverlay}>
+      <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={onClose} />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        pointerEvents="box-none"
+        style={styles.sheetKeyboard}
+      >
+        <View style={[styles.sheetCard, { paddingBottom: bottomInset }]}>
+          <View style={styles.sheetHeader}>
+            <View style={styles.sheetBadge}>
+              <Ionicons name={icon} size={22} color={Colors.white} />
+            </View>
+            <View style={styles.sheetHeaderCopy}>
+              <Text numberOfLines={1} style={styles.sheetTitle}>
+                {title}
+              </Text>
+              <Text numberOfLines={2} style={styles.sheetSubtitle}>
+                {subtitle}
+              </Text>
+            </View>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Fermer"
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.sheetCloseButton}
+              onPress={onClose}
+            >
+              <Ionicons name="close" size={22} color={Colors.gray[500]} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.sheetContent}>
+            {children}
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </View>
+  );
+}
+
 export default function WalletScreen() {
   const router = useRouter();
   const { paymentStatus, status } = useLocalSearchParams<{
@@ -276,7 +371,7 @@ export default function WalletScreen() {
   const returnedPaymentStatus = paymentStatus ?? status;
   const user = useAppSelector(selectUser);
   const { showDialog } = useDialog();
-  const [activeTab, setActiveTab] = useState<WalletTab>('top_up');
+  const [activeModal, setActiveModal] = useState<WalletAction | null>(null);
   const [topUpAmount, setTopUpAmount] = useState('50');
   const [topUpMethod, setTopUpMethod] = useState<SubscriptionPaymentMethod>('mobile_money');
   const [topUpPhone, setTopUpPhone] = useState('');
@@ -434,6 +529,7 @@ export default function WalletScreen() {
       setTopUpStage('success');
       setTopUpAutoCheckAttempt(0);
       setTopUpStatusMessage('Recharge confirmée. Votre solde de jetons est en cours d’actualisation.');
+      setActiveModal(null);
       await refreshAll();
       setTimeout(() => {
         if (mountedRef.current) void refreshAll();
@@ -844,6 +940,7 @@ export default function WalletScreen() {
       setTransferAmount('');
       setTransferRecipient('');
       setTransferNote('');
+      setActiveModal(null);
       await refreshAll();
 
       showDialog({
@@ -913,6 +1010,7 @@ export default function WalletScreen() {
       const storedPayment = await readStoredTopUp();
       const orderNumber = topUpOrderNumber ?? storedPayment?.orderNumber;
       const paymentMethod = storedPayment?.paymentMethod ?? topUpMethod;
+      setActiveModal('top_up');
 
       if (!orderNumber) {
         if (normalizedStatus === 'cancel' || normalizedStatus === 'decline') {
@@ -1043,276 +1141,311 @@ export default function WalletScreen() {
         </TouchableOpacity>
       </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.keyboardRoot}
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refreshAll} />}
+        showsVerticalScrollIndicator={false}
+        style={styles.scrollRoot}
       >
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refreshAll} />}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.balancePanel}>
-            <View style={styles.balanceTopRow}>
-              <View style={styles.balanceIcon}>
-                <Ionicons name="wallet-outline" size={22} color={Colors.white} />
-              </View>
-              <Text style={styles.balanceLabel}>Solde disponible</Text>
+        <View style={styles.balancePanel}>
+          <View style={styles.balanceTopRow}>
+            <View style={styles.balanceIcon}>
+              <Ionicons name="wallet-outline" size={22} color={Colors.white} />
             </View>
-            {isWalletLoading ? (
-              <ActivityIndicator color={Colors.primary} style={styles.balanceLoader} />
-            ) : (
-              <Text style={styles.balanceValue}>
-                {formatWalletAmount(walletSummary?.account.balance ?? 0, currency)}
-              </Text>
-            )}
-            <Text style={styles.balanceHint}>
-              Les jetons achetés et les jetons de fidélité sont utilisables pour vos trajets et abonnements.
-            </Text>
+            <Text style={styles.balanceLabel}>Solde disponible</Text>
           </View>
-
-          <TouchableOpacity style={styles.referralBanner} onPress={() => router.push('/referrals')}>
-            <View style={styles.referralBannerIcon}>
-              <Ionicons name="gift-outline" size={21} color={Colors.primary} />
-            </View>
-            <View style={styles.referralBannerText}>
-              <Text style={styles.referralBannerTitle}>Jetons de parrainage</Text>
-              <Text style={styles.referralBannerHint}>Consultez vos commissions de 5 % et retirez vos gains.</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
-          </TouchableOpacity>
-
-          <View style={styles.tabs}>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => setActiveTab('top_up')}
-              style={[styles.tabButton, activeTab === 'top_up' && styles.tabButtonActive]}
-            >
-              <Ionicons
-                name="add-circle-outline"
-                size={18}
-                color={activeTab === 'top_up' ? Colors.white : Colors.gray[700]}
-              />
-              <Text style={[styles.tabText, activeTab === 'top_up' && styles.tabTextActive]}>
-                Recharger
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => setActiveTab('transfer')}
-              style={[styles.tabButton, activeTab === 'transfer' && styles.tabButtonActive]}
-            >
-              <Ionicons
-                name="share-outline"
-                size={18}
-                color={activeTab === 'transfer' ? Colors.white : Colors.gray[700]}
-              />
-              <Text style={[styles.tabText, activeTab === 'transfer' && styles.tabTextActive]}>
-                Partager
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {activeTab === 'top_up' ? (
-            <View style={styles.formPanel}>
-              <Text style={styles.sectionTitle}>Acheter des jetons</Text>
-              <View style={styles.methodRow}>
-                {TOP_UP_METHOD_OPTIONS.map((option) => {
-                  const selected = topUpMethod === option.id;
-                  const disabled = Boolean(topUpOrderNumber) || isTopUpBusy;
-                  return (
-                    <TouchableOpacity
-                      key={option.id}
-                      activeOpacity={0.85}
-                      disabled={disabled}
-                      onPress={() => setTopUpMethod(option.id)}
-                      style={[
-                        styles.methodButton,
-                        selected && styles.methodButtonActive,
-                        disabled && styles.disabled,
-                      ]}
-                    >
-                      <Ionicons
-                        name={option.icon}
-                        size={18}
-                        color={selected ? Colors.primary : Colors.gray[600]}
-                      />
-                      <View style={styles.methodTextBlock}>
-                        <Text style={styles.methodLabel}>{option.label}</Text>
-                        <Text numberOfLines={1} style={styles.methodHint}>
-                          {option.hint}
-                        </Text>
-                      </View>
-                      <Ionicons
-                        name={selected ? 'radio-button-on' : 'radio-button-off'}
-                        size={18}
-                        color={selected ? Colors.primary : Colors.gray[300]}
-                      />
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <TextInput
-                keyboardType="numeric"
-                onChangeText={setTopUpAmount}
-                placeholder="Nombre de jetons"
-                placeholderTextColor={Colors.gray[400]}
-                style={styles.input}
-                value={topUpAmount}
-              />
-              <Text style={styles.helperText}>1 jeton = 100 FC. Exemple: 50 jetons = 5 000 FC.</Text>
-              {isTopUpPhoneRequired ? (
-                <TextInput
-                  keyboardType="phone-pad"
-                  maxLength={13}
-                  onChangeText={(text) => setTopUpPhone(normalizePhone(text))}
-                  placeholder="+243891234567"
-                  placeholderTextColor={Colors.gray[400]}
-                  style={styles.input}
-                  value={topUpPhone}
-                />
-              ) : null}
-
-              <TouchableOpacity
-                activeOpacity={0.85}
-                disabled={isTopUpBusy}
-                onPress={handleTopUp}
-                style={[styles.primaryButton, isTopUpBusy && styles.disabled]}
-              >
-                {isTopUpBusy ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <>
-                    <Ionicons name="flash-outline" size={18} color={Colors.white} />
-                    <Text style={styles.primaryButtonText}>
-                      {topUpOrderNumber
-                        ? topUpMethod === 'card' && topUpPaymentUrl
-                          ? 'Rouvrir le paiement'
-                          : 'Actualiser la recharge'
-                        : 'Recharger'}
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
-
-              {topUpStatusMessage || topUpOrderNumber ? (
-                <View style={[styles.topUpStatusCard, { borderColor: topUpStatusColor + '35' }]}>
-                  <View style={styles.topUpStatusHeader}>
-                    {isAutoCheckingTopUp || isCheckingTopUp ? (
-                      <ActivityIndicator size="small" color={topUpStatusColor} />
-                    ) : (
-                      <Ionicons
-                        name={
-                          topUpStage === 'success'
-                            ? 'checkmark-circle-outline'
-                            : topUpStage === 'failed'
-                              ? 'close-circle-outline'
-                              : 'sync-outline'
-                        }
-                        size={18}
-                        color={topUpStatusColor}
-                      />
-                    )}
-                    <Text style={[styles.topUpStatusTitle, { color: topUpStatusColor }]}>
-                      {topUpStatusTitle}
-                    </Text>
-                  </View>
-                  {topUpStatusMessage ? (
-                    <Text style={styles.topUpStatusText}>{topUpStatusMessage}</Text>
-                  ) : null}
-                  {topUpAutoCheckAttempt > 0 ? (
-                    <Text style={styles.topUpReferenceText}>
-                      Vérification automatique {topUpAutoCheckAttempt}/{AUTO_CHECK_MAX_ATTEMPTS}
-                    </Text>
-                  ) : null}
-                  {topUpOrderNumber ? (
-                    <Text style={styles.topUpReferenceText}>Référence FlexPay {topUpOrderNumber}</Text>
-                  ) : null}
-                </View>
-              ) : null}
-
-              {topUpOrderNumber ? (
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  disabled={isTopUpBusy}
-                  onPress={handleCheckTopUpStatus}
-                  style={[styles.secondaryButton, isTopUpBusy && styles.disabled]}
-                >
-                  {isCheckingTopUp || isAutoCheckingTopUp ? (
-                    <ActivityIndicator color={Colors.primary} />
-                  ) : (
-                    <>
-                      <Ionicons name="sync-outline" size={18} color={Colors.primary} />
-                      <Text style={styles.secondaryButtonText}>Vérifier la recharge</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              ) : null}
-            </View>
+          {isWalletLoading ? (
+            <ActivityIndicator color={Colors.primary} style={styles.balanceLoader} />
           ) : (
-            <View style={styles.formPanel}>
-              <Text style={styles.sectionTitle}>Partager a un utilisateur</Text>
-              <TextInput
-                keyboardType="numeric"
-                onChangeText={setTransferAmount}
-                placeholder="Nombre de jetons"
-                placeholderTextColor={Colors.gray[400]}
-                style={styles.input}
-                value={transferAmount}
-              />
-              <TextInput
-                autoCapitalize="none"
-                keyboardType="default"
-                onChangeText={setTransferRecipient}
-                placeholder="Téléphone, email ou ID utilisateur"
-                placeholderTextColor={Colors.gray[400]}
-                style={styles.input}
-                value={transferRecipient}
-              />
-              <TextInput
-                onChangeText={setTransferNote}
-                placeholder="Note optionnelle"
-                placeholderTextColor={Colors.gray[400]}
-                style={styles.input}
-                value={transferNote}
-              />
-              <TouchableOpacity
-                activeOpacity={0.85}
-                disabled={isTransferring}
-                onPress={handleTransfer}
-                style={[styles.primaryButton, isTransferring && styles.disabled]}
-              >
-                {isTransferring ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <>
-                    <Ionicons name="send-outline" size={18} color={Colors.white} />
-                    <Text style={styles.primaryButtonText}>Partager les jetons</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+            <Text style={styles.balanceValue}>
+              {formatWalletAmount(walletSummary?.account.balance ?? 0, currency)}
+            </Text>
+          )}
+          <Text style={styles.balanceHint}>
+            Les jetons achetés et les jetons de fidélité sont utilisables pour vos trajets et abonnements.
+          </Text>
+        </View>
+
+        <TouchableOpacity style={styles.referralBanner} onPress={() => router.push('/referrals')}>
+          <View style={styles.referralBannerIcon}>
+            <Ionicons name="gift-outline" size={21} color={Colors.primary} />
+          </View>
+          <View style={styles.referralBannerText}>
+            <Text style={styles.referralBannerTitle}>Jetons de parrainage</Text>
+            <Text style={styles.referralBannerHint}>Consultez vos commissions de 5 % et retirez vos gains.</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+        </TouchableOpacity>
+
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Recharger des jetons"
+            activeOpacity={0.85}
+            onPress={() => setActiveModal('top_up')}
+            style={styles.actionCard}
+          >
+            <View style={styles.actionCardIcon}>
+              <Ionicons name="add-circle-outline" size={22} color={Colors.white} />
+            </View>
+            <Text style={styles.actionCardTitle}>Recharger</Text>
+            <Text style={styles.actionCardHint}>Acheter des jetons</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Partager des jetons"
+            activeOpacity={0.85}
+            onPress={() => setActiveModal('transfer')}
+            style={styles.actionCard}
+          >
+            <View style={[styles.actionCardIcon, styles.actionCardIconSecondary]}>
+              <Ionicons name="share-outline" size={20} color={Colors.primary} />
+            </View>
+            <Text style={styles.actionCardTitle}>Partager</Text>
+            <Text style={styles.actionCardHint}>Envoyer à un utilisateur</Text>
+          </TouchableOpacity>
+        </View>
+
+        {topUpStatusMessage || topUpOrderNumber ? (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => setActiveModal('top_up')}
+            style={[styles.followUpBanner, { borderColor: topUpStatusColor + '35' }]}
+          >
+            <View style={[styles.followUpIcon, { backgroundColor: topUpStatusColor + '12' }]}>
+              {isAutoCheckingTopUp || isCheckingTopUp ? (
+                <ActivityIndicator size="small" color={topUpStatusColor} />
+              ) : (
+                <Ionicons
+                  name={
+                    topUpStage === 'success'
+                      ? 'checkmark-circle-outline'
+                      : topUpStage === 'failed'
+                        ? 'close-circle-outline'
+                        : 'sync-outline'
+                  }
+                  size={18}
+                  color={topUpStatusColor}
+                />
+              )}
+            </View>
+            <View style={styles.followUpCopy}>
+              <Text style={[styles.followUpTitle, { color: topUpStatusColor }]}>{topUpStatusTitle}</Text>
+              <Text numberOfLines={2} style={styles.followUpText}>
+                {topUpStatusMessage || 'Touchez pour suivre la recharge.'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
+          </TouchableOpacity>
+        ) : null}
+
+        <View style={styles.historyHeader}>
+          <Text style={styles.sectionTitle}>Historique</Text>
+          {isLedgerFetching ? <ActivityIndicator size="small" color={Colors.primary} /> : null}
+        </View>
+
+        <View style={styles.ledgerPanel}>
+          {entries.length > 0 ? (
+            entries.map(renderLedgerEntry)
+          ) : (
+            <View style={styles.emptyLedger}>
+              <Ionicons name="receipt-outline" size={24} color={Colors.gray[400]} />
+              <Text style={styles.emptyLedgerText}>Aucun mouvement pour le moment.</Text>
             </View>
           )}
+        </View>
+      </ScrollView>
 
-          <View style={styles.historyHeader}>
-            <Text style={styles.sectionTitle}>Historique</Text>
-            {isLedgerFetching ? <ActivityIndicator size="small" color={Colors.primary} /> : null}
+      <WalletSheetModal
+        icon="flash-outline"
+        onClose={() => setActiveModal(null)}
+        subtitle="Mobile Money ou carte. 1 jeton = 100 FC."
+        title="Acheter des jetons"
+        visible={activeModal === 'top_up'}
+      >
+        <View style={styles.methodRow}>
+          {TOP_UP_METHOD_OPTIONS.map((option) => {
+            const selected = topUpMethod === option.id;
+            const disabled = Boolean(topUpOrderNumber) || isTopUpBusy;
+            return (
+              <TouchableOpacity
+                key={option.id}
+                activeOpacity={0.85}
+                disabled={disabled}
+                onPress={() => setTopUpMethod(option.id)}
+                style={[
+                  styles.methodButton,
+                  selected && styles.methodButtonActive,
+                  disabled && styles.disabled,
+                ]}
+              >
+                <Ionicons
+                  name={option.icon}
+                  size={18}
+                  color={selected ? Colors.primary : Colors.gray[600]}
+                />
+                <View style={styles.methodTextBlock}>
+                  <Text style={styles.methodLabel}>{option.label}</Text>
+                  <Text numberOfLines={1} style={styles.methodHint}>
+                    {option.hint}
+                  </Text>
+                </View>
+                <Ionicons
+                  name={selected ? 'radio-button-on' : 'radio-button-off'}
+                  size={18}
+                  color={selected ? Colors.primary : Colors.gray[300]}
+                />
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <TextInput
+          keyboardType="numeric"
+          onChangeText={setTopUpAmount}
+          placeholder="Nombre de jetons"
+          placeholderTextColor={Colors.gray[400]}
+          style={styles.input}
+          value={topUpAmount}
+        />
+        <Text style={styles.helperText}>1 jeton = 100 FC. Exemple: 50 jetons = 5 000 FC.</Text>
+        {isTopUpPhoneRequired ? (
+          <TextInput
+            keyboardType="phone-pad"
+            maxLength={13}
+            onChangeText={(text) => setTopUpPhone(normalizePhone(text))}
+            placeholder="+243891234567"
+            placeholderTextColor={Colors.gray[400]}
+            style={styles.input}
+            value={topUpPhone}
+          />
+        ) : null}
+
+        <TouchableOpacity
+          activeOpacity={0.85}
+          disabled={isTopUpBusy}
+          onPress={handleTopUp}
+          style={[styles.primaryButton, isTopUpBusy && styles.disabled]}
+        >
+          {isTopUpBusy ? (
+            <ActivityIndicator color={Colors.white} />
+          ) : (
+            <>
+              <Ionicons name="flash-outline" size={18} color={Colors.white} />
+              <Text style={styles.primaryButtonText}>
+                {topUpOrderNumber
+                  ? topUpMethod === 'card' && topUpPaymentUrl
+                    ? 'Rouvrir le paiement'
+                    : 'Actualiser la recharge'
+                  : 'Recharger'}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {topUpStatusMessage || topUpOrderNumber ? (
+          <View style={[styles.topUpStatusCard, { borderColor: topUpStatusColor + '35' }]}>
+            <View style={styles.topUpStatusHeader}>
+              {isAutoCheckingTopUp || isCheckingTopUp ? (
+                <ActivityIndicator size="small" color={topUpStatusColor} />
+              ) : (
+                <Ionicons
+                  name={
+                    topUpStage === 'success'
+                      ? 'checkmark-circle-outline'
+                      : topUpStage === 'failed'
+                        ? 'close-circle-outline'
+                        : 'sync-outline'
+                  }
+                  size={18}
+                  color={topUpStatusColor}
+                />
+              )}
+              <Text style={[styles.topUpStatusTitle, { color: topUpStatusColor }]}>
+                {topUpStatusTitle}
+              </Text>
+            </View>
+            {topUpStatusMessage ? (
+              <Text style={styles.topUpStatusText}>{topUpStatusMessage}</Text>
+            ) : null}
+            {topUpAutoCheckAttempt > 0 ? (
+              <Text style={styles.topUpReferenceText}>
+                Vérification automatique {topUpAutoCheckAttempt}/{AUTO_CHECK_MAX_ATTEMPTS}
+              </Text>
+            ) : null}
+            {topUpOrderNumber ? (
+              <Text style={styles.topUpReferenceText}>Référence FlexPay {topUpOrderNumber}</Text>
+            ) : null}
           </View>
+        ) : null}
 
-          <View style={styles.ledgerPanel}>
-            {entries.length > 0 ? (
-              entries.map(renderLedgerEntry)
+        {topUpOrderNumber ? (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            disabled={isTopUpBusy}
+            onPress={handleCheckTopUpStatus}
+            style={[styles.secondaryButton, isTopUpBusy && styles.disabled]}
+          >
+            {isCheckingTopUp || isAutoCheckingTopUp ? (
+              <ActivityIndicator color={Colors.primary} />
             ) : (
-              <View style={styles.emptyLedger}>
-                <Ionicons name="receipt-outline" size={24} color={Colors.gray[400]} />
-                <Text style={styles.emptyLedgerText}>Aucun mouvement pour le moment.</Text>
-              </View>
+              <>
+                <Ionicons name="sync-outline" size={18} color={Colors.primary} />
+                <Text style={styles.secondaryButtonText}>Vérifier la recharge</Text>
+              </>
             )}
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          </TouchableOpacity>
+        ) : null}
+      </WalletSheetModal>
+
+      <WalletSheetModal
+        icon="share-outline"
+        onClose={() => setActiveModal(null)}
+        subtitle="Téléphone +243, email ou identifiant utilisateur."
+        title="Partager des jetons"
+        visible={activeModal === 'transfer'}
+      >
+        <TextInput
+          keyboardType="numeric"
+          onChangeText={setTransferAmount}
+          placeholder="Nombre de jetons"
+          placeholderTextColor={Colors.gray[400]}
+          style={styles.input}
+          value={transferAmount}
+        />
+        <TextInput
+          autoCapitalize="none"
+          keyboardType="default"
+          onChangeText={setTransferRecipient}
+          placeholder="Téléphone, email ou ID utilisateur"
+          placeholderTextColor={Colors.gray[400]}
+          style={styles.input}
+          value={transferRecipient}
+        />
+        <TextInput
+          onChangeText={setTransferNote}
+          placeholder="Note optionnelle"
+          placeholderTextColor={Colors.gray[400]}
+          style={styles.input}
+          value={transferNote}
+        />
+        <TouchableOpacity
+          activeOpacity={0.85}
+          disabled={isTransferring}
+          onPress={handleTransfer}
+          style={[styles.primaryButton, isTransferring && styles.disabled]}
+        >
+          {isTransferring ? (
+            <ActivityIndicator color={Colors.white} />
+          ) : (
+            <>
+              <Ionicons name="send-outline" size={18} color={Colors.white} />
+              <Text style={styles.primaryButtonText}>Partager les jetons</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </WalletSheetModal>
     </SafeAreaView>
   );
 }
@@ -1322,7 +1455,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.gray[50],
   },
-  keyboardRoot: {
+  scrollRoot: {
     flex: 1,
   },
   header: {
@@ -1426,40 +1559,144 @@ const styles = StyleSheet.create({
   referralBannerText: { flex: 1, minWidth: 0 },
   referralBannerTitle: { color: Colors.gray[900], fontSize: FontSizes.sm, fontWeight: FontWeights.bold },
   referralBannerHint: { color: Colors.gray[500], fontSize: FontSizes.xs, lineHeight: 17, marginTop: 3 },
-  tabs: {
-    minHeight: 48,
+  actionRow: {
     flexDirection: 'row',
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.gray[100],
-    padding: 4,
-    gap: 4,
+    gap: Spacing.md,
   },
-  tabButton: {
+  actionCard: {
     flex: 1,
-    minHeight: 40,
-    borderRadius: BorderRadius.sm,
-    flexDirection: 'row',
+    minHeight: 118,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+  },
+  actionCardIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.xs,
   },
-  tabButtonActive: {
-    backgroundColor: Colors.primary,
+  actionCardIconSecondary: {
+    backgroundColor: Colors.primary + '12',
   },
-  tabText: {
-    color: Colors.gray[700],
+  actionCardTitle: {
+    color: Colors.gray[900],
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
   },
-  tabTextActive: {
-    color: Colors.white,
+  actionCardHint: {
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
   },
-  formPanel: {
+  followUpBanner: {
+    minHeight: 72,
     borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.white,
     borderWidth: 1,
-    borderColor: Colors.gray[200],
-    padding: Spacing.lg,
+    backgroundColor: Colors.white,
+    padding: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  followUpIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  followUpCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  followUpTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  followUpText: {
+    marginTop: 3,
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+  },
+  sheetOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  sheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  sheetKeyboard: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'flex-end',
+  },
+  sheetCard: {
+    width: '100%',
+    minHeight: '90%',
+    maxHeight: '96%',
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    shadowColor: Colors.black,
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: -5 },
+    elevation: 16,
+  },
+  sheetHeader: {
+    minHeight: 76,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+  },
+  sheetBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  sheetTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+  },
+  sheetSubtitle: {
+    marginTop: 2,
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+  },
+  sheetCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.gray[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetContent: {
+    flex: 1,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
     gap: Spacing.md,
   },
   sectionTitle: {

@@ -6,6 +6,7 @@ import {
   ELECTRONIC_PAYMENTS_ENABLED,
 } from '@/constants/paymentFeatures';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { getRegisteredVehicleTypeLabel } from '@/constants/vehicleTypes';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useUserLocation } from '@/hooks/useUserLocation';
@@ -958,6 +959,7 @@ export default function TripDetailsScreen() {
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [contactModalVisible, setContactModalVisible] = useState(false);
   const [securityModalVisible, setSecurityModalVisible] = useState(false);
+  const [vehicleDetailModalVisible, setVehicleDetailModalVisible] = useState(false);
   const securityModalTransitionRef = useRef(false);
   const securityModalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { refetch: refetchKycStatus } = useGetKycStatusQuery();
@@ -2440,18 +2442,55 @@ export default function TripDetailsScreen() {
   const tripRouteDistanceLabel = routeInfo?.distance
     ? `${Math.max(routeInfo.distance / 1000, 0.1).toFixed(1)} km`
     : 'Trajet';
-  const tripVehicleLabel = trip?.vehicle
-    ? `${trip.vehicle.brand} ${trip.vehicle.model}`.trim()
+  const tripVehicleTypeLabel = trip?.vehicle
+    ? getRegisteredVehicleTypeLabel(trip.vehicle.type)
     : trip?.vehicleType === 'moto'
       ? 'Moto'
       : trip?.vehicleType === 'tricycle'
         ? 'Tricycle'
         : 'Voiture';
+  const tripVehicleLabel = trip?.vehicle
+    ? `${trip.vehicle.brand} ${trip.vehicle.model}`.trim() || tripVehicleTypeLabel
+    : tripVehicleTypeLabel;
   const tripVehicleMetaLabel = trip?.vehicle
     ? [trip.vehicle.color, trip.vehicle.licensePlate].filter(Boolean).join(' • ')
     : trip?.vehicleInfo && trip.vehicleInfo !== 'Informations véhicule fournies par le conducteur'
       ? trip.vehicleInfo
       : 'Véhicule confirmé après réservation';
+  const tripVehicleIconName: keyof typeof Ionicons.glyphMap =
+    trip?.vehicle?.type === 'motorcycle_2_wheels' || trip?.vehicleType === 'moto'
+      ? 'bicycle'
+      : trip?.vehicle?.type === 'motorcycle_3_wheels' || trip?.vehicleType === 'tricycle'
+        ? 'car-sport'
+        : 'car';
+  const tripVehicleSeatLabel = trip
+    ? `${trip.totalSeats} place${trip.totalSeats > 1 ? 's' : ''} au total`
+    : null;
+  const tripVehicleLicensePlate = trip?.vehicle?.licensePlate?.trim() || null;
+  const tripVehicleStatusLabel = trip?.vehicle
+    ? trip.vehicle.isActive === false
+      ? 'Indisponible'
+      : 'Actif'
+    : null;
+  const tripVehicleDetailRows: {
+    icon: keyof typeof Ionicons.glyphMap;
+    label: string;
+    value?: string | null;
+  }[] = [
+    { icon: 'business-outline', label: 'Marque', value: trip?.vehicle?.brand },
+    { icon: 'car-outline', label: 'Modèle', value: trip?.vehicle?.model },
+    { icon: 'color-palette-outline', label: 'Couleur', value: trip?.vehicle?.color },
+    { icon: 'people-outline', label: 'Places', value: tripVehicleSeatLabel },
+    {
+      icon: 'information-circle-outline',
+      label: 'Information',
+      value: !trip?.vehicle && trip?.vehicleInfo ? trip.vehicleInfo : null,
+    },
+  ];
+  const visibleTripVehicleDetailRows = tripVehicleDetailRows.filter(
+    (row): row is { icon: keyof typeof Ionicons.glyphMap; label: string; value: string } =>
+      Boolean(row.value),
+  );
   const headerFloatingOffset = Math.max(insets.top, 12) + 10;
 
   // Early return AFTER all hooks to avoid hook order violation
@@ -2914,16 +2953,16 @@ export default function TripDetailsScreen() {
                 <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
               </TouchableOpacity>
 
-              <View style={styles.tripVehicleCompact}>
+              <TouchableOpacity
+                style={styles.tripVehicleCompact}
+                onPress={() => setVehicleDetailModalVisible(true)}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Voir les details du vehicule"
+              >
                 <View style={styles.tripVehicleCompactIcon}>
                   <Ionicons
-                    name={
-                      trip?.vehicleType === 'moto'
-                        ? 'bicycle'
-                        : trip?.vehicleType === 'tricycle'
-                          ? 'car-sport'
-                          : 'car'
-                    }
+                    name={tripVehicleIconName}
                     size={18}
                     color={Colors.primary}
                   />
@@ -2933,7 +2972,8 @@ export default function TripDetailsScreen() {
                   <Text style={styles.tripVehicleCompactName} numberOfLines={1}>{tripVehicleLabel}</Text>
                   <Text style={styles.tripVehicleCompactMeta} numberOfLines={1}>{tripVehicleMetaLabel}</Text>
                 </View>
-              </View>
+                <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
+              </TouchableOpacity>
             </View>
 
             {trip?.requiresPassengerKyc ? (
@@ -3439,6 +3479,143 @@ export default function TripDetailsScreen() {
           return null;
         })()}
       </View>
+
+      <Modal
+        visible={vehicleDetailModalVisible}
+        animationType="slide"
+        transparent
+        statusBarTranslucent
+        presentationStyle="overFullScreen"
+        onRequestClose={() => setVehicleDetailModalVisible(false)}
+      >
+        <View style={styles.vehicleDetailModalOverlay}>
+          <TouchableOpacity
+            style={styles.vehicleDetailModalBackdrop}
+            activeOpacity={1}
+            onPress={() => setVehicleDetailModalVisible(false)}
+          />
+          <View
+            style={[
+              styles.vehicleDetailModalCard,
+              { paddingBottom: Math.max(insets.bottom, Spacing.lg) + Spacing.md },
+            ]}
+          >
+            <View style={styles.vehicleDetailModalHero}>
+              {trip?.vehicle?.photoUrl ? (
+                <Image
+                  resizeMode="cover"
+                  source={{ uri: trip.vehicle.photoUrl }}
+                  style={styles.vehicleDetailModalPhoto}
+                />
+              ) : (
+                <View style={styles.vehicleDetailModalHeroFallback}>
+                  <View style={styles.vehicleDetailModalHeroIcon}>
+                    <Ionicons name={tripVehicleIconName} size={34} color={Colors.white} />
+                  </View>
+                  <Text style={styles.vehicleDetailModalHeroFallbackLabel}>
+                    {tripVehicleTypeLabel}
+                  </Text>
+                </View>
+              )}
+              <TouchableOpacity
+                accessibilityLabel="Fermer les détails du véhicule"
+                accessibilityRole="button"
+                onPress={() => setVehicleDetailModalVisible(false)}
+                style={styles.vehicleDetailModalCloseIcon}
+              >
+                <Ionicons name="close" size={20} color={Colors.gray[800]} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.vehicleDetailModalBody}>
+              <View style={styles.vehicleDetailModalChips}>
+                <View style={styles.vehicleDetailModalChip}>
+                  <Ionicons name={tripVehicleIconName} size={14} color={Colors.primary} />
+                  <Text style={styles.vehicleDetailModalChipText}>{tripVehicleTypeLabel}</Text>
+                </View>
+                {tripVehicleStatusLabel ? (
+                  <View
+                    style={[
+                      styles.vehicleDetailModalChip,
+                      tripVehicleStatusLabel === 'Actif'
+                        ? styles.vehicleDetailModalChipSuccess
+                        : styles.vehicleDetailModalChipMuted,
+                    ]}
+                  >
+                    <Ionicons
+                      name={tripVehicleStatusLabel === 'Actif' ? 'checkmark-circle' : 'pause-circle'}
+                      size={14}
+                      color={tripVehicleStatusLabel === 'Actif' ? Colors.successDark : Colors.gray[600]}
+                    />
+                    <Text
+                      style={[
+                        styles.vehicleDetailModalChipText,
+                        tripVehicleStatusLabel === 'Actif'
+                          ? styles.vehicleDetailModalChipTextSuccess
+                          : styles.vehicleDetailModalChipTextMuted,
+                      ]}
+                    >
+                      {tripVehicleStatusLabel}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              <Text style={styles.vehicleDetailModalTitle} numberOfLines={2}>
+                {tripVehicleLabel}
+              </Text>
+
+              {tripVehicleLicensePlate ? (
+                <View style={styles.vehicleDetailModalPlate}>
+                  <Text style={styles.vehicleDetailModalPlateCaption}>Plaque</Text>
+                  <Text style={styles.vehicleDetailModalPlateValue}>{tripVehicleLicensePlate}</Text>
+                </View>
+              ) : null}
+
+              {visibleTripVehicleDetailRows.length > 0 ? (
+                <View style={styles.vehicleDetailModalGrid}>
+                  {visibleTripVehicleDetailRows.map((row) => (
+                    <View
+                      key={row.label}
+                      style={[
+                        styles.vehicleDetailModalFact,
+                        row.label === 'Information' && styles.vehicleDetailModalFactWide,
+                      ]}
+                    >
+                      <View style={styles.vehicleDetailModalFactIcon}>
+                        <Ionicons name={row.icon} size={16} color={Colors.primary} />
+                      </View>
+                      <View style={styles.vehicleDetailModalFactCopy}>
+                        <Text style={styles.vehicleDetailModalFactLabel}>{row.label}</Text>
+                        <Text style={styles.vehicleDetailModalFactValue} numberOfLines={2}>
+                          {row.value}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              <View style={styles.vehicleDetailModalSafetyNote}>
+                <View style={styles.vehicleDetailModalSafetyIcon}>
+                  <Ionicons name="shield-checkmark" size={16} color={Colors.primary} />
+                </View>
+                <Text style={styles.vehicleDetailModalSafetyText}>
+                  Avant de monter, vérifiez que le véhicule et la plaque correspondent aux informations du trajet.
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setVehicleDetailModalVisible(false)}
+                style={styles.vehicleDetailModalCloseButton}
+              >
+                <Text style={styles.vehicleDetailModalCloseText}>Fermer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={securityModalVisible}
@@ -5024,6 +5201,217 @@ const styles = StyleSheet.create({
     color: Colors.gray[500],
     fontSize: 11,
     fontWeight: FontWeights.medium,
+  },
+  vehicleDetailModalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  vehicleDetailModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 15, 15, 0.55)',
+  },
+  vehicleDetailModalCard: {
+    width: '100%',
+    maxHeight: '88%',
+    overflow: 'hidden',
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.14,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  vehicleDetailModalHero: {
+    height: 188,
+    backgroundColor: Colors.gray[100],
+  },
+  vehicleDetailModalPhoto: {
+    width: '100%',
+    height: '100%',
+  },
+  vehicleDetailModalHeroFallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.primary,
+  },
+  vehicleDetailModalHeroIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleDetailModalHeroFallbackLabel: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  vehicleDetailModalCloseIcon: {
+    position: 'absolute',
+    top: Spacing.md,
+    right: Spacing.md,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...CommonStyles.shadowMd,
+  },
+  vehicleDetailModalBody: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
+    gap: Spacing.md,
+  },
+  vehicleDetailModalChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  vehicleDetailModalChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '10',
+  },
+  vehicleDetailModalChipSuccess: {
+    backgroundColor: Colors.success + '14',
+  },
+  vehicleDetailModalChipMuted: {
+    backgroundColor: Colors.gray[100],
+  },
+  vehicleDetailModalChipText: {
+    color: Colors.primaryDark,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  vehicleDetailModalChipTextSuccess: {
+    color: Colors.successDark,
+  },
+  vehicleDetailModalChipTextMuted: {
+    color: Colors.gray[600],
+  },
+  vehicleDetailModalTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+  },
+  vehicleDetailModalPlate: {
+    alignSelf: 'flex-start',
+    minWidth: 148,
+    borderRadius: BorderRadius.md,
+    borderWidth: 2,
+    borderColor: Colors.gray[900],
+    backgroundColor: Colors.gray[50],
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  vehicleDetailModalPlateCaption: {
+    color: Colors.gray[500],
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  vehicleDetailModalPlateValue: {
+    marginTop: 2,
+    color: Colors.gray[900],
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+  vehicleDetailModalGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  vehicleDetailModalFact: {
+    width: '48%',
+    flexGrow: 1,
+    flexBasis: '46%',
+    minHeight: 64,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    backgroundColor: Colors.gray[50],
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  vehicleDetailModalFactWide: {
+    width: '100%',
+    flexBasis: '100%',
+  },
+  vehicleDetailModalFactIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleDetailModalFactCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  vehicleDetailModalFactLabel: {
+    color: Colors.gray[500],
+    fontSize: 11,
+    fontWeight: FontWeights.bold,
+    textTransform: 'uppercase',
+  },
+  vehicleDetailModalFactValue: {
+    marginTop: 2,
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
+  vehicleDetailModalSafetyNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.primary + '08',
+    borderWidth: 1,
+    borderColor: Colors.primary + '20',
+  },
+  vehicleDetailModalSafetyIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleDetailModalSafetyText: {
+    flex: 1,
+    color: Colors.gray[700],
+    fontSize: FontSizes.sm,
+    lineHeight: 20,
+  },
+  vehicleDetailModalCloseButton: {
+    minHeight: 50,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleDetailModalCloseText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
   },
   passengerKycTripNotice: {
     marginTop: Spacing.sm,

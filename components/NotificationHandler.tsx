@@ -45,6 +45,7 @@ export function NotificationHandler() {
   const pathnameRef = useRef(pathname);
   const shownOverdueRequestsRef = useRef(new Set<string>());
   const activeOverdueAccountIdRef = useRef<string | null>(null);
+  const activeOverdueRequestIdRef = useRef<string | null>(null);
 
   const isOverdueRequestForAccount = useCallback(
     (request: TripRequest, accountId: string, expectedRequestId?: string) => {
@@ -66,6 +67,7 @@ export function NotificationHandler() {
   const releaseDriverAndOpenRequest = useCallback(
     async (requestId: string, editSchedule: boolean) => {
       activeOverdueAccountIdRef.current = null;
+      activeOverdueRequestIdRef.current = null;
       try {
         await releaseOverdueDriver(requestId).unwrap();
         router.push(
@@ -101,6 +103,7 @@ export function NotificationHandler() {
       }
       shownOverdueRequestsRef.current.add(notificationKey);
       activeOverdueAccountIdRef.current = accountId;
+      activeOverdueRequestIdRef.current = request.id;
 
       showDialog({
         title: 'Prise en charge en retard',
@@ -116,6 +119,7 @@ export function NotificationHandler() {
             variant: 'ghost',
             onPress: () => {
               activeOverdueAccountIdRef.current = null;
+              activeOverdueRequestIdRef.current = null;
             },
           },
           {
@@ -153,7 +157,7 @@ export function NotificationHandler() {
         return true;
       }
 
-      let accountRequests = myTripRequestsRef.current;
+      let accountRequests: TripRequest[];
       try {
         accountRequests = await refetchMyTripRequests().unwrap();
       } catch (error) {
@@ -161,6 +165,7 @@ export function NotificationHandler() {
           '[NotificationHandler] Impossible de confirmer la demande en retard:',
           error,
         );
+        return true;
       }
 
       const request = accountRequests.find((candidate) =>
@@ -185,6 +190,7 @@ export function NotificationHandler() {
 
     if (previousAccountId !== nextAccountId) {
       shownOverdueRequestsRef.current.clear();
+      activeOverdueRequestIdRef.current = null;
       if (
         activeOverdueAccountIdRef.current &&
         activeOverdueAccountIdRef.current !== nextAccountId
@@ -199,7 +205,24 @@ export function NotificationHandler() {
 
   useEffect(() => {
     myTripRequestsRef.current = myTripRequests;
-  }, [myTripRequests]);
+    const accountId = currentUserRef.current?.id;
+    const activeRequestId = activeOverdueRequestIdRef.current;
+    if (!accountId || !activeRequestId) {
+      return;
+    }
+
+    const activeRequest = myTripRequests.find(
+      (request) => request.id === activeRequestId,
+    );
+    if (
+      !activeRequest ||
+      !isOverdueRequestForAccount(activeRequest, accountId, activeRequestId)
+    ) {
+      activeOverdueAccountIdRef.current = null;
+      activeOverdueRequestIdRef.current = null;
+      hideDialog();
+    }
+  }, [hideDialog, isOverdueRequestForAccount, myTripRequests]);
 
   useEffect(() => {
     pathnameRef.current = pathname;
