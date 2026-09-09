@@ -7,6 +7,7 @@ import {
 } from '@/constants/paymentFeatures';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
+import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackEvent } from '@/services/analytics';
 import { trackingSocket, type BookingAutoProgressPayload } from '@/services/trackingSocket';
@@ -28,7 +29,7 @@ import { useAppSelector } from '@/store/hooks';
 import { selectConversations, selectTripById, selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus, Conversation, GeoPoint, TripPaymentMode } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
-import { getApiErrorMessage } from '@/utils/errorHelpers';
+import { getApiErrorMessage, isPassengerKycRequiredError } from '@/utils/errorHelpers';
 import {
   buildManualGeocodeQuery,
   mapGeocodeResponseToSelection,
@@ -346,6 +347,7 @@ export default function TripDetailsScreen() {
   const user = useAppSelector(selectUser);
   const conversations = useAppSelector(selectConversations);
   const { showDialog } = useDialog();
+  const { isIdentityVerified, checkIdentity } = useIdentityCheck();
   const driverPhone = trip?.driver?.phone ?? null;
   // console.log('driverPhone', driverPhone);
   const isTripDriver = Boolean(trip && user && trip.driverId === user.id);
@@ -418,6 +420,7 @@ export default function TripDetailsScreen() {
   const [editKeyboardHeight, setEditKeyboardHeight] = useState(0);
   const [editSeats, setEditSeats] = useState('');
   const [editPrice, setEditPrice] = useState('');
+  const [editRequiresPassengerKyc, setEditRequiresPassengerKyc] = useState(false);
   const [editDateTime, setEditDateTime] = useState<Date | null>(null);
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
   const [editRouteMode, setEditRouteMode] = useState<'map' | 'manual'>('map');
@@ -535,6 +538,7 @@ export default function TripDetailsScreen() {
 
     setEditSeats(String(trip.availableSeats));
     setEditPrice(String(trip.price));
+    setEditRequiresPassengerKyc(Boolean(trip.requiresPassengerKyc));
     const parsedDate = trip.departureTime ? new Date(trip.departureTime) : null;
     setEditDateTime(parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : getDefaultFutureDate());
     setEditDepartureSelection(departureSelection);
@@ -554,6 +558,7 @@ export default function TripDetailsScreen() {
     setEditKeyboardHeight(0);
     setEditSeats('');
     setEditPrice('');
+    setEditRequiresPassengerKyc(false);
     setEditDateTime(null);
     setIosPickerMode(null);
     setEditRouteMode('map');
@@ -798,11 +803,13 @@ export default function TripDetailsScreen() {
       departureCoordinates?: [number, number];
       arrivalCoordinates?: [number, number];
       vehicleId?: string;
+      requiresPassengerKyc?: boolean;
     } = {
       totalSeats: seatsValue,
       pricePerSeat: priceValue,
       departureDate: editDateTime.toISOString(),
       vehicleId: editVehicleId,
+      requiresPassengerKyc: editRequiresPassengerKyc,
     };
 
     if (departureAddressChanged) {
@@ -850,10 +857,13 @@ export default function TripDetailsScreen() {
       closeEditModal();
       refetchTrip();
     } catch (error: any) {
+      const isPassengerKycError = isPassengerKycRequiredError(error);
       showDialog({
-        variant: 'danger',
-        title: 'Erreur',
-        message: getApiErrorMessage(error, 'Impossible de mettre à jour ce trajet pour le moment.'),
+        variant: isPassengerKycError ? 'warning' : 'danger',
+        title: isPassengerKycError ? 'KYC passager requis' : 'Erreur',
+        message: isPassengerKycError
+          ? "Certains passagers déjà liés à ce trajet n'ont pas encore un KYC approuvé. Gardez l'exigence désactivée, ou demandez-leur de finaliser leur vérification avant de l'activer."
+          : getApiErrorMessage(error, 'Impossible de mettre à jour ce trajet pour le moment.'),
       });
     }
   };
@@ -1545,6 +1555,11 @@ export default function TripDetailsScreen() {
     [passengerDestination, passengerDestinationManualAddress, trip?.arrival?.address, trip?.arrival?.name],
   );
   const openBookingModal = () => {
+    if (trip?.requiresPassengerKyc && !isIdentityVerified) {
+      checkIdentity('book');
+      return;
+    }
+
     const autoOrigin = defaultPassengerOriginSelection;
     setBookingSeats('1');
     setBookingPaymentMode('cash');
@@ -2073,6 +2088,13 @@ export default function TripDetailsScreen() {
       openBookingSuccessModal(seatsValue);
       refreshBookingLists();
     } catch (error: any) {
+      if (isPassengerKycRequiredError(error)) {
+        setBookingModalVisible(false);
+        setBookingModalError('');
+        checkIdentity('book');
+        return;
+      }
+
       setBookingModalError(
         getApiErrorMessage(error, 'Impossible de créer la réservation pour le moment.'),
       );
@@ -2914,6 +2936,20 @@ export default function TripDetailsScreen() {
               </View>
             </View>
 
+            {trip?.requiresPassengerKyc ? (
+              <View style={styles.passengerKycTripNotice}>
+                <View style={styles.passengerKycTripNoticeIcon}>
+                  <Ionicons name="shield-checkmark-outline" size={17} color={Colors.primary} />
+                </View>
+                <View style={styles.passengerKycTripNoticeCopy}>
+                  <Text style={styles.passengerKycTripNoticeTitle}>KYC passager requis</Text>
+                  <Text style={styles.passengerKycTripNoticeText}>
+                    Ce conducteur accepte uniquement les passagers dont l&apos;identité est vérifiée.
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+
             <View style={styles.tripInlineActions}>
               <TouchableOpacity
                 style={styles.tripInlineActionButton}
@@ -3721,6 +3757,14 @@ export default function TripDetailsScreen() {
                       </Text>
                     </View>
                   ) : null}
+                  {trip?.requiresPassengerKyc ? (
+                    <View style={styles.bookingSummaryKycRow}>
+                      <Ionicons name="shield-checkmark-outline" size={16} color={Colors.primary} />
+                      <Text style={styles.bookingSummaryKycText}>
+                        Vérification d&apos;identité passager requise
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               </>
             )}
@@ -4290,6 +4334,38 @@ export default function TripDetailsScreen() {
                   />
                 </View>
               </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.editPassengerKycCard,
+                  editRequiresPassengerKyc && styles.editPassengerKycCardActive,
+                ]}
+                onPress={() => setEditRequiresPassengerKyc((current) => !current)}
+                activeOpacity={0.84}
+              >
+                <View style={styles.editPassengerKycCopy}>
+                  <View style={styles.editPassengerKycTitleRow}>
+                    <Ionicons name="shield-checkmark-outline" size={17} color={Colors.primary} />
+                    <Text style={styles.editPassengerKycTitle}>Passagers vérifiés uniquement</Text>
+                  </View>
+                  <Text style={styles.editPassengerKycText}>
+                    Les passagers devront avoir une vérification d&apos;identité approuvée avant de réserver ou embarquer.
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.editPassengerKycSwitch,
+                    editRequiresPassengerKyc && styles.editPassengerKycSwitchActive,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.editPassengerKycThumb,
+                      editRequiresPassengerKyc && styles.editPassengerKycThumbActive,
+                    ]}
+                  />
+                </View>
+              </TouchableOpacity>
                 </>
               )}
             </ScrollView>
@@ -4948,6 +5024,40 @@ const styles = StyleSheet.create({
     color: Colors.gray[500],
     fontSize: 11,
     fontWeight: FontWeights.medium,
+  },
+  passengerKycTripNotice: {
+    marginTop: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+    backgroundColor: Colors.primary + '08',
+  },
+  passengerKycTripNoticeIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+  },
+  passengerKycTripNoticeCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  passengerKycTripNoticeTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  passengerKycTripNoticeText: {
+    marginTop: 3,
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
   },
   tripInlineActions: {
     marginTop: Spacing.sm,
@@ -5962,6 +6072,21 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: FontSizes.sm,
     color: Colors.gray[600],
+  },
+  bookingSummaryKycRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.xs,
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.primary + '18',
+  },
+  bookingSummaryKycText: {
+    flex: 1,
+    color: Colors.primaryDark,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
   },
   bookingModalTitle: {
     fontSize: 22,
@@ -6998,6 +7123,61 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[200],
+  },
+  editPassengerKycCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
+  },
+  editPassengerKycCardActive: {
+    borderColor: Colors.primary + '45',
+    backgroundColor: Colors.primary + '08',
+  },
+  editPassengerKycCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  editPassengerKycTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  editPassengerKycTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  editPassengerKycText: {
+    marginTop: 4,
+    color: Colors.gray[600],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+  },
+  editPassengerKycSwitch: {
+    width: 42,
+    height: 24,
+    borderRadius: BorderRadius.full,
+    padding: 2,
+    justifyContent: 'center',
+    backgroundColor: Colors.gray[300],
+  },
+  editPassengerKycSwitchActive: {
+    backgroundColor: Colors.success,
+  },
+  editPassengerKycThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+    alignSelf: 'flex-start',
+  },
+  editPassengerKycThumbActive: {
+    alignSelf: 'flex-end',
   },
   editModalActions: {
     flexDirection: 'row',

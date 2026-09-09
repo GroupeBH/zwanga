@@ -242,13 +242,15 @@ const PublishedTripCard = React.memo(function PublishedTripCard({
           <Ionicons name="create-outline" size={16} color={Colors.primary} />
           <Text style={styles.ownerActionText}>Modifier</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.ownerActionButton, styles.ownerActionDanger, { marginRight: 0 }]}
-          onPress={() => onDelete(trip)}
-        >
-          <Ionicons name="trash-outline" size={16} color={Colors.danger} />
-          <Text style={[styles.ownerActionText, styles.ownerActionDangerText]}>Supprimer</Text>
-        </TouchableOpacity>
+        {!trip.tripRequestId && (
+          <TouchableOpacity
+            style={[styles.ownerActionButton, styles.ownerActionDanger, { marginRight: 0 }]}
+            onPress={() => onDelete(trip)}
+          >
+            <Ionicons name="trash-outline" size={16} color={Colors.danger} />
+            <Text style={[styles.ownerActionText, styles.ownerActionDangerText]}>Supprimer</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );

@@ -289,7 +289,7 @@ const getKycErrorPresentation = (
       category: 'service_unavailable',
       code: status === 404 ? 'KYC_SERVICE_NOT_FOUND' : 'KYC_SERVICE_UNAVAILABLE',
       title: 'Service indisponible',
-      message: 'Le service de validation d’identité est momentanément indisponible. Réessayez plus tard.',
+      message: "Le service de vérification d'identité est temporairement indisponible. Réessayez dans quelques instants.",
     };
   }
 
@@ -421,7 +421,7 @@ const getDiditSdkFailureError = (result: VerificationResult) => {
       title: result.error.type === 'apiError' ? 'Service indisponible' : 'Échec de la validation',
       message:
         result.error.type === 'apiError'
-          ? 'Le service de validation est momentanément indisponible. Réessayez plus tard.'
+          ? "Le service de vérification d'identité est temporairement indisponible. Réessayez dans quelques instants."
           : "La validation d'identité n'a pas pu aboutir. Réessayez plus tard.",
     },
     result.error.message,

@@ -1,7 +1,7 @@
 import { Colors, Spacing } from '@/constants/styles';
 import { useDiditKycFlow } from '@/hooks/useDiditKycFlow';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
 import {
     ActivityIndicator,
@@ -15,22 +15,54 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function VerificationScreen() {
     const router = useRouter();
+    const { source } = useLocalSearchParams<{ source?: string }>();
+    const normalizedSource = Array.isArray(source) ? source[0] : source;
+    const isPassengerVerification = normalizedSource === 'book' || normalizedSource === 'request';
+    const passengerActionLabel = normalizedSource === 'request' ? 'demande de trajet' : 'réservation';
+    const heroTitle = isPassengerVerification ? 'Identité passager vérifiée' : 'Identité vérifiée';
+    const heroSubtitle = isPassengerVerification
+        ? "Ce trajet exige des passagers vérifiés. Cette étape confirme uniquement votre identité : aucun véhicule n'est demandé."
+        : 'Lancez une vérification sécurisée avec Didit pour augmenter la confiance de votre profil.';
+    const benefits = isPassengerVerification
+        ? [
+            'Accès aux trajets qui exigent des passagers vérifiés',
+            'Badge « Vérifié » sur votre profil',
+            'Aucun véhicule requis pour ce parcours passager',
+        ]
+        : [
+            'Badge « Vérifié » sur votre profil',
+            'Vérification guidée et hébergée par Didit',
+            'Plus de confiance des membres',
+        ];
     const { startDiditKyc, isStartingDiditKyc } = useDiditKycFlow({
-        sourceScreen: 'verification',
+        sourceScreen: isPassengerVerification ? `passenger_${normalizedSource}_verification` : 'verification',
         approvedMessage:
-            "Votre identité a été vérifiée avec succès. Vous pouvez maintenant utiliser toutes les fonctionnalités de l'application.",
+            isPassengerVerification
+                ? `Votre identité a été vérifiée avec succès. Vous pouvez revenir à votre ${passengerActionLabel} et continuer.`
+                : "Votre identité a été vérifiée avec succès. Vous pouvez maintenant utiliser toutes les fonctionnalités de l'application.",
         pendingMessage:
-            'Votre vérification Didit est en cours. Nous vous informerons dès que le contrôle sera terminé.',
+            isPassengerVerification
+                ? 'Votre vérification Didit est en cours. Vous serez informé dès que le contrôle sera terminé.'
+                : 'Votre vérification Didit est en cours. Nous vous informerons dès que le contrôle sera terminé.',
     });
 
     const handleStartKyc = async () => {
         const outcome = await startDiditKyc();
         if (outcome) {
+            if (isPassengerVerification && router.canGoBack()) {
+                router.back();
+                return;
+            }
             router.replace('/(tabs)');
         }
     };
 
     const handleSkip = () => {
+        if (isPassengerVerification && router.canGoBack()) {
+            router.back();
+            return;
+        }
+
         router.replace('/(tabs)');
     };
 
@@ -41,24 +73,24 @@ export default function VerificationScreen() {
                     <View style={[styles.logoContainer, { backgroundColor: Colors.info + '15' }]}>
                         <Ionicons name="shield-checkmark" size={48} color={Colors.info} />
                     </View>
-                    <Text style={styles.heroTitle}>Identité vérifiée</Text>
+                    <Text style={styles.heroTitle}>{heroTitle}</Text>
                     <Text style={styles.heroSubtitle}>
-                        Lancez une vérification sécurisée avec Didit pour augmenter la confiance de votre profil.
+                        {heroSubtitle}
                     </Text>
                 </View>
 
                 <View style={styles.kycBenefitsContainer}>
                     <View style={styles.benefitRow}>
                         <Ionicons name="checkbox" size={24} color={Colors.success} style={{ marginBottom: 2 }} />
-                        <Text style={styles.benefitText}>Badge « Vérifié » sur votre profil</Text>
+                        <Text style={styles.benefitText}>{benefits[0]}</Text>
                     </View>
                     <View style={styles.benefitRow}>
                         <Ionicons name="flash" size={24} color={Colors.warning} style={{ marginBottom: 2 }} />
-                        <Text style={styles.benefitText}>Vérification guidée et hébergée par Didit</Text>
+                        <Text style={styles.benefitText}>{benefits[1]}</Text>
                     </View>
                     <View style={styles.benefitRow}>
                         <Ionicons name="heart" size={24} color={Colors.danger} style={{ marginBottom: 2 }} />
-                        <Text style={styles.benefitText}>Plus de confiance des membres</Text>
+                        <Text style={styles.benefitText}>{benefits[2]}</Text>
                     </View>
                 </View>
 

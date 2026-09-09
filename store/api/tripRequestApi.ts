@@ -56,8 +56,10 @@ type ServerTripRequest = {
     photoUrl: string | null;
   } | null;
   selectedPricePerSeat: number | null;
+  selectedDriverRequiresPassengerKyc?: boolean | null;
   selectedAt: string | null;
   tripId: string | null;
+  driverPickupOverdueNotifiedAt: string | null;
   driverOffers?: ServerDriverOffer[];
   createdAt: string;
   updatedAt: string;
@@ -91,6 +93,7 @@ type ServerDriverOffer = {
   departureCoordinates?: [number, number] | null;
   arrivalReference?: string | null;
   arrivalCoordinates?: [number, number] | null;
+  requiresPassengerKyc?: boolean | null;
   status: string;
   acceptedAt: string | null;
   rejectedAt: string | null;
@@ -127,6 +130,7 @@ type ServerDriverOfferWithTripRequest = {
   departureCoordinates?: [number, number] | null;
   arrivalReference?: string | null;
   arrivalCoordinates?: [number, number] | null;
+  requiresPassengerKyc?: boolean | null;
   status: string;
   acceptedAt: string | null;
   rejectedAt: string | null;
@@ -248,8 +252,11 @@ const mapServerTripRequestToClient = (request: ServerTripRequest): TripRequest =
       photoUrl: request.selectedVehicle.photoUrl ?? undefined,
     } : undefined,
     selectedPricePerSeat: request.selectedPricePerSeat ?? undefined,
+    selectedDriverRequiresPassengerKyc: Boolean(request.selectedDriverRequiresPassengerKyc),
     selectedAt: request.selectedAt ?? undefined,
     tripId: request.tripId ?? undefined,
+    driverPickupOverdueNotifiedAt:
+      request.driverPickupOverdueNotifiedAt ?? undefined,
     offers: request.driverOffers?.map(mapServerDriverOfferToClient),
     createdAt: request.createdAt,
     updatedAt: request.updatedAt,
@@ -301,6 +308,7 @@ const mapServerDriverOfferToClient = (offer: ServerDriverOffer): DriverOffer => 
     departureCoordinates: normalizeServerCoordinateTuple(offer.departureCoordinates),
     arrivalReference: offer.arrivalReference ?? undefined,
     arrivalCoordinates: normalizeServerCoordinateTuple(offer.arrivalCoordinates),
+    requiresPassengerKyc: Boolean(offer.requiresPassengerKyc),
     status: mapStatus(offer.status),
     acceptedAt: offer.acceptedAt ?? undefined,
     rejectedAt: offer.rejectedAt ?? undefined,
@@ -324,6 +332,7 @@ const mapServerDriverOfferWithTripRequestToClient = (offer: ServerDriverOfferWit
     departureCoordinates: offer.departureCoordinates,
     arrivalReference: offer.arrivalReference,
     arrivalCoordinates: offer.arrivalCoordinates,
+    requiresPassengerKyc: offer.requiresPassengerKyc,
     status: offer.status,
     acceptedAt: offer.acceptedAt,
     rejectedAt: offer.rejectedAt,
@@ -452,6 +461,7 @@ type CreateDriverOfferPayload = {
   departureCoordinates?: [number, number];
   arrivalReference?: string;
   arrivalCoordinates?: [number, number];
+  requiresPassengerKyc?: boolean;
 };
 
 type AcceptDriverOfferPayload = {
@@ -459,13 +469,14 @@ type AcceptDriverOfferPayload = {
 };
 
 type AcceptTripRequestPayload = {
-  vehicleId?: string;
+  vehicleId: string;
   departureDate?: string; // ISO string date
   message?: string;
   departureReference?: string;
   departureCoordinates?: [number, number];
   arrivalReference?: string;
   arrivalCoordinates?: [number, number];
+  requiresPassengerKyc?: boolean;
 };
 
 export const tripRequestApi = baseApi.injectEndpoints({
@@ -572,6 +583,26 @@ export const tripRequestApi = baseApi.injectEndpoints({
         { type: 'TripRequest', id },
         tripRequestListTag,
         myTripRequestsListTag,
+        tripListTag,
+        myTripsListTag,
+        bookingListTag,
+      ],
+    }),
+
+    releaseOverdueDriver: builder.mutation<TripRequest, string>({
+      query: (id: string) => ({
+        url: `/trip-requests/${id}/release-driver`,
+        method: 'PUT',
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
+      }),
+      transformResponse: (response: ServerTripRequest) =>
+        mapServerTripRequestToClient(response),
+      invalidatesTags: (_result, _error, id: string) => [
+        { type: 'TripRequest', id },
+        tripRequestListTag,
+        myTripRequestsListTag,
+        driverOfferListTag,
+        myDriverOffersListTag,
         tripListTag,
         myTripsListTag,
         bookingListTag,
@@ -711,6 +742,7 @@ export const {
   useGetTripRequestByIdQuery,
   useUpdateTripRequestMutation,
   useCancelTripRequestMutation,
+  useReleaseOverdueDriverMutation,
   useCreateDriverOfferMutation,
   useGetMyDriverOffersQuery,
   useAcceptDriverOfferMutation,

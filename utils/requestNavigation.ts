@@ -19,9 +19,15 @@ export function getTripRequestCreateHref(params?: TripRequestCreateParams): Href
   };
 }
 
-export function getTripRequestDetailHref(requestId: string | number): Href {
+export function getTripRequestDetailHref(
+  requestId: string | number,
+  options?: { editSchedule?: boolean },
+): Href {
   return {
     pathname: '/request-details/[id]',
-    params: { id: String(requestId) },
+    params: {
+      id: String(requestId),
+      ...(options?.editSchedule ? { editSchedule: '1' } : {}),
+    },
   };
 }

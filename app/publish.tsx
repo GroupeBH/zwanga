@@ -416,6 +416,7 @@ export default function PublishScreen() {
   const [iosPickerValue, setIosPickerValue] = useState<Date>(new Date());
   const [seats, setSeats] = useState('4');
   const [isFreeTrip, setIsFreeTrip] = useState(false);
+  const [requiresPassengerKyc, setRequiresPassengerKyc] = useState(false);
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
   const [isRecurringTrip, setIsRecurringTrip] = useState(false);
@@ -1216,11 +1217,13 @@ export default function PublishScreen() {
           isFree: isFreeTrip,
           description: description.trim() || undefined,
           vehicleId: selectedVehicleId,
+          requiresPassengerKyc,
         }).unwrap();
         void trackEvent('recurring_trip_created', {
           seats: seatsValue,
           is_free: isFreeTrip,
           has_description: Boolean(description.trim()),
+          requires_passenger_kyc: requiresPassengerKyc,
           weekdays_count: recurringWeekdays.length,
         });
       } else {
@@ -1237,12 +1240,14 @@ export default function PublishScreen() {
           isFree: isFreeTrip,
           description: description.trim() || undefined,
           vehicleId: selectedVehicleId,
+          requiresPassengerKyc,
         }).unwrap();
         void trackEvent('trip_published', {
           seats: seatsValue,
           price_per_seat: priceValue,
           is_free: isFreeTrip,
           has_description: Boolean(description.trim()),
+          requires_passenger_kyc: requiresPassengerKyc,
         });
       }
 
@@ -2174,6 +2179,40 @@ export default function PublishScreen() {
               </View>
             </TouchableOpacity>
 
+            <TouchableOpacity
+              style={[
+                styles.card,
+                styles.passengerKycRequirementCard,
+                requiresPassengerKyc && styles.passengerKycRequirementCardActive,
+              ]}
+              onPress={() => setRequiresPassengerKyc((current) => !current)}
+              activeOpacity={0.84}
+            >
+              <View style={styles.passengerKycRequirementContent}>
+                <View
+                  style={[
+                    styles.passengerKycRequirementIcon,
+                    requiresPassengerKyc && styles.passengerKycRequirementIconActive,
+                  ]}
+                >
+                  <Ionicons
+                    name="shield-checkmark-outline"
+                    size={20}
+                    color={requiresPassengerKyc ? Colors.white : Colors.primary}
+                  />
+                </View>
+                <View style={styles.passengerKycRequirementCopy}>
+                  <Text style={styles.freeTripTitle}>Passagers vérifiés uniquement</Text>
+                  <Text style={styles.freeTripSubtitle}>
+                    Les passagers devront avoir un KYC approuvé avant de réserver ou embarquer.
+                  </Text>
+                </View>
+              </View>
+              <View style={[styles.toggleSwitch, requiresPassengerKyc && styles.toggleSwitchActive]}>
+                <View style={[styles.toggleThumb, requiresPassengerKyc && styles.toggleThumbActive]} />
+              </View>
+            </TouchableOpacity>
+
             <View style={styles.card}>
               <Text style={styles.cardLabel}>DESCRIPTION (OPTIONNEL)</Text>
               <TextInput
@@ -2375,6 +2414,20 @@ export default function PublishScreen() {
                     </View>
                     <Text style={[styles.confirmDetailValue, { color: Colors.success }]}>
                       {isFreeTrip ? 'Gratuit' : `${price} FC/pers`}
+                    </Text>
+                  </View>
+                  <View style={styles.confirmDetailRow}>
+                    <View style={styles.confirmDetailLeft}>
+                      <Ionicons name="shield-checkmark-outline" size={18} color={Colors.gray[600]} />
+                      <Text style={styles.confirmDetailLabel}>KYC passager</Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.confirmDetailValue,
+                        requiresPassengerKyc && { color: Colors.primary },
+                      ]}
+                    >
+                      {requiresPassengerKyc ? 'Requis' : 'Non requis'}
                     </Text>
                   </View>
                   {description ? (
@@ -2978,6 +3031,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: Spacing.md,
+  },
+  passengerKycRequirementCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+  },
+  passengerKycRequirementCardActive: {
+    borderColor: Colors.primary + '35',
+    backgroundColor: Colors.primary + '06',
+  },
+  passengerKycRequirementContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: Spacing.md,
+  },
+  passengerKycRequirementIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.primary + '12',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
+  passengerKycRequirementIconActive: {
+    backgroundColor: Colors.primary,
+  },
+  passengerKycRequirementCopy: {
+    flex: 1,
   },
   recurringToggleCard: {
     borderWidth: 1,
