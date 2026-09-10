@@ -8,13 +8,14 @@ import {
   useGetTripsQuery,
   useSearchTripsByCoordinatesMutation,
 } from '@/store/api/tripApi';
+import { useGetAvailableTripRequestsQuery } from '@/store/api/tripRequestApi';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectTrips } from '@/store/selectors';
-import type { Trip } from '@/types';
-import { formatDateTime } from '@/utils/dateHelpers';
+import type { Trip, TripRequest } from '@/types';
+import { formatDateTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
-import { getTripRequestCreateHref } from '@/utils/requestNavigation';
+import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -35,6 +36,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type SortMode = 'cheap' | 'early';
+type SearchMode = 'trips' | 'requests';
+type SearchResultListItem =
+  | { kind: 'trip'; trip: Trip }
+  | { kind: 'request'; request: TripRequest };
 const MIN_SEARCH_SEATS = 1;
 const MAX_SEARCH_SEATS = 2;
 
@@ -50,6 +55,12 @@ const vehicleLabel: Record<Trip['vehicleType'], string> = {
   car: 'Voiture',
   moto: 'Moto',
   tricycle: 'Keke',
+};
+
+const requestVehicleLabel: Record<TripRequest['vehicleType'], string> = {
+  car: 'Voiture',
+  motorcycle_2_wheels: 'Moto',
+  motorcycle_3_wheels: 'Keke',
 };
 
 const SEARCH_STOP_WORDS = new Set([
@@ -137,7 +148,7 @@ function getInitials(name?: string | null) {
     .join('');
 }
 
-function getPlaceName(place?: Trip['departure']) {
+function getPlaceName(place?: Trip['departure'] | TripRequest['departure']) {
   return place?.name || place?.address || 'Adresse à préciser';
 }
 
@@ -181,6 +192,26 @@ function matchesSearch(value: string | undefined, query: string) {
 function getSafeTripId(trip: Trip | null | undefined) {
   const tripId = String(trip?.id ?? '').trim();
   return tripId.length > 0 ? tripId : null;
+}
+
+function getSafeTripRequestId(request: TripRequest | null | undefined) {
+  const requestId = String(request?.id ?? '').trim();
+  return requestId.length > 0 ? requestId : null;
+}
+
+function getTripRequestVehicleName(request: TripRequest) {
+  return requestVehicleLabel[request.vehicleType] ?? 'Véhicule';
+}
+
+function formatTripRequestWindow(request: TripRequest) {
+  const start = formatDateWithRelativeLabel(request.departureDateMin, true);
+  const end = formatDateWithRelativeLabel(request.departureDateMax, true);
+
+  if (start === end) {
+    return start;
+  }
+
+  return `${start} - ${end}`;
 }
 
 type SearchResultCardProps = {
@@ -307,6 +338,125 @@ const SearchResultCard = React.memo(function SearchResultCard({
   );
 });
 
+type SearchRequestResultCardProps = {
+  request: TripRequest;
+  disabled?: boolean;
+  onPress: (request: TripRequest) => void;
+};
+
+const SearchRequestResultCard = React.memo(function SearchRequestResultCard({
+  request,
+  disabled = false,
+  onPress,
+}: SearchRequestResultCardProps) {
+  const passengerName = request.passengerName || 'Passager Zwanga';
+  const seatsLabel = `${request.numberOfSeats} place${request.numberOfSeats > 1 ? 's' : ''} demandée${request.numberOfSeats > 1 ? 's' : ''}`;
+  const vehicleName = getTripRequestVehicleName(request);
+  const budgetLabel = request.maxPricePerSeat ? formatPrice(request.maxPricePerSeat) : 'À proposer';
+  const offersCount = request.offers?.length ?? 0;
+  const routeAccent =
+    request.vehicleType === 'motorcycle_2_wheels'
+      ? Colors.primaryDark
+      : request.vehicleType === 'motorcycle_3_wheels'
+        ? Colors.infoDark
+        : Colors.success;
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      style={[styles.resultCard, disabled && styles.resultCardDisabled]}
+      onPress={() => onPress(request)}
+      disabled={disabled}
+      accessibilityState={{ disabled }}
+    >
+      <View style={styles.resultTop}>
+        <View style={styles.driverAvatarWrap}>
+          {request.passengerAvatar ? (
+            <Image source={{ uri: request.passengerAvatar }} style={styles.driverAvatar} resizeMode="cover" />
+          ) : (
+            <View style={[styles.driverAvatar, styles.driverAvatarFallback]}>
+              <Text style={styles.driverAvatarText}>{getInitials(passengerName)}</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.driverCopy}>
+          <Text style={styles.driverName} numberOfLines={1}>
+            {passengerName}
+          </Text>
+          <View style={styles.driverMetaRow}>
+            <Ionicons name="person-outline" size={15} color={Colors.primaryDark} />
+            <Text style={styles.driverMetaText}>Demande passager</Text>
+          </View>
+        </View>
+
+        <View style={styles.priceBlock}>
+          <Text style={styles.resultPrice}>{budgetLabel}</Text>
+          <Text style={styles.priceUnit}>
+            {request.maxPricePerSeat ? 'budget max' : 'budget libre'}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.requestRoutePanel}>
+        <View style={[styles.timingAccent, { backgroundColor: routeAccent }]} />
+        <View style={styles.requestRouteContent}>
+          <View style={styles.requestRouteLine}>
+            <Ionicons name="location" size={16} color={Colors.successDark} />
+            <Text style={styles.requestRouteText} numberOfLines={1}>
+              {getPlaceName(request.departure)}
+            </Text>
+          </View>
+          <View style={styles.requestRouteLine}>
+            <Ionicons name="navigate" size={16} color={Colors.primaryDark} />
+            <Text style={styles.requestRouteText} numberOfLines={1}>
+              {getPlaceName(request.arrival)}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.requestMetaGrid}>
+        <View style={styles.requestMetaItem}>
+          <Ionicons name="calendar-outline" size={16} color={Colors.gray[600]} />
+          <Text style={styles.requestMetaText} numberOfLines={2}>
+            {formatTripRequestWindow(request)}
+          </Text>
+        </View>
+        <View style={styles.requestMetaItem}>
+          <Ionicons name="people-outline" size={16} color={Colors.gray[600]} />
+          <Text style={styles.requestMetaText}>{seatsLabel}</Text>
+        </View>
+        <View style={styles.requestMetaItem}>
+          <Ionicons name="car-sport-outline" size={16} color={Colors.gray[600]} />
+          <Text style={styles.requestMetaText}>{vehicleName}</Text>
+        </View>
+      </View>
+
+      {request.description ? (
+        <Text style={styles.requestDescription} numberOfLines={2}>
+          {request.description}
+        </Text>
+      ) : null}
+
+      <View style={styles.resultBadges}>
+        <View style={styles.instantBadge}>
+          <Ionicons name="paper-plane-outline" size={13} color={Colors.primaryDark} />
+          <Text style={styles.instantBadgeText}>DEMANDE DISPONIBLE</Text>
+        </View>
+        {offersCount > 0 ? (
+          <View style={styles.greenBadge}>
+            <Ionicons name="chatbubble-ellipses-outline" size={14} color={Colors.successDark} />
+            <Text style={styles.greenBadgeText}>
+              {offersCount} OFFRE{offersCount > 1 ? 'S' : ''}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    </TouchableOpacity>
+  );
+});
+
 function SearchResultSeparator() {
   return <View style={styles.resultSeparator} />;
 }
@@ -329,18 +479,26 @@ export default function SearchScreen() {
   }>();
   const storedTrips = useAppSelector(selectTrips);
   const { data: currentUser } = useGetCurrentUserQuery();
+  const isDriverAccount = Boolean(
+    currentUser?.isDriver ||
+      currentUser?.role === 'driver' ||
+      currentUser?.role === 'both',
+  );
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
   const [draftDeparture, setDraftDeparture] = useState('');
   const [draftArrival, setDraftArrival] = useState('');
   const [desiredSeats, setDesiredSeats] = useState(MIN_SEARCH_SEATS);
+  const [searchMode, setSearchMode] = useState<SearchMode>('trips');
   const [queryParams, setQueryParams] = useState<TripSearchParams>({});
   const [advancedTrips, setAdvancedTrips] = useState<Trip[] | null>(null);
   const [advancedError, setAdvancedError] = useState<string | null>(null);
   const [lastAdvancedPayload, setLastAdvancedPayload] = useState<TripSearchByPointsPayload | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>('cheap');
   const [openingTripId, setOpeningTripId] = useState<string | null>(null);
+  const [openingRequestId, setOpeningRequestId] = useState<string | null>(null);
   const openingTripIdRef = useRef<string | null>(null);
+  const openingRequestIdRef = useRef<string | null>(null);
   const [searchTripsByCoordinates, { isLoading: isAdvancedSearching }] = useSearchTripsByCoordinatesMutation();
   const firstName = currentUser?.firstName || currentUser?.name?.split(' ')[0] || 'Kinshasa';
   const avatarUri = currentUser?.profilePicture || currentUser?.avatar;
@@ -348,7 +506,9 @@ export default function SearchScreen() {
   useFocusEffect(
     useCallback(() => {
       openingTripIdRef.current = null;
+      openingRequestIdRef.current = null;
       setOpeningTripId(null);
+      setOpeningRequestId(null);
     }, []),
   );
 
@@ -358,6 +518,20 @@ export default function SearchScreen() {
     isFetching: queryFetching,
     refetch,
   } = useGetTripsQuery(queryParams, {
+    skip: searchMode !== 'trips',
+    pollingInterval: 0,
+    refetchOnFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  const {
+    data: availableTripRequests = [],
+    isLoading: requestsLoading,
+    isFetching: requestsFetching,
+    isError: requestsError,
+    refetch: refetchAvailableTripRequests,
+  } = useGetAvailableTripRequestsQuery(undefined, {
+    skip: !isDriverAccount || searchMode !== 'requests',
     pollingInterval: 0,
     refetchOnFocus: false,
     refetchOnReconnect: false,
@@ -403,6 +577,13 @@ export default function SearchScreen() {
   };
 
   useEffect(() => {
+    if (searchMode !== 'trips') {
+      setAdvancedTrips(null);
+      setAdvancedError(null);
+      setLastAdvancedPayload(null);
+      return;
+    }
+
     const mode = String(searchParams.mode || '');
     const depLat = parseNumberParam(searchParams.departureLat);
     const depLng = parseNumberParam(searchParams.departureLng);
@@ -439,6 +620,7 @@ export default function SearchScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    searchMode,
     searchParams.mode,
     searchParams.departureLat,
     searchParams.departureLng,
@@ -494,8 +676,72 @@ export default function SearchScreen() {
     });
   }, [arrival, baseTrips, departure, desiredSeats, sortMode]);
 
-  const isLoadingResults = (queryLoading || isAdvancedSearching) && baseTrips.length === 0;
-  const isRefreshingResults = queryFetching || isAdvancedSearching;
+  const filteredTripRequests = useMemo(() => {
+    if (!isDriverAccount) {
+      return [];
+    }
+
+    const routeQuery = [departure, arrival].filter(Boolean).join(' ');
+    const visibleRequests = availableTripRequests.filter((request) => {
+      if (!getSafeTripRequestId(request)) {
+        return false;
+      }
+
+      if (request.passengerId === currentUser?.id) {
+        return false;
+      }
+
+      if (request.status !== 'pending' && request.status !== 'offers_received') {
+        return false;
+      }
+
+      const departureText = `${request.departure?.name ?? ''} ${request.departure?.address ?? ''} ${request.departure?.reference ?? ''}`;
+      const arrivalText = `${request.arrival?.name ?? ''} ${request.arrival?.address ?? ''} ${request.arrival?.reference ?? ''}`;
+      const routeText = `${departureText} ${arrivalText}`;
+
+      return request.numberOfSeats >= desiredSeats && matchesSearch(routeText, routeQuery);
+    });
+
+    return [...visibleRequests].sort((a, b) => {
+      if (sortMode === 'cheap') {
+        const priceA = Number(a.maxPricePerSeat ?? Number.NEGATIVE_INFINITY);
+        const priceB = Number(b.maxPricePerSeat ?? Number.NEGATIVE_INFINITY);
+
+        if (priceA !== priceB) {
+          return priceB - priceA;
+        }
+      }
+
+      const departureA = new Date(a.departureDateMin).getTime();
+      const departureB = new Date(b.departureDateMin).getTime();
+      const safeDepartureA = Number.isFinite(departureA) ? departureA : Number.MAX_SAFE_INTEGER;
+      const safeDepartureB = Number.isFinite(departureB) ? departureB : Number.MAX_SAFE_INTEGER;
+
+      return safeDepartureA - safeDepartureB;
+    });
+  }, [
+    arrival,
+    availableTripRequests,
+    currentUser?.id,
+    departure,
+    desiredSeats,
+    isDriverAccount,
+    sortMode,
+  ]);
+
+  const requestSearchError =
+    requestsError && searchMode === 'requests'
+      ? 'Impossible de charger les demandes disponibles pour le moment. Réessayez dans un instant.'
+      : null;
+  const currentError = searchMode === 'trips' ? advancedError : requestSearchError;
+  const isLoadingResults =
+    searchMode === 'trips'
+      ? (queryLoading || isAdvancedSearching) && baseTrips.length === 0
+      : isDriverAccount && requestsLoading && availableTripRequests.length === 0;
+  const isRefreshingResults =
+    searchMode === 'trips'
+      ? queryFetching || isAdvancedSearching
+      : isDriverAccount && requestsFetching;
   useEffect(() => {
     const timeout = setTimeout(() => {
       const nextDeparture = draftDeparture.trim();
@@ -552,6 +798,13 @@ export default function SearchScreen() {
   };
 
   const handleRetry = () => {
+    if (searchMode === 'requests') {
+      if (isDriverAccount) {
+        refetchAvailableTripRequests();
+      }
+      return;
+    }
+
     if (lastAdvancedPayload) {
       runAdvancedSearch(lastAdvancedPayload);
       return;
@@ -621,18 +874,95 @@ export default function SearchScreen() {
     navigate();
   }, [router, showDialog]);
 
-  const renderTrip = useCallback(
-    ({ item }: { item: Trip }) => (
-      <SearchResultCard
-        trip={item}
-        disabled={openingTripId !== null}
-        onPress={handleOpenTrip}
-      />
-    ),
-    [handleOpenTrip, openingTripId],
+  const handleOpenTripRequest = useCallback((request: TripRequest) => {
+    const requestId = getSafeTripRequestId(request);
+
+    if (openingRequestIdRef.current) {
+      return;
+    }
+
+    if (!requestId) {
+      showDialog({
+        variant: 'warning',
+        title: 'Demande indisponible',
+        message: "Cette demande n'a pas pu être ouverte. Actualisez la recherche puis réessayez.",
+      });
+      return;
+    }
+
+    openingRequestIdRef.current = requestId;
+    setOpeningRequestId(requestId);
+    Keyboard.dismiss();
+
+    void trackEvent('trip_request_opened_from_search', {
+      trip_request_id: requestId,
+      vehicle_type: request.vehicleType ?? null,
+    });
+
+    const navigate = () => {
+      try {
+        router.push(getTripRequestDetailHref(requestId));
+      } catch (error) {
+        console.warn('[Search] Impossible d’ouvrir la demande:', error);
+        openingRequestIdRef.current = null;
+        setOpeningRequestId(null);
+        showDialog({
+          variant: 'danger',
+          title: 'Ouverture impossible',
+          message: "Cette demande n'a pas pu être ouverte. Actualisez la recherche puis réessayez.",
+        });
+      }
+    };
+
+    if (Platform.OS === 'ios') {
+      InteractionManager.runAfterInteractions(navigate);
+      return;
+    }
+
+    navigate();
+  }, [router, showDialog]);
+
+  const renderSearchResult = useCallback(
+    ({ item }: { item: SearchResultListItem }) => {
+      if (item.kind === 'trip') {
+        return (
+          <SearchResultCard
+            trip={item.trip}
+            disabled={openingTripId !== null || openingRequestId !== null}
+            onPress={handleOpenTrip}
+          />
+        );
+      }
+
+      return (
+        <SearchRequestResultCard
+          request={item.request}
+          disabled={openingTripId !== null || openingRequestId !== null}
+          onPress={handleOpenTripRequest}
+        />
+      );
+    },
+    [handleOpenTrip, handleOpenTripRequest, openingRequestId, openingTripId],
   );
 
-  const searchResultData = !isLoadingResults && !advancedError ? filteredTrips : [];
+  const searchResultData = useMemo<SearchResultListItem[]>(() => {
+    if (isLoadingResults || currentError) {
+      return [];
+    }
+
+    if (searchMode === 'requests') {
+      return filteredTripRequests.map((request) => ({ kind: 'request' as const, request }));
+    }
+
+    return filteredTrips.map((trip) => ({ kind: 'trip' as const, trip }));
+  }, [currentError, filteredTripRequests, filteredTrips, isLoadingResults, searchMode]);
+
+  const resultsCount = searchMode === 'requests' ? filteredTripRequests.length : filteredTrips.length;
+  const resultsCountLabel =
+    searchMode === 'requests'
+      ? `${resultsCount} demande${resultsCount > 1 ? 's' : ''} trouvée${resultsCount > 1 ? 's' : ''}`
+      : `${resultsCount} trajet${resultsCount > 1 ? 's' : ''} trouvé${resultsCount > 1 ? 's' : ''}`;
+  const sortPrimaryLabel = searchMode === 'requests' ? 'Meilleur budget' : 'Moins cher';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -658,8 +988,12 @@ export default function SearchScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         data={searchResultData}
-        renderItem={renderTrip}
-        keyExtractor={(trip) => getSafeTripId(trip) ?? `trip-${trip.departureTime}-${trip.driverId}`}
+        renderItem={renderSearchResult}
+        keyExtractor={(item) =>
+          item.kind === 'trip'
+            ? getSafeTripId(item.trip) ?? `trip-${item.trip.departureTime}-${item.trip.driverId}`
+            : getSafeTripRequestId(item.request) ?? `request-${item.request.createdAt}-${item.request.passengerId}`
+        }
         ItemSeparatorComponent={SearchResultSeparator}
         initialNumToRender={5}
         maxToRenderPerBatch={5}
@@ -742,10 +1076,41 @@ export default function SearchScreen() {
           </View>
         </View>
 
+        <View style={styles.searchModeSegment}>
+          <TouchableOpacity
+            style={[styles.searchModeButton, searchMode === 'trips' && styles.searchModeButtonActive]}
+            onPress={() => setSearchMode('trips')}
+            activeOpacity={0.82}
+          >
+            <Ionicons
+              name="car-sport-outline"
+              size={16}
+              color={searchMode === 'trips' ? Colors.white : Colors.gray[700]}
+            />
+            <Text style={[styles.searchModeButtonText, searchMode === 'trips' && styles.searchModeButtonTextActive]}>
+              Trajets
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.searchModeButton, searchMode === 'requests' && styles.searchModeButtonActive]}
+            onPress={() => setSearchMode('requests')}
+            activeOpacity={0.82}
+          >
+            <Ionicons
+              name="paper-plane-outline"
+              size={16}
+              color={searchMode === 'requests' ? Colors.white : Colors.gray[700]}
+            />
+            <Text style={[styles.searchModeButtonText, searchMode === 'requests' && styles.searchModeButtonTextActive]}>
+              Demandes
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.resultsToolbar}>
           <View style={styles.resultsCountRow}>
             <Text style={styles.resultsCount}>
-              {filteredTrips.length} trajet{filteredTrips.length > 1 ? 's' : ''} trouvé{filteredTrips.length > 1 ? 's' : ''}
+              {resultsCountLabel}
             </Text>
             {isRefreshingResults && <ActivityIndicator size="small" color={Colors.primary} />}
           </View>
@@ -756,7 +1121,7 @@ export default function SearchScreen() {
               activeOpacity={0.82}
             >
               <Text style={[styles.sortButtonText, sortMode === 'cheap' && styles.sortButtonTextActive]}>
-                Moins cher
+                {sortPrimaryLabel}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -774,22 +1139,28 @@ export default function SearchScreen() {
         {isLoadingResults && (
           <View style={styles.loaderCard}>
             <ActivityIndicator color={Colors.primary} size="large" />
-            <Text style={styles.loaderTitle}>Recherche des trajets</Text>
-            <Text style={styles.loaderText}>On prépare les meilleures offres disponibles.</Text>
+            <Text style={styles.loaderTitle}>
+              {searchMode === 'requests' ? 'Recherche des demandes' : 'Recherche des trajets'}
+            </Text>
+            <Text style={styles.loaderText}>
+              {searchMode === 'requests'
+                ? 'On charge les demandes publiées par les passagers.'
+                : 'On prépare les meilleures offres disponibles.'}
+            </Text>
           </View>
         )}
 
-        {advancedError && !isLoadingResults && (
+        {currentError && !isLoadingResults && (
           <View style={styles.errorCard}>
             <Ionicons name="alert-circle-outline" size={24} color={Colors.danger} />
-            <Text style={styles.errorText}>{advancedError}</Text>
+            <Text style={styles.errorText}>{currentError}</Text>
             <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
               <Text style={styles.retryText}>Réessayer</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {!isLoadingResults && !advancedError && filteredTrips.length === 0 && (
+        {!isLoadingResults && !currentError && searchMode === 'trips' && filteredTrips.length === 0 && (
           <View style={styles.emptyCard}>
             <View style={styles.emptyIconWrap}>
               <Ionicons name="trail-sign-outline" size={30} color={Colors.primary} />
@@ -802,6 +1173,22 @@ export default function SearchScreen() {
               <Ionicons name="paper-plane-outline" size={18} color={Colors.white} />
               <Text style={styles.emptyActionText}>Demander ce trajet</Text>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {!isLoadingResults && !currentError && searchMode === 'requests' && filteredTripRequests.length === 0 && (
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIconWrap}>
+              <Ionicons name="paper-plane-outline" size={30} color={Colors.primary} />
+            </View>
+            <Text style={styles.emptyTitle}>
+              {isDriverAccount ? 'Aucune demande trouvée' : 'Mode conducteur requis'}
+            </Text>
+            <Text style={styles.emptyText}>
+              {isDriverAccount
+                ? 'Aucune demande disponible ne correspond à cette recherche pour le moment.'
+                : 'Les demandes disponibles sont visibles par les comptes conducteur.'}
+            </Text>
           </View>
         )}
 
@@ -863,6 +1250,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.xl,
     paddingBottom: Spacing.xxl,
+  },
+  searchModeSegment: {
+    marginTop: Spacing.lg,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[200],
+    padding: 4,
+    flexDirection: 'row',
+    gap: 4,
+  },
+  searchModeButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  },
+  searchModeButtonActive: {
+    backgroundColor: Colors.primaryDark,
+    ...CommonStyles.shadowSm,
+  },
+  searchModeButtonText: {
+    color: Colors.gray[700],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
+  searchModeButtonTextActive: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
   },
   routeSummaryCard: {
     minHeight: 96,
@@ -1190,6 +1607,51 @@ const styles = StyleSheet.create({
     color: SEARCH_COLORS.body,
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.medium,
+  },
+  requestRoutePanel: {
+    marginTop: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: SEARCH_COLORS.panel,
+    flexDirection: 'row',
+    overflow: 'hidden',
+  },
+  requestRouteContent: {
+    flex: 1,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+  },
+  requestRouteLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  requestRouteText: {
+    flex: 1,
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  requestMetaGrid: {
+    marginTop: Spacing.md,
+    gap: Spacing.sm,
+  },
+  requestMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  requestMetaText: {
+    flex: 1,
+    color: Colors.gray[700],
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    lineHeight: 19,
+  },
+  requestDescription: {
+    marginTop: Spacing.md,
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+    lineHeight: 20,
   },
   tripTimingPanel: {
     marginTop: Spacing.lg,
