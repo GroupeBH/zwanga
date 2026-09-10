@@ -48,7 +48,6 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -79,8 +78,6 @@ const TIME_PRESETS: {
 }[] = [
   { id: 'now', label: 'Maintenant', caption: 'Départ rapide', icon: 'flash' },
   { id: 'soon', label: 'Dans 30 min', caption: 'Encore un peu', icon: 'time' },
-  { id: 'later', label: 'Plus tard', caption: "Aujourd'hui", icon: 'calendar-outline' },
-  { id: 'tomorrow', label: 'Demain matin', caption: 'Planifié', icon: 'sunny-outline' },
   { id: 'custom', label: 'Je choisis', caption: 'Date et heure', icon: 'create-outline' },
 ];
 
@@ -322,7 +319,10 @@ export default function RequestTripScreen() {
   const departureTouchedRef = useRef(false);
   const createRequestInFlightRef = useRef(false);
   const screenMountedRef = useRef(true);
-  const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const quickPlaceRequestSeqRef = useRef<Record<PickerTarget, number>>({
+    departure: 0,
+    arrival: 0,
+  });
   const { data: favoriteLocations = [] } = useGetFavoriteLocationsQuery();
   const [createTripRequest, { isLoading: isCreating }] = useCreateTripRequestMutation();
   const [getMyTripRequests] = useLazyGetMyTripRequestsQuery();
@@ -360,10 +360,10 @@ export default function RequestTripScreen() {
   const [requestPaymentMode, setRequestPaymentMode] =
     useState<TripPaymentMode>('cash');
   const [description, setDescription] = useState('');
-  const [preferBudgetOffers, setPreferBudgetOffers] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showQuickLandmarks, setShowQuickLandmarks] = useState(true);
   const [isLocating, setIsLocating] = useState(false);
+  const [quickPlaceResolvingKey, setQuickPlaceResolvingKey] = useState<string | null>(null);
   const [requestFormStep, setRequestFormStep] = useState<RequestFormStep>('route');
   const [routeCoordinates, setRouteCoordinates] = useState<LatLng[]>([]);
   const [routeDistanceMeters, setRouteDistanceMeters] = useState<number | null>(null);
@@ -371,13 +371,13 @@ export default function RequestTripScreen() {
   const [hasAppliedRoutePrefill, setHasAppliedRoutePrefill] = useState(false);
   const [createdRequestId, setCreatedRequestId] = useState<string | null>(null);
   const [submissionRecoveryMessage, setSubmissionRecoveryMessage] = useState<string | null>(null);
+  const [requestSentWithoutDetail, setRequestSentWithoutDetail] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
 
   useEffect(() => {
     screenMountedRef.current = true;
     return () => {
       screenMountedRef.current = false;
-      if (redirectTimerRef.current) clearTimeout(redirectTimerRef.current);
     };
   }, []);
 
@@ -584,7 +584,14 @@ export default function RequestTripScreen() {
     ? formatCdfPrice(budgetValue)
     : isPriceLoading
       ? 'Calcul...'
-      : 'Prix a calculer';
+      : 'Prix à calculer';
+  const requestSeatsLabel = `${numberOfSeats} place${numberOfSeats > 1 ? 's' : ''}`;
+  const totalBudgetValue = budgetValue > 0 ? budgetValue * numberOfSeats : 0;
+  const totalBudgetLabel = totalBudgetValue > 0
+    ? formatCdfPrice(totalBudgetValue)
+    : isPriceLoading
+      ? 'Calcul...'
+      : 'À définir';
   const budgetHintLabel = hasEditedBudget
     ? 'Votre budget maximum par place'
     : isVehicleOptionsError && vehicleOptions.length === 0
@@ -960,9 +967,17 @@ export default function RequestTripScreen() {
     setArrivalReference(tempRef);
   };
 
-  const applySelectionToNextSlot = (selection: MapLocationSelection) => {
+  const getQuickSelectionTarget = (): PickerTarget => {
+    if (addressSectionStep === 'departure' || addressSectionStep === 'arrival') {
+      return addressSectionStep;
+    }
+
+    return !hasDepartureAddress ? 'departure' : 'arrival';
+  };
+
+  const applySelectionToSlot = (target: PickerTarget, selection: MapLocationSelection) => {
     setAddressInputMode('map');
-    if (!hasDepartureAddress) {
+    if (target === 'departure') {
       departureTouchedRef.current = true;
       setDepartureLocation(selection);
       setDepartureManualAddress(selection.title || selection.address);
@@ -975,19 +990,74 @@ export default function RequestTripScreen() {
     setAddressSectionStep('arrival');
   };
 
-  const applyManualPlaceToNextSlot = (place: string) => {
-    setAddressInputMode('manual');
-    if (!hasDepartureAddress) {
+  const applySelectionToNextSlot = (selection: MapLocationSelection) => {
+    applySelectionToSlot(getQuickSelectionTarget(), selection);
+  };
+
+  const applyQuickPlaceToNextSlot = async (place: string) => {
+    const target = getQuickSelectionTarget();
+    const requestSeq = quickPlaceRequestSeqRef.current[target] + 1;
+    quickPlaceRequestSeqRef.current[target] = requestSeq;
+    setQuickPlaceResolvingKey(place);
+    setAddressInputMode('map');
+
+    if (target === 'departure') {
       departureTouchedRef.current = true;
       setDepartureLocation(null);
       setDepartureManualAddress(place);
+      setDepartureManualGeocodeStatus('searching');
       setAddressSectionStep('arrival');
-      return;
+    } else {
+      setArrivalLocation(null);
+      setArrivalManualAddress(place);
+      setArrivalManualGeocodeStatus('searching');
+      setAddressSectionStep('arrival');
     }
 
-    setArrivalLocation(null);
-    setArrivalManualAddress(place);
-    setAddressSectionStep('arrival');
+    try {
+      const response = await geocodeManualAddress({
+        address: buildManualGeocodeQuery(place),
+        region: 'cd',
+      }).unwrap();
+      if (quickPlaceRequestSeqRef.current[target] !== requestSeq) {
+        return;
+      }
+
+      const selection = mapGeocodeResponseToSelection(place, response);
+      if (!selection) {
+        throw new Error('Lieu rapide introuvable');
+      }
+
+      setAddressInputMode('map');
+      if (target === 'departure') {
+        setDepartureLocation(selection);
+        setDepartureManualAddress(selection.title || selection.address);
+        setDepartureManualGeocodeStatus('found');
+        setAddressSectionStep('arrival');
+        return;
+      }
+
+      setArrivalLocation(selection);
+      setArrivalManualAddress(selection.title || selection.address);
+      setArrivalManualGeocodeStatus('found');
+      setAddressSectionStep('arrival');
+    } catch (error) {
+      if (quickPlaceRequestSeqRef.current[target] !== requestSeq) {
+        return;
+      }
+
+      console.warn('Quick place geocode failed', error);
+      setAddressInputMode('manual');
+      if (target === 'departure') {
+        setDepartureManualGeocodeStatus('missing');
+      } else {
+        setArrivalManualGeocodeStatus('missing');
+      }
+    } finally {
+      if (quickPlaceRequestSeqRef.current[target] === requestSeq) {
+        setQuickPlaceResolvingKey(null);
+      }
+    }
   };
 
   const validate = (departureWindow = getCurrentDepartureWindow()) => {
@@ -1041,6 +1111,9 @@ export default function RequestTripScreen() {
   const handleCreateRequest = async () => {
     if (createRequestInFlightRef.current || isCreating) return;
     setSubmissionError(null);
+    setCreatedRequestId(null);
+    setSubmissionRecoveryMessage(null);
+    setRequestSentWithoutDetail(false);
 
     const departureWindow = getCurrentDepartureWindow();
     if (timePreset !== 'custom') {
@@ -1078,24 +1151,16 @@ export default function RequestTripScreen() {
     createRequestInFlightRef.current = true;
     const submissionStartedAt = Date.now();
 
-    const scheduleDetailRedirect = (requestId: string, delay = 350) => {
+    const showRequestSuccess = (requestId: string) => {
+      setSubmissionRecoveryMessage(null);
+      setRequestSentWithoutDetail(false);
       setCreatedRequestId(requestId);
-      redirectTimerRef.current = setTimeout(() => {
-        if (screenMountedRef.current) {
-          router.replace(getTripRequestDetailHref(requestId));
-        }
-      }, delay);
     };
 
     try {
       const departureCoordinates = getLocationCoordinates(departureLocation);
       const arrivalCoordinates = getLocationCoordinates(arrivalLocation);
-      const requestNotes = [
-        description.trim(),
-        preferBudgetOffers && parsedBudget !== undefined
-          ? `Préférence : offres jusqu'à ${formatCdfPrice(parsedBudget)} par place.`
-          : '',
-      ].filter(Boolean).join('\n');
+      const requestNotes = description.trim();
       const createdRequest = await createTripRequest({
         departureLocation: departureAddress,
         departureReference: departureReference.trim() || undefined,
@@ -1120,9 +1185,11 @@ export default function RequestTripScreen() {
         has_description: Boolean(description.trim()),
         flexibility_minutes: departureWindow.flex,
       });
-      scheduleDetailRedirect(String(createdRequest.id));
+      showRequestSuccess(String(createdRequest.id));
     } catch (error: any) {
       if (isAmbiguousTransportError(error)) {
+        setCreatedRequestId(null);
+        setRequestSentWithoutDetail(false);
         setSubmissionRecoveryMessage(
           'Demande envoyée. Récupération du détail en cours…',
         );
@@ -1158,13 +1225,10 @@ export default function RequestTripScreen() {
         }
 
         if (recoveredRequestId) {
-          setSubmissionRecoveryMessage(null);
-          scheduleDetailRedirect(recoveredRequestId, 150);
+          showRequestSuccess(recoveredRequestId);
         } else {
-          setSubmissionRecoveryMessage('Demande envoyée. Ouverture de vos demandes…');
-          redirectTimerRef.current = setTimeout(() => {
-            if (screenMountedRef.current) router.replace('/my-requests');
-          }, 500);
+          setSubmissionRecoveryMessage(null);
+          setRequestSentWithoutDetail(true);
         }
       } else {
         setSubmissionError(
@@ -1206,6 +1270,32 @@ export default function RequestTripScreen() {
     !hasDepartureAddress || !hasArrivalAddress || requestFormStep === 'route'
       ? 'arrow-forward'
       : 'send';
+  const isRequestSuccessVisible = Boolean(
+    createdRequestId || submissionRecoveryMessage || requestSentWithoutDetail,
+  );
+  const isResolvingSentRequest = Boolean(
+    submissionRecoveryMessage && !createdRequestId && !requestSentWithoutDetail,
+  );
+  const requestSuccessDetailLabel = createdRequestId
+    ? 'Voir la demande'
+    : 'Voir mes demandes';
+  const requestSuccessText = isResolvingSentRequest
+    ? 'Votre demande est envoyée. Nous retrouvons son détail avant de vous proposer la suite.'
+    : createdRequestId
+      ? 'Votre demande est prête. Vous pouvez suivre les réponses des conducteurs ou revenir à l’accueil.'
+      : 'Votre demande a été envoyée, mais le détail n’a pas pu être ouvert automatiquement. Retrouvez-la dans vos demandes.';
+
+  const goToRequestSuccessDetail = () => {
+    if (createdRequestId) {
+      router.replace(getTripRequestDetailHref(createdRequestId));
+      return;
+    }
+    router.replace('/my-requests');
+  };
+
+  const goHomeAfterRequestSuccess = () => {
+    router.replace('/(tabs)');
+  };
 
   const renderPrimaryButton = (compact = false) => (
     <TouchableOpacity
@@ -1375,21 +1465,36 @@ export default function RequestTripScreen() {
                         </Text>
                       </TouchableOpacity>
                     ))}
-                    {POPULAR_PLACES.map((place) => (
-                      <TouchableOpacity
-                        key={place.name}
-                        style={styles.suggestionChip}
-                        onPress={() => applyManualPlaceToNextSlot(`${place.name}, ${place.commune}`)}
-                        activeOpacity={0.86}
-                      >
-                        <View style={styles.suggestionIcon}>
-                          <Ionicons name="location" size={14} color={Colors.primary} />
-                        </View>
-                        <Text style={styles.suggestionText} numberOfLines={1}>
-                          {place.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                    {POPULAR_PLACES.map((place) => {
+                      const placeLabel = `${place.name}, ${place.commune}`;
+                      const isResolving = quickPlaceResolvingKey === placeLabel;
+
+                      return (
+                        <TouchableOpacity
+                          key={place.name}
+                          style={[
+                            styles.suggestionChip,
+                            quickPlaceResolvingKey && !isResolving && styles.suggestionChipDisabled,
+                          ]}
+                          onPress={() => {
+                            void applyQuickPlaceToNextSlot(placeLabel);
+                          }}
+                          disabled={Boolean(quickPlaceResolvingKey)}
+                          activeOpacity={0.86}
+                        >
+                          <View style={styles.suggestionIcon}>
+                            {isResolving ? (
+                              <ActivityIndicator size="small" color={Colors.primary} />
+                            ) : (
+                              <Ionicons name="location" size={14} color={Colors.primary} />
+                            )}
+                          </View>
+                          <Text style={styles.suggestionText} numberOfLines={1}>
+                            {place.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </ScrollView>
                 ) : null}
               </View>
@@ -1574,38 +1679,23 @@ export default function RequestTripScreen() {
               </View>
 
               <View style={styles.offerSheet}>
-                <View style={styles.offerTimeBlock}>
-                  <View style={styles.offerTimeHeader}>
-                    <View style={styles.offerTimeHeaderIcon}>
-                      <Ionicons name="time" size={22} color={Colors.white} />
-                    </View>
-                    <View style={styles.offerTimeHeaderCopy}>
-                      <Text style={styles.offerTimeTitle}>Heure de départ</Text>
-                      <Text style={styles.offerTimeSubtitle}>Quand souhaitez-vous partir ?</Text>
-                    </View>
-                  </View>
-
+                <View style={styles.offerTimeCompactBlock}>
                   <View
-                    style={styles.offerTimeSummary}
+                    style={styles.offerTimeCompactRow}
                     accessibilityLabel={`Départ ${timeSummary}`}
                   >
-                    <View style={styles.offerTimeSummaryCopy}>
-                      <Text style={styles.offerTimeDate} numberOfLines={1}>
-                        {formatDateLabel(departureDateMin)}
-                      </Text>
+                    <View style={styles.offerTimeCompactIcon}>
+                      <Ionicons name={selectedTimePreset.icon} size={18} color={Colors.primary} />
+                    </View>
+                    <View style={styles.offerTimeCompactCopy}>
+                      <Text style={styles.offerTimeCompactLabel}>Départ</Text>
                       <Text
-                        style={styles.offerTimeValue}
+                        style={styles.offerTimeCompactValue}
                         numberOfLines={1}
                         adjustsFontSizeToFit
                         minimumFontScale={0.82}
                       >
-                        {departureTimeRangeLabel}
-                      </Text>
-                    </View>
-                    <View style={styles.offerTimePresetBadge}>
-                      <Ionicons name={selectedTimePreset.icon} size={14} color={Colors.primaryDark} />
-                      <Text style={styles.offerTimePresetBadgeText} numberOfLines={2}>
-                        {selectedTimePreset.label}
+                        {formatDateLabel(departureDateMin)} · {departureTimeRangeLabel}
                       </Text>
                     </View>
                   </View>
@@ -1613,20 +1703,26 @@ export default function RequestTripScreen() {
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.offerPresetScroll}
+                    contentContainerStyle={styles.offerPresetCompactScroll}
                   >
                     {TIME_PRESETS.map((preset) => {
                       const active = timePreset === preset.id;
+                      const compactLabel =
+                        preset.id === 'soon'
+                          ? '30 min'
+                          : preset.id === 'custom'
+                            ? 'Choisir'
+                            : preset.label;
                       return (
                         <TouchableOpacity
                           key={preset.id}
-                          style={[styles.offerPreset, active && styles.offerPresetActive]}
+                          style={[styles.offerPresetCompact, active && styles.offerPresetActive]}
                           onPress={() => applyPreset(preset.id)}
                           activeOpacity={0.82}
                         >
-                          <Ionicons name={preset.icon} size={15} color={active ? Colors.white : Colors.gray[600]} />
-                          <Text style={[styles.offerPresetText, active && styles.offerPresetTextActive]} numberOfLines={1}>
-                            {preset.label}
+                          <Ionicons name={preset.icon} size={14} color={active ? Colors.white : Colors.gray[600]} />
+                          <Text style={[styles.offerPresetCompactText, active && styles.offerPresetTextActive]} numberOfLines={1}>
+                            {compactLabel}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -1634,23 +1730,29 @@ export default function RequestTripScreen() {
                   </ScrollView>
 
                   {timePreset === 'custom' && (
-                    <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.customWrap}>
-                      <TouchableOpacity style={styles.inputLike} onPress={() => openCustomPicker('date')}>
-                        <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
-                        <Text style={styles.inputLikeText}>{formatDateLabel(departureDateMin)}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.inputLike} onPress={() => openCustomPicker('time')}>
-                        <Ionicons name="time-outline" size={18} color={Colors.primary} />
-                        <Text style={styles.inputLikeText}>{formatTimeLabel(departureDateMin)}</Text>
-                      </TouchableOpacity>
-                      <View style={styles.chipRow}>
+                    <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.customCompactWrap}>
+                      <View style={styles.customDateTimeRow}>
+                        <TouchableOpacity style={styles.customPickerPill} onPress={() => openCustomPicker('date')}>
+                          <Ionicons name="calendar-outline" size={16} color={Colors.primary} />
+                          <Text style={styles.customPickerPillText} numberOfLines={1}>
+                            {formatDateLabel(departureDateMin)}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.customPickerPill} onPress={() => openCustomPicker('time')}>
+                          <Ionicons name="time-outline" size={16} color={Colors.primary} />
+                          <Text style={styles.customPickerPillText}>{formatTimeLabel(departureDateMin)}</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <View style={styles.flexCompactRow}>
+                        <Text style={styles.flexCompactLabel}>Marge</Text>
                         {FLEX_OPTIONS.map((option) => (
                           <TouchableOpacity
                             key={option}
-                            style={[styles.chip, flexibilityMinutes === option && styles.flexChipActive]}
+                            style={[styles.flexCompactChip, flexibilityMinutes === option && styles.flexChipActive]}
                             onPress={() => setFlexibilityMinutes(option)}
+                            activeOpacity={0.8}
                           >
-                            <Text style={[styles.chipText, flexibilityMinutes === option && styles.flexChipTextActive]}>
+                            <Text style={[styles.flexCompactChipText, flexibilityMinutes === option && styles.flexChipTextActive]}>
                               {option === 0 ? 'Exact' : option === 60 ? '1 h' : option === 120 ? '2 h' : `${option} min`}
                             </Text>
                           </TouchableOpacity>
@@ -1699,6 +1801,14 @@ export default function RequestTripScreen() {
                     <Text style={styles.offerPriceHint}>
                       {budgetHintLabel}
                     </Text>
+                    <Text
+                      style={styles.offerPriceTotal}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.86}
+                    >
+                      Total estimé · {totalBudgetLabel} pour {requestSeatsLabel}
+                    </Text>
                   </View>
                   <TouchableOpacity
                     style={styles.offerPriceButton}
@@ -1711,12 +1821,15 @@ export default function RequestTripScreen() {
 
                 <View style={styles.offerOptionsRow}>
                   <View style={styles.offerOptionCopy}>
-                    <Ionicons name="people" size={17} color={Colors.primary} />
-                    <Text style={styles.offerOptionText}>
-                      {hasSpecifiedNumberOfSeats
-                        ? `${numberOfSeats} place${numberOfSeats > 1 ? 's' : ''}`
-                        : '1 place par défaut · facultatif'}
-                    </Text>
+                    <View style={styles.offerOptionIcon}>
+                      <Ionicons name="people" size={17} color={Colors.primary} />
+                    </View>
+                    <View style={styles.offerOptionTextBlock}>
+                      <Text style={styles.offerOptionLabel}>Places souhaitées</Text>
+                      <Text style={styles.offerOptionText}>
+                        {hasSpecifiedNumberOfSeats ? requestSeatsLabel : `${requestSeatsLabel} par défaut`}
+                      </Text>
+                    </View>
                   </View>
                   <View style={styles.counterCompact}>
                     <TouchableOpacity
@@ -1792,22 +1905,6 @@ export default function RequestTripScreen() {
                   })}
                 </View>
 
-                <View style={styles.offerPreferenceRow}>
-                  <View style={styles.offerPreferenceIcon}>
-                    <Ionicons name="send" size={18} color={Colors.primary} />
-                  </View>
-                  <View style={styles.offerPreferenceCopy}>
-                    <Text style={styles.offerPreferenceTitle}>Recevoir les offres dans ce budget</Text>
-                    <Text style={styles.offerPreferenceText}>{budgetLabel} par place</Text>
-                  </View>
-                  <Switch
-                    value={preferBudgetOffers}
-                    onValueChange={setPreferBudgetOffers}
-                    trackColor={{ false: Colors.gray[200], true: Colors.primary + '55' }}
-                    thumbColor={preferBudgetOffers ? Colors.primary : Colors.white}
-                  />
-                </View>
-
                 <TouchableOpacity style={styles.offerNoteToggle} onPress={() => setShowAdvanced((value) => !value)}>
                   <Text style={styles.offerNoteToggleText}>{showAdvanced ? 'Masquer la note' : 'Ajouter une note'}</Text>
                   <Ionicons name={showAdvanced ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.gray[500]} />
@@ -1837,7 +1934,7 @@ export default function RequestTripScreen() {
         </SafeAreaView>
       )}
 
-      {requestFormStep === 'details' && !submissionRecoveryMessage && !createdRequestId && (
+      {requestFormStep === 'details' && !isRequestSuccessVisible && (
         <SafeAreaView edges={['bottom']} style={styles.offerStickyFooter}>
           {submissionError ? (
             <View style={styles.submissionErrorBanner}>
@@ -1863,26 +1960,71 @@ export default function RequestTripScreen() {
         </SafeAreaView>
       )}
 
-      {createdRequestId || submissionRecoveryMessage ? (
-        <View style={styles.requestSuccessOverlay}>
-          <View style={styles.requestSuccessCard}>
-            <View style={styles.requestSuccessIcon}>
-              <Ionicons
-                name={createdRequestId ? 'checkmark' : 'cloud-offline-outline'}
-                size={38}
-                color={Colors.white}
-              />
+      <Modal
+        transparent
+        visible={isRequestSuccessVisible}
+        animationType="fade"
+        presentationStyle="overFullScreen"
+        onRequestClose={() => {
+          if (!isResolvingSentRequest) {
+            goHomeAfterRequestSuccess();
+          }
+        }}
+      >
+        <View
+          style={[
+            styles.requestSuccessOverlay,
+            {
+              paddingTop: Math.max(insets.top, 24) + Spacing.lg,
+              paddingBottom: Math.max(insets.bottom, 24) + Spacing.lg,
+            },
+          ]}
+        >
+          <View pointerEvents="none" style={styles.requestSuccessBackdropGlowTop} />
+          <View pointerEvents="none" style={styles.requestSuccessBackdropGlowBottom} />
+
+          <Animated.View entering={FadeIn.duration(180)} style={styles.requestSuccessCard}>
+            <View style={styles.requestSuccessPill}>
+              <Ionicons name="radio-outline" size={14} color={Colors.primary} />
+              <Text style={styles.requestSuccessPillText}>Demande de trajet</Text>
             </View>
-            <Text style={styles.requestSuccessTitle}>
-              {createdRequestId ? 'Demande envoyée' : 'Envoi terminé'}
-            </Text>
-            <Text style={styles.requestSuccessText}>
-              {submissionRecoveryMessage ?? 'Votre demande est créée. Ouverture du suivi en cours…'}
-            </Text>
-            <ActivityIndicator size="small" color={Colors.primary} />
-          </View>
+
+            <View style={styles.requestSuccessIcon}>
+              <Ionicons name="checkmark" size={42} color={Colors.white} />
+            </View>
+
+            <Text style={styles.requestSuccessTitle}>Demande envoyée</Text>
+            <Text style={styles.requestSuccessText}>{requestSuccessText}</Text>
+
+            {isResolvingSentRequest ? (
+              <View style={styles.requestSuccessLoadingRow}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+                <Text style={styles.requestSuccessLoadingText}>Recherche du détail…</Text>
+              </View>
+            ) : (
+              <View style={styles.requestSuccessActions}>
+                <TouchableOpacity
+                  style={styles.requestSuccessPrimary}
+                  onPress={goToRequestSuccessDetail}
+                  activeOpacity={0.88}
+                >
+                  <Text style={styles.requestSuccessPrimaryText}>{requestSuccessDetailLabel}</Text>
+                  <Ionicons name="arrow-forward" size={18} color={Colors.white} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.requestSuccessSecondary}
+                  onPress={goHomeAfterRequestSuccess}
+                  activeOpacity={0.84}
+                >
+                  <Ionicons name="home-outline" size={18} color={Colors.gray[700]} />
+                  <Text style={styles.requestSuccessSecondaryText}>Revenir à l’accueil</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </Animated.View>
         </View>
-      ) : null}
+      </Modal>
 
       <LocationPickerModal
         visible={activePicker !== null}
@@ -2015,14 +2157,18 @@ const styles = StyleSheet.create({
   vehicleChoiceErrorText: { flex: 1, fontSize: FontSizes.sm, color: Colors.gray[700] },
   vehicleChoiceRetry: { minHeight: 36, borderRadius: BorderRadius.full, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.md },
   vehicleChoiceRetryText: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.primary },
-  offerPriceControl: { minHeight: 88, borderRadius: BorderRadius.lg, backgroundColor: '#F7F8FA', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.md },
+  offerPriceControl: { minHeight: 98, borderRadius: BorderRadius.lg, backgroundColor: '#F7F8FA', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.md },
   offerPriceButton: { width: 50, height: 50, borderRadius: BorderRadius.full, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 3 },
   offerPriceButtonDisabled: { backgroundColor: Colors.gray[100] },
   offerPriceCenter: { flex: 1, alignItems: 'center', paddingHorizontal: Spacing.sm },
   offerPriceValue: { fontSize: FontSizes.xxl, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   offerPriceHint: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[600], textAlign: 'center' },
-  offerOptionsRow: { minHeight: 52, borderRadius: BorderRadius.lg, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[100], flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.md },
-  offerOptionCopy: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  offerPriceTotal: { marginTop: 4, fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.primaryDark, textAlign: 'center' },
+  offerOptionsRow: { minHeight: 58, borderRadius: BorderRadius.lg, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[100], flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm, paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs },
+  offerOptionCopy: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  offerOptionIcon: { width: 34, height: 34, borderRadius: BorderRadius.full, backgroundColor: Colors.primary + '10', alignItems: 'center', justifyContent: 'center' },
+  offerOptionTextBlock: { flex: 1, minWidth: 0 },
+  offerOptionLabel: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[500] },
   offerOptionText: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   offerPaymentBlock: { gap: Spacing.sm },
   offerPaymentOption: { minHeight: 58, borderRadius: BorderRadius.md, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[100], flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
@@ -2030,6 +2176,23 @@ const styles = StyleSheet.create({
   offerPaymentCopy: { flex: 1, minWidth: 0 },
   offerPaymentTitle: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   offerPaymentText: { marginTop: 2, fontSize: 12, color: Colors.gray[500] },
+  offerTimeCompactBlock: { gap: Spacing.sm, marginBottom: Spacing.xs, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.primary + '18', backgroundColor: '#FFF7F2', padding: Spacing.sm },
+  offerTimeCompactRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  offerTimeCompactIcon: { width: 36, height: 36, borderRadius: BorderRadius.full, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.primary + '18' },
+  offerTimeCompactCopy: { flex: 1, minWidth: 0 },
+  offerTimeCompactLabel: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[500] },
+  offerTimeCompactValue: { marginTop: 2, fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900], textTransform: 'capitalize' },
+  offerPresetCompactScroll: { gap: Spacing.xs, paddingRight: Spacing.lg },
+  offerPresetCompact: { minHeight: 34, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  offerPresetCompactText: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[700] },
+  customCompactWrap: { gap: Spacing.xs, borderTopWidth: 1, borderTopColor: Colors.primary + '14', paddingTop: Spacing.xs },
+  customDateTimeRow: { flexDirection: 'row', gap: Spacing.xs },
+  customPickerPill: { flex: 1, minHeight: 38, borderRadius: BorderRadius.full, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.primary + '18', paddingHorizontal: Spacing.sm, flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  customPickerPillText: { flex: 1, minWidth: 0, fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[900] },
+  flexCompactRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+  flexCompactLabel: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.gray[500], marginRight: 2 },
+  flexCompactChip: { minHeight: 30, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
+  flexCompactChipText: { fontSize: 11, fontWeight: FontWeights.bold, color: Colors.gray[700] },
   offerTimeBlock: { gap: Spacing.md, marginBottom: Spacing.sm, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.primary + '24', backgroundColor: '#FFF7F2', padding: Spacing.lg },
   offerTimeHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   offerTimeHeaderIcon: { width: 44, height: 44, borderRadius: BorderRadius.full, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center', shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 3 },
@@ -2048,11 +2211,6 @@ const styles = StyleSheet.create({
   offerTimeValue: { marginTop: 3, fontSize: 28, lineHeight: 32, fontWeight: FontWeights.bold, color: Colors.primaryDark, letterSpacing: -0.5 },
   offerTimePresetBadge: { maxWidth: 104, minHeight: 34, borderRadius: BorderRadius.full, backgroundColor: Colors.primary + '12', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: Spacing.sm },
   offerTimePresetBadgeText: { flexShrink: 1, fontSize: 11, lineHeight: 13, fontWeight: FontWeights.bold, color: Colors.primaryDark, textAlign: 'center' },
-  offerPreferenceRow: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: Spacing.md, borderRadius: BorderRadius.lg, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[100], paddingHorizontal: Spacing.md },
-  offerPreferenceIcon: { width: 42, height: 42, borderRadius: BorderRadius.full, backgroundColor: Colors.primary + '12', alignItems: 'center', justifyContent: 'center' },
-  offerPreferenceCopy: { flex: 1, minWidth: 0 },
-  offerPreferenceTitle: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.gray[900] },
-  offerPreferenceText: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[600] },
   offerSubmitButton: { minHeight: 58, borderRadius: BorderRadius.lg, backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, shadowColor: Colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.24, shadowRadius: 14, elevation: 6 },
   offerStickyFooter: { backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm, paddingBottom: Spacing.sm, shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.08, shadowRadius: 14, elevation: 10 },
   offerSubmitText: { color: Colors.white, fontSize: FontSizes.lg, fontWeight: FontWeights.bold },
@@ -2097,6 +2255,7 @@ const styles = StyleSheet.create({
   suggestionsToggle: { fontSize: FontSizes.sm, fontWeight: FontWeights.semibold, color: Colors.primary },
   suggestionsScroll: { gap: Spacing.sm, paddingRight: Spacing.xl },
   suggestionChip: { maxWidth: 170, minHeight: 42, borderRadius: BorderRadius.full, backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[200], paddingLeft: 6, paddingRight: Spacing.md, flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  suggestionChipDisabled: { opacity: 0.48 },
   suggestionIcon: { width: 30, height: 30, borderRadius: BorderRadius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.white },
   suggestionText: { flexShrink: 1, fontSize: FontSizes.sm, fontWeight: FontWeights.semibold, color: Colors.gray[800] },
   requestStepper: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.white, borderRadius: BorderRadius.sm, padding: 6, gap: Spacing.xs },
@@ -2202,14 +2361,21 @@ const styles = StyleSheet.create({
   mainButtonText: { color: Colors.white, fontSize: FontSizes.base, fontWeight: FontWeights.bold },
   submissionErrorBanner: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm, padding: Spacing.sm, borderRadius: BorderRadius.sm, backgroundColor: Colors.danger + '10' },
   submissionErrorText: { flex: 1, fontSize: FontSizes.sm, lineHeight: 18, color: Colors.danger },
-  requestSuccessOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 2000, elevation: 30, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl, backgroundColor: 'rgba(15,23,42,0.72)' },
-  requestSuccessCard: { width: '100%', maxWidth: 420, alignItems: 'center', padding: Spacing.xl, borderRadius: BorderRadius.xxl, backgroundColor: Colors.white },
-  requestSuccessIcon: { width: 76, height: 76, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.lg, borderRadius: BorderRadius.full, backgroundColor: Colors.success },
+  requestSuccessOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.lg, backgroundColor: 'rgba(15, 23, 42, 0.82)' },
+  requestSuccessBackdropGlowTop: { position: 'absolute', top: -92, right: -70, width: 230, height: 230, borderRadius: 115, backgroundColor: Colors.primary + '38' },
+  requestSuccessBackdropGlowBottom: { position: 'absolute', left: -74, bottom: -90, width: 240, height: 240, borderRadius: 120, backgroundColor: Colors.success + '2E' },
+  requestSuccessCard: { width: '100%', maxWidth: 430, alignItems: 'center', paddingHorizontal: Spacing.xl, paddingTop: Spacing.lg, paddingBottom: Spacing.xl, borderRadius: 34, backgroundColor: Colors.white, borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)', shadowColor: '#000', shadowOffset: { width: 0, height: 22 }, shadowOpacity: 0.24, shadowRadius: 34, elevation: 18 },
+  requestSuccessPill: { alignSelf: 'center', minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: Spacing.md, borderRadius: BorderRadius.full, backgroundColor: Colors.primary + '10', borderWidth: 1, borderColor: Colors.primary + '18', marginBottom: Spacing.lg },
+  requestSuccessPillText: { fontSize: FontSizes.xs, fontWeight: FontWeights.bold, color: Colors.primaryDark },
+  requestSuccessIcon: { width: 84, height: 84, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.lg, borderRadius: BorderRadius.full, backgroundColor: Colors.success, shadowColor: Colors.success, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.28, shadowRadius: 18, elevation: 8 },
   requestSuccessTitle: { fontSize: FontSizes.xl, fontWeight: FontWeights.bold, color: Colors.gray[900], textAlign: 'center' },
-  requestSuccessText: { marginTop: Spacing.sm, marginBottom: Spacing.xl, fontSize: FontSizes.base, lineHeight: 22, color: Colors.gray[600], textAlign: 'center' },
+  requestSuccessText: { marginTop: Spacing.sm, marginBottom: Spacing.lg, fontSize: FontSizes.base, lineHeight: 23, color: Colors.gray[600], textAlign: 'center' },
+  requestSuccessLoadingRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.md, borderRadius: BorderRadius.full, backgroundColor: Colors.primary + '0D' },
+  requestSuccessLoadingText: { fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.primaryDark },
+  requestSuccessActions: { width: '100%', gap: Spacing.sm },
   requestSuccessPrimary: { width: '100%', minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, borderRadius: BorderRadius.full, backgroundColor: Colors.primary },
   requestSuccessPrimaryText: { fontSize: FontSizes.base, fontWeight: FontWeights.bold, color: Colors.white },
-  requestSuccessSecondary: { width: '100%', minHeight: 48, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.sm, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.gray[200] },
+  requestSuccessSecondary: { width: '100%', minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50] },
   requestSuccessSecondaryText: { fontSize: FontSizes.base, fontWeight: FontWeights.semibold, color: Colors.gray[700] },
   iosOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.35)' },
   iosSheet: { backgroundColor: Colors.white, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, paddingTop: Spacing.md },

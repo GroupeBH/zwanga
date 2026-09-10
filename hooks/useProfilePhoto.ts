@@ -1,15 +1,25 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import { ProfilePhotoCameraCapture } from '@/components/profile/ProfilePhotoCameraCapture';
 import { useUpdateUserMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch } from '@/store/hooks';
 import { updateUser } from '@/store/slices/authSlice';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import * as ImagePicker from 'expo-image-picker';
-import { useCallback, useEffect, useState } from 'react';
+import { createElement, useCallback, useEffect, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 
 let pendingResultRecoveryInFlight = false;
 const claimedProfileImageUris = new Map<string, number>();
 const DUPLICATE_IMAGE_CLAIM_WINDOW_MS = 30_000;
+
+type ProfilePhotoSource = 'camera' | 'gallery';
+
+interface ProfilePhotoSelection {
+  uri: string;
+  source: ProfilePhotoSource;
+}
+
+type ProfilePhotoConfirmationResult = 'confirm' | 'retry' | 'cancel';
 
 function claimProfileImageUri(uri: string) {
   const now = Date.now();
@@ -70,9 +80,9 @@ export function useProfilePhoto() {
   const dispatch = useAppDispatch();
   const [updateUserMutation, { isLoading }] = useUpdateUserMutation();
   const [isUploading, setIsUploading] = useState(false);
-  const { showDialog } = useDialog();
+  const { showDialog, hideDialog } = useDialog();
 
-  const requestPermissions = async (source: 'camera' | 'gallery') => {
+  const requestPermissions = useCallback(async (source: ProfilePhotoSource) => {
     try {
       if (source === 'camera') {
         const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -108,9 +118,48 @@ export function useProfilePhoto() {
       });
       return false;
     }
-  };
+  }, [showDialog]);
 
-  const pickImage = async (source: 'camera' | 'gallery') => {
+  const captureProfilePhotoInAppCamera = useCallback((): Promise<string | null> => {
+    return new Promise((resolve) => {
+      let resolved = false;
+
+      const resolveOnce = (uri: string | null) => {
+        if (resolved) {
+          return;
+        }
+
+        resolved = true;
+        resolve(uri);
+      };
+
+      showDialog({
+        variant: 'info',
+        title: 'Prendre une photo',
+        message: 'Cadrez votre visage, puis appuyez sur “Prendre la photo”.',
+        dismissible: false,
+        content: createElement(ProfilePhotoCameraCapture, {
+          onCapture: (uri: string) => {
+            hideDialog();
+            setTimeout(() => resolveOnce(uri), 0);
+          },
+        }),
+        actions: [
+          {
+            label: 'Annuler',
+            variant: 'ghost',
+            onPress: () => resolveOnce(null),
+          },
+        ],
+      });
+    });
+  }, [hideDialog, showDialog]);
+
+  const pickImage = useCallback(async (source: ProfilePhotoSource) => {
+    if (source === 'camera' && Platform.OS === 'android') {
+      return captureProfilePhotoInAppCamera();
+    }
+
     const hasPermission = await requestPermissions(source);
     if (!hasPermission) return null;
 
@@ -120,8 +169,7 @@ export function useProfilePhoto() {
       if (source === 'camera') {
         result = await ImagePicker.launchCameraAsync({
           mediaTypes: 'images',
-          allowsEditing: true,
-          aspect: [1, 1],
+          allowsEditing: false,
           quality: 0.65,
           base64: false,
           exif: false,
@@ -129,8 +177,7 @@ export function useProfilePhoto() {
       } else {
         result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: 'images',
-          allowsEditing: true,
-          aspect: [1, 1],
+          allowsEditing: false,
           quality: 0.65,
           base64: false,
           exif: false,
@@ -152,21 +199,22 @@ export function useProfilePhoto() {
       });
       return null;
     }
-  };
+  }, [captureProfilePhotoInAppCamera, requestPermissions, showDialog]);
 
-  const showImagePicker = (): Promise<string | null> => {
+  const showImagePicker = useCallback((): Promise<ProfilePhotoSelection | null> => {
     return new Promise((resolve) => {
       showDialog({
         variant: 'info',
         title: 'Changer la photo de profil',
         message: 'Choisissez une source',
+        dismissible: false,
         actions: [
           {
             label: 'Caméra',
             variant: 'primary',
             onPress: async () => {
               const uri = await pickImage('camera');
-              resolve(uri);
+              resolve(uri ? { uri, source: 'camera' } : null);
             },
           },
           {
@@ -174,7 +222,7 @@ export function useProfilePhoto() {
             variant: 'secondary',
             onPress: async () => {
               const uri = await pickImage('gallery');
-              resolve(uri);
+              resolve(uri ? { uri, source: 'gallery' } : null);
             },
           },
           {
@@ -185,7 +233,46 @@ export function useProfilePhoto() {
         ],
       });
     });
-  };
+  }, [pickImage, showDialog]);
+
+  const confirmProfilePhoto = useCallback(
+    (selection: ProfilePhotoSelection): Promise<ProfilePhotoConfirmationResult> => {
+      const retryLabel = selection.source === 'camera' ? 'Reprendre la photo' : 'Choisir une autre photo';
+      const message =
+        selection.source === 'camera'
+          ? 'Voici la photo prise. Si elle vous convient, validez pour la mettre sur votre profil.'
+          : 'Voici la photo choisie. Si elle vous convient, validez pour la mettre sur votre profil.';
+
+      return new Promise((resolve) => {
+        showDialog({
+          variant: 'info',
+          icon: 'person-circle',
+          title: 'Valider cette photo ?',
+          message,
+          previewImageUri: selection.uri,
+          dismissible: false,
+          actions: [
+            {
+              label: 'Utiliser cette photo',
+              variant: 'primary',
+              onPress: () => resolve('confirm'),
+            },
+            {
+              label: retryLabel,
+              variant: 'secondary',
+              onPress: () => resolve('retry'),
+            },
+            {
+              label: 'Annuler',
+              variant: 'ghost',
+              onPress: () => resolve('cancel'),
+            },
+          ],
+        });
+      });
+    },
+    [showDialog],
+  );
 
   const updateProfilePhoto = useCallback(async (imageUri: string) => {
     try {
@@ -236,19 +323,62 @@ export function useProfilePhoto() {
     }
   }, [dispatch, showDialog, updateUserMutation]);
 
+  const confirmAndUpdateProfilePhoto = useCallback(
+    async (initialSelection?: ProfilePhotoSelection): Promise<boolean> => {
+      let currentSelection = initialSelection ?? (await showImagePicker());
+      let claimedUri: string | null = null;
+
+      while (currentSelection) {
+        if (claimedUri !== currentSelection.uri) {
+          if (claimedUri) {
+            releaseProfileImageUri(claimedUri);
+          }
+
+          if (!claimProfileImageUri(currentSelection.uri)) {
+            return false;
+          }
+
+          claimedUri = currentSelection.uri;
+        }
+
+        const confirmation = await confirmProfilePhoto(currentSelection);
+
+        if (confirmation === 'cancel') {
+          releaseProfileImageUri(currentSelection.uri);
+          return false;
+        }
+
+        if (confirmation === 'retry') {
+          currentSelection = await showImagePicker();
+          continue;
+        }
+
+        const updated = await updateProfilePhoto(currentSelection.uri);
+        if (!updated) {
+          releaseProfileImageUri(currentSelection.uri);
+        }
+        return updated;
+      }
+
+      if (claimedUri) {
+        releaseProfileImageUri(claimedUri);
+      }
+
+      return false;
+    },
+    [confirmProfilePhoto, showImagePicker, updateProfilePhoto],
+  );
+
   useEffect(() => {
     let cancelled = false;
 
     const recoverPendingPhoto = async () => {
       const imageUri = await claimPendingProfileImageUri();
-      if (cancelled || !imageUri || !claimProfileImageUri(imageUri)) {
+      if (cancelled || !imageUri) {
         return;
       }
 
-      const updated = await updateProfilePhoto(imageUri);
-      if (!updated) {
-        releaseProfileImageUri(imageUri);
-      }
+      await confirmAndUpdateProfilePhoto({ uri: imageUri, source: 'gallery' });
     };
 
     void recoverPendingPhoto();
@@ -262,25 +392,11 @@ export function useProfilePhoto() {
       cancelled = true;
       subscription.remove();
     };
-  }, [updateProfilePhoto]);
+  }, [confirmAndUpdateProfilePhoto]);
 
-  const changeProfilePhoto = async (): Promise<boolean> => {
-    const imageUri = await showImagePicker();
-    
-    if (!imageUri) {
-      return false;
-    }
-
-    if (!claimProfileImageUri(imageUri)) {
-      return false;
-    }
-
-    const updated = await updateProfilePhoto(imageUri);
-    if (!updated) {
-      releaseProfileImageUri(imageUri);
-    }
-    return updated;
-  };
+  const changeProfilePhoto = useCallback(async (): Promise<boolean> => {
+    return confirmAndUpdateProfilePhoto();
+  }, [confirmAndUpdateProfilePhoto]);
 
   return {
     changeProfilePhoto,
