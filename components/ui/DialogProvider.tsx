@@ -9,6 +9,7 @@ import React, {
 } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Modal,
   Platform,
   StyleSheet,
@@ -33,6 +34,8 @@ interface DialogOptions {
   title: string;
   message?: string;
   icon?: keyof typeof Ionicons.glyphMap;
+  previewImageUri?: string;
+  content?: ReactNode;
   variant?: DialogVariant;
   actions?: DialogAction[];
   dismissible?: boolean;
@@ -102,10 +105,13 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                 : 'Une erreur est survenue. Veuillez r\u00e9essayer.',
             )
           : options.message;
+      setRunningActionLabel(null);
       setDialog({
         visible: true,
         variant,
         icon: options.icon ?? VARIANT_CONFIG[variant].icon,
+        previewImageUri: options.previewImageUri,
+        content: options.content,
         dismissible: options.dismissible ?? true,
         title: options.title,
         message,
@@ -216,13 +222,23 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       >
         <View style={styles.overlay}>
           <View style={styles.card}>
-            <View style={[styles.iconWrapper, { backgroundColor: variantStyle.background }]}>
-              <View style={[styles.iconBadge, { backgroundColor: variantStyle.accent }]}>
-                <Ionicons name={dialog?.icon ?? variantStyle.icon} size={28} color={Colors.white} />
+            {dialog?.previewImageUri ? (
+              <Image
+                key={dialog.previewImageUri}
+                source={{ uri: dialog.previewImageUri }}
+                style={styles.previewImage}
+                resizeMode="cover"
+              />
+            ) : dialog?.content ? null : (
+              <View style={[styles.iconWrapper, { backgroundColor: variantStyle.background }]}>
+                <View style={[styles.iconBadge, { backgroundColor: variantStyle.accent }]}>
+                  <Ionicons name={dialog?.icon ?? variantStyle.icon} size={28} color={Colors.white} />
+                </View>
               </View>
-            </View>
+            )}
             <Text style={styles.title}>{dialog?.title}</Text>
             {dialog?.message ? <Text style={styles.message}>{dialog.message}</Text> : null}
+            {dialog?.content ? <View style={styles.content}>{dialog.content}</View> : null}
             <View style={styles.actions}>
               {dialog?.actions?.map((action) => {
                 const isRunningAction = runningActionLabel === action.label;
@@ -316,6 +332,22 @@ const styles = StyleSheet.create({
     color: Colors.gray[600],
     textAlign: 'center',
     lineHeight: 22,
+  },
+  previewImage: {
+    width: 184,
+    height: 184,
+    borderRadius: 92,
+    backgroundColor: Colors.gray[100],
+    borderWidth: 4,
+    borderColor: Colors.white,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  content: {
+    width: '100%',
   },
   actions: {
     width: '100%',
