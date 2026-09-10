@@ -1,4 +1,5 @@
 import LocationPickerModal, { type MapLocationSelection } from '@/components/LocationPickerModal';
+import { PoliceContactPanel } from '@/components/PoliceContactPanel';
 import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -958,10 +959,12 @@ export default function TripDetailsScreen() {
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [contactModalVisible, setContactModalVisible] = useState(false);
+  const [sosModalVisible, setSosModalVisible] = useState(false);
   const [securityModalVisible, setSecurityModalVisible] = useState(false);
   const [vehicleDetailModalVisible, setVehicleDetailModalVisible] = useState(false);
   const securityModalTransitionRef = useRef(false);
   const securityModalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sosModalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { refetch: refetchKycStatus } = useGetKycStatusQuery();
   const { data: driverReviews } = useGetReviewsQuery(trip?.driverId ?? '', {
     skip: !trip?.driverId,
@@ -998,6 +1001,7 @@ export default function TripDetailsScreen() {
 
   useEffect(() => () => {
     if (securityModalTimerRef.current) clearTimeout(securityModalTimerRef.current);
+    if (sosModalTimerRef.current) clearTimeout(sosModalTimerRef.current);
   }, []);
 
   const onRefresh = useCallback(async () => {
@@ -1503,15 +1507,16 @@ export default function TripDetailsScreen() {
     Boolean(activeBooking && (activeBooking.status === 'pending' || activeBooking.status === 'accepted'));
   const showDriverVehicleReminder = isTripDriver && (trip?.status === 'upcoming' || trip?.status === 'ongoing');
   const showPassengerSecurityAccess = !isTripDriver;
-  const passengerSecurityQuickHint = !activeBooking
-    ? "Choisissez les proches à prévenir une fois votre réservation créée."
+  const isPassengerSecurityLocked = showPassengerSecurityAccess && !activeBooking;
+  const passengerTrustedContactsHint = !activeBooking
+    ? 'Après réservation'
     : activeBooking.status === 'pending'
-      ? "Votre réservation est en attente. Vous pourrez choisir vos proches après acceptation."
+      ? 'Après acceptation'
       : activeBooking.status === 'accepted'
-        ? 'Avant de monter, choisissez les proches à prévenir pendant le trajet.'
-        : 'Vous pouvez ajuster les proches à prévenir.';
-  const passengerSecurityButtonLabel = canAccessTripSecurity
-    ? 'Prévenir mes proches'
+        ? 'Ajouter ou choisir'
+        : 'Modifier la liste';
+  const trustedContactsActionLabel = canAccessTripSecurity
+    ? 'Ajouter / notifier mes proches'
     : 'Connectez-vous';
   const defaultPassengerOriginSelection = useMemo<MapLocationSelection | null>(() => {
     const latitude = Number(lastKnownLocation?.coords?.latitude);
@@ -1578,11 +1583,31 @@ export default function TripDetailsScreen() {
     }
   };
 
+  const openSosModal = () => {
+    if (sosModalTimerRef.current) {
+      clearTimeout(sosModalTimerRef.current);
+      sosModalTimerRef.current = null;
+    }
+    setIsDetailMapReady(false);
+    setSosModalVisible(true);
+  };
+
+  const closeSosModal = () => {
+    setSosModalVisible(false);
+    if (sosModalTimerRef.current) {
+      clearTimeout(sosModalTimerRef.current);
+    }
+    sosModalTimerRef.current = setTimeout(() => {
+      if (isFocused && !securityModalVisible) setIsDetailMapReady(true);
+      sosModalTimerRef.current = null;
+    }, 300);
+  };
+
   const openTripSecurityModal = () => {
     if (!canAccessTripSecurity) {
       showDialog({
         variant: 'info',
-        title: 'Securité indisponible',
+        title: 'Sécurité indisponible',
         message: 'Connectez-vous pour gérer vos proches et le suivi de sécurité.',
       });
       return;
@@ -1611,18 +1636,6 @@ export default function TripDetailsScreen() {
       securityModalTransitionRef.current = false;
       securityModalTimerRef.current = null;
     }, 400);
-  };
-
-  const openEmergencyContacts = () => {
-    if (!user) {
-      showDialog({
-        variant: 'info',
-        title: 'Connexion requise',
-        message: "Connectez-vous pour gérer vos contacts d'urgence.",
-      });
-      return;
-    }
-    router.push('/security');
   };
 
   const closeBookingModal = () => {
@@ -3049,56 +3062,84 @@ export default function TripDetailsScreen() {
 
         {showPassengerSecurityAccess && (
           <Animated.View entering={FadeInDown.delay(460)} style={styles.section}>
-            <View style={[styles.sectionCard, styles.passengerSecurityCard]}>
-              {/* <View style={styles.passengerSecurityHeader}>
-                <View style={styles.passengerSecurityIconWrap}>
-                  <Ionicons name="shield-checkmark-outline" size={20} color={Colors.primary} />
-                </View>
-                <View style={styles.passengerSecurityHeaderCopy}>
-                  <Text style={styles.passengerSecurityTitle}>PROCHES À PRÉVENIR</Text>
-                  <Text style={styles.passengerSecuritySubtitle}>
-                    Simple et modifiable avant le départ.
-                  </Text>
-                </View>
-              </View> */}
-              {/* <Text style={styles.passengerSecurityHintText}>{passengerSecurityQuickHint}</Text> */}
+            <View style={[styles.sectionCard, styles.tripSafetyPassengerCard]}>
               <TouchableOpacity
                 style={[
-                  styles.passengerSecurityButton,
-                  !canAccessTripSecurity && styles.passengerSecurityButtonDisabled,
+                  styles.tripSafetyCompactSosButton,
+                  isPassengerSecurityLocked && styles.tripSafetyCompactButtonBlurred,
                 ]}
-                onPress={openTripSecurityModal}
-                disabled={!canAccessTripSecurity}
+                onPress={openSosModal}
+                disabled={isPassengerSecurityLocked}
                 activeOpacity={0.9}
               >
                 <Ionicons
-                  name="shield-checkmark"
+                  name="call"
                   size={18}
-                  color={canAccessTripSecurity ? Colors.white : Colors.gray[500]}
+                  color={isPassengerSecurityLocked ? Colors.gray[400] : Colors.white}
                 />
                 <Text
                   style={[
-                    styles.passengerSecurityButtonText,
-                    !canAccessTripSecurity && styles.passengerSecurityButtonTextDisabled,
+                    styles.tripSafetyCompactSosText,
+                    isPassengerSecurityLocked && styles.tripSafetyCompactTextBlurred,
                   ]}
                 >
-                  {passengerSecurityButtonLabel}
+                  SOS
                 </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.tripSafetyCompactTrustedButton,
+                  (!canAccessTripSecurity || isPassengerSecurityLocked) &&
+                    styles.tripSafetyCompactTrustedDisabled,
+                  isPassengerSecurityLocked && styles.tripSafetyCompactButtonBlurred,
+                ]}
+                onPress={openTripSecurityModal}
+                disabled={!canAccessTripSecurity || isPassengerSecurityLocked}
+                activeOpacity={0.9}
+              >
+                <View style={styles.tripSafetyCompactTrustedIcon}>
+                  <Ionicons
+                    name="people-outline"
+                    size={18}
+                    color={
+                      canAccessTripSecurity && !isPassengerSecurityLocked
+                        ? Colors.primary
+                        : Colors.gray[500]
+                    }
+                  />
+                </View>
+                <View style={styles.tripSafetyCompactTrustedCopy}>
+                  <Text
+                    style={[
+                      styles.tripSafetyCompactTrustedTitle,
+                      (!canAccessTripSecurity || isPassengerSecurityLocked) &&
+                        styles.tripSafetyActionTitleDisabled,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {trustedContactsActionLabel}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.tripSafetyCompactTrustedSubtitle,
+                      (!canAccessTripSecurity || isPassengerSecurityLocked) &&
+                        styles.tripSafetyActionSubtitleDisabled,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {canAccessTripSecurity ? passengerTrustedContactsHint : 'Connexion requise'}
+                  </Text>
+                </View>
                 <Ionicons
                   name="chevron-forward"
                   size={18}
-                  color={canAccessTripSecurity ? Colors.white : Colors.gray[500]}
+                  color={
+                    canAccessTripSecurity && !isPassengerSecurityLocked
+                      ? Colors.primary
+                      : Colors.gray[500]
+                  }
                 />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.passengerSecuritySecondaryButton}
-                onPress={openEmergencyContacts}
-                activeOpacity={0.9}
-              >
-                <Ionicons name="people-outline" size={16} color={Colors.primary} />
-                <Text style={styles.passengerSecuritySecondaryButtonText}>
-                  Ajouter ou gérer mes contacts d’urgence
-                </Text>
               </TouchableOpacity>
             </View>
           </Animated.View>
@@ -3176,30 +3217,63 @@ export default function TripDetailsScreen() {
 
         {showDriverVehicleReminder && (
           <Animated.View entering={FadeInDown.delay(560)} style={styles.section}>
-            <View style={[styles.sectionCard, styles.securityReminderCard]}>
-              <View style={styles.securityReminderHeader}>
-                <Ionicons name="car-sport" size={20} color={Colors.primary} />
-                <Text style={styles.securityReminderTitle}>
-                   Assurez-vous de conduire le véhicule indiqué ci-dessous. Si vous changez de véhicule, mettez à jour le trajet avant de récupérer un passager.
+            <View style={[styles.sectionCard, styles.tripSafetyCard]}>
+              <View style={styles.tripSafetyHeader}>
+                <View style={styles.tripSafetyIconWrap}>
+                  <Ionicons name="car-sport" size={20} color={Colors.primary} />
+                </View>
+                <View style={styles.tripSafetyHeaderCopy}>
+                  <Text style={styles.tripSafetyTitle}>Sécurité du trajet</Text>
+                  <Text style={styles.tripSafetySubtitle}>
+                    Utilisez le véhicule prévu et gardez vos proches informés.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.tripSafetyNotice}>
+                <Ionicons name="information-circle-outline" size={16} color={Colors.primary} />
+                <Text style={styles.tripSafetyNoticeText} numberOfLines={2}>
+                  Véhicule prévu : {tripVehicleIdentity}
                 </Text>
               </View>
-              {/* <Text style={styles.securityReminderText}>
-                Assurez-vous de conduire le véhicule indiqué ci-dessous. Si vous changez de véhicule, mettez à jour le trajet avant de récupérer un passager.
-              </Text>
-              <View style={styles.securityReminderVehicleBox}>
-                <Text style={styles.securityReminderVehicleLabel}>Véhicule déclaré</Text>
-                <Text style={styles.securityReminderVehicleValue}>{tripVehicleIdentity}</Text>
-              </View> */}
-              <TouchableOpacity
-                style={styles.driverSecurityActionButton}
-                onPress={openTripSecurityModal}
-                activeOpacity={0.9}
-              >
-                <Ionicons name="shield-checkmark-outline" size={16} color={Colors.primary} />
-                <Text style={styles.driverSecurityActionButtonText}>
-                  Choisir qui notifier sur ce trajet
-                </Text>
-              </TouchableOpacity>
+
+              <View style={styles.tripSafetyActions}>
+                <TouchableOpacity
+                  style={[styles.tripSafetyActionButton, styles.tripSafetySosButton]}
+                  onPress={openSosModal}
+                  activeOpacity={0.9}
+                >
+                  <View style={[styles.tripSafetyActionIcon, styles.tripSafetySosIcon]}>
+                    <Ionicons name="call" size={18} color={Colors.danger} />
+                  </View>
+                  <View style={styles.tripSafetyActionCopy}>
+                    <Text style={[styles.tripSafetyActionTitle, styles.tripSafetySosTitle]}>SOS</Text>
+                    <Text style={[styles.tripSafetyActionSubtitle, styles.tripSafetySosSubtitle]} numberOfLines={1}>
+                      Police et urgences
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={Colors.white} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.tripSafetyActionButton, styles.tripSafetyTrustedButton]}
+                  onPress={openTripSecurityModal}
+                  activeOpacity={0.9}
+                >
+                  <View style={styles.tripSafetyActionIcon}>
+                    <Ionicons name="people-outline" size={18} color={Colors.primary} />
+                  </View>
+                  <View style={styles.tripSafetyActionCopy}>
+                    <Text style={styles.tripSafetyActionTitle} numberOfLines={2}>
+                      Ajouter / notifier mes proches
+                    </Text>
+                    <Text style={styles.tripSafetyActionSubtitle} numberOfLines={1}>
+                      Choisir qui reçoit les alertes.
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={Colors.primary} />
+                </TouchableOpacity>
+              </View>
             </View>
           </Animated.View>
         )}
@@ -3399,40 +3473,6 @@ export default function TripDetailsScreen() {
                             )}
                         </View>
                       </View>
-                      {!isTripDriver && (
-                        <TouchableOpacity
-                          style={[
-                            styles.bookingSecurityQuickButton,
-                            !canAccessTripSecurity && styles.bookingSecurityQuickButtonDisabled,
-                          ]}
-                          onPress={openTripSecurityModal}
-                          disabled={!canAccessTripSecurity}
-                          activeOpacity={0.9}
-                        >
-                          <View style={styles.bookingSecurityQuickIcon}>
-                            <Ionicons
-                              name="shield-checkmark-outline"
-                              size={18}
-                              color={canAccessTripSecurity ? Colors.primary : Colors.gray[400]}
-                            />
-                          </View>
-                          <View style={styles.bookingSecurityQuickCopy}>
-                            <Text
-                              style={[
-                                styles.bookingSecurityQuickTitle,
-                                !canAccessTripSecurity && styles.bookingSecurityQuickTitleDisabled,
-                              ]}
-                            >
-                              Sécurité du trajet
-                            </Text>
-                          </View>
-                          <Ionicons
-                            name="chevron-forward"
-                            size={18}
-                            color={canAccessTripSecurity ? Colors.primary : Colors.gray[400]}
-                          />
-                        </TouchableOpacity>
-                      )}
                     </View>
                   )
                 ) : availableSeats <= 0 ? (
@@ -3613,6 +3653,56 @@ export default function TripDetailsScreen() {
       </Modal>
 
       <Modal
+        visible={sosModalVisible}
+        animationType="slide"
+        transparent
+        statusBarTranslucent
+        presentationStyle="overFullScreen"
+        onRequestClose={closeSosModal}
+      >
+        <View style={styles.securityModalOverlay}>
+          <TouchableOpacity
+            style={styles.securityModalBackdrop}
+            activeOpacity={1}
+            onPress={closeSosModal}
+          />
+          <View
+            style={[
+              styles.sosModalContent,
+              { paddingBottom: Math.max(insets.bottom, 16) + 16 },
+            ]}
+          >
+            <View style={styles.securityModalHeader}>
+              <View style={styles.securityModalHeaderCopy}>
+                <View style={styles.sosModalTitleRow}>
+                  <View style={styles.sosModalIcon}>
+                    <Ionicons name="call" size={18} color={Colors.danger} />
+                  </View>
+                  <Text style={styles.securityModalTitle}>SOS</Text>
+                </View>
+                <Text style={styles.securityModalSubtitle}>
+                  En cas de danger immédiat, choisissez un numéro d’urgence à appeler.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.securityModalCloseButton}
+                onPress={closeSosModal}
+              >
+                <Ionicons name="close" size={22} color={Colors.gray[700]} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={styles.securityModalBody}
+              contentContainerStyle={styles.securityModalBodyContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <PoliceContactPanel />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
         visible={securityModalVisible}
         animationType="slide"
         transparent
@@ -3631,42 +3721,50 @@ export default function TripDetailsScreen() {
               { paddingBottom: Math.max(insets.bottom, 16) + 16 },
             ]}
           >
-            <View style={styles.securityModalHeader}>
-              <View style={styles.securityModalHeaderCopy}>
-                <Text style={styles.securityModalTitle}>Prevenir mes proches</Text>
-                <Text style={styles.securityModalSubtitle}>Choisissez qui recoit les alertes du trajet.</Text>
+            <KeyboardAvoidingView
+              style={styles.securityModalKeyboard}
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 18 : 0}
+            >
+              <View style={styles.securityModalHeader}>
+                <View style={styles.securityModalHeaderCopy}>
+                  <Text style={styles.securityModalTitle}>Notifier mes proches</Text>
+                  <Text style={styles.securityModalSubtitle}>
+                    Ajoutez un proche ou choisissez les personnes à prévenir pendant ce trajet.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.securityModalCloseButton}
+                  onPress={closeTripSecurityModal}
+                >
+                  <Ionicons name="close" size={22} color={Colors.gray[700]} />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                style={styles.securityModalCloseButton}
-                onPress={closeTripSecurityModal}
-              >
-                <Ionicons name="close" size={22} color={Colors.gray[700]} />
-              </TouchableOpacity>
-            </View>
-            {trip ? (
-              <ScrollView
-                style={styles.securityModalBody}
-                contentContainerStyle={styles.securityModalBodyContent}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-              >
-                <TripSecurityPanel
-                  tripId={trip.id}
-                  role={tripSecurityRole}
-                  tripStatus={trip.status}
-                  bookingId={tripSecurityBookingId}
-                  openSelectorByDefault={securityModalVisible}
-                  compact
-                />
-              </ScrollView>
-            ) : (
-              <View style={styles.securityModalLoading}>
-                <ActivityIndicator size="small" color={Colors.primary} />
-                <Text style={styles.securityModalLoadingText}>Chargement sécurité...</Text>
-              </View>
-            )}
-            </View>
+              {trip ? (
+                <ScrollView
+                  style={styles.securityModalBody}
+                  contentContainerStyle={styles.securityModalBodyContent}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  <TripSecurityPanel
+                    tripId={trip.id}
+                    role={tripSecurityRole}
+                    tripStatus={trip.status}
+                    bookingId={tripSecurityBookingId}
+                    openSelectorByDefault={securityModalVisible}
+                    compact
+                  />
+                </ScrollView>
+              ) : (
+                <View style={styles.securityModalLoading}>
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                  <Text style={styles.securityModalLoadingText}>Chargement sécurité...</Text>
+                </View>
+              )}
+            </KeyboardAvoidingView>
           </View>
+        </View>
       </Modal>
 
       <Modal animationType="fade" transparent visible={bookingModalVisible}>
@@ -5630,16 +5728,152 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
     letterSpacing: 0,
   },
-  passengerSecurityCard: {
-    borderColor: Colors.primary + '35',
-    backgroundColor: Colors.primary + '08',
-  },
-  passengerSecurityHeader: {
+  tripSafetyPassengerCard: {
+    padding: Spacing.sm,
+    borderColor: Colors.primary + '20',
+    backgroundColor: Colors.white,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.sm,
+    gap: Spacing.sm,
   },
-  passengerSecurityIconWrap: {
+  tripSafetyCompactSosButton: {
+    width: 82,
+    minHeight: 56,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  tripSafetyCompactSosText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    letterSpacing: 0.3,
+  },
+  tripSafetyCompactButtonBlurred: {
+    opacity: 0.42,
+  },
+  tripSafetyCompactTextBlurred: {
+    color: Colors.gray[400],
+  },
+  tripSafetyCompactTrustedButton: {
+    flex: 1,
+    minHeight: 56,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.primary + '28',
+    backgroundColor: Colors.primary + '07',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+  },
+  tripSafetyCompactTrustedDisabled: {
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[100],
+  },
+  tripSafetyCompactTrustedIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.primary + '18',
+  },
+  tripSafetyCompactTrustedCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  tripSafetyCompactTrustedTitle: {
+    fontSize: 13,
+    color: Colors.gray[900],
+    fontWeight: FontWeights.bold,
+  },
+  tripSafetyCompactTrustedSubtitle: {
+    marginTop: 2,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+  },
+  tripSafetyCard: {
+    borderColor: Colors.primary + '30',
+    backgroundColor: Colors.white,
+    gap: Spacing.md,
+  },
+  tripSafetyHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+  },
+  tripSafetyIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary + '12',
+    borderWidth: 1,
+    borderColor: Colors.primary + '24',
+  },
+  tripSafetyHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  tripSafetyTitle: {
+    fontSize: FontSizes.base,
+    color: Colors.gray[900],
+    fontWeight: FontWeights.bold,
+  },
+  tripSafetySubtitle: {
+    marginTop: 2,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    lineHeight: 19,
+  },
+  tripSafetyNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: Colors.primary + '20',
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary + '08',
+    padding: Spacing.sm,
+  },
+  tripSafetyNoticeText: {
+    flex: 1,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[700],
+    lineHeight: 17,
+  },
+  tripSafetyActions: {
+    gap: Spacing.sm,
+  },
+  tripSafetyActionButton: {
+    minHeight: 60,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.sm,
+  },
+  tripSafetySosButton: {
+    backgroundColor: Colors.danger,
+    borderColor: Colors.danger,
+  },
+  tripSafetyTrustedButton: {
+    backgroundColor: Colors.primary + '08',
+    borderColor: Colors.primary + '35',
+  },
+  tripSafetyActionDisabled: {
+    backgroundColor: Colors.gray[100],
+    borderColor: Colors.gray[200],
+  },
+  tripSafetyActionIcon: {
     width: 38,
     height: 38,
     borderRadius: 19,
@@ -5647,67 +5881,38 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: Colors.white,
     borderWidth: 1,
-    borderColor: Colors.primary + '25',
-    marginRight: Spacing.sm,
+    borderColor: Colors.primary + '24',
   },
-  passengerSecurityHeaderCopy: {
+  tripSafetySosIcon: {
+    borderColor: Colors.white + '66',
+  },
+  tripSafetyActionCopy: {
     flex: 1,
+    minWidth: 0,
   },
-  passengerSecurityTitle: {
+  tripSafetyActionTitle: {
     fontSize: FontSizes.sm,
     color: Colors.gray[900],
     fontWeight: FontWeights.bold,
-    letterSpacing: 0.4,
   },
-  passengerSecuritySubtitle: {
+  tripSafetyActionTitleDisabled: {
+    color: Colors.gray[500],
+  },
+  tripSafetySosTitle: {
+    color: Colors.white,
+    fontSize: FontSizes.base,
+  },
+  tripSafetyActionSubtitle: {
     marginTop: 2,
     fontSize: FontSizes.xs,
     color: Colors.gray[600],
+    lineHeight: 17,
   },
-  passengerSecurityHintText: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[700],
-    lineHeight: 20,
-    marginBottom: Spacing.md,
+  tripSafetyActionSubtitleDisabled: {
+    color: Colors.gray[500],
   },
-  passengerSecurityButton: {
-    minHeight: 50,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: Spacing.md,
-  },
-  passengerSecurityButtonDisabled: {
-    backgroundColor: Colors.gray[200],
-  },
-  passengerSecurityButtonText: {
-    color: Colors.white,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-  },
-  passengerSecurityButtonTextDisabled: {
-    color: Colors.gray[600],
-  },
-  passengerSecuritySecondaryButton: {
-    marginTop: Spacing.sm,
-    minHeight: 42,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.primary + '55',
-    backgroundColor: Colors.white,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: Spacing.md,
-  },
-  passengerSecuritySecondaryButtonText: {
-    color: Colors.primary,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
+  tripSafetySosSubtitle: {
+    color: 'rgba(255,255,255,0.85)',
   },
   securityReminderCard: {
     borderColor: Colors.secondary + '35',
@@ -5747,24 +5952,6 @@ const styles = StyleSheet.create({
   securityReminderVehicleValue: {
     fontSize: FontSizes.sm,
     color: Colors.gray[900],
-    fontWeight: FontWeights.semibold,
-  },
-  driverSecurityActionButton: {
-    marginTop: Spacing.sm,
-    minHeight: 40,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.primary + '55',
-    backgroundColor: Colors.white,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: Spacing.md,
-  },
-  driverSecurityActionButtonText: {
-    color: Colors.primary,
-    fontSize: FontSizes.sm,
     fontWeight: FontWeights.semibold,
   },
   routeContainer: {
@@ -6157,44 +6344,6 @@ const styles = StyleSheet.create({
   bookingActionDangerText: {
     color: Colors.danger,
   },
-  bookingSecurityQuickButton: {
-    marginTop: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.primary + '35',
-    borderRadius: 14,
-    backgroundColor: Colors.primary + '08',
-    minHeight: 42,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 5,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  bookingSecurityQuickButtonDisabled: {
-    borderColor: Colors.gray[200],
-    backgroundColor: Colors.gray[100],
-  },
-  bookingSecurityQuickIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    backgroundColor: Colors.white,
-  },
-  bookingSecurityQuickCopy: {
-    flex: 1,
-    marginHorizontal: Spacing.sm,
-  },
-  bookingSecurityQuickTitle: {
-    fontSize: 13,
-    color: Colors.gray[900],
-    fontWeight: FontWeights.bold,
-  },
-  bookingSecurityQuickTitleDisabled: {
-    color: Colors.gray[500],
-  },
   confirmationBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -6274,15 +6423,41 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
-    height: '72%',
+    height: '85%',
     paddingHorizontal: Spacing.md,
     paddingTop: Spacing.md,
+  },
+  sosModalContent: {
+    backgroundColor: Colors.gray[50],
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    height: '60%',
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.md,
+  },
+  sosModalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  sosModalIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.danger + '12',
+    borderWidth: 1,
+    borderColor: Colors.danger + '24',
   },
   securityModalHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: Spacing.sm,
+  },
+  securityModalKeyboard: {
+    flex: 1,
   },
   securityModalHeaderCopy: {
     flex: 1,
