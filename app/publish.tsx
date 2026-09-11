@@ -883,14 +883,15 @@ export default function PublishScreen() {
     }
 
     let isCurrent = true;
+    let pendingGeocode: ReturnType<typeof geocodeManualAddress> | undefined;
     setDepartureManualGeocodeStatus('searching');
 
     const timeout = setTimeout(() => {
-      geocodeManualAddress({
+      pendingGeocode = geocodeManualAddress({
         address: buildManualGeocodeQuery(address),
         region: 'cd',
-      })
-        .unwrap()
+      });
+      pendingGeocode.unwrap()
         .then((response) => {
           if (!isCurrent) return;
           const selection = mapGeocodeResponseToSelection(address, response);
@@ -913,6 +914,7 @@ export default function PublishScreen() {
     return () => {
       isCurrent = false;
       clearTimeout(timeout);
+      pendingGeocode?.abort();
     };
   }, [manualAddressTarget, departureLocation, departureManualAddress, geocodeManualAddress]);
 
@@ -934,14 +936,15 @@ export default function PublishScreen() {
     }
 
     let isCurrent = true;
+    let pendingGeocode: ReturnType<typeof geocodeManualAddress> | undefined;
     setArrivalManualGeocodeStatus('searching');
 
     const timeout = setTimeout(() => {
-      geocodeManualAddress({
+      pendingGeocode = geocodeManualAddress({
         address: buildManualGeocodeQuery(address),
         region: 'cd',
-      })
-        .unwrap()
+      });
+      pendingGeocode.unwrap()
         .then((response) => {
           if (!isCurrent) return;
           const selection = mapGeocodeResponseToSelection(address, response);
@@ -964,6 +967,7 @@ export default function PublishScreen() {
     return () => {
       isCurrent = false;
       clearTimeout(timeout);
+      pendingGeocode?.abort();
     };
   }, [manualAddressTarget, arrivalLocation, arrivalManualAddress, geocodeManualAddress]);
 

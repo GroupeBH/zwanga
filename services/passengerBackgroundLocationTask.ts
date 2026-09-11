@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
+import { recordLocationDelivery, wasLocationDeliveredRecently } from './locationDelivery';
 
 import {
   ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS,
@@ -299,6 +300,7 @@ async function putPassengerLocation(
   const now = Date.now();
   if (
     !coordinate ||
+    wasLocationDeliveredRecently(`passenger:${bookingId}`, 6000, 'rest') ||
     now - lastSentAt < ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS
   ) {
     return false;
@@ -380,6 +382,7 @@ async function putPassengerLocation(
     }
 
     lastSentAt = now;
+    recordLocationDelivery(`passenger:${bookingId}`);
     return true;
   } catch (error) {
     lastSentAt = now;

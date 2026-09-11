@@ -197,6 +197,7 @@ module.exports = {
       'expo-dev-client',
       'expo-apple-authentication',
       '@react-native-firebase/app',
+      '@react-native-firebase/crashlytics',
       'expo-maps',
       [
         'expo-location',

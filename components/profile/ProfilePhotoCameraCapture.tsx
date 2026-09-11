@@ -1,4 +1,5 @@
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { chooseProfilePictureSize } from '@/utils/profilePhoto';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -15,6 +16,21 @@ export function ProfilePhotoCameraCapture({ onCapture }: ProfilePhotoCameraCaptu
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [pictureSize, setPictureSize] = useState<string>();
+  const cameraGeneration = useRef(0);
+
+  useEffect(() => () => { cameraGeneration.current += 1; }, []);
+
+  const handleCameraReady = useCallback(async () => {
+    const generation = ++cameraGeneration.current;
+    try {
+      const sizes = await cameraRef.current?.getAvailablePictureSizesAsync();
+      if (generation === cameraGeneration.current && sizes) {
+        setPictureSize(chooseProfilePictureSize(sizes));
+      }
+    } catch { /* Some devices do not enumerate sizes; keep the native default. */ }
+    finally { if (generation === cameraGeneration.current) setIsCameraReady(true); }
+  }, []);
 
   useEffect(() => {
     if (!permission || permission.granted || permission.canAskAgain === false) {
@@ -27,6 +43,8 @@ export function ProfilePhotoCameraCapture({ onCapture }: ProfilePhotoCameraCaptu
   }, [permission, requestPermission]);
 
   const handleFlipCamera = useCallback(() => {
+    cameraGeneration.current += 1;
+    setPictureSize(undefined);
     setFacing((current) => (current === 'front' ? 'back' : 'front'));
     setIsCameraReady(false);
   }, []);
@@ -101,7 +119,8 @@ export function ProfilePhotoCameraCapture({ onCapture }: ProfilePhotoCameraCaptu
           facing={facing}
           mirror={facing === 'front'}
           autofocus="on"
-          onCameraReady={() => setIsCameraReady(true)}
+          pictureSize={pictureSize}
+          onCameraReady={handleCameraReady}
         />
         <View pointerEvents="none" style={styles.overlay}>
           {!isCameraReady ? (

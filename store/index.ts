@@ -1,5 +1,10 @@
 import { configureStore, type Middleware } from '@reduxjs/toolkit';
 import { setupListeners } from '@reduxjs/toolkit/query';
+import { Platform } from 'react-native';
+import { nativeQueryListeners } from '../services/nativeQueryListeners';
+import { chatSocket } from '../services/chatSocket';
+import { trackingSocket } from '../services/trackingSocket';
+import { clearLocationDeliveries } from '../services/locationDelivery';
 import { authRefreshApi } from './api/authRefreshApi';
 import { zwangaApi } from './api/zwangaApi';
 import { mapboxApi } from './api/mapboxApi';
@@ -43,8 +48,15 @@ const apiCacheIsolationMiddleware: Middleware = (storeApi) => (next) => (action)
     Boolean(previousUserId && currentUserId && previousUserId !== currentUserId);
 
   if (logoutAction || accountChanged) {
+    chatSocket.disconnect();
+    trackingSocket.disconnect();
+    clearLocationDeliveries();
+    storeApi.dispatch({ type: 'messages/resetMessages' });
     storeApi.dispatch(zwangaApi.util.resetApiState());
     storeApi.dispatch(authRefreshApi.util.resetApiState());
+  } else if (typedAction.type === 'auth/setTokens') {
+    chatSocket.refreshAuthentication();
+    trackingSocket.refreshAuthentication();
   }
   return result;
 };
@@ -91,7 +103,7 @@ export const store = configureStore({
 setStoreAccessor(store.dispatch, store.getState);
 
 // Enable refetchOnFocus/refetchOnReconnect behaviors
-setupListeners(store.dispatch);
+setupListeners(store.dispatch, Platform.OS === 'web' ? undefined : nativeQueryListeners);
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;

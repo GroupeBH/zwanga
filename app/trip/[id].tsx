@@ -333,7 +333,7 @@ export default function TripDetailsScreen() {
   } = useGetTripByIdQuery(tripId, {
     skip: !tripId,
     // Polling automatique basé sur le statut du trajet
-    pollingInterval: tripFromStore?.status === 'ongoing'
+    pollingInterval: !isFocused ? 0 : tripFromStore?.status === 'ongoing'
       ? 15000 // 15 secondes pour les trajets en cours
       : tripFromStore?.status === 'upcoming'
         ? 60000 // 60 secondes pour les trajets à venir
@@ -360,7 +360,7 @@ export default function TripDetailsScreen() {
     refetch: refetchMyBookings,
   } = useGetMyBookingsQuery(undefined, {
     // Polling pour les réservations si le trajet est actif
-    pollingInterval: trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
+    pollingInterval: !isFocused ? 0 : trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
     skipPollingIfUnfocused: true,
     refetchOnMountOrArgChange: true,
     refetchOnFocus: true,
@@ -373,7 +373,7 @@ export default function TripDetailsScreen() {
   } = useGetTripBookingsQuery(tripId, {
     skip: !tripId,
     // Polling pour les réservations du trajet
-    pollingInterval: trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
+    pollingInterval: !isFocused ? 0 : trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,

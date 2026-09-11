@@ -179,6 +179,9 @@ export default function LocationPickerModal({
   const [isLocating, setIsLocating] = useState(false);
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
+  const isPanningRef = useRef(false);
+  const panIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const userLocationSequenceRef = useRef(0);
   const [isConfirming, setIsConfirming] = useState(false);
   const [showFavorites, setShowFavorites] = useState(false);
   const geocodeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -289,6 +292,17 @@ export default function LocationPickerModal({
 
   useEffect(() => {
     if (!visible) {
+      geocodeSequenceRef.current += 1;
+      userLocationSequenceRef.current += 1;
+      setIsLocating(false);
+      if (panIdleTimerRef.current) clearTimeout(panIdleTimerRef.current);
+      isPanningRef.current = false;
+      setIsPanning(false);
+      setIsGeocoding(false);
+      if (geocodeTimeoutRef.current) clearTimeout(geocodeTimeoutRef.current);
+      if (programmaticUnlockTimerRef.current) clearTimeout(programmaticUnlockTimerRef.current);
+      programmaticTargetRef.current = null;
+      isUpdatingMarkerRef.current = false;
       resetToDefaultLocation();
       return;
     }
@@ -329,7 +343,9 @@ export default function LocationPickerModal({
   useEffect(() => {
     return () => {
       // Timers are assigned after mount, so cleanup must read their latest refs.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+      geocodeSequenceRef.current += 1;
+      userLocationSequenceRef.current += 1;
+      if (panIdleTimerRef.current) clearTimeout(panIdleTimerRef.current);
       if (geocodeTimeoutRef.current) clearTimeout(geocodeTimeoutRef.current);
       if (programmaticUnlockTimerRef.current) clearTimeout(programmaticUnlockTimerRef.current);
     };
@@ -337,6 +353,12 @@ export default function LocationPickerModal({
 
   const animateToCoordinate = (latitude: number, longitude: number, skipMarkerUpdate = false, triggerGeocodeAfter = false) => {
     try {
+      if (panIdleTimerRef.current) clearTimeout(panIdleTimerRef.current);
+      if (geocodeTimeoutRef.current) clearTimeout(geocodeTimeoutRef.current);
+      isPanningRef.current = false;
+      setIsPanning(false);
+      setIsGeocoding(false);
+      dropPin();
       const validCoordinate = getValidRdcCoordinate(Number(latitude), Number(longitude));
       if (!validCoordinate) {
         const fallback = lastValidCoordinateRef.current;
@@ -411,8 +433,10 @@ export default function LocationPickerModal({
       }
 
       // Réinitialiser après l'animation et déclencher le geocoding si demandé
-      setTimeout(() => {
-        if (triggerGeocodeAfter) {
+      const animationGeocodeSequence = geocodeSequenceRef.current;
+      geocodeTimeoutRef.current = setTimeout(() => {
+        geocodeTimeoutRef.current = null;
+        if (triggerGeocodeAfter && animationGeocodeSequence === geocodeSequenceRef.current) {
           updateLocationFromCoordinates({ latitude, longitude });
         }
       }, 400);
@@ -430,9 +454,11 @@ export default function LocationPickerModal({
   };
 
   const requestUserLocation = async (setAsSelected: boolean = true, animate: boolean = true) => {
+    const requestSequence = ++userLocationSequenceRef.current;
     try {
       setIsLocating(true);
       const { status } = await Location.requestForegroundPermissionsAsync();
+      if (requestSequence !== userLocationSequenceRef.current) return null;
       setPermissionStatus(status);
       if (status !== Location.PermissionStatus.GRANTED) {
         setIsLocating(false);
@@ -441,6 +467,7 @@ export default function LocationPickerModal({
       const position = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
+      if (requestSequence !== userLocationSequenceRef.current) return null;
 
       const currentCoordinate = getValidRdcCoordinate(position.coords.latitude, position.coords.longitude);
 
@@ -478,7 +505,7 @@ export default function LocationPickerModal({
       console.warn('Impossible de récupérer la localisation utilisateur', error);
       return null;
     } finally {
-      setIsLocating(false);
+      if (requestSequence === userLocationSequenceRef.current) setIsLocating(false);
     }
   };
 
@@ -486,6 +513,7 @@ export default function LocationPickerModal({
 
   const updateLocationFromCoordinates = async (coordinate: { latitude: number; longitude: number }) => {
     const geocodeSequence = ++geocodeSequenceRef.current;
+    setSelectedLocation({ title: 'Point sélectionné', address: `${coordinate.latitude.toFixed(5)}, ${coordinate.longitude.toFixed(5)}`, ...coordinate });
     try {
       setIsGeocoding(true);
       const [address] = await Location.reverseGeocodeAsync(coordinate);
@@ -504,7 +532,7 @@ export default function LocationPickerModal({
         });
       }
     } finally {
-      setIsGeocoding(false);
+      if (geocodeSequence === geocodeSequenceRef.current) setIsGeocoding(false);
     }
   };
 
@@ -512,7 +540,6 @@ export default function LocationPickerModal({
     // Programmatic animations emit onRegionChange too. Do not let an
     // intermediate camera frame overwrite an explicitly selected place.
     if (programmaticTargetRef.current || isUpdatingMarkerRef.current) {
-      setRegion(region);
       return;
     }
 
@@ -522,21 +549,18 @@ export default function LocationPickerModal({
     }
 
     // Si on n'est pas déjà en déplacement, "soulever" le marqueur
-    if (!isPanning && !isUpdatingMarkerRef.current) {
+    if (!isPanningRef.current) {
+      isPanningRef.current = true;
+      // Invalidate an older address lookup as soon as another gesture starts.
+      geocodeSequenceRef.current += 1;
+      setIsGeocoding(false);
       liftPin();
       setIsPanning(true);
     }
-
-    setRegion({ ...region, ...validCoordinate });
-
-    // Mettre à jour la position du marqueur immédiatement (visuellement)
-    const { latitude, longitude } = validCoordinate;
-
-    // On met à jour selectedLocation sans déclencher de reverse geocode ici
-    setSelectedLocation((prev) => {
-      if (!prev) return { title: 'Point sélectionné', address: '...', latitude, longitude };
-      return { ...prev, latitude, longitude, address: 'Détermination de l\'adresse…' };
-    });
+    // The pin stays centered natively. Commit React state only when the map settles.
+    // A few native map implementations omit the final idle event.
+    if (panIdleTimerRef.current) clearTimeout(panIdleTimerRef.current);
+    panIdleTimerRef.current = setTimeout(() => handleMapIdle(region), 500);
   };
 
   const handleMapPress = (event: MapPressEvent) => {
@@ -563,6 +587,8 @@ export default function LocationPickerModal({
   };
 
   const handleMapIdle = (region: Region) => {
+    if (panIdleTimerRef.current) clearTimeout(panIdleTimerRef.current);
+    panIdleTimerRef.current = null;
     const programmaticTarget = programmaticTargetRef.current;
     if (programmaticTarget) {
       const reachedTarget =
@@ -589,6 +615,7 @@ export default function LocationPickerModal({
       isUpdatingMarkerRef.current = false;
       isUserInteractionRef.current = true;
       setRegion(region);
+      isPanningRef.current = false;
       setIsPanning(false);
       dropPin();
       return;
@@ -606,7 +633,9 @@ export default function LocationPickerModal({
       return;
     }
 
+    isPanningRef.current = false;
     setIsPanning(false);
+    setRegion({ ...region, ...validCoordinate });
     dropPin();
 
     const { latitude, longitude } = validCoordinate;
@@ -1152,6 +1181,7 @@ export default function LocationPickerModal({
   }, [onClose, visible]);
 
   const handleConfirm = async () => {
+    if (isPanningRef.current || isConfirming) return;
     try {
       setIsConfirming(true);
       
@@ -1465,10 +1495,10 @@ export default function LocationPickerModal({
           <TouchableOpacity
             style={[
               styles.confirmButton,
-              isConfirming && styles.confirmButtonDisabled,
+              (isConfirming || isPanning) && styles.confirmButtonDisabled,
             ]}
             onPress={handleConfirm}
-            disabled={isConfirming}
+            disabled={isConfirming || isPanning}
           >
             {isConfirming ? (
               <ActivityIndicator size="small" color={Colors.white} />

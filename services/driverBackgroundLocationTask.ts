@@ -1,6 +1,7 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
+import { recordLocationDelivery } from './locationDelivery';
 
 import {
   ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS,
@@ -264,6 +265,7 @@ async function putDriverLocation(tripId: string, location: Location.LocationObje
     }
 
     lastBackgroundLocationSentAt = now;
+    recordLocationDelivery(`driver:${tripId}`);
     return true;
   } catch (error) {
     lastBackgroundLocationSentAt = now;

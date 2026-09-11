@@ -10,6 +10,7 @@ import {
 
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { trackEvent } from '@/services/analytics';
+import { reportUnexpectedError } from '@/services/diagnostics';
 
 type AppErrorBoundaryProps = {
   children: ReactNode;
@@ -34,6 +35,7 @@ export class AppErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    reportUnexpectedError(error, info.componentStack);
     console.error('[AppErrorBoundary] Unhandled render error:', error, info.componentStack);
     void trackEvent('app_render_error', {
       error_name: error.name || 'Error',

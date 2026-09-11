@@ -9,7 +9,7 @@ import { clearTokens, getTokens, storeTokens } from './tokenStorage';
  * Rules:
  * - network errors do not force logout;
  * - auth errors on refresh (400/401/403) force a local logout;
- * - app startup always attempts a refresh when a refresh token exists.
+ * - startup restores a valid local access token without waiting for the network.
  */
 
 let isRefreshing = false;
@@ -49,7 +49,7 @@ async function forceLocalLogout(reason: string): Promise<void> {
  * Behavior:
  * - requires access+refresh tokens;
  * - requires non-expired refresh token;
- * - always tries refresh on app start;
+ * - refreshes at startup only when the local access token has expired;
  * - if refresh fails, keeps session only when local access token is still valid.
  */
 export async function validateAndRefreshTokens(): Promise<boolean> {
@@ -65,6 +65,10 @@ export async function validateAndRefreshTokens(): Promise<boolean> {
       console.log('[validateAndRefreshTokens] Refresh token expired');
       await forceLocalLogout('refresh token expired at startup');
       return false;
+    }
+
+    if (!isTokenExpired(accessToken)) {
+      return true;
     }
 
     console.log('[validateAndRefreshTokens] Startup refresh attempt...');

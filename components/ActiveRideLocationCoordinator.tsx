@@ -17,6 +17,8 @@ import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import * as Location from 'expo-location';
 import { useEffect, useMemo, useRef } from 'react';
 import { AppState } from 'react-native';
+import { usePathname } from 'expo-router';
+import { useAppIsActive } from '@/hooks/useAppIsActive';
 
 const ACTIVE_RIDE_REFRESH_INTERVAL_MS = 60_000;
 const ACTIVE_RIDE_DETAIL_REFRESH_INTERVAL_MS = 30_000;
@@ -48,6 +50,9 @@ const isInsidePassengerTrackingWindow = (departureTime?: string | null) => {
  * The native tasks continue independently when React Native is backgrounded or the screen sleeps.
  */
 export function ActiveRideLocationCoordinator() {
+  const isAppActive = useAppIsActive();
+  const pathname = usePathname();
+  const passengerNavigationVisible = pathname.startsWith('/booking/navigate/');
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const activeDriverTripIdRef = useRef<string | null>(null);
   const activePassengerBookingIdRef = useRef<string | null>(null);
@@ -199,7 +204,7 @@ export function ActiveRideLocationCoordinator() {
 
   useEffect(() => {
     const canSendPassengerLocationInForeground = Boolean(
-      isAuthenticated &&
+      isAppActive && !passengerNavigationVisible && isAuthenticated &&
         passengerBookingId &&
         (activePassengerBooking?.status === 'accepted' ||
           activePassengerBooking?.status === 'no_show') &&
@@ -267,6 +272,8 @@ export function ActiveRideLocationCoordinator() {
     };
   }, [
     activePassengerBooking?.status,
+    isAppActive,
+    passengerNavigationVisible,
     isAuthenticated,
     passengerBookingId,
     passengerTripStatus,

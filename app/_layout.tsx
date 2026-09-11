@@ -6,6 +6,7 @@ import { Platform, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { configureFontScaling } from '@/utils/configureFontScaling';
+import { initializeDiagnostics } from '@/services/diagnostics';
 
 import { AnalyticsTracker } from '@/components/AnalyticsTracker';
 import { AppErrorBoundary } from '@/components/AppErrorBoundary';
@@ -19,6 +20,7 @@ import '@/services/notifeeBackgroundHandler';
 import '@/services/notifeeForegroundService';
 
 configureFontScaling();
+initializeDiagnostics();
 
 export const unstable_settings = {
   initialRouteName: 'splash',

@@ -4,6 +4,7 @@ import { useUpdateUserMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch } from '@/store/hooks';
 import { updateUser } from '@/store/slices/authSlice';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
+import { prepareProfilePhoto } from '@/utils/profilePhoto';
 import * as ImagePicker from 'expo-image-picker';
 import { createElement, useCallback, useEffect, useState } from 'react';
 import { AppState, Platform } from 'react-native';
@@ -341,7 +342,20 @@ export function useProfilePhoto() {
           claimedUri = currentSelection.uri;
         }
 
-        const confirmation = await confirmProfilePhoto(currentSelection);
+        let preparedUri: string;
+        try {
+          setIsUploading(true);
+          preparedUri = await prepareProfilePhoto(currentSelection.uri);
+        } catch (error) {
+          releaseProfileImageUri(currentSelection.uri);
+          console.warn('[ProfilePhoto] Préparation impossible:', error);
+          showDialog({ variant: 'danger', title: 'Photo indisponible', message: 'Impossible de préparer cette photo. Réessayez avec une autre photo.' });
+          return false;
+        } finally {
+          setIsUploading(false);
+        }
+
+        const confirmation = await confirmProfilePhoto({ ...currentSelection, uri: preparedUri });
 
         if (confirmation === 'cancel') {
           releaseProfileImageUri(currentSelection.uri);
@@ -353,7 +367,7 @@ export function useProfilePhoto() {
           continue;
         }
 
-        const updated = await updateProfilePhoto(currentSelection.uri);
+        const updated = await updateProfilePhoto(preparedUri);
         if (!updated) {
           releaseProfileImageUri(currentSelection.uri);
         }
@@ -366,7 +380,7 @@ export function useProfilePhoto() {
 
       return false;
     },
-    [confirmProfilePhoto, showImagePicker, updateProfilePhoto],
+    [confirmProfilePhoto, showDialog, showImagePicker, updateProfilePhoto],
   );
 
   useEffect(() => {

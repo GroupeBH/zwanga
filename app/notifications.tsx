@@ -1,8 +1,9 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import {
   useDisableNotificationsMutation,
-  useGetNotificationsQuery,
+  useGetNotificationPagesInfiniteQuery,
   useMarkAllNotificationsAsReadMutation,
   useMarkNotificationsAsReadMutation,
 } from '@/store/api/notificationApi';
@@ -34,7 +35,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const NOTIFICATIONS_PAGE_SIZE = 40;
 const EMPTY_NOTIFICATIONS: Notification[] = [];
 
 const notificationTypeConfig: Record<
@@ -138,27 +138,33 @@ const NotificationListItem = React.memo(function NotificationListItem({
 });
 
 export default function NotificationsScreen() {
+  const isScreenActive = useScreenIsActive();
   const router = useRouter();
   const { showDialog } = useDialog();
   const { data: currentUser } = useGetCurrentUserQuery();
-  const [notificationsLimit, setNotificationsLimit] = useState(NOTIFICATIONS_PAGE_SIZE);
-  const notificationsQueryParams = useMemo(() => ({ limit: notificationsLimit }), [notificationsLimit]);
   const {
     data: notificationsData,
     isLoading,
     isFetching,
+    isFetchingNextPage,
+    hasNextPage: hasMoreNotifications,
+    fetchNextPage,
     refetch,
-  } = useGetNotificationsQuery(notificationsQueryParams);
+  } = useGetNotificationPagesInfiniteQuery(undefined, {
+    skip: !isScreenActive,
+    refetchOnMountOrArgChange: 30,
+    refetchOnReconnect: true,
+  });
 
   const [markNotificationsAsRead] = useMarkNotificationsAsReadMutation();
   const [markAllAsRead] = useMarkAllNotificationsAsReadMutation();
   const [disableNotifications] = useDisableNotificationsMutation();
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
 
-  const notifications = notificationsData?.notifications ?? EMPTY_NOTIFICATIONS;
-  const unreadCount = notificationsData?.unreadCount ?? 0;
-  const totalNotifications = notificationsData?.total ?? notifications.length;
-  const hasMoreNotifications = notifications.length < totalNotifications;
+  const notifications = useMemo(() => notificationsData
+    ? Array.from(new Map(notificationsData.pages.flatMap((page) => page.notifications).map((item) => [item.id, item])).values())
+    : EMPTY_NOTIFICATIONS, [notificationsData]);
+  const unreadCount = notificationsData?.pages[0]?.unreadCount ?? 0;
 
   const handleSelectNotification = useCallback(async (notification: Notification) => {
     // Marquer comme lu et désactiver (faire disparaître) la notification
@@ -285,8 +291,8 @@ export default function NotificationsScreen() {
       return;
     }
 
-    setNotificationsLimit((currentLimit) => currentLimit + NOTIFICATIONS_PAGE_SIZE);
-  }, [hasMoreNotifications, isFetching]);
+    void fetchNextPage();
+  }, [fetchNextPage, hasMoreNotifications, isFetching]);
 
   const keyExtractor = useCallback((notification: Notification) => notification.id, []);
 
@@ -382,7 +388,7 @@ export default function NotificationsScreen() {
           ]}
           refreshControl={
             <RefreshControl
-              refreshing={isFetching}
+              refreshing={isFetching && !isFetchingNextPage}
               onRefresh={handleRefresh}
               colors={[Colors.primary]}
               tintColor={Colors.primary}

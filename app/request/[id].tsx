@@ -1,3 +1,4 @@
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import type { AddressInputMode } from '@/components/AddressEntryModeSelector';
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -275,6 +276,7 @@ function getLocationCoordinates(selection: MapLocationSelection | null): [number
 }
 
 export default function TripRequestDetailsScreen() {
+  const isScreenActive = useScreenIsActive();
   const router = useRouter();
   const goHome = useCallback(() => {
     router.replace('/(tabs)');
@@ -309,14 +311,14 @@ export default function TripRequestDetailsScreen() {
   
   const { data: tripRequest, isLoading, error, refetch, isError } = useGetTripRequestByIdQuery(id || '', {
     skip: !id || isCreateRouteAlias,
-    pollingInterval,
+    pollingInterval: isScreenActive ? pollingInterval : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,
   });
   const { data: assignedTrip } = useGetTripByIdQuery(tripRequest?.tripId || '', {
     skip: !tripRequest?.tripId,
-    pollingInterval: tripRequest?.status === 'driver_selected' ? 30_000 : 0,
+    pollingInterval: isScreenActive ? (tripRequest?.status === 'driver_selected' ? 30_000 : 0) : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,

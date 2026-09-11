@@ -1,6 +1,7 @@
 import { store } from '@/store';
 import { googleMapsApi, TravelMode } from '@/store/api/googleMapsApi';
 import { calculateDistance } from '@/utils/routeHelpers';
+import { BoundedCache } from '@/utils/boundedCache';
 
 type LatLng = { latitude: number; longitude: number };
 
@@ -16,7 +17,7 @@ const THROTTLE_COOLDOWN_MS = 90 * 1000;
 const SOFT_TIMEOUT_COOLDOWN_MS = 30 * 1000;
 const ROUTE_REQUEST_SOFT_TIMEOUT_MS = 4_500;
 
-const routeInfoCache = new Map<string, { expiresAt: number; value: RouteInfo }>();
+const routeInfoCache = new BoundedCache<RouteInfo>(64);
 const inFlightRouteRequests = new Map<string, Promise<RouteInfo>>();
 let routeApiCooldownUntil = 0;
 let lastThrottleWarningAt = 0;
@@ -81,24 +82,16 @@ function buildFallbackRouteInfo(origin: LatLng, destination: LatLng): RouteInfo 
 }
 
 function getCachedRouteInfo(cacheKey: string) {
-  const cached = routeInfoCache.get(cacheKey);
-  if (!cached) {
-    return null;
-  }
-
-  if (cached.expiresAt <= Date.now()) {
-    routeInfoCache.delete(cacheKey);
-    return null;
-  }
-
-  return cached.value;
+  return routeInfoCache.get(cacheKey) ?? null;
 }
 
 function setCachedRouteInfo(cacheKey: string, value: RouteInfo, ttlMs: number) {
-  routeInfoCache.set(cacheKey, {
-    expiresAt: Date.now() + ttlMs,
-    value,
-  });
+  routeInfoCache.set(cacheKey, value, ttlMs);
+}
+
+/** Immediate cached/fallback preview while a scheduled precise read is pending. */
+export function getLocalRouteInfo(origin: LatLng, destination: LatLng): RouteInfo {
+  return getCachedRouteInfo(buildRouteCacheKey(origin, destination)) ?? buildFallbackRouteInfo(origin, destination);
 }
 
 function isThrottleError(errorLike: unknown) {

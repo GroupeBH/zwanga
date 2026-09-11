@@ -1,3 +1,4 @@
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import {
   useGetAvailableTripRequestsQuery,
@@ -26,6 +27,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 type RequestTab = 'available' | 'my-requests';
 
 export default function TripRequestsScreen() {
+  const isScreenActive = useScreenIsActive();
   const router = useRouter();
   const { data: currentUser } = useGetCurrentUserQuery();
   const isDriverAccount = Boolean(
@@ -44,7 +46,7 @@ export default function TripRequestsScreen() {
   } = useGetAvailableTripRequestsQuery(undefined, {
     skip: activeTab !== 'available',
     // Polling léger pour les demandes disponibles (conducteurs)
-    pollingInterval: activeTab === 'available' ? 60_000 : 0,
+    pollingInterval: isScreenActive ? (activeTab === 'available' ? 60_000 : 0) : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,
@@ -59,7 +61,7 @@ export default function TripRequestsScreen() {
   } = useGetMyTripRequestsQuery(undefined, {
     skip: activeTab !== 'my-requests',
     // Polling léger pour mes demandes (passagers)
-    pollingInterval: activeTab === 'my-requests' ? 60_000 : 0,
+    pollingInterval: isScreenActive ? (activeTab === 'my-requests' ? 60_000 : 0) : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,

@@ -1,3 +1,4 @@
+import { useAppIsActive } from '@/hooks/useAppIsActive';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -342,6 +343,7 @@ function getStorageKey(userId: string) {
 }
 
 export function PassengerArrivalPaymentCoordinator() {
+  const isAppActive = useAppIsActive();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
@@ -723,7 +725,7 @@ export function PassengerArrivalPaymentCoordinator() {
     const bookingId = arrivalBooking?.id;
     const walletTopUpOrderNumber = activeStoredState?.walletTopUpOrderNumber;
     const bookingPaymentOrderNumber = activeStoredState?.bookingPaymentOrderNumber;
-    if (!bookingId || (!walletTopUpOrderNumber && !bookingPaymentOrderNumber)) return;
+    if (!isAppActive || !bookingId || (!walletTopUpOrderNumber && !bookingPaymentOrderNumber)) return;
 
     let cancelled = false;
 
@@ -800,6 +802,7 @@ export function PassengerArrivalPaymentCoordinator() {
       clearInterval(interval);
     };
   }, [
+    isAppActive,
     activeStoredState?.bookingPaymentChannel,
     activeStoredState?.bookingPaymentOrderNumber,
     activeStoredState?.walletTopUpOrderNumber,

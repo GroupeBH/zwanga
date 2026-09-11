@@ -1,6 +1,7 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { useDeleteConversationMutation, useListConversationsQuery } from '@/store/api/messageApi';
+import { useDeleteConversationMutation, useListConversationPagesInfiniteQuery } from '@/store/api/messageApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectConversations, selectUser } from '@/store/selectors';
 import { setConversations } from '@/store/slices/messagesSlice';
@@ -11,18 +12,23 @@ import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, TouchableOpac
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function MessagesScreen() {
+  const isScreenActive = useScreenIsActive();
   const dispatch = useAppDispatch();
   const user = useAppSelector(selectUser);
   const conversations = useAppSelector(selectConversations);
   const [search, setSearch] = useState('');
-  const { data, isLoading, isFetching } = useListConversationsQuery({ page: 1, limit: 50 });
+  const { data, isLoading, isFetching, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } = useListConversationPagesInfiniteQuery(undefined, {
+    skip: !isScreenActive,
+    refetchOnMountOrArgChange: 30,
+    refetchOnReconnect: true,
+  });
   const router = useRouter();
   const [deleteConversation] = useDeleteConversationMutation();
   const { showDialog } = useDialog();
 
   useEffect(() => {
-    if (data?.data) {
-      dispatch(setConversations(data.data));
+    if (data) {
+      dispatch(setConversations(Array.from(new Map(data.pages.flatMap((page) => page.data).map((item) => [item.id, item])).values())));
     }
   }, [data, dispatch]);
 
@@ -222,6 +228,11 @@ export default function MessagesScreen() {
         maxToRenderPerBatch={8}
         updateCellsBatchingPeriod={50}
         windowSize={7}
+        refreshing={isFetching && !isFetchingNextPage}
+        onRefresh={refetch}
+        onEndReached={() => { if (hasNextPage && !isFetching) void fetchNextPage(); }}
+        onEndReachedThreshold={0.35}
+        ListFooterComponent={isFetchingNextPage ? <ActivityIndicator color={Colors.primary} /> : null}
         removeClippedSubviews
         ListEmptyComponent={
           <View style={styles.emptyContainer}>

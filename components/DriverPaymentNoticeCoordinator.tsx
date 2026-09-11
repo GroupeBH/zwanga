@@ -1,3 +1,4 @@
+import { useAppIsActive } from '@/hooks/useAppIsActive';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -107,6 +108,7 @@ function buildPaymentNotice(booking: Booking, trip: Trip): DriverPaymentNotice |
 }
 
 export function DriverPaymentNoticeCoordinator() {
+  const isAppActive = useAppIsActive();
   const router = useRouter();
   const dispatch = useAppDispatch();
   const insets = useSafeAreaInsets();
@@ -236,6 +238,7 @@ export function DriverPaymentNoticeCoordinator() {
       !isAuthenticated ||
       !driverUser ||
       !isSeenLoaded ||
+      !isAppActive ||
       !relevantTripIdsKey ||
       activeNotice ||
       isClosingForTripNavigation
@@ -246,7 +249,7 @@ export function DriverPaymentNoticeCoordinator() {
     let cancelled = false;
 
     const scanPayments = async () => {
-      if (scanInFlightRef.current || cancelled) return;
+      if (!isAppActive || scanInFlightRef.current || cancelled) return;
       scanInFlightRef.current = true;
 
       try {
@@ -256,7 +259,7 @@ export function DriverPaymentNoticeCoordinator() {
           tripIds.map(async (tripId) => {
             const request = dispatch(
               bookingApi.endpoints.getTripBookings.initiate(tripId, {
-                forceRefetch: true,
+                forceRefetch: DRIVER_PAYMENT_NOTICE_REFRESH_MS / 1000,
                 subscribe: false,
               }),
             );
@@ -313,6 +316,7 @@ export function DriverPaymentNoticeCoordinator() {
     isSeenLoaded,
     relevantTripIdsKey,
     relevantTrips,
+    isAppActive,
   ]);
 
   const shouldKeepModalMounted = Boolean(activeNotice || isClosingForTripNavigation);
