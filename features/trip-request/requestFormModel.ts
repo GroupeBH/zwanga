@@ -1,61 +1,11 @@
-import { type AddressInputMode } from '@/components/AddressEntryModeSelector';
-import { type AddressSectionStep } from '@/components/AddressSectionSlider';
-import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
-import { useDialog } from '@/components/ui/DialogProvider';
+import type { MapLocationSelection } from '@/components/LocationPickerModal';
 import {
   ELECTRONIC_PAYMENTS_ENABLED,
 } from '@/constants/paymentFeatures';
-import { MUTATION_RECONCILIATION_DELAYS_MS } from '@/constants/network';
-import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { REGISTERED_VEHICLE_TYPE_OPTIONS } from '@/constants/vehicleTypes';
-import { useUserLocation } from '@/hooks/useUserLocation';
-import { trackEvent } from '@/services/analytics';
-import { useGeocodeMutation } from '@/store/api/googleMapsApi';
-import {
-  useCreateTripRequestMutation,
-  useGetTripRequestVehicleOptionsMutation,
-  useLazyGetMyTripRequestsQuery,
-  type TripRequestVehiclePriceOption,
-} from '@/store/api/tripRequestApi';
-import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
-import type { FavoriteLocation, TripPaymentMode, TripRequestVehicleType } from '@/types';
-import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
-import { getApiErrorMessage, isAmbiguousTransportError } from '@/utils/errorHelpers';
-import {
-  buildManualGeocodeQuery,
-  MANUAL_GEOCODE_DEBOUNCE_MS,
-  mapGeocodeResponseToSelection,
-  type ManualGeocodeStatus,
-} from '@/utils/manualAddressGeocode';
-import Animated, { FadeIn, FadeOut } from '@/utils/reanimated';
-import { getTripRequestDetailHref } from '@/utils/requestNavigation';
-import { getRouteCoordinates } from '@/utils/routeApi';
+import type { FavoriteLocation, TripPaymentMode } from '@/types';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
-import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker, {
-  DateTimePickerAndroid,
-  type DateTimePickerEvent,
-} from '@react-native-community/datetimepicker';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { startTransition, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  AppState,
-  InteractionManager,
-  Keyboard,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  type ImageRequireSource,
-} from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { Ionicons } from '@expo/vector-icons';
+import { type Region } from 'react-native-maps';
 
 export type TimePreset = 'now' | 'soon' | 'later' | 'tomorrow' | 'custom';
 
@@ -65,25 +15,16 @@ export type RequestFormStep = 'route' | 'details';
 
 export type LatLng = { latitude: number; longitude: number };
 
-export type IOSDateTimePickerProps = React.ComponentProps<typeof DateTimePicker> & {
-  accentColor?: string;
-  display?: 'default' | 'compact' | 'inline' | 'spinner';
-  locale?: string;
-  minuteInterval?: number;
-  textColor?: string;
-  themeVariant?: 'dark' | 'light';
-};
-
 export const TIME_PRESETS: {
   id: TimePreset;
   label: string;
   caption: string;
   icon: keyof typeof Ionicons.glyphMap;
 }[] = [
-  { id: 'now', label: 'Maintenant', caption: 'Départ rapide', icon: 'flash' },
-  { id: 'soon', label: 'Dans 30 min', caption: 'Encore un peu', icon: 'time' },
-  { id: 'custom', label: 'Je choisis', caption: 'Date et heure', icon: 'create-outline' },
-];
+    { id: 'now', label: 'Maintenant', caption: 'Départ rapide', icon: 'flash' },
+    { id: 'soon', label: 'Dans 30 min', caption: 'Encore un peu', icon: 'time' },
+    { id: 'custom', label: 'Je choisis', caption: 'Date et heure', icon: 'create-outline' },
+  ];
 
 export const FLEX_OPTIONS = [0, 30, 60, 120];
 
@@ -106,13 +47,6 @@ export const DEFAULT_REQUEST_REGION: Region = {
 
 export const REQUEST_MAP_MARKER_ANCHOR = { x: 0.5, y: 0.86 };
 
-export const requestMapMarkerImages: Record<'departure' | 'arrival', ImageRequireSource> = {
-  departure: require('@/assets/images/map-markers/trip-detail-marker-departure.png'),
-  arrival: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
-};
-
-export const IOSDateTimePicker = DateTimePicker as React.ComponentType<IOSDateTimePickerProps>;
-
 export const POPULAR_PLACES = [
   { name: 'Gare Centrale', commune: 'Gombe' },
   { name: 'Marché Zando', commune: 'Kalamu' },
@@ -130,8 +64,8 @@ export const TRIP_PAYMENT_MODE_OPTIONS: {
   description: string;
   icon: keyof typeof Ionicons.glyphMap;
 }[] = [
-  ...(ELECTRONIC_PAYMENTS_ENABLED
-    ? [
+    ...(ELECTRONIC_PAYMENTS_ENABLED
+      ? [
         {
           id: 'electronic' as const,
           label: 'Paiement électronique',
@@ -139,14 +73,14 @@ export const TRIP_PAYMENT_MODE_OPTIONS: {
           icon: 'card-outline' as const,
         },
       ]
-    : []),
-  {
-    id: 'cash',
-    label: "Paiement cash",
-    description: 'Réglez directement auprès du conducteur',
-    icon: 'cash-outline',
-  },
-];
+      : []),
+    {
+      id: 'cash',
+      label: "Paiement cash",
+      description: 'Réglez directement auprès du conducteur',
+      icon: 'cash-outline',
+    },
+  ];
 
 export function roundToStep(date: Date, step: number) {
   const next = new Date(date);
@@ -233,6 +167,29 @@ export function clampRequestPrice(value: number | undefined) {
 
   const steppedValue = Math.round(value / REQUEST_PRICE_STEP) * REQUEST_PRICE_STEP;
   return Math.max(MIN_REQUEST_PRICE, steppedValue);
+}
+
+/** A missing estimate must not block a valid user budget. Known seat limits still apply. */
+export function getRequestBudgetState(
+  maxPricePerSeat: string,
+  hasEditedBudget: boolean,
+  selectedVehicleOption?: { recommendedPricePerSeat: number | null; availableForRequestedSeats: boolean },
+) {
+  const recommendedPricePerSeat = selectedVehicleOption?.recommendedPricePerSeat ?? null;
+  const parsedManualBudget = maxPricePerSeat.trim() ? Number.parseFloat(maxPricePerSeat) : undefined;
+  const hasValidManualBudget = hasEditedBudget && parsedManualBudget !== undefined
+    && Number.isFinite(parsedManualBudget) && parsedManualBudget > 0;
+  const selectedVehicleOptionUnavailable = selectedVehicleOption?.availableForRequestedSeats === false;
+  return {
+    recommendedPricePerSeat,
+    parsedManualBudget,
+    selectedVehicleOptionUnavailable,
+    canSubmitRequestDetails: !selectedVehicleOptionUnavailable
+      && (hasValidManualBudget || Boolean(selectedVehicleOption?.availableForRequestedSeats)),
+    budgetValue: maxPricePerSeat.trim()
+      ? clampRequestPrice(parsedManualBudget)
+      : recommendedPricePerSeat ?? 0,
+  };
 }
 
 export function formatCdfPrice(value: number) {
