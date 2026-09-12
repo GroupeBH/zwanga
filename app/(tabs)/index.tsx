@@ -40,6 +40,8 @@ export default function HomeScreen() {
       isCenteringOnUser={home.isCenteringOnUser}
     />
     <HomeHeader
+      highlightedDriverRequest={home.highlightedDriverRequest}
+      highlightedRequestDistance={home.highlightedRequestDistance}
       insets={home.insets}
       router={home.router}
       avatarUri={home.avatarUri}

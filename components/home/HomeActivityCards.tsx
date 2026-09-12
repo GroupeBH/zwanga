@@ -13,6 +13,8 @@ import type { useHomeContext } from '@/hooks/home/useHomeContext';
 import type { useHomeMapNavigation } from '@/hooks/home/useHomeMapNavigation';
 import type { useHomePassengerActivity } from '@/hooks/home/useHomePassengerActivity';
 import type { useHomeTripSelection } from '@/hooks/home/useHomeTripSelection';
+import type { useHomeRequestHighlight } from '@/hooks/home/useHomeRequestHighlight';
+import { HomeRequestHighlightCard } from './HomeRequestHighlightCard';
 
 import { styles } from '@/features/home/HomeActivityCards.styles';
 type Props =
@@ -31,6 +33,7 @@ type Props =
     'activeTripRequest'
     | 'activeRequestStatus'
   >
+  & Pick<ReturnType<typeof useHomeRequestHighlight>, 'highlightedDriverRequest' | 'highlightedRequestDistance'>
   & Pick<ReturnType<typeof useHomeMapNavigation>,
     'openTripRequestDetail'
   >;
@@ -45,8 +48,17 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
   activeTripRequest,
   activeRequestStatus,
   openTripRequestDetail,
+  highlightedDriverRequest,
+  highlightedRequestDistance,
 }: Props) {
   return (<>
+    {highlightedDriverRequest && (
+      <HomeRequestHighlightCard
+        request={highlightedDriverRequest}
+        distanceMeters={highlightedRequestDistance}
+        onOpen={openTripRequestDetail}
+      />
+    )}
     {featuredDriverReservation && featuredDriverReservationStatus && (
       <TouchableOpacity
         activeOpacity={0.9}
@@ -84,7 +96,7 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
         </View>
       </TouchableOpacity>
     )}
-    {featuredDriverUpcomingTrip && (
+    {featuredDriverUpcomingTrip && !highlightedDriverRequest && (
       <TouchableOpacity
         activeOpacity={0.9}
         accessibilityRole="button"

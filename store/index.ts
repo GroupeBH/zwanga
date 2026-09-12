@@ -13,6 +13,7 @@ import messagesReducer from './slices/messagesSlice';
 import locationReducer from './slices/locationSlice';
 import tripsReducer from './slices/tripsSlice';
 import requestDraftsReducer, { resetRequestDrafts } from './slices/requestDraftsSlice';
+import homeRequestHighlightsReducer, { resetHomeRequestHighlights } from './slices/homeRequestHighlightsSlice';
 import { setStoreAccessor } from './storeAccessor';
 
 const apiQueryActionTypes = [
@@ -54,6 +55,7 @@ const apiCacheIsolationMiddleware: Middleware = (storeApi) => (next) => (action)
     clearLocationDeliveries();
     storeApi.dispatch({ type: 'messages/resetMessages' });
     storeApi.dispatch(resetRequestDrafts());
+    storeApi.dispatch(resetHomeRequestHighlights());
     storeApi.dispatch(zwangaApi.util.resetApiState());
     storeApi.dispatch(authRefreshApi.util.resetApiState());
   } else if (typedAction.type === 'auth/setTokens') {
@@ -68,6 +70,7 @@ export const store = configureStore({
     auth: authReducer,
     trips: tripsReducer,
     requestDrafts: requestDraftsReducer,
+    homeRequestHighlights: homeRequestHighlightsReducer,
     messages: messagesReducer,
     location: locationReducer,
     [zwangaApi.reducerPath]: zwangaApi.reducer,

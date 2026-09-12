@@ -9,10 +9,12 @@ import {
   useGetMyTripRequestsQuery,
 } from '@/store/api/tripRequestApi';
 import { useMemo } from 'react';
+import { isRequestUnassigned, rankRequestsByProximity } from '@/features/trip-request/requestPriority';
+import type { MapCoordinate } from '@/utils/tripCoordinates';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
-type Props = Pick<ReturnType<typeof useHomeContext>, 'isFocused' | 'currentUser' | 'isDriver' | 'trackedTripInfo'>;
-export function useHomePassengerActivity({ isFocused, currentUser, isDriver, trackedTripInfo }: Props) {
+type Props = Pick<ReturnType<typeof useHomeContext>, 'isFocused' | 'currentUser' | 'isDriver' | 'trackedTripInfo'> & { driverCoordinate?: MapCoordinate | null };
+export function useHomePassengerActivity({ isFocused, currentUser, isDriver, trackedTripInfo, driverCoordinate = null }: Props) {
   const { data: notificationsData } = useGetNotificationsQuery({ limit: 1 }, {
     refetchOnMountOrArgChange: true,
   });
@@ -185,35 +187,13 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
       return [];
     }
 
-    const getDepartureTime = (departureDate?: string | null) => {
-      if (!departureDate) {
-        return Number.MAX_SAFE_INTEGER;
-      }
-
-      const timestamp = new Date(departureDate).getTime();
-      return Number.isFinite(timestamp) ? timestamp : Number.MAX_SAFE_INTEGER;
-    };
-
-    return [...availableTripRequests]
-      .filter(
-        (request) =>
-          request.passengerId !== currentUser.id &&
-          !request.tripId &&
-          (request.status === 'pending' || request.status === 'offers_received') &&
-          isTripRequestWithinAcceptanceWindow(request),
-      )
-      .sort((a, b) => {
-        const departureDelta = getDepartureTime(a.departureDateMin) - getDepartureTime(b.departureDateMin);
-        if (departureDelta !== 0) {
-          return departureDelta;
-        }
-
-        const updatedA = new Date(a.updatedAt || a.createdAt).getTime();
-        const updatedB = new Date(b.updatedAt || b.createdAt).getTime();
-        return updatedB - updatedA;
-      })
-      .slice(0, RECENT_TRIPS_LIMIT);
-  }, [availableTripRequests, currentUser?.id, isDriver]);
+    const eligible = availableTripRequests.filter(request =>
+      request.passengerId !== currentUser.id &&
+      isRequestUnassigned(request) &&
+      isTripRequestWithinAcceptanceWindow(request),
+    );
+    return rankRequestsByProximity(eligible, driverCoordinate).slice(0, RECENT_TRIPS_LIMIT);
+  }, [availableTripRequests, currentUser?.id, driverCoordinate, isDriver]);
   return {
     activeBookings,
     completedBookingTripIds,

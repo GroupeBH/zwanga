@@ -74,6 +74,10 @@ export const styles = StyleSheet.create({
     borderColor: HOME_COLORS.softLine,
     ...CommonStyles.shadowSm,
   },
+  highlightedRequestCard: {
+    borderColor: Colors.primary + '70',
+    backgroundColor: '#FFF8F4',
+  },
   activeRequestIcon: {
     width: 36,
     height: 36,

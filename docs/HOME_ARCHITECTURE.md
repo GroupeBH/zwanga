@@ -2,7 +2,7 @@
 
 ## Périmètre
 
-`app/(tabs)/index.tsx` passe de 4 193 à 88 lignes et assemble les sections. Les dix composants de `components/home/` et les quatorze hooks de `hooks/home/` ont chacun au plus 300 lignes. Il s'agit d'une séparation des responsabilités, pas d'une refonte graphique ou d'une modification des contrats serveur.
+Lors du découpage initial, `app/(tabs)/index.tsx` est passé de 4 193 à 88 lignes pour assembler les sections. Les dix composants de `components/home/` et les quatorze hooks de `hooks/home/` avaient chacun au plus 300 lignes. L'encart de demande prioritaire décrit en fin de document ajoute un composant et un hook dédiés, sans modification des contrats serveur.
 
 ## Répartition
 
@@ -42,7 +42,7 @@
 
 ```sh
 npm run test:home
-node --test tests/homeModules.test.js tests/profileModules.test.js tests/tripRequestForm.test.js tests/performancePolicy.test.js tests/referralAttributionPolicy.test.js
+node --test tests/homeModules.test.js tests/homeRequestPriority.test.js tests/profileModules.test.js tests/tripRequestForm.test.js tests/performancePolicy.test.js tests/referralAttributionPolicy.test.js
 npm run check:network
 npx tsc --noEmit
 npx eslint "app/(tabs)/index.tsx" components/home features/home hooks/home tests/homeModules.test.js
@@ -50,6 +50,18 @@ npx eslint "app/(tabs)/index.tsx" components/home features/home hooks/home tests
 
 Les 20 tests spécifiques utilisent le code TypeScript réel avec le réseau et les objets natifs simulés : coordonnées, expiration des demandes, ordre des trajets, restauration, cache dégradé, rôles, temporisations de navigation/carte, suivi conducteur/passager, déduplication, arrêt hors focus, recentrage et panneau.
 
-La comparaison syntaxique des styles retrouve les 206 définitions encore utilisées sans changement de valeur. Six styles déjà inutilisés ont été supprimés ; ils restent récupérables dans Git. Les exports Expo/Hermes Android et iOS avec source maps ont réussi.
+Lors du découpage initial, la comparaison syntaxique des styles a retrouvé les 206 définitions encore utilisées sans changement de valeur. Six styles déjà inutilisés ont été supprimés ; ils restent récupérables dans Git. Les exports Expo/Hermes Android et iOS avec source maps ont réussi.
 
 Les tests automatisés ne remplacent pas une vérification sur téléphone : ouvrir plusieurs trajets depuis la carte, revenir à l'accueil, changer d'onglet pendant le recentrage, utiliser un trajet conducteur/passager en cours, puis tester la perte/reprise du réseau. Aucun gain de FPS, mémoire ou autonomie sur appareil réel n'est affirmé sans mesure.
+
+## Priorité géographique des demandes et encart de dix minutes
+
+Les demandes disponibles sont désormais classées par distance entre la position du conducteur et leur point de départ, avant la limite de dix résultats de l'accueil. Le calcul local réutilise les coordonnées Redux et la distance à vol d'oiseau ; il ne crée ni watcher GPS supplémentaire ni requête de calcul d'itinéraire. Une position manquante entraîne un classement par heure de départ. Les coordonnées de départ invalides passent après les coordonnées exploitables. La même fonction est utilisée dans la liste des demandes et, par défaut, dans leur recherche ; les tris explicites par budget et par horaire restent disponibles.
+
+`useHomeRequestHighlight` affiche la première demande dans `HomeRequestHighlightCard`, sans l'accepter ni lui attribuer le statut d'un trajet en cours. L'encart ouvre le détail existant, où le conducteur choisit son véhicule pour accepter. Il ne remplace pas le suivi d'un trajet réellement en cours ou une réservation reçue à traiter ; lorsqu'il est visible, il prend temporairement la place de la carte d'un trajet publié à venir.
+
+Le slice `homeRequestHighlights` ne stocke que les identifiants et échéances numériques. Les dix minutes commencent à la première présentation sur un accueil visible et au premier plan. Les rafraîchissements, changements d'onglet et remontages ne prolongent pas cette échéance ; le temps passé en arrière-plan est compté. Une demande nouvellement la plus proche peut remplacer l'encart, mais revenir à la précédente ne redémarre pas son délai. Une demande acceptée, attribuée, annulée ou retirée disparaît de l'encart dès la réception de son nouvel état. Après dix minutes, elle reste dans la liste si elle est encore disponible.
+
+Un seul timeout est armé jusqu'à l'échéance, puis nettoyé à la fermeture ; aucun compte à rebours ne redessine l'accueil chaque seconde. La mémoire est limitée aux 200 dernières demandes mises en avant par session d'application. Elle est réinitialisée à la déconnexion ou au changement de compte, et n'est pas persistée après fermeture complète de l'application. Les données des demandes restent exclusivement dans RTK Query.
+
+`tests/homeRequestPriority.test.js` couvre la distance, le repli sans GPS, le classement avant limitation, la durée, les rafraîchissements, le remontage, l'arrière-plan, les changements de demande et l'isolation de compte. Cette suite fait partie de `npm run test:home`.

@@ -17,6 +17,7 @@ import type { useHomeMapNavigation } from '@/hooks/home/useHomeMapNavigation';
 import type { useHomePassengerActivity } from '@/hooks/home/useHomePassengerActivity';
 import type { useHomeSheet } from '@/hooks/home/useHomeSheet';
 import type { useHomeTripSelection } from '@/hooks/home/useHomeTripSelection';
+import type { useHomeRequestHighlight } from '@/hooks/home/useHomeRequestHighlight';
 import { HomeActivityCards } from './HomeActivityCards';
 type Props =
   Pick<ReturnType<typeof useHomeContext>,
@@ -47,6 +48,7 @@ type Props =
     'activeTripRequest'
     | 'activeRequestStatus'
   >
+  & Pick<ReturnType<typeof useHomeRequestHighlight>, 'highlightedDriverRequest' | 'highlightedRequestDistance'>
   & Pick<ReturnType<typeof useHomeMapNavigation>,
     'openTripRequestDetail'
   >;
@@ -70,6 +72,8 @@ export const HomeHeader = React.memo(function HomeHeader({
   activeTripRequest,
   activeRequestStatus,
   openTripRequestDetail,
+  highlightedDriverRequest,
+  highlightedRequestDistance,
 }: Props) {
   return (<View style={[styles.topOverlay, { top: insets.top + Spacing.sm }]}>
     <View style={styles.headerCard}>
@@ -148,6 +152,8 @@ export const HomeHeader = React.memo(function HomeHeader({
     </View>
 
     <HomeActivityCards
+      highlightedDriverRequest={highlightedDriverRequest}
+      highlightedRequestDistance={highlightedRequestDistance}
       featuredDriverReservation={featuredDriverReservation}
       featuredDriverReservationStatus={featuredDriverReservationStatus}
       router={router}

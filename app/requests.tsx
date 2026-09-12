@@ -1,4 +1,7 @@
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { rankRequestsByProximity } from '@/features/trip-request/requestPriority';
+import { useAppSelector } from '@/store/hooks';
+import { selectUserCoordinates } from '@/store/selectors';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import {
   useGetAvailableTripRequestsQuery,
@@ -30,6 +33,7 @@ export default function TripRequestsScreen() {
   const isScreenActive = useScreenIsActive();
   const router = useRouter();
   const { data: currentUser } = useGetCurrentUserQuery();
+  const driverCoordinate = useAppSelector(selectUserCoordinates);
   const isDriverAccount = Boolean(
     currentUser?.isDriver ||
       currentUser?.role === 'driver' ||
@@ -68,8 +72,11 @@ export default function TripRequestsScreen() {
   });
 
   const filteredAvailableRequests = useMemo(
-    () => availableRequests.filter((request) => request.passengerId !== currentUser?.id),
-    [availableRequests, currentUser?.id]
+    () => rankRequestsByProximity(
+      availableRequests.filter((request) => request.passengerId !== currentUser?.id),
+      driverCoordinate,
+    ),
+    [availableRequests, currentUser?.id, driverCoordinate]
   );
 
   const requestsCount = {
