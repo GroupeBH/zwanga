@@ -113,7 +113,7 @@ export function useProfileData() {
 
   const shouldShowVehicleLoadError = isVehicleDataUnavailable || isVehicleRetrying;
 
-  const isProfileDataLoading = profileLoading || isVehicleInitialLoading;
+  const isProfileDataLoading = profileLoading || (isDriver && isVehicleInitialLoading);
 
   const knownVehicleCount = hasLoadedVehicles ? vehicleList.length : stats?.vehicles;
 

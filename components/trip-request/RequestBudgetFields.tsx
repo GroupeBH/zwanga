@@ -1,7 +1,9 @@
 import { Colors } from '@/constants/styles';
+import { PassengerSeatNotice } from '@/components/PassengerSeatNotice';
+import { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import { getPassengerVehicleSeatCapacity } from '@/utils/passengerSeats';
 import {
   clampRequestSeats,
-  MAX_REQUEST_SEATS,
   MIN_REQUEST_PRICE,
   MIN_REQUEST_SEATS,
   REQUEST_PRICE_STEP,
@@ -26,6 +28,7 @@ type Props = Pick<RequestTripController,
   | 'requestSeatsLabel'
   | 'hasSpecifiedNumberOfSeats'
   | 'numberOfSeats'
+  | 'selectedVehicleType'
   | 'setHasSpecifiedNumberOfSeats'
   | 'setNumberOfSeats'
   | 'requestPaymentMode'
@@ -49,6 +52,7 @@ export function RequestBudgetFields({
   requestSeatsLabel,
   hasSpecifiedNumberOfSeats,
   numberOfSeats,
+  selectedVehicleType,
   setHasSpecifiedNumberOfSeats,
   setNumberOfSeats,
   requestPaymentMode,
@@ -58,6 +62,9 @@ export function RequestBudgetFields({
   description,
   setDescription,
 }: Props) {
+  const { isIdentityVerified, checkIdentity } = useIdentityCheck();
+  const seatCapacity = getPassengerVehicleSeatCapacity(selectedVehicleType);
+  const cannotAddSeat = numberOfSeats >= (seatCapacity ?? Number.MAX_SAFE_INTEGER);
   return (
     <>
       {isPriceLoading && vehicleOptions.length === 0 ? (
@@ -137,7 +144,7 @@ export function RequestBudgetFields({
             ]}
             onPress={() => {
               setHasSpecifiedNumberOfSeats(true);
-              setNumberOfSeats((value) => clampRequestSeats(value - 1));
+              setNumberOfSeats((value) => clampRequestSeats(value - 1, seatCapacity));
             }}
             disabled={numberOfSeats <= MIN_REQUEST_SEATS}
             activeOpacity={0.75}
@@ -152,23 +159,25 @@ export function RequestBudgetFields({
           <TouchableOpacity
             style={[
               styles.counterBtnCompact,
-              numberOfSeats >= MAX_REQUEST_SEATS && styles.counterBtnCompactDisabled,
+              cannotAddSeat && styles.counterBtnCompactDisabled,
             ]}
             onPress={() => {
               setHasSpecifiedNumberOfSeats(true);
-              setNumberOfSeats((value) => clampRequestSeats(value + 1));
+              setNumberOfSeats((value) => clampRequestSeats(value + 1, seatCapacity));
             }}
-            disabled={numberOfSeats >= MAX_REQUEST_SEATS}
+            disabled={cannotAddSeat}
             activeOpacity={0.75}
           >
             <Ionicons
               name="add"
               size={18}
-              color={numberOfSeats >= MAX_REQUEST_SEATS ? Colors.gray[400] : Colors.gray[900]}
+              color={cannotAddSeat ? Colors.gray[400] : Colors.gray[900]}
             />
           </TouchableOpacity>
         </View>
       </View>
+
+      <PassengerSeatNotice isIdentityVerified={isIdentityVerified} capacity={seatCapacity} onVerify={() => checkIdentity('extra_seats')} />
 
       <View style={styles.offerPaymentBlock}>
         <Text style={styles.offerSectionLabel}>Mode de paiement</Text>

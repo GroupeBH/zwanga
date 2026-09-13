@@ -152,6 +152,7 @@ export default function ManageTripScreen() {
     pollingInterval: isScreenActive ? pollingInterval : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
+    refetchOnMountOrArgChange: true,
     refetchOnReconnect: false,
   });
 
@@ -1081,13 +1082,13 @@ export default function ManageTripScreen() {
         <View style={styles.centerContent}>
           <Ionicons name="shield-outline" size={34} color={Colors.primary} />
           <Text style={[styles.emptyText, { marginTop: Spacing.sm }]}>
-            Votre identité doit être vérifiée (KYC validé) pour gérer vos trajets.
+            Votre identité doit être vérifiée pour gérer vos trajets.
           </Text>
           <TouchableOpacity
             style={[styles.primaryButton, { marginTop: Spacing.lg }]}
             onPress={() => router.push('/profile')}
           >
-            <Text style={styles.primaryButtonText}>Compléter mon KYC</Text>
+            <Text style={styles.primaryButtonText}>Vérifier mon identité</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>

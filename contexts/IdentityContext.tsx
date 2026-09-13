@@ -3,6 +3,7 @@ import { useGetKycStatusQuery } from '@/store/api/userApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type { KycDocument } from '@/types';
+import { EXTRA_SEATS_IDENTITY_MESSAGE } from '@/utils/passengerSeats';
 import { useRouter } from 'expo-router';
 import React, {
   createContext,
@@ -12,10 +13,12 @@ import React, {
   type ReactNode,
 } from 'react';
 
-type IdentityAction = 'publish' | 'book' | 'manage' | 'request';
+type IdentityAction = 'publish' | 'book' | 'manage' | 'request' | 'extra_seats';
 
 const getIdentityRequirementCopy = (action: IdentityAction) => {
   switch (action) {
+    case 'extra_seats':
+      return { actionText: 'réserver 3 places ou plus', message: EXTRA_SEATS_IDENTITY_MESSAGE };
     case 'publish':
       return {
         actionText: 'publier ou gérer vos trajets',
@@ -50,7 +53,7 @@ interface IdentityContextValue {
   kycDocument: KycDocument | null | undefined;
   isChecking: boolean;
   refreshKycStatus: () => void;
-  checkIdentity: (action?: IdentityAction) => boolean;
+  checkIdentity: (action?: IdentityAction, options?: { force?: boolean }) => boolean;
 }
 
 const IdentityContext = createContext<IdentityContextValue | undefined>(undefined);
@@ -76,8 +79,8 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
   const isIdentityVerified = Boolean(isKycApproved);
 
   const checkIdentity = useCallback(
-    (action: IdentityAction = 'book') => {
-      if (isIdentityVerified) {
+    (action: IdentityAction = 'book', options?: { force?: boolean }) => {
+      if (isIdentityVerified && !options?.force) {
         return true;
       }
 

@@ -77,6 +77,23 @@ test('manual budget permits submission without an estimate, but known vehicle ca
   assert.equal(model.getRequestBudgetState('2500', true, { ...estimate, availableForRequestedSeats: false }).canSubmitRequestDetails, false);
 });
 
+test('only a valid, current recommendation can become the confirmed displayed price', () => {
+  const option = { recommendedPricePerSeat: 1945, availableForRequestedSeats: true };
+  for (const draft of ['', '1945', '5000']) {
+    const state = model.getRequestBudgetState(draft, false, option);
+    assert.equal(state.canSubmitRequestDetails, true);
+    assert.equal(state.budgetValue, 2000);
+  }
+  for (const price of [null, 0, -1, NaN, Infinity]) {
+    const state = model.getRequestBudgetState('5000', false, { ...option, recommendedPricePerSeat: price });
+    assert.equal(state.canSubmitRequestDetails, false);
+    assert.equal(state.budgetValue, 0);
+  }
+  const invalidManual = model.getRequestBudgetState('invalid', true, option);
+  assert.equal(invalidManual.canSubmitRequestDetails, false);
+  assert.equal(invalidManual.budgetValue, 0);
+});
+
 test('vehicle recommendation endpoint shares identical reads in RTK Query and separates distinct routes', async () => {
   const calls = [];
   const baseApi = createApi({ reducerPath: 'testApi', baseQuery: async (args) => {
@@ -182,16 +199,23 @@ test('leaving the address field before its debounce ends does not launch a reque
   assert.equal(requests, 0);
 });
 
-function submissionHarness({ create, list = () => Promise.resolve([]) }) {
+function submissionHarness({ create, list = () => Promise.resolve([]), verified = true }) {
   const hooks = hookHarness();
   const dialogs = [], routes = [];
+  const identityChecks = [];
+  const identity = { isIdentityVerified: verified, checkIdentity: (...args) => identityChecks.push(args), refreshKycStatus() {} };
   const { useRequestSubmission } = loader({
     react: hooks.react,
     'expo-router': { useRouter: () => ({ replace: (route) => routes.push(route) }) },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog: (dialog) => dialogs.push(dialog) }) },
+    '@/hooks/useIdentityCheck': { useIdentityCheck: () => identity },
     '@/services/analytics': { trackEvent: async () => {} },
     '@/constants/network': { MUTATION_RECONCILIATION_DELAYS_MS: [0, 0] },
-    '@/utils/errorHelpers': { isAmbiguousTransportError: (error) => error.status === 'TIMEOUT_ERROR', getApiErrorMessage: (_error, fallback) => fallback },
+    '@/utils/errorHelpers': {
+      isAmbiguousTransportError: (error) => error.status === 'TIMEOUT_ERROR', getApiErrorMessage: (_error, fallback) => fallback,
+      isPassengerKycRequiredError: (error) => error.data?.code === 'PASSENGER_KYC_REQUIRED',
+      isExtraSeatsIdentityError: (error) => error.data?.reason === 'extra_seats',
+    },
     '@/utils/requestNavigation': { getTripRequestDetailHref: (id) => '/request/' + id },
     '@/store/api/tripRequestApi': {
       useCreateTripRequestMutation: () => [(args) => ({ unwrap: () => create(args) }), { isLoading: false }],
@@ -202,13 +226,64 @@ function submissionHarness({ create, list = () => Promise.resolve([]) }) {
   const props = {
     ...slice.createRequestDraft(min.getTime(), 40),
     departureAddress: 'Gombe', arrivalAddress: 'Limete', hasDepartureAddress: true, hasArrivalAddress: true,
-    canSubmitRequestDetails: true, parsedManualBudget: 2500, hasEditedBudget: true,
+    canSubmitRequestDetails: true, budgetValue: 2500, hasEditedBudget: true,
     selectedVehicleOptionUnavailable: false,
     getCurrentDepartureWindow: () => ({ min, max, flex: 40 }),
     setDepartureDateMin() {}, setFlexibilityMinutes() {}, setRequestFormStep() {}, setAddressSectionStep() {},
   };
-  return { hooks, dialogs, routes, props, render: () => hooks.render(() => useRequestSubmission(props)) };
+  return { hooks, dialogs, routes, props, identity, identityChecks, render: () => hooks.render(() => useRequestSubmission(props)) };
 }
+
+test('verified passengers can request more than three seats; backend receives the exact count', async () => {
+  let payload;
+  const app = submissionHarness({ create: async args => { payload = args; return { id: 'created' }; } });
+  app.props.numberOfSeats = 5;
+  app.props.hasSpecifiedNumberOfSeats = true;
+  app.props.selectedVehicleType = 'car';
+  await app.render().handleCreateRequest();
+  assert.equal(payload.numberOfSeats, 5);
+  assert.deepEqual(app.identityChecks, []);
+  app.hooks.unmount();
+});
+
+test('three or more seats require identity verification, not a vehicle or driver role', async () => {
+  let calls = 0;
+  const app = submissionHarness({ verified: false, create: async () => { calls++; return { id: 'created' }; } });
+  app.props.numberOfSeats = 3;
+  app.props.hasSpecifiedNumberOfSeats = true;
+  app.props.selectedVehicleType = 'car';
+  await app.render().handleCreateRequest();
+  assert.equal(calls, 0);
+  assert.deepEqual(app.identityChecks, [['extra_seats']]);
+  app.identity.isIdentityVerified = true;
+  await app.render().handleCreateRequest();
+  assert.equal(calls, 1);
+  app.hooks.unmount();
+});
+
+test('vehicle capacity still applies offline with a manually entered budget', async () => {
+  let calls = 0;
+  const app = submissionHarness({ create: async () => { calls++; return { id: 'created' }; } });
+  app.props.numberOfSeats = 4;
+  app.props.hasSpecifiedNumberOfSeats = true;
+  app.props.selectedVehicleType = 'motorcycle_3_wheels';
+  await app.render().handleCreateRequest();
+  assert.equal(calls, 0);
+  assert.match(app.dialogs[0].message, /3 place/);
+  app.hooks.unmount();
+});
+
+test('server extra-seat rejection overrides stale approved identity without replaying creation', async () => {
+  let calls = 0;
+  const app = submissionHarness({ create: async () => { calls++; throw { status: 400, data: { code: 'PASSENGER_KYC_REQUIRED', reason: 'extra_seats' } }; } });
+  app.props.numberOfSeats = 4;
+  app.props.hasSpecifiedNumberOfSeats = true;
+  await app.render().handleCreateRequest();
+  assert.equal(calls, 1);
+  assert.deepEqual(app.identityChecks, [['extra_seats', { force: true }]]);
+  assert.equal(app.render().isRequestSuccessVisible, false);
+  app.hooks.unmount();
+});
 
 test('submission prevents double taps, omits unspecified seats and waits for the success navigation choice', async () => {
   const pending = deferred();
@@ -232,17 +307,47 @@ test('submission prevents double taps, omits unspecified seats and waits for the
   app.hooks.unmount();
 });
 
-test('an explicit seat count is sent, while an untouched recommended price remains server-owned', async () => {
+test('confirmation sends the displayed recommendation per seat, not a new estimate or the total', async () => {
   let payload;
   const app = submissionHarness({ create: async (args) => { payload = args; return { id: 'created' }; } });
   app.props.hasSpecifiedNumberOfSeats = true;
   app.props.numberOfSeats = 2;
   app.props.hasEditedBudget = false;
+  app.props.budgetValue = model.getRequestBudgetState('1945', false, {
+    recommendedPricePerSeat: 1945, availableForRequestedSeats: true,
+  }).budgetValue;
   await app.render().handleCreateRequest();
   assert.equal(payload.numberOfSeats, 2);
-  assert.equal(Object.hasOwn(payload, 'maxPricePerSeat'), false);
+  assert.equal(payload.maxPricePerSeat, 2000);
+  assert.equal(payload.maxPricePerSeat * payload.numberOfSeats, 4000);
   app.render().goHomeAfterRequestSuccess();
   assert.deepEqual(app.routes, ['/(tabs)']);
+  app.hooks.unmount();
+});
+
+test('an unavailable price is never omitted for the server to calculate after confirmation', async () => {
+  let calls = 0;
+  const app = submissionHarness({ create: async () => { calls++; return { id: 'created' }; } });
+  for (const price of [0, -1, NaN, Infinity, undefined]) {
+    app.props.budgetValue = price;
+    await app.render().handleCreateRequest();
+  }
+  assert.equal(calls, 0);
+  assert.equal(app.dialogs.length, 5);
+  app.hooks.unmount();
+});
+
+test('a recommendation arriving during submission cannot change the confirmed snapshot', async () => {
+  const pending = deferred();
+  let payload;
+  const app = submissionHarness({ create: args => { payload = args; return pending.promise; } });
+  app.props.budgetValue = 2000;
+  const submitted = app.render().handleCreateRequest();
+  app.props.budgetValue = 3500;
+  app.render();
+  pending.resolve({ id: 'created' });
+  await submitted;
+  assert.equal(payload.maxPricePerSeat, 2000);
   app.hooks.unmount();
 });
 

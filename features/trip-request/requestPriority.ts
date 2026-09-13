@@ -3,6 +3,7 @@ import { calculateDistanceMeters } from '@/utils/navigation/routeProgress';
 import { getTripLocationCoordinate, normalizeTripMapCoordinate, type MapCoordinate } from '@/utils/tripCoordinates';
 
 export const HOME_REQUEST_HIGHLIGHT_MS = 10 * 60 * 1000;
+export { isRequestUnassigned } from './requestExpiration';
 
 export function compareRequestDepartureTimes(left: TripRequest, right: TripRequest) {
   const timestamp = (value: string) => {
@@ -33,13 +34,6 @@ export function rankRequestsByProximity(requests: readonly TripRequest[], origin
       return compareRequestDepartureTimes(left.request, right.request);
     })
     .map(({ request }) => request);
-}
-
-export function isRequestUnassigned(request: TripRequest) {
-  return (request.status === 'pending' || request.status === 'offers_received')
-    && !request.tripId
-    && !request.selectedDriverId
-    && !request.offers?.some(offer => offer.status === 'accepted');
 }
 
 export function formatRequestDistance(distanceMeters: number | null) {

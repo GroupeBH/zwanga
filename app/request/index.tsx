@@ -115,6 +115,7 @@ export default function RequestTripScreen() {
                   requestSeatsLabel={form.requestSeatsLabel}
                   hasSpecifiedNumberOfSeats={form.hasSpecifiedNumberOfSeats}
                   numberOfSeats={form.numberOfSeats}
+                  selectedVehicleType={form.selectedVehicleType}
                   setHasSpecifiedNumberOfSeats={form.setHasSpecifiedNumberOfSeats}
                   setNumberOfSeats={form.setNumberOfSeats}
                   requestPaymentMode={form.requestPaymentMode}

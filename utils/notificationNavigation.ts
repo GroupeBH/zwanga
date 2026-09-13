@@ -1,325 +1,125 @@
-import type { Router } from 'expo-router';
+import type { Href, Router } from 'expo-router';
 import type { User } from '@/types';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 
-/**
- * Fonction helper pour extraire l'ID du trip-request depuis différentes structures de données
- */
-export const extractTripRequestId = (data: Record<string, any>): string | null => {
-  // Chercher dans différentes variantes possibles
-  if (data?.requestId) return String(data.requestId);
-  if (data?.tripRequestId) return String(data.tripRequestId);
-  if (data?.trip_request_id) return String(data.trip_request_id);
-  if (data?.tripRequest?.id) return String(data.tripRequest.id);
-  if (data?.trip_request?.id) return String(data.trip_request.id);
-  if (data?.data?.requestId) return String(data.data.requestId);
-  if (data?.data?.tripRequestId) return String(data.data.tripRequestId);
-  if (data?.data?.trip_request_id) return String(data.data.trip_request_id);
-  if (data?.data?.tripRequest?.id) return String(data.data.tripRequest.id);
-  if (data?.data?.trip_request?.id) return String(data.data.trip_request.id);
-  
-  // Log pour déboguer si aucun ID trouvé
-  console.log('[notificationNavigation] Aucun ID de trip-request trouvé dans:', data);
+type NotificationData = Record<string, any>;
+
+function normalizeData(data: NotificationData): NotificationData {
+  return { ...data?.data, ...data };
+}
+
+function getId(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value !== 'string' && typeof value !== 'number') continue;
+    if (typeof value === 'number' && !Number.isFinite(value)) continue;
+    const id = String(value).trim();
+    if (id && /^[a-zA-Z0-9_-]+$/.test(id)) return id;
+  }
   return null;
+}
+
+function getType(data: NotificationData): string {
+  return typeof data.type === 'string' ? data.type.toLowerCase().replace(/-/g, '_') : '';
+}
+
+function isTripRequestType(type: string): boolean {
+  // An interruption request belongs to a TRIP, not to /trip-requests/:id.
+  return !type.includes('interruption') && (
+    type === 'trip_request' || type.startsWith('trip_request_') || type === 'new_trip_request' ||
+    type === 'driver_offer' || type === 'offer_accepted'
+  );
+}
+
+export const extractTripRequestId = (input: NotificationData): string | null => {
+  const data = normalizeData(input);
+  const explicitId = getId(data.tripRequestId, data.trip_request_id, data.tripRequest?.id, data.trip_request?.id);
+  if (explicitId) return explicitId;
+  // Legacy notifications used requestId. Never mistake an emergency's requestId for it.
+  const type = getType(data);
+  return !type || isTripRequestType(type) ? getId(data.requestId) : null;
 };
 
-/**
- * Fonction pour déterminer si l'utilisateur connecté est le conducteur du trajet
- */
-export const isUserDriverOfTrip = (data: Record<string, any>, currentUser: User | undefined): boolean => {
-  if (!currentUser?.id) return false;
-  
-  // Extraire tripId de différentes variantes
-  const tripId = data?.tripId || data?.trip?.id || data?.data?.tripId || data?.data?.trip?.id;
-  
-  // Vérifier si la notification est destinée à un conducteur via role
-  const role = data?.role || data?.data?.role;
-  if (role === 'driver') {
-    console.log('[notificationNavigation] Notification destinée à un conducteur (role=driver)');
-    // Si on a un tripId, c'est probablement pour un trajet que le conducteur a publié
-    if (tripId) {
-      return true;
-    }
-  }
-  
-  // Vérifier driverId dans toutes les variantes possibles de la structure
-  const driverId = 
-    data?.driverId || 
-    data?.trip?.driverId || 
-    data?.trip?.driver?.id ||
-    data?.data?.driverId || 
-    data?.data?.trip?.driverId ||
-    data?.data?.trip?.driver?.id;
-  
-  if (driverId) {
-    const isDriver = String(driverId) === String(currentUser.id);
-    console.log('[notificationNavigation] isUserDriverOfTrip check:', {
-      tripId,
-      driverId,
-      currentUserId: currentUser.id,
-      isDriver,
-      role,
-    });
-    return isDriver;
-  }
-  
-  // Si role=driver mais pas de driverId, on assume que c'est pour le conducteur connecté
-  if (role === 'driver' && tripId) {
-    console.log('[notificationNavigation] Notification pour conducteur (role=driver) - redirection vers manage');
-    return true;
-  }
-  
-  console.log('[notificationNavigation] driverId et role non trouvés dans les données de notification');
-  return false;
+export const isUserDriverOfTrip = (input: NotificationData, currentUser: User | undefined): boolean => {
+  const data = normalizeData(input);
+  if (data.role === 'passenger') return false;
+  if (data.role === 'driver') return true;
+  const driverId = getId(data.driverId, data.trip?.driverId, data.trip?.driver?.id);
+  return Boolean(currentUser?.id && driverId === String(currentUser.id));
 };
 
-/**
- * Fonction pour détecter si c'est une notification explicitement pour un conducteur
- */
-export const isDriverNotification = (type: string): boolean => {
-  const driverTypes = [
-    'trip_expiring',
-    'driver_reminder',
-    'booking_pending', // Une nouvelle réservation pour le conducteur
-    'trip_starting_soon',
-    'driver_trip_revenue',
-    'driver_booking_earning_confirmed',
-  ];
-  return driverTypes.includes(type);
-};
+export const isDriverNotification = (type: string): boolean => [
+  'trip_expiring',
+  'driver_reminder',
+  'booking_pending',
+  'trip_starting_soon',
+  'driver_trip_revenue',
+  'driver_booking_earning_confirmed',
+].includes(type);
 
-/**
- * Fonction pour déterminer l'URL du trajet (manage ou détail)
- */
-export const getTripUrl = (tripId: string, data: Record<string, any>, currentUser: User | undefined, type?: string): string => {
-  // Vérifier si la notification est destinée à un conducteur via role
-  const role = data?.role || data?.data?.role;
-  
-  // Si role=driver, rediriger vers la page de gestion
-  if (role === 'driver') {
-    console.log('[notificationNavigation] Notification pour conducteur (role=driver) - redirection vers trip/manage');
+export const getTripUrl = (
+  tripId: string,
+  input: NotificationData,
+  currentUser: User | undefined,
+  type?: string,
+): `/trip/${string}` | `/trip/manage/${string}` => {
+  const data = normalizeData(input);
+  // The recipient's role on THIS trip takes precedence over their account role.
+  if (data.role === 'passenger') return `/trip/${tripId}`;
+  if (isUserDriverOfTrip(data, currentUser) || (type && isDriverNotification(type))) {
     return `/trip/manage/${tripId}`;
   }
-  
-  // Si l'utilisateur est le conducteur du trajet (vérifié via driverId), rediriger vers la page de gestion
-  if (isUserDriverOfTrip(data, currentUser)) {
-    console.log('[notificationNavigation] Utilisateur est conducteur - redirection vers trip/manage');
-    return `/trip/manage/${tripId}`;
-  }
-  
-  // Si c'est une notification explicitement pour un conducteur, rediriger vers la page de gestion
-  // (même si driverId n'est pas dans les données, les notifications pour conducteurs sont envoyées au conducteur)
-  if (type && isDriverNotification(type)) {
-    console.log('[notificationNavigation] Notification pour conducteur (type) - redirection vers trip/manage');
-    return `/trip/manage/${tripId}`;
-  }
-  
-  // Sinon, rediriger vers la page de détail
-  console.log('[notificationNavigation] Redirection vers trip/[id] (vue publique)');
   return `/trip/${tripId}`;
 };
 
-/**
- * Fonction principale pour naviguer selon le type de notification
- * Cette fonction est utilisée à la fois pour les notifications push (background/foreground) 
- * et pour les notifications in-app
- */
-export const handleNotificationNavigation = (
-  data: Record<string, any>,
-  router: Router,
-  currentUser: User | undefined
-): void => {
-  try {
-    const { type, tripId, bookingId, conversationId } = data;
-    
-    // Extraire l'ID du trip-request de manière robuste
-    const requestId = extractTripRequestId(data);
-    
-    // Log pour déboguer
-    console.log('[notificationNavigation] Notification pressée:', { type, tripId, bookingId, conversationId, requestId, data });
+/** Single routing policy shared by push notifications and the notification inbox. */
+export function getNotificationHref(input: NotificationData, currentUser?: User): Href | null {
+  const data = normalizeData(input);
+  const type = getType(data);
+  const tripId = getId(data.tripId, data.trip_id, data.trip?.id);
+  const requestId = extractTripRequestId(data);
+  const bookingId = getId(data.bookingId, data.booking?.id);
+  const conversationId = getId(data.conversationId, data.conversation?.id);
 
-    // Attendre que l'app soit prête avant de naviguer (réduit à 100ms pour une réponse plus rapide)
-    setTimeout(() => {
-      try {
-      // Gérer les notifications de trajets
-      if (type === 'trip' || type === 'trip_update') {
-        if (tripId) {
-          router.push(getTripUrl(tripId, data, currentUser, type) as any);
-          return;
-        }
-      }
-
-      // Gérer les notifications de réservations
-      if (
-        type === 'booking' ||
-        type === 'booking_accepted' ||
-        type === 'booking_rejected' ||
-        type === 'booking_cancelled' ||
-        type === 'booking_pending'
-      ) {
-        if (tripId) {
-          router.push(getTripUrl(tripId, data, currentUser, type) as any);
-          return;
-        } else if (bookingId) {
-          router.push('/bookings');
-          return;
-        }
-      }
-
-      // Gérer les notifications de messages
-      if (type === 'message' || type === 'chat') {
-        if (conversationId) {
-          router.push({
-            pathname: '/chat/[id]',
-            params: { id: conversationId },
-          });
-          return;
-        }
-      }
-
-      // Gérer les notifications de gestion de trajet
-      if (type === 'trip_manage') {
-        if (tripId) {
-          router.push(`/trip/manage/${tripId}`);
-          return;
-        }
-      }
-
-      // Gérer les notifications de trajet en cours (notification permanente)
-      if (type === 'ongoing_trip') {
-        // Utiliser navigateTo si disponible (défini par ongoingTripNotification.ts)
-        const navigateTo = data?.navigateTo;
-        if (navigateTo) {
-          router.push(navigateTo);
-          return;
-        }
-        // Fallback: utiliser tripId et role
-        if (tripId) {
-          const role = data?.role;
-          if (role === 'driver') {
-            router.push(`/trip/manage/${tripId}`);
-          } else {
-            router.push(`/trip/${tripId}`);
-          }
-          return;
-        }
-      }
-
-      // Ouvrir directement le tableau de parrainage.
-      if (type === 'referral_new_referral') {
-        router.push('/referrals' as any);
-        return;
-      }
-
-      // Gérer les notifications explicitement pour conducteurs
-      if (
-        type === 'driver_trip_revenue' ||
-        type === 'driver_booking_earning_confirmed'
-      ) {
-        router.push('/driver-earnings' as any);
-        return;
-      }
-
-      if (isDriverNotification(type) && tripId) {
-        router.push(`/trip/manage/${tripId}`);
-        return;
-      }
-
-      // Gérer les notifications de demandes de trajet
-      // Gérer les variantes avec underscore et tiret
-      const isTripRequestType = 
-        type === 'trip_request' ||
-        type === 'trip-request' ||
-        type === 'trip_request_accepted' ||
-        type === 'trip-request-accepted' ||
-        type === 'trip_request_rejected' ||
-        type === 'trip-request-rejected' ||
-        type === 'trip_request_cancelled' ||
-        type === 'trip-request-cancelled' ||
-        type === 'trip_request_pending' ||
-        type === 'trip-request-pending' ||
-        type === 'new_trip_request' ||
-        type === 'new-trip-request' ||
-        type === 'trip_request_new' ||
-        type === 'trip-request-new' ||
-        (typeof type === 'string' && type.toLowerCase().includes('trip') && type.toLowerCase().includes('request'));
-      
-      if (isTripRequestType) {
-        console.log('[notificationNavigation] Notification de demande de trajet détectée, requestId:', requestId);
-        if (requestId) {
-          console.log('[notificationNavigation] Navigation vers /request-details/' + requestId);
-          try {
-            router.push(getTripRequestDetailHref(requestId));
-          } catch (error) {
-            console.error('[notificationNavigation] Erreur lors de la navigation:', error);
-            router.push(getTripRequestDetailHref(requestId));
-          }
-          return;
-        } else if (tripId) {
-          // Si une demande a créé un trajet, naviguer vers le trajet
-          console.log('[notificationNavigation] Navigation vers /trip/' + tripId);
-          router.push(getTripUrl(tripId, data, currentUser, type) as any);
-          return;
-        }
-        console.warn('[notificationNavigation] Notification de demande de trajet sans requestId ni tripId');
-        // Si c'est une notification de demande de trajet mais sans ID, ne rien faire
-        return;
-      }
-
-      // Gérer les notifications d'avis
-      if (type === 'rate' || type === 'review') {
-        if (tripId) {
-          router.push(`/rate/${tripId}`);
-          return;
-        }
-      }
-
-      // Fallback : naviguer selon les IDs disponibles même sans type spécifique
-      // Vérifier requestId AVANT tripId pour éviter de naviguer vers un trajet au lieu d'une demande
-      // Ré-extraire l'ID au cas où il n'aurait pas été trouvé précédemment
-      const fallbackRequestId = requestId || extractTripRequestId(data);
-      if (fallbackRequestId) {
-        console.log('[notificationNavigation] Fallback: Navigation vers /request-details/' + fallbackRequestId);
-        try {
-          router.push(getTripRequestDetailHref(fallbackRequestId));
-        } catch (error) {
-          console.error('[notificationNavigation] Erreur lors de la navigation (fallback):', error);
-          router.push(getTripRequestDetailHref(fallbackRequestId));
-        }
-        return;
-      }
-      if (tripId) {
-        router.push(getTripUrl(tripId, data, currentUser, type) as any);
-        return;
-      }
-      if (conversationId) {
-        router.push({
-          pathname: '/chat/[id]',
-          params: { id: conversationId },
-        });
-        return;
-      }
-      if (bookingId) {
-        router.push('/bookings');
-        return;
-      }
-
-      // Par défaut, ouvrir l'app sur l'écran principal
-        router.push('/(tabs)');
-      } catch (error) {
-        console.warn('[notificationNavigation] Navigation différée impossible:', error);
-        try {
-          router.replace('/(tabs)');
-        } catch (fallbackError) {
-          console.warn(
-            '[notificationNavigation] Navigation de secours impossible:',
-            fallbackError,
-          );
-        }
-      }
-    }, 100);
-  } catch (error) {
-    console.warn('[notificationNavigation] Erreur lors de la navigation depuis la notification:', error);
+  if (type === 'referral_new_referral') return '/referrals';
+  if (type === 'driver_trip_revenue' || type === 'driver_booking_earning_confirmed') return '/driver-earnings';
+  if ((type === 'message' || type === 'chat') && conversationId) {
+    return { pathname: '/chat/[id]', params: { id: conversationId } };
   }
+  if ((type === 'rate' || type === 'review') && tripId) return `/rate/${tripId}`;
+  if (type === 'trip_manage' && tripId) return `/trip/manage/${tripId}`;
+  if (type === 'ongoing_trip' && !tripId && typeof data.navigateTo === 'string' &&
+    /^\/trip\/(manage\/)?[a-zA-Z0-9_-]+$/.test(data.navigateTo)) {
+    return data.navigateTo as Href;
+  }
+
+  // Acceptance creates a real trip. Starting, pausing and emergency events must open it,
+  // even if the payload also contains the original tripRequestId or an interruption ID.
+  if (tripId && (type === 'trip_request_accepted' || type === 'trip_request_started' ||
+    type === 'trip_request_trip_started' || !isTripRequestType(type))) {
+    return getTripUrl(tripId, data, currentUser, type);
+  }
+
+  // Offers, expiration and overdue-pickup recovery still belong to the request.
+  if (requestId) return getTripRequestDetailHref(requestId);
+  if (tripId) return getTripUrl(tripId, data, currentUser, type);
+  if (conversationId) return { pathname: '/chat/[id]', params: { id: conversationId } };
+  if (bookingId) return '/bookings';
+  return null;
+}
+
+export const handleNotificationNavigation = (
+  data: NotificationData,
+  router: Router,
+  currentUser: User | undefined,
+): void => {
+  const href = getNotificationHref(data, currentUser);
+  // Allow a dismissed notification/modal to release its native view before navigation.
+  setTimeout(() => {
+    try {
+      router.push(href ?? '/(tabs)');
+    } catch (error) {
+      console.warn('[notificationNavigation] Impossible d’ouvrir la notification:', error);
+    }
+  }, 100);
 };
 

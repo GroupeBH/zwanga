@@ -4,6 +4,11 @@ import LocationPickerModal, { MapLocationSelection } from '@/components/Location
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import { hasTripRequestExpired } from '@/features/trip-request/requestExpiration';
+import { useAssignedTripNavigation } from '@/hooks/useAssignedTripNavigation';
+import { usePassengerIdentityVerification } from '@/hooks/usePassengerIdentityVerification';
+import { PassengerSeatNotice } from '@/components/PassengerSeatNotice';
+import { getPassengerSeatValidation, getPassengerVehicleSeatCapacity } from '@/utils/passengerSeats';
 import { useGetTripByIdQuery, useStartTripMutation } from '@/store/api/tripApi';
 import {
   useAcceptTripRequestMutation,
@@ -25,6 +30,7 @@ import {
   isDailyPublicationLimitError,
   isDriverRequiredError,
   isPassengerKycRequiredError,
+  isExtraSeatsIdentityError,
 } from '@/utils/errorHelpers';
 import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import { getRouteCoordinates } from '@/utils/routeApi';
@@ -309,19 +315,31 @@ export default function TripRequestDetailsScreen() {
   // État pour le polling interval dynamique
   const [pollingInterval, setPollingInterval] = useState(45_000);
   
-  const { data: tripRequest, isLoading, error, refetch, isError } = useGetTripRequestByIdQuery(id || '', {
+  const { currentData: tripRequest, isLoading, isFetching: isFetchingRequest, error, refetch, isError } = useGetTripRequestByIdQuery(id || '', {
     skip: !id || isCreateRouteAlias,
     pollingInterval: isScreenActive ? pollingInterval : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
+    refetchOnMountOrArgChange: true,
     refetchOnReconnect: false,
   });
-  const { data: assignedTrip } = useGetTripByIdQuery(tripRequest?.tripId || '', {
+  const { currentData: assignedTrip, error: assignedTripError } = useGetTripByIdQuery(tripRequest?.tripId || '', {
     skip: !tripRequest?.tripId,
     pollingInterval: isScreenActive ? (tripRequest?.status === 'driver_selected' ? 30_000 : 0) : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
+    refetchOnMountOrArgChange: true,
     refetchOnReconnect: false,
+  });
+  const { passengerTripId, isOpeningAssignedTrip } = useAssignedTripNavigation({
+    requestId: id,
+    tripRequest,
+    assignedTrip,
+    userId: currentUser?.id,
+    requestError: error,
+    tripError: assignedTripError,
+    isScreenActive,
+    router,
   });
 
   useEffect(() => {
@@ -341,32 +359,11 @@ export default function TripRequestDetailsScreen() {
     }
   }, [tripRequest?.status]);
 
-  // Debug: Log pour voir ce qui se passe
-  React.useEffect(() => {
-    if (id && !isCreateRouteAlias) {
-      console.log('[TripRequestDetails] Loading trip request with ID:', id);
+  useEffect(() => {
+    if (__DEV__ && error) {
+      console.warn('[TripRequestDetails] Chargement de la demande impossible:', error);
     }
-    if (error) {
-      console.error('[TripRequestDetails] Error loading trip request:', error);
-      console.error('[TripRequestDetails] Error details:', JSON.stringify(error, null, 2));
-    }
-    if (tripRequest) {
-      console.log('[TripRequestDetails] Trip request loaded:', tripRequest.id);
-    }
-  }, [id, error, tripRequest, isCreateRouteAlias]);
-
-  // Debug: Log pour voir ce qui se passe
-  React.useEffect(() => {
-    if (id && !isCreateRouteAlias) {
-      console.log('[TripRequestDetails] Loading trip request with ID:', id);
-    }
-    if (error) {
-      console.error('[TripRequestDetails] Error loading trip request:', error);
-    }
-    if (tripRequest) {
-      console.log('[TripRequestDetails] Trip request loaded:', tripRequest.id);
-    }
-  }, [id, error, tripRequest, isCreateRouteAlias]);
+  }, [error]);
   const { data: vehicles = [] } = useGetVehiclesQuery(undefined, {
     skip: !isDriverAccount,
   });
@@ -632,14 +629,21 @@ export default function TripRequestDetailsScreen() {
   );
 
   const canStartAssignedTrip = useMemo(
-    () => isCurrentDriverAssigned && !tripRequest?.tripId,
-    [isCurrentDriverAssigned, tripRequest?.tripId]
+    () => isCurrentDriverAssigned && tripRequest?.status === 'driver_selected' && !tripRequest?.tripId,
+    [isCurrentDriverAssigned, tripRequest?.status, tripRequest?.tripId]
   );
 
   const canAcceptDirectly = useMemo(
     () => canAcceptRequest && compatibleActiveVehicles.length > 0,
     [canAcceptRequest, compatibleActiveVehicles.length],
   );
+
+  useEffect(() => {
+    if (showDirectAcceptModal && !isAcceptingTripRequest &&
+      (tripRequest?.status === 'expired' || tripRequest?.status === 'cancelled')) {
+      setShowDirectAcceptModal(false);
+    }
+  }, [isAcceptingTripRequest, showDirectAcceptModal, tripRequest?.status]);
 
   const editDepartureAddress =
     editAddressInputMode === 'manual'
@@ -649,7 +653,12 @@ export default function TripRequestDetailsScreen() {
     editAddressInputMode === 'manual'
       ? editArrivalManualAddress.trim()
       : getLocationText(editArrivalLocation, editArrivalManualAddress);
-  const parsedEditNumberOfSeats = Number.parseInt(editNumberOfSeats, 10);
+  const parsedEditNumberOfSeats = Number(editNumberOfSeats);
+  const editSeatCapacity = getPassengerVehicleSeatCapacity(editVehicleType);
+  const openEditIdentityVerification = usePassengerIdentityVerification(
+    () => setShowEditForm(false),
+    () => setShowEditForm(true),
+  );
   const selectedEditVehicleOption = editVehicleOptions.find(
     (option) => option.vehicleType === editVehicleType,
   );
@@ -666,7 +675,7 @@ export default function TripRequestDetailsScreen() {
     !editScheduleError &&
     Number.isFinite(parsedEditNumberOfSeats) &&
     parsedEditNumberOfSeats >= 1 &&
-    parsedEditNumberOfSeats <= 2 &&
+    !getPassengerSeatValidation(parsedEditNumberOfSeats, true, editSeatCapacity) &&
     isEditVehicleSelectionValid,
   );
 
@@ -678,7 +687,7 @@ export default function TripRequestDetailsScreen() {
       !editArrivalAddress ||
       !Number.isFinite(parsedEditNumberOfSeats) ||
       parsedEditNumberOfSeats < 1 ||
-      parsedEditNumberOfSeats > 2
+      !Number.isSafeInteger(parsedEditNumberOfSeats)
     ) {
       setEditVehicleOptions([]);
       setEditVehiclePriceMultiplier(1);
@@ -962,6 +971,15 @@ export default function TripRequestDetailsScreen() {
 
   const handleDirectAcceptTripRequest = async (startImmediately: boolean) => {
     if (!tripRequest || !id || !directAcceptDepartureDate) return;
+    if (!canAcceptRequest || hasTripRequestExpired(tripRequest)) {
+      setShowDirectAcceptModal(false);
+      showDialog({
+        title: 'Demande indisponible',
+        message: "Cette demande n'est plus disponible. Consultez les autres demandes de trajet.",
+        variant: 'info',
+      });
+      return;
+    }
     if (compatibleActiveVehicles.length === 0) {
       setShowDirectAcceptModal(false);
       showDialog({
@@ -1106,10 +1124,10 @@ export default function TripRequestDetailsScreen() {
         title: isQuotaError
           ? 'Abonnement conducteur requis'
           : isPassengerKycError
-            ? 'KYC passager requis'
+            ? 'Identité du passager à vérifier'
             : 'Erreur',
         message: isPassengerKycError
-          ? "Ce passager n'a pas encore un KYC approuvé. Acceptez sans exigence KYC, ou demandez-lui de finaliser sa vérification avant de continuer."
+          ? "L'identité de ce passager n'est pas encore vérifiée. Acceptez sans cette exigence, ou demandez-lui de terminer sa vérification avant de continuer."
           : resolvedMessage,
         variant: isQuotaError || isPassengerKycError ? 'warning' : 'danger',
         actions: isQuotaError
@@ -1131,6 +1149,7 @@ export default function TripRequestDetailsScreen() {
 
   const handleOpenDirectAcceptModal = () => {
     if (!tripRequest || !directAcceptDepartureDate) return;
+    if (!canAcceptRequest || hasTripRequestExpired(tripRequest)) return;
     if (compatibleActiveVehicles.length === 0) {
       showDialog({
         title: 'Véhicule non disponible',
@@ -1325,11 +1344,11 @@ export default function TripRequestDetailsScreen() {
     if (
       !Number.isFinite(parsedEditNumberOfSeats) ||
       parsedEditNumberOfSeats < 1 ||
-      parsedEditNumberOfSeats > 2
+      getPassengerSeatValidation(parsedEditNumberOfSeats, true, editSeatCapacity)
     ) {
       showDialog({
         title: 'Nombre de places invalide',
-        message: 'Choisissez entre 1 et 2 places pour cette demande.',
+        message: getPassengerSeatValidation(parsedEditNumberOfSeats, true, editSeatCapacity)?.message || 'Indiquez un nombre entier de places à partir de 1.',
         variant: 'warning',
       });
       return;
@@ -1340,6 +1359,11 @@ export default function TripRequestDetailsScreen() {
         message: 'Choisissez un type de véhicule disponible avant d\'enregistrer.',
         variant: 'warning',
       });
+      return;
+    }
+    const editSeatError = getPassengerSeatValidation(parsedEditNumberOfSeats, isIdentityVerified, editSeatCapacity);
+    if (editSeatError?.reason === 'identity') {
+      openEditIdentityVerification();
       return;
     }
 
@@ -1358,8 +1382,6 @@ export default function TripRequestDetailsScreen() {
       return;
     }
 
-    const vehicleTypeChanged = editVehicleType !== tripRequest?.vehicleType;
-
     try {
       await updateTripRequest({
         id,
@@ -1377,8 +1399,7 @@ export default function TripRequestDetailsScreen() {
           numberOfSeats: parsedEditNumberOfSeats,
           vehicleType: editVehicleType,
           ...(
-            parsedEditBudget !== undefined &&
-            (editHasEditedBudget || !vehicleTypeChanged)
+            parsedEditBudget !== undefined
               ? { maxPricePerSeat: parsedEditBudget }
               : {}
           ),
@@ -1397,6 +1418,10 @@ export default function TripRequestDetailsScreen() {
         });
       }, Platform.OS === 'ios' ? 350 : 0);
     } catch (error: any) {
+      if (isPassengerKycRequiredError(error)) {
+        openEditIdentityVerification(isExtraSeatsIdentityError(error) ? 'extra_seats' : 'request');
+        return;
+      }
       showDialog({
         title: 'Erreur',
         message: getApiErrorMessage(error, 'Impossible de modifier la demande.'),
@@ -1442,7 +1467,7 @@ export default function TripRequestDetailsScreen() {
     });
   };
 
-  if (isLoading) {
+  if (isLoading || (isFetchingRequest && !tripRequest) || isOpeningAssignedTrip) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
@@ -1454,6 +1479,7 @@ export default function TripRequestDetailsScreen() {
         </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
+          {isOpeningAssignedTrip && <Text style={styles.emptyText}>Ouverture de votre trajet…</Text>}
         </View>
       </SafeAreaView>
     );
@@ -1477,6 +1503,12 @@ export default function TripRequestDetailsScreen() {
           <Ionicons name="alert-circle-outline" size={64} color={Colors.danger} />
           <Text style={styles.emptyTitle}>Erreur</Text>
           <Text style={styles.emptyText}>{errorMessage}</Text>
+          {passengerTripId && (
+            <TouchableOpacity style={styles.retryButton} onPress={() => handleViewTrip(passengerTripId)}>
+              <Ionicons name="navigate-outline" size={20} color={Colors.white} />
+              <Text style={styles.retryButtonText}>Voir mon trajet</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={styles.retryButton}
             onPress={() => refetch()}
@@ -1549,10 +1581,11 @@ export default function TripRequestDetailsScreen() {
   };
   const statusConfig = statusConfigMap[tripRequest.status] || statusConfigMap.pending;
 
-  const pendingOffersCount = tripRequest.offers?.filter((offer) => offer.status === 'pending').length ?? 0;
+  const isRequestClosed = tripRequest.status === 'expired' || tripRequest.status === 'cancelled';
+  const pendingOffersCount = isRequestClosed ? 0 : tripRequest.offers?.filter((offer) => offer.status === 'pending').length ?? 0;
   const ownerDisplayedBudget = tripRequest.selectedPricePerSeat ?? tripRequest.maxPricePerSeat;
   const heroStepIndex =
-    tripRequest.tripId
+    isRequestClosed ? -1 : tripRequest.tripId
       ? 3
       : tripRequest.status === 'driver_selected'
         ? 2
@@ -1563,6 +1596,14 @@ export default function TripRequestDetailsScreen() {
             : -1;
   const heroSteps = ['Demande', 'Réponses', 'Conducteur', 'Départ'];
   const ownerHero = (() => {
+    if (isRequestClosed) {
+      return {
+        title: tripRequest.status === 'expired' ? 'Votre demande a expiré' : 'Votre demande est annulée',
+        subtitle: tripRequest.tripId
+          ? "Cette demande n'est plus active. Le trajet associé reste consultable."
+          : "Cette demande n'est plus disponible. Vous pouvez créer une nouvelle demande.",
+      };
+    }
     if (tripRequest.tripId) {
       return {
         title: 'Votre course est prête',
@@ -1574,7 +1615,7 @@ export default function TripRequestDetailsScreen() {
         title: tripRequest.selectedDriverName
           ? `${tripRequest.selectedDriverName} prépare votre prise en charge`
           : 'Votre conducteur a été confirmé',
-        subtitle: 'Restez disponible, la prise en charge va bientôt commencer.',
+        subtitle: "Cette demande reste active jusqu'à 2 heures après l'heure limite de départ souhaitée.",
       };
     }
     if (tripRequest.status === 'offers_received' || pendingOffersCount > 0) {
@@ -1586,28 +1627,25 @@ export default function TripRequestDetailsScreen() {
         subtitle: "Le conducteur retenu apparaîtra ici dès qu'il sera confirmé.",
       };
     }
-    if (tripRequest.status === 'cancelled') {
-      return {
-        title: 'Votre demande est annulée',
-        subtitle: "Cette demande n'est plus visible pour les conducteurs.",
-      };
-    }
-    if (tripRequest.status === 'expired') {
-      return {
-        title: 'Votre demande a expiré',
-        subtitle: "Aucun conducteur n'a répondu dans les deux heures. Vous pouvez relancer une nouvelle demande.",
-      };
-    }
     return {
       title: 'Nous cherchons un conducteur',
-      subtitle: "Votre demande circule auprès des conducteurs et n'expirera après deux heures que si personne ne répond.",
+      subtitle: "Sans conducteur confirmé, votre demande expire 30 secondes après l'heure limite de départ souhaitée.",
     };
   })();
   const ownerHeroHintMessage =
-    pendingOffersCount > 0
-      ? 'Les réponses arrivent. Le conducteur retenu apparaîtra ici.'
-      : "Vous serez alerté dès qu'un conducteur se manifeste.";
+    isRequestClosed
+      ? "Cette demande n'est plus disponible pour les conducteurs."
+      : pendingOffersCount > 0
+        ? 'Les réponses arrivent. Le conducteur retenu apparaîtra ici.'
+        : "Vous serez alerté dès qu'un conducteur se manifeste.";
   const driverHero = (() => {
+    if (isRequestClosed) {
+      return {
+        badge: statusConfig.label,
+        title: tripRequest.status === 'expired' ? 'Cette demande a expiré' : 'Cette demande est annulée',
+        subtitle: "Elle n'est plus disponible. Consultez les autres demandes depuis l'accueil ou la recherche.",
+      };
+    }
     if (canOpenAssignedTrip) {
       return {
         badge: 'Retenu',
@@ -1652,7 +1690,7 @@ export default function TripRequestDetailsScreen() {
     }
     if (!isIdentityVerified) {
       return {
-        badge: 'KYC',
+        badge: 'Identité',
         title: 'Vérifiez votre identité pour accepter',
         subtitle: 'Une vérification rapide est nécessaire avant d\'accepter cette demande.',
       };
@@ -1812,7 +1850,7 @@ export default function TripRequestDetailsScreen() {
                   <Ionicons name="shield-checkmark-outline" size={17} color={Colors.primary} />
                 </View>
                 <View style={styles.ownerPassengerKycNoticeCopy}>
-                  <Text style={styles.ownerPassengerKycNoticeTitle}>KYC passager requis</Text>
+                  <Text style={styles.ownerPassengerKycNoticeTitle}>Identité vérifiée requise</Text>
                   <Text style={styles.ownerPassengerKycNoticeText}>
                     Ce conducteur demande une vérification d&apos;identité approuvée avant la prise en charge.
                   </Text>
@@ -1858,7 +1896,7 @@ export default function TripRequestDetailsScreen() {
                 onPress={() => handleViewTrip(tripRequest.tripId!)}
               >
                 <Ionicons name="navigate-outline" size={18} color={Colors.white} />
-                <Text style={styles.ownerHeroPrimaryButtonText}>Suivre la course</Text>
+                <Text style={styles.ownerHeroPrimaryButtonText}>Voir mon trajet</Text>
               </TouchableOpacity>
             ) : (
               <View style={styles.ownerHeroHintRow}>
@@ -2241,7 +2279,7 @@ export default function TripRequestDetailsScreen() {
                       />
                     </View>
                     <View style={styles.directPassengerKycCopy}>
-                      <Text style={styles.directPassengerKycTitle}>Exiger KYC passager</Text>
+                      <Text style={styles.directPassengerKycTitle}>Passagers vérifiés uniquement</Text>
                       <Text style={styles.directPassengerKycSubtitle}>
                         Le passager devra avoir une vérification d&apos;identité approuvée avant que ce trajet continue.
                       </Text>
@@ -2402,16 +2440,16 @@ export default function TripRequestDetailsScreen() {
                   <TouchableOpacity
                     style={[
                       styles.directAcceptSecondaryButton,
-                      (!directAcceptVehicle || isAcceptingTripRequest || isStartingTrip) &&
+                      (!canAcceptRequest || !directAcceptVehicle || isAcceptingTripRequest || isStartingTrip) &&
                         styles.directAcceptSecondaryButtonDisabled,
                     ]}
                     onPress={() => handleDirectAcceptTripRequest(false)}
-                    disabled={!directAcceptVehicle || isAcceptingTripRequest || isStartingTrip}
+                    disabled={!canAcceptRequest || !directAcceptVehicle || isAcceptingTripRequest || isStartingTrip}
                   >
                     <Text
                       style={[
                         styles.directAcceptSecondaryButtonText,
-                        (!directAcceptVehicle || isAcceptingTripRequest || isStartingTrip) &&
+                        (!canAcceptRequest || !directAcceptVehicle || isAcceptingTripRequest || isStartingTrip) &&
                           styles.directAcceptButtonTextDisabled,
                       ]}
                     >
@@ -2421,11 +2459,11 @@ export default function TripRequestDetailsScreen() {
                   <TouchableOpacity
                     style={[
                       styles.directAcceptPrimaryButton,
-                      (!directAcceptVehicle || isAcceptingTripRequest || isStartingTrip) &&
+                      (!canAcceptRequest || !directAcceptVehicle || isAcceptingTripRequest || isStartingTrip) &&
                         styles.directAcceptButtonDisabled,
                     ]}
                     onPress={() => handleDirectAcceptTripRequest(true)}
-                    disabled={!directAcceptVehicle || isAcceptingTripRequest || isStartingTrip}
+                    disabled={!canAcceptRequest || !directAcceptVehicle || isAcceptingTripRequest || isStartingTrip}
                   >
                     {isAcceptingTripRequest || isStartingTrip ? (
                       <ActivityIndicator size="small" color={Colors.white} />
@@ -2749,13 +2787,13 @@ export default function TripRequestDetailsScreen() {
                       </View>
                       <View style={styles.editRowInputs}>
                         <View style={{flex: 1}}>
-                          <Text style={styles.editLabel}>Places demandées (facultatif)</Text>
+                          <Text style={styles.editLabel}>Places demandées</Text>
                           <TextInput
                             style={styles.editInput}
                             keyboardType="numeric"
                             placeholder="Ex: 1"
                             value={editNumberOfSeats}
-                            onChangeText={setEditNumberOfSeats}
+                            onChangeText={(value) => setEditNumberOfSeats(value.replace(/[^0-9]/g, ''))}
                           />
                         </View>
                         <View style={{flex: 1}}>
@@ -2773,6 +2811,11 @@ export default function TripRequestDetailsScreen() {
                         </View>
                       </View>
                     </View>
+
+                    {getPassengerSeatValidation(parsedEditNumberOfSeats, true, editSeatCapacity) && (
+                      <Text style={styles.editScheduleError}>{getPassengerSeatValidation(parsedEditNumberOfSeats, true, editSeatCapacity)?.message}</Text>
+                    )}
+                    <PassengerSeatNotice isIdentityVerified={isIdentityVerified} capacity={editSeatCapacity} onVerify={() => openEditIdentityVerification()} />
 
                     {/* Description */}
                     <View style={styles.editSection}>

@@ -1,4 +1,5 @@
 import { Colors } from '@/constants/styles';
+import { ProfileIdentitySection } from './ProfileIdentitySection';
 import { styles } from '@/features/profile/ProfileDashboard.styles';
 import type { useProfileController } from '@/hooks/profile/useProfileController';
 import Animated, { FadeInDown } from '@/utils/reanimated';
@@ -16,6 +17,10 @@ type Props = Pick<ReturnType<typeof useProfileController>,
   | 'driverTripsCount'
   | 'handleOpenKycModal'
   | 'isDriver'
+  | 'isKycApproved'
+  | 'isKycPending'
+  | 'isKycBusy'
+  | 'kycLoading'
   | 'isKycRejected'
   | 'isPriorityCtaBusy'
   | 'kycStatus'
@@ -28,6 +33,10 @@ export function ProfileDashboard({
   driverTripsCount,
   handleOpenKycModal,
   isDriver,
+  isKycApproved,
+  isKycPending,
+  isKycBusy,
+  kycLoading,
   isKycRejected,
   isPriorityCtaBusy,
   kycStatus,
@@ -35,7 +44,7 @@ export function ProfileDashboard({
   quickActionItems,
 }: Props) {
   return (<Animated.View entering={FadeInDown.delay(120)} style={styles.profileOverviewPanel}>
-    <View style={styles.profileOverviewHeader}>
+    <View style={[styles.profileOverviewHeader, !isDriver && styles.passengerOverviewHeader]}>
       <View style={styles.profileOverviewTitleBlock}>
         <Text style={styles.profileOverviewTitle}>Tableau de bord</Text>
         <Text style={styles.profileOverviewSubtitle}>
@@ -46,14 +55,15 @@ export function ProfileDashboard({
         activeOpacity={0.85}
         disabled={isPriorityCtaBusy}
         onPress={priorityCta.onPress}
-        style={[styles.profileOverviewCta, isPriorityCtaBusy && styles.profileOverviewCtaDisabled]}
+        accessibilityRole="button"
+        style={[styles.profileOverviewCta, !isDriver && styles.becomeDriverButton, isPriorityCtaBusy && styles.profileOverviewCtaDisabled]}
       >
         {isPriorityCtaBusy ? (
           <ActivityIndicator size="small" color={Colors.white} />
         ) : (
           <>
             <Ionicons name={priorityCta.icon} size={16} color={Colors.white} />
-            <Text numberOfLines={1} style={styles.profileOverviewCtaText}>
+            <Text style={styles.profileOverviewCtaText}>
               {priorityCta.label}
             </Text>
           </>
@@ -61,7 +71,15 @@ export function ProfileDashboard({
       </TouchableOpacity>
     </View>
 
-    <View style={styles.driverStatusGrid}>
+    <ProfileIdentitySection
+      approved={isKycApproved}
+      pending={isKycPending}
+      rejected={isKycRejected}
+      busy={isKycBusy || kycLoading}
+      onPress={handleOpenKycModal}
+    />
+
+    {driverStatusItems.length > 0 && <View style={styles.driverStatusGrid}>
       {driverStatusItems.map((item) => (
         <View key={item.label} style={styles.driverStatusItem}>
           <View style={[styles.driverStatusIcon, { backgroundColor: item.color + '14' }]}>
@@ -73,7 +91,7 @@ export function ProfileDashboard({
           </Text>
         </View>
       ))}
-    </View>
+    </View>}
 
     {isKycRejected && kycStatus?.rejectionReason ? (
       <TouchableOpacity activeOpacity={0.85} onPress={handleOpenKycModal} style={styles.profileAlert}>

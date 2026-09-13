@@ -22,7 +22,7 @@ export const HOME_PASSIVE_LIST_POLL_MS = 120_000;
 
 export const DRIVER_UPCOMING_TRIP_HIGHLIGHT_WINDOW_MS = 3 * 60 * 60 * 1000;
 
-export const UNACCEPTED_TRIP_REQUEST_EXPIRATION_MS = 12 * 60 * 60 * 1000;
+export { UNACCEPTED_TRIP_REQUEST_EXPIRATION_MS, isTripRequestWithinAcceptanceWindow } from '@/features/trip-request/requestExpiration';
 
 export const HOME_COLORS = {
   ink: '#07112A',
@@ -59,31 +59,6 @@ export const tripRequestStatusMeta: Record<
   driver_selected: { label: 'Attribuée', color: Colors.success, bg: Colors.success + '16', icon: 'checkmark-circle-outline' },
   cancelled: { label: 'Annulée', color: Colors.danger, bg: Colors.danger + '16', icon: 'close-circle-outline' },
   expired: { label: 'Expirée', color: Colors.gray[500], bg: Colors.gray[200], icon: 'time-outline' },
-};
-
-export const isTripRequestWithinAcceptanceWindow = (
-  request: TripRequest,
-  now = Date.now(),
-) => {
-  const hasAcceptedDriver =
-    request.status === 'driver_selected' ||
-    Boolean(request.selectedDriverId) ||
-    Boolean(request.tripId) ||
-    Boolean(request.offers?.some((offer) => offer.status === 'accepted'));
-
-  if (hasAcceptedDriver) {
-    return true;
-  }
-
-  if (request.status !== 'pending' && request.status !== 'offers_received') {
-    return false;
-  }
-
-  const latestAcceptedDepartureAt = new Date(request.departureDateMax).getTime();
-  return (
-    Number.isFinite(latestAcceptedDepartureAt) &&
-    latestAcceptedDepartureAt + UNACCEPTED_TRIP_REQUEST_EXPIRATION_MS > now
-  );
 };
 
 export const bookingStatusMeta: Record<

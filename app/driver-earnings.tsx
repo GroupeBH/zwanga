@@ -179,7 +179,7 @@ export default function DriverEarningsScreen() {
       showDialog({
         variant: 'warning',
         title: 'Vérification requise',
-        message: 'Votre identité KYC doit être approuvée avant tout versement Mobile Money.',
+        message: 'Votre identité doit être vérifiée avant tout versement Mobile Money.',
       });
       return;
     }
@@ -263,7 +263,7 @@ export default function DriverEarningsScreen() {
             </Text>
           </TouchableOpacity>
           <Text style={styles.payoutDestination}>
-            Destination : {maskPhone(summary?.payoutPhone)} · KYC {summary?.kycApproved ? 'validé' : 'requis'}
+            Destination : {maskPhone(summary?.payoutPhone)} · Identité {summary?.kycApproved ? 'vérifiée' : 'à vérifier'}
           </Text>
 
           <View style={styles.balanceBreakdown}>

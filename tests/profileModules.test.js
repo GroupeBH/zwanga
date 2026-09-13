@@ -52,6 +52,54 @@ test('vehicle matching remains case insensitive and includes all vehicle fields'
   assert.equal(vehicleMatchesFormData(vehicle, { ...vehicle, type: 'moto' }), false);
 });
 
+function onboardingApp(extra = {}) {
+  const calls = [], dialogs = [], hooks = hookHarness();
+  const props = {
+    currentUser: { id: 'passenger', role: 'passenger' },
+    hasVehicle: false, isKycApproved: false, isKycPending: false, kycLoading: false,
+    needsDriverOnboarding: true, vehiclesLoading: false,
+    openCreateVehicleModal: () => calls.push('vehicle'),
+    refetchKycStatus: async () => {}, refetchProfile: async () => {}, ...extra,
+  };
+  const { useProfileOnboarding } = loader({
+    react: hooks.react,
+    'expo-router': { useRouter: () => ({ push() {} }), useLocalSearchParams: () => ({}) },
+    '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog: dialog => dialogs.push(dialog) }) },
+    '@/hooks/useDiditKycFlow': { useDiditKycFlow: () => ({ startDiditKyc: async () => { calls.push('identity'); }, isStartingDiditKyc: false }) },
+    '@/store/api/userApi': { useUpdateUserMutation: () => [form => ({ unwrap: async () => { calls.push(['role', form.get('role')]); } }), { isLoading: false }] },
+  })('hooks/profile/useProfileOnboarding.ts');
+  return { hooks, calls, dialogs, props, render: () => hooks.render(() => useProfileOnboarding(props)) };
+}
+
+test('passenger identity verification neither asks for a vehicle nor changes account role', async () => {
+  const app = onboardingApp();
+  await app.render().handleOpenKycModal();
+  assert.deepEqual(app.calls, ['identity']);
+  assert.deepEqual(app.dialogs, []);
+  app.hooks.unmount();
+});
+
+test('only explicit driver onboarding requires a vehicle; approved identity is reused', async () => {
+  const app = onboardingApp({ isKycApproved: true });
+  app.render().handleStartDriverOnboarding();
+  assert.deepEqual(app.calls, ['vehicle']);
+  app.props.hasVehicle = true;
+  app.render().handleStartDriverOnboarding();
+  await tick();
+  assert.deepEqual(app.calls, ['vehicle', ['role', 'driver']]);
+  app.hooks.unmount();
+});
+
+test('pending/approved identities show a status instead of starting another verification', async () => {
+  for (const status of ['isKycApproved', 'isKycPending']) {
+    const app = onboardingApp({ [status]: true });
+    await app.render().handleOpenKycModal();
+    assert.deepEqual(app.calls, []);
+    assert.doesNotMatch(app.dialogs[0].title, /kyc/i);
+    app.hooks.unmount();
+  }
+});
+
 test('profile reads keep server data in RTK Query and skip driver-only refreshes for a passenger', async () => {
   const calls = [], refreshes = [];
   const query = (name, data) => (_args, options) => {

@@ -21,8 +21,10 @@ function environment(mocks = {}, platform = 'ios') {
 test('request expiry still allows accepted drivers but hides expired, cancelled and invalid requests', () => {
   const { isTripRequestWithinAcceptanceWindow: accepts } = environment().load('features/home/homeModel.ts');
   const now = Date.now();
-  assert.equal(accepts(request('a', { departureDateMax: new Date(now - 11 * 3600000).toISOString() }), now), true);
-  assert.equal(accepts(request('a', { departureDateMax: new Date(now - 12 * 3600000).toISOString() }), now), false);
+  assert.equal(accepts(request('a', { departureDateMax: new Date(now - 29999).toISOString() }), now), true);
+  assert.equal(accepts(request('a', { departureDateMax: new Date(now - 30000).toISOString() }), now), false);
+  assert.equal(accepts(request('a', { status: 'driver_selected', departureDateMax: new Date(now - 2 * 3600000 + 1).toISOString() }), now), true);
+  assert.equal(accepts(request('a', { status: 'driver_selected', departureDateMax: new Date(now - 2 * 3600000).toISOString() }), now), false);
   assert.equal(accepts(request('a', { departureDateMax: 'invalid' }), now), false);
   assert.equal(accepts(request('a', { status: 'cancelled' }), now), false);
   assert.equal(accepts(request('a', { status: 'driver_selected', departureDateMax: 'invalid' }), now), true);

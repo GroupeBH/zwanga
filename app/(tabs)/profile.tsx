@@ -40,7 +40,7 @@ export default function ProfileScreen() {
           <ActivityIndicator size="large" color={Colors.primary} />
           <Text style={styles.profileLoadingTitle}>Chargement du profil…</Text>
           <Text style={styles.profileLoadingMessage}>
-            Récupération de vos informations et de vos véhicules.
+            Récupération de vos informations.
           </Text>
         </View>
       ) : (
@@ -60,21 +60,25 @@ export default function ProfileScreen() {
           />
 
           <View style={styles.mainActionsContainer}>
-            <ProfileReferralCard
-              referralSummary={profile.referralSummary}
-              router={profile.router}
-            />
-
             <ProfileDashboard
               driverStatusItems={profile.driverStatusItems}
               driverTripsCount={profile.driverTripsCount}
               handleOpenKycModal={profile.handleOpenKycModal}
               isDriver={profile.isDriver}
+              isKycApproved={profile.isKycApproved}
+              isKycPending={profile.isKycPending}
+              isKycBusy={profile.isKycBusy}
+              kycLoading={profile.kycLoading}
               isKycRejected={profile.isKycRejected}
               isPriorityCtaBusy={profile.isPriorityCtaBusy}
               kycStatus={profile.kycStatus}
               priorityCta={profile.priorityCta}
               quickActionItems={profile.quickActionItems}
+            />
+
+            <ProfileReferralCard
+              referralSummary={profile.referralSummary}
+              router={profile.router}
             />
 
             <ProfileProCard
@@ -104,7 +108,7 @@ export default function ProfileScreen() {
             setReviewsModalVisible={profile.setReviewsModalVisible}
           />
 
-          <ProfileVehiclesSection
+          {(profile.isDriver || profile.hasVehicle) && <ProfileVehiclesSection
             deletingVehicle={profile.deletingVehicle}
             handleDeleteVehicle={profile.handleDeleteVehicle}
             openCreateVehicleModal={profile.openCreateVehicleModal}
@@ -115,7 +119,7 @@ export default function ProfileScreen() {
             vehicleList={profile.vehicleList}
             vehiclesFetching={profile.vehiclesFetching}
             vehiclesLoading={profile.vehiclesLoading}
-          />
+          />}
 
           <ProfileMenu
             menuItems={profile.menuItems}
@@ -241,7 +245,7 @@ export default function ProfileScreen() {
       <TutorialOverlay
         visible={profile.profileGuideVisible}
         title="Votre espace Zwanga"
-        message="Consultez vos statistiques, vos avis et vos documents KYC depuis cet écran. Glissez vers le bas pour tout rafraîchir."
+        message="Consultez vos statistiques, vos avis et votre vérification d’identité. Le bouton Devenir conducteur est distinct de la vérification du profil passager."
         onDismiss={profile.handleDismissProfileGuide}
       />
     </SafeAreaView>

@@ -1,22 +1,24 @@
 import { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { MUTATION_RECONCILIATION_DELAYS_MS } from '@/constants/network';
-import { clampRequestPrice, getLocationCoordinates, RequestFormStep } from '@/features/trip-request/requestFormModel';
+import { getLocationCoordinates, RequestFormStep } from '@/features/trip-request/requestFormModel';
 import { trackEvent } from '@/services/analytics';
 import {
   useCreateTripRequestMutation,
   useLazyGetMyTripRequestsQuery
 } from '@/store/api/tripRequestApi';
-import { getApiErrorMessage, isAmbiguousTransportError } from '@/utils/errorHelpers';
+import { getApiErrorMessage, isAmbiguousTransportError, isPassengerKycRequiredError, isExtraSeatsIdentityError } from '@/utils/errorHelpers';
+import { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import { getPassengerSeatValidation, getPassengerVehicleSeatCapacity } from '@/utils/passengerSeats';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import { useRequestDraft } from './useRequestDraft';
 import type { useRequestSchedule } from './useRequestSchedule';
 
-type Props = Pick<ReturnType<typeof useRequestDraft>, 'arrivalLocation' | 'departureLocation' | 'timePreset' | 'setDepartureDateMin' | 'setFlexibilityMinutes' | 'hasEditedBudget' | 'description' | 'departureReference' | 'arrivalReference' | 'hasSpecifiedNumberOfSeats' | 'numberOfSeats' | 'selectedVehicleType' | 'requestPaymentMode'> & {
+type Props = Pick<ReturnType<typeof useRequestDraft>, 'arrivalLocation' | 'departureLocation' | 'timePreset' | 'setDepartureDateMin' | 'setFlexibilityMinutes' | 'description' | 'departureReference' | 'arrivalReference' | 'hasSpecifiedNumberOfSeats' | 'numberOfSeats' | 'selectedVehicleType' | 'requestPaymentMode'> & {
   departureAddress: string; arrivalAddress: string; hasDepartureAddress: boolean; hasArrivalAddress: boolean;
-  canSubmitRequestDetails: boolean; parsedManualBudget: number | undefined; selectedVehicleOptionUnavailable: boolean;
+  canSubmitRequestDetails: boolean; budgetValue: number; selectedVehicleOptionUnavailable: boolean;
   getCurrentDepartureWindow: ReturnType<typeof useRequestSchedule>['getCurrentDepartureWindow'];
   setRequestFormStep: React.Dispatch<React.SetStateAction<RequestFormStep>>;
   setAddressSectionStep: React.Dispatch<React.SetStateAction<AddressSectionStep>>;
@@ -28,7 +30,6 @@ export function useRequestSubmission({
   timePreset,
   setDepartureDateMin,
   setFlexibilityMinutes,
-  hasEditedBudget,
   description,
   departureReference,
   arrivalReference,
@@ -41,7 +42,7 @@ export function useRequestSubmission({
   hasDepartureAddress,
   hasArrivalAddress,
   canSubmitRequestDetails,
-  parsedManualBudget,
+  budgetValue,
   selectedVehicleOptionUnavailable,
   getCurrentDepartureWindow,
   setRequestFormStep,
@@ -49,6 +50,7 @@ export function useRequestSubmission({
 }: Props) {
   const router = useRouter();
   const { showDialog } = useDialog();
+  const { isIdentityVerified, checkIdentity, refreshKycStatus } = useIdentityCheck();
   const createRequestInFlightRef = useRef(false);
 
   const [createTripRequest, { isLoading: isCreating }] = useCreateTripRequestMutation();
@@ -124,10 +126,19 @@ export function useRequestSubmission({
       setFlexibilityMinutes(departureWindow.flex);
     }
     if (!validate(departureWindow)) return;
-    const parsedBudget = hasEditedBudget && parsedManualBudget !== undefined
-      ? clampRequestPrice(parsedManualBudget)
-      : undefined;
-    if (parsedBudget !== undefined && (!Number.isFinite(parsedBudget) || parsedBudget <= 0)) {
+    const seatError = getPassengerSeatValidation(
+      hasSpecifiedNumberOfSeats ? numberOfSeats : 1,
+      isIdentityVerified,
+      getPassengerVehicleSeatCapacity(selectedVehicleType),
+    );
+    if (seatError) {
+      if (seatError.reason === 'identity') checkIdentity('extra_seats');
+      else showDialog({ title: 'Nombre de places invalide', message: seatError.message, variant: 'warning' });
+      return;
+    }
+    // Snapshot the amount actually displayed, including an untouched recommendation.
+    const confirmedPricePerSeat = budgetValue;
+    if (!Number.isFinite(confirmedPricePerSeat) || confirmedPricePerSeat <= 0) {
       showDialog({
         title: 'Budget invalide',
         message: "Indiquez le montant que vous avez prévu pour la course avant d'envoyer la demande.",
@@ -175,7 +186,7 @@ export function useRequestSubmission({
         departureDateMax: departureWindow.max.toISOString(),
         ...(hasSpecifiedNumberOfSeats ? { numberOfSeats } : {}),
         vehicleType: selectedVehicleType,
-        ...(parsedBudget !== undefined ? { maxPricePerSeat: parsedBudget } : {}),
+        maxPricePerSeat: confirmedPricePerSeat,
         paymentMode: requestPaymentMode,
         description: requestNotes || undefined,
       }).unwrap();
@@ -183,14 +194,18 @@ export function useRequestSubmission({
         seats: numberOfSeats,
         seat_count_specified: hasSpecifiedNumberOfSeats,
         vehicle_type: selectedVehicleType,
-        max_price_per_seat: parsedBudget ?? null,
+        max_price_per_seat: confirmedPricePerSeat,
         payment_mode: requestPaymentMode,
         has_description: Boolean(description.trim()),
         flexibility_minutes: departureWindow.flex,
       });
       showRequestSuccess(String(createdRequest.id));
     } catch (error: any) {
-      if (isAmbiguousTransportError(error)) {
+      if (isPassengerKycRequiredError(error)) {
+        refreshKycStatus();
+        checkIdentity(isExtraSeatsIdentityError(error) ? 'extra_seats' : 'request', { force: true });
+        setSubmissionError(getApiErrorMessage(error, 'Vérifiez votre identité avant de continuer.'));
+      } else if (isAmbiguousTransportError(error)) {
         setCreatedRequestId(null);
         setRequestSentWithoutDetail(false);
         setSubmissionRecoveryMessage(

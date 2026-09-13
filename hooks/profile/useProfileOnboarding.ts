@@ -15,6 +15,7 @@ type Props = Pick<ReturnType<typeof useProfileData>,
   | 'currentUser'
   | 'hasVehicle'
   | 'isKycApproved'
+  | 'isKycPending'
   | 'kycLoading'
   | 'needsDriverOnboarding'
   | 'refetchKycStatus'
@@ -28,6 +29,7 @@ export function useProfileOnboarding({
   currentUser,
   hasVehicle,
   isKycApproved,
+  isKycPending,
   kycLoading,
   needsDriverOnboarding,
   openCreateVehicleModal,
@@ -60,20 +62,20 @@ export function useProfileOnboarding({
     sourceScreen: 'profile',
     onStatusRefresh: refreshKycAndProfile,
     approvedMessage:
-      "Votre identité a été vérifiée avec succès. Vous pouvez maintenant accéder aux fonctionnalités conducteur.",
+      'Votre identité est vérifiée. Vous pouvez réserver 3 places ou plus et accéder aux trajets réservés aux passagers vérifiés.',
   });
 
   const isKycBusy = isStartingDiditKyc;
 
   const handleOpenKycModal = useCallback(async () => {
-    if (isKycBusy || kycLaunchInFlightRef.current) {
+    if (kycLoading || isKycBusy || kycLaunchInFlightRef.current) {
       return;
     }
 
     if (isKycApproved) {
       showDialog({
         variant: 'info',
-        title: 'KYC validé',
+        title: 'Identité vérifiée',
         message: 'Vos documents sont déjà vérifiés. Contactez notre support si vous devez les modifier.',
         actions: [
           { label: 'Plus tard', variant: 'ghost' },
@@ -87,13 +89,18 @@ export function useProfileOnboarding({
       return;
     }
 
+    if (isKycPending) {
+      showDialog({ variant: 'info', title: 'Vérification en cours', message: 'Vos documents sont en cours de vérification. Vous serez informé du résultat. Aucun véhicule à ajouter pour vérifier votre identité.' });
+      return;
+    }
+
     kycLaunchInFlightRef.current = true;
     try {
       await startDiditKyc();
     } finally {
       kycLaunchInFlightRef.current = false;
     }
-  }, [isKycApproved, isKycBusy, router, showDialog, startDiditKyc]);
+  }, [isKycApproved, isKycPending, isKycBusy, kycLoading, router, showDialog, startDiditKyc]);
 
   const handleBecomeDriver = useCallback(async () => {
     try {
@@ -134,6 +141,7 @@ export function useProfileOnboarding({
   }, [router, showDialog, updateUser]);
 
   const handleStartDriverOnboarding = useCallback(() => {
+    if (vehiclesLoading || kycLoading || isUpdatingUser || isKycBusy) return;
     const hasKyc = isKycApproved;
 
     if (!hasVehicle && !hasKyc) {
@@ -141,7 +149,7 @@ export function useProfileOnboarding({
         variant: 'info',
         title: 'Devenir conducteur',
         message:
-          "Pour devenir conducteur, vous devez :\n\n1. Ajouter un véhicule\n2. Compléter la vérification d'identité (KYC)\n\nSouhaitez-vous commencer par ajouter un véhicule ?",
+          "Pour devenir conducteur, vous devez :\n\n1. Ajouter un véhicule\n2. Vérifier votre identité\n\nSouhaitez-vous commencer par ajouter un véhicule ?",
         actions: [
           { label: 'Plus tard', variant: 'ghost' },
           {
@@ -165,7 +173,7 @@ export function useProfileOnboarding({
     }
 
     void handleBecomeDriver();
-  }, [handleBecomeDriver, handleOpenKycModal, hasVehicle, isKycApproved, openCreateVehicleModal, showDialog]);
+  }, [handleBecomeDriver, handleOpenKycModal, hasVehicle, isKycApproved, isKycBusy, isUpdatingUser, kycLoading, vehiclesLoading, openCreateVehicleModal, showDialog]);
 
   useEffect(() => {
     if (

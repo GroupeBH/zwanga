@@ -15,6 +15,7 @@ import tripsReducer from './slices/tripsSlice';
 import requestDraftsReducer, { resetRequestDrafts } from './slices/requestDraftsSlice';
 import homeRequestHighlightsReducer, { resetHomeRequestHighlights } from './slices/homeRequestHighlightsSlice';
 import { setStoreAccessor } from './storeAccessor';
+import { createTripRequestExpirationMiddleware } from './middleware/tripRequestExpiration';
 
 const apiQueryActionTypes = [
   `${zwangaApi.reducerPath}/executeQuery/fulfilled`,
@@ -102,7 +103,7 @@ export const store = configureStore({
       },
     })
       .prepend(apiCacheIsolationMiddleware)
-      .concat(zwangaApi.middleware, authRefreshApi.middleware, mapboxApi.middleware),
+      .concat(zwangaApi.middleware, authRefreshApi.middleware, mapboxApi.middleware, createTripRequestExpirationMiddleware()),
 });
 
 // Initialize store accessor to avoid circular dependencies

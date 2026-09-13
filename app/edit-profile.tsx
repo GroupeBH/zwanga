@@ -120,7 +120,7 @@ export default function EditProfileScreen() {
       );
       void refetch();
       const successMessage = wantsToBeDriver && canBecomeDriver
-        ? 'Profil mis à jour. N\'oubliez pas d\'ajouter un véhicule et de compléter la vérification KYC pour devenir conducteur.'
+        ? 'Profil mis à jour. N\'oubliez pas d\'ajouter un véhicule et de vérifier votre identité pour devenir conducteur.'
         : 'Profil mis à jour avec succès.';
       setFeedback({
         visible: true,
@@ -180,7 +180,7 @@ export default function EditProfileScreen() {
             />
             <Text style={styles.legalIdentityNoticeText}>
               {isLegalIdentityLocked
-                ? 'Vos noms sont protégés après validation KYC. Contactez le support pour signaler un changement légal.'
+                ? 'Vos noms sont protégés après la vérification de votre identité. Contactez le support pour signaler un changement légal.'
                 : 'Saisissez vos prénom(s) et votre nom comme sur votre pièce d’identité. Le post-nom est facultatif.'}
             </Text>
           </View>
@@ -238,7 +238,7 @@ export default function EditProfileScreen() {
                 {isCurrentlyDriver
                   ? 'Vous êtes conducteur. Vous pouvez proposer des trajets sur Zwanga.'
                   : canBecomeDriver
-                    ? 'Activez pour proposer vos trajets sur Zwanga. Vous devrez ajouter un véhicule et compléter la vérification KYC.'
+                    ? 'Activez pour proposer vos trajets sur Zwanga. Vous devrez ajouter un véhicule et vérifier votre identité.'
                     : 'Vous êtes déjà conducteur.'}
               </Text>
             </View>
@@ -287,7 +287,7 @@ export default function EditProfileScreen() {
                 </View>
                 <View style={styles.stepItem}>
                   <Ionicons name="shield-checkmark-outline" size={16} color={Colors.primary} />
-                  <Text style={styles.stepText}>Compléter la vérification KYC</Text>
+                  <Text style={styles.stepText}>Vérifier mon identité</Text>
                 </View>
               </View>
               <TouchableOpacity

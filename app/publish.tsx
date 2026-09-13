@@ -233,7 +233,7 @@ export default function PublishScreen() {
   const kycChecklist = [
     { icon: 'shield-checkmark', title: 'Didit sécurisé', subtitle: 'Vérification hébergée par Didit' },
     { icon: 'id-card', title: "Pièce d'identité", subtitle: 'Contrôle guidé depuis le parcours Didit' },
-    { icon: 'time', title: 'Validation rapide', subtitle: 'Retour automatique du statut KYC' },
+    { icon: 'time', title: 'Validation rapide', subtitle: 'Suivi automatique de votre vérification' },
   ] as const;
 
   // Driver and Vehicle Management
@@ -1230,7 +1230,7 @@ export default function PublishScreen() {
       return 'Continuer';
     }
     if (step === 'confirm') {
-      if (!isPublishIdentityVerified) return 'KYC requis';
+      if (!isPublishIdentityVerified) return 'Identité à vérifier';
       return isRecurringTrip ? 'Publier les trajets' : 'Publier';
     }
     return 'Continuer';
@@ -1370,7 +1370,7 @@ export default function PublishScreen() {
             <Ionicons name="shield" size={20} color={Colors.primary} />
           </View>
           <View style={styles.identityWarningContent}>
-            <Text style={styles.identityWarningTitle}>KYC requis</Text>
+            <Text style={styles.identityWarningTitle}>Identité à vérifier</Text>
             <Text style={styles.identityWarningText}>
               Vérifiez votre identité pour pouvoir publier et confirmer vos trajets.
             </Text>
@@ -1702,7 +1702,7 @@ export default function PublishScreen() {
               >
                 <Ionicons name="shield-checkmark" size={20} color={Colors.primary} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inlineKycTitle}>KYC requis pour publier</Text>
+                  <Text style={styles.inlineKycTitle}>Vérifiez votre identité pour publier</Text>
                   <Text style={styles.inlineKycSubtitle}>
                     Vérifiez votre identité en moins de 5 min
                   </Text>
@@ -2072,7 +2072,7 @@ export default function PublishScreen() {
                 <View style={styles.passengerKycRequirementCopy}>
                   <Text style={styles.freeTripTitle}>Passagers vérifiés uniquement</Text>
                   <Text style={styles.freeTripSubtitle}>
-                    Les passagers devront avoir un KYC approuvé avant de réserver ou embarquer.
+                    L’identité des passagers devra être vérifiée avant de réserver ou d’embarquer.
                   </Text>
                 </View>
               </View>
@@ -2287,7 +2287,7 @@ export default function PublishScreen() {
                   <View style={styles.confirmDetailRow}>
                     <View style={styles.confirmDetailLeft}>
                       <Ionicons name="shield-checkmark-outline" size={18} color={Colors.gray[600]} />
-                      <Text style={styles.confirmDetailLabel}>KYC passager</Text>
+                      <Text style={styles.confirmDetailLabel}>Identité des passagers</Text>
                     </View>
                     <Text
                       style={[
@@ -2335,7 +2335,7 @@ export default function PublishScreen() {
                       ? isRecurringTrip
                         ? 'Publier les trajets'
                         : 'Publier'
-                      : 'KYC requis'}
+                      : 'Identité à vérifier'}
                   </Text>
                 )}
               </TouchableOpacity>

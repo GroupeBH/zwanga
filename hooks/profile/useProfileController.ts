@@ -58,7 +58,7 @@ export function useProfileController() {
 
   useProfileSubscriptionLifecycle({ ...subscriptionStorage, ...data, ...subscriptionState, ...subscriptionRecovery, ...subscriptionMonitor });
 
-  const { driverBookingsCount, driverSettlement, handleOpenPinModal, handleStartDriverOnboarding, hasVehicle, isDriver, isKycApproved, isKycBusy, isKycPending, isKycRejected, isPremiumActive, isUpdatingUser, knownVehicleCount, needsDriverOnboarding, passengerBookingsCount, pendingOffersCount, proBusy, shouldShowVehicleLoadError, tripRequestsCount, tripRequestsStats } = { ...data, ...onboarding, ...subscriptionView, ...pin, ...vehicles, ...subscriptionState, ...subscriptionCheckout, ...subscriptionMonitor };
+  const { driverBookingsCount, driverSettlement, handleOpenPinModal, handleStartDriverOnboarding, hasVehicle, isDriver, isKycBusy, isPremiumActive, isUpdatingUser, knownVehicleCount, needsDriverOnboarding, passengerBookingsCount, pendingOffersCount, proBusy, shouldShowVehicleLoadError, tripRequestsCount, tripRequestsStats } = { ...data, ...onboarding, ...subscriptionView, ...pin, ...vehicles, ...subscriptionState, ...subscriptionCheckout, ...subscriptionMonitor };
 
   const { changeProfilePhoto, isUploading } = useProfilePhoto();
 
@@ -109,29 +109,7 @@ export function useProfileController() {
     }
   };
 
-  const kycStatusLabel = isKycApproved
-    ? 'Vérifiée'
-    : isKycPending
-      ? 'En revue'
-      : isKycRejected
-        ? 'À corriger'
-        : 'À vérifier';
-
-  const kycStatusColor = isKycApproved
-    ? Colors.success
-    : isKycPending
-      ? Colors.warning
-      : isKycRejected
-        ? Colors.danger
-        : Colors.gray[500];
-
-  const driverStatusItems = [
-    {
-      icon: 'shield-checkmark-outline' as keyof typeof Ionicons.glyphMap,
-      label: 'Identité',
-      value: kycStatusLabel,
-      color: kycStatusColor,
-    },
+  const driverStatusItems = isDriver ? [
     {
       icon: 'car-outline' as keyof typeof Ionicons.glyphMap,
       label: 'Véhicule',
@@ -154,11 +132,17 @@ export function useProfileController() {
       value: needsDriverOnboarding ? 'Profil incomplet' : isPremiumActive ? 'Actif' : 'Disponible',
       color: needsDriverOnboarding ? Colors.gray[500] : isPremiumActive ? Colors.success : Colors.primary,
     },
-  ];
+  ] : [];
 
-  const priorityCta = needsDriverOnboarding
+  const priorityCta = !isDriver
     ? {
-      label: 'Compléter le profil conducteur',
+      label: 'Devenir conducteur',
+      icon: 'car-sport-outline' as keyof typeof Ionicons.glyphMap,
+      onPress: handleStartDriverOnboarding,
+    }
+    : needsDriverOnboarding
+    ? {
+      label: 'Devenir conducteur',
       icon: 'car-sport-outline' as keyof typeof Ionicons.glyphMap,
       onPress: handleStartDriverOnboarding,
     }
@@ -174,7 +158,9 @@ export function useProfileController() {
         onPress: () => router.push('/wallet' as any),
       };
 
-  const isPriorityCtaBusy = needsDriverOnboarding ? isUpdatingUser || isKycBusy : proBusy;
+  const isPriorityCtaBusy = needsDriverOnboarding
+    ? isUpdatingUser || isKycBusy || data.kycLoading || data.vehiclesLoading
+    : proBusy;
 
   const shouldShowProDetailsCard = !needsDriverOnboarding && isPremiumActive;
 

@@ -65,3 +65,37 @@ Le slice `homeRequestHighlights` ne stocke que les identifiants et échéances n
 Un seul timeout est armé jusqu'à l'échéance, puis nettoyé à la fermeture ; aucun compte à rebours ne redessine l'accueil chaque seconde. La mémoire est limitée aux 200 dernières demandes mises en avant par session d'application. Elle est réinitialisée à la déconnexion ou au changement de compte, et n'est pas persistée après fermeture complète de l'application. Les données des demandes restent exclusivement dans RTK Query.
 
 `tests/homeRequestPriority.test.js` couvre la distance, le repli sans GPS, le classement avant limitation, la durée, les rafraîchissements, le remontage, l'arrière-plan, les changements de demande et l'isolation de compte. Cette suite fait partie de `npm run test:home`.
+
+## Disparition des demandes expirées (12 septembre 2026)
+
+`features/trip-request/requestExpiration.ts` partage les deux règles du backend :
+une demande sans conducteur accepté expire à `departureDateMax + 30 secondes` ;
+avec un conducteur accepté, elle expire à `departureDateMax + 2 heures`.
+Une offre simplement en attente n'accorde pas les deux heures. Les échéances ne
+partent ni de la création ni de l'acceptation. Elles sont distinctes des dix minutes
+de mise en avant sur Home et des trente secondes maximum de réévaluation.
+
+`store/middleware/tripRequestExpiration.ts` réévalue le cache RTK Query, plutôt que
+d'ajouter un polling HTTP ou un timer dans chaque écran. Une seule temporisation,
+bornée à trente secondes et avancée à la prochaine échéance si elle est plus proche,
+retire les demandes expirées du cache public utilisé par Home, la carte, Search et
+la liste des demandes. Le détail et l'historique restent consultables avec le statut
+`expired`, ce qui actualise également les compteurs de demandes actives du profil.
+Les demandes attribuées ou associées à une offre acceptée gardent leurs liens au
+conducteur et au trajet après expiration. Aucun trajet, réservation ou paiement
+n'est annulé : le suivi d'une course déjà démarrée reste disponible normalement.
+
+Les caches ne sont modifiés que lorsqu'une expiration est détectée : les contrôles
+sans changement ne déclenchent pas de rendu React. Le minuteur est annulé à la perte
+de focus native ou à la réinitialisation de l'API, puis les échéances sont revérifiées
+immédiatement au retour au premier plan. Les refetches ne prolongent pas les délais ;
+les réponses du serveur restent prioritaires, notamment en cas d'acceptation concurrente.
+Cette protection fonctionne hors connexion pour les demandes déjà chargées, sous
+réserve de l'heure de l'appareil. La confirmation persistante reste faite par le backend,
+dont le cron d'expiration s'exécute désormais toutes les trente secondes.
+
+La suite `tests/tripRequestExpiration.test.js`, incluse dans `npm run test:trip-request`,
+utilise un véritable store RTK Query et une horloge simulée pour vérifier l'échéance,
+le hors-ligne, l'arrière-plan, les rafraîchissements, les changements de compte et
+l'absence de requêtes HTTP supplémentaires. À valider aussi sur appareils : expiration
+sur chaque écran, retour après mise en veille, et demande acceptée juste avant l'échéance.

@@ -2,6 +2,14 @@ import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } f
 import { StyleSheet } from 'react-native';
 
 export const styles = StyleSheet.create({
+  passengerOverviewHeader: { flexDirection: 'column', alignItems: 'stretch' },
+  becomeDriverButton: { maxWidth: '100%', minHeight: 48, paddingVertical: Spacing.sm },
+  identitySection: { paddingVertical: Spacing.sm, gap: Spacing.xs, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] },
+  identityHeading: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  identityTitle: { flex: 1, color: Colors.gray[900], fontSize: FontSizes.sm, fontWeight: FontWeights.bold },
+  identityHint: { color: Colors.gray[600], fontSize: FontSizes.xs, lineHeight: 18 },
+  identityAction: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  identityActionText: { color: Colors.primary, fontSize: FontSizes.sm, fontWeight: FontWeights.semibold, flexShrink: 1 },
   profileOverviewPanel: {
     backgroundColor: Colors.white,
     borderRadius: BorderRadius.lg,

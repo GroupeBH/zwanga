@@ -30,8 +30,6 @@ export const FLEX_OPTIONS = [0, 30, 60, 120];
 
 export const MIN_REQUEST_SEATS = 1;
 
-export const MAX_REQUEST_SEATS = 2;
-
 export const MIN_REQUEST_PRICE = 500;
 
 export const REQUEST_PRICE_STEP = 500;
@@ -152,12 +150,12 @@ export function parseNumberParam(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-export function clampRequestSeats(value: number | undefined) {
+export function clampRequestSeats(value: number | undefined, capacity: number | null = null) {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return MIN_REQUEST_SEATS;
   }
 
-  return Math.min(MAX_REQUEST_SEATS, Math.max(MIN_REQUEST_SEATS, Math.floor(value)));
+  return Math.min(capacity ?? Number.MAX_SAFE_INTEGER, Math.max(MIN_REQUEST_SEATS, Math.floor(value)));
 }
 
 export function clampRequestPrice(value: number | undefined) {
@@ -179,16 +177,20 @@ export function getRequestBudgetState(
   const parsedManualBudget = maxPricePerSeat.trim() ? Number.parseFloat(maxPricePerSeat) : undefined;
   const hasValidManualBudget = hasEditedBudget && parsedManualBudget !== undefined
     && Number.isFinite(parsedManualBudget) && parsedManualBudget > 0;
+  const hasValidRecommendation = recommendedPricePerSeat !== null
+    && Number.isFinite(recommendedPricePerSeat) && recommendedPricePerSeat > 0;
   const selectedVehicleOptionUnavailable = selectedVehicleOption?.availableForRequestedSeats === false;
   return {
     recommendedPricePerSeat,
     parsedManualBudget,
     selectedVehicleOptionUnavailable,
     canSubmitRequestDetails: !selectedVehicleOptionUnavailable
-      && (hasValidManualBudget || Boolean(selectedVehicleOption?.availableForRequestedSeats)),
-    budgetValue: maxPricePerSeat.trim()
-      ? clampRequestPrice(parsedManualBudget)
-      : recommendedPricePerSeat ?? 0,
+      && (hasEditedBudget ? hasValidManualBudget : hasValidRecommendation),
+    // The displayed amount is also the price submitted on confirmation. Never
+    // reuse a recommendation left in the draft for a different route/vehicle.
+    budgetValue: hasEditedBudget
+      ? hasValidManualBudget ? clampRequestPrice(parsedManualBudget) : 0
+      : hasValidRecommendation ? clampRequestPrice(recommendedPricePerSeat) : 0,
   };
 }
 

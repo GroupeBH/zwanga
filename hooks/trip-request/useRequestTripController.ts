@@ -298,7 +298,6 @@ export function useRequestTripController() {
 
   const {
     recommendedPricePerSeat,
-    parsedManualBudget,
     selectedVehicleOptionUnavailable,
     canSubmitRequestDetails,
     budgetValue,
@@ -544,7 +543,6 @@ export function useRequestTripController() {
     timePreset,
     setDepartureDateMin,
     setFlexibilityMinutes,
-    hasEditedBudget,
     description,
     departureReference,
     arrivalReference,
@@ -557,7 +555,7 @@ export function useRequestTripController() {
     hasDepartureAddress,
     hasArrivalAddress,
     canSubmitRequestDetails,
-    parsedManualBudget,
+    budgetValue,
     selectedVehicleOptionUnavailable,
     getCurrentDepartureWindow,
     setRequestFormStep,

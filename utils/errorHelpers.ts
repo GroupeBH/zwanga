@@ -1,3 +1,5 @@
+import { EXTRA_SEATS_IDENTITY_MESSAGE } from '@/utils/passengerSeats';
+
 function getErrorMessageText(error: any): string {
   if (!error) return '';
 
@@ -15,7 +17,7 @@ function getErrorMessageText(error: any): string {
   return Array.isArray(message) ? message.join(' ') : String(message);
 }
 
-function getErrorStatus(error: any): number | string | undefined {
+export function getErrorStatus(error: any): number | string | undefined {
   const numericStatus = error?.data?.statusCode ?? error?.originalStatus;
   if (typeof numericStatus === 'number') {
     return numericStatus;
@@ -233,6 +235,11 @@ function getTechnicalErrorMessage(rawMessage: string, status: number | string | 
 }
 
 function getKnownBusinessErrorMessage(error: any): string | null {
+  const code = error?.data?.code ?? error?.data?.error?.code ?? error?.error?.code ?? error?.code;
+  if (code === 'TRIP_REQUEST_PRICE_LOCKED') {
+    return 'Le prix de ce trajet a déjà été validé par le passager et ne peut plus être modifié.';
+  }
+
   if (isDailyPublicationLimitError(error)) {
     return 'Vous avez atteint la limite de publication disponible. Passez \u00e0 Zwanga Pro pour publier plus de trajets.';
   }
@@ -242,6 +249,7 @@ function getKnownBusinessErrorMessage(error: any): string | null {
   }
 
   if (isPassengerKycRequiredError(error)) {
+    if (isExtraSeatsIdentityError(error)) return EXTRA_SEATS_IDENTITY_MESSAGE;
     return "Ce trajet exige une vérification d'identité approuvée du passager avant de continuer.";
   }
 
@@ -367,6 +375,10 @@ export function isDriverRequiredError(error: any): boolean {
  * Detecte si une action est bloquee parce que le passager n'a pas encore
  * un KYC approuve alors que le conducteur l'exige pour ce trajet.
  */
+export function isExtraSeatsIdentityError(error: any): boolean {
+  return (error?.data?.reason ?? error?.reason) === 'extra_seats';
+}
+
 export function isPassengerKycRequiredError(error: any): boolean {
   const code = String(
     error?.data?.code ??
