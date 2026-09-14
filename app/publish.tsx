@@ -1,3 +1,4 @@
+import { FormModal as Modal, FormScreen } from '@/components/forms/FormLayout';
 import { ManualAddressStatus } from '@/components/address/ManualAddressStatus';
 import { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
@@ -42,7 +43,7 @@ import {
   ActivityIndicator,
   InteractionManager,
   Keyboard,
-  Modal,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
@@ -52,7 +53,7 @@ import {
   View,
 } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type PublishStep = 'route' | 'datetime' | 'vehicle' | 'pricing' | 'confirm';
 type PublicationSuccess = { recurring: boolean } | null;
@@ -1270,7 +1271,7 @@ export default function PublishScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <FormScreen style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.closeButton}>
@@ -1385,15 +1386,16 @@ export default function PublishScreen() {
         </View>
       )} */}
 
-      <View style={{ flex: 1 }}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={[
             styles.scrollViewContent,
             step === 'route' && styles.routeScrollViewContent,
-            { paddingBottom: Math.max(insets.bottom, 16) + 116 },
+            { paddingBottom: Spacing.lg },
           ]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Étape 1: Itinéraire */}
         {step === 'route' && (
@@ -2348,7 +2350,7 @@ export default function PublishScreen() {
           style={[
             styles.fixedBottomBar,
             step !== 'route' && styles.fixedBottomBarRow,
-            { paddingBottom: Math.max(insets.bottom, 16) },
+            { paddingBottom: Spacing.lg },
           ]}
         >
           {previousStep && (
@@ -2377,7 +2379,7 @@ export default function PublishScreen() {
             )}
           </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
 
       <LocationPickerModal
         visible={activeLocationType !== null}
@@ -2660,7 +2662,7 @@ export default function PublishScreen() {
         submitting={isCreatingVehicle || isFinalizingVehicleCreation}
         errorMessage={vehicleFormError}
       />
-    </SafeAreaView>
+    </FormScreen>
   );
 }
 

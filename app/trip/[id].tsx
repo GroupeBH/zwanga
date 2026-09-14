@@ -1,4 +1,5 @@
 import LocationPickerModal, { type MapLocationSelection } from '@/components/LocationPickerModal';
+import { FormModal } from '@/components/forms/FormLayout';
 import { PoliceContactPanel } from '@/components/PoliceContactPanel';
 import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
@@ -423,7 +424,6 @@ export default function TripDetailsScreen() {
   );
   const [editTripModalVisible, setEditTripModalVisible] = useState(false);
   const [editStep, setEditStep] = useState<EditTripStep>(1);
-  const [editKeyboardHeight, setEditKeyboardHeight] = useState(0);
   const [editSeats, setEditSeats] = useState('');
   const [editPrice, setEditPrice] = useState('');
   const [editRequiresPassengerKyc, setEditRequiresPassengerKyc] = useState(false);
@@ -438,22 +438,6 @@ export default function TripDetailsScreen() {
   const [editVehicleId, setEditVehicleId] = useState<string | null>(null);
   const openEditModalRef = useRef<() => void>(() => undefined);
   const handledOpenEditParamKeyRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSubscription = Keyboard.addListener(showEvent, (event) => {
-      setEditKeyboardHeight(event.endCoordinates.height);
-    });
-    const hideSubscription = Keyboard.addListener(hideEvent, () => {
-      setEditKeyboardHeight(0);
-    });
-
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, []);
 
   const getDefaultFutureDate = () => {
     const base = new Date();
@@ -561,7 +545,6 @@ export default function TripDetailsScreen() {
   const closeEditModal = () => {
     setEditTripModalVisible(false);
     setEditStep(1);
-    setEditKeyboardHeight(0);
     setEditSeats('');
     setEditPrice('');
     setEditRequiresPassengerKyc(false);
@@ -908,18 +891,7 @@ export default function TripDetailsScreen() {
     );
   }, [editArrivalManualAddress, editArrivalSelection, editRouteMode]);
 
-  const editModalKeyboardOffset =
-    Platform.OS === 'android' && editTripModalVisible
-      ? Math.max(editKeyboardHeight - insets.bottom, 0)
-      : 0;
-  const editModalBottomPadding = Math.max(insets.bottom, 16) + 8;
-  const editModalSheetKeyboardStyle =
-    Platform.OS === 'android' && editModalKeyboardOffset > 0
-      ? {
-          marginBottom: editModalKeyboardOffset,
-          maxHeight: '78%' as const,
-        }
-      : null;
+  const editModalBottomPadding = Platform.OS === 'android' ? 16 : Math.max(insets.bottom, 16) + 8;
 
   const [createBooking, { isLoading: isBooking }] = useCreateBookingMutation();
   const [initiateBookingPayment, { isLoading: isInitiatingBookingPayment }] =
@@ -3721,7 +3693,7 @@ export default function TripDetailsScreen() {
         </View>
       </Modal>
 
-      <Modal
+      <FormModal
         visible={securityModalVisible}
         animationType="slide"
         transparent
@@ -3784,9 +3756,9 @@ export default function TripDetailsScreen() {
             </KeyboardAvoidingView>
           </View>
         </View>
-      </Modal>
+      </FormModal>
 
-      <Modal animationType="fade" transparent visible={bookingModalVisible}>
+      <FormModal animationType="fade" transparent visible={bookingModalVisible}>
         <View style={styles.bookingModalOverlay}>
           <View style={[styles.bookingModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
             {/* Step Indicator */}
@@ -4114,7 +4086,7 @@ export default function TripDetailsScreen() {
             </View>
             </View>
           </View>
-      </Modal>
+      </FormModal>
 
       {/* Location Picker pour le point de récupération */}
       <LocationPickerModal
@@ -4320,7 +4292,7 @@ export default function TripDetailsScreen() {
         </TouchableOpacity>
       </Modal>
 
-      <Modal
+      <FormModal
         transparent={Platform.OS === 'android'}
         animationType="slide"
         presentationStyle={Platform.OS === 'ios' ? 'pageSheet' : 'overFullScreen'}
@@ -4330,7 +4302,7 @@ export default function TripDetailsScreen() {
         onRequestClose={closeEditModal}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={0}
           style={[styles.editModalKeyboard, Platform.OS === 'ios' && styles.editModalKeyboardIos]}
         >
@@ -4343,7 +4315,6 @@ export default function TripDetailsScreen() {
                 styles.editModalSheet,
                 Platform.OS === 'ios' && styles.editModalSheetIos,
                 { paddingBottom: editModalBottomPadding },
-                editModalSheetKeyboardStyle,
               ]}
             >
               {Platform.OS === 'android' && <View style={styles.editModalHandle} />}
@@ -4700,9 +4671,7 @@ export default function TripDetailsScreen() {
           </View>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
-
-
+      </FormModal>
 
       <LocationPickerModal
         visible={editRoutePickerTarget !== null}

@@ -6,7 +6,8 @@ import {
   useGetMyTripRequestsQuery,
   useReleaseOverdueDriverMutation,
 } from '@/store/api/tripRequestApi';
-import { useAppSelector } from '@/store/hooks';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { baseApi } from '@/store/api/baseApi';
 import { selectIsAuthenticated } from '@/store/selectors';
 import type { TripRequest } from '@/types';
 import {
@@ -22,6 +23,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { InteractionManager, Linking } from 'react-native';
 
 export function NotificationHandler() {
+  const dispatch = useAppDispatch();
   const router = useRouter();
   const { showDialog, hideDialog } = useDialog();
   const pathname = usePathname();
@@ -365,6 +367,9 @@ export function NotificationHandler() {
       data: Record<string, any>,
       fallbackBody?: string | null,
     ) => {
+      if (typeof data.type === 'string' && data.type.startsWith('driver_trip_interruption_')) {
+        dispatch(baseApi.util.invalidateTags(['Booking', 'Trip', 'MyTrips']));
+      }
       if (await handlePassengerOverdueNotification(data, fallbackBody)) {
         return;
       }
@@ -381,6 +386,9 @@ export function NotificationHandler() {
     const foregroundListener = Notifications.addNotificationReceivedListener((notification) => {
       const content = notification.request.content;
       const data = (content.data || {}) as Record<string, any>;
+      if (typeof data.type === 'string' && data.type.startsWith('driver_trip_interruption_')) {
+        dispatch(baseApi.util.invalidateTags(['Booking', 'Trip', 'MyTrips']));
+      }
       if (data.type === 'trip_request_driver_overdue') {
         void handlePassengerOverdueNotification(data, content.body);
       } else {
@@ -494,7 +502,7 @@ export function NotificationHandler() {
       responseListener.remove();
       linkingListener.remove();
     };
-  }, [handlePassengerOverdueNotification, router, showDialog]);
+  }, [dispatch, handlePassengerOverdueNotification, router, showDialog]);
 
   return null;
 }

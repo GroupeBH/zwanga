@@ -1,4 +1,5 @@
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { FormModal as Modal } from '@/components/forms/FormLayout';
 import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
@@ -38,7 +39,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,

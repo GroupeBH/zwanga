@@ -299,6 +299,7 @@ export interface Passenger {
 }
 
 export interface Booking {
+  interruptionFareLocked?: boolean;
   id: string;
   tripId: string;
   passengerId: string;
@@ -382,6 +383,23 @@ export interface DriverTripInterruptionConfirmation {
   status: TripInterruptionConfirmationStatus;
   confirmedAt?: string | null;
   rejectedAt?: string | null;
+  decision?: 'wait' | 'stop' | null;
+  decisionAt?: string | null;
+}
+
+export interface InterruptionFareQuote {
+  id: string;
+  requestId: string;
+  bookingId: string;
+  currency: 'CDF';
+  originalPassengerAmount: number;
+  prepaidAmount: number;
+  passengerAmount: number;
+  minimumAmount: number;
+  minimumApplied: boolean;
+  plannedDistanceMeters: number;
+  travelledDistanceMeters: number;
+  travelledPercentage: number;
 }
 
 export interface DriverTripInterruptionRequest {

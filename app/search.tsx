@@ -42,7 +42,7 @@ type SearchResultListItem =
   | { kind: 'trip'; trip: Trip }
   | { kind: 'request'; request: TripRequest };
 const MIN_SEARCH_SEATS = 1;
-const MAX_SEARCH_SEATS = 2;
+const MAX_SEARCH_SEATS = 4;
 const EMPTY_SEARCH_TRIPS: Trip[] = [];
 const EMPTY_SEARCH_REQUESTS: TripRequest[] = [];
 
@@ -1062,6 +1062,8 @@ export default function SearchScreen() {
               <TouchableOpacity
                 style={[styles.passengerStepButton, desiredSeats <= MIN_SEARCH_SEATS && styles.passengerStepButtonDisabled]}
                 onPress={() => updateDesiredSeats(desiredSeats - 1)}
+                accessibilityRole="button"
+                accessibilityLabel="Diminuer le nombre de places"
                 disabled={desiredSeats <= MIN_SEARCH_SEATS}
                 activeOpacity={0.75}
               >
@@ -1074,6 +1076,8 @@ export default function SearchScreen() {
               <TouchableOpacity
                 style={[styles.passengerStepButton, desiredSeats >= MAX_SEARCH_SEATS && styles.passengerStepButtonDisabled]}
                 onPress={() => updateDesiredSeats(desiredSeats + 1)}
+                accessibilityRole="button"
+                accessibilityLabel="Augmenter le nombre de places"
                 disabled={desiredSeats >= MAX_SEARCH_SEATS}
                 activeOpacity={0.75}
               >

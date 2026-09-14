@@ -1,3 +1,4 @@
+import { FormModal as Modal } from '@/components/forms/FormLayout';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { PoliceContactPanel } from '@/components/PoliceContactPanel';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -7,7 +8,6 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -452,9 +452,9 @@ export default function SecurityScreen() {
             }}
           />
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.keyboardAvoidingView}
-            keyboardVerticalOffset={Math.max(insets.top, 12)}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? Math.max(insets.top, 12) : 0}
           >
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
@@ -530,7 +530,7 @@ export default function SecurityScreen() {
                 </View>
               </ScrollView>
 
-              <View style={[styles.modalFooter, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
+              <View style={[styles.modalFooter, { paddingBottom: Platform.OS === 'android' ? Spacing.lg : Math.max(insets.bottom, 16) + 16 }]}>
                 <TouchableOpacity
                   style={styles.cancelButton}
                   onPress={() => {

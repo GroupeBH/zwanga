@@ -1,4 +1,5 @@
 import LocationPickerModal, { type MapLocationSelection } from '@/components/LocationPickerModal';
+import { FormModal } from '@/components/forms/FormLayout';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
@@ -388,7 +389,6 @@ export default function TripsScreen() {
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Trip | null>(null);
   const [editStep, setEditStep] = useState<EditTripStep>(1);
-  const [editKeyboardHeight, setEditKeyboardHeight] = useState(0);
   const [editSeats, setEditSeats] = useState('');
   const [editPrice, setEditPrice] = useState('');
   const [editDateTime, setEditDateTime] = useState<Date | null>(null);
@@ -413,22 +413,6 @@ export default function TripsScreen() {
       setTripsGuideVisible(true);
     }
   }, [shouldShowTripsGuide]);
-
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSubscription = Keyboard.addListener(showEvent, (event) => {
-      setEditKeyboardHeight(event.endCoordinates.height);
-    });
-    const hideSubscription = Keyboard.addListener(hideEvent, () => {
-      setEditKeyboardHeight(0);
-    });
-
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, []);
 
   const dismissTripsGuide = () => {
     setTripsGuideVisible(false);
@@ -717,7 +701,6 @@ export default function TripsScreen() {
   const closeEditModal = () => {
     setEditingTrip(null);
     setEditStep(1);
-    setEditKeyboardHeight(0);
     setEditSeats('');
     setEditPrice('');
     setEditDateTime(null);
@@ -829,18 +812,7 @@ export default function TripsScreen() {
     );
   }, [editArrivalManualAddress, editArrivalSelection, editRouteMode]);
 
-  const editModalKeyboardOffset =
-    Platform.OS === 'android' && Boolean(editingTrip)
-      ? Math.max(editKeyboardHeight - insets.bottom, 0)
-      : 0;
-  const editModalBottomPadding = Math.max(insets.bottom, 16) + 8;
-  const editModalSheetKeyboardStyle =
-    Platform.OS === 'android' && editModalKeyboardOffset > 0
-      ? {
-          marginBottom: editModalKeyboardOffset,
-          maxHeight: '78%' as const,
-        }
-      : null;
+  const editModalBottomPadding = Platform.OS === 'android' ? 16 : Math.max(insets.bottom, 16) + 8;
 
   const showFeedback = (type: 'success' | 'error', message: string | string[]) => {
     setFeedback({
@@ -1256,7 +1228,7 @@ export default function TripsScreen() {
         </TouchableOpacity>
       )}
 
-      <Modal
+      <FormModal
         transparent={Platform.OS === 'android'}
         animationType="slide"
         presentationStyle={Platform.OS === 'ios' ? 'pageSheet' : 'overFullScreen'}
@@ -1266,7 +1238,7 @@ export default function TripsScreen() {
         onRequestClose={closeEditModal}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={0}
           style={[styles.modalKeyboard, Platform.OS === 'ios' && styles.modalKeyboardIos]}
         >
@@ -1279,7 +1251,6 @@ export default function TripsScreen() {
                 styles.modalCard,
                 Platform.OS === 'ios' && styles.modalCardIos,
                 { paddingBottom: editModalBottomPadding },
-                editModalSheetKeyboardStyle,
               ]}
             >
               {Platform.OS === 'android' && <View style={styles.modalHandle} />}
@@ -1585,7 +1556,7 @@ export default function TripsScreen() {
           </View>
         </View>
         </KeyboardAvoidingView>
-      </Modal>
+      </FormModal>
 
       <LocationPickerModal
         visible={editRoutePickerTarget !== null}

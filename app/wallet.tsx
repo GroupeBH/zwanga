@@ -1,3 +1,4 @@
+import { FormModal as Modal } from '@/components/forms/FormLayout';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import {
@@ -23,7 +24,6 @@ import {
   AppState,
   Keyboard,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   RefreshControl,
   ScrollView,

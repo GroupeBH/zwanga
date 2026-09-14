@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, Modal } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { FormModal as Modal } from '@/components/forms/FormLayout';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
 import { authStyles as styles } from './styles';
@@ -36,8 +37,8 @@ export function VehicleModal({
       transparent={true}
       onRequestClose={onClose}
     >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
+      <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={[styles.modalContent, { maxHeight: '100%', flexShrink: 1 }]}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Détails du véhicule</Text>
             <TouchableOpacity onPress={onClose}>
@@ -45,7 +46,7 @@ export function VehicleModal({
             </TouchableOpacity>
           </View>
 
-          <View style={{ gap: 16 }}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 16, paddingBottom: 16 }}>
             <View style={styles.inputWrapper}>
               <Ionicons name="car-sport-outline" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
               <TextInput
@@ -97,9 +98,9 @@ export function VehicleModal({
             >
               <Text style={styles.mainButtonText}>Valider</Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

@@ -2,6 +2,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import type { Trip } from '../../types';
 
 interface TripsState {
+  interruptionChoice: { bookingId: string; requestId: string } | null;
   items: Trip[];
   selectedTrip: Trip | null;
   isLoading: boolean;
@@ -14,6 +15,7 @@ interface TripsState {
 }
 
 const initialState: TripsState = {
+  interruptionChoice: null,
   items: [],
   selectedTrip: null,
   isLoading: false,
@@ -29,6 +31,9 @@ const tripsSlice = createSlice({
   name: 'trips',
   initialState,
   reducers: {
+    openInterruptionChoice: (state, action: PayloadAction<TripsState['interruptionChoice']>) => {
+      state.interruptionChoice = action.payload;
+    },
     setTrips: (state, action: PayloadAction<Trip[]>) => {
       state.items = action.payload;
     },
@@ -71,6 +76,7 @@ const tripsSlice = createSlice({
 });
 
 export const {
+  openInterruptionChoice,
   setTrips,
   addTrip,
   updateTrip,

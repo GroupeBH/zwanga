@@ -1,3 +1,4 @@
+import { FormModal as Modal } from '@/components/forms/FormLayout';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import type { AddressInputMode } from '@/components/AddressEntryModeSelector';
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
@@ -7,13 +8,13 @@ import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { hasTripRequestExpired } from '@/features/trip-request/requestExpiration';
 import { useAssignedTripNavigation } from '@/hooks/useAssignedTripNavigation';
 import { usePassengerIdentityVerification } from '@/hooks/usePassengerIdentityVerification';
+import { useEditRequestPricing } from '@/hooks/trip-request/useEditRequestPricing';
 import { PassengerSeatNotice } from '@/components/PassengerSeatNotice';
 import { getPassengerSeatValidation, getPassengerVehicleSeatCapacity } from '@/utils/passengerSeats';
 import { useGetTripByIdQuery, useStartTripMutation } from '@/store/api/tripApi';
 import {
   useAcceptTripRequestMutation,
   useCancelTripRequestMutation,
-  useGetTripRequestVehicleOptionsMutation,
   useGetTripRequestByIdQuery,
   useStartTripFromRequestMutation,
   useUpdateTripRequestMutation,
@@ -47,7 +48,6 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -387,10 +387,6 @@ export default function TripRequestDetailsScreen() {
   const [acceptTripRequest, { isLoading: isAcceptingTripRequest }] = useAcceptTripRequestMutation();
   const [cancelRequest, { isLoading: isCancelling }] = useCancelTripRequestMutation();
   const [updateTripRequest, { isLoading: isUpdating }] = useUpdateTripRequestMutation();
-  const [
-    getEditVehicleOptions,
-    { isLoading: isEditVehicleOptionsLoading, isError: isEditVehicleOptionsError },
-  ] = useGetTripRequestVehicleOptionsMutation();
   const [startTripFromRequest, { isLoading: isStartingTripFromRequest }] = useStartTripFromRequestMutation();
   const [startTrip, { isLoading: isStartingTrip }] = useStartTripMutation();
 
@@ -420,11 +416,6 @@ export default function TripRequestDetailsScreen() {
   const [editDepartureDateMax, setEditDepartureDateMax] = useState<Date | null>(null);
   const [editNumberOfSeats, setEditNumberOfSeats] = useState('');
   const [editVehicleType, setEditVehicleType] = useState<TripRequestVehicleType>('car');
-  const [editVehicleOptions, setEditVehicleOptions] = useState<TripRequestVehiclePriceOption[]>([]);
-  const [editVehiclePriceMultiplier, setEditVehiclePriceMultiplier] = useState(1);
-  const [editVehicleOptionsRetry, setEditVehicleOptionsRetry] = useState(0);
-  const [editHasEditedBudget, setEditHasEditedBudget] = useState(false);
-  const [editMaxPricePerSeat, setEditMaxPricePerSeat] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editIosPickerModeMin, setEditIosPickerModeMin] = useState<'date' | 'time' | null>(null);
   const [editIosPickerModeMax, setEditIosPickerModeMax] = useState<'date' | 'time' | null>(null);
@@ -654,6 +645,30 @@ export default function TripRequestDetailsScreen() {
       ? editArrivalManualAddress.trim()
       : getLocationText(editArrivalLocation, editArrivalManualAddress);
   const parsedEditNumberOfSeats = Number(editNumberOfSeats);
+  const {
+    vehicleOptions: editVehicleOptions,
+    vehiclePriceMultiplier: editVehiclePriceMultiplier,
+    isPriceLoading: isEditVehicleOptionsLoading,
+    isVehicleOptionsError: isEditVehicleOptionsError,
+    retryVehicleOptions: retryEditVehicleOptions,
+    maxPricePerSeat: editMaxPricePerSeat,
+    setMaxPricePerSeat: setEditMaxPricePerSeat,
+    resetBudget: resetEditBudget,
+    isBudgetValid: isEditBudgetValid,
+    confirmedPricePerSeat: parsedEditBudget,
+  } = useEditRequestPricing({
+    enabled: showEditForm && Boolean(tripRequest?.id),
+    requestId: tripRequest?.id,
+    vehicleType: editVehicleType,
+    departureAddress: editDepartureAddress,
+    arrivalAddress: editArrivalAddress,
+    departureReference: editDepartureReference,
+    arrivalReference: editArrivalReference,
+    departureLocation: editAddressInputMode === 'map' ? editDepartureLocation : null,
+    arrivalLocation: editAddressInputMode === 'map' ? editArrivalLocation : null,
+    numberOfSeats: parsedEditNumberOfSeats,
+    hasSpecifiedNumberOfSeats: true,
+  });
   const editSeatCapacity = getPassengerVehicleSeatCapacity(editVehicleType);
   const openEditIdentityVerification = usePassengerIdentityVerification(
     () => setShowEditForm(false),
@@ -663,7 +678,8 @@ export default function TripRequestDetailsScreen() {
     (option) => option.vehicleType === editVehicleType,
   );
   const isEditVehicleSelectionValid = Boolean(
-    selectedEditVehicleOption?.availableForRequestedSeats,
+    selectedEditVehicleOption?.availableForRequestedSeats
+    || (!selectedEditVehicleOption && isEditVehicleOptionsError && isEditBudgetValid),
   );
   const editScheduleError = getEditScheduleError(
     editDepartureDateMin,
@@ -676,97 +692,8 @@ export default function TripRequestDetailsScreen() {
     Number.isFinite(parsedEditNumberOfSeats) &&
     parsedEditNumberOfSeats >= 1 &&
     !getPassengerSeatValidation(parsedEditNumberOfSeats, true, editSeatCapacity) &&
-    isEditVehicleSelectionValid,
+    isEditVehicleSelectionValid && isEditBudgetValid,
   );
-
-  useEffect(() => {
-    if (!showEditForm || !tripRequest?.id) return;
-
-    if (
-      !editDepartureAddress ||
-      !editArrivalAddress ||
-      !Number.isFinite(parsedEditNumberOfSeats) ||
-      parsedEditNumberOfSeats < 1 ||
-      !Number.isSafeInteger(parsedEditNumberOfSeats)
-    ) {
-      setEditVehicleOptions([]);
-      setEditVehiclePriceMultiplier(1);
-      return;
-    }
-
-    let isCurrent = true;
-    setEditVehicleOptions([]);
-
-    const timer = setTimeout(() => {
-      getEditVehicleOptions({
-        departureLocation: editDepartureAddress,
-        departureReference: editDepartureReference.trim() || undefined,
-        departureCoordinates:
-          editAddressInputMode === 'map' ? getLocationCoordinates(editDepartureLocation) : undefined,
-        arrivalLocation: editArrivalAddress,
-        arrivalReference: editArrivalReference.trim() || undefined,
-        arrivalCoordinates:
-          editAddressInputMode === 'map' ? getLocationCoordinates(editArrivalLocation) : undefined,
-        numberOfSeats: parsedEditNumberOfSeats,
-      })
-        .unwrap()
-        .then((response) => {
-          if (!isCurrent) return;
-
-          setEditVehicleOptions(response.options);
-          setEditVehiclePriceMultiplier(response.weatherImpact.priceMultiplier);
-        })
-        .catch((requestError) => {
-          if (!isCurrent) return;
-          console.warn('Impossible de récupérer les tarifs pour la modification', requestError);
-          setEditVehicleOptions([]);
-          setEditVehiclePriceMultiplier(1);
-        });
-    }, 350);
-
-    return () => {
-      isCurrent = false;
-      clearTimeout(timer);
-    };
-  }, [
-    editAddressInputMode,
-    editArrivalAddress,
-    editArrivalLocation,
-    editArrivalReference,
-    editDepartureAddress,
-    editDepartureLocation,
-    editDepartureReference,
-    editVehicleOptionsRetry,
-    getEditVehicleOptions,
-    parsedEditNumberOfSeats,
-    showEditForm,
-    tripRequest?.id,
-  ]);
-
-  useEffect(() => {
-    if (
-      editHasEditedBudget ||
-      editVehicleType === tripRequest?.vehicleType
-    ) {
-      return;
-    }
-
-    const selectedOption = editVehicleOptions.find(
-      (option) => option.vehicleType === editVehicleType,
-    );
-    if (!selectedOption) return;
-
-    setEditMaxPricePerSeat(
-      selectedOption.recommendedPricePerSeat === null
-        ? ''
-        : String(selectedOption.recommendedPricePerSeat),
-    );
-  }, [
-    editHasEditedBudget,
-    editVehicleOptions,
-    editVehicleType,
-    tripRequest?.vehicleType,
-  ]);
 
   const closeDirectAcceptModal = useCallback(() => {
     setShowDirectAcceptModal(false);
@@ -1173,12 +1100,7 @@ export default function TripRequestDetailsScreen() {
   const handleSelectEditVehicle = (option: TripRequestVehiclePriceOption) => {
     if (!option.availableForRequestedSeats) return;
     setEditVehicleType(option.vehicleType);
-    setEditMaxPricePerSeat(
-      option.recommendedPricePerSeat === null
-        ? ''
-        : String(option.recommendedPricePerSeat),
-    );
-    setEditHasEditedBudget(false);
+    resetEditBudget();
   };
 
   // Initialiser le formulaire de modification avec les valeurs actuelles
@@ -1242,10 +1164,7 @@ export default function TripRequestDetailsScreen() {
     }
     setEditNumberOfSeats(tripRequest.numberOfSeats.toString());
     setEditVehicleType(requestedVehicleType);
-    setEditVehicleOptions([]);
-    setEditVehiclePriceMultiplier(1);
-    setEditHasEditedBudget(false);
-    setEditMaxPricePerSeat(tripRequest.maxPricePerSeat?.toString() || '');
+    resetEditBudget();
     setEditDescription(tripRequest.description || '');
   };
 
@@ -1302,6 +1221,15 @@ export default function TripRequestDetailsScreen() {
   };
 
   const handleUpdateRequest = async () => {
+    if (isUpdating) return;
+    if (isEditVehicleOptionsLoading) {
+      showDialog({
+        title: 'Calcul du prix en cours',
+        message: 'Patientez un instant pour vérifier le nouveau prix avant de confirmer.',
+        variant: 'info',
+      });
+      return;
+    }
     if (!id || !editDepartureAddress || !editArrivalAddress) {
       showDialog({
         title: 'Adresse requise',
@@ -1353,7 +1281,7 @@ export default function TripRequestDetailsScreen() {
       });
       return;
     }
-    if (!selectedEditVehicleOption?.availableForRequestedSeats) {
+    if (!isEditVehicleSelectionValid) {
       showDialog({
         title: 'Véhicule requis',
         message: 'Choisissez un type de véhicule disponible avant d\'enregistrer.',
@@ -1367,12 +1295,8 @@ export default function TripRequestDetailsScreen() {
       return;
     }
 
-    const parsedEditBudget = editMaxPricePerSeat.trim()
-      ? Number.parseFloat(editMaxPricePerSeat)
-      : undefined;
     if (
-      parsedEditBudget !== undefined &&
-      (!Number.isFinite(parsedEditBudget) || parsedEditBudget <= 0)
+      parsedEditBudget === undefined || !isEditBudgetValid
     ) {
       showDialog({
         title: 'Budget invalide',
@@ -1398,11 +1322,7 @@ export default function TripRequestDetailsScreen() {
           departureDateMax: updatedDepartureDateMax.toISOString(),
           numberOfSeats: parsedEditNumberOfSeats,
           vehicleType: editVehicleType,
-          ...(
-            parsedEditBudget !== undefined
-              ? { maxPricePerSeat: parsedEditBudget }
-              : {}
-          ),
+          maxPricePerSeat: parsedEditBudget,
           description: editDescription.trim() || undefined,
         },
       }).unwrap();
@@ -2698,10 +2618,10 @@ export default function TripRequestDetailsScreen() {
 
                       {!isEditVehicleOptionsLoading && isEditVehicleOptionsError && editVehicleOptions.length === 0 ? (
                         <View style={styles.editVehicleError}>
-                          <Text style={styles.editVehicleErrorText}>Tarifs indisponibles.</Text>
+                          <Text style={styles.editVehicleErrorText}>Tarifs indisponibles. Fixez votre budget ci-dessous ou réessayez.</Text>
                           <TouchableOpacity
                             style={styles.editVehicleRetry}
-                            onPress={() => setEditVehicleOptionsRetry((value) => value + 1)}
+                            onPress={retryEditVehicleOptions}
                           >
                             <Text style={styles.editVehicleRetryText}>Réessayer</Text>
                           </TouchableOpacity>
@@ -2801,15 +2721,19 @@ export default function TripRequestDetailsScreen() {
                           <TextInput
                             style={styles.editInput}
                             keyboardType="numeric"
-                            placeholder="Ex: 5000"
+                            placeholder={isEditVehicleOptionsLoading ? 'Calcul en cours…' : 'Votre budget'}
                             value={editMaxPricePerSeat}
-                            onChangeText={(value) => {
-                              setEditMaxPricePerSeat(value);
-                              setEditHasEditedBudget(true);
-                            }}
+                            onChangeText={setEditMaxPricePerSeat}
                           />
                         </View>
                       </View>
+                      <Text style={styles.editVehicleSubtitle}>
+                        {isEditVehicleOptionsLoading
+                          ? 'Recalcul du prix pour votre demande…'
+                          : isEditBudgetValid && parsedEditBudget !== undefined && Number.isSafeInteger(parsedEditNumberOfSeats) && parsedEditNumberOfSeats > 0
+                            ? `Total : ${formatCdfPrice(parsedEditBudget * parsedEditNumberOfSeats)} pour ${parsedEditNumberOfSeats} place${parsedEditNumberOfSeats > 1 ? 's' : ''}. Ce prix sera enregistré à la confirmation.`
+                            : 'Indiquez un budget par place avant de confirmer.'}
+                      </Text>
                     </View>
 
                     {getPassengerSeatValidation(parsedEditNumberOfSeats, true, editSeatCapacity) && (

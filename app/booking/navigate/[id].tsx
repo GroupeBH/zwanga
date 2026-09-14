@@ -1,4 +1,9 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import { PausedPassengerRideNotice } from '@/components/trip/PausedPassengerRideNotice';
+import { useAppIsActive } from '@/hooks/useAppIsActive';
+import { useNavigationMapLifecycle } from '@/hooks/navigation/useNavigationMapLifecycle';
+import { useNavigationRequestGuard } from '@/hooks/navigation/useNavigationRequestGuard';
+import { useNavigationMarkerRefresh } from '@/hooks/navigation/useNavigationMarkerRefresh';
 import { warnThrottled } from '@/utils/throttledWarning';
 import {
   getVehicleTrackingMarkerImage,
@@ -70,7 +75,6 @@ import {
   ActivityIndicator,
   AppState,
   BackHandler,
-  InteractionManager,
   Modal,
   Platform,
   StatusBar,
@@ -205,23 +209,25 @@ export default function PassengerNavigationScreen() {
   const insets = useSafeAreaInsets();
   const bookingId = typeof id === 'string' ? id : '';
   const isFocused = useIsFocused();
+  const isAppActive = useAppIsActive();
+  const isScreenActive = isFocused && isAppActive;
 
   // Récupérer la réservation et le trajet
   const { data: booking, isLoading: bookingLoading, refetch: refetchBooking } = useGetBookingByIdQuery(bookingId, { 
     skip: !bookingId,
-    pollingInterval: isFocused ? 60_000 : 0,
+    pollingInterval: isScreenActive ? 60_000 : 0,
     skipPollingIfUnfocused: true,
   });
   const tripId = booking?.tripId || '';
   const { data: trip, isLoading: tripLoading, refetch: refetchTrip } = useGetTripByIdQuery(tripId, {
     skip: !tripId,
-    pollingInterval: isFocused ? 30_000 : 0,
+    pollingInterval: isScreenActive ? 30_000 : 0,
     skipPollingIfUnfocused: true,
   });
   const isTripOngoing = trip?.status === 'ongoing';
   const { data: driverLocationSnapshot } = useGetDriverLocationQuery(tripId, {
     skip: !tripId || !isTripOngoing,
-    pollingInterval: isFocused ? 10_000 : 0,
+    pollingInterval: isScreenActive ? 10_000 : 0,
     skipPollingIfUnfocused: true,
   });
 
@@ -237,6 +243,10 @@ export default function PassengerNavigationScreen() {
     useCreateTripShareLinkMutation();
 
   const mapRef = useRef<MapView>(null);
+  const {
+    shouldRenderMap: isNavigationMapReady, isMapReady: isNativeMapReady,
+    onMapReady: handleMapReady, onMapLayout, runMapCommand, navigateAfterRelease,
+  } = useNavigationMapLifecycle({ screenKey: bookingId, enabled: isScreenActive, mapRef });
   const driverMarkerRef = useRef<MapMarker | null>(null);
   const passengerMarkerRef = useRef<MapMarker | null>(null);
   const pickupMarkerRef = useRef<MapMarker | null>(null);
@@ -245,10 +255,14 @@ export default function PassengerNavigationScreen() {
   const [passengerLocation, setPassengerLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
-  const [loadedMarkerKeys, setLoadedMarkerKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const { onReady: refreshTrackingMarker, isLoaded: isTrackingMarkerLoaded } =
+    useNavigationMarkerRefresh(IS_ANDROID && isNavigationMapReady, bookingId);
   
   // Route et directions
   const [getDirections] = useGetDirectionsMutation();
+  const { begin: beginRouteRequest, cancel: cancelRouteRequest } = useNavigationRequestGuard(isScreenActive, bookingId);
+  const { begin: beginLocationRequest, cancel: cancelLocationRequest } =
+    useNavigationRequestGuard(isScreenActive && isTripOngoing, bookingId);
   const [routeCoordinates, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[]>([]);
   const [routeInfo, setRouteInfo] = useState<PassengerRouteInfo | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
@@ -256,7 +270,6 @@ export default function PassengerNavigationScreen() {
   const [activeRouteSegment, setActiveRouteSegment] = useState<RouteSegmentFocus>('route');
   const [pickupNotice, setPickupNotice] = useState<PassengerPickupNotice | null>(null);
   const [pickupNoticeCountdown, setPickupNoticeCountdown] = useState<number | null>(null);
-  const [isNavigationMapReady, setIsNavigationMapReady] = useState(IS_ANDROID);
   const routeFetchedRef = useRef(false);
   const lastRouteFetchRef = useRef<number>(0);
   const hasFitInitialMapRef = useRef(false);
@@ -288,6 +301,8 @@ export default function PassengerNavigationScreen() {
     }
 
     isExitingRef.current = true;
+    cancelRouteRequest();
+    cancelLocationRequest();
     try {
       setIsSocketConnected(false);
       setIsLoadingRoute(false);
@@ -299,25 +314,15 @@ export default function PassengerNavigationScreen() {
       console.warn('[PassengerNavigation] cleanup before back failed:', error);
     }
 
-    try {
-      if (router.canGoBack()) {
-        router.back();
-      } else {
-        router.replace('/bookings');
-      }
-    } catch {
-      router.replace('/bookings');
-    } finally {
-      // If navigation fails for any reason, let the user retry the back action.
-      setTimeout(() => {
-        if (isMountedRef.current) {
-          isExitingRef.current = false;
-        }
-      }, 800);
-    }
-  }, [router]);
+    const scheduled = navigateAfterRelease(() => {
+      if (router.canGoBack()) router.back();
+      else router.replace('/bookings');
+    }, () => { isExitingRef.current = false; });
+    if (!scheduled) isExitingRef.current = false;
+  }, [cancelLocationRequest, cancelRouteRequest, navigateAfterRelease, router]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
       passengerLocationSubscriptionRef.current?.remove();
@@ -327,38 +332,7 @@ export default function PassengerNavigationScreen() {
   }, []);
 
   useEffect(() => {
-    if (IS_ANDROID) {
-      setIsNavigationMapReady(true);
-      return;
-    }
-
-    if (!isFocused) {
-      setIsNavigationMapReady(false);
-      hasFitInitialMapRef.current = false;
-      return;
-    }
-
-    setIsNavigationMapReady(false);
-    hasFitInitialMapRef.current = false;
-
-    let isCancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    const interactionTask = InteractionManager.runAfterInteractions(() => {
-      timeoutId = setTimeout(() => {
-        if (!isCancelled && isMountedRef.current) {
-          setIsNavigationMapReady(true);
-        }
-      }, 420);
-    });
-
-    return () => {
-      isCancelled = true;
-      interactionTask.cancel();
-      if (timeoutId) clearTimeout(timeoutId);
-    };
-  }, [bookingId, isFocused]);
-
-  useEffect(() => {
+    if (!isFocused) return;
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       navigateBackSafely();
       return true;
@@ -367,7 +341,7 @@ export default function PassengerNavigationScreen() {
     return () => {
       backHandler.remove();
     };
-  }, [navigateBackSafely]);
+  }, [isFocused, navigateBackSafely]);
 
   // Coordonnées importantes
   // Le point de récupération peut être personnalisé par le passager
@@ -844,7 +818,6 @@ export default function PassengerNavigationScreen() {
     highestPickupNoticePriorityRef.current.clear();
     setPickupNotice(null);
     setPickupNoticeCountdown(null);
-    setLoadedMarkerKeys(new Set());
   }, [bookingId]);
 
   useEffect(() => {
@@ -885,26 +858,9 @@ export default function PassengerNavigationScreen() {
 
   const handleTrackingMarkerReady = useCallback(
     (markerKey: string, markerRef: React.MutableRefObject<MapMarker | null>) => {
-      if (!IS_ANDROID) return;
-
-      [80, 220].forEach((delay) => {
-        setTimeout(() => {
-          markerRef.current?.redraw();
-        }, delay);
-      });
-      setTimeout(() => {
-        if (!isMountedRef.current) return;
-
-        setLoadedMarkerKeys((current) => {
-          if (current.has(markerKey)) return current;
-
-          const next = new Set(current);
-          next.add(markerKey);
-          return next;
-        });
-      }, 320);
+      refreshTrackingMarker(markerKey, () => markerRef.current);
     },
-    [],
+    [refreshTrackingMarker],
   );
 
   const tripDriverLocation = useMemo(
@@ -1021,6 +977,8 @@ export default function PassengerNavigationScreen() {
     // Éviter les appels trop fréquents (minimum 30 s entre les appels)
     const now = Date.now();
     if (now - lastRouteFetchRef.current < 30000 && routeFetchedRef.current) return;
+    const requestGuard = beginRouteRequest(passengerRouteSignature);
+    if (!requestGuard) return;
     lastRouteFetchRef.current = now;
     
     setIsLoadingRoute(true);
@@ -1032,12 +990,14 @@ export default function PassengerNavigationScreen() {
         lng: activePassengerDestination.longitude,
       };
       
-      const response = await getDirections({
+      const request = getDirections({
         origin,
         destination,
         mode: TravelMode.DRIVING,
-      }).unwrap();
-      if (!isMountedRef.current) return;
+      });
+      requestGuard.attach(request);
+      const response = await request.unwrap();
+      if (!isMountedRef.current || !requestGuard.isCurrent()) return;
       
       if (response.routes && response.routes.length > 0) {
         const route = response.routes[0];
@@ -1082,7 +1042,7 @@ export default function PassengerNavigationScreen() {
         applyFallbackRoute();
       }
     } catch (error: any) {
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current || !requestGuard.isCurrent()) return;
       console.warn(
         '[PassengerNavigation] Route detaillee indisponible, utilisation du trace direct:',
         error?.data?.message || error?.message || 'Erreur inconnue',
@@ -1091,22 +1051,30 @@ export default function PassengerNavigationScreen() {
         applyFallbackRoute();
       }
     } finally {
-      if (isMountedRef.current) {
+      if (isMountedRef.current && requestGuard.isCurrent()) {
         setIsLoadingRoute(false);
       }
+      requestGuard.finish();
     }
   }, [
     activePassengerDestination,
+    beginRouteRequest,
     driverLocation,
     getDirections,
     hasPassengerPickedUp,
     isTripOngoing,
+    passengerRouteSignature,
     routeCoordinates.length,
     routeOriginCoordinate,
   ]);
   
   // Récupérer la route au chargement
   useEffect(() => {
+    if (!isScreenActive) {
+      routeFetchedRef.current = false;
+      setIsLoadingRoute(false);
+      return;
+    }
     if (routeSignatureRef.current !== passengerRouteSignature) {
       routeSignatureRef.current = passengerRouteSignature;
       routeFetchedRef.current = false;
@@ -1116,11 +1084,11 @@ export default function PassengerNavigationScreen() {
     if (trip && !routeFetchedRef.current) {
       fetchRoute();
     }
-  }, [fetchRoute, passengerRouteSignature, trip]);
+  }, [fetchRoute, isScreenActive, passengerRouteSignature, trip]);
 
   // Connexion WebSocket pour recevoir la position du conducteur
   useEffect(() => {
-    if (!tripId || !isTripOngoing) {
+    if (!isScreenActive || !tripId || !isTripOngoing) {
       setIsSocketConnected(false);
       return;
     }
@@ -1240,6 +1208,7 @@ export default function PassengerNavigationScreen() {
     };
   }, [
     bookingId,
+    isScreenActive,
     isTripOngoing,
     presentDestinationApproachNotice,
     presentArrivalModal,
@@ -1269,7 +1238,7 @@ export default function PassengerNavigationScreen() {
     let isCancelled = false;
     let lastSentAt = 0;
     const sendLocation = async (location: Location.LocationObject) => {
-      if (isCancelled || !isMountedRef.current) return;
+      if (isCancelled || !isMountedRef.current || isExitingRef.current) return;
       const coordinate = normalizeTripMapCoordinate(
         location.coords.latitude,
         location.coords.longitude,
@@ -1325,6 +1294,8 @@ export default function PassengerNavigationScreen() {
 
       const now = Date.now();
       if (now - lastSentAt < PASSENGER_LOCATION_SEND_INTERVAL_MS) return;
+      const requestGuard = beginLocationRequest(booking.id);
+      if (!requestGuard) return;
       lastSentAt = now;
       const metadata = {
         ...(typeof location.coords.accuracy === 'number' &&
@@ -1346,22 +1317,26 @@ export default function PassengerNavigationScreen() {
       };
 
       try {
-        await trackingSocket.updatePassengerLocation(tripId, booking.id, [
-          coordinate.longitude,
-          coordinate.latitude,
-        ], metadata);
-        return;
-      } catch (socketError) {
-        console.warn('[PassengerNavigation] Envoi temps réel indisponible, fallback REST:', socketError);
-      }
+        try {
+          await trackingSocket.updatePassengerLocation(tripId, booking.id, [
+            coordinate.longitude,
+            coordinate.latitude,
+          ], metadata);
+          return;
+        } catch (socketError) {
+          if (!requestGuard.isCurrent() || isCancelled || isExitingRef.current) return;
+          warnThrottled('[PassengerNavigation] Envoi temps réel indisponible, fallback REST:', socketError);
+        }
 
-      try {
-        const response = await updatePassengerLocation({
+        const request = updatePassengerLocation({
           bookingId: booking.id,
           latitude: coordinate.latitude,
           longitude: coordinate.longitude,
           ...metadata,
-        }).unwrap();
+        });
+        requestGuard.attach(request);
+        const response = await request.unwrap();
+        if (!requestGuard.isCurrent() || isCancelled || isExitingRef.current) return;
 
         if (response.autoProgress?.events?.length && isMountedRef.current) {
           const bookingEvents = response.autoProgress.events.filter(
@@ -1406,13 +1381,18 @@ export default function PassengerNavigationScreen() {
           }
         }
       } catch (error) {
-        warnThrottled('[PassengerNavigation] Position passager non envoyée:', error);
+        if (requestGuard.isCurrent() && !isCancelled) {
+          warnThrottled('[PassengerNavigation] Position passager non envoyée:', error);
+        }
+      } finally {
+        requestGuard.finish();
       }
     };
 
     const startPassengerLocationSharing = async () => {
       try {
         const permission = await Location.requestForegroundPermissionsAsync();
+        if (isCancelled || !isMountedRef.current || isExitingRef.current) return;
         if (permission.status !== 'granted') {
           showDialog({
             variant: 'warning',
@@ -1437,7 +1417,8 @@ export default function PassengerNavigationScreen() {
         }
 
         if (initialLocation) {
-          await sendLocation(initialLocation);
+          // A slow first upload must not delay installation of the foreground GPS watcher.
+          void sendLocation(initialLocation);
         }
 
         if (isCancelled || !isMountedRef.current) return;
@@ -1484,6 +1465,7 @@ export default function PassengerNavigationScreen() {
       passengerLocationSubscriptionRef.current = null;
     };
   }, [
+    beginLocationRequest,
     booking?.droppedOff,
     booking?.id,
     booking?.status,
@@ -1650,23 +1632,23 @@ export default function PassengerNavigationScreen() {
 
   // Centrer sur le conducteur
   const centerOnDriver = () => {
-    if (displayedDriverLocation && mapRef.current) {
-      mapRef.current.animateToRegion({
+    if (displayedDriverLocation) {
+      runMapCommand((map) => map.animateToRegion({
         ...displayedDriverLocation,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
-      }, 500);
+      }, 500));
     }
   };
 
   // Centrer sur le passager
   const centerOnPassenger = () => {
-    if (passengerLocation && mapRef.current) {
-      mapRef.current.animateToRegion({
+    if (passengerLocation) {
+      runMapCommand((map) => map.animateToRegion({
         ...passengerLocation,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
-      }, 500);
+      }, 500));
     }
   };
   
@@ -1686,7 +1668,7 @@ export default function PassengerNavigationScreen() {
     }
     
     if (coordinates.length >= 2) {
-      mapRef.current.fitToCoordinates(coordinates, {
+      runMapCommand((map) => map.fitToCoordinates(coordinates, {
         edgePadding: {
           top: mapTopOffset + 24,
           right: 50,
@@ -1694,7 +1676,7 @@ export default function PassengerNavigationScreen() {
           left: 50,
         },
         animated: true,
-      });
+      }));
     }
   }, [
     displayedDriverLocation,
@@ -1705,18 +1687,18 @@ export default function PassengerNavigationScreen() {
     booking?.pickedUp,
     mapTopOffset,
     isMapExpanded,
+    runMapCommand,
   ]);
 
-  const handleMapReady = useCallback(() => {
+  useEffect(() => {
+    if (!isNativeMapReady) {
+      hasFitInitialMapRef.current = false;
+      return;
+    }
     if (hasFitInitialMapRef.current) return;
     hasFitInitialMapRef.current = true;
-
-    requestAnimationFrame(() => {
-      if (isMountedRef.current) {
-        fitToRoute();
-      }
-    });
-  }, [fitToRoute]);
+    fitToRoute();
+  }, [fitToRoute, isNativeMapReady]);
 
   const handleShareTrip = useCallback(async () => {
     if (!tripId) return;
@@ -1926,11 +1908,6 @@ export default function PassengerNavigationScreen() {
     try {
       await confirmDriverTripInterruption({ tripId, bookingId: booking.id }).unwrap();
       await Promise.all([refetchBooking(), refetchTrip()]);
-      showDialog({
-        variant: 'success',
-        title: 'Interruption confirmée',
-        message: 'Votre confirmation a été envoyée au conducteur.',
-      });
     } catch (error: any) {
       showDialog({
         variant: 'danger',
@@ -2144,6 +2121,7 @@ export default function PassengerNavigationScreen() {
           initialRegion={mapRegion}
           mapType="standard"
           onMapReady={handleMapReady}
+          onLayout={onMapLayout}
           showsUserLocation={!isPassengerOnboard && !passengerLocation}
           showsMyLocationButton={false}
           showsCompass={false}
@@ -2156,11 +2134,12 @@ export default function PassengerNavigationScreen() {
         {passengerLocation && !isPassengerOnboard && (
           <Marker
             ref={passengerMarkerRef}
+            key="passenger-location"
             coordinate={passengerLocation}
             anchor={PASSENGER_TRACKING_MARKER_ANCHOR}
             title="Votre position"
             description="Votre position actuelle"
-            tracksViewChanges={IS_ANDROID && !loadedMarkerKeys.has('passenger-location')}
+            tracksViewChanges={IS_ANDROID && !isTrackingMarkerLoaded('passenger-location')}
             zIndex={25}
           >
             <PassengerTrackingMarker
@@ -2174,6 +2153,7 @@ export default function PassengerNavigationScreen() {
         {displayedDriverLocation && (
           <Marker
             ref={driverMarkerRef}
+            key="driver-location"
             coordinate={displayedDriverLocation}
             anchor={VEHICLE_TRACKING_MARKER_ANCHOR}
             title="Conducteur"
@@ -2197,11 +2177,12 @@ export default function PassengerNavigationScreen() {
         {pickupCoordinate && !booking.pickedUp && (
           <Marker
             ref={pickupMarkerRef}
+            key="pickup-location"
             coordinate={pickupCoordinate}
             anchor={PASSENGER_TRACKING_MARKER_ANCHOR}
             title="Point de prise en charge"
             description={booking.passengerOrigin || trip.departure.address}
-            tracksViewChanges={IS_ANDROID && !loadedMarkerKeys.has('pickup-location')}
+            tracksViewChanges={IS_ANDROID && !isTrackingMarkerLoaded('pickup-location')}
             zIndex={22}
           >
             <PassengerTrackingMarker
@@ -2215,11 +2196,12 @@ export default function PassengerNavigationScreen() {
         {dropoffCoordinate && (
           <Marker
             ref={dropoffMarkerRef}
+            key="dropoff-location"
             coordinate={dropoffCoordinate}
             anchor={PASSENGER_TRACKING_MARKER_ANCHOR}
             title="Destination"
             description={booking.passengerDestination || trip.arrival.address}
-            tracksViewChanges={IS_ANDROID && !loadedMarkerKeys.has('dropoff-location')}
+            tracksViewChanges={IS_ANDROID && !isTrackingMarkerLoaded('dropoff-location')}
             zIndex={21}
           >
             <PassengerTrackingMarker
@@ -2231,6 +2213,7 @@ export default function PassengerNavigationScreen() {
         {/* Route complete */}
         {displayedRouteCoordinates.length > 1 && (
           <Polyline
+            key="passenger-route"
             coordinates={displayedRouteCoordinates}
             strokeColor={activeRouteSegment === 'route' ? Colors.primaryDark : 'rgba(255, 107, 53, 0.28)'}
             strokeWidth={activeRouteSegment === 'route' ? 6 : 3}
@@ -2245,6 +2228,7 @@ export default function PassengerNavigationScreen() {
         {/* Ligne entre la voiture et le passager avant la prise en charge */}
         {displayedDriverLocation && !booking.pickedUp && (passengerLocation || pickupCoordinate) && (
           <Polyline
+            key="pickup-connector"
             coordinates={[displayedDriverLocation, passengerLocation ?? pickupCoordinate!]}
             strokeColor={activeRouteSegment === 'pickup' ? Colors.infoDark : 'rgba(52, 152, 219, 0.28)'}
             strokeWidth={activeRouteSegment === 'pickup' ? 6 : 3}
@@ -2555,6 +2539,7 @@ export default function PassengerNavigationScreen() {
               </TouchableOpacity>
             )}
 
+            <PausedPassengerRideNotice booking={booking} />
             {pendingDriverInterruptionRequest && (
               <View style={styles.driverInterruptionCard}>
                 <View style={styles.driverInterruptionHeader}>

@@ -1,3 +1,4 @@
+import { FormModal as Modal } from '@/components/forms/FormLayout';
 import { SupportTicketCard } from '@/components/support/SupportTicketCard';
 import {
   buildApiErrorMessage,
@@ -33,7 +34,6 @@ import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
-  Modal,
   RefreshControl,
   ScrollView,
   Text,

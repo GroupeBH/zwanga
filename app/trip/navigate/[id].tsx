@@ -1,4 +1,8 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import { useAppIsActive } from '@/hooks/useAppIsActive';
+import { useNavigationMapLifecycle } from '@/hooks/navigation/useNavigationMapLifecycle';
+import { useNavigationRequestGuard } from '@/hooks/navigation/useNavigationRequestGuard';
+import { useNavigationMarkerRefresh } from '@/hooks/navigation/useNavigationMarkerRefresh';
 import { warnThrottled } from '@/utils/throttledWarning';
 import {
   getVehicleTrackingMarkerImage,
@@ -652,6 +656,8 @@ export default function NavigationScreen() {
   const insets = useSafeAreaInsets();
   const tripId = typeof id === 'string' ? id : '';
   const isFocused = useIsFocused();
+  const isAppActive = useAppIsActive();
+  const isScreenActive = isFocused && isAppActive;
 
   const { data: trip, isLoading, isFetching: isTripFetching, refetch: refetchTrip } = useGetTripByIdQuery(tripId, {
     skip: !tripId,
@@ -662,11 +668,14 @@ export default function NavigationScreen() {
     tripId,
     {
       skip: !tripId,
-      pollingInterval: isFocused && isTripOngoing ? 20_000 : 0,
+      pollingInterval: isScreenActive && isTripOngoing ? 20_000 : 0,
       skipPollingIfUnfocused: true,
     },
   );
   const [getDirections] = useGetDirectionsMutation();
+  const { begin: beginRouteRequest, cancel: cancelRouteRequest } = useNavigationRequestGuard(isScreenActive, tripId);
+  const { begin: beginLocationRequest, cancel: cancelLocationRequest } =
+    useNavigationRequestGuard(isScreenActive && isTripOngoing, tripId);
   const [acceptBooking, { isLoading: isAcceptingBooking }] = useAcceptBookingMutation();
   const [rejectBooking, { isLoading: isRejectingBooking }] = useRejectBookingMutation();
   const [cancelBooking, { isLoading: isCancellingPickupBypassBooking }] = useCancelBookingMutation();
@@ -777,7 +786,10 @@ export default function NavigationScreen() {
   ]);
 
   const mapRef = useRef<MapView>(null);
-  const isMapReadyRef = useRef(false);
+  const {
+    shouldRenderMap, isMapReady: isNativeMapReady, readyRef: isMapReadyRef,
+    onMapReady: handleMapReady, onMapLayout, runMapCommand, navigateAfterRelease,
+  } = useNavigationMapLifecycle({ screenKey: tripId, enabled: isScreenActive, mapRef });
   const passengerMarkerRefs = useRef<Record<string, MapMarker | null>>({});
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<RouteCoordinate[]>([]);
@@ -840,36 +852,36 @@ export default function NavigationScreen() {
   const isRestCompletionCheckRunningRef = useRef(false);
   const lastRestCompletionCheckAtRef = useRef(0);
   const completedDuringInactiveCandidateRef = useRef(false);
-  const [loadedPassengerMarkerKeys, setLoadedPassengerMarkerKeys] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
+  const { onReady: refreshPassengerMarker, isLoaded: isPassengerMarkerLoaded } =
+    useNavigationMarkerRefresh(USE_ANDROID_NAVIGATION_MARKER_IMAGES && shouldRenderMap, tripId);
   const [destinationTracksViewChanges, setDestinationTracksViewChanges] = useState(true);
-  const driverPosition = useRef(
+  const [driverPosition] = useState(() =>
     new AnimatedRegion({
       latitude: tripDepartureCoordinate?.latitude ?? 0,
       longitude: tripDepartureCoordinate?.longitude ?? 0,
       latitudeDelta: 0,
       longitudeDelta: 0,
     })
-  ).current;
+  );
+  const driverMarkerAnimationRef = useRef<ReturnType<AnimatedRegion['timing']> | null>(null);
+  const stopDriverMarkerAnimation = useCallback(() => {
+    driverMarkerAnimationRef.current?.stop();
+    driverMarkerAnimationRef.current = null;
+  }, []);
+  useEffect(() => {
+    if (!isNativeMapReady) stopDriverMarkerAnimation();
+    return stopDriverMarkerAnimation;
+  }, [isNativeMapReady, stopDriverMarkerAnimation]);
 
   const focusMapOnCoordinates = useCallback(
     (
       coordinates: (RouteCoordinate | null | undefined)[],
       options: Parameters<typeof fitMapToSafeCoordinates>[2],
     ) => {
-      if (!isMapReadyRef.current) {
-        return;
-      }
-
-      fitMapToSafeCoordinates(mapRef.current, coordinates, options);
+      runMapCommand((map) => fitMapToSafeCoordinates(map, coordinates, options));
     },
-    [],
+    [runMapCommand],
   );
-
-  const handleMapReady = useCallback(() => {
-    isMapReadyRef.current = true;
-  }, []);
 
   const rememberAcceptedBooking = useCallback((bookingId: string) => {
     setLocallyAcceptedBookingIds((current) => {
@@ -1348,6 +1360,9 @@ export default function NavigationScreen() {
   };
 
   const stopNavigationSideEffects = useCallback(() => {
+    cancelRouteRequest();
+    cancelLocationRequest();
+    stopDriverMarkerAnimation();
     if (recalcRouteTimeoutRef.current) {
       clearTimeout(recalcRouteTimeoutRef.current);
       recalcRouteTimeoutRef.current = null;
@@ -1361,7 +1376,7 @@ export default function NavigationScreen() {
       backgroundDisclosureResolverRef.current = null;
     }
     void Speech.stop();
-  }, []);
+  }, [cancelLocationRequest, cancelRouteRequest, stopDriverMarkerAnimation]);
 
   const cleanupNavigationUi = useCallback(() => {
     stopNavigationSideEffects();
@@ -1406,23 +1421,18 @@ export default function NavigationScreen() {
 
     isExitingRef.current = true;
     stopNavigationSideEffects();
-    currentLocationRef.current = null;
-    mapRef.current = null;
-
-    try {
+    const scheduled = navigateAfterRelease(() => {
       if (tripId) {
         router.replace(`/trip/manage/${tripId}`);
       } else {
         router.replace('/(tabs)');
       }
-    } catch (error) {
-      isExitingRef.current = false;
-      console.warn('[DriverNavigation] Impossible de quitter la navigation:', error);
-      router.replace('/(tabs)');
-    }
-  }, [router, stopNavigationSideEffects, tripId]);
+    }, () => { isExitingRef.current = false; });
+    if (!scheduled) isExitingRef.current = false;
+  }, [navigateAfterRelease, router, stopNavigationSideEffects, tripId]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
       stopNavigationSideEffects();
@@ -1445,7 +1455,6 @@ export default function NavigationScreen() {
     announcedWaypointIdsRef.current.clear();
     presentedWaypointIdsRef.current.clear();
     lastSpeechAtRef.current = 0;
-    setLoadedPassengerMarkerKeys(new Set());
     setPickupNotice(null);
     setPickupNoticeCountdown(null);
     pickupBypassConfirmationRef.current = null;
@@ -2811,21 +2820,29 @@ export default function NavigationScreen() {
         void updateDriverBackgroundLocationCheckpoint(tripId, coordinate);
       }
 
-      void trackingSocket
-        .updateDriverLocation(tripId, coordinates, metadata)
-        .catch((error) => {
+      const requestGuard = beginLocationRequest(tripId);
+      if (!requestGuard) return;
+      void (async () => {
+        try {
+          await trackingSocket.updateDriverLocation(tripId, coordinates, metadata);
+        } catch (error) {
+          if (!requestGuard.isCurrent() || isExitingRef.current) return;
           warnThrottled('[Navigation] Position conducteur socket non envoyée:', error);
-          void updateDriverLocation({ tripId, coordinates, ...metadata })
-            .unwrap()
-            .catch((fallbackError) => {
-              warnThrottled(
-                '[Navigation] Position conducteur REST non envoyée:',
-                fallbackError,
-              );
-            });
-        });
+          try {
+            const request = updateDriverLocation({ tripId, coordinates, ...metadata });
+            requestGuard.attach(request);
+            await request.unwrap();
+          } catch (fallbackError) {
+            if (requestGuard.isCurrent()) {
+              warnThrottled('[Navigation] Position conducteur REST non envoyée:', fallbackError);
+            }
+          }
+        } finally {
+          requestGuard.finish();
+        }
+      })();
     },
-    [isTripOngoing, tripId, updateDriverLocation],
+    [beginLocationRequest, isTripOngoing, tripId, updateDriverLocation],
   );
 
   // Demander les permissions de localisation
@@ -3089,15 +3106,22 @@ export default function NavigationScreen() {
 
           const displayedCoordinate = rawCoordinate;
 
-          driverPosition.timing({
-            latitude: displayedCoordinate.latitude,
-            longitude: displayedCoordinate.longitude,
-            duration: 4500,
-            useNativeDriver: false,
-            toValue: 0,
-            latitudeDelta: 0,
-            longitudeDelta: 0
-          }).start();
+          stopDriverMarkerAnimation();
+          if (isMapReadyRef.current && appStateRef.current === 'active') {
+            const animation = driverPosition.timing({
+              latitude: displayedCoordinate.latitude,
+              longitude: displayedCoordinate.longitude,
+              duration: 4500,
+              useNativeDriver: false,
+              toValue: 0,
+              latitudeDelta: 0,
+              longitudeDelta: 0,
+            });
+            driverMarkerAnimationRef.current = animation;
+            animation.start();
+          } else {
+            driverPosition.setValue({ ...displayedCoordinate, latitudeDelta: 0, longitudeDelta: 0 });
+          }
 
           const gpsHeading =
             normalizedLocation.coords.heading !== null &&
@@ -3179,6 +3203,8 @@ export default function NavigationScreen() {
     isFocused,
     isTripOngoing,
     driverPosition,
+    isMapReadyRef,
+    stopDriverMarkerAnimation,
     navigateBackSafely,
     router,
     sendDriverLocationToTracking,
@@ -3188,7 +3214,7 @@ export default function NavigationScreen() {
 
   // Passer la carte en 3D lorsque la course est en cours
   useEffect(() => {
-    if (!isTripOngoing) {
+    if (!isTripOngoing || !isNativeMapReady) {
       hasEnabled3DRef.current = false;
       return;
     }
@@ -3197,20 +3223,20 @@ export default function NavigationScreen() {
       return;
     }
 
-    hasEnabled3DRef.current = true;
-    mapRef.current.animateCamera(
+    const location = currentLocationRef.current;
+    hasEnabled3DRef.current = runMapCommand((map) => map.animateCamera(
       {
         center: {
-          latitude: currentLocationRef.current.coords.latitude,
-          longitude: currentLocationRef.current.coords.longitude,
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
         },
         pitch: 60,
         heading,
         zoom: 17,
       },
       { duration: 800 }
-    );
-  }, [isTripOngoing, currentLocation, heading]);
+    ));
+  }, [isTripOngoing, isNativeMapReady, currentLocation, heading, runMapCommand]);
 
   const speakNavigationMessage = useCallback(async (message: string, options: { force?: boolean } = {}) => {
     const text = message.replace(/\s+/g, ' ').trim();
@@ -3376,6 +3402,12 @@ export default function NavigationScreen() {
   ]);
 
   useEffect(() => {
+    if (!isScreenActive) {
+      routeFetchedRef.current = false;
+      setIsLoadingRoute(false);
+      setIsReroutingRoute(false);
+      return;
+    }
     if (!trip || !tripDepartureCoordinate || !activeRouteDestination || !routeSignature) {
       return;
     }
@@ -3395,6 +3427,7 @@ export default function NavigationScreen() {
     void fetchRouteRef.current?.({ originOverride });
   }, [
     getFreshDriverCoordinate,
+    isScreenActive,
     isTripOngoing,
     routeSignature,
     trip,
@@ -3461,6 +3494,8 @@ export default function NavigationScreen() {
       return getSafeMapCoordinateList([routeOrigin, routeDestination]);
     };
 
+    const requestGuard = beginRouteRequest(routeSignature);
+    if (!requestGuard) return;
     routeFetchedRef.current = true;
     lastRouteFetchTimeRef.current = Date.now();
     setIsLoadingRoute(true);
@@ -3469,7 +3504,7 @@ export default function NavigationScreen() {
     try {
       // Construire les waypoints non complétés pour l'API backend
       // Appel à l'API backend optimisée
-      const data = await getDirections({
+      const request = getDirections({
         origin: {
           lat: routeOrigin.latitude,
           lng: routeOrigin.longitude,
@@ -3481,8 +3516,10 @@ export default function NavigationScreen() {
         mode: TravelMode.DRIVING,
         optimizeWaypoints: false,
         language: 'fr',
-      }).unwrap();
-      if (!isMountedRef.current) return;
+      });
+      requestGuard.attach(request);
+      const data = await request.unwrap();
+      if (!isMountedRef.current || !requestGuard.isCurrent()) return;
 
       if (data.routes && data.routes.length > 0) {
         const route = data.routes[0];
@@ -3603,7 +3640,7 @@ export default function NavigationScreen() {
         }
       }
     } catch (error: any) {
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current || !requestGuard.isCurrent()) return;
       // Vérifier si c'est une erreur "pas de route trouvée" (400)
       const isNoRouteError = error?.status === 400 || error?.data?.statusCode === 400;
       const isNetworkError = error?.status === 'FETCH_ERROR' || error?.error?.includes?.('Network');
@@ -3658,12 +3695,13 @@ export default function NavigationScreen() {
         }
       }
     } finally {
-      if (isMountedRef.current) {
+      if (isMountedRef.current && requestGuard.isCurrent()) {
         setIsLoadingRoute(false);
         if (options.announceReroute) {
           setIsReroutingRoute(false);
         }
       }
+      requestGuard.finish();
     }
   };
 
@@ -4354,8 +4392,8 @@ export default function NavigationScreen() {
     }
 
     dismissTripEndNotice();
-    router.replace(`/rate/${tripId}`);
-  }, [dismissTripEndNotice, router, tripId]);
+    navigateAfterRelease(() => router.replace(`/rate/${tripId}`));
+  }, [dismissTripEndNotice, navigateAfterRelease, router, tripId]);
 
   // Quitter la navigation
   const handleExitNavigation = useCallback(() => {
@@ -4671,10 +4709,8 @@ export default function NavigationScreen() {
     }
 
     cleanupNavigationUi();
-    currentLocationRef.current = null;
-    mapRef.current = null;
-    router.replace(`/trip/${tripId}?openEdit=1`);
-  }, [cleanupNavigationUi, router, tripId]);
+    navigateAfterRelease(() => router.replace(`/trip/${tripId}?openEdit=1`));
+  }, [cleanupNavigationUi, navigateAfterRelease, router, tripId]);
 
   useEffect(() => {
     if (!isFocused) {
@@ -4935,10 +4971,12 @@ export default function NavigationScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       
-      {/* Carte (ultra-optimisée pour éviter les crashs) */}
+      {/* La carte native est libérée avant les changements d'écran. */}
+      {shouldRenderMap ? (
       <MapView
         ref={mapRef}
         onMapReady={handleMapReady}
+        onLayout={onMapLayout}
         style={styles.map}
         provider={PROVIDER_GOOGLE}
         showsUserLocation={false}
@@ -4968,6 +5006,7 @@ export default function NavigationScreen() {
         {/* Itinéraire (simplifié) */}
         {routeSectionCoordinates.nextCoordinates.length > 1 && (
           <Polyline
+            key="next-route"
             coordinates={routeSectionCoordinates.nextCoordinates}
             strokeWidth={routeSectionFocus === 'next' ? 6 : 3}
             strokeColor={routeSectionFocus === 'next' ? Colors.primaryDark : 'rgba(255, 107, 53, 0.26)'}
@@ -4981,6 +5020,7 @@ export default function NavigationScreen() {
 
         {routeSectionCoordinates.remainingCoordinates.length > 1 && (
           <Polyline
+            key="remaining-route"
             coordinates={routeSectionCoordinates.remainingCoordinates}
             strokeWidth={routeSectionFocus === 'remaining' ? 6 : 3}
             strokeColor={routeSectionFocus === 'remaining' ? Colors.infoDark : 'rgba(52, 152, 219, 0.24)'}
@@ -4996,6 +5036,7 @@ export default function NavigationScreen() {
         {/* Position actuelle du conducteur - Marqueur voiture */}
         {currentDriverCoordinate && (
           <Marker.Animated
+            key="driver-position"
             ref={driverMarkerRef}
             coordinate={driverPosition as unknown as { latitude: number; longitude: number }}
             anchor={VEHICLE_TRACKING_MARKER_ANCHOR}
@@ -5040,32 +5081,17 @@ export default function NavigationScreen() {
               anchor={PASSENGER_TRACKING_MARKER_ANCHOR}
               title={passenger.passengerName}
               description={passengerDescription}
-              onPress={() => router.push(`/passenger/${passenger.passengerId}`)}
-              tracksViewChanges={USE_ANDROID_NAVIGATION_MARKER_IMAGES && !loadedPassengerMarkerKeys.has(passengerMarkerKey)}
+              onPress={() => {
+                stopDriverMarkerAnimation();
+                navigateAfterRelease(() => router.push(`/passenger/${passenger.passengerId}`));
+              }}
+              tracksViewChanges={USE_ANDROID_NAVIGATION_MARKER_IMAGES && !isPassengerMarkerLoaded(passengerMarkerKey)}
               zIndex={20}
             >
               <PassengerTrackingMarker
                 status={passenger.status}
-                onReady={() => {
-                  if (!USE_ANDROID_NAVIGATION_MARKER_IMAGES) return;
-
-                  [80, 220].forEach((delay) => {
-                    setTimeout(() => {
-                      passengerMarkerRefs.current[passenger.bookingId]?.redraw();
-                    }, delay);
-                  });
-                  setTimeout(() => {
-                    if (!isMountedRef.current) return;
-
-                    setLoadedPassengerMarkerKeys((current) => {
-                      if (current.has(passengerMarkerKey)) return current;
-
-                      const next = new Set(current);
-                      next.add(passengerMarkerKey);
-                      return next;
-                    });
-                  }, 320);
-                }}
+                onReady={() => refreshPassengerMarker(passengerMarkerKey,
+                  () => passengerMarkerRefs.current[passenger.bookingId] ?? null)}
               />
             </Marker>
           );
@@ -5173,6 +5199,9 @@ export default function NavigationScreen() {
           </Marker>
         )}
       </MapView>
+      ) : <View style={[styles.map, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator color={Colors.primary} size="large" />
+      </View>}
 
       {isTripOngoing && canToggleRouteSections && (
         <View style={styles.routeSectionToggle}>

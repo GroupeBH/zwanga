@@ -1,4 +1,5 @@
 import LocationPickerModal from '@/components/LocationPickerModal';
+import { FormScreen } from '@/components/forms/FormLayout';
 import { RequestBudgetFields } from '@/components/trip-request/RequestBudgetFields';
 import { Colors } from '@/constants/styles';
 import { requestStyles as styles } from '@/features/trip-request/requestStyles';
@@ -14,7 +15,6 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequestDatePickerModal } from '@/components/trip-request/RequestDatePickerModal';
 import { RequestPrimaryButton } from '@/components/trip-request/RequestPrimaryButton';
@@ -27,7 +27,7 @@ import { useRequestTripController } from '@/hooks/trip-request/useRequestTripCon
 export default function RequestTripScreen() {
   const form = useRequestTripController();
   return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
+    <FormScreen style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => form.router.back()} style={styles.headerButton}>
           <Ionicons name="chevron-back" size={24} color={Colors.gray[900]} />
@@ -129,21 +129,20 @@ export default function RequestTripScreen() {
             </Animated.View>
           )}
         </ScrollView>
-      </KeyboardAvoidingView>
 
       {form.requestFormStep === 'route' && (
-        <SafeAreaView edges={['bottom']} style={styles.footer}>
+        <View style={styles.footer}>
           <RequestPrimaryButton
             handlePrimaryAction={form.handlePrimaryAction}
             primaryButtonDisabled={form.primaryButtonDisabled}
             primaryIconName={form.primaryIconName}
             primaryLabel={form.primaryLabel}
           />
-        </SafeAreaView>
+        </View>
       )}
 
       {form.requestFormStep === 'details' && !form.isRequestSuccessVisible && (
-        <SafeAreaView edges={['bottom']} style={styles.offerStickyFooter}>
+        <View style={styles.offerStickyFooter}>
           {form.submissionError ? (
             <View style={styles.submissionErrorBanner}>
               <Ionicons name="alert-circle" size={18} color={Colors.danger} />
@@ -165,8 +164,9 @@ export default function RequestTripScreen() {
               </>
             )}
           </TouchableOpacity>
-        </SafeAreaView>
+        </View>
       )}
+      </KeyboardAvoidingView>
 
       <RequestSuccessModal
         goHomeAfterRequestSuccess={form.goHomeAfterRequestSuccess}
@@ -208,6 +208,6 @@ export default function RequestTripScreen() {
         iosPickerMode={form.iosPickerMode}
         setIosPickerMode={form.setIosPickerMode}
       />
-    </SafeAreaView>
+    </FormScreen>
   );
 }

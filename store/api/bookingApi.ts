@@ -28,6 +28,7 @@ type ServerUser = {
 };
 
 type ServerBooking = {
+  interruptionFareLocked?: boolean;
   id: string;
   tripId: string;
   passengerId: string;
@@ -99,6 +100,8 @@ type ServerBooking = {
 };
 
 type ServerTripInterruptionConfirmation = {
+  decision?: 'wait' | 'stop' | null;
+  decisionAt?: string | null;
   id?: string;
   bookingId?: string;
   passengerId?: string;
@@ -261,6 +264,8 @@ const mapDriverInterruptionRequest = (
             : ('pending' as const),
       confirmedAt: confirmation.confirmedAt ?? null,
       rejectedAt: confirmation.rejectedAt ?? null,
+      decision: confirmation.decision ?? null,
+      decisionAt: confirmation.decisionAt ?? null,
     }));
 
   return {
@@ -287,6 +292,7 @@ const mapDriverInterruptionRequest = (
 };
 
 const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
+  interruptionFareLocked: booking.interruptionFareLocked ?? false,
   id: booking.id,
   tripId: booking.tripId,
   passengerId: booking.passengerId,
