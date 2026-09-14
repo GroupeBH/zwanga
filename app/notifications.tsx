@@ -1,8 +1,9 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import {
   useDisableNotificationsMutation,
-  useGetNotificationsQuery,
+  useGetNotificationPagesInfiniteQuery,
   useMarkAllNotificationsAsReadMutation,
   useMarkNotificationsAsReadMutation,
 } from '@/store/api/notificationApi';
@@ -11,12 +12,9 @@ import type { Notification } from '@/types';
 import { formatDateTime, formatRelativeTime } from '@/utils/dateHelpers';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import {
-  extractTripRequestId,
-  getTripUrl,
+  getNotificationHref,
   handleNotificationNavigation,
-  isDriverNotification,
 } from '@/utils/notificationNavigation';
-import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
@@ -34,7 +32,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const NOTIFICATIONS_PAGE_SIZE = 40;
 const EMPTY_NOTIFICATIONS: Notification[] = [];
 
 const notificationTypeConfig: Record<
@@ -138,52 +135,50 @@ const NotificationListItem = React.memo(function NotificationListItem({
 });
 
 export default function NotificationsScreen() {
+  const isScreenActive = useScreenIsActive();
   const router = useRouter();
   const { showDialog } = useDialog();
   const { data: currentUser } = useGetCurrentUserQuery();
-  const [notificationsLimit, setNotificationsLimit] = useState(NOTIFICATIONS_PAGE_SIZE);
-  const notificationsQueryParams = useMemo(() => ({ limit: notificationsLimit }), [notificationsLimit]);
   const {
     data: notificationsData,
     isLoading,
     isFetching,
+    isFetchingNextPage,
+    hasNextPage: hasMoreNotifications,
+    fetchNextPage,
     refetch,
-  } = useGetNotificationsQuery(notificationsQueryParams);
+  } = useGetNotificationPagesInfiniteQuery(undefined, {
+    skip: !isScreenActive,
+    refetchOnMountOrArgChange: 30,
+    refetchOnReconnect: true,
+  });
 
   const [markNotificationsAsRead] = useMarkNotificationsAsReadMutation();
   const [markAllAsRead] = useMarkAllNotificationsAsReadMutation();
   const [disableNotifications] = useDisableNotificationsMutation();
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
 
-  const notifications = notificationsData?.notifications ?? EMPTY_NOTIFICATIONS;
-  const unreadCount = notificationsData?.unreadCount ?? 0;
-  const totalNotifications = notificationsData?.total ?? notifications.length;
-  const hasMoreNotifications = notifications.length < totalNotifications;
+  const notifications = useMemo(() => notificationsData
+    ? Array.from(new Map(notificationsData.pages.flatMap((page) => page.notifications).map((item) => [item.id, item])).values())
+    : EMPTY_NOTIFICATIONS, [notificationsData]);
+  const unreadCount = notificationsData?.pages[0]?.unreadCount ?? 0;
 
   const handleSelectNotification = useCallback(async (notification: Notification) => {
-    // Marquer comme lu et désactiver (faire disparaître) la notification
+    const data = notification.data || {};
+    if (getNotificationHref(data, currentUser)) {
+      handleNotificationNavigation(data, router, currentUser);
+    } else {
+      setSelectedNotification(notification);
+    }
+
+    // Navigation must not wait for the network. Keep acknowledgements in RTK Query.
     try {
-      // Marquer comme lu d'abord
       if (!notification.isRead) {
         await markNotificationsAsRead({ notificationIds: [notification.id] }).unwrap();
       }
-      // Désactiver la notification pour qu'elle disparaisse de la liste
       await disableNotifications({ notificationIds: [notification.id] }).unwrap();
     } catch (error) {
       console.warn('Impossible de marquer la notification comme lue ou de la désactiver:', error);
-    }
-
-    // Naviguer vers l'écran approprié selon le type de notification
-    // Utilise la fonction utilitaire partagée pour garantir la cohérence avec les notifications push
-    const data = notification.data || {};
-    
-    try {
-      // Utiliser la fonction de navigation partagée
-      handleNotificationNavigation(data, router, currentUser);
-    } catch (error) {
-      console.warn('Erreur lors de la navigation depuis la notification:', error);
-      // En cas d'erreur, ouvrir le modal
-      setSelectedNotification(notification);
     }
   }, [currentUser, disableNotifications, markNotificationsAsRead, router]);
 
@@ -285,8 +280,8 @@ export default function NotificationsScreen() {
       return;
     }
 
-    setNotificationsLimit((currentLimit) => currentLimit + NOTIFICATIONS_PAGE_SIZE);
-  }, [hasMoreNotifications, isFetching]);
+    void fetchNextPage();
+  }, [fetchNextPage, hasMoreNotifications, isFetching]);
 
   const keyExtractor = useCallback((notification: Notification) => notification.id, []);
 
@@ -382,7 +377,7 @@ export default function NotificationsScreen() {
           ]}
           refreshControl={
             <RefreshControl
-              refreshing={isFetching}
+              refreshing={isFetching && !isFetchingNextPage}
               onRefresh={handleRefresh}
               colors={[Colors.primary]}
               tintColor={Colors.primary}
@@ -417,17 +412,7 @@ export default function NotificationsScreen() {
             <View style={styles.modalActions}>
               {(() => {
                 const data = selectedNotification?.data || {};
-                const { type, tripId, bookingId, conversationId, requestId } = data;
-                
-                // Déterminer si on peut naviguer selon le type de notification
-                // Afficher le bouton si on a au moins un ID disponible
-                const canNavigate = Boolean(
-                  tripId || 
-                  bookingId || 
-                  conversationId || 
-                  requestId ||
-                  type === 'referral_new_referral'
-                );
+                const canNavigate = Boolean(getNotificationHref(data, currentUser));
 
                 if (canNavigate) {
                   return (
@@ -435,74 +420,8 @@ export default function NotificationsScreen() {
                       <TouchableOpacity
                         style={[styles.modalButton, styles.modalSecondaryButton]}
                         onPress={() => {
-                          try {
-                            // Fermer le modal d'abord
-                            setSelectedNotification(null);
-                            
-                            // Naviguer selon le type et les IDs disponibles
-                            // Priorité 1 : Types spécifiques
-                            if (type === 'referral_new_referral') {
-                              router.push('/referrals');
-                            } else if (type === 'trip_manage' && tripId) {
-                              router.push(`/trip/manage/${tripId}`);
-                            } else if ((type === 'message' || type === 'chat') && conversationId) {
-                              router.push({
-                                pathname: '/chat/[id]',
-                                params: { id: conversationId },
-                              });
-            } else if (
-              type === 'trip_request' ||
-              type === 'trip-request' ||
-              type === 'trip_request_accepted' ||
-              type === 'trip-request-accepted' ||
-              type === 'trip_request_rejected' ||
-              type === 'trip-request-rejected' ||
-              type === 'trip_request_cancelled' ||
-              type === 'trip-request-cancelled' ||
-              type === 'trip_request_pending' ||
-              type === 'trip-request-pending' ||
-              type === 'new_trip_request' ||
-              type === 'new-trip-request' ||
-              type === 'trip_request_new' ||
-              type === 'trip-request-new'
-            ) {
-              const modalRequestId = extractTripRequestId(data);
-              if (modalRequestId) {
-                router.push(getTripRequestDetailHref(modalRequestId));
-              }
-                            } else if ((type === 'rate' || type === 'review') && tripId) {
-                              router.push(`/rate/${tripId}`);
-                            } else if (
-                              (type === 'booking' ||
-                                type === 'booking_accepted' ||
-                                type === 'booking_rejected' ||
-                                type === 'booking_cancelled' ||
-                                type === 'booking_pending') &&
-                              tripId
-                            ) {
-                              router.push(getTripUrl(tripId, data, currentUser, type) as any);
-                            } else if ((type === 'trip' || type === 'trip_update') && tripId) {
-                              router.push(getTripUrl(tripId, data, currentUser, type) as any);
-                            } else if (isDriverNotification(type) && tripId) {
-                              router.push(`/trip/manage/${tripId}`);
-                            }
-                            // Priorité 2 : Fallback selon les IDs disponibles
-                            // Vérifier requestId AVANT tripId pour éviter de naviguer vers un trajet au lieu d'une demande
-                            else if (requestId) {
-                              router.push(getTripRequestDetailHref(requestId));
-                            } else if (tripId) {
-                              router.push(getTripUrl(tripId, data, currentUser, type) as any);
-                            } else if (conversationId) {
-                              router.push({
-                                pathname: '/chat/[id]',
-                                params: { id: conversationId },
-                              });
-                            } else if (bookingId) {
-                              router.push('/bookings');
-                            }
-                          } catch (error) {
-                            console.warn('Erreur lors de la navigation:', error);
-                          }
+                          setSelectedNotification(null);
+                          handleNotificationNavigation(data, router, currentUser);
                         }}
                       >
                         <Text style={styles.modalSecondaryText}>Voir</Text>

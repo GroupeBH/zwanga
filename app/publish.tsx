@@ -1,14 +1,15 @@
+import { ManualAddressStatus } from '@/components/address/ManualAddressStatus';
 import { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
-import { VehicleFormModal } from '@/components/VehicleFormModal';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { VehicleFormModal } from '@/components/VehicleFormModal';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { getRegisteredVehicleTypeLabel } from '@/constants/vehicleTypes';
 import { useDiditKycFlow } from '@/hooks/useDiditKycFlow';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import { useManualAddressGeocode } from '@/hooks/useManualAddressGeocode';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { trackEvent } from '@/services/analytics';
-import { useGeocodeMutation } from '@/store/api/googleMapsApi';
 import {
   useCreateRecurringTripMutation,
   useCreateTripMutation,
@@ -18,6 +19,7 @@ import {
 import { useGetKycStatusQuery, useGetProfileSummaryQuery } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import type { TripRequestVehicleType, Vehicle } from '@/types';
+import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
 import {
   createBecomeDriverAction,
   createSubscribeToZwangaProAction,
@@ -25,16 +27,10 @@ import {
   isDailyPublicationLimitError,
   isDriverRequiredError,
 } from '@/utils/errorHelpers';
-import {
-  buildManualGeocodeQuery,
-  MANUAL_GEOCODE_DEBOUNCE_MS,
-  mapGeocodeResponseToSelection,
-  type ManualGeocodeStatus,
-} from '@/utils/manualAddressGeocode';
-import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
+import { reconcileAmbiguousMutation } from '@/utils/mutationReconciliation';
+import Animated, { FadeInDown } from '@/utils/reanimated';
 import { getRouteCoordinates } from '@/utils/routeApi';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
-import { reconcileAmbiguousMutation } from '@/utils/mutationReconciliation';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, {
   DateTimePickerAndroid,
@@ -56,7 +52,6 @@ import {
   View,
 } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
-import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type PublishStep = 'route' | 'datetime' | 'vehicle' | 'pricing' | 'confirm';
@@ -182,7 +177,6 @@ export default function PublishScreen() {
   const publishInFlightRef = useRef(false);
   const publicationSuccessActionRef = useRef(false);
   const [publicationSuccess, setPublicationSuccess] = useState<PublicationSuccess>(null);
-  const [geocodeManualAddress] = useGeocodeMutation();
   const { showDialog } = useDialog();
   const { getCurrentLocation, lastKnownLocation } = useUserLocation({
     autoRequest: false,
@@ -239,7 +233,7 @@ export default function PublishScreen() {
   const kycChecklist = [
     { icon: 'shield-checkmark', title: 'Didit sécurisé', subtitle: 'Vérification hébergée par Didit' },
     { icon: 'id-card', title: "Pièce d'identité", subtitle: 'Contrôle guidé depuis le parcours Didit' },
-    { icon: 'time', title: 'Validation rapide', subtitle: 'Retour automatique du statut KYC' },
+    { icon: 'time', title: 'Validation rapide', subtitle: 'Suivi automatique de votre vérification' },
   ] as const;
 
   // Driver and Vehicle Management
@@ -401,10 +395,6 @@ export default function PublishScreen() {
   const [arrivalReference, setArrivalReference] = useState('');
   const [showDepartureReference, setShowDepartureReference] = useState(false);
   const [showArrivalReference, setShowArrivalReference] = useState(false);
-  const [departureManualGeocodeStatus, setDepartureManualGeocodeStatus] =
-    useState<ManualGeocodeStatus>('idle');
-  const [arrivalManualGeocodeStatus, setArrivalManualGeocodeStatus] =
-    useState<ManualGeocodeStatus>('idle');
   const [showQuickLandmarks, setShowQuickLandmarks] = useState(false);
   const [manualAddressTarget, setManualAddressTarget] = useState<'departure' | 'arrival' | null>(null);
   const [, setAddressSectionStep] = useState<AddressSectionStep>('method');
@@ -517,42 +507,6 @@ export default function PublishScreen() {
     void initializeDeparture();
   }, [departureLocation, departureManualAddress, getCurrentLocation, lastKnownLocation]);
 
-  const renderManualGeocodeStatus = (status: ManualGeocodeStatus) => {
-    if (status === 'idle') {
-      return null;
-    }
-
-    const isSearching = status === 'searching';
-    const isFound = status === 'found';
-    const color = isFound ? Colors.success : isSearching ? Colors.primary : Colors.danger;
-
-    return (
-      <View style={styles.manualGeocodeStatus}>
-        {isSearching ? (
-          <ActivityIndicator size="small" color={Colors.primary} />
-        ) : (
-          <Ionicons
-            name={isFound ? 'checkmark-circle' : 'alert-circle'}
-            size={14}
-            color={color}
-          />
-        )}
-        <Text
-          style={[
-            styles.manualGeocodeStatusText,
-            isFound && styles.manualGeocodeStatusTextFound,
-            status === 'missing' && styles.manualGeocodeStatusTextMissing,
-          ]}
-        >
-          {isSearching
-            ? 'Recherche des coordonnées...'
-            : isFound
-              ? 'Coordonnées trouvées, vérifiez sur la carte'
-              : 'Adresse introuvable'}
-        </Text>
-      </View>
-    );
-  };
   const renderGpsStatus = (
     hasAddress: boolean,
     hasGpsSuggestion: boolean,
@@ -865,107 +819,21 @@ export default function PublishScreen() {
     });
   };
 
-  useEffect(() => {
-    if (manualAddressTarget !== 'departure') {
-      setDepartureManualGeocodeStatus('idle');
-      return;
-    }
+  const [departureManualGeocodeStatus] = useManualAddressGeocode({
+    enabled: manualAddressTarget === 'departure', address: departureManualAddress,
+    selection: departureLocation, onResolved: (selection) => {
+      setDepartureLocation(selection);
+      setDeparturePointStatus('suggested');
+    }, onMissing: () => setDeparturePointStatus(null),
+  });
 
-    const address = departureManualAddress.trim();
-    if (address.length < 3) {
-      setDepartureManualGeocodeStatus('idle');
-      return;
-    }
-
-    if (departureLocation) {
-      setDepartureManualGeocodeStatus('found');
-      return;
-    }
-
-    let isCurrent = true;
-    setDepartureManualGeocodeStatus('searching');
-
-    const timeout = setTimeout(() => {
-      geocodeManualAddress({
-        address: buildManualGeocodeQuery(address),
-        region: 'cd',
-      })
-        .unwrap()
-        .then((response) => {
-          if (!isCurrent) return;
-          const selection = mapGeocodeResponseToSelection(address, response);
-          if (!selection) {
-            setDepartureManualGeocodeStatus('missing');
-            setDeparturePointStatus(null);
-            return;
-          }
-          setDepartureLocation(selection);
-          setDeparturePointStatus('suggested');
-          setDepartureManualGeocodeStatus('found');
-        })
-        .catch((error) => {
-          if (!isCurrent) return;
-          console.warn('Manual departure geocode failed', error);
-          setDepartureManualGeocodeStatus('missing');
-        });
-    }, MANUAL_GEOCODE_DEBOUNCE_MS);
-
-    return () => {
-      isCurrent = false;
-      clearTimeout(timeout);
-    };
-  }, [manualAddressTarget, departureLocation, departureManualAddress, geocodeManualAddress]);
-
-  useEffect(() => {
-    if (manualAddressTarget !== 'arrival') {
-      setArrivalManualGeocodeStatus('idle');
-      return;
-    }
-
-    const address = arrivalManualAddress.trim();
-    if (address.length < 3) {
-      setArrivalManualGeocodeStatus('idle');
-      return;
-    }
-
-    if (arrivalLocation) {
-      setArrivalManualGeocodeStatus('found');
-      return;
-    }
-
-    let isCurrent = true;
-    setArrivalManualGeocodeStatus('searching');
-
-    const timeout = setTimeout(() => {
-      geocodeManualAddress({
-        address: buildManualGeocodeQuery(address),
-        region: 'cd',
-      })
-        .unwrap()
-        .then((response) => {
-          if (!isCurrent) return;
-          const selection = mapGeocodeResponseToSelection(address, response);
-          if (!selection) {
-            setArrivalManualGeocodeStatus('missing');
-            setArrivalPointStatus(null);
-            return;
-          }
-          setArrivalLocation(selection);
-          setArrivalPointStatus('suggested');
-          setArrivalManualGeocodeStatus('found');
-        })
-        .catch((error) => {
-          if (!isCurrent) return;
-          console.warn('Manual arrival geocode failed', error);
-          setArrivalManualGeocodeStatus('missing');
-        });
-    }, MANUAL_GEOCODE_DEBOUNCE_MS);
-
-    return () => {
-      isCurrent = false;
-      clearTimeout(timeout);
-    };
-  }, [manualAddressTarget, arrivalLocation, arrivalManualAddress, geocodeManualAddress]);
+  const [arrivalManualGeocodeStatus] = useManualAddressGeocode({
+    enabled: manualAddressTarget === 'arrival', address: arrivalManualAddress,
+    selection: arrivalLocation, onResolved: (selection) => {
+      setArrivalLocation(selection);
+      setArrivalPointStatus('suggested');
+    }, onMissing: () => setArrivalPointStatus(null),
+  });
 
   useEffect(() => {
     const origin = getMapCoordinate(departureLocation);
@@ -1362,7 +1230,7 @@ export default function PublishScreen() {
       return 'Continuer';
     }
     if (step === 'confirm') {
-      if (!isPublishIdentityVerified) return 'KYC requis';
+      if (!isPublishIdentityVerified) return 'Identité à vérifier';
       return isRecurringTrip ? 'Publier les trajets' : 'Publier';
     }
     return 'Continuer';
@@ -1502,7 +1370,7 @@ export default function PublishScreen() {
             <Ionicons name="shield" size={20} color={Colors.primary} />
           </View>
           <View style={styles.identityWarningContent}>
-            <Text style={styles.identityWarningTitle}>KYC requis</Text>
+            <Text style={styles.identityWarningTitle}>Identité à vérifier</Text>
             <Text style={styles.identityWarningText}>
               Vérifiez votre identité pour pouvoir publier et confirmer vos trajets.
             </Text>
@@ -1613,7 +1481,7 @@ export default function PublishScreen() {
                         placeholder="Ex: avenue Kasa-Vubu, Bandal"
                         placeholderTextColor={Colors.gray[400]}
                       />
-                      {renderManualGeocodeStatus(departureManualGeocodeStatus)}
+                      <ManualAddressStatus status={departureManualGeocodeStatus} appearance={styles} foundLabel="Coordonnées trouvées, vérifiez sur la carte" />
                     </>
                   )}
                   {renderGpsStatus(
@@ -1724,7 +1592,7 @@ export default function PublishScreen() {
                         placeholder="Ex: rond-point Victoire"
                         placeholderTextColor={Colors.gray[400]}
                       />
-                      {renderManualGeocodeStatus(arrivalManualGeocodeStatus)}
+                      <ManualAddressStatus status={arrivalManualGeocodeStatus} appearance={styles} foundLabel="Coordonnées trouvées, vérifiez sur la carte" />
                     </>
                   )}
                   {renderGpsStatus(
@@ -1834,7 +1702,7 @@ export default function PublishScreen() {
               >
                 <Ionicons name="shield-checkmark" size={20} color={Colors.primary} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inlineKycTitle}>KYC requis pour publier</Text>
+                  <Text style={styles.inlineKycTitle}>Vérifiez votre identité pour publier</Text>
                   <Text style={styles.inlineKycSubtitle}>
                     Vérifiez votre identité en moins de 5 min
                   </Text>
@@ -2204,7 +2072,7 @@ export default function PublishScreen() {
                 <View style={styles.passengerKycRequirementCopy}>
                   <Text style={styles.freeTripTitle}>Passagers vérifiés uniquement</Text>
                   <Text style={styles.freeTripSubtitle}>
-                    Les passagers devront avoir un KYC approuvé avant de réserver ou embarquer.
+                    L’identité des passagers devra être vérifiée avant de réserver ou d’embarquer.
                   </Text>
                 </View>
               </View>
@@ -2419,7 +2287,7 @@ export default function PublishScreen() {
                   <View style={styles.confirmDetailRow}>
                     <View style={styles.confirmDetailLeft}>
                       <Ionicons name="shield-checkmark-outline" size={18} color={Colors.gray[600]} />
-                      <Text style={styles.confirmDetailLabel}>KYC passager</Text>
+                      <Text style={styles.confirmDetailLabel}>Identité des passagers</Text>
                     </View>
                     <Text
                       style={[
@@ -2467,7 +2335,7 @@ export default function PublishScreen() {
                       ? isRecurringTrip
                         ? 'Publier les trajets'
                         : 'Publier'
-                      : 'KYC requis'}
+                      : 'Identité à vérifier'}
                   </Text>
                 )}
               </TouchableOpacity>

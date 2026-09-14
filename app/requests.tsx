@@ -1,3 +1,7 @@
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { rankRequestsByProximity } from '@/features/trip-request/requestPriority';
+import { useAppSelector } from '@/store/hooks';
+import { selectUserCoordinates } from '@/store/selectors';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import {
   useGetAvailableTripRequestsQuery,
@@ -26,8 +30,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 type RequestTab = 'available' | 'my-requests';
 
 export default function TripRequestsScreen() {
+  const isScreenActive = useScreenIsActive();
   const router = useRouter();
   const { data: currentUser } = useGetCurrentUserQuery();
+  const driverCoordinate = useAppSelector(selectUserCoordinates);
   const isDriverAccount = Boolean(
     currentUser?.isDriver ||
       currentUser?.role === 'driver' ||
@@ -44,7 +50,7 @@ export default function TripRequestsScreen() {
   } = useGetAvailableTripRequestsQuery(undefined, {
     skip: activeTab !== 'available',
     // Polling léger pour les demandes disponibles (conducteurs)
-    pollingInterval: activeTab === 'available' ? 60_000 : 0,
+    pollingInterval: isScreenActive ? (activeTab === 'available' ? 60_000 : 0) : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,
@@ -59,15 +65,18 @@ export default function TripRequestsScreen() {
   } = useGetMyTripRequestsQuery(undefined, {
     skip: activeTab !== 'my-requests',
     // Polling léger pour mes demandes (passagers)
-    pollingInterval: activeTab === 'my-requests' ? 60_000 : 0,
+    pollingInterval: isScreenActive ? (activeTab === 'my-requests' ? 60_000 : 0) : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,
   });
 
   const filteredAvailableRequests = useMemo(
-    () => availableRequests.filter((request) => request.passengerId !== currentUser?.id),
-    [availableRequests, currentUser?.id]
+    () => rankRequestsByProximity(
+      availableRequests.filter((request) => request.passengerId !== currentUser?.id),
+      driverCoordinate,
+    ),
+    [availableRequests, currentUser?.id, driverCoordinate]
   );
 
   const requestsCount = {

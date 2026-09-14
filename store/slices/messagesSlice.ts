@@ -21,6 +21,7 @@ const messagesSlice = createSlice({
   name: 'messages',
   initialState,
   reducers: {
+    resetMessages: () => initialState,
     setConversations: (state, action: PayloadAction<Conversation[]>) => {
       state.conversations = action.payload;
       state.unreadCount = action.payload.reduce((sum, conv) => sum + conv.unreadCount, 0);
@@ -45,14 +46,12 @@ const messagesSlice = createSlice({
       action: PayloadAction<{ conversationId: string; message: Message; isMine?: boolean }>,
     ) => {
       const { conversationId, message, isMine } = action.payload;
-      if (!state.messages[conversationId]) {
-        state.messages[conversationId] = [];
-      }
-      state.messages[conversationId].push(message);
+      // Message bodies live in RTK Query, with eviction when the chat is closed.
       
       const convIndex = state.conversations.findIndex((c) => c.id === conversationId);
       if (convIndex !== -1) {
         const conversation = state.conversations[convIndex];
+        if (conversation.lastMessage?.id === message.id) return;
         state.conversations[convIndex] = {
           ...conversation,
           lastMessage: message,
@@ -90,6 +89,7 @@ const messagesSlice = createSlice({
 });
 
 export const {
+  resetMessages,
   setConversations,
   upsertConversation,
   setMessages,

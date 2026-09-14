@@ -1,5 +1,10 @@
 import { configureStore, type Middleware } from '@reduxjs/toolkit';
 import { setupListeners } from '@reduxjs/toolkit/query';
+import { Platform } from 'react-native';
+import { nativeQueryListeners } from '../services/nativeQueryListeners';
+import { chatSocket } from '../services/chatSocket';
+import { trackingSocket } from '../services/trackingSocket';
+import { clearLocationDeliveries } from '../services/locationDelivery';
 import { authRefreshApi } from './api/authRefreshApi';
 import { zwangaApi } from './api/zwangaApi';
 import { mapboxApi } from './api/mapboxApi';
@@ -7,7 +12,10 @@ import authReducer from './slices/authSlice';
 import messagesReducer from './slices/messagesSlice';
 import locationReducer from './slices/locationSlice';
 import tripsReducer from './slices/tripsSlice';
+import requestDraftsReducer, { resetRequestDrafts } from './slices/requestDraftsSlice';
+import homeRequestHighlightsReducer, { resetHomeRequestHighlights } from './slices/homeRequestHighlightsSlice';
 import { setStoreAccessor } from './storeAccessor';
+import { createTripRequestExpirationMiddleware } from './middleware/tripRequestExpiration';
 
 const apiQueryActionTypes = [
   `${zwangaApi.reducerPath}/executeQuery/fulfilled`,
@@ -43,8 +51,17 @@ const apiCacheIsolationMiddleware: Middleware = (storeApi) => (next) => (action)
     Boolean(previousUserId && currentUserId && previousUserId !== currentUserId);
 
   if (logoutAction || accountChanged) {
+    chatSocket.disconnect();
+    trackingSocket.disconnect();
+    clearLocationDeliveries();
+    storeApi.dispatch({ type: 'messages/resetMessages' });
+    storeApi.dispatch(resetRequestDrafts());
+    storeApi.dispatch(resetHomeRequestHighlights());
     storeApi.dispatch(zwangaApi.util.resetApiState());
     storeApi.dispatch(authRefreshApi.util.resetApiState());
+  } else if (typedAction.type === 'auth/setTokens') {
+    chatSocket.refreshAuthentication();
+    trackingSocket.refreshAuthentication();
   }
   return result;
 };
@@ -53,6 +70,8 @@ export const store = configureStore({
   reducer: {
     auth: authReducer,
     trips: tripsReducer,
+    requestDrafts: requestDraftsReducer,
+    homeRequestHighlights: homeRequestHighlightsReducer,
     messages: messagesReducer,
     location: locationReducer,
     [zwangaApi.reducerPath]: zwangaApi.reducer,
@@ -84,14 +103,14 @@ export const store = configureStore({
       },
     })
       .prepend(apiCacheIsolationMiddleware)
-      .concat(zwangaApi.middleware, authRefreshApi.middleware, mapboxApi.middleware),
+      .concat(zwangaApi.middleware, authRefreshApi.middleware, mapboxApi.middleware, createTripRequestExpirationMiddleware()),
 });
 
 // Initialize store accessor to avoid circular dependencies
 setStoreAccessor(store.dispatch, store.getState);
 
 // Enable refetchOnFocus/refetchOnReconnect behaviors
-setupListeners(store.dispatch);
+setupListeners(store.dispatch, Platform.OS === 'web' ? undefined : nativeQueryListeners);
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;

@@ -1,3 +1,4 @@
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import {
@@ -64,6 +65,7 @@ const PAYOUT_STATUS: Record<
 };
 
 export default function DriverEarningsScreen() {
+  const isScreenActive = useScreenIsActive();
   const router = useRouter();
   const { showDialog } = useDialog();
   const [refreshing, setRefreshing] = useState(false);
@@ -73,7 +75,7 @@ export default function DriverEarningsScreen() {
     isError: summaryError,
     refetch: refetchSummary,
   } = useGetMyDriverSettlementQuery(undefined, {
-    pollingInterval: 60_000,
+    pollingInterval: isScreenActive ? (60_000) : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,
@@ -84,7 +86,7 @@ export default function DriverEarningsScreen() {
     isError: earningsError,
     refetch: refetchEarnings,
   } = useGetMyDriverEarningsQuery(undefined, {
-    pollingInterval: 60_000,
+    pollingInterval: isScreenActive ? (60_000) : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,
@@ -94,7 +96,7 @@ export default function DriverEarningsScreen() {
     isError: payoutsError,
     refetch: refetchPayouts,
   } = useGetMyDriverPayoutsQuery(undefined, {
-    pollingInterval: 60_000,
+    pollingInterval: isScreenActive ? (60_000) : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,
@@ -177,7 +179,7 @@ export default function DriverEarningsScreen() {
       showDialog({
         variant: 'warning',
         title: 'Vérification requise',
-        message: 'Votre identité KYC doit être approuvée avant tout versement Mobile Money.',
+        message: 'Votre identité doit être vérifiée avant tout versement Mobile Money.',
       });
       return;
     }
@@ -261,7 +263,7 @@ export default function DriverEarningsScreen() {
             </Text>
           </TouchableOpacity>
           <Text style={styles.payoutDestination}>
-            Destination : {maskPhone(summary?.payoutPhone)} · KYC {summary?.kycApproved ? 'validé' : 'requis'}
+            Destination : {maskPhone(summary?.payoutPhone)} · Identité {summary?.kycApproved ? 'vérifiée' : 'à vérifier'}
           </Text>
 
           <View style={styles.balanceBreakdown}>

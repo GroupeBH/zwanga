@@ -1,3 +1,4 @@
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
 import type { TripRequest } from '@/types';
@@ -20,6 +21,7 @@ import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function MyTripRequestsScreen() {
+  const isScreenActive = useScreenIsActive();
   const router = useRouter();
   const {
     data: tripRequests = [],
@@ -28,7 +30,7 @@ export default function MyTripRequestsScreen() {
     refetch,
   } = useGetMyTripRequestsQuery(undefined, {
     // Polling léger pour mes demandes de trajet
-    pollingInterval: 60_000,
+    pollingInterval: isScreenActive ? (60_000) : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,

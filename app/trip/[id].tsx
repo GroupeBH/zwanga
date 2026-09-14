@@ -31,7 +31,10 @@ import { useAppSelector } from '@/store/hooks';
 import { selectConversations, selectTripById, selectUser } from '@/store/selectors';
 import type { Booking, BookingStatus, Conversation, GeoPoint, TripPaymentMode } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
-import { getApiErrorMessage, isPassengerKycRequiredError } from '@/utils/errorHelpers';
+import { getApiErrorMessage, isPassengerKycRequiredError, isExtraSeatsIdentityError } from '@/utils/errorHelpers';
+import { PassengerSeatNotice } from '@/components/PassengerSeatNotice';
+import { usePassengerIdentityVerification } from '@/hooks/usePassengerIdentityVerification';
+import { getPassengerSeatValidation } from '@/utils/passengerSeats';
 import {
   buildManualGeocodeQuery,
   mapGeocodeResponseToSelection,
@@ -333,13 +336,14 @@ export default function TripDetailsScreen() {
   } = useGetTripByIdQuery(tripId, {
     skip: !tripId,
     // Polling automatique basé sur le statut du trajet
-    pollingInterval: tripFromStore?.status === 'ongoing'
+    pollingInterval: !isFocused ? 0 : tripFromStore?.status === 'ongoing'
       ? 15000 // 15 secondes pour les trajets en cours
       : tripFromStore?.status === 'upcoming'
         ? 60000 // 60 secondes pour les trajets à venir
         : 0, // Pas de polling pour les trajets terminés/annulés
     skipPollingIfUnfocused: true,
     refetchOnFocus: true, // Rafraîchir quand l'utilisateur revient dans l'app
+    refetchOnMountOrArgChange: true, // Une notification peut annoncer un démarrage ou une interruption.
     refetchOnReconnect: false,
   });
 
@@ -360,7 +364,7 @@ export default function TripDetailsScreen() {
     refetch: refetchMyBookings,
   } = useGetMyBookingsQuery(undefined, {
     // Polling pour les réservations si le trajet est actif
-    pollingInterval: trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
+    pollingInterval: !isFocused ? 0 : trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
     skipPollingIfUnfocused: true,
     refetchOnMountOrArgChange: true,
     refetchOnFocus: true,
@@ -373,7 +377,7 @@ export default function TripDetailsScreen() {
   } = useGetTripBookingsQuery(tripId, {
     skip: !tripId,
     // Polling pour les réservations du trajet
-    pollingInterval: trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
+    pollingInterval: !isFocused ? 0 : trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,
@@ -722,7 +726,7 @@ export default function TripDetailsScreen() {
     }
 
     const seatsValue = parseInt(editSeats, 10);
-    const priceValue = parseFloat(editPrice);
+    const priceValue = trip.tripRequestId ? trip.price : parseFloat(editPrice);
     if (Number.isNaN(seatsValue) || Number.isNaN(priceValue) || seatsValue <= 0 || priceValue < 0) {
       showDialog({
         variant: 'danger',
@@ -798,7 +802,7 @@ export default function TripDetailsScreen() {
 
     const updates: {
       totalSeats: number;
-      pricePerSeat: number;
+      pricePerSeat?: number;
       departureDate: string;
       departureLocation?: string;
       arrivalLocation?: string;
@@ -808,7 +812,7 @@ export default function TripDetailsScreen() {
       requiresPassengerKyc?: boolean;
     } = {
       totalSeats: seatsValue,
-      pricePerSeat: priceValue,
+      ...(trip.tripRequestId ? {} : { pricePerSeat: priceValue }),
       departureDate: editDateTime.toISOString(),
       vehicleId: editVehicleId,
       requiresPassengerKyc: editRequiresPassengerKyc,
@@ -862,9 +866,9 @@ export default function TripDetailsScreen() {
       const isPassengerKycError = isPassengerKycRequiredError(error);
       showDialog({
         variant: isPassengerKycError ? 'warning' : 'danger',
-        title: isPassengerKycError ? 'KYC passager requis' : 'Erreur',
+        title: isPassengerKycError ? 'Identité des passagers à vérifier' : 'Erreur',
         message: isPassengerKycError
-          ? "Certains passagers déjà liés à ce trajet n'ont pas encore un KYC approuvé. Gardez l'exigence désactivée, ou demandez-leur de finaliser leur vérification avant de l'activer."
+          ? "Certains passagers de ce trajet n'ont pas encore vérifié leur identité. Gardez cette exigence désactivée, ou demandez-leur de terminer leur vérification avant de l'activer."
           : getApiErrorMessage(error, 'Impossible de mettre à jour ce trajet pour le moment.'),
       });
     }
@@ -1446,8 +1450,12 @@ export default function TripDetailsScreen() {
     lastKnownLocation?.coords?.longitude,
   ]);
 
-  const availableSeats = trip ? Math.max(trip.availableSeats, 0) : 0;
-  const seatLimit = Math.max(availableSeats, 1);
+  const availableSeats = trip && Number.isFinite(trip.availableSeats) ? Math.max(0, Math.floor(trip.availableSeats)) : 0;
+  const seatLimit = availableSeats;
+  const openPassengerIdentityVerification = usePassengerIdentityVerification(
+    () => setBookingModalVisible(false),
+    () => setBookingModalVisible(true),
+  );
   const progress = trip?.progress || 0;
   const trackingStatusTitle = liveDriverCoordinate ? 'Suivi en direct' : 'Position estimée';
   const trackingStatusSubtitle = useMemo(() => {
@@ -1699,6 +1707,11 @@ export default function TripDetailsScreen() {
         setBookingModalError(`Maximum ${seatLimit} place(s) disponible(s)`);
         return;
       }
+      const seatError = getPassengerSeatValidation(seatsValue, isIdentityVerified, seatLimit);
+      if (seatError) {
+        setBookingModalError(seatError.message);
+        return;
+      }
       setBookingModalError('');
       setBookingStep(2);
     } else if (bookingStep === 2) {
@@ -1925,6 +1938,12 @@ export default function TripDetailsScreen() {
       return;
     }
     const seatsValue = parseInt(bookingSeats, 10);
+    const seatError = getPassengerSeatValidation(seatsValue, isIdentityVerified, seatLimit);
+    if (seatError) {
+      setBookingModalError(seatError.message);
+      setBookingStep(1);
+      return;
+    }
     if (Number.isNaN(seatsValue) || seatsValue <= 0) {
       setBookingModalError('Veuillez indiquer un nombre de places valide.');
       return;
@@ -2104,9 +2123,9 @@ export default function TripDetailsScreen() {
       refreshBookingLists();
     } catch (error: any) {
       if (isPassengerKycRequiredError(error)) {
-        setBookingModalVisible(false);
-        setBookingModalError('');
-        checkIdentity('book');
+        void refetchKycStatus();
+        setBookingModalError(getApiErrorMessage(error, 'Vérifiez votre identité avant de continuer.'));
+        openPassengerIdentityVerification(isExtraSeatsIdentityError(error) ? 'extra_seats' : 'book');
         return;
       }
 
@@ -2995,7 +3014,7 @@ export default function TripDetailsScreen() {
                   <Ionicons name="shield-checkmark-outline" size={17} color={Colors.primary} />
                 </View>
                 <View style={styles.passengerKycTripNoticeCopy}>
-                  <Text style={styles.passengerKycTripNoticeTitle}>KYC passager requis</Text>
+                  <Text style={styles.passengerKycTripNoticeTitle}>Identité des passagers vérifiée</Text>
                   <Text style={styles.passengerKycTripNoticeText}>
                     Ce conducteur accepte uniquement les passagers dont l&apos;identité est vérifiée.
                   </Text>
@@ -3800,7 +3819,7 @@ export default function TripDetailsScreen() {
                   <TouchableOpacity
                     style={styles.bookingSeatButton}
                     onPress={() => adjustBookingSeats(-1)}
-                    disabled={isBooking}
+                    disabled={isBooking || Number(bookingSeats) <= 1}
                   >
                     <Ionicons name="remove" size={18} color={Colors.primary} />
                   </TouchableOpacity>
@@ -3812,12 +3831,12 @@ export default function TripDetailsScreen() {
                     value={bookingSeats}
                     onChangeText={handleBookingSeatsChange}
                     editable={!isBooking}
-                    maxLength={1}
+                    maxLength={String(Math.max(1, seatLimit)).length}
                   />
                   <TouchableOpacity
                     style={styles.bookingSeatButton}
                     onPress={() => adjustBookingSeats(1)}
-                    disabled={isBooking}
+                    disabled={isBooking || Number(bookingSeats) >= seatLimit}
                   >
                     <Ionicons name="add" size={18} color={Colors.primary} />
                   </TouchableOpacity>
@@ -3826,6 +3845,11 @@ export default function TripDetailsScreen() {
                 <Text style={styles.bookingModalHint}>
                   {seatLimit} place{seatLimit > 1 ? 's' : ''} disponible{seatLimit > 1 ? 's' : ''}
                 </Text>
+                <PassengerSeatNotice
+                  isIdentityVerified={isIdentityVerified}
+                  capacity={seatLimit}
+                  onVerify={() => openPassengerIdentityVerification()}
+                />
 
                 <Text style={styles.bookingModalPrice}>
                   Total estimé :{' '}
@@ -4592,14 +4616,18 @@ export default function TripDetailsScreen() {
                 <View style={[styles.editFieldCard, { marginLeft: Spacing.sm, borderColor: Colors.secondary + '40' }]}>
                   <View style={styles.editFieldLabelRow}>
                     <Ionicons name="cash" size={13} color={Colors.secondary} />
-                    <Text style={[styles.editFieldLabel, { color: Colors.secondary }]}>Prix (FC)</Text>
+                    <Text style={[styles.editFieldLabel, { color: Colors.secondary }]}>
+                      {trip?.tripRequestId ? 'Prix validé (FC)' : 'Prix (FC)'}
+                    </Text>
                   </View>
                   <TextInput
                     style={[styles.editFieldInput, { color: Colors.secondary }]}
                     keyboardType="numeric"
                     placeholder="5000"
                     placeholderTextColor={Colors.gray[400]}
-                    value={editPrice}
+                    value={trip?.tripRequestId ? String(trip.price) : editPrice}
+                    editable={!trip?.tripRequestId}
+                    accessibilityLabel={trip?.tripRequestId ? 'Prix par place validé par le passager, non modifiable' : 'Prix par place'}
                     onChangeText={setEditPrice}
                   />
                 </View>

@@ -1,3 +1,5 @@
+import { SearchResultsToolbar, type SearchMode, type SearchSortMode as SortMode } from '@/components/search/SearchResultsToolbar';
+import { SEARCH_COLORS } from '@/features/search/searchTheme';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
@@ -11,7 +13,8 @@ import {
 import { useGetAvailableTripRequestsQuery } from '@/store/api/tripRequestApi';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useAppSelector } from '@/store/hooks';
-import { selectTrips } from '@/store/selectors';
+import { selectTrips, selectUserCoordinates } from '@/store/selectors';
+import { rankRequestsByProximity } from '@/features/trip-request/requestPriority';
 import type { Trip, TripRequest } from '@/types';
 import { formatDateTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
@@ -35,21 +38,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-type SortMode = 'cheap' | 'early';
-type SearchMode = 'trips' | 'requests';
 type SearchResultListItem =
   | { kind: 'trip'; trip: Trip }
   | { kind: 'request'; request: TripRequest };
 const MIN_SEARCH_SEATS = 1;
 const MAX_SEARCH_SEATS = 2;
-
-const SEARCH_COLORS = {
-  ink: '#07112A',
-  body: '#4B2D28',
-  border: '#EAB8A9',
-  panel: '#F2F3F5',
-  softBlue: '#DDE8FF',
-};
+const EMPTY_SEARCH_TRIPS: Trip[] = [];
+const EMPTY_SEARCH_REQUESTS: TripRequest[] = [];
 
 const vehicleLabel: Record<Trip['vehicleType'], string> = {
   car: 'Voiture',
@@ -494,7 +489,14 @@ export default function SearchScreen() {
   const [advancedTrips, setAdvancedTrips] = useState<Trip[] | null>(null);
   const [advancedError, setAdvancedError] = useState<string | null>(null);
   const [lastAdvancedPayload, setLastAdvancedPayload] = useState<TripSearchByPointsPayload | null>(null);
-  const [sortMode, setSortMode] = useState<SortMode>('cheap');
+  const [tripSortMode, setTripSortMode] = useState<SortMode>('cheap');
+  const [requestSortMode, setRequestSortMode] = useState<SortMode>('nearby');
+  const sortMode = searchMode === 'requests' ? requestSortMode : tripSortMode;
+  const setSortMode = searchMode === 'requests' ? setRequestSortMode : setTripSortMode;
+  // GPS updates need not redraw the trips tab or a budget/time-sorted request list.
+  const driverCoordinate = useAppSelector(state =>
+    searchMode === 'requests' && sortMode === 'nearby' ? selectUserCoordinates(state) : null,
+  );
   const [openingTripId, setOpeningTripId] = useState<string | null>(null);
   const [openingRequestId, setOpeningRequestId] = useState<string | null>(null);
   const openingTripIdRef = useRef<string | null>(null);
@@ -525,7 +527,7 @@ export default function SearchScreen() {
   });
 
   const {
-    data: availableTripRequests = [],
+    data: availableTripRequests = EMPTY_SEARCH_REQUESTS,
     isLoading: requestsLoading,
     isFetching: requestsFetching,
     isError: requestsError,
@@ -644,6 +646,9 @@ export default function SearchScreen() {
   }, [advancedTrips, remoteTrips, storedTrips]);
 
   const filteredTrips = useMemo(() => {
+    if (searchMode !== 'trips') return EMPTY_SEARCH_TRIPS;
+
+    const routeQuery = [departure, arrival].filter(Boolean).join(' ');
     const visibleTrips = baseTrips.filter((trip) => {
       if (!getSafeTripId(trip)) {
         return false;
@@ -652,12 +657,11 @@ export default function SearchScreen() {
       const departureText = `${trip.departure?.name ?? ''} ${trip.departure?.address ?? ''}`;
       const arrivalText = `${trip.arrival?.name ?? ''} ${trip.arrival?.address ?? ''}`;
       const routeText = `${departureText} ${arrivalText}`;
-      const routeQuery = [departure, arrival].filter(Boolean).join(' ');
 
       return trip.availableSeats >= desiredSeats && matchesSearch(routeText, routeQuery);
     });
 
-    return [...visibleTrips].sort((a, b) => {
+    return visibleTrips.sort((a, b) => {
       if (sortMode === 'cheap') {
         const priceA = Number(a.price ?? 0);
         const priceB = Number(b.price ?? 0);
@@ -674,11 +678,11 @@ export default function SearchScreen() {
 
       return safeDepartureA - safeDepartureB;
     });
-  }, [arrival, baseTrips, departure, desiredSeats, sortMode]);
+  }, [arrival, baseTrips, departure, desiredSeats, searchMode, sortMode]);
 
   const filteredTripRequests = useMemo(() => {
-    if (!isDriverAccount) {
-      return [];
+    if (searchMode !== 'requests' || !isDriverAccount) {
+      return EMPTY_SEARCH_REQUESTS;
     }
 
     const routeQuery = [departure, arrival].filter(Boolean).join(' ');
@@ -702,7 +706,9 @@ export default function SearchScreen() {
       return request.numberOfSeats >= desiredSeats && matchesSearch(routeText, routeQuery);
     });
 
-    return [...visibleRequests].sort((a, b) => {
+    if (sortMode === 'nearby') return rankRequestsByProximity(visibleRequests, driverCoordinate);
+
+    return visibleRequests.sort((a, b) => {
       if (sortMode === 'cheap') {
         const priceA = Number(a.maxPricePerSeat ?? Number.NEGATIVE_INFINITY);
         const priceB = Number(b.maxPricePerSeat ?? Number.NEGATIVE_INFINITY);
@@ -722,10 +728,12 @@ export default function SearchScreen() {
   }, [
     arrival,
     availableTripRequests,
+    driverCoordinate,
     currentUser?.id,
     departure,
     desiredSeats,
     isDriverAccount,
+    searchMode,
     sortMode,
   ]);
 
@@ -962,7 +970,6 @@ export default function SearchScreen() {
     searchMode === 'requests'
       ? `${resultsCount} demande${resultsCount > 1 ? 's' : ''} trouvée${resultsCount > 1 ? 's' : ''}`
       : `${resultsCount} trajet${resultsCount > 1 ? 's' : ''} trouvé${resultsCount > 1 ? 's' : ''}`;
-  const sortPrimaryLabel = searchMode === 'requests' ? 'Meilleur budget' : 'Moins cher';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -1107,34 +1114,13 @@ export default function SearchScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.resultsToolbar}>
-          <View style={styles.resultsCountRow}>
-            <Text style={styles.resultsCount}>
-              {resultsCountLabel}
-            </Text>
-            {isRefreshingResults && <ActivityIndicator size="small" color={Colors.primary} />}
-          </View>
-          <View style={styles.sortSegment}>
-            <TouchableOpacity
-              style={[styles.sortButton, sortMode === 'cheap' && styles.sortButtonActive]}
-              onPress={() => setSortMode('cheap')}
-              activeOpacity={0.82}
-            >
-              <Text style={[styles.sortButtonText, sortMode === 'cheap' && styles.sortButtonTextActive]}>
-                {sortPrimaryLabel}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.sortButton, sortMode === 'early' && styles.sortButtonActive]}
-              onPress={() => setSortMode('early')}
-              activeOpacity={0.82}
-            >
-              <Text style={[styles.sortButtonText, sortMode === 'early' && styles.sortButtonTextActive]}>
-                Plus tôt
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <SearchResultsToolbar
+          searchMode={searchMode}
+          sortMode={sortMode}
+          resultsCountLabel={resultsCountLabel}
+          isRefreshingResults={isRefreshingResults}
+          onSortChange={setSortMode}
+        />
 
         {isLoadingResults && (
           <View style={styles.loaderCard}>
@@ -1372,51 +1358,6 @@ const styles = StyleSheet.create({
   passengerLabel: {
     color: SEARCH_COLORS.body,
     fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-  },
-  resultsToolbar: {
-    marginTop: Spacing.xl,
-    marginBottom: Spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  resultsCountRow: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  resultsCount: {
-    color: SEARCH_COLORS.body,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-  },
-  sortSegment: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  sortButton: {
-    minHeight: 40,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.gray[200],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sortButtonActive: {
-    backgroundColor: Colors.primaryDark,
-  },
-  sortButtonText: {
-    color: Colors.gray[900],
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-  },
-  sortButtonTextActive: {
-    color: Colors.white,
     fontWeight: FontWeights.bold,
   },
   loaderCard: {

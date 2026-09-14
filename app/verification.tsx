@@ -1,4 +1,5 @@
 import { Colors, Spacing } from '@/constants/styles';
+import { useDialog } from '@/components/ui/DialogProvider';
 import { useDiditKycFlow } from '@/hooks/useDiditKycFlow';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -15,17 +16,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function VerificationScreen() {
     const router = useRouter();
+    const { showDialog } = useDialog();
     const { source } = useLocalSearchParams<{ source?: string }>();
     const normalizedSource = Array.isArray(source) ? source[0] : source;
-    const isPassengerVerification = normalizedSource === 'book' || normalizedSource === 'request';
+    const isExtraSeatsVerification = normalizedSource === 'extra_seats';
+    const isPassengerVerification = normalizedSource === 'book' || normalizedSource === 'request' || isExtraSeatsVerification;
     const passengerActionLabel = normalizedSource === 'request' ? 'demande de trajet' : 'réservation';
-    const heroTitle = isPassengerVerification ? 'Identité passager vérifiée' : 'Identité vérifiée';
-    const heroSubtitle = isPassengerVerification
+    const heroTitle = 'Vérifier mon identité';
+    const heroSubtitle = isExtraSeatsVerification
+        ? 'Pour réserver 3 places ou plus, vérifiez votre identité. Vous restez passager : aucun véhicule à ajouter.'
+        : isPassengerVerification
         ? "Ce trajet exige des passagers vérifiés. Cette étape confirme uniquement votre identité : aucun véhicule n'est demandé."
         : 'Lancez une vérification sécurisée avec Didit pour augmenter la confiance de votre profil.';
     const benefits = isPassengerVerification
         ? [
-            'Accès aux trajets qui exigent des passagers vérifiés',
+            isExtraSeatsVerification ? 'Réserver 3 places ou plus, selon les places disponibles' : 'Accès aux trajets qui exigent des passagers vérifiés',
             'Badge « Vérifié » sur votre profil',
             'Aucun véhicule requis pour ce parcours passager',
         ]
@@ -39,7 +44,7 @@ export default function VerificationScreen() {
         approvedMessage:
             isPassengerVerification
                 ? `Votre identité a été vérifiée avec succès. Vous pouvez revenir à votre ${passengerActionLabel} et continuer.`
-                : "Votre identité a été vérifiée avec succès. Vous pouvez maintenant utiliser toutes les fonctionnalités de l'application.",
+                : 'Votre identité est vérifiée. Vous pouvez réserver 3 places ou plus et accéder aux trajets réservés aux passagers vérifiés.',
         pendingMessage:
             isPassengerVerification
                 ? 'Votre vérification Didit est en cours. Vous serez informé dès que le contrôle sera terminé.'
@@ -47,10 +52,25 @@ export default function VerificationScreen() {
     });
 
     const handleStartKyc = async () => {
-        const outcome = await startDiditKyc();
+        const outcome = await startDiditKyc({ showResultDialog: !isPassengerVerification });
         if (outcome) {
-            if (isPassengerVerification && router.canGoBack()) {
-                router.back();
+            if (isPassengerVerification) {
+                // Return only after dismissing the result dialog, before restoring a native form modal.
+                showDialog({
+                    title: outcome.status === 'approved' ? 'Identité vérifiée' : outcome.status === 'pending' ? 'Vérification en cours' : 'Vérification non terminée',
+                    message: outcome.status === 'approved'
+                        ? 'Vous pouvez revenir au formulaire et continuer.'
+                        : outcome.status === 'pending'
+                            ? 'Vos documents sont en cours de vérification. Vous pourrez continuer une fois votre identité validée.'
+                            : 'Votre identité n’a pas encore été validée. Vous pouvez reprendre la vérification.',
+                    variant: outcome.status === 'approved' ? 'success' : 'info',
+                    actions: [
+                        { label: 'Revenir au formulaire', variant: 'primary', onPress: handleSkip },
+                        ...(outcome.status === 'rejected' || !outcome.status
+                            ? [{ label: 'Réessayer', variant: 'secondary' as const, onPress: handleStartKyc }]
+                            : []),
+                    ],
+                });
                 return;
             }
             router.replace('/(tabs)');
@@ -130,7 +150,7 @@ const styles = StyleSheet.create({
 
     kycBenefitsContainer: { gap: 16, marginVertical: 32 },
     benefitRow: { flexDirection: 'row', alignItems: 'center', gap: 16, backgroundColor: '#F9FAFB', padding: 16, borderRadius: 16 },
-    benefitText: { fontSize: 15, fontWeight: '600', color: Colors.gray[800] },
+    benefitText: { flex: 1, fontSize: 15, fontWeight: '600', color: Colors.gray[800] },
 
     actions: { gap: 16, marginBottom: Spacing.xl },
     mainButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 56, borderRadius: 16, gap: 8, shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4 },

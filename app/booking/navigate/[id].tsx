@@ -1,4 +1,5 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import { warnThrottled } from '@/utils/throttledWarning';
 import {
   getVehicleTrackingMarkerImage,
   PASSENGER_TRACKING_MARKER_ANCHOR,
@@ -1126,6 +1127,9 @@ export default function PassengerNavigationScreen() {
 
     let isCancelled = false;
     setIsSocketConnected(false);
+    const unsubscribeConnection = trackingSocket.subscribeToConnectionState((connected) => {
+      if (!isCancelled && isMountedRef.current) setIsSocketConnected(connected);
+    });
 
     // Rejoindre la room du trip pour recevoir les updates
     trackingSocket
@@ -1228,6 +1232,7 @@ export default function PassengerNavigationScreen() {
     return () => {
       isCancelled = true;
       trackingSocket.leaveTrip(tripId);
+      unsubscribeConnection();
       unsubscribeLocation();
       unsubscribeAutoProgress();
       unsubscribeError();
@@ -1260,6 +1265,7 @@ export default function PassengerNavigationScreen() {
       return;
     }
 
+    if (!isFocused) return;
     let isCancelled = false;
     let lastSentAt = 0;
     const sendLocation = async (location: Location.LocationObject) => {
@@ -1400,7 +1406,7 @@ export default function PassengerNavigationScreen() {
           }
         }
       } catch (error) {
-        console.warn('[PassengerNavigation] Position passager non envoyée:', error);
+        warnThrottled('[PassengerNavigation] Position passager non envoyée:', error);
       }
     };
 
@@ -1482,6 +1488,7 @@ export default function PassengerNavigationScreen() {
     booking?.id,
     booking?.status,
     isKinshasaTrip,
+    isFocused,
     isTripOngoing,
     presentDestinationApproachNotice,
     presentArrivalModal,

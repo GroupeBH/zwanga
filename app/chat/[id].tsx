@@ -5,13 +5,14 @@ import { chatSocket } from '@/services/chatSocket';
 import { messageApi, useDeleteConversationMessageMutation, useEditConversationMessageMutation, useGetConversationMessagesQuery, useGetConversationQuery, useMarkConversationAsReadMutation, useSendConversationMessageMutation } from '@/store/api/messageApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
-import { addMessage as addMessageAction, markConversationMessagesRead, setMessages, upsertConversation } from '@/store/slices/messagesSlice';
+import { addMessage as addMessageAction, markConversationMessagesRead, upsertConversation } from '@/store/slices/messagesSlice';
 import { Message } from '@/types';
 import { openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, RefreshControl, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ChatScreen() {
@@ -21,7 +22,7 @@ export default function ChatScreen() {
   const { showDialog } = useDialog();
   const { id, title: initialTitle } = useLocalSearchParams<{ id?: string; title?: string }>();
   const conversationId = typeof id === 'string' ? id : '';
-  const scrollViewRef = useRef<ScrollView>(null);
+  const isScreenActive = useScreenIsActive();
   const [message, setMessage] = useState('');
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const user = useAppSelector(selectUser);
@@ -31,14 +32,14 @@ export default function ChatScreen() {
   });
   const { data: messagesData, isLoading: messagesLoading, refetch: refetchMessages } = useGetConversationMessagesQuery(
     { conversationId },
-    { skip: !conversationId },
+    { skip: !conversationId || !isScreenActive, refetchOnMountOrArgChange: true, refetchOnReconnect: true },
   );
   const [sendMessageMutation, { isLoading: sending }] = useSendConversationMessageMutation();
   const [markConversationAsRead] = useMarkConversationAsReadMutation();
   const [editMessageMutation] = useEditConversationMessageMutation();
   const [deleteMessageMutation] = useDeleteConversationMessageMutation();
 
-  const messages = messagesData ?? [];
+  const messages = useMemo(() => messagesData ?? [], [messagesData]);
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = useCallback(async () => {
@@ -62,40 +63,39 @@ export default function ChatScreen() {
   }, [conversation, dispatch]);
 
   useEffect(() => {
-    if (conversationId && messagesData) {
-      dispatch(setMessages({ conversationId, messages: messagesData }));
+    if (conversationId && messagesData && isScreenActive) {
       dispatch(markConversationMessagesRead(conversationId));
     }
-  }, [conversationId, dispatch, messagesData]);
+  }, [conversationId, dispatch, messagesData, isScreenActive]);
 
   useEffect(() => {
-    if (conversationId) {
+    if (conversationId && isScreenActive) {
       markConversationAsRead(conversationId);
     }
-  }, [conversationId, markConversationAsRead]);
+  }, [conversationId, isScreenActive, markConversationAsRead]);
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-    return () => clearTimeout(timeout);
-  }, [messages]);
-
-  useEffect(() => {
+    if (!isScreenActive) return;
+    let cancelled = false;
     let unsubscribe: (() => void) | undefined;
     let joined = false;
 
     const setupSocket = async () => {
       if (conversation?.bookingId) {
         await chatSocket.joinBookingRoom(conversation.bookingId);
+        if (cancelled) {
+          await chatSocket.leaveBookingRoom(conversation.bookingId);
+          return;
+        }
         joined = true;
       }
 
+      if (cancelled) return;
       unsubscribe = chatSocket.subscribeToMessages((incoming) => {
         if (incoming.conversationId === conversationId) {
           dispatch(
             messageApi.util.updateQueryData('getConversationMessages', { conversationId }, (draft) => {
-              draft.push(incoming);
+              if (!draft.some((message) => message.id === incoming.id)) draft.push(incoming);
             }),
           );
           dispatch(
@@ -109,18 +109,21 @@ export default function ChatScreen() {
       });
     };
 
-    setupSocket();
+    void setupSocket().catch((error) => {
+      if (!cancelled) console.warn('[Chat] Connexion temps réel indisponible:', error);
+    });
 
     return () => {
+      cancelled = true;
       if (unsubscribe) unsubscribe();
       if (joined && conversation?.bookingId) {
         chatSocket.leaveBookingRoom(conversation.bookingId);
       }
     };
-  }, [conversation?.bookingId, conversationId, dispatch, user?.id]);
+  }, [conversation?.bookingId, conversationId, dispatch, user?.id, isScreenActive]);
 
   const handleSend = async () => {
-    if (!message.trim() || !conversationId) {
+    if (!message.trim() || !conversationId || sending) {
       return;
     }
 
@@ -130,7 +133,7 @@ export default function ChatScreen() {
     // Mode édition
     if (editingMessageId) {
       try {
-        const updated = await editMessageMutation({ messageId: editingMessageId, content }).unwrap();
+        const updated = await editMessageMutation({ messageId: editingMessageId, content, conversationId }).unwrap();
         setEditingMessageId(null);
         dispatch(
           messageApi.util.updateQueryData('getConversationMessages', { conversationId }, (draft) => {
@@ -156,7 +159,7 @@ export default function ChatScreen() {
       });
       dispatch(
         messageApi.util.updateQueryData('getConversationMessages', { conversationId }, (draft) => {
-          draft.push(saved);
+          if (!draft.some((message) => message.id === saved.id)) draft.push(saved);
         }),
       );
       dispatch(
@@ -201,15 +204,20 @@ export default function ChatScreen() {
     (counterpart ? `${counterpart.firstName ?? ''} ${counterpart.lastName ?? ''}`.trim() : initialTitle) ||
     'Conversation';
 
-  const groupedMessages = useMemo(() => {
-    return messages.reduce<Record<string, Message[]>>((acc, msg) => {
-      const label = formatDate(msg.createdAt);
-      if (!acc[label]) {
-        acc[label] = [];
+  const chatRows = useMemo(() => {
+    const rows: ({ kind: 'date'; id: string; label: string } | { kind: 'message'; id: string; message: Message })[] = [];
+    let previousDay = '';
+    const unique = new Map(messages.map((item) => [item.id, item]));
+    const ordered = [...unique.values()].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+    for (const item of ordered) {
+      const day = new Date(item.createdAt).toDateString();
+      if (day !== previousDay) {
+        rows.push({ kind: 'date', id: `date:${day}`, label: formatDate(item.createdAt) });
+        previousDay = day;
       }
-      acc[label].push(msg);
-      return acc;
-    }, {});
+      rows.push({ kind: 'message', id: item.id, message: item });
+    }
+    return rows.reverse();
   }, [messages]);
 
   const handleEditMessage = (msg: Message) => {
@@ -232,7 +240,7 @@ export default function ChatScreen() {
           variant: 'primary',
           onPress: async () => {
             try {
-              await deleteMessageMutation({ messageId: msg.id }).unwrap();
+              await deleteMessageMutation({ messageId: msg.id, conversationId }).unwrap();
               dispatch(
                 messageApi.util.updateQueryData('getConversationMessages', { conversationId }, (draft) => {
                   const index = draft.findIndex((m) => m.id === msg.id);
@@ -302,30 +310,27 @@ export default function ChatScreen() {
         style={styles.keyboardView}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
       >
-        <ScrollView
-          ref={scrollViewRef}
+        <FlatList
+          inverted
+          data={chatRows}
+          keyExtractor={(item) => item.id}
+          initialNumToRender={20}
+          maxToRenderPerBatch={12}
+          windowSize={7}
+          maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 80 }}
           style={styles.messagesContainer}
           contentContainerStyle={styles.messagesContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
-          }
-        >
-          {messagesLoading && (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator color={Colors.primary} />
-            </View>
-          )}
-
-          {Object.entries(groupedMessages).map(([label, bucket]) => (
-            <View style={styles.dateSeparator} key={label}>
-              <View style={styles.dateBadge}>
-                <Text style={styles.dateText}>{label}</Text>
-          </View>
-              {bucket.map((msg) => {
-                const isMe = msg.senderId === user?.id;
-                return (
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+          ListEmptyComponent={messagesLoading ? <ActivityIndicator color={Colors.primary} /> : null}
+          renderItem={({ item }) => {
+            if (item.kind === 'date') {
+              return <View style={styles.dateSeparator}><View style={styles.dateBadge}><Text style={styles.dateText}>{item.label}</Text></View></View>;
+            }
+            const msg = item.message;
+            const isMe = msg.senderId === user?.id;
+            return (
                   <View
                     key={msg.id}
                     style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}
@@ -371,11 +376,9 @@ export default function ChatScreen() {
               </View>
                     </TouchableOpacity>
                   </View>
-                );
-              })}
-            </View>
-          ))}
-        </ScrollView>
+            );
+          }}
+        />
 
         <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 8) + 8 }]}>
           <View style={styles.inputRow}>

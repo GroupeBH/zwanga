@@ -1,4 +1,5 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import { warnThrottled } from '@/utils/throttledWarning';
 import {
   getVehicleTrackingMarkerImage,
   PASSENGER_TRACKING_MARKER_ANCHOR,
@@ -2279,6 +2280,9 @@ export default function NavigationScreen() {
 
     let isCancelled = false;
     setLivePassengerLocations({});
+    const unsubscribeConnection = trackingSocket.subscribeToConnectionState((connected) => {
+      if (!isCancelled && isMountedRef.current) setIsSocketConnected(connected);
+    });
 
     // Rejoindre la room du trip pour le tracking temps réel
     trackingSocket
@@ -2475,6 +2479,7 @@ export default function NavigationScreen() {
       isCancelled = true;
       // Quitter le canal et se déconnecter proprement
       trackingSocket.leaveTrip(tripId);
+      unsubscribeConnection();
       unsubscribeError();
       unsubscribeAutoProgress();
       unsubscribePassengerLocation();
@@ -2809,11 +2814,11 @@ export default function NavigationScreen() {
       void trackingSocket
         .updateDriverLocation(tripId, coordinates, metadata)
         .catch((error) => {
-          console.warn('[Navigation] Position conducteur socket non envoyée:', error);
+          warnThrottled('[Navigation] Position conducteur socket non envoyée:', error);
           void updateDriverLocation({ tripId, coordinates, ...metadata })
             .unwrap()
             .catch((fallbackError) => {
-              console.warn(
+              warnThrottled(
                 '[Navigation] Position conducteur REST non envoyée:',
                 fallbackError,
               );
@@ -2831,16 +2836,17 @@ export default function NavigationScreen() {
         locationSubscription.current = null;
       }
       tripDestinationNearSinceMsRef.current = null;
-      if (tripId) {
+      if (tripId && !isTripOngoing) {
         void stopDriverBackgroundLocationTracking(tripId);
       }
       return;
     }
 
+    let locationEffectCancelled = false;
     (async () => {
       try {
         const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
-        if (!isMountedRef.current) return;
+        if (locationEffectCancelled || !isMountedRef.current || isExitingRef.current) return;
         if (foregroundStatus !== 'granted') {
           showDialog({
             title: 'Permission refusée',
@@ -2858,15 +2864,15 @@ export default function NavigationScreen() {
         // Cette permission n'est pas toujours disponible/configurée
         try {
           const { status: backgroundPermissionStatus } = await Location.getBackgroundPermissionsAsync();
-          if (!isMountedRef.current) return;
+          if (locationEffectCancelled || !isMountedRef.current || isExitingRef.current) return;
 
           if (backgroundPermissionStatus !== 'granted') {
             const acceptedDisclosure = await promptBackgroundDisclosure();
-            if (!isMountedRef.current) return;
+            if (locationEffectCancelled || !isMountedRef.current || isExitingRef.current) return;
 
             if (acceptedDisclosure) {
               const { status: requestedBackgroundStatus } = await Location.requestBackgroundPermissionsAsync();
-              if (!isMountedRef.current) return;
+              if (locationEffectCancelled || !isMountedRef.current || isExitingRef.current) return;
               if (requestedBackgroundStatus !== 'granted') {
                 if (__DEV__) {
                   console.log('Permission de localisation en arrière-plan non accordee - mode premier plan uniquement');
@@ -2886,7 +2892,7 @@ export default function NavigationScreen() {
         }
 
         const hasServicesEnabled = await Location.hasServicesEnabledAsync();
-        if (!isMountedRef.current) return;
+        if (locationEffectCancelled || !isMountedRef.current || isExitingRef.current) return;
         if (!hasServicesEnabled) {
           showDialog({
             title: 'Localisation désactivée',
@@ -2919,7 +2925,7 @@ export default function NavigationScreen() {
             requiredAccuracy: 100,
           });
         }
-        if (!isMountedRef.current) return;
+        if (locationEffectCancelled || !isMountedRef.current || isExitingRef.current) return;
 
         const normalizedInitialLocation = normalizeDriverLocationObject(location);
         if (isFreshLocationObject(normalizedInitialLocation)) {
@@ -2968,7 +2974,7 @@ export default function NavigationScreen() {
           distanceInterval: 5, // Ou tous les 5 mètres
         },
         (newLocation) => {
-          if (!isMountedRef.current) return;
+          if (locationEffectCancelled || !isMountedRef.current || isExitingRef.current) return;
           const now = Date.now();
           const normalizedLocation = normalizeDriverLocationObject(newLocation);
           if (!normalizedLocation) {
@@ -3139,10 +3145,15 @@ export default function NavigationScreen() {
           }
         }
       );
+      if (locationEffectCancelled || !isMountedRef.current || isExitingRef.current) {
+        subscription.remove();
+        return;
+      }
+      locationSubscription.current?.remove();
       locationSubscription.current = subscription;
       } catch (error) {
         console.error('Erreur lors de l\'initialisation de la localisation:', error);
-        if (!isMountedRef.current) return;
+        if (locationEffectCancelled || !isMountedRef.current || isExitingRef.current) return;
         showDialog({
           title: 'Erreur de localisation',
           message: 'Impossible d\'activer le GPS. Vérifiez que la localisation est activée sur votre appareil.',
@@ -3157,6 +3168,7 @@ export default function NavigationScreen() {
     })();
 
     return () => {
+      locationEffectCancelled = true;
       if (locationSubscription.current) {
         locationSubscription.current.remove();
         locationSubscription.current = null;

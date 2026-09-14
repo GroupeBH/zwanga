@@ -136,7 +136,16 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     checkSecureStore();
   }, [isLoading, accessToken, refreshToken, isAuthenticated, dispatch]);
 
-  // Proactive refresh on foreground. Startup refresh is handled by initializeAuth().
+  // Do not hold the first screen while refreshing an access token that is still valid.
+  useEffect(() => {
+    if (isLoading || !isAuthenticated) return;
+    const task = InteractionManager.runAfterInteractions(() => {
+      void proactiveTokenRefresh();
+    });
+    return () => task.cancel();
+  }, [isLoading, isAuthenticated]);
+
+  // Proactive refresh on foreground. Expired startup sessions are handled by initializeAuth().
   useEffect(() => {
     if (isLoading) return;
 

@@ -168,7 +168,7 @@ export default function ReferralsScreen() {
       showDialog({
         variant: 'warning',
         title: 'Verification requise',
-        message: 'Faites approuver votre identité KYC avant de retirer vos gains.',
+        message: 'Vérifiez votre identité avant de retirer vos gains.',
       });
       return;
     }
@@ -337,7 +337,7 @@ export default function ReferralsScreen() {
                   color={summary?.withdrawal.kycApproved ? Colors.successDark : Colors.warningDark}
                 />
                 <Text style={[styles.kycText, summary?.withdrawal.kycApproved && styles.kycTextOk]}>
-                  KYC {summary?.withdrawal.kycApproved ? 'valide' : 'requis'}
+                  Identité {summary?.withdrawal.kycApproved ? 'vérifiée' : 'à vérifier'}
                 </Text>
               </View>
             </View>

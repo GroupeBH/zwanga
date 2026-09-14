@@ -1,3 +1,4 @@
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
@@ -127,6 +128,7 @@ const MANAGE_AUTO_PROGRESS_PRIORITY: Record<ManageAutoProgressEvent['type'], num
 };
 
 export default function ManageTripScreen() {
+  const isScreenActive = useScreenIsActive();
   const router = useRouter();
   const goHome = useCallback(() => {
     router.replace('/(tabs)');
@@ -147,9 +149,10 @@ export default function ManageTripScreen() {
     refetch: refetchTrip,
   } = useGetTripByIdQuery(tripId, { 
     skip: !tripId,
-    pollingInterval,
+    pollingInterval: isScreenActive ? pollingInterval : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
+    refetchOnMountOrArgChange: true,
     refetchOnReconnect: false,
   });
 
@@ -173,7 +176,7 @@ export default function ManageTripScreen() {
 
   const isOwner = useMemo(() => !!trip && !!user && trip.driverId === user.id, [trip, user]);
   const { lastKnownLocation } = useUserLocation({
-    autoRequest: Boolean(isOwner && trip?.status === 'ongoing'),
+    autoRequest: Boolean(isScreenActive && isOwner && trip?.status === 'ongoing'),
     trackingProfile: 'navigation',
   });
   const {
@@ -184,7 +187,7 @@ export default function ManageTripScreen() {
   } = useGetTripBookingsQuery(tripId, { 
     skip: !tripId,
     // Polling réduit - utiliser le refresh manuel ou refetchOnFocus
-    pollingInterval: trip?.status === 'upcoming' ? 60000 : 0,
+    pollingInterval: isScreenActive ? (trip?.status === 'upcoming' ? 60000 : 0) : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,
@@ -1079,13 +1082,13 @@ export default function ManageTripScreen() {
         <View style={styles.centerContent}>
           <Ionicons name="shield-outline" size={34} color={Colors.primary} />
           <Text style={[styles.emptyText, { marginTop: Spacing.sm }]}>
-            Votre identité doit être vérifiée (KYC validé) pour gérer vos trajets.
+            Votre identité doit être vérifiée pour gérer vos trajets.
           </Text>
           <TouchableOpacity
             style={[styles.primaryButton, { marginTop: Spacing.lg }]}
             onPress={() => router.push('/profile')}
           >
-            <Text style={styles.primaryButtonText}>Compléter mon KYC</Text>
+            <Text style={styles.primaryButtonText}>Vérifier mon identité</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>

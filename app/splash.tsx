@@ -52,14 +52,14 @@ export default function SplashScreen() {
           } else {
             router.replace('/auth-entry');
           }
-        }, 1800);
+        }, 0);
       } catch (error) {
         console.error('Error checking first launch:', error);
         redirectTimeoutRef.current = setTimeout(() => {
           if (!cancelled) {
             router.replace('/auth-entry');
           }
-        }, 1800);
+        }, 0);
       }
     };
 

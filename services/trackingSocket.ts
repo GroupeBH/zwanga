@@ -2,6 +2,7 @@ import { API_BASE_URL } from '@/config/env';
 import { getValidAccessToken } from '@/services/tokenRefresh';
 import { io, Socket } from 'socket.io-client';
 import type { DriverTripRevenueSummary } from '@/types';
+import { recordLocationDelivery, wasLocationDeliveredRecently } from './locationDelivery';
 
 const SOCKET_CONNECT_TIMEOUT_MS = 8000;
 const SOCKET_LOCATION_ACK_TIMEOUT_MS = 2500;
@@ -110,11 +111,26 @@ function resolveSocketBaseUrl() {
 class TrackingSocketClient {
   private socket: Socket | null = null;
   private connecting: Promise<Socket> | null = null;
+  private generation = 0;
+  private idleTimeout: ReturnType<typeof setTimeout> | null = null;
   private tripJoinCounts = new Map<string, number>();
   private locationListeners = new Set<LocationListener>();
   private passengerLocationListeners = new Set<PassengerLocationListener>();
   private bookingAutoProgressListeners = new Set<BookingAutoProgressListener>();
   private errorListeners = new Set<ErrorListener>();
+  private connectionListeners = new Set<(connected: boolean) => void>();
+
+  private notifyConnectionState(connected: boolean) {
+    this.connectionListeners.forEach((listener) => {
+      try { listener(connected); } catch (error) { console.warn('[TrackingSocket] connection listener error:', error); }
+    });
+  }
+
+  subscribeToConnectionState(listener: (connected: boolean) => void) {
+    this.connectionListeners.add(listener);
+    listener(Boolean(this.socket?.connected));
+    return () => { this.connectionListeners.delete(listener); };
+  }
 
   private notifyLocationListeners(payload: DriverLocationPayload) {
     this.locationListeners.forEach((listener) => {
@@ -197,25 +213,20 @@ class TrackingSocketClient {
   }
 
   private async connect(): Promise<Socket> {
-    if (this.socket) {
-      if (!this.socket.connected) {
-        try {
-          return await this.waitForConnected(this.socket);
-        } catch (error) {
-          this.socket.disconnect();
-          this.socket = null;
-          throw error;
-        }
-      }
-      return this.socket;
-    }
-
     if (this.connecting) {
       return this.connecting;
     }
+    if (this.socket?.connected) return this.socket;
+    const generation = this.generation;
 
     const connection = (async () => {
       const token = await getValidAccessToken();
+      if (generation !== this.generation) throw new Error('Session de suivi fermée');
+      if (this.socket) {
+        const socket = this.socket;
+        socket.auth = { token };
+        return this.waitForConnected(socket);
+      }
       const baseUrl = resolveSocketBaseUrl();
       const socket = io(`${baseUrl}/tracking`, {
         transports: ['websocket'],
@@ -225,6 +236,7 @@ class TrackingSocketClient {
       this.socket = socket;
 
       socket.on('connect', () => {
+        this.notifyConnectionState(true);
         console.log('[TrackingSocket] connecté');
         this.tripJoinCounts.forEach((_count, tripId) => {
           socket.emit('join_trip', { tripId });
@@ -232,6 +244,7 @@ class TrackingSocketClient {
       });
 
       socket.on('disconnect', () => {
+        this.notifyConnectionState(false);
         console.log('[TrackingSocket] déconnecté');
       });
 
@@ -261,19 +274,12 @@ class TrackingSocketClient {
       });
 
       socket.on('connect_error', (error: { message?: string }) => {
+        this.notifyConnectionState(false);
         const message = error?.message ?? 'Connexion tracking impossible';
         this.notifyErrorListeners(message);
       });
 
-      try {
-        return await this.waitForConnected(socket);
-      } catch (error) {
-        socket.disconnect();
-        if (this.socket === socket) {
-          this.socket = null;
-        }
-        throw error;
-      }
+      return this.waitForConnected(socket);
     })();
 
     this.connecting = connection;
@@ -308,6 +314,9 @@ class TrackingSocketClient {
 
   async joinTrip(tripId: string) {
     if (!tripId) return;
+    const generation = this.generation;
+    if (this.idleTimeout) clearTimeout(this.idleTimeout);
+    this.idleTimeout = null;
     const currentCount = this.tripJoinCounts.get(tripId) ?? 0;
     this.tripJoinCounts.set(tripId, currentCount + 1);
 
@@ -317,12 +326,9 @@ class TrackingSocketClient {
         socket.emit('join_trip', { tripId });
       }
     } catch (error) {
-      const pendingCount = this.tripJoinCounts.get(tripId) ?? 0;
-      if (pendingCount <= 1) {
-        this.tripJoinCounts.delete(tripId);
-      } else {
-        this.tripJoinCounts.set(tripId, pendingCount - 1);
-      }
+      if (generation !== this.generation) throw error;
+      // The screen still owns this room until leaveTrip, even while offline.
+      // Keep it for Socket.IO's reconnect event instead of losing tracking updates.
       throw error;
     }
   }
@@ -339,6 +345,40 @@ class TrackingSocketClient {
     if (this.socket) {
       this.socket.emit('leave_trip', { tripId });
     }
+    if (this.tripJoinCounts.size === 0 && !this.idleTimeout) {
+      this.idleTimeout = setTimeout(() => {
+        this.idleTimeout = null;
+        if (this.tripJoinCounts.size === 0) this.disconnect(false);
+      }, 5000);
+    }
+  }
+
+  disconnect(clearListeners = true) {
+    this.generation += 1;
+    if (this.idleTimeout) clearTimeout(this.idleTimeout);
+    this.idleTimeout = null;
+    this.socket?.disconnect();
+    this.socket?.removeAllListeners();
+    this.socket = null;
+    this.connecting = null;
+    this.tripJoinCounts.clear();
+    if (clearListeners) {
+      this.locationListeners.clear();
+      this.passengerLocationListeners.clear();
+      this.bookingAutoProgressListeners.clear();
+      this.errorListeners.clear();
+      this.connectionListeners.clear();
+    }
+  }
+
+  refreshAuthentication() {
+    if (!this.socket) return;
+    const generation = this.generation;
+    void getValidAccessToken().then((token) => {
+      if (!this.socket || generation !== this.generation) return;
+      this.socket.auth = { token };
+      this.socket.disconnect().connect();
+    }).catch(() => undefined);
   }
 
   async updateDriverLocation(
@@ -347,6 +387,7 @@ class TrackingSocketClient {
     metadata: TrackingLocationMetadata = {},
   ) {
     if (!tripId || !coordinates) return;
+    if (wasLocationDeliveredRecently(`driver:${tripId}`, 4000, 'socket')) return;
     const socket = await this.connect();
     socket.emit('driver_location_update', { tripId, coordinates, ...metadata });
   }
@@ -364,6 +405,7 @@ class TrackingSocketClient {
     metadata: TrackingLocationMetadata = {},
   ) {
     if (!tripId || !bookingId || !coordinates) return;
+    if (wasLocationDeliveredRecently(`passenger:${bookingId}`, 6000, 'socket')) return;
     const socket = await this.connect();
     const payload = {
       tripId,
@@ -390,6 +432,9 @@ class TrackingSocketClient {
               ),
             );
             return;
+          }
+          if (acknowledgement?.success === true || acknowledgement?.ok === true) {
+            recordLocationDelivery(`passenger:${bookingId}`, 'socket');
           }
           resolve();
         },

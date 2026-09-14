@@ -514,6 +514,11 @@ export const tripRequestApi = baseApi.injectEndpoints({
       }),
     }),
 
+    tripRequestVehicleOptions: builder.query<TripRequestVehicleOptions, RecommendTripRequestPricePayload>({
+      keepUnusedDataFor: 30,
+      query: (body) => ({ url: '/trip-requests/vehicle-options', method: 'POST', body }),
+    }),
+
     getTripRequestVehicleOptions: builder.mutation<TripRequestVehicleOptions, RecommendTripRequestPricePayload>({
       query: (payload: RecommendTripRequestPricePayload) => ({
         url: '/trip-requests/vehicle-options',
@@ -733,7 +738,8 @@ export const tripRequestApi = baseApi.injectEndpoints({
 });
 
 export const {
-  useCreateTripRequestMutation,
+    useCreateTripRequestMutation,
+    useTripRequestVehicleOptionsQuery,
   useRecommendTripRequestPriceMutation,
   useGetTripRequestVehicleOptionsMutation,
   useGetAvailableTripRequestsQuery,

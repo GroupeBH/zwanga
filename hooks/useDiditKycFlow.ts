@@ -672,13 +672,13 @@ export function useDiditKycFlow({
           if (status === 'approved') {
             showDialog({
               variant: 'success',
-              title: 'KYC validé avec succès !',
+              title: 'Identité vérifiée !',
               message: approvedMessage,
             });
           } else if (status === 'rejected') {
             showDialog({
               variant: 'danger',
-              title: 'KYC rejeté',
+              title: 'Vérification non validée',
               message:
                 kyc?.rejectionReason ||
                 "Didit n'a pas pu valider votre identité. Vous pouvez relancer la vérification.",
