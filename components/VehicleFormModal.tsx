@@ -1,3 +1,4 @@
+import { FormModal as Modal } from '@/components/forms/FormLayout';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { REGISTERED_VEHICLE_TYPE_OPTIONS } from '@/constants/vehicleTypes';
 import type { TripRequestVehicleType } from '@/types';
@@ -7,7 +8,7 @@ import {
   ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
-  Modal,
+  ScrollView,
   Platform,
   StyleSheet,
   Text,
@@ -15,7 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type VehicleFormModalProps = {
   visible: boolean;
@@ -63,13 +64,13 @@ export function VehicleFormModal({
   onClose,
   onSubmit,
 }: VehicleFormModalProps) {
-  const insets = useSafeAreaInsets();
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const modelInputRef = useRef<TextInput>(null);
   const colorInputRef = useRef<TextInput>(null);
   const licensePlateInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
+    if (!visible) return;
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const showSubscription = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
@@ -79,7 +80,7 @@ export function VehicleFormModal({
       showSubscription.remove();
       hideSubscription.remove();
     };
-  }, []);
+  }, [visible]);
 
   useEffect(() => {
     if (!visible) {
@@ -141,11 +142,14 @@ export function VehicleFormModal({
                 </TouchableOpacity>
               </View>
 
-              <View
-                style={[
+              <ScrollView
+                style={styles.scroll}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={[
                   styles.content,
                   keyboardVisible && styles.contentWithKeyboard,
-                  { paddingBottom: keyboardVisible ? Spacing.sm : Math.max(insets.bottom, Spacing.lg) },
+                  { paddingBottom: Spacing.md },
                 ]}
               >
                 <View style={styles.inputGroup}>
@@ -290,30 +294,30 @@ export function VehicleFormModal({
                   </View>
                 ) : null}
 
-                <View style={styles.actions}>
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.secondaryButton]}
-                    onPress={handleClose}
-                    disabled={submitting}
-                  >
-                    <Text style={styles.secondaryButtonText}>Annuler</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.actionButton,
-                      styles.primaryButton,
-                      (submitting || !vehicleType) && styles.primaryButtonDisabled,
-                    ]}
-                    onPress={onSubmit}
-                    disabled={submitting || !vehicleType}
-                  >
-                    {submitting ? (
-                      <ActivityIndicator color={Colors.white} />
-                    ) : (
-                      <Text style={styles.primaryButtonText}>{submitLabel}</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
+              </ScrollView>
+              <View style={styles.actions}>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.secondaryButton]}
+                  onPress={handleClose}
+                  disabled={submitting}
+                >
+                  <Text style={styles.secondaryButtonText}>Annuler</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.actionButton,
+                    styles.primaryButton,
+                    (submitting || !vehicleType) && styles.primaryButtonDisabled,
+                  ]}
+                  onPress={onSubmit}
+                  disabled={submitting || !vehicleType}
+                >
+                  {submitting ? (
+                    <ActivityIndicator color={Colors.white} />
+                  ) : (
+                    <Text style={styles.primaryButtonText}>{submitLabel}</Text>
+                  )}
+                </TouchableOpacity>
               </View>
             </SafeAreaView>
           </View>
@@ -338,7 +342,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    minHeight: '90%',
+    height: '90%',
     maxHeight: '96%',
     backgroundColor: Colors.white,
     borderTopLeftRadius: BorderRadius.xxl,
@@ -354,8 +358,10 @@ const styles = StyleSheet.create({
     borderTopRightRadius: BorderRadius.xl,
   },
   safeArea: {
+    flex: 1,
     width: '100%',
   },
+  scroll: { flex: 1, minHeight: 0 },
   header: {
     minHeight: 88,
     flexDirection: 'row',
@@ -550,9 +556,11 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   actions: {
+    flexShrink: 0,
     flexDirection: 'row',
     gap: Spacing.md,
-    paddingTop: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.lg,
   },
   actionButton: {
     flex: 1,

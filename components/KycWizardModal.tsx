@@ -1,3 +1,4 @@
+import { FormModal as Modal } from '@/components/forms/FormLayout';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -7,7 +8,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Image,
-  Modal,
   Platform,
   StyleSheet,
   Text,

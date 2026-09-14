@@ -10,6 +10,8 @@ export const styles = StyleSheet.create({
     padding: Spacing.xl,
   },
   pinModalCard: {
+    maxHeight: '100%',
+    flexShrink: 1,
     backgroundColor: Colors.white,
     borderRadius: BorderRadius.xl,
     padding: Spacing.xl,

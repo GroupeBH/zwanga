@@ -2,6 +2,7 @@ import type {
   GeoPoint,
   BookingStatus,
   DriverTripInterruptionRequest,
+  InterruptionFareQuote,
   RecurringTripStatus,
   RecurringTripTemplate,
   Trip,
@@ -44,6 +45,8 @@ type ServerBooking = {
 };
 
 type ServerTripInterruptionConfirmation = {
+  decision?: 'wait' | 'stop' | null;
+  decisionAt?: string | null;
   id?: string;
   bookingId?: string;
   passengerId?: string;
@@ -299,6 +302,8 @@ const mapDriverInterruptionRequest = (
               : 'pending' as const,
         confirmedAt: confirmation.confirmedAt ?? null,
         rejectedAt: confirmation.rejectedAt ?? null,
+        decision: confirmation.decision ?? null,
+        decisionAt: confirmation.decisionAt ?? null,
       };
     });
 
@@ -826,6 +831,21 @@ export const tripApi = baseApi.injectEndpoints({
       ],
     }),
 
+    getDriverInterruptionFare: builder.query<InterruptionFareQuote, { tripId: string; requestId: string; bookingId: string }>({
+      query: ({ tripId, ...params }) => ({ url: `/trips/${tripId}/interruption-request/fare`, params }),
+      keepUnusedDataFor: 30,
+    }),
+
+    decideDriverInterruption: builder.mutation<
+      { bookingId: string; requestId: string; decision: 'wait' | 'stop' },
+      { tripId: string; requestId: string; bookingId: string; decision: 'wait' | 'stop'; quoteId?: string }
+    >({
+      query: ({ tripId, ...body }) => ({ url: `/trips/${tripId}/interruption-request/decision`, method: 'PUT', body, timeout: CRITICAL_MUTATION_TIMEOUT_MS }),
+      invalidatesTags: (_result, _error, { tripId }) => [
+        { type: 'Trip', id: tripId }, 'Booking', 'Wallet', tripListTag, myTripsListTag,
+      ],
+    }),
+
     confirmDriverTripInterruption: builder.mutation<
       Trip,
       { tripId: string; bookingId?: string }
@@ -838,6 +858,7 @@ export const tripApi = baseApi.injectEndpoints({
       }),
       transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
       invalidatesTags: (_result, _error, { tripId }) => [
+        'Booking',
         { type: 'Trip', id: tripId },
         { type: 'MyTrips', id: tripId },
         tripListTag,
@@ -977,6 +998,8 @@ export const {
   useRequestDriverTripInterruptionMutation,
   useCancelDriverTripInterruptionMutation,
   useConfirmDriverTripInterruptionMutation,
+  useGetDriverInterruptionFareQuery,
+  useDecideDriverInterruptionMutation,
   useRejectDriverTripInterruptionMutation,
   useCompleteTripMutation,
   usePauseRecurringTripMutation,

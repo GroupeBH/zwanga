@@ -11,7 +11,7 @@ import { mapboxApi } from './api/mapboxApi';
 import authReducer from './slices/authSlice';
 import messagesReducer from './slices/messagesSlice';
 import locationReducer from './slices/locationSlice';
-import tripsReducer from './slices/tripsSlice';
+import tripsReducer, { openInterruptionChoice } from './slices/tripsSlice';
 import requestDraftsReducer, { resetRequestDrafts } from './slices/requestDraftsSlice';
 import homeRequestHighlightsReducer, { resetHomeRequestHighlights } from './slices/homeRequestHighlightsSlice';
 import { setStoreAccessor } from './storeAccessor';
@@ -57,6 +57,7 @@ const apiCacheIsolationMiddleware: Middleware = (storeApi) => (next) => (action)
     storeApi.dispatch({ type: 'messages/resetMessages' });
     storeApi.dispatch(resetRequestDrafts());
     storeApi.dispatch(resetHomeRequestHighlights());
+    storeApi.dispatch(openInterruptionChoice(null));
     storeApi.dispatch(zwangaApi.util.resetApiState());
     storeApi.dispatch(authRefreshApi.util.resetApiState());
   } else if (typedAction.type === 'auth/setTokens') {

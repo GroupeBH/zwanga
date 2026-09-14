@@ -1,3 +1,4 @@
+import { FormModal as Modal } from '@/components/forms/FormLayout';
 import { useDialog } from '@/components/ui/DialogProvider';
 import LocationPickerModal, { MapLocationSelection } from '@/components/LocationPickerModal';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
@@ -14,7 +15,6 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Modal,
   Platform,
   ScrollView,
   StyleSheet,

@@ -1,4 +1,7 @@
 import { useAppIsActive } from '@/hooks/useAppIsActive';
+import { FormModal as Modal } from '@/components/forms/FormLayout';
+import { PassengerInterruptionChoice } from '@/components/trip/PassengerInterruptionChoice';
+import { getPassengerInterruptionChoice } from '@/features/trip/interruptionChoice';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -7,7 +10,6 @@ import {
   InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -38,7 +40,8 @@ import {
   useInitiateWalletTopUpMutation,
   useLazyCheckWalletTopUpStatusQuery,
 } from '@/store/api/walletApi';
-import { useAppSelector } from '@/store/hooks';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { openInterruptionChoice } from '@/store/slices/tripsSlice';
 import { selectIsAuthenticated, selectUser } from '@/store/selectors';
 import type {
   Booking,
@@ -343,6 +346,8 @@ function getStorageKey(userId: string) {
 }
 
 export function PassengerArrivalPaymentCoordinator() {
+  const dispatch = useAppDispatch();
+  const requestedInterruption = useAppSelector((state) => state.trips.interruptionChoice);
   const isAppActive = useAppIsActive();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -358,6 +363,7 @@ export function PassengerArrivalPaymentCoordinator() {
   const [isCheckingPayment, setIsCheckingPayment] = useState(false);
   const [completionSummary, setCompletionSummary] = useState<PaymentCompletionSummary | null>(null);
   const [isClosingForInvoice, setIsClosingForInvoice] = useState(false);
+  const [resolvedInterruption, setResolvedInterruption] = useState<string | null>(null);
   const activeBookingIdRef = useRef<string | null>(null);
   const pendingInvoicePaymentIdRef = useRef<string | null | undefined>(undefined);
   const paymentCheckInFlightRef = useRef(false);
@@ -367,7 +373,7 @@ export function PassengerArrivalPaymentCoordinator() {
     refetch: refetchBookings,
   } = useGetMyBookingsQuery(undefined, {
     skip: !isAuthenticated,
-    pollingInterval: ARRIVAL_BOOKING_REFRESH_MS,
+    pollingInterval: isAppActive ? ARRIVAL_BOOKING_REFRESH_MS : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,
@@ -387,6 +393,20 @@ export function PassengerArrivalPaymentCoordinator() {
       })
       .sort((left, right) => getArrivalTimestamp(right) - getArrivalTimestamp(left))[0] ?? null;
   }, [bookings, isStoredStateLoaded, storedState]);
+
+  const interruptionChoice = useMemo(() => {
+    if (!isAuthenticated || !isAppActive) return null;
+    if (requestedInterruption) {
+      const requestedBooking = bookings.find((booking) => booking.id === requestedInterruption.bookingId);
+      const requested = requestedBooking && getPassengerInterruptionChoice(requestedBooking, user?.id, true);
+      if (requested?.requestId === requestedInterruption.requestId) return requested;
+    }
+    for (const booking of bookings) {
+      const choice = getPassengerInterruptionChoice(booking, user?.id);
+      if (choice && `${choice.requestId}:${choice.bookingId}` !== resolvedInterruption) return choice;
+    }
+    return null;
+  }, [bookings, isAppActive, isAuthenticated, requestedInterruption, resolvedInterruption, user?.id]);
 
   const {
     data: wallet,
@@ -1064,12 +1084,12 @@ export function PassengerArrivalPaymentCoordinator() {
     openCardPaymentUrl,
   ]);
 
-  const shouldKeepModalMounted = Boolean(arrivalBooking || completionSummary || isClosingForInvoice);
-  const isModalVisible = Boolean((arrivalBooking || completionSummary) && !isClosingForInvoice);
+  const shouldKeepModalMounted = Boolean(interruptionChoice || arrivalBooking || completionSummary || isClosingForInvoice);
+  const isModalVisible = Boolean((interruptionChoice || arrivalBooking || completionSummary) && !isClosingForInvoice);
 
   if (!shouldKeepModalMounted) return null;
 
-  const destination =
+  const destination = arrivalBooking?.interruptionFareLocked ? 'Arrêt confirmé pendant le trajet' :
     arrivalBooking?.passengerDestination ??
     arrivalBooking?.trip?.arrival?.address ??
     arrivalBooking?.trip?.arrival?.name ??
@@ -1115,7 +1135,16 @@ export function PassengerArrivalPaymentCoordinator() {
         >
           <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, Spacing.lg) + Spacing.md }]}>
             <View style={styles.handle} />
-            {completionSummary ? (
+            {interruptionChoice ? (
+              <PassengerInterruptionChoice
+                key={`${interruptionChoice.requestId}:${interruptionChoice.bookingId}`}
+                {...interruptionChoice}
+                onResolved={() => {
+                  setResolvedInterruption(`${interruptionChoice.requestId}:${interruptionChoice.bookingId}`);
+                  dispatch(openInterruptionChoice(null));
+                }}
+              />
+            ) : completionSummary ? (
               <>
                 <ScrollView
                   bounces={false}
@@ -1205,8 +1234,8 @@ export function PassengerArrivalPaymentCoordinator() {
                 <Ionicons name="flag" size={28} color={Colors.white} />
               </View>
               <View style={styles.headerCopy}>
-                <Text style={styles.eyebrow}>ARRIVÉE CONFIRMÉE</Text>
-                <Text style={styles.title}>Vous êtes arrivé</Text>
+                <Text style={styles.eyebrow}>{arrivalBooking.interruptionFareLocked ? 'ARRÊT CONFIRMÉ' : 'ARRIVÉE CONFIRMÉE'}</Text>
+                <Text style={styles.title}>{arrivalBooking.interruptionFareLocked ? 'Votre trajet s’arrête ici' : 'Vous êtes arrivé'}</Text>
               </View>
             </View>
 

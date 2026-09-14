@@ -110,8 +110,44 @@ function screenApp() {
   const list = tree => nodes(tree).find(node => node.type === 'FlatList');
   const toolbar = tree => nodes(list(tree).props.ListHeaderComponent).find(node => node.type === Toolbar);
   const switchMode = (tree, mode) => nodes(list(tree).props.ListHeaderComponent).find(node => node.type === 'TouchableOpacity' && text(node) === (mode === 'requests' ? 'Demandes' : 'Trajets')).props.onPress();
-  return Object.assign(app, { hooks, render, list, toolbar, switchMode, queryCalls, routes });
+  return Object.assign(app, { hooks, params, render, list, toolbar, switchMode, queryCalls, routes });
 }
+
+test('seat filter reaches four and preserves the same threshold for trips and requests', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp();
+  app.trips = [trip('two'), { ...trip('four'), availableSeats: 4 }];
+  app.requests = [request('two'), request('four', { numberOfSeats: 4 })];
+  let tree = app.render();
+  const stepButton = (label) => nodes(app.list(tree).props.ListHeaderComponent).find(node => node.props.accessibilityLabel === label);
+  for (let seat = 1; seat < 4; seat++) {
+    const increase = stepButton('Augmenter le nombre de places');
+    assert.equal(increase.props.disabled, false);
+    increase.props.onPress();
+    tree = app.render();
+  }
+  assert.equal(stepButton('Augmenter le nombre de places').props.disabled, true);
+  assert.deepEqual(app.list(tree).props.data.map(item => item.trip.id), ['four']);
+  app.switchMode(tree, 'requests');
+  tree = app.render();
+  assert.deepEqual(app.list(tree).props.data.map(item => item.request.id), ['four']);
+  stepButton('Diminuer le nombre de places').props.onPress();
+  tree = app.render();
+  assert.equal(stepButton('Augmenter le nombre de places').props.disabled, false);
+  app.hooks.unmount();
+});
+
+test('four-seat deep links stay at four and invalid seat counts remain bounded', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  for (const [input, expected] of [['4', 4], ['99', 4], ['0', 1], ['invalid', 1]]) {
+    const app = screenApp();
+    app.params.minSeats = input;
+    app.render();
+    app.render();
+    assert.equal(app.queryCalls.filter(call => call.name === 'trips').at(-1).args.minSeats, expected);
+    app.hooks.unmount();
+  }
+});
 
 test('the screen keeps one virtualized list and the compact toolbar in its header', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });

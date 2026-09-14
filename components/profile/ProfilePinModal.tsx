@@ -1,3 +1,4 @@
+import { FormModal as Modal } from '@/components/forms/FormLayout';
 import { Colors, Spacing } from '@/constants/styles';
 import { styles } from '@/features/profile/ProfilePinModal.styles';
 import type { useProfileController } from '@/hooks/profile/useProfileController';
@@ -7,7 +8,6 @@ import React from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   ScrollView,
   Text,
