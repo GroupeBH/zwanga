@@ -70,7 +70,7 @@ export const TRIP_PAYMENT_MODE_OPTIONS: {
     ? [
         {
           id: 'electronic' as const,
-          label: 'Paiement electronique',
+          label: 'Paiement électronique',
           description: "Régler par Mobile Money uniquement après l'arrivée",
           icon: 'card-outline' as const,
           selection: 'checkbox' as const,
@@ -80,7 +80,7 @@ export const TRIP_PAYMENT_MODE_OPTIONS: {
   {
     id: 'points',
     label: 'Jetons Zwanga',
-    description: "Debiter vos jetons uniquement après l'arrivée",
+    description: "Débiter vos jetons uniquement après l'arrivée",
     icon: 'wallet-outline',
     selection: 'radio',
   },

@@ -334,7 +334,7 @@ class TrackingSocketClient {
         payload,
         (error: Error | null, acknowledgement?: LocationUpdateAcknowledgement) => {
           if (error) {
-            reject(new Error('Confirmation WebSocket de la position passager expiree'));
+            reject(new Error('Confirmation WebSocket de la position passager expirée'));
             return;
           }
           if (acknowledgement?.success === false || acknowledgement?.ok === false) {
@@ -342,7 +342,7 @@ class TrackingSocketClient {
               new Error(
                 acknowledgement.error ||
                   acknowledgement.message ||
-                  'Position passager refusee par le serveur',
+                  'Position passager refusée par le serveur',
               ),
             );
             return;

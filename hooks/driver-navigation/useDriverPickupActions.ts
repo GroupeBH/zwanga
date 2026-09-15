@@ -197,7 +197,7 @@ export function useDriverPickupActions({
       markNavigationRouteDirty();
       await Promise.all([refetchBookings(), refetchTrip()]);
       void speakNavigationMessage(
-        `La reservation de ${passengerName} est annulee. L'itineraire continue.`,
+        `La réservation de ${passengerName} est annulee. L'itineraire continue.`,
         { force: true },
       );
     } catch (error: any) {

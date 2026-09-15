@@ -98,7 +98,7 @@ export function usePublishStepNavigation({
           showDialog({
             variant: 'warning',
             title: 'Date de fin invalide',
-            message: 'La date de fin doit être posterieure au debut.',
+            message: 'La date de fin doit être postérieure au début.',
           });
           return;
         }

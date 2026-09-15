@@ -103,7 +103,7 @@ export function useWalletTopUpRecovery({
           setTopUpStatusMessage(
             normalizedStatus === 'cancel'
               ? 'Paiement carte annulé. Aucun jeton n’a été ajouté.'
-              : 'Paiement carte refusé. Vérifiez votre carte ou choisissez un autre moyen.',
+              : "Paiement par carte refusé. Vérifiez votre carte ou choisissez un autre moyen de paiement.",
           );
         } else {
           setTopUpStage('waiting_long');

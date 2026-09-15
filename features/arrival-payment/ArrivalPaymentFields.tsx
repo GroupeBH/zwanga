@@ -184,7 +184,7 @@ export function ArrivalPaymentFields({
                 </Text>
                 {isRecommended ? (
                   <View style={styles.recommendedBadge}>
-                    <Text style={styles.recommendedBadgeText}>RECOMMANDE</Text>
+                    <Text style={styles.recommendedBadgeText}>RECOMMANDÉ</Text>
                   </View>
                 ) : null}
               </View>
@@ -221,7 +221,7 @@ export function ArrivalPaymentFields({
     </View>
     <View style={styles.breakdownDivider} />
     <View style={styles.breakdownRow}>
-      <Text style={styles.breakdownLabel}>Jetons utilises</Text>
+      <Text style={styles.breakdownLabel}>Jetons utilisés</Text>
       <Text style={styles.breakdownValue}>{formatPoints(pointsUsed)}</Text>
     </View>
     <View style={styles.breakdownRow}>
@@ -284,7 +284,7 @@ export function ArrivalPaymentFields({
 
                 {needsMobileMoneyPhone && (
                   <View style={styles.phoneCard}>
-    <Text style={styles.paymentFieldLabel}>Numero Mobile Money</Text>
+    <Text style={styles.paymentFieldLabel}>Numéro Mobile Money</Text>
     <View style={[styles.phoneInputRow, isPaymentPhoneInvalid && styles.phoneInputRowInvalid]}>
       <Ionicons name="call-outline" size={18} color={Colors.gray[500]} />
       <TextInput

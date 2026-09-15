@@ -65,7 +65,7 @@ export default function ReportScreen() {
     if (cleanDescription.length < 10) {
       showDialog({
         title: 'Description requise',
-        message: 'Merci de decrire le problème avec au moins 10 caracteres.',
+        message: 'Merci de décrire le problème avec au moins 10 caractères.',
         variant: 'warning',
       });
       return;

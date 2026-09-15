@@ -94,8 +94,8 @@ export function useArrivalPaymentCompletion({
           latestBooking.paymentReference ?? payment?.reference ?? options.paymentReference ?? null,
         driverNotice:
           mode === 'cash'
-            ? 'Le conducteur est informe que vous avez confirme le paiement en especes.'
-            : 'Le conducteur est informe des que le paiement est confirme.',
+            ? 'Le conducteur est informé que vous avez confirmé le paiement en espèces.'
+            : 'Le conducteur est informé dès que le paiement est confirmé.',
       });
     },
     [

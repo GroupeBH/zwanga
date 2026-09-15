@@ -38,7 +38,7 @@ export const LEDGER_META: Record<
 > = {
   top_up: { label: 'Recharge', icon: 'add-circle-outline', color: Colors.successDark },
   loyalty_reward: { label: 'Fidélité', icon: 'sparkles-outline', color: Colors.secondaryDark },
-  booking_payment: { label: 'Trajet paye', icon: 'car-outline', color: Colors.danger },
+  booking_payment: { label: 'Trajet payé', icon: 'car-outline', color: Colors.danger },
   booking_refund: { label: 'Remboursement', icon: 'return-down-back-outline', color: Colors.success },
   booking_fare_adjustment: { label: 'Ajustement trajet', icon: 'swap-horizontal-outline', color: Colors.infoDark },
   subscription_payment: { label: 'Abonnement', icon: 'shield-checkmark-outline', color: Colors.danger },

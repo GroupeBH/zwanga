@@ -83,7 +83,7 @@ export function useBookingCards({
                   {trip?.departure?.name ?? 'Trajet'} → {trip?.arrival?.name ?? ''}
                 </Text>
                 <Text style={styles.bookingSubtitle} numberOfLines={1} ellipsizeMode="tail">
-                  {trip ? `${formatDateTime(trip.departureTime)} -> arrivée estimee ${arrivalTimeDisplay}` : ''}
+                  {trip ? `${formatDateTime(trip.departureTime)} -> arrivée estimée ${arrivalTimeDisplay}` : ''}
                 </Text>
               </View>
             </View>

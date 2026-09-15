@@ -82,7 +82,7 @@ export function getPaymentChannelLabel(channel?: PaymentChannel) {
 
 export function getPaymentModeLabel(mode?: TripPaymentMode | null, channel?: PaymentChannel) {
   if (mode === 'points') return 'Jetons Zwanga';
-  if (mode === 'cash') return 'Paiement en especes';
+  if (mode === 'cash') return 'Paiement en espèces';
   if (mode === 'electronic') return getPaymentChannelLabel(channel);
   return 'Paiement';
 }
@@ -90,7 +90,7 @@ export function getPaymentModeLabel(mode?: TripPaymentMode | null, channel?: Pay
 export function getPaymentFailureMessage(message?: string | null) {
   return getApiErrorMessage(
     { message },
-    "Le paiement n'a pas ete confirme. Vous pouvez reessayer.",
+    "Le paiement n'a pas été confirmé. Vous pouvez réessayer.",
   );
 }
 

@@ -37,6 +37,8 @@ export interface DriverPayout {
   requestedAt?: string | null;
   processedAt?: string | null;
   failureReason?: string | null;
+  reference?: string | null;
+  requiresReview?: boolean;
   createdAt: string;
   updatedAt: string;
 }

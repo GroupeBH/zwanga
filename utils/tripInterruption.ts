@@ -4,7 +4,7 @@ export const TRIP_INTERRUPTION_REASON_LABELS: Record<TripInterruptionReason, str
   emergency: 'Urgence',
   health: 'Sante',
   safety: 'Securite',
-  route_issue: 'Probleme sur la route',
+  route_issue: 'Problème sur la route',
   personal: 'Raison personnelle',
   other: 'Autre raison',
 };

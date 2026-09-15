@@ -15,7 +15,7 @@ export function ArrivalTimeBlock({ trip }: { trip: Trip }) {
 
   return (
     <View style={styles.timeContainer}>
-      <Text style={styles.routeDateLabel}>Arrivée estimee</Text>
+      <Text style={styles.routeDateLabel}>Arrivée estimée</Text>
       <Text style={styles.routeTime}>{arrivalDateTimeDisplay}</Text>
     </View>
   );

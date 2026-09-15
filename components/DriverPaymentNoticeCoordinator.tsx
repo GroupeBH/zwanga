@@ -264,9 +264,9 @@ export function DriverPaymentNoticeCoordinator() {
             <View style={styles.icon}>
               <Ionicons name="cash-outline" size={28} color={Colors.white} />
             </View>
-            <Text style={styles.title}>Paiement passager confirme</Text>
+            <Text style={styles.title}>Paiement passager confirmé</Text>
             <Text style={styles.message}>
-              {activeNotice.passengerName} a confirme le paiement du trajet.
+              {activeNotice.passengerName} a confirmé le paiement du trajet.
             </Text>
 
             <ScrollView bounces={false} style={styles.details} contentContainerStyle={styles.detailsContent}>

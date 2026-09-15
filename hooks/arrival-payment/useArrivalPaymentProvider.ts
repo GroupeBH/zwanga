@@ -47,11 +47,11 @@ export function useArrivalPaymentProvider({
       const result = await WebBrowser.openAuthSessionAsync(paymentUrl, returnUrl);
       if (result.type !== 'success') {
         if (orderNumber) {
-          setStatusMessage("Retour dans l'app detecte. Verification du paiement carte en cours...");
+          setStatusMessage("Vérification du paiement par carte en cours…");
           return false;
         }
 
-        setPaymentError('Le paiement par carte a ete ferme avant la confirmation.');
+        setPaymentError("La page de paiement par carte a été fermée avant la confirmation.");
         return true;
       }
 
@@ -59,14 +59,14 @@ export function useArrivalPaymentProvider({
       if (paymentResult === 'cancel' || paymentResult === 'decline') {
         setPaymentError(
           paymentResult === 'cancel'
-            ? 'Paiement carte annule. Vous pouvez reessayer.'
-            : 'Paiement carte refuse. Verifiez votre carte ou choisissez un autre moyen.',
+            ? "Paiement par carte annulé. Vous pouvez réessayer."
+            : "Paiement par carte refusé. Vérifiez votre carte ou choisissez un autre moyen de paiement.",
         );
         return true;
       }
 
       if (!orderNumber) {
-        setStatusMessage('Retour carte recu. Zwanga finalisera la confirmation automatiquement.');
+        setStatusMessage("Le résultat du paiement par carte a été reçu. Zwanga finalisera la confirmation automatiquement.");
         return false;
       }
 
@@ -80,7 +80,7 @@ export function useArrivalPaymentProvider({
         setStatusMessage(
           getPaymentStatusMessage(
             statusResponse.payment.message,
-            'Paiement carte en cours de validation. Nous continuons la verification.',
+            "Paiement par carte en cours de validation. Nous continuons la vérification.",
           ),
         );
       }

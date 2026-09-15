@@ -327,7 +327,7 @@ export default function PaymentHistoryScreen() {
                   ) : (
                     <Ionicons name="download-outline" size={18} color={Colors.white} />
                   )}
-                  <Text style={styles.detailPrimaryButtonText}>Telecharger PDF</Text>
+                  <Text style={styles.detailPrimaryButtonText}>Télécharger PDF</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -337,5 +337,4 @@ export default function PaymentHistoryScreen() {
     </SafeAreaView>
   );
 }
-
 

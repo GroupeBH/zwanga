@@ -199,18 +199,18 @@ export function PassengerArrivalPaymentCoordinator() {
                       <Ionicons name="checkmark" size={30} color={Colors.white} />
                     </View>
                     <View style={styles.headerCopy}>
-                      <Text style={styles.eyebrow}>PAIEMENT CONFIRME</Text>
+                      <Text style={styles.eyebrow}>PAIEMENT CONFIRMÉ</Text>
                       <Text style={styles.title}>Trajet termine</Text>
                     </View>
                   </View>
 
                   <View style={styles.amountCard}>
-                    <Text style={styles.amountLabel}>Montant regle</Text>
+                    <Text style={styles.amountLabel}>Montant réglé</Text>
                     <Text style={styles.amountValue}>
                       {formatMoney(state.completionSummary.amount, state.completionSummary.currency)}
                     </Text>
                     <Text style={styles.amountHint}>
-                      Moyen utilise: {getPaymentModeLabel(state.completionSummary.mode, state.completionSummary.channel)}
+                      Moyen utilisé : {getPaymentModeLabel(state.completionSummary.mode, state.completionSummary.channel)}
                     </Text>
                   </View>
 
@@ -232,7 +232,7 @@ export function PassengerArrivalPaymentCoordinator() {
                       </Text>
                     </View>
                     <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Reference</Text>
+                      <Text style={styles.summaryLabel}>Référence</Text>
                       <Text style={styles.summaryValue} numberOfLines={1}>
                         {state.completionSummary.paymentReference ?? 'A venir'}
                       </Text>
@@ -242,7 +242,7 @@ export function PassengerArrivalPaymentCoordinator() {
                   <View style={styles.successBox}>
                     <Ionicons name="notifications-outline" size={22} color={Colors.successDark} />
                     <View style={styles.successCopy}>
-                      <Text style={styles.successTitle}>Conducteur informe</Text>
+                      <Text style={styles.successTitle}>Conducteur informé</Text>
                       <Text style={styles.successText}>{state.completionSummary.driverNotice}</Text>
                     </View>
                   </View>

@@ -104,7 +104,7 @@ export function useWalletTopUpActions({
         setTopUpStatusMessage(
           paymentResult === 'cancel'
             ? 'Paiement carte annulé. Aucun jeton n’a été ajouté.'
-            : 'Paiement carte refusé. Vérifiez votre carte ou choisissez un autre moyen.',
+            : "Paiement par carte refusé. Vérifiez votre carte ou choisissez un autre moyen de paiement.",
         );
         return;
       }
@@ -159,7 +159,7 @@ export function useWalletTopUpActions({
       showDialog({
         variant: 'warning',
         title: 'Nombre de jetons invalide',
-        message: 'Entrez un nombre de jetons superieur a 0.',
+        message: 'Entrez un nombre de jetons supérieur à 0.',
       });
       return;
     }

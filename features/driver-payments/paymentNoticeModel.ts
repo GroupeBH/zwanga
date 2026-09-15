@@ -39,7 +39,7 @@ export function formatMoney(value: number, currency?: string | null) {
 
 export function getPaymentModeLabel(mode?: TripPaymentMode | null) {
   if (mode === 'points') return 'Jetons Zwanga';
-  if (mode === 'electronic') return 'Paiement electronique';
+  if (mode === 'electronic') return 'Paiement électronique';
   return 'Especes';
 }
 

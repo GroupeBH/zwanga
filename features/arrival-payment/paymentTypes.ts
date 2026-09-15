@@ -70,24 +70,24 @@ export const ELECTRONIC_PAYMENT_CHANNELS: ElectronicPaymentChannel[] = [
     id: 'mpesa',
     icon: 'phone-portrait-outline',
     title: 'M-Pesa',
-    description: 'Confirmation par code PIN sur votre telephone',
+    description: 'Confirmation par code PIN sur votre téléphone',
   },
   {
     id: 'airtel',
     icon: 'phone-portrait-outline',
     title: 'Airtel Money',
-    description: 'Confirmation par code PIN sur votre telephone',
+    description: 'Confirmation par code PIN sur votre téléphone',
   },
   {
     id: 'orange',
     icon: 'phone-portrait-outline',
     title: 'Orange Money',
-    description: 'Confirmation par code PIN sur votre telephone',
+    description: 'Confirmation par code PIN sur votre téléphone',
   },
   {
     id: 'card',
     icon: 'card-outline',
     title: 'Carte',
-    description: 'Paiement securise par carte bancaire',
+    description: 'Paiement sécurisé par carte bancaire',
   },
 ];

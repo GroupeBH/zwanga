@@ -6,6 +6,7 @@ import type {
 } from '../../types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
+import { CRITICAL_MUTATION_TIMEOUT_MS } from '@/constants/network';
 
 type RequestDriverPayoutPayload = {
   amount: number;
@@ -43,11 +44,15 @@ export const driverSettlementsApi = baseApi.injectEndpoints({
         url: '/driver-settlements/payouts',
         method: 'POST',
         body,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       invalidatesTags: [settlementTag],
     }),
     checkDriverPayoutStatus: builder.query<DriverPayout, string>({
-      query: (orderNumber) => `/driver-settlements/payouts/${encodeURIComponent(orderNumber)}/status`,
+      query: (orderNumber) => ({
+        url: `/driver-settlements/payouts/${encodeURIComponent(orderNumber)}/status`,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
+      }),
       providesTags: [settlementTag],
     }),
   }),

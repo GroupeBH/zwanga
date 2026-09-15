@@ -98,7 +98,7 @@ export function useReferralActions({
     if (!summary.withdrawal.kycApproved) {
       showDialog({
         variant: 'warning',
-        title: 'Verification requise',
+        title: 'Vérification requise',
         message: 'Vérifiez votre identité avant de retirer vos gains.',
       });
       return;
@@ -111,7 +111,7 @@ export function useReferralActions({
       showDialog({
         variant: 'success',
         title: 'Retrait transmis',
-        message: `FlexPay traite ${formatNumber(withdrawal.amount)} ${withdrawal.currency} vers votre numero Mobile Money.`,
+        message: `FlexPay traite ${formatNumber(withdrawal.amount)} ${withdrawal.currency} vers votre numéro Mobile Money.`,
       });
     } catch (error) {
       showDialog({

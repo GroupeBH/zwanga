@@ -130,7 +130,7 @@ export async function openWhatsApp(
   onError?: (message: string) => void
 ): Promise<void> {
   if (!phone || phone.trim() === '') {
-    const errorMsg = 'Numero de telephone invalide.';
+    const errorMsg = 'Numéro de téléphone invalide.';
     if (onError) {
       onError(errorMsg);
     }
@@ -141,7 +141,7 @@ export async function openWhatsApp(
   // Pour l'URL WhatsApp, retirer le + car WhatsApp nécessite le format sans +
   const phoneNumberForUrl = phoneNumber.replace(/\D/g, '');
   if (!phoneNumberForUrl) {
-    const errorMsg = 'Numero de telephone invalide.';
+    const errorMsg = 'Numéro de téléphone invalide.';
     if (onError) {
       onError(errorMsg);
     }

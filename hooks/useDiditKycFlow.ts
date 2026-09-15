@@ -124,7 +124,7 @@ export function useDiditKycFlow({
         }).unwrap();
 
         if (!session.sessionToken && !session.url) {
-          throw new Error("Le backend n'a pas retourne de token SDK ni d'URL Didit.");
+          throw new Error("Le backend n'a pas retourné de token SDK ni d'URL Didit.");
         }
 
         await trackEvent('kyc_didit_session_started', {
@@ -207,7 +207,7 @@ export function useDiditKycFlow({
           flowStage = 'opening_web_browser';
           if (!session.url) {
             throw new Error(
-              "Le SDK natif Didit est indisponible et aucune URL de secours n'a ete retournee.",
+              "Le SDK natif Didit est indisponible et aucune URL de secours n'a été retournée.",
             );
           }
 

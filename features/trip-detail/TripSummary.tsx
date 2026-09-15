@@ -122,7 +122,7 @@ export function TripSummary({
             <View style={[styles.tripInlineProgressFill, { width: `${progress}%` }]} />
           </View>
           <Text style={styles.tripInlineProgressEta}>
-            Arrivée estimee: {estimatedArrivalTime ? formatDateTime(estimatedArrivalTime.toISOString()) : tripArrivalTimeLabel}
+            Arrivée estimée : {estimatedArrivalTime ? formatDateTime(estimatedArrivalTime.toISOString()) : tripArrivalTimeLabel}
           </Text>
         </View>
       )}
@@ -189,7 +189,7 @@ export function TripSummary({
           onPress={() => setVehicleDetailModalVisible(true)}
           activeOpacity={0.85}
           accessibilityRole="button"
-          accessibilityLabel="Voir les details du vehicule"
+          accessibilityLabel="Voir les détails du véhicule"
         >
           <View style={styles.tripVehicleCompactIcon}>
             <Ionicons

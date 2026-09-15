@@ -148,7 +148,7 @@ export function useArrivalPaymentSubmission({
       const phone = method === 'mobile_money' ? mobileMoneyPhone : undefined;
       if (method === 'mobile_money' && (!phone || !DRC_PAYMENT_PHONE_REGEX.test(phone))) {
         setPaymentError(
-          'Un numero congolais valide est necessaire pour Mobile Money. Exemple: +243891234567.',
+          'Un numéro congolais valide est nécessaire pour Mobile Money. Exemple : +243891234567.',
         );
         return;
       }
@@ -211,7 +211,7 @@ export function useArrivalPaymentSubmission({
           response.payment.message,
           method === 'card'
             ? 'Paiement carte en cours de validation.'
-            : 'Confirmez le paiement Mobile Money sur votre telephone.',
+            : 'Confirmez le paiement Mobile Money sur votre téléphone.',
         ),
       );
     } catch (error: any) {
