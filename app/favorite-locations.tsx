@@ -1,3 +1,6 @@
+import { useFavoriteLocationEditor } from '../hooks/favorites/useFavoriteLocationEditor';
+import { useFavoriteLocationActions } from '../hooks/favorites/useFavoriteLocationActions';
+import { FavoriteLocationType, TYPE_LABELS, TYPE_ICONS } from '../features/favorites/favoriteModel';
 import { styles } from '../features/screen-styles/app/favorite-locations/index';
 import { FormModal as Modal } from '@/components/forms/FormLayout';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -10,27 +13,12 @@ import {
   useDeleteFavoriteLocationMutation,
 } from '@/store/api/userApi';
 import type { FavoriteLocation } from '@/types';
-import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ActivityIndicator, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from '@/utils/reanimated';
-
-type FavoriteLocationType = 'home' | 'work' | 'other';
-
-const TYPE_LABELS: Record<FavoriteLocationType, string> = {
-  home: 'Domicile',
-  work: 'Bureau',
-  other: 'Autre',
-};
-
-const TYPE_ICONS: Record<FavoriteLocationType, keyof typeof Ionicons.glyphMap> = {
-  home: 'home',
-  work: 'briefcase',
-  other: 'location',
-};
 
 export default function FavoriteLocationsScreen() {
   const router = useRouter();
@@ -52,168 +40,43 @@ export default function FavoriteLocationsScreen() {
   const [notes, setNotes] = useState('');
   const locationPickerOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleAddLocation = () => {
-    setSelectedLocation(null);
-    setLocationName('');
-    setLocationType('other');
-    setIsDefault(false);
-    setNotes('');
-    setShowAddModal(true);
-  };
+  const { handleAddLocation, handleEditLocation, handleLocationPickerClose, handleLocationSelected } = useFavoriteLocationEditor({
+    setSelectedLocation,
+    setLocationName,
+    setLocationType,
+    setIsDefault,
+    setNotes,
+    setShowAddModal,
+    locationPickerOpenTimerRef,
+    setEditingLocation,
+    setShowEditModal,
+    setShowLocationPicker,
+    setIsOpeningLocationPicker,
+    locationName,
+    locationType,
+  });
 
-  useEffect(() => {
-    return () => {
-      if (locationPickerOpenTimerRef.current) {
-        clearTimeout(locationPickerOpenTimerRef.current);
-      }
-    };
-  }, []);
-
-  const handleEditLocation = (location: FavoriteLocation) => {
-    setEditingLocation(location);
-    setSelectedLocation({
-      title: location.name,
-      address: location.address,
-      latitude: location.coordinates.latitude,
-      longitude: location.coordinates.longitude,
-    });
-    setLocationName(location.name);
-    setLocationType(location.type);
-    setIsDefault(location.isDefault);
-    setNotes(location.notes || '');
-    setShowEditModal(true);
-  };
-
-  const handleLocationSelected = (location: MapLocationSelection) => {
-    setSelectedLocation(location);
-    setShowLocationPicker(false);
-    setIsOpeningLocationPicker(false);
-    if (!locationName.trim()) {
-      // Suggérer un nom basé sur le type si aucun nom n'est entré
-      setLocationName(location.title || TYPE_LABELS[locationType]);
-    }
-  };
-
-  const handleLocationPickerClose = () => {
-    if (locationPickerOpenTimerRef.current) {
-      clearTimeout(locationPickerOpenTimerRef.current);
-      locationPickerOpenTimerRef.current = null;
-    }
-    setIsOpeningLocationPicker(false);
-    setShowLocationPicker(false);
-  };
-
-  const handleSaveLocation = async () => {
-    if (!selectedLocation) {
-      showDialog({
-        variant: 'warning',
-        title: 'Lieu requis',
-        message: 'Veuillez sélectionner un lieu sur la carte.',
-      });
-      return;
-    }
-
-    if (!locationName.trim()) {
-      showDialog({
-        variant: 'warning',
-        title: 'Nom requis',
-        message: 'Veuillez entrer un nom pour ce lieu.',
-      });
-      return;
-    }
-
-    try {
-      if (editingLocation) {
-        // Mise à jour
-        await updateFavoriteLocation({
-          id: editingLocation.id,
-          name: locationName.trim(),
-          address: selectedLocation.address,
-          coordinates: {
-            latitude: selectedLocation.latitude,
-            longitude: selectedLocation.longitude,
-          },
-          type: locationType,
-          isDefault,
-          notes: notes.trim() || undefined,
-        }).unwrap();
-
-        showDialog({
-          variant: 'success',
-          title: 'Lieu favori modifié',
-          message: 'Votre lieu favori a été modifié avec succès.',
-        });
-        setShowEditModal(false);
-      } else {
-        // Création
-        await createFavoriteLocation({
-          name: locationName.trim(),
-          address: selectedLocation.address,
-          coordinates: {
-            latitude: selectedLocation.latitude,
-            longitude: selectedLocation.longitude,
-          },
-          type: locationType,
-          isDefault,
-          notes: notes.trim() || undefined,
-        }).unwrap();
-
-        showDialog({
-          variant: 'success',
-          title: 'Lieu favori ajouté',
-          message: 'Votre lieu favori a été ajouté avec succès.',
-        });
-        setShowAddModal(false);
-      }
-
-      // Réinitialiser les champs
-      setSelectedLocation(null);
-      setLocationName('');
-      setLocationType('other');
-      setIsDefault(false);
-      setNotes('');
-      setEditingLocation(null);
-      refetch();
-    } catch (error: any) {
-      showDialog({
-        variant: 'danger',
-        title: 'Erreur',
-        message: getApiErrorMessage(error, 'Impossible de sauvegarder le lieu favori.'),
-      });
-    }
-  };
-
-  const handleDeleteLocation = async (location: FavoriteLocation) => {
-    showDialog({
-      variant: 'warning',
-      title: 'Supprimer le lieu favori',
-      message: `Êtes-vous sûr de vouloir supprimer "${location.name}" ?`,
-      actions: [
-        { label: 'Annuler', variant: 'ghost' },
-        {
-          label: 'Supprimer',
-          variant: 'danger',
-          onPress: async () => {
-            try {
-              await deleteFavoriteLocation(location.id).unwrap();
-              showDialog({
-                variant: 'success',
-                title: 'Lieu favori supprimé',
-                message: 'Votre lieu favori a été supprimé avec succès.',
-              });
-              refetch();
-            } catch (error: any) {
-              showDialog({
-                variant: 'danger',
-                title: 'Erreur',
-                message: getApiErrorMessage(error, 'Impossible de supprimer le lieu favori.'),
-              });
-            }
-          },
-        },
-      ],
-    });
-  };
+  const { handleDeleteLocation, handleSaveLocation } = useFavoriteLocationActions({
+    selectedLocation,
+    showDialog,
+    locationName,
+    editingLocation,
+    updateFavoriteLocation,
+    locationType,
+    isDefault,
+    notes,
+    setShowEditModal,
+    createFavoriteLocation,
+    setShowAddModal,
+    setSelectedLocation,
+    setLocationName,
+    setLocationType,
+    setIsDefault,
+    setNotes,
+    setEditingLocation,
+    refetch,
+    deleteFavoriteLocation,
+  });
 
   const groupedLocations = favoriteLocations.reduce(
     (acc, location) => {

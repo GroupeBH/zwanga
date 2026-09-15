@@ -143,12 +143,13 @@ for (const [file, footers] of [
 test('creation and update modals consistently use the protected layout', () => {
   for (const file of [
     'features/request-detail/RequestAcceptModal.tsx', 'features/request-detail/RequestEditModal.tsx',
-    'app/security.tsx', 'app/favorite-locations.tsx', 'app/wallet.tsx', 'app/support.tsx',
+    'features/security/EmergencyContactFormModal.tsx', 'app/favorite-locations.tsx',
+    'features/wallet/WalletSheetModal.tsx', 'features/support/SupportTicketModal.tsx',
     'app/trip/manage/[id].tsx', 'components/VehicleFormModal.tsx', 'components/auth/VehicleModal.tsx',
     'components/LocationPickerModal.tsx', 'components/profile/ProfilePinModal.tsx',
     'components/profile/ProfileSubscriptionModal.tsx', 'components/PassengerArrivalPaymentCoordinator.tsx',
   ]) assert.match(read(file), /import \{ FormModal as Modal \} from '@\/components\/forms\/FormLayout'/, file);
-  for (const file of ['features/trip-detail/TripEditModal.tsx', 'app/(tabs)/trips.tsx']) {
+  for (const file of ['features/trip-detail/TripEditModal.tsx', 'features/trips/TripsEditModal.tsx']) {
     assert.match(read(file), /<FormModal\s+transparent=\{Platform.OS === 'android'\}/, file);
     assert.doesNotMatch(read(file), /editModalKeyboardOffset|setEditKeyboardHeight/, file);
   }

@@ -1,1430 +1,44 @@
-import { styles } from '../../features/screen-styles/app/subscriptions/payment/index';
-import { useDialog } from '@/components/ui/DialogProvider';
-import { Colors, Spacing } from '@/constants/styles';
-import { useGetPaymentHistoryQuery } from '@/store/api/paymentApi';
+import { useSubscriptionPaymentController } from '../../hooks/subscription-payment/useSubscriptionPaymentController';
 import {
-  useGetPremiumOverviewQuery,
-  useGetSubscriptionPlansQuery,
-  useLazyCheckSubscriptionPaymentStatusQuery,
-  useSubscribeToProMutation,
-  useSubscribeToProWithPointsMutation,
-} from '@/store/api/subscriptionApi';
-import { useGetProfileSummaryQuery } from '@/store/api/userApi';
-import { useGetMyWalletQuery } from '@/store/api/walletApi';
-import { useAppSelector } from '@/store/hooks';
-import { selectUser } from '@/store/selectors';
-import type {
-  PaymentHistoryItem,
-  SubscriptionPaymentMethod,
-  SubscriptionPaymentResponse,
-  SubscriptionPlan,
-} from '@/types';
-import { getApiErrorMessage } from '@/utils/errorHelpers';
+  PAYMENT_OPTIONS,
+  normalizePaymentPhone,
+  getPaymentMethodForChannel,
+} from '../../features/subscription-payment/paymentModel';
+import { styles } from '../../features/screen-styles/app/subscriptions/payment/index';
+import { Colors, Spacing } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as ExpoLinking from 'expo-linking';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React from 'react';
 import {
   ActivityIndicator,
-  AppState,
-  Keyboard,
   KeyboardAvoidingView,
-  Linking,
   Platform,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
-  useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-
-type PaymentChannel = 'mpesa' | 'airtel' | 'orange' | 'card' | 'points';
-type PaymentStage =
-  | 'idle'
-  | 'preparing'
-  | 'phone_confirmation'
-  | 'card_redirect'
-  | 'operator_confirmation'
-  | 'zwanga_activation'
-  | 'waiting_long'
-  | 'success'
-  | 'failed';
-type PaymentCheckOutcome = 'success' | 'pending' | 'failed' | 'error';
-type PaymentProgressStatus = 'done' | 'current' | 'waiting' | 'paused' | 'error';
-type StoredPayment = {
-  channel: PaymentChannel;
-  createdAt: string;
-  message?: string | null;
-  orderNumber: string;
-  paymentMethod: SubscriptionPaymentMethod;
-  paymentUrl?: string | null;
-  userId: string;
-};
-
-const CARD_PAYMENT_RETURN_PATH = 'subscriptions/payment';
-const RECENT_PENDING_PAYMENT_MAX_AGE_MS = 30 * 60 * 1000;
-const AUTO_CHECK_INITIAL_DELAY_MS = 3500;
-const AUTO_CHECK_INTERVAL_MS = 8000;
-const AUTO_CHECK_TIMEOUT_MS = 90000;
-const AUTO_CHECK_MAX_ATTEMPTS = 8;
-const DRC_MOBILE_MONEY_PREFIX = '+243';
-const DRC_MOBILE_MONEY_REGEX = /^\+243\d{9}$/;
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 WebBrowser.maybeCompleteAuthSession();
 
-const PAYMENT_OPTIONS: {
-  id: PaymentChannel;
-  label: string;
-  hint: string;
-  icon: keyof typeof Ionicons.glyphMap;
-}[] = [
-  { id: 'mpesa', label: 'M-Pesa', hint: 'Mobile Money', icon: 'phone-portrait-outline' },
-  { id: 'airtel', label: 'Airtel Money', hint: 'Mobile Money', icon: 'phone-portrait-outline' },
-  { id: 'orange', label: 'Orange Money', hint: 'Mobile Money', icon: 'phone-portrait-outline' },
-  { id: 'card', label: 'Carte', hint: 'Visa ou Mastercard', icon: 'card-outline' },
-  { id: 'points', label: 'Jetons', hint: 'Solde Zwanga', icon: 'wallet-outline' },
-];
-
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const formatSubscriptionAmount = (amount?: number | string, currency?: string) => {
-  const numericAmount = Number(amount);
-  if (!Number.isFinite(numericAmount)) return `5000 ${currency || 'CDF'}`;
-  const formatted =
-    numericAmount % 1 === 0 ? Math.round(numericAmount).toString() : numericAmount.toFixed(2);
-  return `${formatted} ${currency || 'CDF'}`;
-};
-
-const formatPointsAmount = (amount?: number | string | null, currency?: string | null) => {
-  const numericAmount = Number(amount);
-  const displayCurrency = currency || 'PTS';
-  if (!Number.isFinite(numericAmount)) return `${amount ?? 0} ${displayCurrency}`;
-
-  const formatted =
-    numericAmount % 1 === 0
-      ? Math.round(numericAmount).toLocaleString('fr-FR')
-      : numericAmount.toFixed(2);
-  const unit = !currency || currency.toUpperCase() === 'PTS'
-    ? Math.abs(numericAmount) === 1
-      ? 'jeton'
-      : 'jetons'
-    : displayCurrency;
-  return `${formatted} ${unit}`;
-};
-
-const getPlanLabel = (plan?: SubscriptionPlan | null) => {
-  if (plan === 'pro') return 'Pro';
-  if (plan === 'yearly') return 'annuel';
-  return 'mensuel';
-};
-
-const createCardPaymentRedirectUrls = () => {
-  const baseUrl = ExpoLinking.createURL(CARD_PAYMENT_RETURN_PATH);
-  const withStatus = (status: 'success' | 'cancel' | 'decline') =>
-    `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}status=${status}`;
-
-  return {
-    approveUrl: withStatus('success'),
-    cancelUrl: withStatus('cancel'),
-    declineUrl: withStatus('decline'),
-    returnUrl: baseUrl,
-  };
-};
-
-const normalizePaymentPhone = (value?: string | null) => {
-  const trimmed = (value ?? '').trim();
-  if (!trimmed) return '';
-
-  const digits = trimmed.replace(/\D/g, '');
-  if (!digits) return trimmed.startsWith('+') ? '+' : '';
-  return trimmed.startsWith('+') ? `+${digits}` : digits;
-};
-
-const formatCongolesePaymentPhone = (value?: string | null) => {
-  const normalized = normalizePaymentPhone(value);
-  if (!normalized) return '';
-
-  const digits = normalized.replace(/\D/g, '');
-  if (digits.startsWith('243') && digits.length === 12) return `+${digits}`;
-  if (digits.startsWith('0') && digits.length === 10) return `${DRC_MOBILE_MONEY_PREFIX}${digits.slice(1)}`;
-  if (digits.length === 9) return `${DRC_MOBILE_MONEY_PREFIX}${digits}`;
-  return normalized;
-};
-
-const isValidCongolesePaymentPhone = (value?: string | null) =>
-  DRC_MOBILE_MONEY_REGEX.test(formatCongolesePaymentPhone(value));
-
-const normalizePaymentMessage = (message?: string | null) =>
-  (message ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-
-const isDeclinedPaymentMessage = (message?: string | null) => {
-  const normalizedMessage = normalizePaymentMessage(message);
-  return (
-    normalizedMessage.includes('annul') ||
-    normalizedMessage.includes('cancel') ||
-    normalizedMessage.includes('declined') ||
-    normalizedMessage.includes('echec') ||
-    normalizedMessage.includes('echoue') ||
-    normalizedMessage.includes('failed') ||
-    normalizedMessage.includes('failure') ||
-    normalizedMessage.includes('refuse') ||
-    normalizedMessage.includes('rejet') ||
-    normalizedMessage.includes('non abouti') ||
-    normalizedMessage.includes('non aboutit') ||
-    normalizedMessage.includes('not completed') ||
-    normalizedMessage.includes('not complete') ||
-    normalizedMessage.includes('not successful') ||
-    normalizedMessage.includes('solde insuffisant') ||
-    normalizedMessage.includes('unsuccessful') ||
-    normalizedMessage.includes('insufficient')
-  );
-};
-
-const getPaymentFailureMessage = (message?: string | null) => {
-  const normalizedMessage = normalizePaymentMessage(message);
-  if (
-    normalizedMessage.includes('annul') ||
-    normalizedMessage.includes('cancel')
-  ) {
-    return 'Paiement annulé. Aucun montant confirmé; vous pouvez réessayer.';
-  }
-
-  if (
-    normalizedMessage.includes('declined by the operator') ||
-    normalizedMessage.includes('declined') ||
-    normalizedMessage.includes('refuse') ||
-    normalizedMessage.includes('rejet')
-  ) {
-    return "Paiement refusé par l'opérateur. Aucun montant confirmé.";
-  }
-
-  if (
-    normalizedMessage.includes('solde insuffisant') ||
-    normalizedMessage.includes('insufficient')
-  ) {
-    return 'Paiement échoué : solde insuffisant.';
-  }
-
-  if (
-    normalizedMessage.includes('non abouti') ||
-    normalizedMessage.includes('non aboutit') ||
-    normalizedMessage.includes('not completed') ||
-    normalizedMessage.includes('not complete') ||
-    normalizedMessage.includes('not successful') ||
-    normalizedMessage.includes('unsuccessful') ||
-    normalizedMessage.includes('echec') ||
-    normalizedMessage.includes('echoue') ||
-    normalizedMessage.includes('failed') ||
-    normalizedMessage.includes('failure')
-  ) {
-    return 'Paiement non abouti. Aucun montant confirmé; vous pouvez relancer une nouvelle tentative.';
-  }
-
-  return getApiErrorMessage(
-    { message },
-    'Le paiement a échoué. Vous pouvez réessayer ou choisir un autre moyen.',
-  );
-};
-
-const getPaymentStatusMessage = (message: string | null | undefined, fallback: string) =>
-  getApiErrorMessage({ message }, fallback);
-
-const isPaymentComplete = (response?: SubscriptionPaymentResponse | null) =>
-  response?.subscription?.status === 'active' || response?.payment?.status === 'succeeded';
-
-const isTerminalFailedStatus = (status?: string | null) => {
-  const normalizedStatus = normalizePaymentMessage(status);
-  return (
-    normalizedStatus === 'cancel' ||
-    normalizedStatus === 'cancelled' ||
-    normalizedStatus === 'canceled' ||
-    normalizedStatus === 'decline' ||
-    normalizedStatus === 'declined' ||
-    normalizedStatus === 'expired' ||
-    normalizedStatus === 'failed' ||
-    normalizedStatus === 'payment_failed' ||
-    normalizedStatus === 'rejected'
-  );
-};
-
-const isPaymentFailed = (response?: SubscriptionPaymentResponse | null) =>
-  isTerminalFailedStatus(response?.payment?.status) ||
-  isTerminalFailedStatus(response?.subscription?.status) ||
-  isDeclinedPaymentMessage(response?.payment?.message) ||
-  isDeclinedPaymentMessage(response?.payment?.statusCode);
-
-const isNetworkOrTimeoutError = (error: any) =>
-  error?.status === 'FETCH_ERROR' || error?.status === 'TIMEOUT_ERROR';
-
-const getStoredPaymentKey = (userId?: string | null) =>
-  userId ? `zwanga:subscription:pending-payment:${userId}` : null;
-
-const getPaymentMethodForChannel = (channel: PaymentChannel): SubscriptionPaymentMethod | null => {
-  if (channel === 'points') return null;
-  return channel === 'card' ? 'card' : 'mobile_money';
-};
-
-const isPaymentChannel = (value: unknown): value is PaymentChannel =>
-  value === 'mpesa' || value === 'airtel' || value === 'orange' || value === 'card';
-
-const parseStoredPayment = (value?: string | null): StoredPayment | null => {
-  if (!value) return null;
-
-  try {
-    const parsed = JSON.parse(value) as Partial<StoredPayment>;
-    if (!parsed || typeof parsed !== 'object') return null;
-    if (typeof parsed.orderNumber !== 'string' || !parsed.orderNumber.trim()) return null;
-    if (typeof parsed.userId !== 'string' || !parsed.userId.trim()) return null;
-    if (!isPaymentChannel(parsed.channel)) return null;
-
-    const createdAt = typeof parsed.createdAt === 'string' ? parsed.createdAt : '';
-    const createdAtMs = Date.parse(createdAt);
-    if (!Number.isFinite(createdAtMs)) return null;
-    if (Date.now() - createdAtMs > RECENT_PENDING_PAYMENT_MAX_AGE_MS) return null;
-
-    const fallbackPaymentMethod = getPaymentMethodForChannel(parsed.channel);
-    const paymentMethod =
-      parsed.paymentMethod === 'card' || parsed.paymentMethod === 'mobile_money'
-        ? parsed.paymentMethod
-        : getPaymentMethodForChannel(parsed.channel);
-    if (!paymentMethod || !fallbackPaymentMethod) return null;
-
-    return {
-      channel: parsed.channel,
-      createdAt,
-      message: typeof parsed.message === 'string' ? parsed.message : null,
-      orderNumber: parsed.orderNumber,
-      paymentMethod,
-      paymentUrl: typeof parsed.paymentUrl === 'string' ? parsed.paymentUrl : null,
-      userId: parsed.userId,
-    };
-  } catch {
-    return null;
-  }
-};
-
-const isRecentPendingSubscriptionPayment = (payment: PaymentHistoryItem) => {
-  const purpose = String(payment.purpose ?? '').toLowerCase();
-  const status = String(payment.status ?? '').toLowerCase();
-  const createdAtMs = Date.parse(payment.createdAt);
-
-  return (
-    purpose === 'subscription_pro' &&
-    Boolean(payment.orderNumber) &&
-    (status === 'pending' || status === 'initiated') &&
-    !isDeclinedPaymentMessage(payment.message) &&
-    !isDeclinedPaymentMessage(payment.statusCode) &&
-    Number.isFinite(createdAtMs) &&
-    Date.now() - createdAtMs <= RECENT_PENDING_PAYMENT_MAX_AGE_MS
-  );
-};
-
-const getMostRecentPendingSubscriptionPayment = (payments?: PaymentHistoryItem[] | null) => {
-  if (!payments?.length) return null;
-  return (
-    payments
-      .filter(isRecentPendingSubscriptionPayment)
-      .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0] ?? null
-  );
-};
-
-const buildStoredPaymentFromHistory = (
-  payment: PaymentHistoryItem,
-  userId: string,
-  fallbackChannel: PaymentChannel,
-): StoredPayment | null => {
-  if (!payment.orderNumber || !userId) return null;
-
-  const mobileMoneyFallback =
-    fallbackChannel === 'mpesa' || fallbackChannel === 'airtel' || fallbackChannel === 'orange'
-      ? fallbackChannel
-      : 'mpesa';
-  const channel = payment.method === 'card' ? 'card' : mobileMoneyFallback;
-  return {
-    channel,
-    createdAt: payment.createdAt,
-    message: getPaymentStatusMessage(payment.message, 'Paiement retrouvé côté Zwanga.'),
-    orderNumber: payment.orderNumber,
-    paymentMethod: payment.method === 'card' ? 'card' : 'mobile_money',
-    paymentUrl: payment.paymentUrl,
-    userId,
-  };
-};
-
-const getCardPaymentResultFromUrl = (url?: string | null) => {
-  if (!url) return null;
-  const lowerUrl = url.toLowerCase();
-  if (lowerUrl.includes('status=success') || lowerUrl.includes('/success')) return 'success';
-  if (lowerUrl.includes('status=cancel') || lowerUrl.includes('/cancel')) return 'cancel';
-  if (lowerUrl.includes('status=decline') || lowerUrl.includes('/decline')) return 'decline';
-  return null;
-};
-
 export default function SubscriptionPaymentScreen() {
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
-  const { showDialog } = useDialog();
-  const user = useAppSelector(selectUser);
-  const { paymentStatus, status } = useLocalSearchParams<{
-    paymentStatus?: string;
-    status?: string;
-  }>();
-  const returnedPaymentStatus = paymentStatus ?? status;
-  const isCompactHeight = windowHeight < 760;
-  const isTightHeight = windowHeight < 700;
-
-  const { data: profileSummary, refetch: refetchProfile } = useGetProfileSummaryQuery();
-  const currentUser = profileSummary?.user ?? user;
-  const isDriver = Boolean(
-    currentUser?.role === 'driver' ||
-      currentUser?.role === 'both' ||
-      currentUser?.isDriver,
-  );
-
-  const { data: subscriptionPlans = [] } = useGetSubscriptionPlansQuery();
-  const { data: premiumOverview, refetch: refetchPremiumOverview } =
-    useGetPremiumOverviewQuery(undefined, { skip: !isDriver });
-  const {
-    data: paymentHistory,
-    refetch: refetchPaymentHistory,
-  } = useGetPaymentHistoryQuery(undefined, { skip: !isDriver });
-  const {
-    data: walletSummary,
-    refetch: refetchWallet,
-  } = useGetMyWalletQuery(undefined, { skip: !isDriver });
-  const [subscribeToPro, { isLoading: isSubscribing }] = useSubscribeToProMutation();
-  const [subscribeToProWithPoints, { isLoading: isPayingWithPoints }] =
-    useSubscribeToProWithPointsMutation();
-  const [checkPaymentStatus, { isFetching: isChecking }] =
-    useLazyCheckSubscriptionPaymentStatusQuery();
-
-  const [selectedChannel, setSelectedChannel] = useState<PaymentChannel>('mpesa');
-  const [phone, setPhone] = useState('');
-  const [orderNumber, setOrderNumber] = useState<string | null>(null);
-  const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<SubscriptionPaymentMethod>('mobile_money');
-  const [message, setMessage] = useState<string | null>(null);
-  const [stage, setStage] = useState<PaymentStage>('idle');
-  const [autoCheckAttempt, setAutoCheckAttempt] = useState(0);
-  const [isAutoChecking, setIsAutoChecking] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const pollingRunIdRef = useRef(0);
-  const mountedRef = useRef(true);
-  const scrollRef = useRef<ScrollView>(null);
-  const phoneFieldOffsetRef = useRef(0);
-  const restoredKeyRef = useRef<string | null>(null);
-  const handledPaymentStatusRef = useRef<string | null>(null);
-  const prefilledPhoneRef = useRef(false);
-
-  const proPlan = useMemo(
-    () => subscriptionPlans.find((plan) => plan.plan === 'pro') ?? subscriptionPlans[0],
-    [subscriptionPlans],
-  );
-  const priceLabel = formatSubscriptionAmount(proPlan?.amount, proPlan?.currency);
-  const planLabel = getPlanLabel(proPlan?.plan);
-  const isCardPayment = selectedChannel === 'card';
-  const isPointsPayment = selectedChannel === 'points';
-  const subscriptionPointsAmount = Number(
-    proPlan?.tokensAmount ?? proPlan?.pointsAmount ?? proPlan?.amount ?? 0,
-  );
-  const walletBalance = Number(walletSummary?.account.balance ?? 0);
-  const pointsCurrency =
-    proPlan?.tokensCurrency ||
-    proPlan?.pointsCurrency ||
-    walletSummary?.account.currency ||
-    'PTS';
-  const subscriptionPointsLabel = formatPointsAmount(
-    proPlan?.tokensAmount ?? proPlan?.pointsAmount ?? proPlan?.amount ?? 0,
-    pointsCurrency,
-  );
-  const walletBalanceLabel = formatPointsAmount(walletSummary?.account.balance ?? 0, pointsCurrency);
-  const subscriptionRewardTokens = Number(proPlan?.subscriptionRewardTokens ?? 25);
-  const isPremiumActive = Boolean(
-    premiumOverview?.isPremium ||
-      premiumOverview?.isActive ||
-      currentUser?.isPremium ||
-      currentUser?.premiumBadge,
-  );
-  const storageKey = useMemo(() => getStoredPaymentKey(currentUser?.id), [currentUser?.id]);
-  const recentPendingPayment = useMemo(
-    () => getMostRecentPendingSubscriptionPayment(paymentHistory),
-    [paymentHistory],
-  );
-
-  const progressSteps = useMemo(() => {
-    const activeStage = stage === 'idle' && orderNumber ? 'operator_confirmation' : stage;
-    const paymentStarted = activeStage !== 'idle' || Boolean(orderNumber);
-    const baseSteps = isPointsPayment
-      ? [
-          {
-            key: 'wallet',
-            title: 'Solde',
-            description: 'Zwanga vérifie et débite votre solde de jetons.',
-            icon: 'wallet-outline' as keyof typeof Ionicons.glyphMap,
-          },
-          {
-            key: 'activation',
-            title: 'Activation',
-            description: "L'abonnement est activé dès que le débit de jetons est confirmé.",
-            icon: 'shield-checkmark-outline' as keyof typeof Ionicons.glyphMap,
-          },
-        ]
-      : isCardPayment
-      ? [
-          {
-            key: 'preparing',
-            title: 'Référence',
-            description: paymentStarted
-              ? "Zwanga crée une référence. Aucun débit carte n'est lancé ici."
-              : "Aucune demande de paiement n'est envoyée avant votre appui sur le bouton.",
-            icon: 'lock-closed-outline' as keyof typeof Ionicons.glyphMap,
-          },
-          {
-            key: 'card',
-            title: 'Carte',
-            description: 'Finalisez le paiement dans la page securisée FlexPay.',
-            icon: 'card-outline' as keyof typeof Ionicons.glyphMap,
-          },
-          {
-            key: 'activation',
-            title: 'Activation',
-            description: "Nous activons l'abonnement dès que FlexPay confirme.",
-            icon: 'shield-checkmark-outline' as keyof typeof Ionicons.glyphMap,
-          },
-        ]
-      : [
-          {
-            key: 'preparing',
-            title: 'Référence',
-            description: paymentStarted
-              ? 'Zwanga crée une référence. La demande Mobile Money part ensuite sur votre téléphone.'
-              : "Aucune demande de paiement n'est envoyée avant votre appui sur le bouton.",
-            icon: 'lock-closed-outline' as keyof typeof Ionicons.glyphMap,
-          },
-          {
-            key: 'phone',
-            title: 'Téléphone',
-            description: 'Validez la demande Mobile Money avec votre PIN.',
-            icon: 'phone-portrait-outline' as keyof typeof Ionicons.glyphMap,
-          },
-          {
-            key: 'operator',
-            title: 'Opérateur',
-            description:
-              autoCheckAttempt > 0
-                ? `Vérification automatique ${autoCheckAttempt}/${AUTO_CHECK_MAX_ATTEMPTS}.`
-                : "Nous attendons le retour de l'opérateur.",
-            icon: 'radio-outline' as keyof typeof Ionicons.glyphMap,
-          },
-          {
-            key: 'activation',
-            title: 'Activation',
-            description: "Nous activons l'abonnement dès que FlexPay confirme.",
-            icon: 'shield-checkmark-outline' as keyof typeof Ionicons.glyphMap,
-          },
-        ];
-
-    const currentStepKey = (() => {
-      if (!paymentStarted) return null;
-      if (activeStage === 'preparing') return isPointsPayment ? 'wallet' : 'preparing';
-      if (activeStage === 'card_redirect') return 'card';
-      if (activeStage === 'phone_confirmation') return 'phone';
-      if (activeStage === 'operator_confirmation' || activeStage === 'waiting_long') return 'operator';
-      if (activeStage === 'zwanga_activation' || activeStage === 'success') return 'activation';
-      if (activeStage === 'failed') return isPointsPayment ? 'wallet' : isCardPayment ? 'card' : 'operator';
-      return 'preparing';
-    })();
-
-    const currentIndex = Math.max(
-      -1,
-      currentStepKey ? baseSteps.findIndex((step) => step.key === currentStepKey) : -1,
-    );
-
-    return baseSteps.map((step, index) => {
-      let stepStatus: PaymentProgressStatus = 'waiting';
-      if (!paymentStarted) {
-        stepStatus = 'waiting';
-      } else if (activeStage === 'success' || index < currentIndex) {
-        stepStatus = 'done';
-      } else if (activeStage === 'failed' && index === currentIndex) {
-        stepStatus = 'error';
-      } else if (activeStage === 'waiting_long' && index === currentIndex) {
-        stepStatus = 'paused';
-      } else if (index === currentIndex) {
-        stepStatus = 'current';
-      }
-
-      return { ...step, status: stepStatus };
-    });
-  }, [autoCheckAttempt, isCardPayment, isPointsPayment, orderNumber, stage]);
-  const highlightedProgressStep =
-    stage === 'idle' && !orderNumber
-      ? progressSteps[0]
-      : progressSteps.find(
-        (step) => step.status === 'current' || step.status === 'paused' || step.status === 'error',
-      ) ?? progressSteps[progressSteps.length - 1];
-
-  const statusPanel = useMemo(() => {
-    if (stage === 'success') {
-      return {
-        icon: 'checkmark-circle-outline' as keyof typeof Ionicons.glyphMap,
-        title: 'Abonnement actif',
-        text: 'Votre compte conducteur Pro est activé.',
-        activity: false,
-        color: Colors.success,
-      };
-    }
-
-    if (stage === 'failed') {
-      return {
-        icon: 'close-circle-outline' as keyof typeof Ionicons.glyphMap,
-        title: 'Paiement non confirmé',
-        text: message || "Le paiement n'a pas été confirmé.",
-        activity: false,
-        color: Colors.danger,
-      };
-    }
-
-    if (isSubscribing || isPayingWithPoints || stage === 'preparing') {
-      return {
-        icon: isPointsPayment
-          ? ('wallet-outline' as keyof typeof Ionicons.glyphMap)
-          : ('lock-closed-outline' as keyof typeof Ionicons.glyphMap),
-        title: isPointsPayment ? 'Débit de jetons' : 'Référence en préparation',
-        text:
-          message ||
-          (isPointsPayment
-            ? "Vérification du solde et activation de l'abonnement."
-            : "Aucun débit n'est lancé ici. Zwanga crée seulement une référence sécurisée."),
-        activity: false,
-        color: Colors.primary,
-      };
-    }
-
-    if (isChecking || isAutoChecking) {
-      return {
-        icon: 'sync-outline' as keyof typeof Ionicons.glyphMap,
-        title: 'Suivi du paiement',
-        text:
-          message ||
-          `Vérification automatique ${autoCheckAttempt}/${AUTO_CHECK_MAX_ATTEMPTS}.`,
-        activity: true,
-        color: Colors.primary,
-      };
-    }
-
-    if (stage === 'waiting_long') {
-      return {
-        icon: 'time-outline' as keyof typeof Ionicons.glyphMap,
-        title: 'Toujours en traitement',
-        text:
-          message ||
-          "La référence reste gardée. Zwanga reprendra la vérification au retour dans l'app.",
-        activity: false,
-        color: Colors.warningDark,
-      };
-    }
-
-    if (orderNumber || message) {
-      return {
-        icon: 'information-circle-outline' as keyof typeof Ionicons.glyphMap,
-        title: 'Paiement en cours',
-        text: message || 'Une référence existe déjà pour ce paiement.',
-        activity: false,
-        color: Colors.primary,
-      };
-    }
-
-    return null;
-  }, [
-    autoCheckAttempt,
-    isAutoChecking,
-    isChecking,
-    isPayingWithPoints,
-    isPointsPayment,
-    isSubscribing,
-    message,
-    orderNumber,
-    stage,
-  ]);
-
-  const isBusy = isSubscribing || isPayingWithPoints || isChecking;
-  const primaryButtonLabel =
-    isPremiumActive || stage === 'success'
-      ? 'Abonnement actif'
-      : !isDriver
-        ? 'Profil conducteur requis'
-        : orderNumber
-          ? isAutoChecking
-            ? 'Actualiser maintenant'
-            : paymentMethod === 'card' && paymentUrl
-              ? 'Rouvrir le paiement'
-              : 'Actualiser le statut'
-          : stage === 'failed'
-            ? 'Réessayer'
-            : isPointsPayment
-              ? 'Payer avec jetons'
-              : isCardPayment
-                ? 'Payer par carte'
-                : "Payer l'abonnement";
-  const isPrimaryActionDisabled = isBusy || isPremiumActive || stage === 'success';
-
-  const stopAutoCheck = useCallback(() => {
-    pollingRunIdRef.current += 1;
-    if (mountedRef.current) setIsAutoChecking(false);
-  }, []);
-
-  const clearStoredPayment = useCallback(async () => {
-    if (!storageKey) return;
-    try {
-      await AsyncStorage.removeItem(storageKey);
-    } catch (error) {
-      console.warn('[SubscriptionPayment] clear stored payment failed:', error);
-    }
-  }, [storageKey]);
-
-  useEffect(() => {
-    if (!isPremiumActive) return;
-
-    stopAutoCheck();
-    setOrderNumber(null);
-    setPaymentUrl(null);
-    setStage('success');
-    setMessage('Votre abonnement est déjà actif.');
-    setAutoCheckAttempt(0);
-    void clearStoredPayment();
-  }, [clearStoredPayment, isPremiumActive, stopAutoCheck]);
-
-  const readStoredPayment = useCallback(async () => {
-    if (!storageKey || !currentUser?.id) return null;
-    try {
-      const rawValue = await AsyncStorage.getItem(storageKey);
-      const storedPayment = parseStoredPayment(rawValue);
-      if (!storedPayment || storedPayment.userId !== currentUser.id) {
-        if (rawValue) await AsyncStorage.removeItem(storageKey);
-        return null;
-      }
-      return storedPayment;
-    } catch (error) {
-      console.warn('[SubscriptionPayment] read stored payment failed:', error);
-      return null;
-    }
-  }, [currentUser?.id, storageKey]);
-
-  const persistStoredPayment = useCallback(
-    async (payment: Omit<StoredPayment, 'createdAt' | 'userId'>) => {
-      if (!storageKey || !currentUser?.id || !payment.orderNumber) return;
-
-      const storedPayment: StoredPayment = {
-        ...payment,
-        createdAt: new Date().toISOString(),
-        userId: currentUser.id,
-      };
-
-      try {
-        await AsyncStorage.setItem(storageKey, JSON.stringify(storedPayment));
-      } catch (error) {
-        console.warn('[SubscriptionPayment] persist stored payment failed:', error);
-      }
-    },
-    [currentUser?.id, storageKey],
-  );
-
-  const applyStoredPayment = useCallback((storedPayment: StoredPayment) => {
-    setSelectedChannel(storedPayment.channel);
-    setOrderNumber(storedPayment.orderNumber);
-    setPaymentUrl(storedPayment.paymentUrl ?? null);
-    setPaymentMethod(storedPayment.paymentMethod);
-    setStage(storedPayment.paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation');
-    setMessage(
-      getPaymentStatusMessage(
-        storedPayment.message,
-        "Référence retrouvée. Aucune nouvelle demande n'est envoyée.",
-      ),
-    );
-  }, []);
-
-  const finishPayment = useCallback(
-    async (response: SubscriptionPaymentResponse) => {
-      if (!isPaymentComplete(response)) return false;
-
-      stopAutoCheck();
-      await clearStoredPayment();
-      await Promise.allSettled([refetchPremiumOverview(), refetchProfile(), refetchWallet()]);
-      setStage('success');
-      setOrderNumber(null);
-      setPaymentUrl(null);
-      setMessage(`Abonnement conducteur activé. ${subscriptionRewardTokens} jetons crédités.`);
-      setAutoCheckAttempt(0);
-      showDialog({
-        variant: 'success',
-        title: 'Abonnement actif',
-        message: `Votre abonnement conducteur est actif et ${subscriptionRewardTokens} jetons ont été crédités.`,
-      });
-      return true;
-    },
-    [clearStoredPayment, refetchPremiumOverview, refetchProfile, refetchWallet, showDialog, stopAutoCheck, subscriptionRewardTokens],
-  );
-
-  const checkPaymentByOrderNumber = useCallback(
-    async (
-      nextOrderNumber: string,
-      options?: {
-        checkingStage?: PaymentStage;
-        pendingStage?: PaymentStage;
-        pendingMessage?: string;
-        suppressErrorDialog?: boolean;
-      },
-    ): Promise<PaymentCheckOutcome> => {
-      try {
-        setOrderNumber(nextOrderNumber);
-        setStage(options?.checkingStage ?? 'zwanga_activation');
-        const response = await checkPaymentStatus(nextOrderNumber).unwrap();
-
-        if (await finishPayment(response)) return 'success';
-
-        if (isPaymentFailed(response)) {
-          stopAutoCheck();
-          await clearStoredPayment();
-          setOrderNumber(null);
-          setPaymentUrl(null);
-          setStage('failed');
-          setMessage(getPaymentFailureMessage(response.payment.message));
-          return 'failed';
-        }
-
-        setStage(options?.pendingStage ?? 'operator_confirmation');
-        setMessage(
-          getPaymentStatusMessage(
-            response.payment.message,
-            options?.pendingMessage || 'Paiement en attente chez FlexPay. Nous continuons le suivi.',
-          ),
-        );
-        return 'pending';
-      } catch (error: any) {
-        if (options?.suppressErrorDialog) {
-          setStage(options.pendingStage ?? 'operator_confirmation');
-          setMessage('La vérification prend plus de temps que prévu. La référence reste gardée.');
-          return 'error';
-        }
-
-        showDialog({
-          variant: 'danger',
-          title: 'Vérification impossible',
-          message: getApiErrorMessage(error, 'Impossible de vérifier ce paiement pour le moment.'),
-        });
-        return 'error';
-      }
-    },
-    [checkPaymentStatus, clearStoredPayment, finishPayment, showDialog, stopAutoCheck],
-  );
-
-  const startAutoCheck = useCallback(
-    (nextOrderNumber: string, initialMessage?: string | null) => {
-      if (!nextOrderNumber) return;
-
-      const runId = pollingRunIdRef.current + 1;
-      pollingRunIdRef.current = runId;
-      setIsAutoChecking(true);
-      setAutoCheckAttempt(0);
-      setStage(paymentMethod === 'card' ? 'zwanga_activation' : 'phone_confirmation');
-      setMessage(
-        initialMessage ||
-          'Demande envoyée au téléphone. Confirmez avec votre PIN; Zwanga vérifiera ensuite.',
-      );
-
-      void (async () => {
-        const deadline = Date.now() + AUTO_CHECK_TIMEOUT_MS;
-        let attempt = 0;
-        let nextDelay = AUTO_CHECK_INITIAL_DELAY_MS;
-
-        while (mountedRef.current && pollingRunIdRef.current === runId) {
-          const remainingMs = deadline - Date.now();
-          if (remainingMs <= 0 || attempt >= AUTO_CHECK_MAX_ATTEMPTS) break;
-
-          await wait(Math.min(nextDelay, remainingMs));
-          if (!mountedRef.current || pollingRunIdRef.current !== runId) return;
-
-          attempt += 1;
-          setAutoCheckAttempt(attempt);
-          const nextStage = paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation';
-          setStage(nextStage);
-          const outcome = await checkPaymentByOrderNumber(nextOrderNumber, {
-            checkingStage: nextStage,
-            pendingStage: nextStage,
-            pendingMessage:
-              attempt === 1
-                ? 'Vérification en cours. Si la demande est sur votre téléphone, confirmez avec votre PIN.'
-                : 'Toujours en attente côté opérateur. Une validation USSD peut prendre quelques instants.',
-            suppressErrorDialog: true,
-          });
-
-          if (!mountedRef.current || pollingRunIdRef.current !== runId) return;
-          if (outcome === 'success' || outcome === 'failed') {
-            setIsAutoChecking(false);
-            return;
-          }
-
-          nextDelay = AUTO_CHECK_INTERVAL_MS;
-        }
-
-        if (mountedRef.current && pollingRunIdRef.current === runId) {
-          setIsAutoChecking(false);
-          setStage('waiting_long');
-          setMessage(
-            'Nous avons arrêté le chargement automatique. Si vous avez confirmé le code USSD, appuyez sur Actualiser. Sinon vous pouvez relancer une nouvelle tentative.',
-          );
-        }
-      })();
-    },
-    [checkPaymentByOrderNumber, paymentMethod],
-  );
-
-  const openExternalUrl = async (url: string) => {
-    try {
-      await WebBrowser.openBrowserAsync(url);
-    } catch (browserError) {
-      try {
-        const supported = await Linking.canOpenURL(url);
-        if (supported) {
-          await Linking.openURL(url);
-          return;
-        }
-      } catch (linkingError) {
-        console.warn('[SubscriptionPayment] external URL fallback failed:', linkingError);
-      }
-
-      console.warn('[SubscriptionPayment] external URL open failed:', browserError);
-      throw new Error("Impossible d'ouvrir le lien externe.");
-    }
-  };
-
-  const openCardPaymentUrl = useCallback(
-    async (nextPaymentUrl: string, nextOrderNumber: string | null, returnUrl: string) => {
-      setStage('card_redirect');
-      const result = await WebBrowser.openAuthSessionAsync(nextPaymentUrl, returnUrl);
-
-      if (result.type !== 'success') {
-        if (nextOrderNumber) {
-          const pendingMessage = "Retour dans l'app detecté. Nous verifions le statut carte.";
-          const outcome = await checkPaymentByOrderNumber(nextOrderNumber, {
-            checkingStage: 'zwanga_activation',
-            pendingStage: 'zwanga_activation',
-            pendingMessage,
-            suppressErrorDialog: true,
-          });
-          if (outcome === 'pending' || outcome === 'error') startAutoCheck(nextOrderNumber, pendingMessage);
-          return;
-        }
-        setMessage('Le paiement par carte a été fermé avant le retour FlexPay.');
-        return;
-      }
-
-      const paymentResult = getCardPaymentResultFromUrl(result.url);
-      if ((paymentResult === 'cancel' || paymentResult === 'decline') && !nextOrderNumber) {
-        setStage('failed');
-        setMessage(
-          paymentResult === 'cancel'
-            ? 'Paiement carte annulé.'
-            : 'Paiement carte refusé. Vérifiez votre carte ou essayez un autre moyen.',
-        );
-        return;
-      }
-
-      if (!nextOrderNumber) {
-
-        setMessage('Retour carte reçu, mais la référence FlexPay est manquante.');
-        return;
-      }
-
-      const pendingMessage =
-        paymentResult === 'success'
-          ? 'Paiement carte validé côté FlexPay, activation en cours.'
-          : 'Retour carte reçu. Vérification du statut avant toute nouvelle tentative.';
-      const outcome = await checkPaymentByOrderNumber(nextOrderNumber, {
-        checkingStage: 'zwanga_activation',
-        pendingStage: 'zwanga_activation',
-        pendingMessage,
-        suppressErrorDialog: true,
-      });
-      if (outcome === 'pending' || outcome === 'error') startAutoCheck(nextOrderNumber, pendingMessage);
-    },
-    [checkPaymentByOrderNumber, startAutoCheck],
-  );
-
-  const restorePayment = useCallback(async () => {
-    if (!currentUser?.id) return null;
-
-    const storedPayment = await readStoredPayment();
-    if (storedPayment) {
-      applyStoredPayment(storedPayment);
-      return storedPayment;
-    }
-
-    const latestPendingPayment = getMostRecentPendingSubscriptionPayment(paymentHistory);
-    const restoredFromHistory = latestPendingPayment
-      ? buildStoredPaymentFromHistory(latestPendingPayment, currentUser.id, selectedChannel)
-      : null;
-    if (restoredFromHistory) {
-      applyStoredPayment(restoredFromHistory);
-      await persistStoredPayment({
-        channel: restoredFromHistory.channel,
-        message: restoredFromHistory.message,
-        orderNumber: restoredFromHistory.orderNumber,
-        paymentMethod: restoredFromHistory.paymentMethod,
-        paymentUrl: restoredFromHistory.paymentUrl,
-      });
-      return restoredFromHistory;
-    }
-
-    return null;
-  }, [
-    applyStoredPayment,
-    currentUser?.id,
-    paymentHistory,
-    persistStoredPayment,
-    readStoredPayment,
-    selectedChannel,
-  ]);
-
-  const refreshEverything = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const refreshTasks: PromiseLike<unknown>[] = [refetchProfile()];
-      if (isDriver) {
-        refreshTasks.push(refetchPremiumOverview(), refetchPaymentHistory(), refetchWallet());
-      }
-      await Promise.allSettled(refreshTasks);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [isDriver, refetchPaymentHistory, refetchPremiumOverview, refetchProfile, refetchWallet]);
-
-  const handlePrimaryAction = useCallback(async () => {
-    Keyboard.dismiss();
-
-    if (!isDriver) {
-      showDialog({
-        variant: 'warning',
-        title: 'Compte conducteur requis',
-        message: 'Activez votre profil conducteur avant de souscrire à Zwanga Pro.',
-      });
-      return;
-    }
-
-    if (isPremiumActive) {
-      setStage('success');
-      setMessage('Votre abonnement est déjà actif.');
-      return;
-    }
-
-    if (orderNumber) {
-      if (paymentMethod === 'card' && paymentUrl) {
-        const cardRedirectUrls = createCardPaymentRedirectUrls();
-        await openCardPaymentUrl(paymentUrl, orderNumber, cardRedirectUrls.returnUrl);
-        return;
-      }
-
-      const wasWaitingLong = stage === 'waiting_long';
-      stopAutoCheck();
-      const nextStage = paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation';
-      const outcome = await checkPaymentByOrderNumber(orderNumber, {
-        checkingStage: nextStage,
-        pendingStage: nextStage,
-        pendingMessage: 'Actualisation du statut en cours.',
-        suppressErrorDialog: true,
-      });
-      if (outcome === 'pending' || outcome === 'error') {
-        if (wasWaitingLong) {
-          setStage('waiting_long');
-          setMessage(
-            "Le paiement n'est pas encore confirmé. Si vous avez validé l'USSD, réessayez Actualiser dans un instant; sinon abandonnez cette tentative.",
-          );
-          return;
-        }
-        startAutoCheck(orderNumber, 'Nous continuons le suivi automatique de cette référence.');
-      }
-      return;
-    }
-
-    if (isPointsPayment) {
-      if (
-        walletSummary?.account &&
-        Number.isFinite(subscriptionPointsAmount) &&
-        Number.isFinite(walletBalance) &&
-        subscriptionPointsAmount > 0 &&
-        walletBalance < subscriptionPointsAmount
-      ) {
-        showDialog({
-          variant: 'warning',
-          title: 'Solde insuffisant',
-          message: `Votre solde est de ${walletBalanceLabel}. Il faut ${subscriptionPointsLabel} pour cet abonnement.`,
-        });
-        return;
-      }
-
-      try {
-        stopAutoCheck();
-        await clearStoredPayment();
-        setOrderNumber(null);
-        setPaymentUrl(null);
-        setStage('preparing');
-        setAutoCheckAttempt(0);
-        setMessage("Débit du solde de jetons Zwanga en cours.");
-
-        const response = await subscribeToProWithPoints().unwrap();
-        if (await finishPayment(response)) return;
-
-        setStage('failed');
-        setMessage(
-          getPaymentStatusMessage(
-            response.payment.message,
-            "Le paiement par jetons n'a pas été confirmé.",
-          ),
-        );
-      } catch (error: any) {
-        setStage('failed');
-        showDialog({
-          variant: 'danger',
-          title: 'Paiement impossible',
-          message: getApiErrorMessage(error, 'Impossible de payer cet abonnement avec vos jetons.'),
-        });
-      }
-      return;
-    }
-
-    const method = getPaymentMethodForChannel(selectedChannel);
-    if (!method) return;
-    const formattedPhone = formatCongolesePaymentPhone(phone);
-
-    if (method === 'mobile_money' && !formattedPhone) {
-      setPhone(DRC_MOBILE_MONEY_PREFIX);
-      showDialog({
-        variant: 'warning',
-        title: 'Numéro requis',
-        message: 'Entrez le numéro Mobile Money qui recevra la demande de paiement.',
-      });
-      return;
-    }
-
-    if (method === 'mobile_money' && !isValidCongolesePaymentPhone(formattedPhone)) {
-      showDialog({
-        variant: 'warning',
-        title: 'Numéro invalide',
-        message: 'Le numéro Mobile Money doit commencer par +243, par exemple +243891234567.',
-      });
-      return;
-    }
-
-    try {
-      stopAutoCheck();
-      setStage('preparing');
-      setAutoCheckAttempt(0);
-      setPaymentMethod(method);
-      setMessage("Création d'une référence. Aucun débit n'est lancé avant votre validation.");
-      if (method === 'mobile_money') setPhone(formattedPhone);
-
-      const cardRedirectUrls = method === 'card' ? createCardPaymentRedirectUrls() : null;
-      const response = await subscribeToPro({
-        paymentMethod: method,
-        phone: method === 'mobile_money' ? formattedPhone : undefined,
-        ...(cardRedirectUrls
-          ? {
-              approveUrl: cardRedirectUrls.approveUrl,
-              cancelUrl: cardRedirectUrls.cancelUrl,
-              declineUrl: cardRedirectUrls.declineUrl,
-            }
-          : {}),
-      }).unwrap();
-
-      if (await finishPayment(response)) return;
-
-      if (isPaymentFailed(response)) {
-        await clearStoredPayment();
-        setOrderNumber(null);
-        setPaymentUrl(null);
-        setStage('failed');
-        setMessage(getPaymentFailureMessage(response.payment.message));
-        return;
-      }
-
-      if (response.payment.orderNumber) {
-        setOrderNumber(response.payment.orderNumber);
-        setPaymentUrl(response.payment.paymentUrl);
-        await persistStoredPayment({
-          channel: selectedChannel,
-          message: getPaymentStatusMessage(
-            response.payment.message,
-            'Paiement en attente chez FlexPay. Nous continuons le suivi.',
-          ),
-          orderNumber: response.payment.orderNumber,
-          paymentMethod: method,
-          paymentUrl: response.payment.paymentUrl,
-        });
-      }
-
-      if (response.payment.paymentUrl) {
-        setPaymentUrl(response.payment.paymentUrl);
-        setStage('card_redirect');
-        setMessage('Page carte FlexPay ouverte. Finalisez le paiement; nous suivrons le retour.');
-        if (cardRedirectUrls) {
-          await openCardPaymentUrl(
-            response.payment.paymentUrl,
-            response.payment.orderNumber,
-            cardRedirectUrls.returnUrl,
-          );
-        } else {
-          await openExternalUrl(response.payment.paymentUrl);
-        }
-        return;
-      }
-
-      if (method === 'mobile_money' && response.payment.orderNumber) {
-        const pendingMessage = getPaymentStatusMessage(
-          response.payment.message,
-          'Demande envoyée sur votre téléphone. Confirmez avec votre PIN Mobile Money.',
-        );
-        setStage('phone_confirmation');
-        setMessage(pendingMessage);
-        startAutoCheck(response.payment.orderNumber, pendingMessage);
-        return;
-      }
-
-      setStage(response.payment.orderNumber ? 'operator_confirmation' : 'preparing');
-      setMessage(getPaymentStatusMessage(response.payment.message, 'Demande de paiement créée.'));
-    } catch (error: any) {
-      if (isNetworkOrTimeoutError(error)) {
-        const pendingMessage =
-          'Le lancement prend plus de temps que prévu. Ne relancez pas le paiement; nous cherchons la référence.';
-        setStage('operator_confirmation');
-        setMessage(pendingMessage);
-        const restoredPayment = await restorePayment();
-        if (restoredPayment?.orderNumber) {
-          startAutoCheck(restoredPayment.orderNumber, pendingMessage);
-          return;
-        }
-      }
-
-      setStage('failed');
-      showDialog({
-        variant: 'danger',
-        title: 'Paiement impossible',
-        message: getApiErrorMessage(error, 'Impossible de lancer le paiement pour le moment.'),
-      });
-    }
-  }, [
-    checkPaymentByOrderNumber,
-    clearStoredPayment,
-    finishPayment,
-    isDriver,
-    isPremiumActive,
-    isPointsPayment,
-    openCardPaymentUrl,
-    orderNumber,
-    paymentMethod,
-    paymentUrl,
-    persistStoredPayment,
-    phone,
-    restorePayment,
-    selectedChannel,
-    showDialog,
-    startAutoCheck,
-    stage,
-    stopAutoCheck,
-    subscribeToPro,
-    subscribeToProWithPoints,
-    subscriptionPointsAmount,
-    subscriptionPointsLabel,
-    walletBalance,
-    walletBalanceLabel,
-    walletSummary?.account,
-  ]);
-
-  const handleRetry = useCallback(async () => {
-    stopAutoCheck();
-    await clearStoredPayment();
-    setOrderNumber(null);
-    setPaymentUrl(null);
-    setStage('idle');
-    setMessage(null);
-    setAutoCheckAttempt(0);
-  }, [clearStoredPayment, stopAutoCheck]);
-
-  const handleAbandonAndRetry = useCallback(() => {
-    showDialog({
-      variant: 'warning',
-      title: 'Relancer le paiement ?',
-      message:
-        "Si vous venez de confirmer l'USSD, appuyez plutôt sur Actualiser. Relancez seulement si vous n'avez pas validé la demande opérateur.",
-      actions: [
-        { label: 'Actualiser', variant: 'ghost', onPress: () => void handlePrimaryAction() },
-        { label: 'Relancer', variant: 'primary', onPress: () => void handleRetry() },
-      ],
-    });
-  }, [handlePrimaryAction, handleRetry, showDialog]);
-
-  const scrollPhoneFieldIntoView = useCallback(() => {
-    const reveal = () => {
-      scrollRef.current?.scrollTo({
-        y: Math.max(0, phoneFieldOffsetRef.current - Spacing.lg),
-        animated: true,
-      });
-    };
-
-    if (Platform.OS === 'android') {
-      setTimeout(reveal, 280);
-      return;
-    }
-
-    requestAnimationFrame(reveal);
-  }, []);
-
-  useEffect(() => {
-    if (prefilledPhoneRef.current || !currentUser?.phone) return;
-    setPhone(formatCongolesePaymentPhone(currentUser.phone));
-    prefilledPhoneRef.current = true;
-  }, [currentUser?.phone]);
-
-  useEffect(() => () => {
-    mountedRef.current = false;
-    pollingRunIdRef.current += 1;
-  }, []);
-
-  useEffect(() => {
-    if (!storageKey || !currentUser?.id || isPremiumActive) return;
-    const restoreKey = `${storageKey}:${recentPendingPayment?.orderNumber ?? 'none'}`;
-    if (restoredKeyRef.current === restoreKey) return;
-    restoredKeyRef.current = restoreKey;
-
-    let cancelled = false;
-    void (async () => {
-      const restoredPayment = await restorePayment();
-      if (cancelled || !restoredPayment?.orderNumber) return;
-      const nextStage =
-        restoredPayment.paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation';
-      const outcome = await checkPaymentByOrderNumber(restoredPayment.orderNumber, {
-        checkingStage: nextStage,
-        pendingStage: nextStage,
-        pendingMessage: "Référence retrouvée. Aucune nouvelle demande n'est envoyée.",
-        suppressErrorDialog: true,
-      });
-      if (!cancelled && (outcome === 'pending' || outcome === 'error')) {
-        startAutoCheck(
-          restoredPayment.orderNumber,
-          "Référence retrouvée. Aucune nouvelle demande n'est envoyée.",
-        );
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    checkPaymentByOrderNumber,
-    currentUser?.id,
-    isPremiumActive,
-    recentPendingPayment?.orderNumber,
-    restorePayment,
-    startAutoCheck,
-    storageKey,
-  ]);
-
-  useEffect(() => {
-    if (!returnedPaymentStatus) return;
-    const paymentStatusKey = `${String(returnedPaymentStatus)}:${orderNumber ?? 'pending'}`;
-    if (handledPaymentStatusRef.current === paymentStatusKey) return;
-    handledPaymentStatusRef.current = paymentStatusKey;
-
-    const normalizedStatus = String(returnedPaymentStatus).toLowerCase();
-    void (async () => {
-      const restoredPayment = await restorePayment();
-      const nextOrderNumber = orderNumber ?? restoredPayment?.orderNumber;
-      if (!nextOrderNumber) {
-        if (normalizedStatus === 'cancel' || normalizedStatus === 'decline') {
-          setStage('failed');
-          setMessage(
-            normalizedStatus === 'cancel'
-              ? 'Paiement carte annulé.'
-              : 'Paiement carte refusé. Vérifiez votre carte ou essayez un autre moyen.',
-          );
-        } else {
-          setMessage('Retour carte reçu. Actualisez le statut avant de relancer un paiement.');
-        }
-        return;
-      }
-
-      const pendingMessage =
-        normalizedStatus === 'success'
-          ? 'Retour carte reçu. Vérification FlexPay avant activation.'
-          : 'Retour carte reçu. Vérification du statut avant toute nouvelle tentative.';
-      const outcome = await checkPaymentByOrderNumber(nextOrderNumber, {
-        checkingStage: 'zwanga_activation',
-        pendingStage: 'zwanga_activation',
-        pendingMessage,
-        suppressErrorDialog: true,
-      });
-      if (outcome === 'pending' || outcome === 'error') startAutoCheck(nextOrderNumber, pendingMessage);
-    })();
-  }, [
-    checkPaymentByOrderNumber,
-    orderNumber,
-    restorePayment,
-    returnedPaymentStatus,
-    startAutoCheck,
-  ]);
-
-  useEffect(() => {
-    if (!isDriver) return undefined;
-    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
-      if (
-        nextState !== 'active' ||
-        !orderNumber ||
-        stage === 'waiting_long' ||
-        stage === 'failed' ||
-        stage === 'success'
-      ) {
-        return;
-      }
-      const nextStage = paymentMethod === 'card' ? 'zwanga_activation' : 'operator_confirmation';
-      void checkPaymentByOrderNumber(orderNumber, {
-        checkingStage: nextStage,
-        pendingStage: nextStage,
-        pendingMessage: "Retour dans l'app detecté. Nous actualisons cette référence.",
-        suppressErrorDialog: true,
-      }).then((outcome) => {
-        if (mountedRef.current && (outcome === 'pending' || outcome === 'error') && !isAutoChecking) {
-          startAutoCheck(orderNumber, "Retour dans l'app detecté. Nous reprenons le suivi.");
-        }
-      });
-    });
-
-    return () => {
-      appStateSubscription.remove();
-    };
-  }, [checkPaymentByOrderNumber, isAutoChecking, isDriver, orderNumber, paymentMethod, stage, startAutoCheck]);
+  const payment = useSubscriptionPaymentController();
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
         behavior="padding"
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : Math.max(insets.bottom, Spacing.sm)}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : Math.max(payment.state.insets.bottom, Spacing.sm)}
         style={styles.keyboardRoot}
       >
         <View style={styles.header}>
           <TouchableOpacity
             accessibilityLabel="Retour"
             activeOpacity={0.8}
-            onPress={() => router.back()}
+            onPress={() => payment.state.router.back()}
             style={styles.headerButton}
           >
             <Ionicons name="chevron-back" size={22} color={Colors.gray[900]} />
@@ -1437,10 +51,10 @@ export default function SubscriptionPaymentScreen() {
             <TouchableOpacity
               accessibilityLabel="Actualiser"
               activeOpacity={0.8}
-              onPress={refreshEverything}
+              onPress={payment.recovery.refreshEverything}
               style={styles.headerButton}
             >
-              {refreshing ? (
+              {payment.state.refreshing ? (
                 <ActivityIndicator size="small" color={Colors.primary} />
               ) : (
                 <Ionicons name="refresh-outline" size={20} color={Colors.gray[900]} />
@@ -1449,7 +63,7 @@ export default function SubscriptionPaymentScreen() {
             <TouchableOpacity
               accessibilityLabel="Historique"
               activeOpacity={0.8}
-              onPress={() => router.push('/payment-history')}
+              onPress={() => payment.state.router.push('/payment-history')}
               style={styles.headerButton}
             >
               <Ionicons name="receipt-outline" size={20} color={Colors.gray[900]} />
@@ -1458,8 +72,8 @@ export default function SubscriptionPaymentScreen() {
         </View>
 
         <ScrollView
-          ref={scrollRef}
-          contentContainerStyle={[styles.content, isCompactHeight && styles.contentCompact]}
+          ref={payment.state.scrollRef}
+          contentContainerStyle={[styles.content, payment.state.isCompactHeight && styles.contentCompact]}
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -1469,42 +83,42 @@ export default function SubscriptionPaymentScreen() {
             colors={['#FFF7ED', '#FFFFFF']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={[styles.planBand, isCompactHeight && styles.planBandCompact]}
+            style={[styles.planBand, payment.state.isCompactHeight && styles.planBandCompact]}
           >
             <View style={styles.planHeaderRow}>
               <View style={styles.planBadge}>
                 <Ionicons name="sparkles-outline" size={14} color={Colors.primaryDark} />
-                <Text style={styles.planBadgeText}>Conducteur {planLabel}</Text>
+                <Text style={styles.planBadgeText}>Conducteur {payment.state.planLabel}</Text>
               </View>
-              <Text style={styles.planPrice}>{priceLabel}</Text>
+              <Text style={styles.planPrice}>{payment.state.priceLabel}</Text>
             </View>
-            <Text style={[styles.planTitle, isCompactHeight && styles.planTitleCompact]}>
+            <Text style={[styles.planTitle, payment.state.isCompactHeight && styles.planTitleCompact]}>
               Abonnement conducteur
             </Text>
             <Text
-              numberOfLines={isTightHeight ? 1 : 2}
-              style={[styles.planText, isCompactHeight && styles.planTextCompact]}
+              numberOfLines={payment.state.isTightHeight ? 1 : 2}
+              style={[styles.planText, payment.state.isCompactHeight && styles.planTextCompact]}
             >
-              Publiez au-delà des 5 trajets inclus chaque jour. Après paiement : +{subscriptionRewardTokens} jetons.
+              Publiez au-delà des 5 trajets inclus chaque jour. Après paiement : +{payment.state.subscriptionRewardTokens} jetons.
             </Text>
           </LinearGradient>
 
-          <View style={[styles.section, isCompactHeight && styles.sectionCompact]}>
+          <View style={[styles.section, payment.state.isCompactHeight && styles.sectionCompact]}>
             <Text style={styles.sectionLabel}>Moyen de paiement</Text>
             <View style={styles.paymentGrid}>
               {PAYMENT_OPTIONS.map((option) => {
-                const isSelected = selectedChannel === option.id;
-                const disabled = Boolean(orderNumber) || isBusy || isAutoChecking;
+                const isSelected = payment.state.selectedChannel === option.id;
+                const disabled = Boolean(payment.state.orderNumber) || payment.presentation.isBusy || payment.state.isAutoChecking;
                 return (
                   <TouchableOpacity
                     key={option.id}
                     activeOpacity={0.85}
                     disabled={disabled}
                     onPress={() => {
-                      setSelectedChannel(option.id);
+                      payment.state.setSelectedChannel(option.id);
                       const nextPaymentMethod = getPaymentMethodForChannel(option.id);
                       if (nextPaymentMethod) {
-                        setPaymentMethod(nextPaymentMethod);
+                        payment.state.setPaymentMethod(nextPaymentMethod);
                       }
                     }}
                     style={[
@@ -1531,68 +145,68 @@ export default function SubscriptionPaymentScreen() {
             </View>
           </View>
 
-          {isPointsPayment ? (
-            <View style={[styles.pointsNotice, isCompactHeight && styles.pointsNoticeCompact]}>
+          {payment.state.isPointsPayment ? (
+            <View style={[styles.pointsNotice, payment.state.isCompactHeight && styles.pointsNoticeCompact]}>
               <View style={styles.pointsNoticeIcon}>
                 <Ionicons name="wallet-outline" size={20} color={Colors.primary} />
               </View>
               <View style={styles.pointsNoticeTextBlock}>
                 <View style={styles.pointsNoticeRow}>
                   <Text style={styles.pointsNoticeLabel}>Solde</Text>
-                  <Text style={styles.pointsNoticeValue}>{walletBalanceLabel}</Text>
+                  <Text style={styles.pointsNoticeValue}>{payment.state.walletBalanceLabel}</Text>
                 </View>
                 <View style={styles.pointsNoticeRow}>
                   <Text style={styles.pointsNoticeLabel}>Abonnement</Text>
-                  <Text style={styles.pointsNoticeValue}>{subscriptionPointsLabel}</Text>
+                  <Text style={styles.pointsNoticeValue}>{payment.state.subscriptionPointsLabel}</Text>
                 </View>
               </View>
             </View>
-          ) : !isCardPayment ? (
+          ) : !payment.state.isCardPayment ? (
             <View
               onLayout={(event) => {
-                phoneFieldOffsetRef.current = event.nativeEvent.layout.y;
+                payment.state.phoneFieldOffsetRef.current = event.nativeEvent.layout.y;
               }}
-              style={[styles.section, isCompactHeight && styles.sectionCompact]}
+              style={[styles.section, payment.state.isCompactHeight && styles.sectionCompact]}
             >
               <Text style={styles.sectionLabel}>Numéro Mobile Money</Text>
               <View
                 style={[
                   styles.phoneInputWrapper,
-                  isCompactHeight && styles.phoneInputWrapperCompact,
-                  Boolean(orderNumber) && styles.disabled,
+                  payment.state.isCompactHeight && styles.phoneInputWrapperCompact,
+                  Boolean(payment.state.orderNumber) && styles.disabled,
                 ]}
               >
                 <Ionicons name="call-outline" size={18} color={Colors.gray[500]} />
                 <TextInput
-                  editable={!orderNumber && !isBusy && !isAutoChecking}
+                  editable={!payment.state.orderNumber && !payment.presentation.isBusy && !payment.state.isAutoChecking}
                   keyboardType="phone-pad"
                   maxLength={13}
-                  onChangeText={(text) => setPhone(normalizePaymentPhone(text))}
-                  onFocus={scrollPhoneFieldIntoView}
+                  onChangeText={(text) => payment.state.setPhone(normalizePaymentPhone(text))}
+                  onFocus={payment.lifecycle.scrollPhoneFieldIntoView}
                   placeholder="+243891234567"
                   placeholderTextColor={Colors.gray[400]}
                   style={styles.phoneInput}
-                  value={phone}
+                  value={payment.state.phone}
                 />
               </View>
-              {!isTightHeight ? (
+              {!payment.state.isTightHeight ? (
                 <Text numberOfLines={1} style={styles.inputHint}>
                   FlexPay enverra une confirmation sur ce numéro. Validez avec votre PIN.
                 </Text>
               ) : null}
             </View>
           ) : (
-            <View style={[styles.cardNotice, isCompactHeight && styles.cardNoticeCompact]}>
+            <View style={[styles.cardNotice, payment.state.isCompactHeight && styles.cardNoticeCompact]}>
               <Ionicons name="card-outline" size={20} color={Colors.primary} />
-              <Text numberOfLines={isCompactHeight ? 1 : 2} style={styles.cardNoticeText}>
+              <Text numberOfLines={payment.state.isCompactHeight ? 1 : 2} style={styles.cardNoticeText}>
                 Le paiement carte s{"'"}ouvrira dans une page securisée FlexPay.
               </Text>
             </View>
           )}
 
-          <View style={[styles.progressPanel, isCompactHeight && styles.progressPanelCompact]}>
+          <View style={[styles.progressPanel, payment.state.isCompactHeight && styles.progressPanelCompact]}>
             <View style={styles.progressTrack}>
-              {progressSteps.map((step) => {
+              {payment.presentation.progressSteps.map((step) => {
               const progressColor =
                 step.status === 'done'
                   ? Colors.success
@@ -1640,53 +254,53 @@ export default function SubscriptionPaymentScreen() {
               );
             })}
             </View>
-            {highlightedProgressStep ? (
+            {payment.presentation.highlightedProgressStep ? (
               <Text numberOfLines={2} style={styles.progressDescription}>
-                {highlightedProgressStep.description}
+                {payment.presentation.highlightedProgressStep.description}
               </Text>
             ) : null}
           </View>
 
-          {statusPanel ? (
+          {payment.presentation.statusPanel ? (
             <View
               style={[
                 styles.statusPanel,
-                isCompactHeight && styles.statusPanelCompact,
-                { borderColor: statusPanel.color + '35' },
+                payment.state.isCompactHeight && styles.statusPanelCompact,
+                { borderColor: payment.presentation.statusPanel.color + '35' },
               ]}
             >
-              <View style={[styles.statusIcon, { backgroundColor: statusPanel.color + '12' }]}>
-                {statusPanel.activity ? (
-                  <ActivityIndicator size="small" color={statusPanel.color} />
+              <View style={[styles.statusIcon, { backgroundColor: payment.presentation.statusPanel.color + '12' }]}>
+                {payment.presentation.statusPanel.activity ? (
+                  <ActivityIndicator size="small" color={payment.presentation.statusPanel.color} />
                 ) : (
-                  <Ionicons name={statusPanel.icon} size={20} color={statusPanel.color} />
+                  <Ionicons name={payment.presentation.statusPanel.icon} size={20} color={payment.presentation.statusPanel.color} />
                 )}
               </View>
               <View style={styles.statusTextBlock}>
-                <Text style={styles.statusTitle}>{statusPanel.title}</Text>
-                <Text numberOfLines={isTightHeight ? 1 : 2} style={styles.statusText}>
-                  {statusPanel.text}
+                <Text style={styles.statusTitle}>{payment.presentation.statusPanel.title}</Text>
+                <Text numberOfLines={payment.state.isTightHeight ? 1 : 2} style={styles.statusText}>
+                  {payment.presentation.statusPanel.text}
                 </Text>
-                {orderNumber ? <Text style={styles.referenceText}>Référence {orderNumber}</Text> : null}
+                {payment.state.orderNumber ? <Text style={styles.referenceText}>Référence {payment.state.orderNumber}</Text> : null}
               </View>
             </View>
           ) : null}
         </ScrollView>
 
-        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}>
-          {stage === 'failed' && !orderNumber ? (
+        <View style={[styles.footer, { paddingBottom: Math.max(payment.state.insets.bottom, Spacing.md) }]}>
+          {payment.state.stage === 'failed' && !payment.state.orderNumber ? (
             <TouchableOpacity
               activeOpacity={0.85}
-              onPress={handleRetry}
+              onPress={payment.actions.handleRetry}
               style={styles.secondaryButton}
             >
               <Text style={styles.secondaryButtonText}>Changer de moyen</Text>
             </TouchableOpacity>
           ) : null}
-          {stage === 'waiting_long' && orderNumber ? (
+          {payment.state.stage === 'waiting_long' && payment.state.orderNumber ? (
             <TouchableOpacity
               activeOpacity={0.85}
-              onPress={handleAbandonAndRetry}
+              onPress={payment.actions.handleAbandonAndRetry}
               style={styles.secondaryButton}
             >
               <Text style={styles.secondaryButtonText}>Abandonner et réessayer</Text>
@@ -1694,14 +308,14 @@ export default function SubscriptionPaymentScreen() {
           ) : null}
           <TouchableOpacity
             activeOpacity={0.85}
-            disabled={isPrimaryActionDisabled}
-            onPress={handlePrimaryAction}
-            style={[styles.primaryButton, isPrimaryActionDisabled && styles.disabled]}
+            disabled={payment.presentation.isPrimaryActionDisabled}
+            onPress={payment.actions.handlePrimaryAction}
+            style={[styles.primaryButton, payment.presentation.isPrimaryActionDisabled && styles.disabled]}
           >
-            {isBusy ? (
+            {payment.presentation.isBusy ? (
               <ActivityIndicator color={Colors.white} />
             ) : (
-              <Text style={styles.primaryButtonText}>{primaryButtonLabel}</Text>
+              <Text style={styles.primaryButtonText}>{payment.presentation.primaryButtonLabel}</Text>
             )}
           </TouchableOpacity>
         </View>

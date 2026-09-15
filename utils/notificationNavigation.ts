@@ -121,7 +121,11 @@ export const handleNotificationNavigation = (
   // Allow a dismissed notification/modal to release its native view before navigation.
   setTimeout(() => {
     try {
-      router.push(href ?? '/(tabs)');
+      if (href !== null) {
+        router.push(href);
+      } else {
+        router.push('/(tabs)');
+      }
     } catch (error) {
       console.warn('[notificationNavigation] Impossible d’ouvrir la notification:', error);
     }

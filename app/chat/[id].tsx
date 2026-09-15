@@ -1,7 +1,8 @@
+import { useChatSendMessage } from '../../hooks/chat/useChatSendMessage';
+import { useChatMessageActions } from '../../hooks/chat/useChatMessageActions';
 import { styles } from '../../features/screen-styles/app/chat/detail/index';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { Colors } from '@/constants/styles';
-import { trackEvent } from '@/services/analytics';
 import { chatSocket } from '@/services/chatSocket';
 import {
   messageApi,
@@ -145,58 +146,18 @@ export default function ChatScreen() {
     };
   }, [conversation?.bookingId, conversationId, dispatch, user?.id, isScreenActive]);
 
-  const handleSend = async () => {
-    if (!message.trim() || !conversationId || sending) {
-      return;
-    }
-
-    const content = message.trim();
-    setMessage('');
-
-    // Mode édition
-    if (editingMessageId) {
-      try {
-        const updated = await editMessageMutation({ messageId: editingMessageId, content, conversationId }).unwrap();
-        setEditingMessageId(null);
-        dispatch(
-          messageApi.util.updateQueryData('getConversationMessages', { conversationId }, (draft) => {
-            const index = draft.findIndex((m) => m.id === updated.id);
-            if (index !== -1) {
-              draft[index] = updated;
-            }
-          }),
-        );
-      } catch (error) {
-        console.warn('Erreur lors de la modification du message:', error);
-      }
-      return;
-    }
-
-    // Mode envoi normal
-    try {
-      const saved = await sendMessageMutation({ conversationId, content }).unwrap();
-      void trackEvent('message_sent', {
-        conversation_id: conversationId,
-        has_booking: Boolean(conversation?.bookingId),
-        content_length: content.length,
-      });
-      dispatch(
-        messageApi.util.updateQueryData('getConversationMessages', { conversationId }, (draft) => {
-          if (!draft.some((message) => message.id === saved.id)) draft.push(saved);
-        }),
-      );
-      dispatch(
-        addMessageAction({
-          conversationId,
-          message: saved,
-          isMine: true,
-        }),
-      );
-    } catch (error) {
-      console.warn('Erreur lors de l\'envoi du message:', error);
-      setMessage(content);
-    }
-  };
+  const { handleSend } = useChatSendMessage({
+    message,
+    conversationId,
+    sending,
+    setMessage,
+    editingMessageId,
+    editMessageMutation,
+    setEditingMessageId,
+    dispatch,
+    sendMessageMutation,
+    conversation,
+  });
 
   const formatTime = (dateValue: string) => {
     const date = new Date(dateValue);
@@ -243,43 +204,15 @@ export default function ChatScreen() {
     return rows.reverse();
   }, [messages]);
 
-  const handleEditMessage = (msg: Message) => {
-    if (msg.senderId !== user?.id) return;
-    setEditingMessageId(msg.id);
-    setMessage(msg.content);
-  };
-
-  const handleDeleteMessage = (msg: Message) => {
-    if (msg.senderId !== user?.id) return;
-
-    showDialog({
-      title: 'Supprimer le message',
-      message: 'Voulez-vous vraiment supprimer ce message ? Cette action est irréversible.',
-      variant: 'danger',
-      actions: [
-        { label: 'Annuler', variant: 'ghost' },
-        {
-          label: 'Supprimer',
-          variant: 'primary',
-          onPress: async () => {
-            try {
-              await deleteMessageMutation({ messageId: msg.id, conversationId }).unwrap();
-              dispatch(
-                messageApi.util.updateQueryData('getConversationMessages', { conversationId }, (draft) => {
-                  const index = draft.findIndex((m) => m.id === msg.id);
-                  if (index !== -1) {
-                    draft.splice(index, 1);
-                  }
-                }),
-              );
-            } catch (error) {
-              console.warn('Erreur lors de la suppression du message:', error);
-            }
-          },
-        },
-      ],
-    });
-  };
+  const { handleEditMessage, handleDeleteMessage } = useChatMessageActions({
+    user,
+    setEditingMessageId,
+    setMessage,
+    showDialog,
+    deleteMessageMutation,
+    conversationId,
+    dispatch,
+  });
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>

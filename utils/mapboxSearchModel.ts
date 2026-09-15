@@ -5,6 +5,8 @@
 ===================================================== */
 
 // Proximité par défaut : Kinshasa
+import type { MapboxSearchSuggestion } from './mapboxSearch';
+
 export const DEFAULT_PROXIMITY = {
   latitude: -4.325,
   longitude: 15.322,

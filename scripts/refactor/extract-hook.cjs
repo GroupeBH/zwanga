@@ -7,12 +7,13 @@ const [file, firstName, lastName, name, target] = process.argv.slice(2);
 if (fs.existsSync(target)) throw new Error(`Refusing to overwrite ${target}`);
 const configFile = ts.readConfigFile('tsconfig.json', ts.sys.readFile);
 const config = ts.parseJsonConfigFileContent(configFile.config, ts.sys, process.cwd());
-const program = ts.createProgram(config.fileNames, config.options);
+const program = ts.createProgram([path.resolve(file), ...config.fileNames.filter(name => name.endsWith('.d.ts'))], config.options);
 const checker = program.getTypeChecker();
 const source = program.getSourceFile(path.resolve(file));
 const text = source.text;
+const requestedComponent = process.argv.find(value => value.startsWith('--component='))?.split('=')[1];
 const component = source.statements.find(node => ts.isFunctionDeclaration(node) && node.body &&
-  node.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.DefaultKeyword));
+  (requestedComponent ? node.name?.text === requestedComponent : node.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.DefaultKeyword)));
 if (!component) throw new Error('Default function component not found');
 function names(node) {
   if (ts.isIdentifier(node)) return [node.text];
@@ -21,8 +22,19 @@ function names(node) {
   return [];
 }
 const statements = component.body.statements;
-let first = statements.findIndex(node => names(node).includes(firstName));
-let last = statements.findIndex(node => names(node).includes(lastName));
+const matches = (node, key) => key.startsWith('@')
+  ? source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1 === Number(key.slice(1))
+  : names(node).includes(key);
+function locate(key) {
+  const relative = /^(before|after):([^:]+):(\d+)$/.exec(key);
+  if (!relative) return statements.findIndex(node => matches(node, key));
+  const anchor = statements.findIndex(node => matches(node, relative[2]));
+  if (anchor < 0) return -1;
+  const offset = Number(relative[3]) * (relative[1] === 'before' ? -1 : 1);
+  return anchor + offset;
+}
+let first = locate(firstName);
+let last = locate(lastName);
 if (first < 0 || last < first) throw new Error('Invalid declaration range');
 const isEffect = node => node && ts.isExpressionStatement(node) && ts.isCallExpression(node.expression) &&
   /^(React\.)?useEffect$/.test(node.expression.expression.getText(source));
@@ -37,6 +49,12 @@ function inComponent(node) {
   return false;
 }
 function hookResultType(declaration) {
+  if (ts.isVariableDeclaration(declaration) && declaration.initializer && ts.isCallExpression(declaration.initializer) &&
+      ts.isIdentifier(declaration.initializer.expression) && declaration.initializer.expression.text.startsWith('use')) {
+    const hook = declaration.initializer.expression.text;
+    capturedImports.add(hook);
+    return `ReturnType<typeof ${hook}>`;
+  }
   if (!ts.isBindingElement(declaration)) return null;
   const pattern = declaration.parent;
   const variable = pattern.parent;

@@ -652,6 +652,7 @@ Côté backend, `f12a436` est le repère du lot d’interruption présent au HEA
 
 ## 18. Index des documents de référence
 
+- [Découpage complet des sources mobiles et limite des 400 lignes](MOBILE_SOURCE_REFACTOR.md)
 - [Confirmations manuelles : guide mobile détaillé](RIDE_RECOVERY_MOBILE.md)
 - [Confirmations de secours : résumé et déploiement](ride-recovery.md)
 - [Frontières réseau](network-boundaries.md)

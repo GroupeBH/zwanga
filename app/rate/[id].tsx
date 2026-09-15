@@ -1,342 +1,37 @@
+import { useRatingData } from '../../hooks/rating/useRatingData';
+import { RatingParticipantSelector } from '../../features/rating/RatingParticipantSelector';
+import { useRatingActions } from '../../hooks/rating/useRatingActions';
 import { styles } from '../../features/screen-styles/app/rate/detail/index';
-import { useDialog } from '@/components/ui/DialogProvider';
-import { Colors, FontSizes, Spacing } from '@/constants/styles';
-import { useGetTripBookingsQuery } from '@/store/api/bookingApi';
-import { useCreateReviewMutation } from '@/store/api/reviewApi';
-import { useGetTripByIdQuery } from '@/store/api/tripApi';
-import { useAppSelector } from '@/store/hooks';
-import { selectUser } from '@/store/selectors';
-import { getApiErrorMessage } from '@/utils/errorHelpers';
+import { Colors, Spacing } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Keyboard, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React from 'react';
+import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-type TabType = 'rate' | 'report';
-type RateTargetType = 'driver' | 'passenger';
-
 export default function RateScreen() {
-  const router = useRouter();
-  const params = useLocalSearchParams();
-  const user = useAppSelector(selectUser);
-  const tripId = typeof params.id === 'string' ? params.id : '';
-  const passengerIdParam = typeof params.passengerId === 'string' ? params.passengerId : null;
-  const isMountedRef = useRef(true);
-  const submitInFlightRef = useRef(false);
-  const successReturnTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hasInitializedTargetRef = useRef(false);
-  const { data: trip } = useGetTripByIdQuery(tripId, { skip: !tripId });
-  const isTripDriver = trip?.driverId === user?.id;
-  // Charger les bookings - toujours charger pour le conducteur, et aussi pour les passagers
-  const { data: tripBookings, isLoading: bookingsLoading, error: bookingsError, refetch: refetchBookings } = useGetTripBookingsQuery(tripId, {
-    skip: !tripId,
+  const { selectedTags, setSelectedTags, submitInFlightRef, isSubmittingReview, setSubmitSuccessMessage, rating, showDialog, trip, tripId, rateTargetType, selectedPassenger, passengers, comment, createReview, isMountedRef, successReturnTimeoutRef, goBackSafely, reportReason, isTripDriver, isTripPassenger, activeTab, setActiveTab, setRateTargetType, setSelectedPassenger, bookingsLoading, bookingsError, refetchBookings, setRating, rateTags, setComment, submitSuccessMessage, reportReasons, setReportReason } = useRatingData();
+
+  const { getRatingText, toggleTag, handleSubmitRating, handleSubmitReport } = useRatingActions({
+    selectedTags,
+    setSelectedTags,
+    submitInFlightRef,
+    isSubmittingReview,
+    setSubmitSuccessMessage,
+    rating,
+    showDialog,
+    trip,
+    tripId,
+    rateTargetType,
+    selectedPassenger,
+    passengers,
+    comment,
+    createReview,
+    isMountedRef,
+    successReturnTimeoutRef,
+    goBackSafely,
+    reportReason,
   });
-  
-  // Déterminer si l'utilisateur est un passager du trajet
-  const isTripPassenger = useMemo(() => {
-    if (!tripBookings || !user?.id) return false;
-    return tripBookings.some(
-      (booking) => booking.passengerId === user.id && (booking.status === 'accepted' || booking.status === 'completed')
-    );
-  }, [tripBookings, user?.id]);
-
-  const [activeTab, setActiveTab] = useState<TabType>('rate');
-  const [rating, setRating] = useState(0);
-  const [comment, setComment] = useState('');
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [reportReason, setReportReason] = useState('');
-  const [submitSuccessMessage, setSubmitSuccessMessage] = useState<string | null>(null);
-  const [selectedPassenger, setSelectedPassenger] = useState<string | null>(passengerIdParam);
-  const [rateTargetType, setRateTargetType] = useState<RateTargetType>(
-    isTripDriver ? 'passenger' : passengerIdParam ? 'passenger' : 'driver'
-  );
-  const { showDialog } = useDialog();
-  const [createReview, { isLoading: isSubmittingReview }] = useCreateReviewMutation();
-
-  const goBackSafely = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-
-    router.replace('/(tabs)');
-  }, [router]);
-
-  useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-      submitInFlightRef.current = false;
-      if (successReturnTimeoutRef.current) {
-        clearTimeout(successReturnTimeoutRef.current);
-        successReturnTimeoutRef.current = null;
-      }
-    };
-  }, []);
-
-  // Liste des passagers (excluant l'utilisateur actuel si c'est un passager)
-  const passengers = useMemo(() => {
-    const result: Array<{ id: string; name: string; seats: number }> = [];
-    
-    // Pour le conducteur, utiliser les bookings en priorité (source la plus fiable)
-    // Si on a des bookings, les utiliser
-    if (tripBookings && tripBookings.length > 0) {
-      tripBookings
-        .filter((booking) => {
-          const isAccepted = booking.status === 'completed' || booking.status === 'accepted';
-          // Si l'utilisateur est un passager, exclure son propre booking
-          if (isTripPassenger && booking.passengerId === user?.id) return false;
-          // S'assurer que l'ID du passager est présent
-          if (!booking.passengerId) return false;
-          return isAccepted;
-        })
-        .forEach((booking) => {
-          // Éviter les doublons
-          if (!result.find(p => p.id === booking.passengerId)) {
-            result.push({
-              id: booking.passengerId,
-              name: booking.passengerName ?? 'Passager',
-              seats: booking.numberOfSeats,
-            });
-          }
-        });
-    }
-    
-    // Fallback : utiliser les passagers du trip si disponibles
-    // Pour le conducteur, utiliser ce fallback si les bookings ne sont pas encore chargés ou sont vides
-    if (trip?.passengers && trip.passengers.length > 0) {
-      trip.passengers
-        .filter((passenger) => {
-          // Si l'utilisateur est un passager, exclure son propre profil
-          if (isTripPassenger && passenger.id === user?.id) return false;
-          // S'assurer que l'ID est présent
-          if (!passenger.id) return false;
-          // Éviter les doublons avec les bookings déjà ajoutés
-          if (result.find(p => p.id === passenger.id)) return false;
-          return true;
-        })
-        .forEach((passenger) => {
-          result.push({
-            id: passenger.id,
-            name: passenger.name,
-            seats: 1, // On ne connaît pas le nombre de places depuis trip.passengers
-          });
-        });
-    }
-    
-    return result;
-  }, [tripBookings, trip?.passengers, isTripPassenger, user?.id]);
-
-  useEffect(() => {
-    if (hasInitializedTargetRef.current || !trip || !user?.id) {
-      return;
-    }
-
-    hasInitializedTargetRef.current = true;
-    if (passengerIdParam) {
-      setRateTargetType('passenger');
-      setSelectedPassenger(passengerIdParam);
-      return;
-    }
-
-    if (trip.driverId === user.id) {
-      setRateTargetType('passenger');
-      return;
-    }
-
-    setRateTargetType('driver');
-    setSelectedPassenger(null);
-  }, [passengerIdParam, trip, user?.id]);
-
-  // Pré-sélectionner le passager si un passengerId est fourni dans l'URL
-  useEffect(() => {
-    if (passengerIdParam && passengers.length > 0) {
-      const passengerExists = passengers.some(p => p.id === passengerIdParam);
-      if (passengerExists && selectedPassenger !== passengerIdParam) {
-        setSelectedPassenger(passengerIdParam);
-        setRateTargetType('passenger');
-      }
-    }
-  }, [passengerIdParam, passengers, selectedPassenger]);
-
-  // Debug: Afficher les passagers récupérés (uniquement en développement)
-  useEffect(() => {
-    if (__DEV__ && isTripDriver) {
-      console.log('Passagers récupérés pour notation:', passengers.map(p => ({ id: p.id, name: p.name })));
-      console.log('Bookings disponibles:', tripBookings?.length ?? 0);
-      console.log('Trip passengers disponibles:', trip?.passengers?.length ?? 0);
-    }
-  }, [passengers, tripBookings, trip?.passengers, isTripDriver]);
-
-  // Tags différents selon si on évalue un conducteur ou un passager
-  const rateTags = useMemo(() => {
-    const isRatingDriver = rateTargetType === 'driver';
-    return isRatingDriver
-      ? [
-          // Tags pour évaluer un conducteur
-          { id: 'punctual', label: 'Ponctuel', icon: 'time' },
-          { id: 'friendly', label: 'Sympathique', icon: 'happy' },
-          { id: 'clean', label: 'Véhicule propre', icon: 'sparkles' },
-          { id: 'safe', label: 'Conduite sûre', icon: 'shield-checkmark' },
-          { id: 'respectful', label: 'Respectueux', icon: 'heart' },
-          { id: 'professional', label: 'Professionnel', icon: 'briefcase' },
-        ]
-      : [
-          // Tags pour évaluer un passager
-          { id: 'punctual', label: 'Ponctuel', icon: 'time' },
-          { id: 'friendly', label: 'Sympathique', icon: 'happy' },
-          { id: 'respectful', label: 'Respectueux', icon: 'heart' },
-          { id: 'communicative', label: 'Bon communicant', icon: 'chatbubbles' },
-          { id: 'clean', label: 'Propre', icon: 'sparkles' },
-          { id: 'cooperative', label: 'Coopératif', icon: 'people' },
-        ];
-  }, [rateTargetType]);
-
-  const reportReasons = [
-    { id: 'dangerous', label: 'Conduite dangereuse', icon: 'warning' },
-    { id: 'rude', label: 'Comportement inapproprié', icon: 'alert-circle' },
-    { id: 'dirty', label: 'Véhicule sale', icon: 'close-circle' },
-    { id: 'late', label: 'Retard important', icon: 'time' },
-    { id: 'no-show', label: 'Ne s\'est pas présenté', icon: 'ban' },
-    { id: 'overcharge', label: 'Surfacturation', icon: 'cash' },
-  ];
-
-  const toggleTag = (tagId: string) => {
-    if (selectedTags.includes(tagId)) {
-      setSelectedTags(selectedTags.filter(t => t !== tagId));
-    } else {
-      setSelectedTags([...selectedTags, tagId]);
-    }
-  };
-
-  const handleSubmitRating = async () => {
-    if (submitInFlightRef.current || isSubmittingReview) {
-      return;
-    }
-
-    setSubmitSuccessMessage(null);
-
-    if (rating === 0) {
-      showDialog({
-        variant: 'warning',
-        title: 'Note requise',
-        message: 'Veuillez sélectionner une note avant de soumettre votre avis.',
-      });
-      return;
-    }
-
-    if (!trip || !tripId) {
-      showDialog({
-        variant: 'danger',
-        title: 'Trajet introuvable',
-        message: 'Impossible de charger les informations du trajet.',
-      });
-      return;
-    }
-
-    // Déterminer l'utilisateur cible selon le type de notation
-    let targetUserId: string | null = null;
-    if (rateTargetType === 'driver') {
-      targetUserId = trip.driverId;
-    } else {
-      // Pour les passagers, s'assurer qu'un passager est sélectionné
-      if (!selectedPassenger) {
-        showDialog({
-          variant: 'warning',
-          title: 'Passager requis',
-          message: 'Sélectionnez le passager que vous souhaitez évaluer.',
-        });
-        return;
-      }
-      // Vérifier que le passager sélectionné existe dans la liste
-      const selectedPassengerExists = passengers.some(p => p.id === selectedPassenger);
-      if (!selectedPassengerExists) {
-        showDialog({
-          variant: 'warning',
-          title: 'Passager invalide',
-          message: 'Le passager sélectionné n\'est plus disponible. Veuillez en sélectionner un autre.',
-        });
-        return;
-      }
-      targetUserId = selectedPassenger;
-    }
-
-    if (!targetUserId) {
-      showDialog({
-        variant: 'warning',
-        title: 'Sélection requise',
-        message: rateTargetType === 'driver' 
-          ? 'Impossible de trouver le conducteur.'
-          : 'Sélectionnez la personne que vous souhaitez évaluer.',
-      });
-      return;
-    }
-
-    submitInFlightRef.current = true;
-    try {
-      const tagsSummary =
-        selectedTags.length > 0 ? `\n\nTags: ${selectedTags.map((tag) => `#${tag}`).join(' ')}` : '';
-      const reviewComment = `${comment.trim()}${tagsSummary}`.trim();
-      await createReview({
-        tripId,
-        ratedUserId: targetUserId,
-        rating,
-        ...(reviewComment ? { comment: reviewComment } : {}),
-      }).unwrap();
-
-      if (!isMountedRef.current) {
-        return;
-      }
-
-      Keyboard.dismiss();
-      setSubmitSuccessMessage('Évaluation envoyée. Merci pour votre retour.');
-      successReturnTimeoutRef.current = setTimeout(() => {
-        successReturnTimeoutRef.current = null;
-        if (isMountedRef.current) {
-          goBackSafely();
-        }
-      }, 650);
-    } catch (error: any) {
-      submitInFlightRef.current = false;
-      if (!isMountedRef.current) {
-        return;
-      }
-
-      showDialog({
-        variant: 'danger',
-        title: 'Erreur',
-        message: getApiErrorMessage(error, 'Impossible de soumettre votre avis pour le moment.'),
-      });
-    }
-  };
-
-  const handleSubmitReport = () => {
-    if (!reportReason) {
-      showDialog({
-        variant: 'warning',
-        title: 'Raison requise',
-        message: 'Veuillez sélectionner une raison avant de signaler ce trajet.',
-      });
-      return;
-    }
-
-    showDialog({
-      variant: 'info',
-      title: 'Signalement envoyé',
-      message:
-        'Nous examinerons votre signalement. Merci pour votre contribution à la sécurité de la communauté.',
-      actions: [{ label: 'Fermer', variant: 'primary', onPress: goBackSafely }],
-    });
-  };
-
-  const getRatingText = () => {
-    if (rating === 5) return 'Excellent !';
-    if (rating === 4) return 'Très bien';
-    if (rating === 3) return 'Bien';
-    if (rating === 2) return 'Moyen';
-    return 'Mauvais';
-  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -385,196 +80,19 @@ export default function RateScreen() {
         {activeTab === 'rate' && (
           <Animated.View entering={FadeInDown}>
             {/* Info conducteur / passager */}
-            <View style={styles.driverCard}>
-              <View style={styles.driverInfo}>
-                <View style={styles.driverAvatar} />
-                <View style={styles.driverDetails}>
-                  <Text style={styles.driverName}>
-                    {isTripDriver 
-                      ? 'Choisissez un passager'
-                      : rateTargetType === 'driver'
-                      ? trip?.driverName ?? 'Conducteur'
-                      : selectedPassenger 
-                      ? passengers.find(p => p.id === selectedPassenger)?.name ?? 'Passager'
-                      : 'Choisissez qui évaluer'}
-                  </Text>
-                  <View style={styles.driverMeta}>
-                    <Ionicons name="star" size={16} color={Colors.secondary} />
-                    <Text style={styles.driverMetaText}>
-                      {isTripDriver
-                        ? 'Attribuez une note à vos passagers'
-                        : rateTargetType === 'driver'
-                        ? `${trip?.driverRating?.toFixed?.(1) ?? '—'} · ${
-                            trip?.vehicleInfo ?? 'Véhicule à confirmer'
-                          }`
-                        : 'Attribuez une note à ce passager'}
-                    </Text>
-                  </View>
-                  {trip && (
-                    <Text style={styles.driverTrip}>
-                      {trip.departure?.name ?? 'Départ'} → {trip.arrival?.name ?? 'Arrivée'}
-                    </Text>
-                  )}
-                </View>
-              </View>
-              
-              {/* Sélection pour les passagers : conducteur ou autres passagers */}
-              {isTripPassenger && (
-                <View style={styles.dropSection}>
-                  <Text style={styles.dropLabel}>Qui souhaitez-vous évaluer ?</Text>
-                  
-                  {/* Option pour noter le conducteur */}
-                  <TouchableOpacity
-                    style={[
-                      styles.targetOption,
-                      rateTargetType === 'driver' && styles.targetOptionActive,
-                      { marginBottom: Spacing.sm }
-                    ]}
-                    onPress={() => {
-                      setRateTargetType('driver');
-                      setSelectedPassenger(null);
-                    }}
-                  >
-                    <Ionicons
-                      name="car"
-                      size={20}
-                      color={rateTargetType === 'driver' ? Colors.white : Colors.gray[600]}
-                    />
-                    <View style={styles.targetOptionContent}>
-                      <Text
-                        style={[
-                          styles.targetOptionText,
-                          rateTargetType === 'driver' && styles.targetOptionTextActive,
-                        ]}
-                      >
-                        {trip?.driverName ?? 'Conducteur'}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.targetOptionSubtext,
-                          rateTargetType === 'driver' && styles.targetOptionSubtextActive,
-                        ]}
-                      >
-                        Évaluer le conducteur
-                      </Text>
-                    </View>
-                    {rateTargetType === 'driver' && (
-                      <Ionicons name="checkmark-circle" size={20} color={Colors.white} />
-                    )}
-                  </TouchableOpacity>
-
-                  {/* Liste des autres passagers */}
-                  {passengers.length > 0 && (
-                    <>
-                      <Text style={[styles.dropLabel, { marginTop: Spacing.md, marginBottom: Spacing.sm }]}>
-                        Autres passagers
-                      </Text>
-                      <ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        style={styles.passengerChips}
-                      >
-                        {passengers.map((passenger) => {
-                          const active = rateTargetType === 'passenger' && selectedPassenger === passenger.id;
-                          return (
-                            <TouchableOpacity
-                              key={passenger.id}
-                              style={[styles.passengerChip, active && styles.passengerChipActive]}
-                              onPress={() => {
-                                setRateTargetType('passenger');
-                                setSelectedPassenger(passenger.id);
-                              }}
-                            >
-                              <Ionicons
-                                name="person"
-                                size={16}
-                                color={active ? Colors.white : Colors.gray[600]}
-                              />
-                              <Text
-                                style={[
-                                  styles.passengerChipText,
-                                  active && styles.passengerChipTextActive,
-                                ]}
-                              >
-                                {passenger.name}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </ScrollView>
-                    </>
-                  )}
-                </View>
-              )}
-
-              {/* Sélection pour le conducteur : liste des passagers */}
-              {isTripDriver && (
-                <View style={styles.dropSection}>
-                  <Text style={styles.dropLabel}>Sélectionner un passager</Text>
-                  {bookingsLoading ? (
-                    <View style={styles.loadingContainer}>
-                      <Text style={styles.emptyPassengerText}>Chargement des passagers...</Text>
-                    </View>
-                  ) : passengers.length === 0 ? (
-                    <View>
-                      <Text style={styles.emptyPassengerText}>
-                        {bookingsError 
-                          ? 'Impossible de charger les passagers. Veuillez réessayer.'
-                          : 'Aucun passager à évaluer pour ce trajet.'}
-                      </Text>
-                      {bookingsError && (
-                        <TouchableOpacity
-                          style={[styles.retryButton, { marginTop: Spacing.md }]}
-                          onPress={() => refetchBookings()}
-                        >
-                          <Ionicons name="refresh" size={16} color={Colors.primary} />
-                          <Text style={styles.retryButtonText}>Réessayer</Text>
-                        </TouchableOpacity>
-                      )}
-                      {bookingsError && trip?.passengers && trip.passengers.length > 0 && (
-                        <Text style={[styles.emptyPassengerText, { marginTop: Spacing.sm, fontSize: FontSizes.sm }]}>
-                          Utilisation des données du trajet comme alternative.
-                        </Text>
-                      )}
-                    </View>
-                  ) : (
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      style={styles.passengerChips}
-                    >
-                      {passengers.map((passenger) => {
-                        const active = rateTargetType === 'passenger' && selectedPassenger === passenger.id;
-                        return (
-                          <TouchableOpacity
-                            key={passenger.id}
-                            style={[styles.passengerChip, active && styles.passengerChipActive]}
-                            onPress={() => {
-                              setRateTargetType('passenger');
-                              setSelectedPassenger(passenger.id);
-                            }}
-                          >
-                            <Ionicons
-                              name="person"
-                              size={16}
-                              color={active ? Colors.white : Colors.gray[600]}
-                            />
-                            <Text
-                              style={[
-                                styles.passengerChipText,
-                                active && styles.passengerChipTextActive,
-                              ]}
-                            >
-                              {passenger.name}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </ScrollView>
-                  )}
-                </View>
-              )}
-            </View>
+            <RatingParticipantSelector
+              isTripDriver={isTripDriver}
+              rateTargetType={rateTargetType}
+              trip={trip}
+              selectedPassenger={selectedPassenger}
+              passengers={passengers}
+              isTripPassenger={isTripPassenger}
+              setRateTargetType={setRateTargetType}
+              setSelectedPassenger={setSelectedPassenger}
+              bookingsLoading={bookingsLoading}
+              bookingsError={bookingsError}
+              refetchBookings={refetchBookings}
+            />
 
             {/* Étoiles */}
             <View style={styles.ratingContainer}>

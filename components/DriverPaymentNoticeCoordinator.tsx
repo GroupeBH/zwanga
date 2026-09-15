@@ -1,3 +1,15 @@
+import {
+  DRIVER_PAYMENT_NOTICE_REFRESH_MS,
+  DRIVER_PAYMENT_NOTICE_MAX_TRIPS,
+  SeenDriverPaymentNotices,
+  DriverPaymentNotice,
+  getStorageKey,
+  formatMoney,
+  getPaymentModeLabel,
+  isDriverUser,
+  isTripEligibleForNotice,
+  buildPaymentNotice,
+} from '../features/driver-payments/paymentNoticeModel';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,98 +26,11 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { bookingApi } from '@/store/api/bookingApi';
 import { useGetMyTripsQuery } from '@/store/api/tripApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated, selectUser } from '@/store/selectors';
-import type { Booking, Trip, TripPaymentMode } from '@/types';
-
-const DRIVER_PAYMENT_NOTICE_REFRESH_MS = 60_000;
-const DRIVER_PAYMENT_NOTICE_WINDOW_MS = 36 * 60 * 60 * 1_000;
-const DRIVER_PAYMENT_NOTICE_STORAGE_PREFIX = 'zwanga:driver-payment-notices:';
-const DRIVER_PAYMENT_NOTICE_MAX_TRIPS = 4;
-
-type SeenDriverPaymentNotices = Record<string, string>;
-
-type DriverPaymentNotice = {
-  key: string;
-  bookingId: string;
-  tripId: string;
-  passengerName: string;
-  amount: number;
-  currency: string;
-  mode: TripPaymentMode;
-  paidAt?: string | null;
-};
-
-function getStorageKey(userId: string) {
-  return `${DRIVER_PAYMENT_NOTICE_STORAGE_PREFIX}${userId}`;
-}
-
-function normalizeAmount(value?: number | string | null) {
-  if (value === null || value === undefined || value === '') return null;
-  const amount = Number(value);
-  return Number.isFinite(amount) && amount >= 0 ? amount : null;
-}
-
-function formatMoney(value: number, currency?: string | null) {
-  const normalizedCurrency = currency?.trim().toUpperCase() || 'CDF';
-  const suffix = normalizedCurrency === 'CDF' ? 'FC' : normalizedCurrency;
-  return `${new Intl.NumberFormat('fr-FR', {
-    maximumFractionDigits: 2,
-  }).format(value)} ${suffix}`;
-}
-
-function getPaymentModeLabel(mode?: TripPaymentMode | null) {
-  if (mode === 'points') return 'Jetons Zwanga';
-  if (mode === 'electronic') return 'Paiement electronique';
-  return 'Especes';
-}
-
-function hasPassengerArrived(booking: Booking) {
-  return Boolean(
-    booking.status === 'completed' ||
-      booking.droppedOff ||
-      booking.droppedOffConfirmedByPassenger ||
-      booking.droppedOffAt,
-  );
-}
-
-function isBookingPaymentConfirmed(booking: Booking) {
-  if (booking.paymentStatus === 'succeeded') return true;
-  return booking.paymentMode === 'cash' && booking.paymentStatus === 'not_required' && hasPassengerArrived(booking);
-}
-
-function isDriverUser(user: ReturnType<typeof selectUser>) {
-  return Boolean(user?.isDriver || user?.role === 'driver' || user?.role === 'both');
-}
-
-function isTripEligibleForNotice(trip: Trip) {
-  if (trip.status === 'ongoing' || trip.status === 'upcoming') return true;
-
-  const timestamp = Date.parse(trip.completedAt ?? trip.departureTime);
-  if (!Number.isFinite(timestamp)) return false;
-
-  return Date.now() - timestamp <= DRIVER_PAYMENT_NOTICE_WINDOW_MS;
-}
-
-function buildPaymentNotice(booking: Booking, trip: Trip): DriverPaymentNotice | null {
-  if (!isBookingPaymentConfirmed(booking)) return null;
-
-  const amount = normalizeAmount(booking.paymentAmount) ?? trip.price * booking.numberOfSeats;
-  return {
-    key: `booking-payment:${booking.id}`,
-    bookingId: booking.id,
-    tripId: booking.tripId,
-    passengerName: booking.passengerName?.trim() || 'Passager',
-    amount,
-    currency: booking.paymentCurrency ?? 'CDF',
-    mode: booking.paymentMode ?? 'cash',
-    paidAt: booking.paidAt ?? booking.updatedAt,
-  };
-}
 
 export function DriverPaymentNoticeCoordinator() {
   const isAppActive = useAppIsActive();

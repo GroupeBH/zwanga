@@ -1,3 +1,4 @@
+import { useSettingsAccountActions } from '../hooks/settings/useSettingsAccountActions';
 import { styles } from '../features/screen-styles/app/settings/index';
 import { IdentityVerification } from '@/components/IdentityVerification';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
@@ -5,13 +6,10 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { Colors, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
-import { clearTokens } from '@/services/tokenStorage';
-import { baseApi } from '@/store/api/baseApi';
 import { useDeleteAccountMutation } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
-import { logout, updateUser } from '@/store/slices/authSlice';
-import { getApiErrorMessage } from '@/utils/errorHelpers';
+import { updateUser } from '@/store/slices/authSlice';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -67,59 +65,14 @@ export default function SettingsScreen() {
     setShowIdentityModal(false);
   };
 
-  const handleDeleteAccount = () => {
-    showDialog({
-      variant: 'danger',
-      title: 'Supprimer le compte',
-      message:
-        'Votre compte sera désactivé et vos données sensibles seront supprimées. Cette action est irréversible.',
-      actions: [
-        { label: 'Annuler', variant: 'ghost' },
-        {
-          label: 'Supprimer',
-          variant: 'primary',
-          autoClose: false,
-          onPress: async () => {
-            try {
-              await deleteAccount().unwrap();
-              hideDialog();
-              await clearTokens();
-              dispatch(logout());
-              dispatch(baseApi.util.resetApiState());
-              router.replace('/auth-entry');
-            } catch (error) {
-              showDialog({
-                variant: 'danger',
-                title: 'Suppression impossible',
-                message: getApiErrorMessage(
-                  error,
-                  'Impossible de supprimer le compte pour le moment.',
-                ),
-              });
-            }
-          },
-        },
-      ],
-    });
-  };
-
-  const accountItems = [
-    { 
-      icon: 'person-outline', 
-      label: 'Modifier le profil', 
-      route: '/edit-profile',
-    },
-    { 
-      icon: 'image-outline', 
-      label: 'Changer la photo de profil', 
-      route: null,
-      onPress: changeProfilePhoto,
-    },
-    { icon: 'receipt-outline', label: 'Historique paiements', route: '/payment-history' },
-    { icon: 'wallet-outline', label: 'Jetons Zwanga', route: '/wallet' },
-    { icon: 'gift-outline', label: 'Parrainage et gains', route: '/referrals' },
-    { icon: 'lock-closed-outline', label: 'Sécurité', route: '/security' },
-  ];
+  const { accountItems, handleDeleteAccount } = useSettingsAccountActions({
+    showDialog,
+    deleteAccount,
+    hideDialog,
+    dispatch,
+    router,
+    changeProfilePhoto,
+  });
 
   return (
     <SafeAreaView style={styles.container}>

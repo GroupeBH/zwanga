@@ -1,283 +1,27 @@
+import { usePaymentReceiptDownload } from '../hooks/payment-history/usePaymentReceiptDownload';
+import {
+  PaymentFilter,
+  FILTERS,
+  statusMeta,
+  methodLabels,
+  filterPayment,
+  formatAmount,
+  formatDate,
+  getPaymentTitle,
+  formatPaymentMessage,
+  getPaymentDetailRows,
+} from '../features/payment-history/paymentHistoryModel';
 import { styles } from '../features/screen-styles/app/payment-history/index';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { Colors } from '@/constants/styles';
 import { useGetPaymentHistoryQuery, useLazyGetPaymentDetailsQuery } from '@/store/api/paymentApi';
-import type { PaymentHistoryItem, SubscriptionPaymentStatus } from '@/types';
+import type { PaymentHistoryItem } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
-import * as FileSystem from 'expo-file-system/legacy';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  InteractionManager,
-  Modal,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  Share,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Modal, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-type PaymentFilter = 'all' | 'succeeded' | 'pending' | 'failed';
-
-const FILTERS: { id: PaymentFilter; label: string }[] = [
-  { id: 'all', label: 'Tous' },
-  { id: 'succeeded', label: 'Validés' },
-  { id: 'pending', label: 'En cours' },
-  { id: 'failed', label: 'Échecs' },
-];
-
-const statusMeta: Record<
-  SubscriptionPaymentStatus,
-  { label: string; color: string; backgroundColor: string }
-> = {
-  pending: {
-    label: 'En attente',
-    color: Colors.warningDark,
-    backgroundColor: Colors.warning + '18',
-  },
-  initiated: {
-    label: 'Initié',
-    color: Colors.infoDark,
-    backgroundColor: Colors.info + '14',
-  },
-  succeeded: {
-    label: 'Validé',
-    color: Colors.successDark,
-    backgroundColor: Colors.success + '16',
-  },
-  failed: {
-    label: 'Échec',
-    color: Colors.danger,
-    backgroundColor: Colors.danger + '14',
-  },
-  cancelled: {
-    label: 'Annulé',
-    color: Colors.gray[700],
-    backgroundColor: Colors.gray[200],
-  },
-};
-
-const purposeLabels: Record<string, string> = {
-  subscription_pro: 'Abonnement Pro',
-  trip_booking: 'Réservation trajet',
-  wallet_top_up: 'Recharge de jetons',
-  driver_payout: 'Paiement chauffeur',
-  generic: 'Paiement',
-};
-
-const methodLabels: Record<string, string> = {
-  mobile_money: 'Mobile Money',
-  card: 'Carte',
-};
-
-const filterPayment = (payment: PaymentHistoryItem, filter: PaymentFilter) => {
-  if (filter === 'all') return true;
-  if (filter === 'pending') {
-    return payment.status === 'pending' || payment.status === 'initiated';
-  }
-  if (filter === 'failed') {
-    return payment.status === 'failed' || payment.status === 'cancelled';
-  }
-  return payment.status === filter;
-};
-
-const formatAmount = (amount: number | string, currency?: string | null) => {
-  const numericAmount = Number(amount);
-  if (!Number.isFinite(numericAmount)) {
-    return `${amount} ${currency || 'CDF'}`;
-  }
-
-  return `${Math.round(numericAmount).toLocaleString('fr-FR')} ${currency || 'CDF'}`;
-};
-
-const formatDate = (value?: string | null) => {
-  if (!value) return 'Non disponible';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Non disponible';
-
-  return date.toLocaleString('fr-FR', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
-
-const getPaymentTitle = (payment: PaymentHistoryItem) =>
-  payment.description?.trim() || purposeLabels[payment.purpose] || 'Paiement';
-
-const sanitizeFileSegment = (value: string) =>
-  value.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40) || 'paiement';
-
-const formatValue = (value?: string | null) => value?.trim() || 'Non disponible';
-
-const formatPaymentMessage = (message?: string | null) => {
-  if (!message?.trim()) return null;
-  return getApiErrorMessage(
-    { message },
-    'Le statut du paiement est indisponible pour le moment.',
-  );
-};
-
-const waitForNativePresentation = () =>
-  new Promise<void>((resolve) => {
-    InteractionManager.runAfterInteractions(() => {
-      setTimeout(resolve, 120);
-    });
-  });
-
-const getPaymentDetailRows = (payment: PaymentHistoryItem) => {
-  const meta = statusMeta[payment.status];
-
-  return [
-    { label: 'Paiement', value: getPaymentTitle(payment) },
-    { label: 'Montant', value: formatAmount(payment.amount, payment.currency) },
-    { label: 'Statut', value: meta?.label ?? payment.status },
-    { label: 'Type', value: purposeLabels[payment.purpose] || payment.purpose },
-    { label: 'Méthode', value: methodLabels[payment.method] ?? payment.method },
-    { label: 'Prestataire', value: payment.provider },
-    { label: 'Référence Zwanga', value: payment.reference },
-    { label: 'Commande FlexPay', value: formatValue(payment.orderNumber) },
-    { label: 'Référence opérateur', value: formatValue(payment.providerReference) },
-    { label: 'Code statut', value: formatValue(payment.statusCode) },
-    { label: 'Téléphone', value: formatValue(payment.phone) },
-    { label: 'Message', value: formatValue(formatPaymentMessage(payment.message)) },
-    { label: 'Créé le', value: formatDate(payment.createdAt) },
-    { label: 'Mis à jour le', value: formatDate(payment.updatedAt) },
-    { label: 'Validé le', value: formatDate(payment.paidAt) },
-    { label: 'Identifiant', value: payment.id },
-  ];
-};
-
-const toPdfSafeText = (value: string) =>
-  value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^\x20-\x7E]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-const escapePdfText = (value: string) =>
-  toPdfSafeText(value)
-    .replace(/\\/g, '\\\\')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)');
-
-const wrapPdfText = (value: string, maxLength = 58) => {
-  const words = toPdfSafeText(value).split(' ').filter(Boolean);
-  const lines: string[] = [];
-  let currentLine = '';
-
-  words.forEach((word) => {
-    if (!currentLine) {
-      currentLine = word;
-      return;
-    }
-
-    if (`${currentLine} ${word}`.length <= maxLength) {
-      currentLine = `${currentLine} ${word}`;
-      return;
-    }
-
-    lines.push(currentLine);
-    currentLine = word;
-  });
-
-  if (currentLine) {
-    lines.push(currentLine);
-  }
-
-  return lines.length > 0 ? lines : ['Non disponible'];
-};
-
-const encodeBase64 = (input: string) => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-  let output = '';
-
-  for (let index = 0; index < input.length; index += 3) {
-    const byte1 = input.charCodeAt(index) & 0xff;
-    const byte2 = input.charCodeAt(index + 1) & 0xff;
-    const byte3 = input.charCodeAt(index + 2) & 0xff;
-    const hasByte2 = index + 1 < input.length;
-    const hasByte3 = index + 2 < input.length;
-
-    output += chars.charAt(byte1 >> 2);
-    output += chars.charAt(((byte1 & 3) << 4) | (hasByte2 ? byte2 >> 4 : 0));
-    output += hasByte2 ? chars.charAt(((byte2 & 15) << 2) | (hasByte3 ? byte3 >> 6 : 0)) : '=';
-    output += hasByte3 ? chars.charAt(byte3 & 63) : '=';
-  }
-
-  return output;
-};
-
-const buildPaymentPdfBase64 = (payment: PaymentHistoryItem) => {
-  const rows = getPaymentDetailRows(payment);
-  const operations: string[] = [];
-  let y = 742;
-
-  const addText = (x: number, textY: number, size: number, font: 'F1' | 'F2', text: string) => {
-    operations.push(`BT /${font} ${size} Tf 1 0 0 1 ${x} ${textY} Tm (${escapePdfText(text)}) Tj ET`);
-  };
-
-  operations.push('0.98 0.98 0.98 rg 0 0 612 792 re f');
-  operations.push('1 1 1 rg 40 40 532 712 re f');
-  operations.push('0.95 0.95 0.95 rg 40 680 532 1 re f');
-  operations.push('0 0 0 rg');
-  addText(58, y, 20, 'F2', 'ZWANGA');
-  y -= 26;
-  addText(58, y, 16, 'F2', 'Détail du paiement');
-  y -= 18;
-  addText(58, y, 10, 'F1', `Généré le ${formatDate(new Date().toISOString())}`);
-  y -= 42;
-
-  rows.forEach((row) => {
-    if (y < 72) {
-      return;
-    }
-
-    addText(58, y, 10, 'F2', row.label);
-    const valueLines = wrapPdfText(String(row.value), 62).slice(0, 4);
-    valueLines.forEach((line, index) => {
-      addText(210, y - index * 14, 10, 'F1', line);
-    });
-    y -= Math.max(24, valueLines.length * 14 + 8);
-  });
-
-  addText(58, 58, 9, 'F1', 'Document généré depuis l’application Zwanga.');
-
-  const stream = operations.join('\n');
-  const objects = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>',
-    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
-  ];
-
-  let pdf = '%PDF-1.4\n';
-  const offsets = [0];
-  objects.forEach((object, index) => {
-    offsets.push(pdf.length);
-    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
-  });
-
-  const xrefOffset = pdf.length;
-  pdf += `xref\n0 ${objects.length + 1}\n`;
-  pdf += '0000000000 65535 f \n';
-  offsets.slice(1).forEach((offset) => {
-    pdf += `${offset.toString().padStart(10, '0')} 00000 n \n`;
-  });
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-
-  return encodeBase64(pdf);
-};
 
 export default function PaymentHistoryScreen() {
   const router = useRouter();
@@ -349,79 +93,14 @@ export default function PaymentHistoryScreen() {
       .finally(() => setLoadingDetailsPaymentId(null));
   }, [getPaymentDetails, paymentId, showDialog]);
 
-  const handleDownloadPayment = async (payment: PaymentHistoryItem) => {
-    if (isDownloadingRef.current) {
-      return;
-    }
-
-    isDownloadingRef.current = true;
-
-    try {
-      setDownloadingPaymentId(payment.id);
-      const details =
-        selectedPayment?.id === payment.id
-          ? selectedPayment
-          : await getPaymentDetails(payment.id).unwrap();
-
-      const shouldCloseDetailBeforeShare = selectedPayment?.id === details.id;
-      if (shouldCloseDetailBeforeShare) {
-        setSelectedPayment(null);
-        await waitForNativePresentation();
-      }
-
-      const pdfBase64 = buildPaymentPdfBase64(details);
-      const directory = FileSystem.documentDirectory || FileSystem.cacheDirectory;
-
-      if (!directory) {
-        throw new Error('Stockage local indisponible');
-      }
-
-      const fileName = `zwanga-paiement-${sanitizeFileSegment(details.reference)}.pdf`;
-      const fileUri = `${directory}${fileName}`;
-      await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
-        encoding: FileSystem.EncodingType?.Base64 || ('base64' as any),
-      });
-      let sharedUri = fileUri;
-
-      if (Platform.OS === 'android' && FileSystem.getContentUriAsync) {
-        try {
-          sharedUri = await FileSystem.getContentUriAsync(fileUri);
-        } catch (error) {
-          console.warn('[PaymentHistory] Failed to create Android content URI:', error);
-        }
-      }
-
-      await Share.share({
-        title: `Détail paiement ${details.reference}`,
-        message:
-          Platform.OS === 'android'
-            ? `Détail du paiement ${details.reference}\n${sharedUri}`
-            : `Détail du paiement ${details.reference}`,
-        url: Platform.OS === 'ios' ? sharedUri : undefined,
-      });
-      if (!shouldCloseDetailBeforeShare && selectedPayment?.id === details.id) {
-        setSelectedPayment(details);
-      }
-
-      showDialog({
-        variant: 'success',
-        title: 'Détail généré',
-        message: `Le détail du paiement a été préparé.\n\nFichier: ${fileName}`,
-      });
-    } catch (error: any) {
-      showDialog({
-        variant: 'danger',
-        title: 'Téléchargement impossible',
-        message: getApiErrorMessage(
-          error,
-          'Impossible de générer le détail du paiement pour le moment.',
-        ),
-      });
-    } finally {
-      isDownloadingRef.current = false;
-      setDownloadingPaymentId(null);
-    }
-  };
+  const { handleDownloadPayment } = usePaymentReceiptDownload({
+    isDownloadingRef,
+    setDownloadingPaymentId,
+    selectedPayment,
+    getPaymentDetails,
+    setSelectedPayment,
+    showDialog,
+  });
 
   const renderPayment = (payment: PaymentHistoryItem) => {
     const meta = statusMeta[payment.status] ?? statusMeta.pending;
