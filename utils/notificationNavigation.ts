@@ -80,6 +80,11 @@ export function getNotificationHref(input: NotificationData, currentUser?: User)
   const bookingId = getId(data.bookingId, data.booking?.id);
   const conversationId = getId(data.conversationId, data.conversation?.id);
 
+  if (type === 'ride_confirmation_required') {
+    if (data.role === 'passenger' && bookingId) return `/booking/navigate/${bookingId}`;
+    if (data.role === 'driver' && tripId) return `/trip/navigate/${tripId}`;
+  }
+
   if (type === 'referral_new_referral') return '/referrals';
   if (type === 'driver_trip_revenue' || type === 'driver_booking_earning_confirmed') return '/driver-earnings';
   if ((type === 'message' || type === 'chat') && conversationId) {

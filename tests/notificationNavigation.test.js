@@ -8,6 +8,11 @@ const { getNotificationHref, extractTripRequestId, getTripUrl, handleNotificatio
 
 const requestHref = id => ({ pathname: '/request-details/[id]', params: { id } });
 
+test('manual confirmation notices open the recipient navigation, not the original request', () => {
+  assert.equal(getNotificationHref({ type: 'ride_confirmation_required', role: 'passenger', bookingId: 'booking', tripId: 'trip', requestId: 'request' }), '/booking/navigate/booking');
+  assert.equal(getNotificationHref({ type: 'ride_confirmation_required', role: 'driver', bookingId: 'booking', tripId: 'trip' }), '/trip/navigate/trip');
+});
+
 test('accepted requests open the created trip, with support for legacy and nested payloads', () => {
   for (const type of ['trip_request_accepted', 'trip-request-accepted']) {
     assert.equal(getNotificationHref({ type, tripRequestId: 'request', tripId: 'trip' }), '/trip/trip');

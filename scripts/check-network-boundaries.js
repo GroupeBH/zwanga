@@ -9,6 +9,7 @@ const sourceRoots = [
   'constants',
   'contexts',
   'hooks',
+  'features',
   'services',
   'store',
   'types',

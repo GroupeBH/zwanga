@@ -1,4 +1,5 @@
 import { DialogProvider } from '@/components/ui/DialogProvider';
+import { RideOutboxCoordinator } from '@/components/RideOutboxCoordinator';
 import { ActiveRideLocationCoordinator } from '@/components/ActiveRideLocationCoordinator';
 import { DriverPaymentNoticeCoordinator } from '@/components/DriverPaymentNoticeCoordinator';
 import { PassengerArrivalPaymentCoordinator } from '@/components/PassengerArrivalPaymentCoordinator';
@@ -50,6 +51,7 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
             <DialogProvider>
               <ReferralAttributionHandler />
               <ActiveRideLocationCoordinator />
+              <RideOutboxCoordinator />
               <NotificationHandler />
               <AuthGuard>
                 <PassengerArrivalPaymentCoordinator />

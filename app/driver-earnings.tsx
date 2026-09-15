@@ -1,6 +1,7 @@
+import { styles } from '../features/screen-styles/app/driver-earnings/index';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { Colors } from '@/constants/styles';
 import {
   useGetMyDriverEarningsQuery,
   useGetMyDriverPayoutsQuery,
@@ -14,15 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Crypto from 'expo-crypto';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const formatAmount = (value?: number | string | null, currency = 'CDF') => {
@@ -376,164 +369,4 @@ export default function DriverEarningsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.gray[50] },
-  header: {
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-    borderBottomColor: Colors.gray[200],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-  },
-  headerButton: { alignItems: 'center', height: 44, justifyContent: 'center', width: 44 },
-  headerCopy: { flex: 1, paddingHorizontal: Spacing.sm },
-  title: { color: Colors.gray[900], fontSize: FontSizes.xl, fontWeight: FontWeights.bold },
-  subtitle: { color: Colors.gray[600], fontSize: FontSizes.xs, marginTop: 2 },
-  content: { paddingBottom: 80 },
-  balanceSection: {
-    backgroundColor: Colors.gray[900],
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.xxl,
-  },
-  eyebrow: {
-    color: Colors.primaryLight,
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-    letterSpacing: 1.4,
-  },
-  loader: { alignSelf: 'flex-start', marginVertical: Spacing.xl },
-  balance: {
-    color: Colors.white,
-    fontSize: 38,
-    fontWeight: FontWeights.bold,
-    letterSpacing: -1,
-    marginTop: Spacing.sm,
-  },
-  balanceHint: {
-    color: Colors.gray[400],
-    fontSize: FontSizes.sm,
-    lineHeight: 20,
-    marginTop: Spacing.md,
-    maxWidth: 360,
-  },
-  payoutButton: {
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.full,
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    justifyContent: 'center',
-    marginTop: Spacing.xl,
-    minHeight: 52,
-    paddingHorizontal: Spacing.lg,
-  },
-  payoutButtonDisabled: { opacity: 0.45 },
-  payoutButtonText: { color: Colors.white, fontSize: FontSizes.base, fontWeight: FontWeights.bold },
-  payoutDestination: {
-    color: Colors.gray[500],
-    fontSize: FontSizes.xs,
-    marginTop: Spacing.sm,
-    textAlign: 'center',
-  },
-  balanceBreakdown: {
-    borderTopColor: Colors.gray[700],
-    borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    marginTop: Spacing.xl,
-    paddingTop: Spacing.lg,
-  },
-  breakdownItem: { flex: 1 },
-  breakdownDivider: {
-    backgroundColor: Colors.gray[700],
-    marginHorizontal: Spacing.lg,
-    width: StyleSheet.hairlineWidth,
-  },
-  breakdownLabel: { color: Colors.gray[500], fontSize: FontSizes.xs },
-  breakdownValue: {
-    color: Colors.white,
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    marginTop: Spacing.xs,
-  },
-  section: { paddingHorizontal: Spacing.xl, paddingTop: Spacing.xl },
-  sectionHeading: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.md,
-  },
-  sectionTitle: { color: Colors.gray[900], fontSize: FontSizes.xl, fontWeight: FontWeights.bold },
-  sectionMeta: { color: Colors.gray[600], fontSize: FontSizes.sm, marginTop: 2 },
-  liveIndicator: { alignItems: 'center', flexDirection: 'row' },
-  liveDot: {
-    backgroundColor: Colors.success,
-    borderRadius: BorderRadius.full,
-    height: 7,
-    marginRight: Spacing.xs,
-    width: 7,
-  },
-  liveText: { color: Colors.gray[600], fontSize: FontSizes.xs },
-  payoutRow: {
-    alignItems: 'center',
-    borderBottomColor: Colors.gray[200],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    minHeight: 68,
-    paddingVertical: Spacing.sm,
-  },
-  retryButton: {
-    borderColor: Colors.primary,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-  },
-  retryButtonText: {
-    color: Colors.primary,
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-  },
-  earningRow: {
-    alignItems: 'center',
-    borderBottomColor: Colors.gray[200],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    minHeight: 82,
-    paddingVertical: Spacing.md,
-  },
-  earningIcon: {
-    alignItems: 'center',
-    backgroundColor: Colors.primary + '12',
-    borderRadius: BorderRadius.full,
-    height: 42,
-    justifyContent: 'center',
-    width: 42,
-  },
-  rowCopy: { flex: 1, paddingHorizontal: Spacing.md },
-  rowTitle: { color: Colors.gray[900], fontSize: FontSizes.sm, fontWeight: FontWeights.semibold },
-  rowMeta: { color: Colors.gray[600], fontSize: FontSizes.xs, lineHeight: 17, marginTop: 3 },
-  earningAmount: { color: Colors.successDark, fontSize: FontSizes.sm, fontWeight: FontWeights.bold },
-  emptyState: { alignItems: 'center', paddingHorizontal: Spacing.xl, paddingVertical: 56 },
-  emptyTitle: {
-    color: Colors.gray[800],
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    marginTop: Spacing.md,
-  },
-  emptyText: {
-    color: Colors.gray[600],
-    fontSize: FontSizes.sm,
-    lineHeight: 20,
-    marginTop: Spacing.xs,
-    textAlign: 'center',
-  },
-  inlineError: {
-    color: Colors.warningDark,
-    fontSize: FontSizes.xs,
-    lineHeight: 18,
-    marginTop: Spacing.md,
-  },
-});
+

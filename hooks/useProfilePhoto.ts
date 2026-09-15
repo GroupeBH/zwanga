@@ -1,3 +1,11 @@
+import {
+  ProfilePhotoSource,
+  ProfilePhotoSelection,
+  ProfilePhotoConfirmationResult,
+  claimProfileImageUri,
+  releaseProfileImageUri,
+  claimPendingProfileImageUri,
+} from '../features/profile/profilePhotoRecovery';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { ProfilePhotoCameraCapture } from '@/components/profile/ProfilePhotoCameraCapture';
 import { useUpdateUserMutation } from '@/store/api/zwangaApi';
@@ -8,70 +16,6 @@ import { prepareProfilePhoto } from '@/utils/profilePhoto';
 import * as ImagePicker from 'expo-image-picker';
 import { createElement, useCallback, useEffect, useState } from 'react';
 import { AppState, Platform } from 'react-native';
-
-let pendingResultRecoveryInFlight = false;
-const claimedProfileImageUris = new Map<string, number>();
-const DUPLICATE_IMAGE_CLAIM_WINDOW_MS = 30_000;
-
-type ProfilePhotoSource = 'camera' | 'gallery';
-
-interface ProfilePhotoSelection {
-  uri: string;
-  source: ProfilePhotoSource;
-}
-
-type ProfilePhotoConfirmationResult = 'confirm' | 'retry' | 'cancel';
-
-function claimProfileImageUri(uri: string) {
-  const now = Date.now();
-  claimedProfileImageUris.forEach((claimedAt, claimedUri) => {
-    if (now - claimedAt >= DUPLICATE_IMAGE_CLAIM_WINDOW_MS) {
-      claimedProfileImageUris.delete(claimedUri);
-    }
-  });
-
-  const claimedAt = claimedProfileImageUris.get(uri);
-  if (claimedAt && now - claimedAt < DUPLICATE_IMAGE_CLAIM_WINDOW_MS) {
-    return false;
-  }
-
-  claimedProfileImageUris.set(uri, now);
-  return true;
-}
-
-function releaseProfileImageUri(uri: string) {
-  claimedProfileImageUris.delete(uri);
-}
-
-async function claimPendingProfileImageUri() {
-  if (Platform.OS !== 'android' || pendingResultRecoveryInFlight) {
-    return null;
-  }
-
-  pendingResultRecoveryInFlight = true;
-  try {
-    const result = await ImagePicker.getPendingResultAsync();
-    if (!result) {
-      return null;
-    }
-
-    if ('code' in result) {
-      console.error('[ProfilePhoto] Pending image picker error:', result.message);
-      return null;
-    }
-
-    if (result.canceled) {
-      return null;
-    }
-
-    return result.assets?.[0]?.uri ?? null;
-  } catch (error) {
-    console.warn('[ProfilePhoto] Pending image recovery failed:', error);
-    return null;
-  } finally {
-    pendingResultRecoveryInFlight = false;
-  }
-}
 
 /**
  * Hook pour gérer la photo de profil
