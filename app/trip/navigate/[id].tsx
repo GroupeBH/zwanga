@@ -1,4 +1,80 @@
+import { NavigationLocationDisclosure } from '../../../features/driver-navigation/NavigationLocationDisclosure';
+import { NavigationPassengersModal } from '../../../features/driver-navigation/NavigationPassengersModal';
+import { NavigationPickupBypassModal } from '../../../features/driver-navigation/NavigationPickupBypassModal';
+import { NavigationSecurityModal } from '../../../features/driver-navigation/NavigationSecurityModal';
+import { NavigationWaypointModal } from '../../../features/driver-navigation/NavigationWaypointModal';
+import { NavigationPickupNoticeModal } from '../../../features/driver-navigation/NavigationPickupNoticeModal';
+import { NavigationTripEndModal } from '../../../features/driver-navigation/NavigationTripEndModal';
+import {
+  hasBookingPickupCompleted,
+  hasBookingDropoffCompleted,
+  getBookingPickupLabel,
+  getBookingDropoffLabel,
+  getBookingDropoffCoordinate,
+  isFreshLocationObject,
+  normalizeDriverLocationObject,
+  isFreshLivePassengerLocation,
+  hasFreshBookingPassengerLocation,
+} from '../../../features/driver-navigation/navigationBooking';
+import {
+  PICKUP_NOTICE_PRIORITY,
+  androidNavigationMarkerImages,
+  cleanHtmlInstructions,
+  formatDistanceForSpeech,
+  formatSeatCount,
+  formatNavigationDistance,
+  formatNavigationDuration,
+  formatNavigationEta,
+  formatPendingBookingPayment,
+  getBookingActionErrorMessage,
+} from '../../../features/driver-navigation/navigationPresentation';
+import {
+  isCoordinateAllowedForNavigationRoute,
+  OFF_ROUTE_MAX_ACCURACY_METERS,
+  OFF_ROUTE_MIN_ROUTE_POINTS,
+  getSafeMapCoordinate,
+  getSafeMapCoordinateList,
+  getSafePolylineCoordinates,
+  fitMapToSafeCoordinates,
+  shouldUseDirectNearWaypointRoute,
+} from '../../../features/driver-navigation/navigationMap';
+import {
+  RouteStep,
+  Waypoint,
+  RouteCoordinate,
+  PassengerMapLocation,
+  RouteSectionFocus,
+  FetchRouteOptions,
+  PickupNoticeEventType,
+  BookingAutoProgressEvent,
+  PickupNotice,
+  PickupBypassConfirmation,
+  TripEndNotice,
+  LivePassengerLocation,
+  SPEECH_LANGUAGE,
+  SPEECH_RATE,
+  SPEECH_MIN_INTERVAL_MS,
+  MAX_LIVE_PASSENGER_MARKERS,
+  USE_ANDROID_NAVIGATION_MARKER_IMAGES,
+  ANDROID_PIN_MARKER_ANCHOR,
+  DRIVER_DROPOFF_APPROACH_DISTANCE_KM,
+  DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS,
+  FRESH_DRIVER_LOCATION_MAX_AGE_MS,
+  OFF_ROUTE_DISTANCE_KM,
+  DRIVER_REROUTE_DEVIATION_THRESHOLD_METERS,
+  DRIVER_REROUTE_CONFIRMATION_COUNT,
+  DRIVER_REROUTE_MIN_INTERVAL_MS,
+  PICKUP_BYPASS_OBSERVED_DISTANCE_METERS,
+  PICKUP_BYPASS_MIN_AHEAD_METERS,
+  PICKUP_BYPASS_MIN_DISTANCE_METERS,
+  PICKUP_BYPASS_BEHIND_HEADING_DEGREES,
+  KINSHASA_FALLBACK_MAP_COORDINATE,
+} from '../../../features/driver-navigation/navigationModel';
+import { styles } from '../../../features/screen-styles/app/trip/navigate/detail/index';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { useOfflineRideData } from '@/hooks/navigation/useOfflineRideData';
+import { RideRecoveryControl } from '@/features/ride-recovery/RideRecoveryControl';
+import { rideOutbox } from '@/services/rideOutbox';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useNavigationMapLifecycle } from '@/hooks/navigation/useNavigationMapLifecycle';
 import { useNavigationRequestGuard } from '@/hooks/navigation/useNavigationRequestGuard';
@@ -12,18 +88,13 @@ import {
   VEHICLE_TRACKING_MARKER_ANCHOR,
   VehicleTrackingMarker,
 } from '@/components/TrackingMapMarkers';
-import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
-import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { Colors } from '@/constants/styles';
 import {
   DRIVER_LOCATION_BACKEND_UPDATE_INTERVAL_MS,
   DRIVER_PICKUP_ARRIVAL_DISTANCE_KM,
   PASSENGER_READY_DISTANCE_KM,
 } from '@/constants/rideProgress';
-import {
-  trackingSocket,
-  type BookingAutoProgressPayload,
-  type PassengerLocationPayload,
-} from '@/services/trackingSocket';
+import { trackingSocket, type PassengerLocationPayload } from '@/services/trackingSocket';
 import {
   startDriverBackgroundLocationTracking,
   stopDriverBackgroundLocationTracking,
@@ -32,7 +103,6 @@ import {
 import {
   useAcceptBookingMutation,
   useCancelBookingMutation,
-  useConfirmPickupMutation,
   useConfirmPassengerTripInterruptionMutation,
   useGetTripBookingsQuery,
   useRejectPassengerTripInterruptionMutation,
@@ -51,12 +121,7 @@ import {
   useStartTripMutation,
   useUpdateDriverLocationMutation,
 } from '@/store/api/tripApi';
-import type {
-  Booking,
-  DriverTripRevenueSummary,
-  Trip,
-  TripInterruptionReason,
-} from '@/types';
+import type { Booking, Trip, TripInterruptionReason } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { reconcileAmbiguousMutation } from '@/utils/mutationReconciliation';
 import {
@@ -67,7 +132,6 @@ import {
 } from '@/utils/tripCoordinates';
 import { calculateDistance, getRouteAlignedPosition } from '@/utils/routeHelpers';
 import {
-  LOCATION_FRESHNESS_MS,
   MAX_ACCEPTABLE_GPS_ACCURACY_METERS,
   MAX_PLAUSIBLE_LOCATION_JUMP_METERS,
   ROUTE_DEVIATION_THRESHOLD_METERS,
@@ -76,13 +140,11 @@ import {
   calculatePolylineDistanceMeters,
   distanceFromCoordinateToPolyline,
   getPolylineProgress,
-  isFreshLocationTimestamp,
   isPlausibleLocationUpdate,
   isRouteDeviationConfirmed,
   normalizeHeadingDelta,
   resolveActiveDestination,
   trimPolylineFromCurrentPosition,
-  type NavigationCoordinate,
   type NavigationStop,
 } from '@/utils/navigation/routeProgress';
 import {
@@ -95,10 +157,7 @@ import {
   evaluateDestinationPassage,
 } from '@/utils/navigation/tripCompletion';
 import { shareTrip } from '@/utils/shareHelpers';
-import {
-  getTripInterruptionReasonLabel,
-  isPendingTripInterruption,
-} from '@/utils/tripInterruption';
+import { getTripInterruptionReasonLabel, isPendingTripInterruption } from '@/utils/tripInterruption';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import * as Location from 'expo-location';
@@ -109,545 +168,14 @@ import {
   ActivityIndicator,
   AppState,
   BackHandler,
-  Modal,
-  Platform,
-  ScrollView,
   StatusBar,
-  StyleSheet,
   Text,
   TouchableOpacity,
   View,
   type AppStateStatus,
-  type ImageRequireSource,
 } from 'react-native';
 import MapView, { AnimatedRegion, Marker, Polyline, PROVIDER_GOOGLE, type MapMarker } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-interface RouteStep {
-  distance: { text: string; value: number };
-  duration: { text: string; value: number };
-  end_location: { lat: number; lng: number };
-  html_instructions: string;
-  maneuver?: string;
-  polyline: { points: string };
-  start_location: { lat: number; lng: number };
-  travel_mode: string;
-}
-
-interface Waypoint {
-  id: string;
-  type: 'pickup' | 'dropoff';
-  location: { lat: number; lng: number };
-  address: string;
-  passenger: {
-    id: string;
-    name: string;
-    phone?: string;
-  };
-  booking: Booking;
-  completed: boolean;
-}
-
-type RouteCoordinate = NavigationCoordinate;
-
-type MapEdgePadding = {
-  bottom: number;
-  left: number;
-  right: number;
-  top: number;
-};
-
-interface PassengerMapLocation {
-  bookingId: string;
-  coordinate: RouteCoordinate;
-  isLive: boolean;
-  passengerId: string;
-  passengerName: string;
-  status: PassengerTrackingMarkerStatus;
-}
-
-type RouteSectionFocus = 'next' | 'remaining';
-
-type FetchRouteOptions = {
-  originOverride?: RouteCoordinate;
-  announceReroute?: boolean;
-  fitToRoute?: boolean;
-};
-
-type PickupNoticeEventType =
-  | 'driver_arrived_pickup'
-  | 'parties_nearby'
-  | 'passenger_ready_pickup';
-
-type BookingAutoProgressEvent = BookingAutoProgressPayload['events'][number];
-
-interface PickupNotice {
-  type: PickupNoticeEventType;
-  waypoint: Waypoint;
-  distanceMeters?: number;
-  detectedAt?: string;
-  expiresAt?: string;
-  pickupWaitSeconds?: number;
-}
-
-interface PickupBypassConfirmation {
-  waypoint: Waypoint;
-  distanceMeters: number;
-  closestDistanceMeters: number;
-  hasPassedPickupOnRoute: boolean;
-  isPickupBehindDriver: boolean;
-  detectedAt: string;
-}
-
-interface TripEndNotice {
-  tripId: string;
-  completedWhileAppInactive?: boolean;
-  distanceMeters?: number;
-  detectedAt?: string;
-  revenueSummary?: DriverTripRevenueSummary;
-  revenueSummaryUnavailable?: boolean;
-}
-
-type LivePassengerLocation = {
-  coordinate: RouteCoordinate;
-  updatedAt?: string | null;
-};
-
-const SPEECH_LANGUAGE = 'fr-FR';
-const SPEECH_RATE = 0.95;
-const SPEECH_MIN_INTERVAL_MS = 2500;
-const MAX_LIVE_PASSENGER_MARKERS = Platform.OS === 'ios' ? 10 : 16;
-const USE_ANDROID_NAVIGATION_MARKER_IMAGES = Platform.OS === 'android';
-const ANDROID_PIN_MARKER_ANCHOR = { x: 0.5, y: 0.88 };
-const DRIVER_DROPOFF_APPROACH_DISTANCE_KM = 0.04;
-const DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS = 5000;
-const FRESH_DRIVER_LOCATION_MAX_AGE_MS = LOCATION_FRESHNESS_MS;
-const OFF_ROUTE_DISTANCE_KM = ROUTE_DEVIATION_THRESHOLD_METERS / 1000;
-const DRIVER_REROUTE_DEVIATION_THRESHOLD_METERS = 55;
-const DRIVER_REROUTE_CONFIRMATION_COUNT = 2;
-const DRIVER_REROUTE_MIN_INTERVAL_MS = 12_000;
-const PICKUP_BYPASS_OBSERVED_DISTANCE_METERS = 90;
-const PICKUP_BYPASS_MIN_AHEAD_METERS = 120;
-const PICKUP_BYPASS_MIN_DISTANCE_METERS = 160;
-const PICKUP_BYPASS_BEHIND_HEADING_DEGREES = 125;
-const DIRECT_NEAR_WAYPOINT_ROUTE_DISTANCE_METERS = 120;
-const DIRECT_NEAR_WAYPOINT_REACHED_DISTANCE_METERS = 30;
-const DIRECT_NEAR_WAYPOINT_MAX_TURN_DEGREES = 35;
-const DIRECT_NEAR_WAYPOINT_MAX_ROUTE_RATIO = 1.35;
-const ROUTE_TURN_SEGMENT_MIN_METERS = 8;
-const MAP_FIT_MIN_COORDINATE_DISTANCE_METERS = 2;
-const MAP_POLYLINE_MIN_COORDINATE_DISTANCE_METERS = 0.5;
-const DEFAULT_MAP_FOCUS_DELTA = 0.01;
-const KINSHASA_FALLBACK_MAP_COORDINATE: RouteCoordinate = {
-  latitude: -4.4419,
-  longitude: 15.2663,
-};
-
-const isCoordinateAllowedForNavigationRoute = (
-  coordinate: RouteCoordinate | null | undefined,
-  restrictToKinshasa: boolean,
-): coordinate is RouteCoordinate => Boolean(
-  coordinate && (!restrictToKinshasa || isCoordinateInKinshasaBounds(coordinate)),
-);
-const OFF_ROUTE_MAX_ACCURACY_METERS = MAX_ACCEPTABLE_GPS_ACCURACY_METERS;
-const OFF_ROUTE_MIN_ROUTE_POINTS = 2;
-
-const getSafeMapCoordinate = (
-  coordinate: RouteCoordinate | null | undefined,
-) =>
-  coordinate
-    ? normalizeTripMapCoordinate(coordinate.latitude, coordinate.longitude)
-    : null;
-
-const getSafeMapCoordinateList = (
-  coordinates: (RouteCoordinate | null | undefined)[],
-  minimumDistanceMeters = MAP_POLYLINE_MIN_COORDINATE_DISTANCE_METERS,
-) => {
-  const safeCoordinates: RouteCoordinate[] = [];
-
-  coordinates.forEach((coordinate) => {
-    const safeCoordinate = getSafeMapCoordinate(coordinate);
-    if (!safeCoordinate) {
-      return;
-    }
-
-    const previousCoordinate = safeCoordinates[safeCoordinates.length - 1];
-    if (
-      !previousCoordinate ||
-      calculateDistanceMeters(previousCoordinate, safeCoordinate) >
-        minimumDistanceMeters
-    ) {
-      safeCoordinates.push(safeCoordinate);
-    }
-  });
-
-  return safeCoordinates;
-};
-
-const getSafePolylineCoordinates = (
-  coordinates: (RouteCoordinate | null | undefined)[],
-) => {
-  const safeCoordinates = getSafeMapCoordinateList(coordinates);
-  return safeCoordinates.length > 1 ? safeCoordinates : [];
-};
-
-const fitMapToSafeCoordinates = (
-  map: MapView | null,
-  coordinates: (RouteCoordinate | null | undefined)[],
-  {
-    animated = true,
-    durationMs = 320,
-    edgePadding,
-    logContext = 'navigation-map',
-    singleCoordinateDelta = DEFAULT_MAP_FOCUS_DELTA,
-  }: {
-    animated?: boolean;
-    durationMs?: number;
-    edgePadding: MapEdgePadding;
-    logContext?: string;
-    singleCoordinateDelta?: number;
-  },
-) => {
-  if (!map) {
-    return;
-  }
-
-  const safeCoordinates = getSafeMapCoordinateList(
-    coordinates,
-    MAP_FIT_MIN_COORDINATE_DISTANCE_METERS,
-  );
-  if (safeCoordinates.length === 0) {
-    return;
-  }
-
-  try {
-    if (safeCoordinates.length === 1) {
-      map.animateToRegion(
-        {
-          ...safeCoordinates[0],
-          latitudeDelta: singleCoordinateDelta,
-          longitudeDelta: singleCoordinateDelta,
-        },
-        durationMs,
-      );
-      return;
-    }
-
-    map.fitToCoordinates(safeCoordinates, {
-      edgePadding,
-      animated,
-    });
-  } catch (error) {
-    console.warn('[Navigation] Ajustement de la carte ignoré pour éviter un plantage :', {
-      context: logContext,
-      error,
-    });
-  }
-};
-
-const getMaximumRouteTurnDegrees = (coordinates: RouteCoordinate[]) => {
-  let maxTurnDegrees = 0;
-  let previousBearing: number | null = null;
-
-  for (let index = 1; index < coordinates.length; index += 1) {
-    const previous = coordinates[index - 1];
-    const current = coordinates[index];
-    if (calculateDistanceMeters(previous, current) < ROUTE_TURN_SEGMENT_MIN_METERS) {
-      continue;
-    }
-
-    const bearing = calculateBearingDegrees(previous, current);
-    if (previousBearing !== null) {
-      maxTurnDegrees = Math.max(
-        maxTurnDegrees,
-        normalizeHeadingDelta(previousBearing, bearing),
-      );
-    }
-    previousBearing = bearing;
-  }
-
-  return maxTurnDegrees;
-};
-
-const shouldUseDirectNearWaypointRoute = ({
-  activeDestinationKind,
-  directDistanceMeters,
-  isTripOngoing,
-  routeCoordinates,
-}: {
-  activeDestinationKind?: NavigationStop['kind'];
-  directDistanceMeters: number;
-  isTripOngoing: boolean;
-  routeCoordinates: RouteCoordinate[];
-}) => {
-  if (
-    !isTripOngoing ||
-    activeDestinationKind === 'destination' ||
-    !Number.isFinite(directDistanceMeters) ||
-    directDistanceMeters > DIRECT_NEAR_WAYPOINT_ROUTE_DISTANCE_METERS
-  ) {
-    return false;
-  }
-
-  if (directDistanceMeters <= DIRECT_NEAR_WAYPOINT_REACHED_DISTANCE_METERS) {
-    return true;
-  }
-
-  const routeDistanceMeters = calculatePolylineDistanceMeters(routeCoordinates);
-  if (!Number.isFinite(routeDistanceMeters) || routeDistanceMeters <= 0) {
-    return false;
-  }
-
-  const routeRatio = routeDistanceMeters / Math.max(1, directDistanceMeters);
-  const maxTurnDegrees = getMaximumRouteTurnDegrees(routeCoordinates);
-
-  if (
-    maxTurnDegrees <= DIRECT_NEAR_WAYPOINT_MAX_TURN_DEGREES &&
-    routeRatio <= DIRECT_NEAR_WAYPOINT_MAX_ROUTE_RATIO
-  ) {
-    return true;
-  }
-
-  return false;
-};
-const PICKUP_NOTICE_PRIORITY: Record<PickupNoticeEventType, number> = {
-  driver_arrived_pickup: 1,
-  parties_nearby: 2,
-  passenger_ready_pickup: 3,
-};
-const androidNavigationMarkerImages: Record<'departure' | 'pickup' | 'dropoff' | 'destination', ImageRequireSource> = {
-  departure: require('@/assets/images/map-markers/trip-detail-marker-departure.png'),
-  pickup: require('@/assets/images/map-markers/trip-detail-marker-passenger.png'),
-  dropoff: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
-  destination: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
-};
-
-const cleanHtmlInstructions = (html: string): string => {
-  return html
-    .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, ' ')
-    .trim();
-};
-
-const formatDistanceForSpeech = (distanceInMeters: number): string => {
-  if (!Number.isFinite(distanceInMeters) || distanceInMeters <= 0) {
-    return '';
-  }
-
-  if (distanceInMeters >= 1000) {
-    const kilometers = distanceInMeters / 1000;
-    const rounded = kilometers >= 10 ? Math.round(kilometers).toString() : kilometers.toFixed(1).replace('.', ',');
-    return `${rounded} ${kilometers > 1 ? 'kilomètres' : 'kilomètre'}`;
-  }
-
-  const roundedMeters = Math.max(10, Math.round(distanceInMeters / 10) * 10);
-  return `${roundedMeters} mètres`;
-};
-
-const formatSeatCount = (seats: number): string => {
-  const safeSeats = Number.isFinite(seats) && seats > 0 ? Math.round(seats) : 1;
-  return `${safeSeats} place${safeSeats > 1 ? 's' : ''}`;
-};
-
-const formatNavigationDistance = (distanceInMeters: number | null | undefined) => {
-  if (typeof distanceInMeters !== 'number' || !Number.isFinite(distanceInMeters)) {
-    return null;
-  }
-
-  if (distanceInMeters >= 1000) {
-    return `${(distanceInMeters / 1000).toFixed(1)} km`;
-  }
-
-  return `${Math.max(1, Math.round(distanceInMeters))} m`;
-};
-
-const formatNavigationDuration = (durationInSeconds: number | null | undefined) => {
-  if (typeof durationInSeconds !== 'number' || !Number.isFinite(durationInSeconds)) {
-    return null;
-  }
-
-  const minutes = Math.max(1, Math.round(durationInSeconds / 60));
-  if (minutes >= 60) {
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}min` : `${hours}h`;
-  }
-
-  return `${minutes} min`;
-};
-
-const formatNavigationEta = (durationInSeconds: number | null | undefined) => {
-  if (typeof durationInSeconds !== 'number' || !Number.isFinite(durationInSeconds)) {
-    return null;
-  }
-
-  return new Date(Date.now() + durationInSeconds * 1000).toLocaleTimeString('fr-FR', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
-
-const formatTripRevenueAmount = (amount: number, currency: string) =>
-  `${Number(amount || 0).toLocaleString('fr-FR', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })} ${currency}`;
-
-const formatPendingBookingPayment = (booking: Booking, tripPrice?: number): string => {
-  if (booking.paymentMode === 'cash') {
-    return 'Cash';
-  }
-
-  if (booking.paymentMode === 'points') {
-    return 'Jetons';
-  }
-
-  if (booking.paymentMode === 'electronic') {
-    return 'Mobile money';
-  }
-
-  if (!tripPrice || tripPrice <= 0) {
-    return 'Gratuit';
-  }
-
-  return `${tripPrice * booking.numberOfSeats} FC`;
-};
-
-const getBookingActionErrorMessage = (error: any, fallback: string): string => {
-  return getApiErrorMessage(error, fallback);
-};
-
-const hasBookingPickupCompleted = (booking?: Booking | null): boolean =>
-  Boolean(
-    booking?.pickedUp ||
-      booking?.pickedUpConfirmedByPassenger ||
-      booking?.pickedUpAt ||
-      booking?.pickedUpConfirmedAt,
-  );
-
-const hasBookingDropoffCompleted = (booking?: Booking | null): boolean =>
-  Boolean(
-    booking?.status === 'completed' ||
-      booking?.droppedOff ||
-      booking?.droppedOffConfirmedByPassenger ||
-      booking?.droppedOffAt ||
-      booking?.droppedOffConfirmedAt,
-  );
-
-const getTripLocationLabel = (
-  location: Trip['departure'] | Trip['arrival'] | undefined,
-  fallback: string,
-) => (location?.address || location?.name || fallback).trim();
-
-const getBookingPickupLabel = (booking: Booking | null | undefined, trip?: Trip | null) => {
-  const tripLabel = getTripLocationLabel(trip?.departure, 'Point de récupération');
-  const bookingLabel = (booking?.passengerOrigin || booking?.passengerOriginReference || '').trim();
-  const hasPassengerCoordinate = Boolean(
-    normalizeTripMapCoordinate(
-      booking?.passengerOriginCoordinates?.latitude,
-      booking?.passengerOriginCoordinates?.longitude,
-    ),
-  );
-
-  return hasPassengerCoordinate ? bookingLabel || tripLabel : tripLabel || bookingLabel;
-};
-
-const getBookingDropoffLabel = (booking: Booking | null | undefined, trip?: Trip | null) => {
-  const tripLabel = getTripLocationLabel(trip?.arrival, 'Point de destination');
-  const bookingLabel = (
-    booking?.passengerDestination ||
-    booking?.passengerDestinationReference ||
-    ''
-  ).trim();
-  const hasPassengerCoordinate = Boolean(
-    normalizeTripMapCoordinate(
-      booking?.passengerDestinationCoordinates?.latitude,
-      booking?.passengerDestinationCoordinates?.longitude,
-    ),
-  );
-
-  return hasPassengerCoordinate ? bookingLabel || tripLabel : tripLabel || bookingLabel;
-};
-
-const getBookingDropoffCoordinate = (
-  booking: Booking,
-  fallbackCoordinate: RouteCoordinate | null,
-) =>
-  normalizeTripMapCoordinate(
-    booking.passengerDestinationCoordinates?.latitude,
-    booking.passengerDestinationCoordinates?.longitude,
-  ) ?? fallbackCoordinate;
-
-const isFreshLocationObject = (
-  location: Location.LocationObject | null,
-  maxAgeMs = FRESH_DRIVER_LOCATION_MAX_AGE_MS,
-): location is Location.LocationObject => {
-  if (!location) {
-    return false;
-  }
-
-  if (!normalizeTripMapCoordinate(location.coords.latitude, location.coords.longitude)) {
-    return false;
-  }
-
-  const timestamp = Number(location.timestamp);
-  return Number.isFinite(timestamp) && Date.now() - timestamp <= maxAgeMs;
-};
-
-const normalizeDriverLocationObject = (
-  location: Location.LocationObject | null,
-): Location.LocationObject | null => {
-  if (!location) {
-    return null;
-  }
-
-  const coordinate = normalizeTripMapCoordinate(
-    location.coords.latitude,
-    location.coords.longitude,
-  );
-  if (!coordinate) {
-    return null;
-  }
-
-  return {
-    ...location,
-    coords: {
-      ...location.coords,
-      latitude: coordinate.latitude,
-      longitude: coordinate.longitude,
-    },
-  };
-};
-
-const isFreshLivePassengerLocation = (
-  location: LivePassengerLocation | undefined,
-  maxAgeMs = FRESH_DRIVER_LOCATION_MAX_AGE_MS,
-) => {
-  if (!location) {
-    return false;
-  }
-
-  if (!location.updatedAt) {
-    return true;
-  }
-
-  const timestamp = new Date(location.updatedAt).getTime();
-  return Number.isFinite(timestamp) && Date.now() - timestamp <= maxAgeMs;
-};
-
-const hasFreshBookingPassengerLocation = (booking: Booking) => {
-  if (!booking.passengerLocationUpdatedAt) {
-    return false;
-  }
-
-  return isFreshLocationTimestamp(new Date(booking.passengerLocationUpdatedAt).getTime());
-};
 
 export default function NavigationScreen() {
   const { id } = useLocalSearchParams();
@@ -659,12 +187,13 @@ export default function NavigationScreen() {
   const isAppActive = useAppIsActive();
   const isScreenActive = isFocused && isAppActive;
 
-  const { data: trip, isLoading, isFetching: isTripFetching, refetch: refetchTrip } = useGetTripByIdQuery(tripId, {
+  const { data: liveTrip, error: tripError, isLoading, isFetching: isTripFetching, refetch: refetchTrip } = useGetTripByIdQuery(tripId, {
     skip: !tripId,
     skipPollingIfUnfocused: true,
   });
+  const { data: trip, offline: offlineTrip } = useOfflineRideData(`trip:${tripId}`, liveTrip, tripError, liveTrip?.status === 'ongoing');
   const isTripOngoing = trip?.status === 'ongoing';
-  const { data: bookings, isLoading: bookingsLoading, refetch: refetchBookings } = useGetTripBookingsQuery(
+  const { data: liveBookings, error: bookingsError, isLoading: bookingsLoading, refetch: refetchBookings } = useGetTripBookingsQuery(
     tripId,
     {
       skip: !tripId,
@@ -673,13 +202,13 @@ export default function NavigationScreen() {
     },
   );
   const [getDirections] = useGetDirectionsMutation();
+  const { data: bookings, offline: offlineBookings } = useOfflineRideData(`trip-bookings:${tripId}`, liveBookings, bookingsError, isTripOngoing);
   const { begin: beginRouteRequest, cancel: cancelRouteRequest } = useNavigationRequestGuard(isScreenActive, tripId);
   const { begin: beginLocationRequest, cancel: cancelLocationRequest } =
     useNavigationRequestGuard(isScreenActive && isTripOngoing, tripId);
   const [acceptBooking, { isLoading: isAcceptingBooking }] = useAcceptBookingMutation();
   const [rejectBooking, { isLoading: isRejectingBooking }] = useRejectBookingMutation();
   const [cancelBooking, { isLoading: isCancellingPickupBypassBooking }] = useCancelBookingMutation();
-  const [confirmPickup, { isLoading: isConfirmingPickup }] = useConfirmPickupMutation();
   const [completeTrip] = useCompleteTripMutation();
   const [getDriverTripRevenueSummary] = useLazyGetDriverTripRevenueSummaryQuery();
   const [pauseTrip, { isLoading: isPausingTrip }] = usePauseTripMutation();
@@ -4291,15 +3820,11 @@ export default function NavigationScreen() {
     setProcessingBookingId(bookingId);
 
     try {
-      await confirmPickup(bookingId).unwrap();
-      rememberPickedUpBooking(bookingId);
-      setPickupSkipped(bookingId, false);
+      await rideOutbox.enqueue({ bookingId, tripId, stage: 'pickup', decision: 'confirm' });
       dismissPickupNoticeForBooking(bookingId);
       dismissPickupBypassConfirmation();
-      markNavigationRouteDirty();
-      await Promise.all([refetchBookings(), refetchTrip()]);
       void speakNavigationMessage(
-        `${passengerName} est marque comme pris en charge. Recalcul de l'itineraire.`,
+        `Votre confirmation pour ${passengerName} est enregistrée. En attente de validation.`,
         { force: true },
       );
     } catch (error: any) {
@@ -4314,15 +3839,10 @@ export default function NavigationScreen() {
       setPickupBypassAction(null);
     }
   }, [
-    confirmPickup,
+    tripId,
     dismissPickupBypassConfirmation,
     dismissPickupNoticeForBooking,
-    markNavigationRouteDirty,
     pickupBypassAction,
-    refetchBookings,
-    refetchTrip,
-    rememberPickedUpBooking,
-    setPickupSkipped,
     showDialog,
     speakNavigationMessage,
   ]);
@@ -4937,7 +4457,7 @@ export default function NavigationScreen() {
     }
   }, [canToggleRouteSections, routeSectionFocus]);
 
-  if (isLoading || bookingsLoading || !trip) {
+  if ((isLoading && !trip) || (bookingsLoading && !bookings) || !trip) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -5325,7 +4845,7 @@ export default function NavigationScreen() {
             <View style={[styles.liveIndicator, isSocketConnected && styles.liveIndicatorActive]}>
               <View style={[styles.liveDot, isSocketConnected && styles.liveDotActive]} />
               <Text style={[styles.liveText, isSocketConnected && styles.liveTextActive]}>
-                {isSocketConnected ? 'LIVE' : '...'}
+                {offlineTrip || offlineBookings ? 'Hors connexion' : isSocketConnected ? 'LIVE' : '...'}
               </Text>
             </View>
           </View>
@@ -5336,6 +4856,9 @@ export default function NavigationScreen() {
             )}
           </View>
         </View>
+        {isTripOngoing && <RideRecoveryControl tripId={tripId} bookings={bookings} actor="driver" compact
+          fix={currentLocation ? { ...currentLocation.coords, recordedAt: currentLocation.timestamp, accuracy: currentLocation.coords.accuracy ?? undefined } : null}
+          destination={tripArrivalCoordinate} />}
       </View>
 
       {/* Barre compacte des passagers */}
@@ -5789,2063 +5312,90 @@ export default function NavigationScreen() {
       )}
 
       {/* Disclosure localisation arrière-plan */}
-      <Modal
-        visible={backgroundDisclosureVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => resolveBackgroundDisclosure(false)}
-      >
-        <View style={styles.backgroundDisclosureOverlay}>
-          <View style={styles.backgroundDisclosureCard}>
-            <View style={styles.backgroundDisclosureIcon}>
-              <Ionicons name="location" size={24} color={Colors.primary} />
-            </View>
-            <Text style={styles.backgroundDisclosureTitle}>
-              Autorisation de localisation en arrière-plan
-            </Text>
-            <Text style={styles.backgroundDisclosureText}>
-              {"Zwanga collecte votre position même quand l'application est en arrière-plan pendant un trajet actif."}
-            </Text>
-            <View style={styles.backgroundDisclosureList}>
-              <Text style={styles.backgroundDisclosureItem}>
-                - Suivre votre trajet en continu pour la navigation GPS.
-              </Text>
-              <Text style={styles.backgroundDisclosureItem}>
-                - Envoyer votre position au serveur et aux passagers du trajet en cours.
-              </Text>
-              <Text style={styles.backgroundDisclosureItem}>
-                - Arreter automatiquement le suivi à la fin du trajet.
-              </Text>
-            </View>
-            <Text style={styles.backgroundDisclosureFootnote}>
-              {"Vous pouvez continuer sans cette autorisation. Dans ce cas, le suivi fonctionne uniquement quand l'application est ouverte."}
-            </Text>
-            <View style={styles.backgroundDisclosureActions}>
-              <TouchableOpacity
-                style={styles.backgroundDisclosureSecondaryButton}
-                onPress={() => resolveBackgroundDisclosure(false)}
-              >
-                <Text style={styles.backgroundDisclosureSecondaryButtonText}>Pas maintenant</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.backgroundDisclosurePrimaryButton}
-                onPress={() => resolveBackgroundDisclosure(true)}
-              >
-                <Text style={styles.backgroundDisclosurePrimaryButtonText}>Continuer</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <NavigationLocationDisclosure
+        backgroundDisclosureVisible={backgroundDisclosureVisible}
+        resolveBackgroundDisclosure={resolveBackgroundDisclosure}
+      />
 
-      <Modal
-        visible={securityModalVisible && !backgroundDisclosureVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setSecurityModalVisible(false)}
-      >
-        <View style={styles.securityModalOverlay}>
-          <TouchableOpacity
-            style={styles.securityModalBackdrop}
-            activeOpacity={1}
-            onPress={() => setSecurityModalVisible(false)}
-          />
-          <View
-            style={[
-              styles.securityModalContent,
-              { paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.md },
-            ]}
-          >
-            <View style={styles.securityModalHeader}>
-              <Text style={styles.securityModalTitle}>Securité du trajet</Text>
-              <TouchableOpacity
-                style={styles.securityModalCloseButton}
-                onPress={() => setSecurityModalVisible(false)}
-              >
-                <Ionicons name="close" size={22} color={Colors.gray[700]} />
-              </TouchableOpacity>
-            </View>
+      <NavigationSecurityModal
+        securityModalVisible={securityModalVisible}
+        backgroundDisclosureVisible={backgroundDisclosureVisible}
+        setSecurityModalVisible={setSecurityModalVisible}
+        insets={insets}
+        trip={trip}
+      />
 
-            {trip ? (
-              <ScrollView
-                style={styles.securityModalBody}
-                contentContainerStyle={styles.securityModalBodyContent}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-              >
-                <TripSecurityPanel
-                  tripId={trip.id}
-                  role="driver"
-                  tripStatus={trip.status}
-                  openSelectorByDefault={securityModalVisible}
-                  compact
-                />
-              </ScrollView>
-            ) : (
-              <View style={styles.securityModalLoading}>
-                <ActivityIndicator size="small" color={Colors.primary} />
-                <Text style={styles.securityModalLoadingText}>Chargement securité...</Text>
-              </View>
-            )}
-          </View>
-        </View>
-      </Modal>
+      <NavigationTripEndModal
+        tripEndNotice={tripEndNotice}
+        backgroundDisclosureVisible={backgroundDisclosureVisible}
+        securityModalVisible={securityModalVisible}
+        dismissTripEndNotice={dismissTripEndNotice}
+        insets={insets}
+        trip={trip}
+        handleRatePassengersFromTripEnd={handleRatePassengersFromTripEnd}
+      />
 
-      <Modal
-        visible={
-          Boolean(tripEndNotice) &&
-          !backgroundDisclosureVisible &&
-          !securityModalVisible
-        }
-        transparent
-        animationType="slide"
-        onRequestClose={dismissTripEndNotice}
-      >
-        <View style={styles.waypointModalOverlay}>
-          <View style={[styles.waypointModalContent, { paddingBottom: Math.max(insets.bottom, Spacing.xl) + Spacing.lg }]}>
-            <View style={styles.waypointModalHandle} />
-            <View style={[styles.waypointModalIcon, { backgroundColor: Colors.success }]}>
-              <Ionicons name="flag" size={32} color={Colors.white} />
-            </View>
-            <Text style={styles.waypointModalTitle}>Trajet terminé</Text>
-            <Text style={styles.waypointModalPassenger}>
-              {trip?.arrival?.name ?? 'Destination finale'}
-            </Text>
-            <View style={styles.waypointModalAddressContainer}>
-              <Ionicons name="location" size={18} color={Colors.gray[500]} />
-              <Text style={styles.waypointModalAddress}>
-                {trip?.arrival?.address ?? trip?.arrival?.name ?? 'Arrivée du trajet'}
-              </Text>
-            </View>
-            <Text style={styles.waypointModalWaitingText}>
-              {tripEndNotice?.completedWhileAppInactive
-                ? "Le trajet s'est terminé pendant que le téléphone était en veille ou hors de l'application. Il est maintenant clôturé. Vous pouvez noter les passagers."
-                : 'Vous avez atteint la destination finale. Le trajet est terminé automatiquement. Vous pouvez noter les passagers.'}
-            </Text>
-            {tripEndNotice?.revenueSummary ? (
-              <View style={styles.tripRevenueSummary}>
-                {tripEndNotice.revenueSummary.confirmedAmount > 0 ? (
-                  <View style={styles.tripRevenueRow}>
-                    <View style={[styles.tripRevenueIcon, { backgroundColor: Colors.success + '18' }]}>
-                      <Ionicons name="wallet-outline" size={20} color={Colors.successDark} />
-                    </View>
-                    <View style={styles.tripRevenueCopy}>
-                      <Text style={styles.tripRevenueLabel}>Gain ajouté</Text>
-                      <Text style={styles.tripRevenueHint}>Disponible dans vos gains conducteur</Text>
-                    </View>
-                    <Text style={[styles.tripRevenueAmount, { color: Colors.successDark }]}>
-                      {formatTripRevenueAmount(
-                        tripEndNotice.revenueSummary.confirmedAmount,
-                        tripEndNotice.revenueSummary.currency,
-                      )}
-                    </Text>
-                  </View>
-                ) : null}
-                {tripEndNotice.revenueSummary.cashToCollectAmount > 0 ? (
-                  <View style={styles.tripRevenueRow}>
-                    <View style={[styles.tripRevenueIcon, { backgroundColor: Colors.warning + '18' }]}>
-                      <Ionicons name="cash-outline" size={20} color={Colors.warningDark} />
-                    </View>
-                    <View style={styles.tripRevenueCopy}>
-                      <Text style={styles.tripRevenueLabel}>À encaisser en liquide</Text>
-                      <Text style={styles.tripRevenueHint}>À recevoir directement du passager</Text>
-                    </View>
-                    <Text style={[styles.tripRevenueAmount, { color: Colors.warningDark }]}>
-                      {formatTripRevenueAmount(
-                        tripEndNotice.revenueSummary.cashToCollectAmount,
-                        tripEndNotice.revenueSummary.currency,
-                      )}
-                    </Text>
-                  </View>
-                ) : null}
-                {tripEndNotice.revenueSummary.electronicPendingAmount > 0 ? (
-                  <View style={styles.tripRevenueRow}>
-                    <View style={[styles.tripRevenueIcon, { backgroundColor: Colors.info + '18' }]}>
-                      <Ionicons name="time-outline" size={20} color={Colors.infoDark} />
-                    </View>
-                    <View style={styles.tripRevenueCopy}>
-                      <Text style={styles.tripRevenueLabel}>Paiement électronique attendu</Text>
-                      <Text style={styles.tripRevenueHint}>Ajouté après confirmation FlexPay</Text>
-                    </View>
-                    <Text style={[styles.tripRevenueAmount, { color: Colors.infoDark }]}>
-                      {formatTripRevenueAmount(
-                        tripEndNotice.revenueSummary.electronicPendingAmount,
-                        tripEndNotice.revenueSummary.currency,
-                      )}
-                    </Text>
-                  </View>
-                ) : null}
-                {tripEndNotice.revenueSummary.totalExpectedAmount <= 0 ? (
-                  <View style={styles.tripRevenueEmpty}>
-                    <Ionicons name="checkmark-circle-outline" size={20} color={Colors.gray[500]} />
-                    <Text style={styles.tripRevenueHint}>Aucun montant à encaisser pour ce trajet.</Text>
-                  </View>
-                ) : null}
-              </View>
-            ) : tripEndNotice?.revenueSummaryUnavailable ? (
-              <View style={styles.tripRevenueLoading}>
-                <Ionicons name="cloud-offline-outline" size={18} color={Colors.gray[500]} />
-                <Text style={styles.tripRevenueHint}>
-                  Le détail du gain reste disponible dans l&apos;espace conducteur.
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.tripRevenueLoading}>
-                <ActivityIndicator size="small" color={Colors.primary} />
-                <Text style={styles.tripRevenueHint}>Calcul du montant du trajet…</Text>
-              </View>
-            )}
-            <View
-              style={[
-                styles.waypointGpsStatus,
-                {
-                  backgroundColor: Colors.success + '15',
-                  borderColor: Colors.success,
-                },
-              ]}
-            >
-              <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
-              <Text style={[styles.waypointGpsStatusText, { color: Colors.success }]}>
-                {tripEndNotice?.distanceMeters !== undefined
-                  ? `Arrivée détectée a ${Math.max(1, Math.round(tripEndNotice.distanceMeters))} m`
-                  : 'Arrivée détectée'}
-              </Text>
-            </View>
-            <Text style={styles.waypointModalWaitingText}>
-              L&apos;embarquement est validé automatiquement lorsque les deux téléphones se déplacent ensemble.
-            </Text>
-            <View style={styles.waypointModalActions}>
-              <TouchableOpacity
-                style={styles.waypointModalSecondaryButton}
-                onPress={dismissTripEndNotice}
-              >
-                <Text style={styles.waypointModalSecondaryButtonText}>Plus tard</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.waypointModalPrimaryButton}
-                onPress={() => void handleRatePassengersFromTripEnd()}
-              >
-                <Ionicons name="star" size={20} color={Colors.white} />
-                <Text style={styles.waypointModalPrimaryButtonText}>Noter</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <NavigationPickupBypassModal
+        pickupBypassConfirmation={pickupBypassConfirmation}
+        backgroundDisclosureVisible={backgroundDisclosureVisible}
+        securityModalVisible={securityModalVisible}
+        tripEndNotice={tripEndNotice}
+        insets={insets}
+        trip={trip}
+        pauseTripWithoutPassengerConfirmation={pauseTripWithoutPassengerConfirmation}
+        pickupBypassAction={pickupBypassAction}
+        isPausingTrip={isPausingTrip}
+        handleCancelBypassedPickup={handleCancelBypassedPickup}
+        isCancellingPickupBypassBooking={isCancellingPickupBypassBooking}
+        handleConfirmBypassedPickup={handleConfirmBypassedPickup}
+      />
 
-      <Modal
-        visible={
-          Boolean(pickupBypassConfirmation) &&
-          !backgroundDisclosureVisible &&
-          !securityModalVisible &&
-          !tripEndNotice
-        }
-        transparent
-        animationType="slide"
-        onRequestClose={() => undefined}
-      >
-        <View style={styles.waypointModalOverlay}>
-          <View
-            style={[
-              styles.waypointModalContent,
-              { paddingBottom: Math.max(insets.bottom, Spacing.xl) + Spacing.lg },
-            ]}
-          >
-            <View style={styles.waypointModalHandle} />
-            <View style={[styles.waypointModalIcon, { backgroundColor: Colors.warning }]}>
-              <Ionicons name="help-circle" size={32} color={Colors.white} />
-            </View>
-            <Text style={styles.waypointModalTitle}>Embarquement a confirmer</Text>
-            <Text style={styles.waypointModalPassenger}>
-              {pickupBypassConfirmation?.waypoint.passenger.name || 'Passager'}
-            </Text>
-            <View style={styles.waypointModalAddressContainer}>
-              <Ionicons name="location" size={18} color={Colors.gray[500]} />
-              <Text style={styles.waypointModalAddress}>
-                {pickupBypassConfirmation?.waypoint.address ||
-                  'Point de prise en charge du passager'}
-              </Text>
-            </View>
-            <Text style={styles.waypointModalWaitingText}>
-              Vous avez depasse le point de prise en charge sans confirmation automatique.
-              Le passager est-il deja a bord ?
-            </Text>
-            <View style={[styles.waypointGpsStatus, styles.pickupBypassStatus]}>
-              <Ionicons name="navigate-circle" size={18} color={Colors.warningDark} />
-              <Text style={[styles.waypointGpsStatusText, { color: Colors.warningDark }]}>
-                {pickupBypassConfirmation?.distanceMeters !== undefined
-                  ? `Point depasse, distance actuelle ${Math.max(
-                      1,
-                      pickupBypassConfirmation.distanceMeters,
-                    )} m`
-                  : 'Point de prise en charge depasse'}
-              </Text>
-            </View>
-            <View style={styles.waypointModalActions}>
-              {trip?.tripRequestId ? (
-                <TouchableOpacity
-                  style={[
-                    styles.waypointModalSecondaryButton,
-                    styles.pickupBypassDecisionButton,
-                  ]}
-                  onPress={() => void pauseTripWithoutPassengerConfirmation()}
-                  disabled={
-                    Boolean(pickupBypassAction) ||
-                    isConfirmingPickup ||
-                    isPausingTrip
-                  }
-                >
-                  {isPausingTrip ? (
-                    <ActivityIndicator size="small" color={Colors.warningDark} />
-                  ) : (
-                    <>
-                      <Ionicons name="pause-circle" size={20} color={Colors.warningDark} />
-                      <Text style={styles.waypointModalSecondaryButtonText}>
-                        Arrêter le trajet
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={[
-                    styles.waypointModalSecondaryButton,
-                    styles.pickupBypassDecisionButton,
-                    styles.pickupBypassCancelButton,
-                  ]}
-                  onPress={() => void handleCancelBypassedPickup()}
-                  disabled={
-                    Boolean(pickupBypassAction) ||
-                    isConfirmingPickup ||
-                    isCancellingPickupBypassBooking
-                  }
-                >
-                  {pickupBypassAction === 'cancel' ? (
-                    <ActivityIndicator size="small" color={Colors.danger} />
-                  ) : (
-                    <>
-                      <Ionicons name="close-circle" size={20} color={Colors.danger} />
-                      <Text
-                        style={[
-                          styles.waypointModalSecondaryButtonText,
-                          styles.pickupBypassCancelButtonText,
-                        ]}
-                      >
-                        Annuler reservation
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={[
-                  styles.waypointModalPrimaryButton,
-                  styles.pickupBypassDecisionButton,
-                  styles.pickupBypassConfirmButton,
-                ]}
-                onPress={() => void handleConfirmBypassedPickup()}
-                disabled={
-                  Boolean(pickupBypassAction) ||
-                  isConfirmingPickup ||
-                  isCancellingPickupBypassBooking
-                }
-              >
-                {pickupBypassAction === 'confirm' ? (
-                  <ActivityIndicator size="small" color={Colors.white} />
-                ) : (
-                  <>
-                    <Ionicons name="checkmark-circle" size={20} color={Colors.white} />
-                    <Text style={styles.waypointModalPrimaryButtonText}>Pris en charge</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={
-          Boolean(pickupNotice) &&
-          !backgroundDisclosureVisible &&
-          !securityModalVisible &&
-          !tripEndNotice &&
-          !pickupBypassConfirmation
-        }
-        transparent
-        animationType="slide"
-        onRequestClose={dismissPickupNotice}
-      >
-        <View style={styles.waypointModalOverlay}>
-          <View style={[styles.waypointModalContent, { paddingBottom: Math.max(insets.bottom, Spacing.xl) + Spacing.lg }]}>
-            <View style={styles.waypointModalHandle} />
-            <View
-              style={[
-                styles.waypointModalIcon,
-                {
-                  backgroundColor:
-                    pickupNotice?.type === 'passenger_ready_pickup'
-                      ? Colors.success
-                      : pickupNotice?.type === 'parties_nearby'
-                        ? Colors.primary
-                        : Colors.secondary,
-                },
-              ]}
-            >
-              <Ionicons
-                name={
-                  pickupNotice?.type === 'passenger_ready_pickup'
-                    ? 'hand-left'
-                    : pickupNotice?.type === 'parties_nearby'
-                      ? 'people'
-                      : 'time'
-                }
-                size={32}
-                color={Colors.white}
-              />
-            </View>
-            <Text style={styles.waypointModalTitle}>
-              {pickupNotice?.type === 'passenger_ready_pickup'
-                ? "Le passager s'est signalé"
-                : pickupNotice?.type === 'parties_nearby'
-                  ? 'Passager prêt à embarquer'
-                  : 'Arrivé au point de récupération'}
-            </Text>
-            <Text style={styles.waypointModalPassenger}>
-              {pickupNotice?.waypoint.passenger.name || 'Passager'}
-            </Text>
-            <View style={styles.waypointModalAddressContainer}>
-              <Ionicons name="location" size={18} color={Colors.gray[500]} />
-              <Text style={styles.waypointModalAddress}>
-                {pickupNotice?.waypoint.address}
-              </Text>
-            </View>
-            <Text style={styles.waypointModalWaitingText}>
-              {pickupNotice?.type === 'passenger_ready_pickup'
-                ? "Le passager indique qu'il est présent au point de récupération."
-                : pickupNotice?.type === 'parties_nearby'
-                  ? `${pickupNotice?.waypoint.passenger.name || 'Le passager'} est là et prêt à être embarqué.`
-                  : `Vous êtes arrivé au point de récupération de ${pickupNotice?.waypoint.passenger.name || 'ce passager'}. Le passager est notifié.`}
-            </Text>
-            {pickupNotice?.type === 'driver_arrived_pickup' && pickupNoticeCountdown !== null && (
-              <View style={styles.waypointGpsStatus}>
-                <Ionicons name="timer" size={18} color={Colors.secondary} />
-                <Text style={[styles.waypointGpsStatusText, { color: Colors.secondary }]}>
-                  {pickupNoticeCountdown > 0
-                    ? `Temps restant ${Math.floor(pickupNoticeCountdown / 60)
-                        .toString()
-                        .padStart(2, '0')}:${(pickupNoticeCountdown % 60)
-                        .toString()
-                        .padStart(2, '0')}`
-                    : 'Les 10 minutes sont écoulées'}
-                </Text>
-              </View>
-            )}
-            <View style={styles.waypointModalActions}>
-              <TouchableOpacity
-                style={styles.waypointModalSecondaryButton}
-                onPress={dismissPickupNotice}
-              >
-                <Text style={styles.waypointModalSecondaryButtonText}>Fermer</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <NavigationPickupNoticeModal
+        pickupNotice={pickupNotice}
+        backgroundDisclosureVisible={backgroundDisclosureVisible}
+        securityModalVisible={securityModalVisible}
+        tripEndNotice={tripEndNotice}
+        pickupBypassConfirmation={pickupBypassConfirmation}
+        dismissPickupNotice={dismissPickupNotice}
+        insets={insets}
+        pickupNoticeCountdown={pickupNoticeCountdown}
+      />
 
       {/* Modal de waypoint stylise */}
-      <Modal
-        visible={
-          waypointModalVisible &&
-          Boolean(activeWaypoint) &&
-          !backgroundDisclosureVisible &&
-          !securityModalVisible &&
-          !tripEndNotice &&
-          !pickupNotice &&
-          !pickupBypassConfirmation
-        }
-        transparent
-        animationType="slide"
-        onRequestClose={handleDismissWaypointModal}
-      >
-        <View style={styles.waypointModalOverlay}>
-          <View style={[styles.waypointModalContent, { paddingBottom: Math.max(insets.bottom, Spacing.xl) + Spacing.lg }]}>
-            {/* Indicateur de slide */}
-            <View style={styles.waypointModalHandle} />
-            
-            {/* Icône du type de waypoint */}
-            <View style={[
-              styles.waypointModalIcon,
-              { backgroundColor: activeWaypoint?.type === 'pickup' ? Colors.secondary : Colors.info }
-            ]}>
-              <Ionicons 
-                name={activeWaypoint?.type === 'pickup' ? 'person-add' : 'person-remove'} 
-                size={32} 
-                color={Colors.white} 
-              />
-            </View>
-
-            {/* Titre */}
-            <Text style={styles.waypointModalTitle}>
-              {activeWaypoint?.type === 'pickup' ? 'Lieu de prise en charge' : "Point d'arrivée"}
-            </Text>
-
-            {/* Nom du passager */}
-            <Text style={styles.waypointModalPassenger}>
-              {activeWaypoint?.passenger?.name}
-            </Text>
-
-            {/* Adresse */}
-            <View style={styles.waypointModalAddressContainer}>
-              <Ionicons name="location" size={18} color={Colors.gray[500]} />
-              <Text style={styles.waypointModalAddress}>
-                {activeWaypoint?.address}
-              </Text>
-            </View>
-
-            {activeWaypoint && (
-              <Text style={styles.waypointModalWaitingText}>
-                {activeWaypoint.type === 'pickup'
-                  ? `Vous êtes arrivé au point de récupération de ${activeWaypoint.passenger.name || 'ce passager'}.`
-                  : `Nous sommes arrivés au point de destination de ${activeWaypoint.passenger.name || 'ce passager'}. La dépose se confirme automatiquement.`}
-              </Text>
-            )}
-
-            {activeWaypoint && (
-              <View
-                style={[
-                  styles.waypointGpsStatus,
-                  {
-                    backgroundColor:
-                      activeWaypoint.type === 'pickup'
-                        ? Colors.secondary + '15'
-                        : Colors.success + '15',
-                    borderColor:
-                      activeWaypoint.type === 'pickup'
-                        ? Colors.secondary
-                        : Colors.success,
-                  },
-                ]}
-              >
-                <Ionicons
-                  name="locate"
-                  size={18}
-                  color={activeWaypoint.type === 'pickup' ? Colors.secondary : Colors.success}
-                />
-                <Text
-                  style={[
-                    styles.waypointGpsStatusText,
-                    {
-                      color: activeWaypoint.type === 'pickup' ? Colors.secondary : Colors.success,
-                    },
-                  ]}
-                >
-                  Confirmation automatique activée
-                </Text>
-              </View>
-            )}
-
-            {/* Fermeture du détail */}
-            <View style={styles.waypointModalActions}>
-              <TouchableOpacity
-                style={styles.waypointModalSecondaryButton}
-                onPress={handleDismissWaypointModal}
-              >
-                <Text style={styles.waypointModalSecondaryButtonText}>
-                  Fermer
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={styles.waypointModalReportButton}
-              onPress={handleReportPassenger}
-              activeOpacity={0.9}
-            >
-              <Ionicons name="warning-outline" size={18} color={Colors.white} />
-              <Text style={styles.waypointModalReportButtonText}>Signaler ce passager</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <NavigationWaypointModal
+        waypointModalVisible={waypointModalVisible}
+        activeWaypoint={activeWaypoint}
+        backgroundDisclosureVisible={backgroundDisclosureVisible}
+        securityModalVisible={securityModalVisible}
+        tripEndNotice={tripEndNotice}
+        pickupNotice={pickupNotice}
+        pickupBypassConfirmation={pickupBypassConfirmation}
+        handleDismissWaypointModal={handleDismissWaypointModal}
+        insets={insets}
+        handleReportPassenger={handleReportPassenger}
+      />
 
       {/* Panneau des passagers */}
-      <Modal
-        visible={
-          passengersPanelVisible &&
-          !backgroundDisclosureVisible &&
-          !securityModalVisible &&
-          !tripEndNotice &&
-          !pickupNotice &&
-          !pickupBypassConfirmation &&
-          !waypointModalVisible
-        }
-        transparent
-        animationType="slide"
-        onRequestClose={() => setPassengersPanelVisible(false)}
-      >
-        <View style={styles.passengersPanelOverlay}>
-          <TouchableOpacity 
-            style={styles.passengersPanelBackdrop} 
-            activeOpacity={1}
-            onPress={() => setPassengersPanelVisible(false)}
-          />
-          <View style={[styles.passengersPanelContent, { paddingBottom: Math.max(insets.bottom, Spacing.lg) + Spacing.md }]}>
-            <View style={styles.passengersPanelHandle} />
-            
-            {/* Header */}
-            <View style={styles.passengersPanelHeader}>
-              <Text style={styles.passengersPanelTitle}>Passagers du trajet</Text>
-              <View style={styles.passengersPanelStats}>
-                <View style={styles.statBadge}>
-                  <Ionicons name="person-add" size={14} color={Colors.secondary} />
-                  <Text style={styles.statText}>{passengerStats.completedPickups}/{passengerStats.completedPickups + passengerStats.pendingPickups}</Text>
-                </View>
-                <View style={styles.statBadge}>
-                  <Ionicons name="car" size={14} color={Colors.primary} />
-                  <Text style={styles.statText}>{passengerStats.inVehicle}</Text>
-                </View>
-                <View style={styles.statBadge}>
-                  <Ionicons name="flag" size={14} color={Colors.success} />
-                  <Text style={styles.statText}>{passengerStats.completedDropoffs}/{passengerStats.completedDropoffs + passengerStats.pendingDropoffs}</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Liste des waypoints */}
-            <View style={styles.waypointsList}>
-              {waypoints.map((waypoint, index) => {
-                const isNext = index === currentWaypointIndex && !waypoint.completed;
-                return (
-                  <TouchableOpacity
-                    key={waypoint.id}
-                    style={[
-                      styles.waypointListItem,
-                      waypoint.completed && styles.waypointListItemCompleted,
-                      isNext && styles.waypointListItemNext,
-                    ]}
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      if (!waypoint.completed) {
-                        waypointModalVisibleRef.current = true;
-                        setActiveWaypoint(waypoint);
-                        setPassengersPanelVisible(false);
-                        setWaypointModalVisible(true);
-                      }
-                    }}
-                    disabled={waypoint.completed}
-                  >
-                    <View style={[
-                      styles.waypointListIcon,
-                      { backgroundColor: waypoint.type === 'pickup' ? Colors.secondary : Colors.success },
-                      waypoint.completed && styles.waypointListIconCompleted,
-                    ]}>
-                      {waypoint.completed ? (
-                        <Ionicons name="checkmark" size={14} color={Colors.white} />
-                      ) : (
-                        <Ionicons 
-                          name={waypoint.type === 'pickup' ? 'person-add' : 'flag'} 
-                          size={14} 
-                          color={Colors.white} 
-                        />
-                      )}
-                    </View>
-                    
-                    <View style={styles.waypointListInfo}>
-                      <Text style={[
-                        styles.waypointListName,
-                        waypoint.completed && styles.waypointListNameCompleted,
-                      ]}>
-                        {waypoint.passenger.name}
-                      </Text>
-                      <Text style={styles.waypointListType}>
-                        {waypoint.type === 'pickup' ? 'Prise en charge' : 'Arrivée'}
-                      </Text>
-                    </View>
-
-                    {!waypoint.completed && (
-                      <View style={styles.waypointListActions}>
-                        <TouchableOpacity
-                          style={[styles.waypointListAction, styles.waypointListReportAction]}
-                          onPress={(event) => {
-                            event.stopPropagation();
-                            openReportForWaypoint(waypoint);
-                          }}
-                        >
-                          <Ionicons name="warning-outline" size={16} color={Colors.white} />
-                        </TouchableOpacity>
-                        <View
-                          style={[
-                            styles.waypointListGpsStatus,
-                            {
-                              backgroundColor:
-                                waypoint.type === 'pickup'
-                                  ? Colors.secondary + '15'
-                                  : Colors.success + '15',
-                              borderColor:
-                                waypoint.type === 'pickup'
-                                  ? Colors.secondary
-                                  : Colors.success,
-                            }
-                          ]}
-                        >
-                          <Ionicons
-                            name="locate"
-                            size={14}
-                            color={waypoint.type === 'pickup' ? Colors.secondary : Colors.success}
-                          />
-                          <Text
-                            style={[
-                              styles.waypointListGpsStatusText,
-                              { color: waypoint.type === 'pickup' ? Colors.secondary : Colors.success },
-                            ]}
-                          >
-                            Auto
-                          </Text>
-                        </View>
-                      </View>
-                    )}
-
-                    {isNext && (
-                      <View style={styles.nextBadge}>
-                        <Text style={styles.nextBadgeText}>SUIVANT</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {/* Bouton fermer */}
-            <TouchableOpacity
-              style={styles.closePanelButton}
-              onPress={() => setPassengersPanelVisible(false)}
-            >
-              <Text style={styles.closePanelButtonText}>Fermer</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <NavigationPassengersModal
+        passengersPanelVisible={passengersPanelVisible}
+        backgroundDisclosureVisible={backgroundDisclosureVisible}
+        securityModalVisible={securityModalVisible}
+        tripEndNotice={tripEndNotice}
+        pickupNotice={pickupNotice}
+        pickupBypassConfirmation={pickupBypassConfirmation}
+        waypointModalVisible={waypointModalVisible}
+        setPassengersPanelVisible={setPassengersPanelVisible}
+        insets={insets}
+        passengerStats={passengerStats}
+        waypoints={waypoints}
+        currentWaypointIndex={currentWaypointIndex}
+        waypointModalVisibleRef={waypointModalVisibleRef}
+        setActiveWaypoint={setActiveWaypoint}
+        setWaypointModalVisible={setWaypointModalVisible}
+        openReportForWaypoint={openReportForWaypoint}
+      />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.gray[200],
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-  },
-  loadingText: {
-    marginTop: Spacing.md,
-    fontSize: FontSizes.base,
-    color: Colors.gray[600],
-    textAlign: 'center',
-    paddingHorizontal: Spacing.lg,
-  },
-  backButtonAlt: {
-    marginTop: Spacing.xl,
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.md,
-  },
-  backButtonAltText: {
-    color: Colors.white,
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-  },
-  map: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  header: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 50 : 20,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.lg,
-    gap: Spacing.md,
-    zIndex: 40,
-    elevation: 40,
-  },
-  backButton: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 41,
-    elevation: 41,
-  },
-  headerInfo: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.lg,
-  },
-  etaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  etaText: {
-    fontSize: FontSizes.xl,
-    fontWeight: FontWeights.bold,
-    color: Colors.white,
-  },
-  liveIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    gap: 4,
-  },
-  liveIndicatorActive: {
-    backgroundColor: 'rgba(16, 185, 129, 0.3)',
-  },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.gray[400],
-  },
-  liveDotActive: {
-    backgroundColor: '#10B981',
-  },
-  liveText: {
-    fontSize: 10,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[400],
-  },
-  liveTextActive: {
-    color: '#10B981',
-  },
-  distanceText: {
-    fontSize: FontSizes.base,
-    color: Colors.gray[300],
-  },
-  distanceRow: {
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-    gap: 2,
-  },
-  arrivalTimeText: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[300],
-  },
-  preStartOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.38)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.lg,
-    zIndex: 30,
-  },
-  preStartCard: {
-    width: '100%',
-    maxWidth: 420,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.xl,
-    alignItems: 'center',
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 14,
-    elevation: 12,
-  },
-  preStartIconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary + '1a',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.sm,
-  },
-  preStartTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    textAlign: 'center',
-    marginBottom: Spacing.xs,
-  },
-  preStartText: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[700],
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  preStartActions: {
-    width: '100%',
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginTop: Spacing.lg,
-  },
-  preStartButton: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: BorderRadius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  preStartButtonPrimary: {
-    backgroundColor: Colors.primary,
-  },
-  preStartButtonPrimaryText: {
-    color: Colors.white,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-  },
-  preStartButtonSecondary: {
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: Colors.gray[300],
-  },
-  preStartButtonSecondaryText: {
-    color: Colors.gray[700],
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-  },
-  instructionCard: {
-    position: 'absolute',
-    bottom: 52,
-    left: Spacing.lg,
-    right: Spacing.lg,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  instructionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-  },
-  maneuverIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  instructionInfo: {
-    flex: 1,
-  },
-  instructionText: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[900],
-    marginBottom: 4,
-  },
-  instructionDistance: {
-    fontSize: FontSizes.base,
-    color: Colors.gray[600],
-  },
-  nextInstruction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: Spacing.md,
-    paddingTop: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray[200],
-    gap: Spacing.xs,
-  },
-  nextInstructionText: {
-    flex: 1,
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-  },
-  loadingRouteCard: {
-    position: 'absolute',
-    bottom: 52,
-    left: Spacing.lg,
-    right: Spacing.lg,
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  loadingRouteText: {
-    fontSize: FontSizes.base,
-    color: Colors.gray[700],
-  },
-  routeSectionToggle: {
-    position: 'absolute',
-    left: Spacing.lg,
-    top: Platform.OS === 'ios' ? 114 : 84,
-    zIndex: 35,
-    elevation: 35,
-    flexDirection: 'row',
-    gap: 4,
-    padding: 4,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: 'rgba(255, 255, 255, 0.94)',
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.14,
-    shadowRadius: 4,
-  },
-  routeSectionToggleButton: {
-    width: 92,
-    minHeight: 34,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: Spacing.sm,
-    borderRadius: BorderRadius.sm,
-    opacity: 0.68,
-  },
-  routeSectionToggleNextActive: {
-    backgroundColor: Colors.primaryDark,
-    opacity: 1,
-  },
-  routeSectionToggleRemainingActive: {
-    backgroundColor: Colors.infoDark,
-    opacity: 1,
-  },
-  routeSectionToggleText: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[700],
-  },
-  routeSectionToggleTextActive: {
-    color: Colors.white,
-  },
-  floatingButtons: {
-    position: 'absolute',
-    right: Spacing.lg,
-    bottom: 180,
-    gap: Spacing.sm,
-  },
-  floatingButton: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  floatingButtonDisabled: {
-    opacity: 0.6,
-  },
-  interruptTripButton: {
-    backgroundColor: Colors.danger,
-    borderWidth: 2,
-    borderColor: Colors.white,
-    shadowColor: Colors.danger,
-    shadowOpacity: 0.28,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  voiceButtonMuted: {
-    backgroundColor: Colors.gray[100],
-  },
-  securityModalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  securityModalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  securityModalContent: {
-    backgroundColor: Colors.gray[50],
-    borderTopLeftRadius: BorderRadius.xxl,
-    borderTopRightRadius: BorderRadius.xxl,
-    height: '88%',
-    paddingTop: Spacing.md,
-    paddingHorizontal: Spacing.md,
-  },
-  securityModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.sm,
-  },
-  securityModalTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  securityModalCloseButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  securityModalBody: {
-    flex: 1,
-  },
-  securityModalBodyContent: {
-    paddingBottom: Spacing.sm,
-  },
-  securityModalLoading: {
-    paddingVertical: Spacing.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-  },
-  securityModalLoadingText: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-  },
-  backgroundDisclosureOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.lg,
-  },
-  backgroundDisclosureCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.xl,
-    gap: Spacing.md,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  backgroundDisclosureIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary + '14',
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'flex-start',
-  },
-  backgroundDisclosureTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  backgroundDisclosureText: {
-    fontSize: FontSizes.sm,
-    lineHeight: 22,
-    color: Colors.gray[700],
-  },
-  backgroundDisclosureList: {
-    gap: Spacing.xs,
-  },
-  backgroundDisclosureItem: {
-    fontSize: FontSizes.sm,
-    lineHeight: 20,
-    color: Colors.gray[700],
-  },
-  backgroundDisclosureFootnote: {
-    fontSize: FontSizes.xs,
-    lineHeight: 18,
-    color: Colors.gray[600],
-  },
-  backgroundDisclosureActions: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginTop: Spacing.xs,
-  },
-  backgroundDisclosureSecondaryButton: {
-    flex: 1,
-    height: 48,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.gray[300],
-    backgroundColor: Colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backgroundDisclosureSecondaryButtonText: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[700],
-  },
-  backgroundDisclosurePrimaryButton: {
-    flex: 1,
-    height: 48,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backgroundDisclosurePrimaryButtonText: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.white,
-  },
-  driverMarkerFrame: {
-    width: 64,
-    height: 64,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'visible',
-  },
-  driverMarker: {
-    width: 50,
-    height: 50,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'visible',
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  driverMarkerInner: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  driverMarkerCar: {
-    width: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  destinationMarkerContainer: {
-    width: 72,
-    height: 72,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    backgroundColor: 'transparent',
-    paddingTop: 6,
-    overflow: 'visible',
-  },
-  destinationMarkerBody: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.success,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: Colors.white,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  destinationMarkerTip: {
-    marginTop: 2,
-    width: 0,
-    height: 0,
-    borderLeftWidth: 8,
-    borderRightWidth: 8,
-    borderTopWidth: 12,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderTopColor: Colors.success,
-  },
-  waypointMarkerContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: Colors.white,
-    overflow: 'visible',
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.24,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  passengerLocationMarker: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.secondary,
-    borderWidth: 3,
-    borderColor: Colors.white,
-    elevation: 4,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-  },
-  passengerProfileCallout: {
-    width: 210,
-    minHeight: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingVertical: Spacing.xs,
-  },
-  passengerProfileCalloutIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.secondary,
-  },
-  passengerProfileCalloutText: {
-    flex: 1,
-    minWidth: 0,
-  },
-  passengerProfileCalloutName: {
-    color: Colors.gray[900],
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-  },
-  passengerProfileCalloutAction: {
-    marginTop: 2,
-    color: Colors.primary,
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.semibold,
-  },
-  departureMarker: {
-    backgroundColor: Colors.primary,
-  },
-  pickupMarker: {
-    backgroundColor: Colors.secondary,
-  },
-  dropoffMarker: {
-    backgroundColor: Colors.info,
-  },
-  completedMarker: {
-    backgroundColor: Colors.gray[400],
-  },
-  // Barre compacte des passagers
-  passengersBar: {
-    position: 'absolute',
-    top: 100,
-    left: Spacing.md,
-    right: Spacing.md,
-    gap: Spacing.sm,
-  },
-  passengersStatsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 4,
-    gap: Spacing.sm,
-  },
-  passengersBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 4,
-    gap: 4,
-  },
-  passengersBadgeText: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.white,
-  },
-  passengersStatsInfo: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  inVehicleBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.info,
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.xs,
-    paddingVertical: 2,
-    gap: 2,
-  },
-  inVehicleText: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.semibold,
-    color: Colors.white,
-  },
-  pendingText: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[600],
-  },
-  nextWaypointCompact: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.sm,
-    paddingLeft: Spacing.md,
-    borderLeftWidth: 4,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 4,
-    gap: Spacing.sm,
-  },
-  nextWaypointInfo: {
-    flex: 1,
-  },
-  nextWaypointType: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
-    fontWeight: FontWeights.medium,
-  },
-  nextWaypointName: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  gpsStatusPill: {
-    minHeight: 34,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    paddingHorizontal: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  gpsStatusPillText: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-  },
-  pendingBookingPrompt: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    gap: Spacing.sm,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 5,
-    elevation: 5,
-  },
-  pendingBookingHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  pendingBookingIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary + '14',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pendingBookingTitleWrap: {
-    flex: 1,
-    minWidth: 0,
-  },
-  pendingBookingEyebrow: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-    color: Colors.primaryDark,
-    textTransform: 'uppercase',
-  },
-  pendingBookingTitle: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  pendingBookingSeatPill: {
-    minHeight: 30,
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.primary + '12',
-  },
-  pendingBookingSeatText: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-    color: Colors.primaryDark,
-  },
-  pendingBookingRoute: {
-    gap: 6,
-  },
-  pendingBookingRouteRow: {
-    minHeight: 22,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  pendingBookingRouteDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  pendingBookingPickupDot: {
-    backgroundColor: Colors.secondary,
-  },
-  pendingBookingDropoffDot: {
-    backgroundColor: Colors.success,
-  },
-  pendingBookingRouteLabel: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: FontSizes.sm,
-    color: Colors.gray[700],
-  },
-  pendingBookingFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  pendingBookingPaymentText: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[800],
-  },
-  pendingBookingActions: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  pendingBookingActionButton: {
-    minWidth: 92,
-    height: 42,
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  pendingBookingRejectButton: {
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: Colors.danger + '55',
-  },
-  pendingBookingAcceptButton: {
-    backgroundColor: Colors.primary,
-  },
-  pendingBookingActionDisabled: {
-    opacity: 0.62,
-  },
-  pendingBookingRejectText: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.danger,
-  },
-  pendingBookingAcceptText: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.white,
-  },
-  interruptionPrompt: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.danger + '30',
-    padding: Spacing.md,
-    gap: Spacing.sm,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.16,
-    shadowRadius: 5,
-    elevation: 5,
-  },
-  interruptionPromptHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  interruptionPromptIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.danger + '12',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  interruptionPromptTitleWrap: {
-    flex: 1,
-    minWidth: 0,
-  },
-  interruptionPromptEyebrow: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-    color: Colors.danger,
-    textTransform: 'uppercase',
-  },
-  interruptionPromptTitle: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  interruptionPromptText: {
-    fontSize: FontSizes.sm,
-    lineHeight: 19,
-    color: Colors.gray[700],
-  },
-  interruptionPromptActions: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  interruptionPromptButton: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: BorderRadius.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  interruptionPromptRejectButton: {
-    borderWidth: 1,
-    borderColor: Colors.danger + '55',
-    backgroundColor: Colors.white,
-  },
-  interruptionPromptConfirmButton: {
-    backgroundColor: Colors.danger,
-  },
-  interruptionPromptRejectText: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.danger,
-  },
-  interruptionPromptConfirmText: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.white,
-  },
-  driverInterruptionStatusCard: {
-    minHeight: 50,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.warning + '44',
-    backgroundColor: Colors.warning + '12',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  driverInterruptionStatusCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  driverInterruptionStatusTitle: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  driverInterruptionStatusText: {
-    marginTop: 2,
-    fontSize: FontSizes.xs,
-    color: Colors.gray[700],
-  },
-  // Panneau des passagers
-  passengersPanelOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  passengersPanelBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  passengersPanelContent: {
-    backgroundColor: Colors.white,
-    borderTopLeftRadius: BorderRadius.xxl,
-    borderTopRightRadius: BorderRadius.xxl,
-    padding: Spacing.lg,
-    maxHeight: '70%',
-  },
-  passengersPanelHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: Colors.gray[300],
-    alignSelf: 'center',
-    marginBottom: Spacing.md,
-  },
-  passengersPanelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.md,
-  },
-  passengersPanelTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  passengersPanelStats: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  statBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.gray[100],
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.xs,
-    paddingVertical: 2,
-    gap: 4,
-  },
-  statText: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[700],
-  },
-  waypointsList: {
-    gap: Spacing.xs,
-  },
-  waypointListItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.md,
-    padding: Spacing.sm,
-    gap: Spacing.sm,
-  },
-  waypointListItemCompleted: {
-    backgroundColor: Colors.gray[100],
-    opacity: 0.7,
-  },
-  waypointListItemNext: {
-    backgroundColor: Colors.primary + '15',
-    borderWidth: 1,
-    borderColor: Colors.primary,
-  },
-  waypointListIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: BorderRadius.full,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  waypointListIconCompleted: {
-    backgroundColor: Colors.gray[400],
-  },
-  waypointListInfo: {
-    flex: 1,
-  },
-  waypointListName: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[900],
-  },
-  waypointListNameCompleted: {
-    textDecorationLine: 'line-through',
-    color: Colors.gray[500],
-  },
-  waypointListType: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
-  },
-  waypointListAction: {
-    width: 32,
-    height: 32,
-    borderRadius: BorderRadius.full,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  waypointListActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  waypointListReportAction: {
-    backgroundColor: Colors.danger,
-  },
-  waypointListGpsStatus: {
-    minWidth: 48,
-    height: 32,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    paddingHorizontal: Spacing.xs,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 3,
-  },
-  waypointListGpsStatusText: {
-    fontSize: 10,
-    fontWeight: FontWeights.bold,
-  },
-  nextBadge: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.xs,
-    paddingVertical: 2,
-  },
-  nextBadgeText: {
-    fontSize: 10,
-    fontWeight: FontWeights.bold,
-    color: Colors.white,
-  },
-  closePanelButton: {
-    marginTop: Spacing.md,
-    padding: Spacing.md,
-    backgroundColor: Colors.gray[100],
-    borderRadius: BorderRadius.lg,
-    alignItems: 'center',
-  },
-  closePanelButtonText: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[700],
-  },
-  // Styles du modal de waypoint
-  waypointModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  waypointModalContent: {
-    backgroundColor: Colors.white,
-    borderTopLeftRadius: BorderRadius.xxl,
-    borderTopRightRadius: BorderRadius.xxl,
-    padding: Spacing.xl,
-    alignItems: 'center',
-  },
-  waypointModalHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: Colors.gray[300],
-    marginBottom: Spacing.lg,
-  },
-  waypointModalIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: BorderRadius.full,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  waypointModalTitle: {
-    fontSize: FontSizes.xl,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    marginBottom: Spacing.xs,
-  },
-  waypointModalPassenger: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.semibold,
-    color: Colors.primary,
-    marginBottom: Spacing.md,
-  },
-  waypointModalAddressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    backgroundColor: Colors.gray[100],
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.md,
-    marginBottom: Spacing.xl,
-  },
-  waypointModalAddress: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[700],
-    flex: 1,
-  },
-  waypointModalWaitingText: {
-    alignSelf: 'stretch',
-    marginTop: -Spacing.md,
-    marginBottom: Spacing.lg,
-    color: Colors.secondary,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-    textAlign: 'center',
-  },
-  tripRevenueSummary: {
-    alignSelf: 'stretch',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.gray[200],
-    marginBottom: Spacing.lg,
-  },
-  tripRevenueRow: {
-    minHeight: 68,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingVertical: Spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.gray[200],
-  },
-  tripRevenueIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tripRevenueCopy: {
-    flex: 1,
-  },
-  tripRevenueLabel: {
-    color: Colors.gray[900],
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-  },
-  tripRevenueHint: {
-    color: Colors.gray[600],
-    fontSize: FontSizes.xs,
-    lineHeight: 17,
-  },
-  tripRevenueAmount: {
-    maxWidth: '34%',
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    textAlign: 'right',
-  },
-  tripRevenueEmpty: {
-    minHeight: 58,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-  },
-  tripRevenueLoading: {
-    alignSelf: 'stretch',
-    minHeight: 54,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.gray[200],
-    marginBottom: Spacing.lg,
-  },
-  waypointGpsStatus: {
-    width: '100%',
-    minHeight: 48,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    marginBottom: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-  },
-  pickupBypassStatus: {
-    backgroundColor: Colors.warning + '15',
-    borderColor: Colors.warning,
-  },
-  waypointGpsStatusText: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    textAlign: 'center',
-  },
-  waypointModalActions: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-    width: '100%',
-  },
-  waypointModalSecondaryButton: {
-    flex: 1,
-    height: 52,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.gray[300],
-    backgroundColor: Colors.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  pickupBypassDecisionButton: {
-    flexDirection: 'row',
-    gap: Spacing.xs,
-  },
-  pickupBypassCancelButton: {
-    borderColor: Colors.danger + '40',
-  },
-  pickupBypassCancelButtonText: {
-    color: Colors.danger,
-  },
-  waypointModalSecondaryButtonText: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[700],
-  },
-  waypointModalPrimaryButton: {
-    flex: 1,
-    height: 52,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.success,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  pickupBypassConfirmButton: {
-    backgroundColor: Colors.success,
-  },
-  waypointModalPrimaryButtonText: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.white,
-  },
-  waypointModalReportButton: {
-    marginTop: Spacing.md,
-    width: '100%',
-    height: 48,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.danger,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-  },
-  waypointModalReportButtonText: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.white,
-  },
-});
+

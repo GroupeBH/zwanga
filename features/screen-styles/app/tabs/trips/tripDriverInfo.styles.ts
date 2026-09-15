@@ -1,0 +1,295 @@
+import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from "@/constants/styles";
+import { StyleSheet } from "react-native";
+
+export const styles = StyleSheet.create({
+  tripDriverInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    backgroundColor: Colors.gray[300],
+    borderRadius: BorderRadius.full,
+    marginRight: Spacing.md,
+  },
+  tripDriverDetails: {
+    flex: 1,
+  },
+  driverName: {
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+    fontSize: FontSizes.base,
+    marginBottom: Spacing.xs,
+  },
+  driverMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  driverRating: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginLeft: Spacing.xs,
+  },
+  dot: {
+    width: 4,
+    height: 4,
+    backgroundColor: Colors.gray[400],
+    borderRadius: BorderRadius.full,
+    marginHorizontal: Spacing.sm,
+  },
+  vehicleInfo: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  statusBadge: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+  },
+  statusText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  routeContainer: {
+    marginBottom: Spacing.md,
+  },
+  routeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  routeText: {
+    color: Colors.gray[700],
+    marginLeft: Spacing.sm,
+    flex: 1,
+    fontSize: FontSizes.base,
+  },
+  timeContainer: {
+    alignItems: 'flex-end',
+  },
+  routeDateLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.primary,
+    fontWeight: FontWeights.medium,
+    marginBottom: 2,
+  },
+  routeTime: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[500],
+  },
+  routeDivider: {
+    width: 2,
+    height: 24,
+    backgroundColor: Colors.gray[300],
+    marginLeft: 8,
+    marginBottom: Spacing.sm,
+  },
+  tripFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[100],
+  },
+  tripFooterLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  infoText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+    marginLeft: Spacing.xs,
+  },
+  ownerActionsRow: {
+    flexDirection: 'row',
+    marginTop: Spacing.md,
+  },
+  ownerActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+    marginRight: Spacing.sm,
+  },
+  ownerActionDanger: {
+    borderColor: 'rgba(231, 76, 60, 0.3)',
+    backgroundColor: 'rgba(231, 76, 60, 0.08)',
+  },
+  ownerActionText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[800],
+  },
+  ownerActionDangerText: {
+    color: Colors.danger,
+  },
+  ownerActionDisabled: {
+    opacity: 0.5,
+  },
+  detailsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 107, 53, 0.1)',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.md,
+  },
+  detailsButtonText: {
+    color: Colors.primary,
+    fontWeight: FontWeights.semibold,
+    marginRight: Spacing.xs,
+    fontSize: FontSizes.sm,
+  },
+  modalKeyboard: {
+    flex: 1,
+  },
+  modalKeyboardIos: {
+    backgroundColor: Colors.white,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalOverlayIos: {
+    backgroundColor: Colors.white,
+    justifyContent: 'flex-start',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  modalCard: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: '92%',
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.sm,
+    flexDirection: 'column',
+    elevation: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+  },
+  modalCardIos: {
+    flex: 1,
+    maxHeight: '100%',
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    paddingTop: Spacing.lg,
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  modalHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.gray[300],
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.lg,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  modalTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  modalSubtitle: {
+    marginTop: Spacing.xs,
+    color: Colors.gray[600],
+    fontSize: FontSizes.sm,
+  },
+  modalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.gray[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalStepIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: 4,
+    marginBottom: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.gray[50],
+  },
+  modalStepPill: {
+    flex: 1,
+    minHeight: 34,
+    borderRadius: BorderRadius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  modalStepPillActive: {
+    backgroundColor: Colors.white,
+    borderColor: Colors.primary + '25',
+  },
+  modalStepText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[500],
+  },
+  modalStepTextActive: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  modalScrollView: {
+    minHeight: 220,
+    maxHeight: 430,
+  },
+  modalScrollViewIos: {
+    flex: 1,
+    maxHeight: '100%',
+  },
+  modalScrollContent: {
+    paddingBottom: Spacing.xl,
+  },
+  modalRouteCard: {
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    borderRadius: BorderRadius.sm,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+    gap: Spacing.md,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 3,
+  },
+  modalRouteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalRouteTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  }
+});

@@ -1,4 +1,7 @@
+import { styles } from '../../../features/screen-styles/app/booking/navigate/detail/index';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { useOfflineRideData } from '@/hooks/navigation/useOfflineRideData';
+import { RideRecoveryControl, type RecoveryFix } from '@/features/ride-recovery/RideRecoveryControl';
 import { PausedPassengerRideNotice } from '@/components/trip/PausedPassengerRideNotice';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useNavigationMapLifecycle } from '@/hooks/navigation/useNavigationMapLifecycle';
@@ -12,7 +15,7 @@ import {
   VEHICLE_TRACKING_MARKER_ANCHOR,
   VehicleTrackingMarker,
 } from '@/components/TrackingMapMarkers';
-import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { Colors, Spacing } from '@/constants/styles';
 import {
   BOARDING_LOCATION_MAX_AGE_MS,
   BOARDING_MAX_ACCEPTED_GPS_ACCURACY_METERS,
@@ -21,11 +24,7 @@ import {
   PASSENGER_LOCATION_SEND_INTERVAL_MS,
   PASSENGER_READY_DISTANCE_KM,
 } from '@/constants/rideProgress';
-import {
-  trackingSocket,
-  type BookingAutoProgressPayload,
-  type DriverLocationPayload,
-} from '@/services/trackingSocket';
+import { trackingSocket, type BookingAutoProgressPayload, type DriverLocationPayload } from '@/services/trackingSocket';
 import { displayNotification } from '@/services/pushNotifications';
 import {
   startPassengerBackgroundLocationTracking,
@@ -63,10 +62,7 @@ import {
 } from '@/utils/navigation/routeProgress';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
 import { shareTrip } from '@/utils/shareHelpers';
-import {
-  getTripInterruptionReasonLabel,
-  isPendingTripInterruption,
-} from '@/utils/tripInterruption';
+import { getTripInterruptionReasonLabel, isPendingTripInterruption } from '@/utils/tripInterruption';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -78,7 +74,6 @@ import {
   Modal,
   Platform,
   StatusBar,
-  StyleSheet,
   Text,
   TouchableOpacity,
   View,
@@ -213,17 +208,19 @@ export default function PassengerNavigationScreen() {
   const isScreenActive = isFocused && isAppActive;
 
   // Récupérer la réservation et le trajet
-  const { data: booking, isLoading: bookingLoading, refetch: refetchBooking } = useGetBookingByIdQuery(bookingId, { 
+  const { data: liveBooking, error: bookingError, isLoading: bookingLoading, refetch: refetchBooking } = useGetBookingByIdQuery(bookingId, {
     skip: !bookingId,
     pollingInterval: isScreenActive ? 60_000 : 0,
     skipPollingIfUnfocused: true,
   });
+  const { data: booking, offline: offlineBooking } = useOfflineRideData(`booking:${bookingId}`, liveBooking, bookingError, liveBooking?.status === 'accepted');
   const tripId = booking?.tripId || '';
-  const { data: trip, isLoading: tripLoading, refetch: refetchTrip } = useGetTripByIdQuery(tripId, {
+  const { data: liveTrip, error: tripError, isLoading: tripLoading, refetch: refetchTrip } = useGetTripByIdQuery(tripId, {
     skip: !tripId,
     pollingInterval: isScreenActive ? 30_000 : 0,
     skipPollingIfUnfocused: true,
   });
+  const { data: trip, offline: offlineTrip } = useOfflineRideData(`trip:${tripId}`, liveTrip, tripError, liveTrip?.status === 'ongoing');
   const isTripOngoing = trip?.status === 'ongoing';
   const { data: driverLocationSnapshot } = useGetDriverLocationQuery(tripId, {
     skip: !tripId || !isTripOngoing,
@@ -253,6 +250,7 @@ export default function PassengerNavigationScreen() {
   const dropoffMarkerRef = useRef<MapMarker | null>(null);
   const [driverLocation, setDriverLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [passengerLocation, setPassengerLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [recoveryFix, setRecoveryFix] = useState<RecoveryFix | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const { onReady: refreshTrackingMarker, isLoaded: isTrackingMarkerLoaded } =
@@ -1291,6 +1289,7 @@ export default function PassengerNavigationScreen() {
       lastAcceptedPassengerCoordinateRef.current = coordinate;
       lastAcceptedPassengerTimestampRef.current = acceptedTimestamp;
       setPassengerLocation(coordinate);
+      setRecoveryFix({ ...coordinate, recordedAt: acceptedTimestamp, accuracy: location.coords.accuracy ?? undefined });
 
       const now = Date.now();
       if (now - lastSentAt < PASSENGER_LOCATION_SEND_INTERVAL_MS) return;
@@ -2084,7 +2083,7 @@ export default function PassengerNavigationScreen() {
   }, [activeRouteSegment, hasPickupConnectorSegment]);
 
   // Loading
-  if (bookingLoading || tripLoading) {
+  if ((bookingLoading && !booking) || (tripLoading && !trip)) {
     return (
       <View style={styles.loadingContainer}>
         <StatusBar barStyle="dark-content" />
@@ -2368,7 +2367,7 @@ export default function PassengerNavigationScreen() {
              tripStatus === 'awaiting_dropoff_confirmation' ? 'Arrivée détectée' :
              tripStatus === 'completed' ? 'Arrivé' : 'Suivi du trajet'}
           </Text>
-          {isSocketConnected && (
+          {isSocketConnected && !offlineBooking && !offlineTrip && (
             <View style={styles.liveIndicator}>
               <View style={styles.liveDot} />
               <Text style={styles.liveText}>LIVE</Text>
@@ -2399,6 +2398,8 @@ export default function PassengerNavigationScreen() {
         style={[styles.infoCard, { paddingBottom: insets.bottom + 16 }]}
       >
         {/* Projection du trajet (compact) */}
+        {(offlineBooking || offlineTrip) && <Text style={{ color: Colors.gray[600], fontSize: 12, marginBottom: 8 }}>Dernières informations enregistrées. La carte et le suivi en direct nécessitent une connexion.</Text>}
+        {isTripOngoing && <RideRecoveryControl tripId={tripId} booking={booking} actor="passenger" fix={recoveryFix} destination={booking.passengerDestinationCoordinates} />}
         <View style={styles.routeInfo}>
           <View style={styles.routePoint}>
             <View style={[styles.routeDot, { backgroundColor: Colors.secondary }]} />
@@ -2696,642 +2697,4 @@ export default function PassengerNavigationScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.gray[100],
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-  },
-  loadingText: {
-    marginTop: Spacing.md,
-    fontSize: FontSizes.base,
-    color: Colors.gray[600],
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-    padding: Spacing.xl,
-  },
-  errorText: {
-    marginTop: Spacing.md,
-    fontSize: FontSizes.lg,
-    color: Colors.gray[700],
-    textAlign: 'center',
-  },
-  backButton: {
-    marginTop: Spacing.xl,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.md,
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.lg,
-  },
-  backButtonText: {
-    color: Colors.white,
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-  },
-  map: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  mapPlaceholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: Colors.gray[100],
-  },
-  mapPlaceholderText: {
-    marginTop: Spacing.sm,
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-  },
-  floatingButtons: {
-    position: 'absolute',
-    right: Spacing.md,
-    gap: Spacing.sm,
-    zIndex: 10,
-  },
-  floatingButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  floatingButtonLoading: {
-    opacity: 0.7,
-  },
-  floatingButtonDisabled: {
-    opacity: 0.55,
-  },
-  floatingButtonActive: {
-    borderWidth: 1,
-    borderColor: Colors.primary + '33',
-    backgroundColor: Colors.primary + '10',
-  },
-  segmentToggle: {
-    position: 'absolute',
-    right: Spacing.md,
-    zIndex: 11,
-    gap: 4,
-    padding: 4,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: 'rgba(255, 255, 255, 0.94)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.14,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  segmentToggleButton: {
-    minWidth: 78,
-    minHeight: 34,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: Spacing.sm,
-    borderRadius: BorderRadius.sm,
-    opacity: 0.7,
-  },
-  segmentToggleButtonActive: {
-    backgroundColor: Colors.primaryDark,
-    opacity: 1,
-  },
-  segmentToggleButtonPickupActive: {
-    backgroundColor: Colors.infoDark,
-    opacity: 1,
-  },
-  segmentToggleText: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[700],
-  },
-  segmentToggleTextActive: {
-    color: Colors.white,
-  },
-  header: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    paddingBottom: Spacing.sm,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderBottomLeftRadius: BorderRadius.xl,
-    borderBottomRightRadius: BorderRadius.xl,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  headerButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.gray[50],
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center',
-    marginHorizontal: Spacing.sm,
-  },
-  headerTitle: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  liveIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.success,
-    marginRight: 4,
-  },
-  liveText: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-    color: Colors.success,
-  },
-  infoCard: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: Colors.white,
-    borderTopLeftRadius: BorderRadius.xxl,
-    borderTopRightRadius: BorderRadius.xxl,
-    padding: Spacing.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  driverInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  driverAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  driverAvatarText: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.white,
-  },
-  driverDetails: {
-    flex: 1,
-    marginLeft: Spacing.md,
-  },
-  driverName: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  vehicleInfo: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    marginTop: 2,
-  },
-  callButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.success + '15',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  routeStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  routeStat: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  routeStatValue: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  routeStatLabel: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
-  },
-  routeStatDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: Colors.gray[200],
-  },
-  liveStatDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: Colors.success,
-  },
-  routeLoadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    paddingVertical: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  routeLoadingText: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[500],
-  },
-  statusRow: {
-    marginBottom: Spacing.md,
-  },
-  lastUpdateText: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
-    textAlign: 'center',
-  },
-  waitingText: {
-    fontSize: FontSizes.sm,
-    color: Colors.secondary,
-    fontStyle: 'italic',
-    textAlign: 'center',
-  },
-  routeInfo: {
-    backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-  },
-  routePoint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  routeDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: Spacing.sm,
-  },
-  routeText: {
-    flex: 1,
-    fontSize: FontSizes.sm,
-    color: Colors.gray[700],
-  },
-  routeLine: {
-    width: 2,
-    height: 20,
-    backgroundColor: Colors.gray[300],
-    marginLeft: 5,
-    marginVertical: 4,
-  },
-  currentIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.info,
-    marginLeft: Spacing.sm,
-  },
-  actionButtons: {
-    marginTop: Spacing.sm,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.lg,
-    gap: Spacing.sm,
-  },
-  actionButtonDisabled: {
-    opacity: 0.65,
-  },
-  pickupButton: {
-    backgroundColor: Colors.secondary,
-  },
-  dropoffButton: {
-    backgroundColor: Colors.success,
-  },
-  interruptionButton: {
-    marginTop: Spacing.sm,
-    backgroundColor: Colors.danger,
-  },
-  interruptionStatusCard: {
-    marginTop: Spacing.sm,
-    minHeight: 58,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.warning + '44',
-    backgroundColor: Colors.warning + '12',
-    padding: Spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  interruptionStatusCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  interruptionStatusTitle: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  interruptionStatusText: {
-    marginTop: 2,
-    fontSize: FontSizes.xs,
-    lineHeight: 17,
-    color: Colors.gray[600],
-  },
-  driverInterruptionCard: {
-    marginTop: Spacing.sm,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.danger + '33',
-    backgroundColor: Colors.danger + '08',
-    padding: Spacing.md,
-    gap: Spacing.sm,
-  },
-  driverInterruptionHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.sm,
-  },
-  driverInterruptionTitle: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  driverInterruptionText: {
-    marginTop: 2,
-    fontSize: FontSizes.xs,
-    lineHeight: 17,
-    color: Colors.gray[700],
-  },
-  driverInterruptionResponseText: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[700],
-  },
-  driverInterruptionActions: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  driverInterruptionSecondaryButton: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.danger + '55',
-    backgroundColor: Colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  driverInterruptionPrimaryButton: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.danger,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  driverInterruptionSecondaryText: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.danger,
-  },
-  driverInterruptionPrimaryText: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.white,
-  },
-  reportButton: {
-    backgroundColor: Colors.danger,
-    marginBottom: Spacing.sm,
-  },
-  actionButtonText: {
-    color: Colors.white,
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-  },
-  cancelTripButton: {
-    marginTop: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.danger + '33',
-    backgroundColor: Colors.danger + '10',
-  },
-  cancelTripButtonText: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.danger,
-  },
-  completedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.md,
-    backgroundColor: Colors.success + '15',
-    borderRadius: BorderRadius.lg,
-    gap: Spacing.sm,
-  },
-  completedText: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    color: Colors.success,
-  },
-  notStartedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.md,
-    backgroundColor: Colors.secondary + '15',
-    borderRadius: BorderRadius.lg,
-    gap: Spacing.sm,
-  },
-  notStartedText: {
-    fontSize: FontSizes.sm,
-    color: Colors.secondary,
-    fontWeight: FontWeights.medium,
-  },
-  driverMarker: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.info,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: Colors.white,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  passengerMarker: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: Colors.primary + '25',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: Colors.white,
-  },
-  passengerMarkerInner: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: Colors.primary,
-    borderWidth: 2,
-    borderColor: Colors.white,
-  },
-  pickupMarker: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.secondary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: Colors.white,
-  },
-  dropoffMarker: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: Colors.white,
-  },
-  arrivalModalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(15, 23, 42, 0.55)',
-  },
-  arrivalModalContent: {
-    width: '100%',
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.sm,
-    backgroundColor: Colors.white,
-    borderTopLeftRadius: BorderRadius.xl,
-    borderTopRightRadius: BorderRadius.xl,
-    alignItems: 'center',
-  },
-  arrivalModalHandle: {
-    width: 42,
-    height: 4,
-    borderRadius: 2,
-    marginBottom: Spacing.lg,
-    backgroundColor: Colors.gray[300],
-  },
-  arrivalModalIcon: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.md,
-    backgroundColor: Colors.success,
-  },
-  arrivalModalTitle: {
-    color: Colors.gray[900],
-    fontSize: FontSizes.xl,
-    fontWeight: FontWeights.bold,
-  },
-  arrivalModalText: {
-    marginTop: Spacing.xs,
-    color: Colors.gray[600],
-    fontSize: FontSizes.sm,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-  arrivalModalAddressRow: {
-    width: '100%',
-    minHeight: 48,
-    marginTop: Spacing.lg,
-    paddingHorizontal: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.gray[100],
-  },
-  arrivalModalAddress: {
-    flex: 1,
-    color: Colors.gray[800],
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-  },
-  arrivalModalGpsStatus: {
-    marginTop: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  arrivalModalGpsStatusText: {
-    color: Colors.success,
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-  },
-  arrivalModalHint: {
-    marginTop: Spacing.md,
-    color: Colors.gray[500],
-    fontSize: FontSizes.xs,
-    textAlign: 'center',
-  },
-  arrivalModalActions: {
-    width: '100%',
-    marginTop: Spacing.lg,
-    flexDirection: 'row',
-    gap: Spacing.md,
-  },
-  arrivalModalLaterButton: {
-    flex: 1,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.gray[300],
-    backgroundColor: Colors.white,
-  },
-  arrivalModalLaterButtonText: {
-    color: Colors.gray[700],
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-  },
-});
+

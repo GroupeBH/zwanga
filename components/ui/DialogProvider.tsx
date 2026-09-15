@@ -1,59 +1,16 @@
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
 import {
-  ActivityIndicator,
-  Image,
-  Modal,
-  Platform,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+  DialogVariant,
+  DialogAction,
+  DialogOptions,
+  DialogState,
+  PendingDialogAction,
+  DialogContextValue,
+} from '../../features/dialogs/dialogTypes';
+import React, { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Image, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
-
-type DialogVariant = 'info' | 'success' | 'warning' | 'danger';
-
-interface DialogAction {
-  label: string;
-  onPress?: () => unknown;
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'destructive';
-  autoClose?: boolean;
-}
-
-interface DialogOptions {
-  title: string;
-  message?: string;
-  icon?: keyof typeof Ionicons.glyphMap;
-  previewImageUri?: string;
-  content?: ReactNode;
-  variant?: DialogVariant;
-  actions?: DialogAction[];
-  dismissible?: boolean;
-}
-
-interface DialogState extends DialogOptions {
-  visible: boolean;
-}
-
-interface PendingDialogAction {
-  action: DialogAction;
-  dialog: DialogState | null;
-}
-
-interface DialogContextValue {
-  showDialog: (options: DialogOptions) => void;
-  hideDialog: () => void;
-}
 
 const DialogContext = createContext<DialogContextValue | undefined>(undefined);
 

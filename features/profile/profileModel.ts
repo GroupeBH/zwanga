@@ -1,19 +1,15 @@
-import type {
-  PaymentHistoryItem,
-  SubscriptionPaymentMethod,
-  SubscriptionPaymentResponse,
-  SubscriptionPlan,
-  Vehicle
-} from '@/types';
-import {
-  getApiErrorMessage
-} from '@/utils/errorHelpers';
+
+export { DRC_MOBILE_MONEY_PREFIX } from './paymentPhone';
+export { DRC_MOBILE_MONEY_REGEX } from './paymentPhone';
+export { normalizePaymentPhone } from './paymentPhone';
+export { formatCongolesePaymentPhone } from './paymentPhone';
+export { isValidCongolesePaymentPhone } from './paymentPhone';
+import type { PaymentHistoryItem, SubscriptionPaymentMethod, SubscriptionPaymentResponse, SubscriptionPlan, Vehicle } from '@/types';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import * as ExpoLinking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
-import {
-  Linking
-} from 'react-native';
+import { Linking } from 'react-native';
 
 export const formatSubscriptionAmount = (amount?: number | string, currency?: string) => {
   const numericAmount = Number(amount);
@@ -144,45 +140,6 @@ export const SUBSCRIPTION_PAYMENT_OPTIONS: {
       icon: 'card-outline',
     },
   ];
-
-export const DRC_MOBILE_MONEY_PREFIX = '+243';
-
-export const DRC_MOBILE_MONEY_REGEX = /^\+243\d{9}$/;
-
-export const normalizePaymentPhone = (value?: string | null) => {
-  const trimmed = (value ?? '').trim();
-  if (!trimmed) return '';
-
-  const digits = trimmed.replace(/\D/g, '');
-  if (!digits) {
-    return trimmed.startsWith('+') ? '+' : '';
-  }
-
-  return trimmed.startsWith('+') ? `+${digits}` : digits;
-};
-
-export const formatCongolesePaymentPhone = (value?: string | null) => {
-  const normalized = normalizePaymentPhone(value);
-  if (!normalized) return '';
-
-  const digits = normalized.replace(/\D/g, '');
-  if (digits.startsWith('243') && digits.length === 12) {
-    return `+${digits}`;
-  }
-
-  if (digits.startsWith('0') && digits.length === 10) {
-    return `${DRC_MOBILE_MONEY_PREFIX}${digits.slice(1)}`;
-  }
-
-  if (digits.length === 9) {
-    return `${DRC_MOBILE_MONEY_PREFIX}${digits}`;
-  }
-
-  return normalized;
-};
-
-export const isValidCongolesePaymentPhone = (value?: string | null) =>
-  DRC_MOBILE_MONEY_REGEX.test(formatCongolesePaymentPhone(value));
 
 export const getApiMessage = (error: any, fallback: string) => {
   return getApiErrorMessage(error, fallback);

@@ -9,6 +9,7 @@ import { authRefreshApi } from './api/authRefreshApi';
 import { zwangaApi } from './api/zwangaApi';
 import { mapboxApi } from './api/mapboxApi';
 import authReducer from './slices/authSlice';
+import rideRecoveryReducer, { resetRideRecovery } from './slices/rideRecoverySlice';
 import messagesReducer from './slices/messagesSlice';
 import locationReducer from './slices/locationSlice';
 import tripsReducer, { openInterruptionChoice } from './slices/tripsSlice';
@@ -54,6 +55,7 @@ const apiCacheIsolationMiddleware: Middleware = (storeApi) => (next) => (action)
     chatSocket.disconnect();
     trackingSocket.disconnect();
     clearLocationDeliveries();
+    storeApi.dispatch(resetRideRecovery());
     storeApi.dispatch({ type: 'messages/resetMessages' });
     storeApi.dispatch(resetRequestDrafts());
     storeApi.dispatch(resetHomeRequestHighlights());
@@ -70,6 +72,7 @@ const apiCacheIsolationMiddleware: Middleware = (storeApi) => (next) => (action)
 export const store = configureStore({
   reducer: {
     auth: authReducer,
+    rideRecovery: rideRecoveryReducer,
     trips: tripsReducer,
     requestDrafts: requestDraftsReducer,
     homeRequestHighlights: homeRequestHighlightsReducer,

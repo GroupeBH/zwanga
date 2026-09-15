@@ -1,0 +1,285 @@
+import { StyleSheet } from "react-native";
+import { AUTH_SURFACE, AUTH_WARM_SURFACE, AUTH_WARM_BORDER } from '@/features/auth/authColors';
+import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from "@/constants/styles";
+
+export const styles = StyleSheet.create({
+  pinEntryContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinHiddenInput: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    opacity: 0,
+  },
+  pinDot: {
+    fontSize: 28,
+    fontWeight: FontWeights.bold,
+    lineHeight: 34,
+    textAlign: 'center',
+  },
+  pinDotCompact: {
+    fontSize: 24,
+    lineHeight: 30,
+  },
+  pinDotEmpty: {
+    color: AUTH_WARM_BORDER,
+  },
+  pinDotFilled: {
+    color: Colors.primaryDark,
+  },
+  pinInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: AUTH_WARM_BORDER,
+    borderRadius: 16,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: AUTH_SURFACE,
+    height: 50,
+    marginBottom: Spacing.md,
+    alignSelf: 'center',
+    width: 170,
+    justifyContent: 'center',
+  },
+  pinInputIcon: {
+    marginRight: Spacing.sm,
+  },
+  pinInputField: {
+    flex: 1,
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
+    height: '100%',
+    textAlign: 'center',
+  },
+  // Profile
+  profileStepContainer: {
+    paddingBottom: Spacing.sm,
+  },
+  profileCompactHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  profileCompactHeading: {
+    flex: 1,
+  },
+  profileCompactEyebrow: {
+    color: Colors.primaryDark,
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  profileCompactTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.xxl,
+    fontWeight: FontWeights.bold,
+  },
+  avatarUpload: {
+    position: 'relative',
+    marginRight: 2,
+  },
+  avatarPlaceholder: {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    backgroundColor: AUTH_WARM_SURFACE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: AUTH_WARM_BORDER,
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    elevation: 3,
+  },
+  avatarImage: {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: AUTH_SURFACE,
+  },
+  editBadge: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    backgroundColor: Colors.primaryDark,
+    width: 23,
+    height: 23,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: AUTH_SURFACE,
+  },
+  profileNameRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  legalIdentitySection: {
+    gap: Spacing.sm,
+  },
+  legalIdentityNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    padding: Spacing.sm,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: `${Colors.primary}30`,
+    backgroundColor: `${Colors.primary}0A`,
+  },
+  legalIdentityNoticeText: {
+    flex: 1,
+    color: Colors.gray[700],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+  },
+  profileInputWrapper: {
+    flex: 1,
+    height: 46,
+    minWidth: 0,
+    marginBottom: 0,
+    paddingHorizontal: Spacing.md,
+    borderRadius: 14,
+  },
+  profileInputIcon: {
+    marginRight: Spacing.sm,
+  },
+  genderSelection: {
+    marginTop: Spacing.sm,
+  },
+  referralApplied: {
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: `${Colors.success}40`,
+    backgroundColor: `${Colors.success}0D`,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  referralAppliedIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: `${Colors.primary}14`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  referralAppliedCopy: {
+    flex: 1,
+  },
+  referralAppliedTitle: {
+    color: Colors.gray[900],
+    fontSize: FontSizes.sm,
+    fontWeight: '700',
+  },
+  referralAppliedHint: {
+    color: Colors.gray[500],
+    fontSize: FontSizes.xs,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  // Roles
+  sectionLabel: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[800],
+    marginBottom: Spacing.md,
+    marginTop: Spacing.sm,
+  },
+  roleSelection: {
+    marginTop: Spacing.sm,
+  },
+  profileSectionLabel: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[800],
+    marginBottom: 6,
+  },
+  roleCards: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  roleCard: {
+    flex: 1,
+    minHeight: 46,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    backgroundColor: AUTH_SURFACE,
+    borderWidth: 1,
+    borderColor: AUTH_WARM_BORDER,
+    borderRadius: 14,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  roleCardActive: {
+    borderColor: Colors.primary,
+    backgroundColor: AUTH_WARM_SURFACE,
+  },
+  roleIconBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[100],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  roleIconBadgeActive: {
+    backgroundColor: Colors.primary,
+  },
+  roleLabel: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[600],
+  },
+  roleLabelActive: {
+    color: Colors.primaryDark,
+    fontWeight: FontWeights.bold,
+  },
+  // Vehicle
+  vehicleSection: {
+    marginTop: Spacing.sm,
+  },
+  vehicleTypesScroll: {
+    flexDirection: 'row',
+    paddingVertical: Spacing.xs,
+    gap: Spacing.sm,
+  },
+  vehicleTypeCard: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 58,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: AUTH_WARM_BORDER,
+    backgroundColor: AUTH_SURFACE,
+    gap: 2,
+  },
+  vehicleTypeCardActive: {
+    borderColor: Colors.primary,
+    backgroundColor: AUTH_WARM_SURFACE,
+  },
+  vehicleTypeLabel: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[500],
+  },
+  vehicleTypeLabelActive: {
+    color: Colors.primaryDark,
+  }
+});

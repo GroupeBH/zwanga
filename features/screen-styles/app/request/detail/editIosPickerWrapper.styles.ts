@@ -1,0 +1,167 @@
+import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from "@/constants/styles";
+import { StyleSheet } from "react-native";
+
+export const styles = StyleSheet.create({
+  editIosPickerWrapper: {
+    marginTop: Spacing.md,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    overflow: 'hidden',
+  },
+  editRowInputs: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  editTextArea: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  editModalFooter: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[100],
+    backgroundColor: Colors.white,
+  },
+  editModalCancelButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.gray[100],
+    alignItems: 'center',
+  },
+  editModalCancelText: {
+    fontSize: FontSizes.base,
+    color: Colors.gray[700],
+    fontWeight: FontWeights.semibold,
+  },
+  editModalSaveButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  editModalSaveButtonDisabled: {
+    backgroundColor: Colors.gray[300],
+    opacity: 0.7,
+  },
+  editModalSaveText: {
+    fontSize: FontSizes.base,
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+  },
+  editSectionIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: Colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editModeRow: {
+    flexDirection: 'row',
+    backgroundColor: Colors.gray[100],
+    borderRadius: 10,
+    padding: 4,
+    marginBottom: Spacing.md,
+  },
+  editModeChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  editModeChipActive: {
+    backgroundColor: Colors.white,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  editModeChipText: {
+    fontSize: 13,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[500],
+  },
+  editModeChipTextActive: {
+    color: Colors.primary,
+    fontWeight: FontWeights.bold,
+  },
+  editRouteCard: {
+    backgroundColor: Colors.gray[50],
+    borderRadius: 16,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+  },
+  editRouteMapBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+  },
+  editRouteMapDot: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.sm,
+  },
+  editRouteMapContent: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  editRouteMapType: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    marginBottom: 2,
+  },
+  editRouteMapValue: {
+    fontSize: 14,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
+  },
+  editRouteDividerLine: {
+    width: 1,
+    height: 20,
+    backgroundColor: Colors.gray[300],
+    marginLeft: 16,
+    marginVertical: 4,
+  },
+  editRouteManualItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  editRouteManualDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: Spacing.md,
+    marginLeft: 10,
+  },
+  editRouteManualLabel: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[500],
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  editRouteManualInput: {
+    fontSize: 14,
+    fontWeight: FontWeights.medium,
+    color: Colors.gray[900],
+    padding: 0,
+    minHeight: 24,
+  }
+});

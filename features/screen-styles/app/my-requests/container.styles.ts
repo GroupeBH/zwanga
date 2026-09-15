@@ -1,0 +1,245 @@
+import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from "@/constants/styles";
+import { StyleSheet } from "react-native";
+
+export const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.gray[50],
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[200],
+  },
+  backButton: {
+    padding: Spacing.xs,
+  },
+  headerTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    flex: 1,
+    textAlign: 'center',
+  },
+  headerSpacer: {
+    width: 32,
+  },
+  createButton: {
+    padding: Spacing.xs,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  loadingText: {
+    fontSize: FontSizes.base,
+    color: Colors.gray[600],
+  },
+  listContent: {
+    padding: Spacing.lg,
+  },
+  requestCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    marginBottom: Spacing.md,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  requestCardFeatured: {
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  requestCardFeaturedConfirmed: {
+    borderColor: Colors.success,
+    shadowColor: Colors.success,
+  },
+  requestCardWithOffers: {
+    borderWidth: 2,
+    borderColor: Colors.info,
+    backgroundColor: Colors.info + '08',
+    shadowColor: Colors.info,
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  requestCardWithPendingOffers: {
+    borderColor: Colors.warning,
+    backgroundColor: Colors.warning + '08',
+    shadowColor: Colors.warning,
+  },
+  requestHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: Spacing.md,
+  },
+  statusBadgeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    flex: 1,
+    flexWrap: 'wrap',
+  },
+  requestTrackingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 5,
+    borderRadius: BorderRadius.full,
+  },
+  requestTrackingBadgeText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+  },
+  statusBadge: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.md,
+  },
+  statusText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+  },
+  offersBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    backgroundColor: Colors.info + '15',
+    borderRadius: BorderRadius.sm,
+  },
+  offersBadgeText: {
+    fontSize: FontSizes.xs,
+    color: Colors.info,
+    fontWeight: FontWeights.medium,
+  },
+  requestDate: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[600],
+  },
+  routeContainer: {
+    marginBottom: Spacing.md,
+  },
+  routeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.xs,
+  },
+  routeText: {
+    flex: 1,
+    marginLeft: Spacing.sm,
+    fontSize: FontSizes.base,
+    color: Colors.gray[800],
+  },
+  requestDetails: {
+    marginBottom: Spacing.md,
+    gap: Spacing.xs,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  detailText: {
+    fontSize: FontSizes.sm,
+    color: Colors.gray[700],
+  },
+  selectedDriverContainer: {
+    marginTop: Spacing.sm,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[200],
+  },
+  selectedDriverInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  selectedDriverAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.gray[200],
+    marginRight: Spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  selectedDriverLabel: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+    marginBottom: 2,
+  },
+  selectedDriverName: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
+  },
+  cardFooter: {
+    marginTop: Spacing.md,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray[200],
+  },
+  viewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+  },
+  viewButtonText: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.primary,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.xl,
+  },
+  emptyTitle: {
+    fontSize: FontSizes.xl,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.sm,
+  },
+  emptyText: {
+    fontSize: FontSizes.base,
+    color: Colors.gray[600],
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: Spacing.lg,
+  },
+  createRequestButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  createRequestButtonText: {
+    color: Colors.white,
+    fontWeight: FontWeights.bold,
+    fontSize: FontSizes.base,
+  }
+});

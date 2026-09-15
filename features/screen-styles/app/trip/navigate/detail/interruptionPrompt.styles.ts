@@ -1,0 +1,293 @@
+import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from "@/constants/styles";
+import { StyleSheet } from "react-native";
+
+export const styles = StyleSheet.create({
+  interruptionPrompt: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.danger + '30',
+    padding: Spacing.md,
+    gap: Spacing.sm,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.16,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  interruptionPromptHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  interruptionPromptIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.danger + '12',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  interruptionPromptTitleWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  interruptionPromptEyebrow: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.bold,
+    color: Colors.danger,
+    textTransform: 'uppercase',
+  },
+  interruptionPromptTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  interruptionPromptText: {
+    fontSize: FontSizes.sm,
+    lineHeight: 19,
+    color: Colors.gray[700],
+  },
+  interruptionPromptActions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  interruptionPromptButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: BorderRadius.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  interruptionPromptRejectButton: {
+    borderWidth: 1,
+    borderColor: Colors.danger + '55',
+    backgroundColor: Colors.white,
+  },
+  interruptionPromptConfirmButton: {
+    backgroundColor: Colors.danger,
+  },
+  interruptionPromptRejectText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.danger,
+  },
+  interruptionPromptConfirmText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
+  },
+  driverInterruptionStatusCard: {
+    minHeight: 50,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.warning + '44',
+    backgroundColor: Colors.warning + '12',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  driverInterruptionStatusCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  driverInterruptionStatusTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  driverInterruptionStatusText: {
+    marginTop: 2,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[700],
+  },
+  // Panneau des passagers
+  passengersPanelOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  passengersPanelBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  passengersPanelContent: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    padding: Spacing.lg,
+    maxHeight: '70%',
+  },
+  passengersPanelHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.gray[300],
+    alignSelf: 'center',
+    marginBottom: Spacing.md,
+  },
+  passengersPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.md,
+  },
+  passengersPanelTitle: {
+    fontSize: FontSizes.lg,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  passengersPanelStats: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  statBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.gray[100],
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+    gap: 4,
+  },
+  statText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+  },
+  waypointsList: {
+    gap: Spacing.xs,
+  },
+  waypointListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.gray[50],
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  waypointListItemCompleted: {
+    backgroundColor: Colors.gray[100],
+    opacity: 0.7,
+  },
+  waypointListItemNext: {
+    backgroundColor: Colors.primary + '15',
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  waypointListIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: BorderRadius.full,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  waypointListIconCompleted: {
+    backgroundColor: Colors.gray[400],
+  },
+  waypointListInfo: {
+    flex: 1,
+  },
+  waypointListName: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[900],
+  },
+  waypointListNameCompleted: {
+    textDecorationLine: 'line-through',
+    color: Colors.gray[500],
+  },
+  waypointListType: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[500],
+  },
+  waypointListAction: {
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.full,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  waypointListActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  waypointListReportAction: {
+    backgroundColor: Colors.danger,
+  },
+  waypointListGpsStatus: {
+    minWidth: 48,
+    height: 32,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.xs,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 3,
+  },
+  waypointListGpsStatusText: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+  },
+  nextBadge: {
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+  },
+  nextBadgeText: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    color: Colors.white,
+  },
+  closePanelButton: {
+    marginTop: Spacing.md,
+    padding: Spacing.md,
+    backgroundColor: Colors.gray[100],
+    borderRadius: BorderRadius.lg,
+    alignItems: 'center',
+  },
+  closePanelButtonText: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+  },
+  // Styles du modal de waypoint
+  waypointModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  waypointModalContent: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    padding: Spacing.xl,
+    alignItems: 'center',
+  },
+  waypointModalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.gray[300],
+    marginBottom: Spacing.lg,
+  },
+  waypointModalIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: BorderRadius.full,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+  }
+});

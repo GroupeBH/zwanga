@@ -13,7 +13,6 @@
  * - reviewApi.ts : Avis et signalements (createReview, reportUser, getReviews)
  * - notificationApi.ts : Notifications (getNotifications, markAsRead)
  */
-
 import { baseApi } from './baseApi';
 import './authApi';
 import './messageApi';
@@ -22,6 +21,7 @@ import './reviewApi';
 import './tripApi';
 import './userApi';
 import './bookingApi';
+import './rideRecoveryApi';
 import './vehicleApi';
 import './tripRequestApi';
 import './safetyApi';
