@@ -5,6 +5,7 @@ import {
   findBookingPaymentHistory,
   getLedgerEntryAmount,
   findBookingRewardEntry,
+  hasPassengerArrived,
 } from '../../features/arrival-payment/paymentModel';
 import {
   PaymentChannel,
@@ -81,6 +82,7 @@ export function useArrivalPaymentCompletion({
 
       setCompletionSummary({
         bookingId: latestBooking.id,
+        beforeArrival: !hasPassengerArrived(latestBooking) && !hasPassengerArrived(sourceBooking),
         mode,
         channel: options.channel,
         amount,

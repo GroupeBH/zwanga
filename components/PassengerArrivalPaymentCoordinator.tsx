@@ -138,9 +138,9 @@ export function PassengerArrivalPaymentCoordinator() {
     state.arrivalBooking?.trip?.arrival?.name ??
     'Votre destination';
   const actionLabel = state.paymentAlreadySucceeded
-    ? 'Terminer'
+    ? state.isBeforeArrival ? 'Continuer le trajet' : 'Terminer'
     : state.selectedMode === 'cash'
-      ? 'Confirmer le paiement en espèces'
+      ? state.isBeforeArrival ? 'Préparation du paiement…' : 'Confirmer le paiement en espèces'
       : state.selectedMode === 'points'
         ? state.missingPoints > 0
           ? `Ajouter ${formatMoney(state.moneyComplement, state.paymentCurrency)} et payer`
@@ -158,6 +158,7 @@ export function PassengerArrivalPaymentCoordinator() {
     state.isBusy ||
     state.hasPendingProviderPayment ||
     state.paymentAmount === null ||
+    (state.isBeforeArrival && state.selectedMode === 'cash') ||
     isPaymentPhoneInvalid ||
     (state.selectedMode === 'points' && state.isWalletFetching);
 
@@ -169,7 +170,7 @@ export function PassengerArrivalPaymentCoordinator() {
       statusBarTranslucent
       presentationStyle="overFullScreen"
       onDismiss={navigation.handleModalDismiss}
-      onRequestClose={state.completionSummary ? navigation.handleDismissSummary : () => undefined}
+      onRequestClose={state.completionSummary ? navigation.handleDismissSummary : state.deferEarlyPayment}
     >
       <View style={styles.overlay}>
         <KeyboardAvoidingView
@@ -200,7 +201,7 @@ export function PassengerArrivalPaymentCoordinator() {
                     </View>
                     <View style={styles.headerCopy}>
                       <Text style={styles.eyebrow}>PAIEMENT CONFIRMÉ</Text>
-                      <Text style={styles.title}>Trajet termine</Text>
+                      <Text style={styles.title}>{state.completionSummary.beforeArrival ? 'Votre paiement est réglé' : 'Trajet terminé'}</Text>
                     </View>
                   </View>
 
@@ -224,11 +225,11 @@ export function PassengerArrivalPaymentCoordinator() {
                       </Text>
                     </View>
                     <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Jetons gagnes</Text>
+                      <Text style={styles.summaryLabel}>Jetons gagnés</Text>
                       <Text style={styles.summaryValue}>
                         {state.completionSummary.earnedPointsKnown
                           ? formatPoints(state.completionSummary.earnedPoints)
-                          : 'Calcul en cours'}
+                          : state.completionSummary.beforeArrival ? 'Calculés à l’arrivée' : 'Calcul en cours'}
                       </Text>
                     </View>
                     <View style={styles.summaryRow}>
@@ -261,7 +262,7 @@ export function PassengerArrivalPaymentCoordinator() {
                   ) : null}
                   <TouchableOpacity activeOpacity={0.88} onPress={navigation.handleDismissSummary} style={styles.payButton}>
                     <Ionicons name="checkmark" size={20} color={Colors.white} />
-                    <Text style={styles.payButtonText}>Terminer</Text>
+                    <Text style={styles.payButtonText}>{state.completionSummary.beforeArrival ? 'Continuer le trajet' : 'Terminer'}</Text>
                   </TouchableOpacity>
                 </View>
               </>
@@ -269,6 +270,7 @@ export function PassengerArrivalPaymentCoordinator() {
               <>
                 <ArrivalPaymentFields
                   arrivalBooking={state.arrivalBooking}
+                  isBeforeArrival={state.isBeforeArrival}
                   destination={destination}
                   paymentAmount={state.paymentAmount}
                   paymentCurrency={state.paymentCurrency}
@@ -323,6 +325,11 @@ export function PassengerArrivalPaymentCoordinator() {
               {state.isBusy || state.hasPendingProviderPayment ? 'Vérification...' : actionLabel}
             </Text>
                 </TouchableOpacity>
+                {state.isBeforeArrival && !state.paymentAlreadySucceeded && !state.isBusy && !state.hasPendingProviderPayment ? (
+                  <TouchableOpacity onPress={state.deferEarlyPayment} style={[styles.payButton, styles.invoiceButton]}>
+                    <Text style={[styles.payButtonText, styles.invoiceButtonText]}>Payer à l’arrivée</Text>
+                  </TouchableOpacity>
+                ) : null}
               </>
             ) : null}
           </View>
@@ -331,5 +338,3 @@ export function PassengerArrivalPaymentCoordinator() {
     </Modal>
   );
 }
-
-

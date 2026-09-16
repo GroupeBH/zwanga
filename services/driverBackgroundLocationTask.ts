@@ -6,7 +6,8 @@ import { getRtkErrorStatus, getRtkErrorMessage, shouldBackOffAfterBackgroundResp
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
-import { recordLocationDelivery } from './locationDelivery';
+import { isLocationDeliveryPending, recordLocationDelivery, wasLocationDeliveredRecently } from './locationDelivery';
+import { publishNativeRideLocation } from './rideLocationStream';
 
 import { ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS, ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS } from '@/constants/rideProgress';
 import { clearActiveDriverBackgroundTripId, getActiveDriverBackgroundTripSession, setActiveDriverBackgroundTripId, updateActiveDriverBackgroundTripSession, type DriverBackgroundLocationCoordinate } from '@/services/driverBackgroundLocationSession';
@@ -50,6 +51,8 @@ async function putDriverLocation(tripId: string, location: Location.LocationObje
 
   const now = Date.now();
   if (
+    isLocationDeliveryPending(`driver:${tripId}`) ||
+    wasLocationDeliveredRecently(`driver:${tripId}`, 4000, 'rest') ||
     now - lastBackgroundLocationSentAt <
     ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS
   ) {
@@ -180,6 +183,7 @@ const defineDriverBackgroundLocationTask = () => {
           return;
         }
 
+        publishNativeRideLocation(`driver:${tripId}`, latestLocation);
         await putDriverLocation(tripId, latestLocation);
         await evaluateBackgroundTripEnd(tripId, locations);
       } catch (taskError) {
@@ -280,6 +284,7 @@ export async function startDriverBackgroundLocationTracking(
     await Location.startLocationUpdatesAsync(DRIVER_BACKGROUND_LOCATION_TASK, {
       accuracy: Location.Accuracy.High,
       timeInterval: ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS,
+      deferredUpdatesInterval: 2000, // iOS batches background callbacks, not GPS acquisition.
       distanceInterval: ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS,
       pausesUpdatesAutomatically: false,
       showsBackgroundLocationIndicator: true,

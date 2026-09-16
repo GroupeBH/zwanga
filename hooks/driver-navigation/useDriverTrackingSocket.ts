@@ -25,14 +25,24 @@ export function useDriverTrackingSocket({
   refs,
 }: Params) {
   useEffect(() => {
-    if (!data.isFocused || !data.tripId || !data.isTripOngoing) {
+    if (!data.isScreenActive || !data.tripId || !data.isTripOngoing) {
       mapState.setIsSocketConnected(false);
       return;
     }
 
     let isCancelled = false;
+    let requestPending = false;
+    const freshPassengerPositions = new Map<string, number>();
+    const requestPassengerPositions = () => {
+      if (isCancelled || requestPending) return;
+      requestPending = true;
+      void trackingSocket.requestPassengerLocations(data.tripId)
+        .catch(() => undefined)
+        .finally(() => { requestPending = false; });
+    };
     mapState.setLivePassengerLocations({});
     const unsubscribeConnection = trackingSocket.subscribeToConnectionState((connected) => {
+      if (!connected) freshPassengerPositions.clear();
       if (!isCancelled && mapState.isMountedRef.current) mapState.setIsSocketConnected(connected);
     });
 
@@ -42,7 +52,7 @@ export function useDriverTrackingSocket({
       .then(() => {
         if (!mapState.isMountedRef.current || isCancelled) return;
         mapState.setIsSocketConnected(true);
-        void trackingSocket.requestPassengerLocations(data.tripId);
+        requestPassengerPositions();
         if (__DEV__) {
           console.log('[Navigation] Connecté au suivi en temps réel');
         }
@@ -203,6 +213,8 @@ export function useDriverTrackingSocket({
           return;
         }
 
+        const timestamp = Date.parse(payload.updatedAt ?? '');
+        if (Number.isFinite(timestamp)) freshPassengerPositions.set(payload.bookingId, timestamp);
         mapState.setLivePassengerLocations((current) => {
           const currentPassengerLocation = current[payload.bookingId!];
           if (
@@ -224,7 +236,15 @@ export function useDriverTrackingSocket({
     );
 
     const passengerLocationsRefreshInterval = setInterval(() => {
-      void trackingSocket.requestPassengerLocations(data.tripId);
+      const bookingIds = new Set(refs.waypointsRef.current.map(waypoint => waypoint.booking.id));
+      for (const id of freshPassengerPositions.keys()) {
+        if (!bookingIds.has(id)) freshPassengerPositions.delete(id);
+      }
+      const missingPosition = [...bookingIds].some(id => {
+        const timestamp = freshPassengerPositions.get(id);
+        return timestamp === undefined || Date.now() - timestamp >= 15_000;
+      });
+      if (missingPosition) requestPassengerPositions();
     }, 10000);
 
     return () => {
@@ -242,7 +262,7 @@ export function useDriverTrackingSocket({
       }
     };
   }, [
-    data.isFocused,
+    data.isScreenActive,
     data.isTripOngoing,
     data.isKinshasaNavigationTrip,
     notices.getPassengerNameForBooking,

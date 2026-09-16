@@ -10,13 +10,13 @@ import {
 import { useCreateTripShareLinkMutation } from '@/store/api/trackingApi';
 import {
   useConfirmDriverTripInterruptionMutation,
-  useGetDriverLocationQuery,
   useGetTripByIdQuery,
   useRejectDriverTripInterruptionMutation,
 } from '@/store/api/tripApi';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useDriverLocationFallback } from './useDriverLocationFallback';
 
 
 
@@ -45,11 +45,7 @@ export function usePassengerNavigationData() {
   });
   const { data: trip, offline: offlineTrip } = useOfflineRideData(`trip:${tripId}`, liveTrip, tripError, liveTrip?.status === 'ongoing');
   const isTripOngoing = trip?.status === 'ongoing';
-  const { data: driverLocationSnapshot } = useGetDriverLocationQuery(tripId, {
-    skip: !tripId || !isTripOngoing,
-    pollingInterval: isScreenActive ? 10_000 : 0,
-    skipPollingIfUnfocused: true,
-  });
+  const driverLocationSnapshot = useDriverLocationFallback(tripId, isScreenActive && isTripOngoing);
 
   const [updatePassengerLocation] = useUpdatePassengerLocationMutation();
   const [cancelBooking, { isLoading: isCancellingBooking }] = useCancelBookingMutation();

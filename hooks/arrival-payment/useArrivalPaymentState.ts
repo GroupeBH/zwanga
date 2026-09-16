@@ -3,8 +3,7 @@ import {
   roundMoney,
   formatPaymentPhone,
   hasPassengerArrived,
-  getArrivalTimestamp,
-  isFinanciallyPending,
+  selectArrivedPaymentBooking,
   getStorageKey,
 } from '../../features/arrival-payment/paymentModel';
 import {
@@ -13,8 +12,9 @@ import {
   StoredPaymentState,
   PaymentCompletionSummary,
 } from '../../features/arrival-payment/paymentTypes';
-import { ARRIVAL_BOOKING_REFRESH_MS, RECENT_ARRIVAL_WINDOW_MS } from '../../features/arrival-payment/paymentPolicy';
+import { ARRIVAL_BOOKING_REFRESH_MS } from '../../features/arrival-payment/paymentPolicy';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
+import { useNearArrivalPayment } from './useNearArrivalPayment';
 import { getPassengerInterruptionChoice } from '@/features/trip/interruptionChoice';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -73,20 +73,14 @@ export function useArrivalPaymentState() {
     refetchOnReconnect: false,
   });
 
-  const arrivalBooking = useMemo(() => {
+  const earlyBooking = useNearArrivalPayment(bookings, user?.id, isAuthenticated && isAppActive && isStoredStateLoaded, storedState);
+  const arrivedBooking = useMemo(() => {
     if (!isStoredStateLoaded) return null;
 
-    return [...bookings]
-      .filter((booking) => {
-        if (!hasPassengerArrived(booking)) return false;
-        if (storedState[booking.id]?.acknowledgedAt) return false;
-
-        const isRecent = Date.now() - getArrivalTimestamp(booking) <= RECENT_ARRIVAL_WINDOW_MS;
-        const isAlreadyPresented = Boolean(storedState[booking.id]?.requiredActionAt);
-        return isFinanciallyPending(booking) || isRecent || isAlreadyPresented;
-      })
-      .sort((left, right) => getArrivalTimestamp(right) - getArrivalTimestamp(left))[0] ?? null;
+    return selectArrivedPaymentBooking(bookings, storedState);
   }, [bookings, isStoredStateLoaded, storedState]);
+  const arrivalBooking = arrivedBooking ?? earlyBooking;
+  const isBeforeArrival = Boolean(arrivalBooking && !hasPassengerArrived(arrivalBooking));
 
   const interruptionChoice = useMemo(() => {
     if (!isAuthenticated || !isAppActive) return null;
@@ -200,6 +194,10 @@ export function useArrivalPaymentState() {
     },
     [persistBookingState],
   );
+  const deferEarlyPayment = useCallback(() => {
+    if (!arrivalBooking || !isBeforeArrival || isBusy || hasPendingProviderPayment) return;
+    persistBookingState(arrivalBooking.id, { preArrivalDismissedAt: new Date().toISOString() });
+  }, [arrivalBooking, hasPendingProviderPayment, isBeforeArrival, isBusy, persistBookingState]);
 
   return {
     refetchBookings,
@@ -219,6 +217,8 @@ export function useArrivalPaymentState() {
     user,
     setStoredState,
     arrivalBooking,
+    isBeforeArrival,
+    deferEarlyPayment,
     activeBookingIdRef,
     storedState,
     setSelectedMode,

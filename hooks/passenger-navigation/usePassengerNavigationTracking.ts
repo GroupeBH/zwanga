@@ -104,7 +104,7 @@ export function usePassengerNavigationTracking({
         if (!isMountedRef.current || isCancelled) return;
         setIsSocketConnected(true);
         // Demander la position actuelle du conducteur
-        trackingSocket.requestDriverLocation(tripId);
+        void trackingSocket.requestDriverLocation(tripId).catch(() => undefined);
       })
       .catch((error) => {
         if (!isMountedRef.current || isCancelled) return;
@@ -114,7 +114,7 @@ export function usePassengerNavigationTracking({
 
     // Écouter les mises à jour de position du conducteur
     const unsubscribeLocation = trackingSocket.subscribeToDriverLocation((payload: DriverLocationPayload) => {
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current || isCancelled) return;
       if (payload.tripId === tripId && payload.coordinates) {
         const coordinate = normalizeTripMapCoordinate(
           payload.coordinates[1],
@@ -190,10 +190,7 @@ export function usePassengerNavigationTracking({
       console.warn('[PassengerNavigation] Erreur tracking:', message);
     });
 
-    // Demander la position toutes les 10 secondes
-    const interval = setInterval(() => {
-      trackingSocket.requestDriverLocation(tripId);
-    }, 10000);
+    // Live pushes supply positions; useDriverLocationFallback handles silent connections.
 
     return () => {
       isCancelled = true;
@@ -202,7 +199,6 @@ export function usePassengerNavigationTracking({
       unsubscribeLocation();
       unsubscribeAutoProgress();
       unsubscribeError();
-      clearInterval(interval);
     };
   }, [
     bookingId,

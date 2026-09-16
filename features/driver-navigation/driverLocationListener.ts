@@ -14,6 +14,7 @@ import { DRIVER_LOCATION_BACKEND_UPDATE_INTERVAL_MS } from '@/constants/rideProg
 import { getRouteAlignedPosition } from '@/utils/routeHelpers';
 import {
   MAX_PLAUSIBLE_LOCATION_JUMP_METERS,
+  calculateDistanceMeters,
   distanceFromCoordinateToPolyline,
   isPlausibleLocationUpdate,
   isRouteDeviationConfirmed,
@@ -35,6 +36,8 @@ export function createDriverLocationListener({ data, mapState, refs, sendDriverL
     let lastStateUpdateTime = 0;
     let lastBackendUpdateTime = 0;
     let lastStepCheckTime = 0;
+    let lastMapUpdateTime = -Infinity;
+    let lastDisplayedCoordinate: { latitude: number; longitude: number } | null = null;
     const STATE_UPDATE_INTERVAL = DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS; // Mise à jour du state toutes les 5 secondes
     const BACKEND_UPDATE_INTERVAL = DRIVER_LOCATION_BACKEND_UPDATE_INTERVAL_MS; // Mise à jour WebSocket toutes les 5 secondes
     const STEP_CHECK_INTERVAL = 5000;
@@ -55,7 +58,6 @@ export function createDriverLocationListener({ data, mapState, refs, sendDriverL
             normalizedLocation.coords.accuracy > 80) {
             return;
         }
-        refs.currentLocationRef.current = normalizedLocation;
         const rawCoordinate = {
             latitude: normalizedLocation.coords.latitude,
             longitude: normalizedLocation.coords.longitude,
@@ -79,6 +81,35 @@ export function createDriverLocationListener({ data, mapState, refs, sendDriverL
         }
         mapState.lastAcceptedDriverCoordinateRef.current = rawCoordinate;
         mapState.lastAcceptedDriverTimestampRef.current = acceptedTimestamp;
+        refs.currentLocationRef.current = normalizedLocation;
+        const gpsHeading = normalizedLocation.coords.heading !== null &&
+            normalizedLocation.coords.heading !== -1 &&
+            (normalizedLocation.coords.speed ?? 0) > 0.8
+            ? normalizeHeading(normalizedLocation.coords.heading)
+            : null;
+        // Safety/delivery consume validated fixes independently of map rendering.
+        refs.evaluatePickupBypassRef.current?.(rawCoordinate, gpsHeading);
+        if (now - lastStateUpdateTime > STATE_UPDATE_INTERVAL) {
+            lastStateUpdateTime = now;
+            mapState.setCurrentLocation(normalizedLocation);
+        }
+        if (data.tripId && mapState.isTripOngoingRef.current && now - lastBackendUpdateTime > BACKEND_UPDATE_INTERVAL) {
+            lastBackendUpdateTime = now;
+            sendDriverLocationToTracking(normalizedLocation);
+        }
+        if (now - lastStepCheckTime > STEP_CHECK_INTERVAL) {
+            lastStepCheckTime = now;
+            refs.updateCurrentStepRef.current?.(normalizedLocation);
+        }
+        if (mapState.appStateRef.current !== 'active') {
+            mapState.stopDriverMarkerAnimation();
+            lastDisplayedCoordinate = null;
+            return;
+        }
+        // iOS ignores Expo's timeInterval: gate BEFORE traversing polylines/animating.
+        if (now - lastMapUpdateTime > 10_000) lastDisplayedCoordinate = null;
+        if (now - lastMapUpdateTime < 2000) return;
+        lastMapUpdateTime = now;
         if (!refs.hasFetchedInitialDriverRouteRef.current) {
             refs.hasFetchedInitialDriverRouteRef.current = true;
             void refs.fetchRouteRef.current?.({
@@ -128,12 +159,13 @@ export function createDriverLocationListener({ data, mapState, refs, sendDriverL
             }
         }
         const displayedCoordinate = rawCoordinate;
-        mapState.stopDriverMarkerAnimation();
-        if (mapState.isMapReadyRef.current && mapState.appStateRef.current === 'active') {
+        const markerMoved = !lastDisplayedCoordinate || calculateDistanceMeters(lastDisplayedCoordinate, displayedCoordinate) >= 2;
+        if (markerMoved) mapState.stopDriverMarkerAnimation();
+        if (markerMoved && mapState.isMapReadyRef.current) {
             const animation = mapState.driverPosition.timing({
                 latitude: displayedCoordinate.latitude,
                 longitude: displayedCoordinate.longitude,
-                duration: 4500,
+                duration: 750,
                 useNativeDriver: false,
                 toValue: 0,
                 latitudeDelta: 0,
@@ -142,16 +174,11 @@ export function createDriverLocationListener({ data, mapState, refs, sendDriverL
             mapState.driverMarkerAnimationRef.current = animation;
             animation.start();
         }
-        else {
+        else if (markerMoved) {
             mapState.driverPosition.setValue({ ...displayedCoordinate, latitudeDelta: 0, longitudeDelta: 0 });
         }
-        const gpsHeading = normalizedLocation.coords.heading !== null &&
-            normalizedLocation.coords.heading !== -1 &&
-            (normalizedLocation.coords.speed ?? 0) > 0.8
-            ? normalizeHeading(normalizedLocation.coords.heading)
-            : null;
+        if (markerMoved) lastDisplayedCoordinate = displayedCoordinate;
         const alignedHeading = routeAlignment?.heading ?? gpsHeading;
-        refs.evaluatePickupBypassRef.current?.(rawCoordinate, gpsHeading);
         if (alignedHeading !== null) {
             mapState.setHeading((previousHeading) => {
                 const currentHeading = normalizeHeading(previousHeading);
@@ -166,22 +193,7 @@ export function createDriverLocationListener({ data, mapState, refs, sendDriverL
                 return normalizeHeading(currentHeading + delta * 0.45);
             });
         }
-        // Mettre à jour le state très rarement (pour éviter les re-rendus)
-        if (now - lastStateUpdateTime > STATE_UPDATE_INTERVAL) {
-            lastStateUpdateTime = now;
-            mapState.setCurrentLocation(normalizedLocation);
-        }
-        // Mettre à jour la position du conducteur via WebSocket (throttled)
-        if (data.tripId && mapState.isTripOngoingRef.current && now - lastBackendUpdateTime > BACKEND_UPDATE_INTERVAL) {
-            lastBackendUpdateTime = now;
-            sendDriverLocationToTracking(normalizedLocation);
-        }
         // NOTE: Animation de caméra désactivée pour éviter les crashs mémoire
         // L'utilisateur peut recentrer manuellement avec le bouton
-        // Calculer la distance à chaque étape (throttled)
-        if (now - lastStepCheckTime > STEP_CHECK_INTERVAL) {
-            lastStepCheckTime = now;
-            refs.updateCurrentStepRef.current?.(normalizedLocation);
-        }
     };
 }

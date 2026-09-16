@@ -225,12 +225,17 @@ export function usePassengerNavigationNotices({
         : null;
     const distanceText = roundedDistance ? ` Distance détectée: ${roundedDistance} m.` : '';
 
-    showDialog({
-      variant: 'info',
-      icon: 'flag',
-      title: 'Votre arrivée approche',
-      message: `Votre point d'arrivée va être atteint.${distanceText}`,
-    });
+    const usesEarlyPayment = ['electronic', 'points'].includes(booking?.paymentMode ?? '') &&
+      booking?.paymentStatus !== 'succeeded' && Number(booking?.paymentAmount) > 0;
+    // Keep the voice notice, but do not stack an informational modal over the payment sheet.
+    if (!usesEarlyPayment) {
+      showDialog({
+        variant: 'info',
+        icon: 'flag',
+        title: 'Votre arrivée approche',
+        message: `Votre point d'arrivée va être atteint.${distanceText}`,
+      });
+    }
 
     void Speech.stop().finally(() => {
       if (!isMountedRef.current) return;
@@ -239,7 +244,7 @@ export function usePassengerNavigationNotices({
         rate: 0.95,
       });
     });
-  }, [showDialog]);
+  }, [booking?.paymentAmount, booking?.paymentMode, booking?.paymentStatus, showDialog]);
 
   return {
     presentBoardedNotice,

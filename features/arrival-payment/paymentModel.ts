@@ -1,5 +1,5 @@
-import { PaymentChannel } from './paymentTypes';
-import { PAYMENT_STATE_STORAGE_PREFIX, BOOKING_CARD_PAYMENT_RETURN_PATH } from './paymentPolicy';
+import { PaymentChannel, StoredPaymentState } from './paymentTypes';
+import { PAYMENT_STATE_STORAGE_PREFIX, BOOKING_CARD_PAYMENT_RETURN_PATH, RECENT_ARRIVAL_WINDOW_MS } from './paymentPolicy';
 import * as ExpoLinking from 'expo-linking';
 import type {
   Booking,
@@ -200,4 +200,12 @@ export function findBookingRewardEntry(wallet: WalletSummary | undefined | null,
 
 export function getStorageKey(userId: string) {
   return `${PAYMENT_STATE_STORAGE_PREFIX}${userId}`;
+}
+
+export function selectArrivedPaymentBooking(bookings: Booking[], storedState: StoredPaymentState, now = Date.now()) {
+  return [...bookings].filter(booking => {
+    if (!hasPassengerArrived(booking) || storedState[booking.id]?.acknowledgedAt) return false;
+    return isFinanciallyPending(booking) || now - getArrivalTimestamp(booking) <= RECENT_ARRIVAL_WINDOW_MS ||
+      Boolean(storedState[booking.id]?.requiredActionAt);
+  }).sort((left, right) => getArrivalTimestamp(right) - getArrivalTimestamp(left))[0] ?? null;
 }

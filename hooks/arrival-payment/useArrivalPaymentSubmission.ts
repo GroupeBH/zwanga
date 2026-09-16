@@ -4,10 +4,11 @@ import {
   getPaymentMethodForChannel,
   getPaymentStatusMessage,
   createBookingCardPaymentRedirectUrls,
+  hasPassengerArrived,
 } from '../../features/arrival-payment/paymentModel';
 import { PaymentChannel, StoredBookingPaymentState } from '../../features/arrival-payment/paymentTypes';
 import { DRC_PAYMENT_PHONE_REGEX } from '../../features/arrival-payment/paymentPolicy';
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { ELECTRONIC_PAYMENTS_ENABLED } from '@/constants/paymentFeatures';
 import { useInitiateBookingPaymentMutation, useUpdateBookingPaymentModeMutation } from '@/store/api/bookingApi';
 import { useGetMyWalletQuery, useInitiateWalletTopUpMutation } from '@/store/api/walletApi';
@@ -68,8 +69,10 @@ export function useArrivalPaymentSubmission({
   openCardPaymentUrl,
   handleCompletedBookingPayment,
 }: Params) {
-  const handlePayment = useCallback(async () => {
+  const submissionInFlight = useRef(false);
+  const submitPayment = useCallback(async () => {
     if (!arrivalBooking || paymentAmount === null || isBusy || hasPendingProviderPayment) return;
+    if (!hasPassengerArrived(arrivalBooking) && selectedMode === 'cash') return;
 
     setPaymentError('');
     setStatusMessage('');
@@ -241,6 +244,13 @@ export function useArrivalPaymentSubmission({
     showCompletionSummary,
     updatePaymentMode,
   ]);
+
+  const handlePayment = useCallback(async () => {
+    if (submissionInFlight.current) return;
+    submissionInFlight.current = true;
+    try { await submitPayment(); }
+    finally { submissionInFlight.current = false; }
+  }, [submitPayment]);
 
   return {
     handlePayment,

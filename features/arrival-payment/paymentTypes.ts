@@ -6,6 +6,7 @@ export type PaymentChannel = 'mpesa' | 'airtel' | 'orange' | 'card';
 export type StoredBookingPaymentState = {
   requiredActionAt?: string;
   acknowledgedAt?: string;
+  preArrivalDismissedAt?: string;
   bookingPaymentOrderNumber?: string;
   bookingPaymentMethod?: SubscriptionPaymentMethod;
   bookingPaymentChannel?: PaymentChannel;
@@ -31,6 +32,7 @@ export type ElectronicPaymentChannel = {
 
 export type PaymentCompletionSummary = {
   bookingId: string;
+  beforeArrival?: boolean;
   mode: TripPaymentMode;
   channel?: PaymentChannel;
   amount: number;

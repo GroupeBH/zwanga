@@ -219,13 +219,13 @@ test('tracking recovers rooms and connected state after the first connection fai
   stop(); tracking.disconnect();
 });
 
-test('an unacknowledged passenger socket emission never suppresses the REST fallback', async () => {
+test('an unacknowledged passenger socket emission triggers the REST fallback', async () => {
   const { sockets, load } = socketFixture();
   const tracking = load('services/trackingSocket.ts').trackingSocket;
   const { wasLocationDeliveredRecently } = load('services/locationDelivery.ts');
   await tracking.joinTrip('trip');
   sockets[0].acknowledgement = undefined;
-  await tracking.updatePassengerLocation('trip', 'booking', [15, -4]);
+  await assert.rejects(tracking.updatePassengerLocation('trip', 'booking', [15, -4]), /confirmation/);
   assert.equal(wasLocationDeliveredRecently('passenger:booking', 6000, 'rest'), false);
   tracking.disconnect();
 });

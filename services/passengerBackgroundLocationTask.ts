@@ -9,7 +9,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
-import { recordLocationDelivery, wasLocationDeliveredRecently } from './locationDelivery';
+import { isLocationDeliveryPending, recordLocationDelivery, wasLocationDeliveredRecently } from './locationDelivery';
+import { publishNativeRideLocation } from './rideLocationStream';
 
 import { ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS, ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS, PASSENGER_TRIP_STATUS_CHECK_INTERVAL_MS } from '@/constants/rideProgress';
 import { getValidAccessToken, handle401Error } from '@/services/tokenRefresh';
@@ -114,6 +115,7 @@ async function putPassengerLocation(
   const now = Date.now();
   if (
     !coordinate ||
+    isLocationDeliveryPending(`passenger:${bookingId}`) ||
     wasLocationDeliveredRecently(`passenger:${bookingId}`, 6000, 'rest') ||
     now - lastSentAt < ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS
   ) {
@@ -250,6 +252,7 @@ const definePassengerBackgroundLocationTask = () => {
           .filter((location) => typeof location?.timestamp === 'number')
           .sort((a, b) => b.timestamp - a.timestamp)[0];
         if (latestLocation) {
+          publishNativeRideLocation(`passenger:${session.bookingId}`, latestLocation);
           await putPassengerLocation(session.bookingId, latestLocation);
         }
       },
@@ -324,6 +327,7 @@ export async function startPassengerBackgroundLocationTracking(
     await Location.startLocationUpdatesAsync(PASSENGER_BACKGROUND_LOCATION_TASK, {
       accuracy: Location.Accuracy.High,
       timeInterval: ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS,
+      deferredUpdatesInterval: 2000, // Keep the latest sample within the 10-second boarding window.
       distanceInterval: ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS,
       pausesUpdatesAutomatically: false,
       showsBackgroundLocationIndicator: true,

@@ -17,6 +17,7 @@ import type { Booking } from '@/types';
 
 interface ArrivalPaymentFieldsProps {
   arrivalBooking: Booking;
+  isBeforeArrival?: boolean;
   destination: string;
   paymentAmount: number | null;
   paymentCurrency: string;
@@ -48,6 +49,7 @@ interface ArrivalPaymentFieldsProps {
 
 export function ArrivalPaymentFields({
   arrivalBooking,
+  isBeforeArrival = false,
   destination,
   paymentAmount,
   paymentCurrency,
@@ -87,8 +89,8 @@ export function ArrivalPaymentFields({
     <Ionicons name="flag" size={28} color={Colors.white} />
                   </View>
                   <View style={styles.headerCopy}>
-    <Text style={styles.eyebrow}>{arrivalBooking.interruptionFareLocked ? 'ARRÊT CONFIRMÉ' : 'ARRIVÉE CONFIRMÉE'}</Text>
-    <Text style={styles.title}>{arrivalBooking.interruptionFareLocked ? 'Votre trajet s’arrête ici' : 'Vous êtes arrivé'}</Text>
+    <Text style={styles.eyebrow}>{isBeforeArrival ? 'DESTINATION À PROXIMITÉ' : arrivalBooking.interruptionFareLocked ? 'ARRÊT CONFIRMÉ' : 'ARRIVÉE CONFIRMÉE'}</Text>
+    <Text style={styles.title}>{isBeforeArrival ? 'Préparez votre arrivée' : arrivalBooking.interruptionFareLocked ? 'Votre trajet s’arrête ici' : 'Vous êtes arrivé'}</Text>
                   </View>
                 </View>
 
@@ -105,7 +107,7 @@ export function ArrivalPaymentFields({
       : formatMoney(paymentAmount, paymentCurrency)}
                   </Text>
                   <Text style={styles.amountHint}>
-    Choisissez comment régler ce trajet. Cette fenêtre restera ouverte jusqu’à votre action.
+    {isBeforeArrival ? 'Vous êtes à proximité de votre destination. Réglez maintenant pour pouvoir descendre sans attendre. Votre trajet continue normalement.' : 'Choisissez comment régler ce trajet. Cette fenêtre restera ouverte jusqu’à votre action.'}
                   </Text>
                 </View>
 
@@ -150,7 +152,8 @@ export function ArrivalPaymentFields({
     ) : null}
     <View style={styles.options}>
       {PAYMENT_OPTIONS.filter(
-        (option) => option.id !== 'electronic' || ELECTRONIC_PAYMENTS_ENABLED,
+        (option) => (!isBeforeArrival || option.id !== 'cash') &&
+          (option.id !== 'electronic' || ELECTRONIC_PAYMENTS_ENABLED),
       ).map((option) => {
         const isSelected = selectedMode === option.id;
         const isRecommended = arePointsRecommended && option.id === 'points';

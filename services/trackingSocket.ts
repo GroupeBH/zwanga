@@ -1,4 +1,4 @@
-import { LocationUpdateAcknowledgement, DriverLocationPayload, PassengerLocationPayload, TrackingLocationMetadata, BookingAutoProgressPayload, LocationListener, PassengerLocationListener, BookingAutoProgressListener, ErrorListener } from './trackingSocket.types';
+import { DriverLocationPayload, PassengerLocationPayload, TrackingLocationMetadata, BookingAutoProgressPayload, LocationListener, PassengerLocationListener, BookingAutoProgressListener, ErrorListener } from './trackingSocket.types';
 export type { DriverLocationPayload } from './trackingSocket.types';
 export type { PassengerLocationPayload } from './trackingSocket.types';
 export type { TrackingLocationMetadata } from './trackingSocket.types';
@@ -10,10 +10,10 @@ import { API_BASE_URL } from '@/config/env';
 import { getValidAccessToken } from '@/services/tokenRefresh';
 import { io, Socket } from 'socket.io-client';
 
-import { recordLocationDelivery, wasLocationDeliveredRecently } from './locationDelivery';
+import { isLocationDeliveryPending, wasLocationDeliveredRecently } from './locationDelivery';
+import { sendConfirmedTrackingLocation } from './trackingLocationDelivery';
 
 const SOCKET_CONNECT_TIMEOUT_MS = 8000;
-const SOCKET_LOCATION_ACK_TIMEOUT_MS = 2500;
 
 function resolveSocketBaseUrl() {
   if (!API_BASE_URL) {
@@ -303,7 +303,8 @@ class TrackingSocketClient {
     if (!tripId || !coordinates) return;
     if (wasLocationDeliveredRecently(`driver:${tripId}`, 4000, 'socket')) return;
     const socket = await this.connect();
-    socket.emit('driver_location_update', { tripId, coordinates, ...metadata });
+    if (isLocationDeliveryPending(`driver:${tripId}`) || wasLocationDeliveredRecently(`driver:${tripId}`, 4000, 'socket')) return;
+    await sendConfirmedTrackingLocation(socket, { tripId, coordinates, ...metadata });
   }
 
   async requestDriverLocation(tripId: string) {
@@ -321,6 +322,7 @@ class TrackingSocketClient {
     if (!tripId || !bookingId || !coordinates) return;
     if (wasLocationDeliveredRecently(`passenger:${bookingId}`, 6000, 'socket')) return;
     const socket = await this.connect();
+    if (isLocationDeliveryPending(`passenger:${bookingId}`) || wasLocationDeliveredRecently(`passenger:${bookingId}`, 6000, 'socket')) return;
     const payload = {
       tripId,
       bookingId,
@@ -328,32 +330,7 @@ class TrackingSocketClient {
       ...metadata,
     };
 
-    await new Promise<void>((resolve, reject) => {
-      socket.timeout(SOCKET_LOCATION_ACK_TIMEOUT_MS).emit(
-        'passenger_location_update',
-        payload,
-        (error: Error | null, acknowledgement?: LocationUpdateAcknowledgement) => {
-          if (error) {
-            reject(new Error('Confirmation WebSocket de la position passager expirée'));
-            return;
-          }
-          if (acknowledgement?.success === false || acknowledgement?.ok === false) {
-            reject(
-              new Error(
-                acknowledgement.error ||
-                  acknowledgement.message ||
-                  'Position passager refusée par le serveur',
-              ),
-            );
-            return;
-          }
-          if (acknowledgement?.success === true || acknowledgement?.ok === true) {
-            recordLocationDelivery(`passenger:${bookingId}`, 'socket');
-          }
-          resolve();
-        },
-      );
-    });
+    await sendConfirmedTrackingLocation(socket, payload);
   }
 
   async resumeBoardingDetection(tripId: string) {

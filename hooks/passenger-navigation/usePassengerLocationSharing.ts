@@ -9,6 +9,8 @@ import {
   PASSENGER_LOCATION_SEND_INTERVAL_MS,
 } from '@/constants/rideProgress';
 import { trackingSocket } from '@/services/trackingSocket';
+import { recordLocationDelivery } from '@/services/locationDelivery';
+import { subscribeRideLocation } from '@/services/rideLocationStream';
 import {
   startPassengerBackgroundLocationTracking,
   stopPassengerBackgroundLocationTracking,
@@ -92,6 +94,7 @@ export function usePassengerLocationSharing({
     if (!isFocused) return;
     let isCancelled = false;
     let lastSentAt = 0;
+    let lastUiUpdateAt = -Infinity;
     const sendLocation = async (location: Location.LocationObject) => {
       if (isCancelled || !isMountedRef.current || isExitingRef.current) return;
       const coordinate = normalizeTripMapCoordinate(
@@ -145,10 +148,12 @@ export function usePassengerLocationSharing({
 
       lastAcceptedPassengerCoordinateRef.current = coordinate;
       lastAcceptedPassengerTimestampRef.current = acceptedTimestamp;
-      setPassengerLocation(coordinate);
-      setRecoveryFix({ ...coordinate, recordedAt: acceptedTimestamp, accuracy: location.coords.accuracy ?? undefined });
-
       const now = Date.now();
+      if (now - lastUiUpdateAt >= 2000) {
+        lastUiUpdateAt = now;
+        setPassengerLocation(coordinate);
+        setRecoveryFix({ ...coordinate, recordedAt: acceptedTimestamp, accuracy: location.coords.accuracy ?? undefined });
+      }
       if (now - lastSentAt < PASSENGER_LOCATION_SEND_INTERVAL_MS) return;
       const requestGuard = beginLocationRequest(booking.id);
       if (!requestGuard) return;
@@ -192,6 +197,7 @@ export function usePassengerLocationSharing({
         });
         requestGuard.attach(request);
         const response = await request.unwrap();
+        recordLocationDelivery(`passenger:${booking.id}`);
         if (!requestGuard.isCurrent() || isCancelled || isExitingRef.current) return;
 
         if (response.autoProgress?.events?.length && isMountedRef.current) {
@@ -278,7 +284,8 @@ export function usePassengerLocationSharing({
         }
 
         if (isCancelled || !isMountedRef.current) return;
-        const subscription = await Location.watchPositionAsync(
+        const subscription = subscribeRideLocation(
+          `passenger:${booking.id}`,
           {
             accuracy: Location.Accuracy.High,
             timeInterval: PASSENGER_LOCATION_SEND_INTERVAL_MS,

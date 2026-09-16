@@ -15,10 +15,14 @@ import {
   stopDriverBackgroundLocationTracking,
 } from '@/services/driverBackgroundLocationTask';
 import {
+  ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS,
+} from '@/constants/rideProgress';
+import {
   DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS,
   DRIVER_TRIP_END_AUTO_COMPLETE_DWELL_MS,
 } from '@/utils/navigation/tripCompletion';
 import * as Location from 'expo-location';
+import { subscribeRideLocation } from '@/services/rideLocationStream';
 import { useEffect } from 'react';
 
 interface Params {
@@ -167,15 +171,13 @@ export function useDriverLocationTracking({
           console.warn('[Navigation] Position initiale indisponible, en attente du GPS');
         }
 
-      // Variables pour throttling des mises à jour (optimisé pour éviter les crashs)
-       // Vérification étapes toutes les 5 secondes
-
-      // S'abonner aux mises à jour de localisation (fréquence réduite pour stabilité)
-      const subscription = await Location.watchPositionAsync(
+      // Reuse native samples; a shared foreground watcher takes over if they stop.
+      const subscription = subscribeRideLocation(
+        `driver:${data.tripId}`,
         {
           accuracy: Location.Accuracy.High, // Équilibre entre précision et batterie
-          timeInterval: DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS, // GPS update toutes les 5 secondes
-          distanceInterval: 5, // Ou tous les 5 mètres
+          timeInterval: DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS, // Android only; UI throttles also cover iOS.
+          distanceInterval: ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS,
         },
         createDriverLocationListener({ data, mapState, refs, sendDriverLocationToTracking, isCancelled: () => locationEffectCancelled })
       );

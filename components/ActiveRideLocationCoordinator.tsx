@@ -19,6 +19,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { AppState } from 'react-native';
 import { usePathname } from 'expo-router';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
+import { subscribeRideLocation } from '@/services/rideLocationStream';
 
 const ACTIVE_RIDE_REFRESH_INTERVAL_MS = 60_000;
 const ACTIVE_RIDE_DETAIL_REFRESH_INTERVAL_MS = 30_000;
@@ -244,7 +245,8 @@ export function ActiveRideLocationCoordinator() {
 
       if (cancelled) return;
       try {
-        const subscription = await Location.watchPositionAsync(
+        const subscription = subscribeRideLocation(
+          `passenger:${passengerBookingId}`,
           {
             accuracy: Location.Accuracy.High,
             timeInterval: ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS,

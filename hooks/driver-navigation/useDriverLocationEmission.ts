@@ -4,6 +4,7 @@ import { useDriverNavigationMapState } from './useDriverNavigationMapState';
 import { isFreshLocationObject } from '../../features/driver-navigation/navigationBooking';
 import { warnThrottled } from '@/utils/throttledWarning';
 import { trackingSocket } from '@/services/trackingSocket';
+import { recordLocationDelivery } from '@/services/locationDelivery';
 import { updateDriverBackgroundLocationCheckpoint } from '@/services/driverBackgroundLocationTask';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import * as Location from 'expo-location';
@@ -79,6 +80,7 @@ export function useDriverLocationEmission({
             const request = data.updateDriverLocation({ tripId: data.tripId, coordinates, ...metadata });
             requestGuard.attach(request);
             await request.unwrap();
+            recordLocationDelivery(`driver:${data.tripId}`);
           } catch (fallbackError) {
             if (requestGuard.isCurrent()) {
               warnThrottled('[Navigation] Position conducteur REST non envoyée:', fallbackError);
